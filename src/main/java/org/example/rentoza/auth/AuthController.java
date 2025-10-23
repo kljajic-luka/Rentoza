@@ -43,4 +43,20 @@ public class AuthController {
                 "role", user.getRole()
         ));
     }
+
+    // 🔁 refresh token endpoint
+    @PostMapping("/refresh-token")
+    public ResponseEntity<?> refreshToken(@RequestHeader("Authorization") String header) {
+        if (header == null || !header.startsWith("Bearer ")) {
+            return ResponseEntity.status(401).body(Map.of("error", "Missing or invalid token"));
+        }
+
+        String token = header.substring(7);
+        try {
+            String newToken = jwtUtil.refreshToken(token);
+            return ResponseEntity.ok(Map.of("token", newToken));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(401).body(Map.of("error", "Invalid or expired token"));
+        }
+    }
 }

@@ -10,7 +10,13 @@ import org.hibernate.annotations.UpdateTimestamp;
 import java.time.Instant;
 
 @Entity
-@Table(name = "users")
+@Table(
+        name = "users",
+        uniqueConstraints = {
+                @UniqueConstraint(columnNames = "email"),
+                @UniqueConstraint(columnNames = "phone")
+        }
+)
 @Getter
 @Setter
 @NoArgsConstructor
@@ -21,32 +27,36 @@ public class User {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @NotBlank(message = "Full name is required")
-    @Size(min = 3, max = 50, message = "Full name must be between 3 and 50 characters")
+    @Size(min = 3, max = 50)
     @Column(nullable = false)
     private String fullName;
 
-    @Email(message = "Invalid email format")
-    @NotBlank(message = "Email is required")
+    @Email
     @Column(unique = true, nullable = false)
     private String email;
 
-    @NotBlank(message = "Password is required")
-    @Size(min = 8, message = "Password must be at least 8 characters long")
+    @Size(min = 8)
     @Pattern(
             regexp = "^(?=.*[A-Z])(?=.*[a-z])(?=.*\\d).+$",
             message = "Password must contain at least one uppercase letter, one lowercase letter, and one number"
     )
-    @Column(nullable = false)
     @JsonIgnore
+    @Column(nullable = false)
     private String password;
 
-    @Pattern(regexp = "^[0-9]{8,15}$", message = "Phone must contain only digits (8–15 characters)")
+    @Pattern(regexp = "^[0-9]{8,15}$")
     @Column(unique = true)
     private String phone;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "user_role", length = 50)
-    private String role = Role.USER.name();
+    private Role role = Role.USER;
+
+    @Column(nullable = false)
+    private boolean enabled = true;
+
+    @Column(nullable = false)
+    private boolean locked = false;
 
     @CreationTimestamp
     private Instant createdAt;

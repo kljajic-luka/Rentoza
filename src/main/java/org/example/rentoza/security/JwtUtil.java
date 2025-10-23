@@ -2,24 +2,31 @@ package org.example.rentoza.security;
 
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import java.util.Date;
 import java.security.Key;
+import java.util.Date;
 
 @Component
 public class JwtUtil {
 
-    private static final String SECRET = "8hR9zKf2rXjA5wLt3QmV7sBnE4pY0cUiZ6dP1eHqT9lO2gRbWv";
-    private static final long EXPIRATION_MS = 86400000; // 24 hours
+    private final Key key;
+    private final long expirationMs;
 
-    private final Key key = Keys.hmacShaKeyFor(SECRET.getBytes());
+    public JwtUtil(
+            @Value("${jwt.secret}") String secret,
+            @Value("${jwt.expiration}") long expirationMs
+    ) {
+        this.key = Keys.hmacShaKeyFor(secret.getBytes());
+        this.expirationMs = expirationMs;
+    }
 
     public String generateToken(String email) {
         return Jwts.builder()
                 .setSubject(email)
                 .setIssuedAt(new Date())
-                .setExpiration(new Date(System.currentTimeMillis() + EXPIRATION_MS))
+                .setExpiration(new Date(System.currentTimeMillis() + expirationMs))
                 .signWith(key, SignatureAlgorithm.HS256)
                 .compact();
     }
@@ -38,5 +45,11 @@ public class JwtUtil {
         } catch (JwtException | IllegalArgumentException e) {
             return false;
         }
+    }
+
+    public String refreshToken(String oldToken) {
+        if (!validateToken(oldToken)) throw new RuntimeException("Invalid token");
+        String email = getEmailFromToken(oldToken);
+        return generateToken(email);
     }
 }

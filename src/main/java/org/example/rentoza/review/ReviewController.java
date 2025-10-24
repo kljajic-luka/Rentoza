@@ -1,5 +1,8 @@
 package org.example.rentoza.review;
 
+import jakarta.validation.Valid;
+import org.example.rentoza.review.dto.ReviewRequestDTO;
+import org.example.rentoza.review.dto.ReviewResponseDTO;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -18,9 +21,18 @@ public class ReviewController {
     }
 
     @PostMapping
-    public ResponseEntity<?> addReview(@RequestBody Review review) {
+    public ResponseEntity<?> addReview(@RequestBody @Valid ReviewRequestDTO dto) {
         try {
-            return ResponseEntity.ok(service.addReview(review));
+            Review saved = service.addReview(dto);
+
+            return ResponseEntity.ok(new ReviewResponseDTO(
+                    saved.getId(),
+                    saved.getRating(),
+                    saved.getComment(),
+                    saved.getReviewer().getEmail(),
+                    saved.getCar().getId(),
+                    saved.getCreatedAt()
+            ));
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
@@ -33,7 +45,6 @@ public class ReviewController {
 
     @GetMapping("/car/{carId}/average")
     public ResponseEntity<Map<String, Double>> getAverageRating(@PathVariable Long carId) {
-        double avg = service.getAverageRatingForCar(carId);
-        return ResponseEntity.ok(Map.of("averageRating", avg));
+        return ResponseEntity.ok(Map.of("averageRating", service.getAverageRatingForCar(carId)));
     }
 }

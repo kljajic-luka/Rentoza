@@ -2,6 +2,10 @@ package org.example.rentoza.car;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.example.rentoza.user.User;
+import org.example.rentoza.booking.Booking;
+import org.example.rentoza.review.Review;
+
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -18,35 +22,28 @@ public class Car {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false)
     private String brand;
-
-    @Column(nullable = false)
     private String model;
-
-    @Column(nullable = false)
     private Integer year;
-
-    @Column(nullable = false)
     private Double pricePerDay;
-
-    @Column(nullable = false)
-    private String location; // city or region
-
+    private String location;
     private String imageUrl;
-
-    @Column(nullable = false)
     private boolean available = true;
-
     private Instant createdAt = Instant.now();
-
-    // 🧩 optional relation — one user owns many cars
-    @Column(name = "owner_email")
-    private String ownerEmail;
 
     @ElementCollection
     @CollectionTable(name = "car_images", joinColumns = @JoinColumn(name = "car_id"))
     @Column(name = "image_url")
     private List<String> imageUrls = new ArrayList<>();
 
+    // 🔗 Relations
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "owner_id")
+    private User owner;
+
+    @OneToMany(mappedBy = "car", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Booking> bookings = new ArrayList<>();
+
+    @OneToMany(mappedBy = "car", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Review> reviews = new ArrayList<>();
 }

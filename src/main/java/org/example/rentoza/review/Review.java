@@ -1,7 +1,11 @@
 package org.example.rentoza.review;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.*;
 import lombok.*;
+import org.example.rentoza.car.Car;
+import org.example.rentoza.user.User;
+
 import java.time.Instant;
 
 @Entity
@@ -16,16 +20,22 @@ public class Review {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    private Long carId;
+    @Min(1)
+    @Max(5)
+    private int rating;
 
-    @Column(nullable = false)
-    private String reviewerEmail;
-
-    @Column(nullable = false)
-    private int rating; // 1–5
-
-    @Column(length = 500)
+    @Size(max = 500)
     private String comment;
 
+    @Column(nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
+
+    // 🔗 Relations
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "car_id")
+    private Car car;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "reviewer_id")
+    private User reviewer;
 }

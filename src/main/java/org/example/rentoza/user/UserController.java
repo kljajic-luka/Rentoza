@@ -6,6 +6,8 @@ import org.example.rentoza.user.dto.*;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Map;
+
 @RestController
 @RequestMapping("/api/users")
 @CrossOrigin(origins = "*")
@@ -18,60 +20,68 @@ public class UserController {
         this.service = service;
         this.jwtUtil = jwtUtil;
     }
+
+    // ✅ REGISTER
     @PostMapping("/register")
-    public ResponseEntity<UserResponseDTO> register(@Valid @RequestBody UserRegisterDTO dto) {
-        System.out.println("Received user: " + dto.getEmail());
-        User user = service.register(dto);
-
-        return ResponseEntity.ok(new UserResponseDTO(
-                user.getId(),
-                user.getFullName(),
-                user.getEmail(),
-                user.getPhone(),
-                user.getRole().name()
-        ));
+    public ResponseEntity<?> register(@Valid @RequestBody UserRegisterDTO dto) {
+        try {
+            User user = service.register(dto);
+            return ResponseEntity.ok(new UserResponseDTO(
+                    user.getId(),
+                    user.getFullName(),
+                    user.getEmail(),
+                    user.getPhone(),
+                    user.getRole().name()
+            ));
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
     }
 
-    @GetMapping("/{email}")
-    public ResponseEntity<User> getUserByEmail(@PathVariable String email) {
-        return service.getUserByEmail(email)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
-    }
+    // ✅ LOGIN
     @PostMapping("/login")
-    public ResponseEntity<AuthResponseDTO> login(@Valid @RequestBody UserLoginDTO dto) {
+    public ResponseEntity<?> login(@Valid @RequestBody UserLoginDTO dto) {
         var userOpt = service.getUserByEmail(dto.getEmail());
         if (userOpt.isEmpty()) {
-            return ResponseEntity.status(401).build();
+            return ResponseEntity.status(401).body(Map.of("error", "User not found"));
         }
 
         var user = userOpt.get();
         if (!service.passwordMatches(dto.getPassword(), user.getPassword())) {
-            return ResponseEntity.status(401).build();
+            return ResponseEntity.status(401).body(Map.of("error", "Invalid credentials"));
         }
 
         String token = jwtUtil.generateToken(user.getEmail());
         return ResponseEntity.ok(new AuthResponseDTO(token, user.getEmail(), user.getRole().name()));
     }
 
+    // ✅ GET USER BY EMAIL
+    @GetMapping("/{email}")
+    public ResponseEntity<?> getUserByEmail(@PathVariable String email) {
+        return service.getUserByEmail(email)
+                .<ResponseEntity<?>>map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity
+                        .status(404)
+                        .body(Map.of("error", "User not found")));
+    }
+
+    // ✅ UPDATE PROFILE
     @PutMapping("/profile/{email}")
-    public ResponseEntity<UserResponseDTO> updateProfile(
+    public ResponseEntity<?> updateProfile(
             @PathVariable String email,
             @Valid @RequestBody UserProfileDTO dto
     ) {
-        User updated = service.updateProfile(email, dto);
-        return ResponseEntity.ok(new UserResponseDTO(
-                updated.getId(),
-                updated.getFullName(),
-                updated.getEmail(),
-                updated.getPhone(),
-                updated.getRole().name()
-        ));
+        try {
+            User updated = service.updateProfile(email, dto);
+            return ResponseEntity.ok(new UserResponseDTO(
+                    updated.getId(),
+                    updated.getFullName(),
+                    updated.getEmail(),
+                    updated.getPhone(),
+                    updated.getRole().name()
+            ));
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
     }
-//    @GetMapping("/me")
-//    public ResponseEntity<User> getCurrentUser(@AuthenticationPrincipal UserDetails userDetails) {
-//        return service.getUserByEmail(userDetails.getUsername())
-//                .map(ResponseEntity::ok)
-//                .orElse(ResponseEntity.notFound().build());
-//    }
 }

@@ -5,5 +5,6 @@ import java.util.List;
 
 public interface ReviewRepository extends JpaRepository<Review, Long> {
     List<Review> findByCarId(Long carId);
-    List<Review> findByReviewerEmail(String email);
+    List<Review> findByReviewerEmailIgnoreCase(String email);
+    boolean existsByCarIdAndReviewerEmailIgnoreCase(Long carId, String reviewerEmail);
 }

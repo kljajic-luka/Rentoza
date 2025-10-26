@@ -1,6 +1,7 @@
 package org.example.rentoza.car;
 
 import org.example.rentoza.car.dto.CarRequestDTO;
+import org.example.rentoza.car.dto.CarResponseDTO;
 import org.example.rentoza.security.JwtUtil;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
@@ -9,6 +10,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/cars")
@@ -31,30 +33,23 @@ public class CarController {
             @RequestHeader(value = "Authorization", required = false) String authHeader
     ) {
         try {
-            // ✅ Check token
             if (authHeader == null || !authHeader.startsWith("Bearer ")) {
                 return ResponseEntity.status(401).body(Map.of("error", "Missing or invalid token"));
             }
 
             String token = authHeader.substring(7);
             String email = jwtUtil.getEmailFromToken(token);
+            String role = jwtUtil.getRoleFromToken(token);
+            System.out.println(role);
+            if (!"OWNER".equalsIgnoreCase(role)) {
+                return ResponseEntity.status(403).body(Map.of("error", "Only owners can list cars"));
+            }
 
             User owner = userRepo.findByEmail(email)
                     .orElseThrow(() -> new RuntimeException("Owner not found: " + email));
 
-            // ✅ Map DTO → Entity
-            Car car = new Car();
-            car.setBrand(dto.getBrand());
-            car.setModel(dto.getModel());
-            car.setYear(dto.getYear());
-            car.setPricePerDay(dto.getPricePerDay());
-            car.setLocation(dto.getLocation());
-            car.setImageUrl(dto.getImageUrl());
-            car.setImageUrls(dto.getImageUrls());
-            car.setOwner(owner);
-
-            Car saved = service.addCar(car, owner.getEmail());
-            return ResponseEntity.ok(saved);
+            Car saved = service.addCar(dto, owner);
+            return ResponseEntity.ok(new CarResponseDTO(saved));
 
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
@@ -62,24 +57,42 @@ public class CarController {
     }
 
     @GetMapping
-    public ResponseEntity<List<Car>> getAllCars() {
-        return ResponseEntity.ok(service.getAllCars());
+    public ResponseEntity<List<CarResponseDTO>> getAllCars() {
+        return ResponseEntity.ok(
+                service.getAllCars()
+                        .stream()
+                        .map(CarResponseDTO::new)
+                        .collect(Collectors.toList())
+        );
     }
 
+    // ✅ Get cars by location
     @GetMapping("/location/{location}")
-    public ResponseEntity<List<Car>> getByLocation(@PathVariable String location) {
-        return ResponseEntity.ok(service.getCarsByLocation(location));
+    public ResponseEntity<List<CarResponseDTO>> getByLocation(@PathVariable String location) {
+        return ResponseEntity.ok(
+                service.getCarsByLocation(location)
+                        .stream()
+                        .map(CarResponseDTO::new)
+                        .collect(Collectors.toList())
+        );
     }
 
+    // ✅ Get cars by owner email
     @GetMapping("/owner/{email}")
-    public ResponseEntity<List<Car>> getByOwner(@PathVariable String email) {
-        return ResponseEntity.ok(service.getCarsByOwner(email));
+    public ResponseEntity<List<CarResponseDTO>> getByOwner(@PathVariable String email) {
+        return ResponseEntity.ok(
+                service.getCarsByOwner(email)
+                        .stream()
+                        .map(CarResponseDTO::new)
+                        .collect(Collectors.toList())
+        );
     }
 
+    // ✅ Get car by ID
     @GetMapping("/{id}")
     public ResponseEntity<?> getCarById(@PathVariable Long id) {
         try {
-            return ResponseEntity.ok(service.getCarById(id));
+            return ResponseEntity.ok(new CarResponseDTO(service.getCarById(id)));
         } catch (RuntimeException e) {
             return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
         }

@@ -1,5 +1,6 @@
 package org.example.rentoza.user;
 
+import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
 import org.example.rentoza.security.JwtUtil;
 import org.example.rentoza.user.dto.*;
@@ -28,7 +29,8 @@ public class UserController {
             User user = service.register(dto);
             return ResponseEntity.ok(new UserResponseDTO(
                     user.getId(),
-                    user.getFullName(),
+                    user.getFirstName(),
+                    user.getLastName(),
                     user.getEmail(),
                     user.getPhone(),
                     user.getRole().name()
@@ -51,35 +53,63 @@ public class UserController {
             return ResponseEntity.status(401).body(Map.of("error", "Invalid credentials"));
         }
 
-        String token = jwtUtil.generateToken(user.getEmail());
-        return ResponseEntity.ok(new AuthResponseDTO(token, user.getEmail(), user.getRole().name()));
+        String token = jwtUtil.generateToken(user.getEmail(), user.getRole().name());
+
+        // ✅ Build proper UserResponseDTO
+        UserResponseDTO userResponse = new UserResponseDTO(
+                user.getId(),
+                user.getFirstName(),
+                user.getLastName(),
+                user.getEmail(),
+                user.getPhone(),
+                user.getRole().name()
+        );
+
+        // ✅ Pass UserResponseDTO instead of String
+        AuthResponseDTO response = new AuthResponseDTO(token, null, userResponse);
+        return ResponseEntity.ok(response);
     }
 
-    // ✅ GET USER BY EMAIL
-    @GetMapping("/{email}")
-    public ResponseEntity<?> getUserByEmail(@PathVariable String email) {
-        return service.getUserByEmail(email)
-                .<ResponseEntity<?>>map(ResponseEntity::ok)
-                .orElseGet(() -> ResponseEntity
-                        .status(404)
-                        .body(Map.of("error", "User not found")));
+    @GetMapping("/me")
+    public ResponseEntity<?> getMyProfile(@RequestHeader("Authorization") String authHeader) {
+        String email = jwtUtil.getEmailFromToken(authHeader.substring(7));
+        var user = service.getUserByEmail(email)
+                .orElseThrow(() -> new EntityNotFoundException("User not found"));
+        return ResponseEntity.ok(new UserResponseDTO(
+                user.getId(), user.getFirstName(), user.getLastName(), user.getEmail(), user.getPhone(), user.getRole().name()
+        ));
     }
 
-    // ✅ UPDATE PROFILE
-    @PutMapping("/profile/{email}")
+    @PatchMapping("/profile")
     public ResponseEntity<?> updateProfile(
-            @PathVariable String email,
+            @RequestHeader("Authorization") String authHeader,
             @Valid @RequestBody UserProfileDTO dto
     ) {
         try {
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                return ResponseEntity.status(401).body(Map.of("error", "Missing or invalid token"));
+            }
+
+            String token = authHeader.substring(7);
+            String email = jwtUtil.getEmailFromToken(token);
+
+            if (email == null) {
+                return ResponseEntity.status(401).body(Map.of("error", "Invalid token"));
+            }
+
             User updated = service.updateProfile(email, dto);
+
             return ResponseEntity.ok(new UserResponseDTO(
                     updated.getId(),
-                    updated.getFullName(),
+                    updated.getFirstName(),
+                    updated.getLastName(),
                     updated.getEmail(),
                     updated.getPhone(),
                     updated.getRole().name()
             ));
+
+        } catch (io.jsonwebtoken.JwtException e) {
+            return ResponseEntity.status(401).body(Map.of("error", "Token expired or invalid"));
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }

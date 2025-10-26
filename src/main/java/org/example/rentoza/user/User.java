@@ -19,6 +19,10 @@ import java.util.List;
         uniqueConstraints = {
                 @UniqueConstraint(columnNames = "email"),
                 @UniqueConstraint(columnNames = "phone")
+        },
+        indexes = {
+                @Index(name = "idx_user_email", columnList = "email"),
+                @Index(name = "idx_user_phone", columnList = "phone")
         }
 )
 @Getter
@@ -26,14 +30,17 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class User {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @Size(min = 3, max = 50)
     @Column(nullable = false)
-    private String fullName;
+    private String firstName;
+
+    @Size(min = 3, max = 50)
+    @Column(nullable = false)
+    private String lastName;
 
     @Email
     @Column(unique = true, nullable = false)
@@ -68,16 +75,22 @@ public class User {
     @UpdateTimestamp
     private Instant updatedAt;
 
-    // 🔗 Relationships
-    @OneToMany(mappedBy = "owner", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "owner", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @JsonIgnore
     private List<Car> cars;
 
-    @OneToMany(mappedBy = "renter", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "renter", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @JsonIgnore
     private List<Booking> bookings;
 
-    @OneToMany(mappedBy = "reviewer", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "reviewer", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @JsonIgnore
     private List<Review> reviews;
+
+    @PrePersist
+    @PreUpdate
+    public void normalize() {
+        if (email != null) email = email.toLowerCase();
+        if (phone != null) phone = phone.replaceAll("[^0-9]", "");
+    }
 }

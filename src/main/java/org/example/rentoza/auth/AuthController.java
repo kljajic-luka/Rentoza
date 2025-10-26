@@ -1,62 +1,79 @@
 package org.example.rentoza.auth;
 
+import jakarta.validation.Valid;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
 import org.example.rentoza.security.JwtUtil;
+import org.example.rentoza.user.UserService;
+import org.example.rentoza.user.dto.AuthResponseDTO;
+import org.example.rentoza.user.dto.UserLoginDTO;
+import org.example.rentoza.user.dto.UserRegisterDTO;
+import org.example.rentoza.user.dto.UserResponseDTO;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
-
 @RestController
 @RequestMapping("/api/auth")
-@CrossOrigin(origins = "*")
+@CrossOrigin(origins = "http://localhost:4200")
 public class AuthController {
 
-    private final UserRepository userRepo;
-    private final PasswordEncoder encoder;
+    private final UserService userService;
     private final JwtUtil jwtUtil;
 
-    public AuthController(UserRepository userRepo, PasswordEncoder encoder, JwtUtil jwtUtil) {
-        this.userRepo = userRepo;
-        this.encoder = encoder;
+    public AuthController(UserService userService, JwtUtil jwtUtil) {
+        this.userService = userService;
         this.jwtUtil = jwtUtil;
     }
 
+    @PostMapping("/register")
+    public ResponseEntity<?> register(@Valid @RequestBody UserRegisterDTO dto) {
+        try {
+            User user = userService.register(dto);
+
+            String token = jwtUtil.generateToken(user.getEmail(), user.getRole().name());
+            UserResponseDTO userResponse = new UserResponseDTO(
+                    user.getId(),
+                    user.getFirstName(),
+                    user.getLastName(),
+                    user.getEmail(),
+                    user.getPhone(),
+                    user.getRole().name()
+            );
+
+            AuthResponseDTO response = new AuthResponseDTO(token, null, userResponse);
+            return ResponseEntity.ok(response);
+
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+
     @PostMapping("/login")
-    public ResponseEntity<?> login(@RequestBody Map<String, String> loginRequest) {
-        String email = loginRequest.get("email");
-        String password = loginRequest.get("password");
+    public ResponseEntity<?> login(@Valid @RequestBody UserLoginDTO dto) {
+        var userOpt = userService.getUserByEmail(dto.getEmail());
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.status(401).body(Map.of("error", "User not found"));
+        }
 
-        User user = userRepo.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
-
-        if (!encoder.matches(password, user.getPassword())) {
+        var user = userOpt.get();
+        if (!userService.passwordMatches(dto.getPassword(), user.getPassword())) {
             return ResponseEntity.status(401).body(Map.of("error", "Invalid credentials"));
         }
 
-        String token = jwtUtil.generateToken(email);
-        return ResponseEntity.ok(Map.of(
-                "token", token,
-                "email", email,
-                "role", user.getRole()
-        ));
-    }
+        String token = jwtUtil.generateToken(user.getEmail(), user.getRole().name());
+        UserResponseDTO userResponse = new UserResponseDTO(
+                user.getId(),
+                user.getFirstName(),
+                user.getLastName(),
+                user.getEmail(),
+                user.getPhone(),
+                user.getRole().name()
+        );
 
-    // 🔁 refresh token endpoint
-    @PostMapping("/refresh-token")
-    public ResponseEntity<?> refreshToken(@RequestHeader("Authorization") String header) {
-        if (header == null || !header.startsWith("Bearer ")) {
-            return ResponseEntity.status(401).body(Map.of("error", "Missing or invalid token"));
-        }
-
-        String token = header.substring(7);
-        try {
-            String newToken = jwtUtil.refreshToken(token);
-            return ResponseEntity.ok(Map.of("token", newToken));
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(401).body(Map.of("error", "Invalid or expired token"));
-        }
+        AuthResponseDTO response = new AuthResponseDTO(token, null, userResponse);
+        return ResponseEntity.ok(response);
     }
 }

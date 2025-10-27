@@ -1,0 +1,44 @@
+<section class="cars">
+  <header>
+    <h2>Available cars</h2>
+    <p>Browse vehicles from trusted owners and book instantly.</p>
+  </header>
+
+  <div class="cars__grid" fxLayout="row wrap" fxLayoutGap="24px">
+    <ng-container *ngIf="cars$ | async as cars; else loading">
+      <mat-card
+        *ngFor="let car of cars; trackBy: trackByCarId"
+        fxFlex="100"
+        fxFlex.gt-sm="calc(50% - 24px)"
+        fxFlex.gt-md="calc(33% - 24px)"
+        class="cars__card"
+      >
+        <mat-card-header>
+          <mat-card-title>{{ car.make }} {{ car.model }}</mat-card-title>
+          <mat-card-subtitle>{{ car.year }} • {{ car.location }}</mat-card-subtitle>
+        </mat-card-header>
+        <img
+          mat-card-image
+          *ngIf="car.imageUrl"
+          [src]="car.imageUrl"
+          [alt]="car.make + ' ' + car.model"
+        />
+        <mat-card-content>
+          <p>{{ car.description || 'No description provided.' }}</p>
+        </mat-card-content>
+        <mat-card-actions>
+          <a mat-stroked-button color="primary" [routerLink]="['/cars', car.id]">
+            View details
+          </a>
+          <span class="price">R {{ car.pricePerDay | number: '1.0-0' }}/day</span>
+        </mat-card-actions>
+      </mat-card>
+    </ng-container>
+  </div>
+
+  <ng-template #loading>
+    <div class="loading" fxLayout="row" fxLayoutAlign="center center">
+      <mat-progress-spinner mode="indeterminate"></mat-progress-spinner>
+    </div>
+  </ng-template>
+</section>

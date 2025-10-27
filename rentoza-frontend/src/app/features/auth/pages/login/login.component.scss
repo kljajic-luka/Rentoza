@@ -1,0 +1,18 @@
+.auth-card {
+  max-width: 420px;
+  margin: 3rem auto;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+button[mat-raised-button] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 40px;
+}

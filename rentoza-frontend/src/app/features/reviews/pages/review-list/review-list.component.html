@@ -1,0 +1,26 @@
+<section class="reviews">
+  <header>
+    <h2>Latest community reviews</h2>
+    <p>Hear from drivers who recently completed a trip.</p>
+  </header>
+
+  <ng-container *ngIf="reviews$ | async as reviews; else loading">
+    <mat-card *ngFor="let review of reviews; trackBy: trackByReviewId">
+      <mat-card-header>
+        <mat-card-title>{{ review.reviewer | displayName }}</mat-card-title>
+        <mat-card-subtitle>{{ review.createdAt | date: 'medium' }}</mat-card-subtitle>
+      </mat-card-header>
+      <mat-card-content>
+        <p>{{ review.comment }}</p>
+      </mat-card-content>
+    </mat-card>
+
+    <p class="muted" *ngIf="!reviews.length">No reviews published yet.</p>
+  </ng-container>
+
+  <ng-template #loading>
+    <div class="loading" fxLayout="row" fxLayoutAlign="center center">
+      <mat-progress-spinner mode="indeterminate"></mat-progress-spinner>
+    </div>
+  </ng-template>
+</section>

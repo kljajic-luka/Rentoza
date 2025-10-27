@@ -1,0 +1,61 @@
+/* ✅ Angular Material v20+ (Material Design 3) theming setup */
+@use '@angular/material' as mat;
+@use 'ngx-toastr/toastr';
+
+/* Include Material core */
+@include mat.core();
+
+/* 🎨 Define the light theme */
+$light-theme: mat.define-theme((
+  color: (
+    theme-type: light,
+    primary: mat.$blue-palette,     // ✅ built-in M3 palette
+    tertiary: mat.$orange-palette   // ✅ built-in M3 palette
+  ),
+  density: (scale: 0)
+));
+
+/* 🌙 Define the dark theme */
+$dark-theme: mat.define-theme((
+  color: (
+    theme-type: dark,
+    primary: mat.$blue-palette,
+    tertiary: mat.$orange-palette
+  ),
+  density: (scale: 0)
+));
+
+/* ✅ Apply themes */
+@include mat.all-component-themes($light-theme);
+
+
+/* 🌑 Dark mode override */
+.theme-dark {
+  @include mat.all-component-colors($dark-theme);
+}
+
+/* 🧱 Base styles */
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #f5f7fb;
+  color: rgba(0, 0, 0, 0.87);
+}
+
+.theme-dark body {
+  background: #0f1118;
+  color: rgba(255, 255, 255, 0.87);
+}
+
+a {
+  text-decoration: none;
+}
+
+.mat-mdc-button-base[disabled] {
+  pointer-events: none;
+}

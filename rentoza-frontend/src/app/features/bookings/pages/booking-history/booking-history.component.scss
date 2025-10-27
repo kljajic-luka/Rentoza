@@ -1,0 +1,50 @@
+.bookings {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.booking-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.status {
+  display: inline-flex;
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.status.pending {
+  background: rgba(255, 193, 7, 0.15);
+  color: #ffb300;
+}
+
+.status.confirmed {
+  background: rgba(76, 175, 80, 0.18);
+  color: #388e3c;
+}
+
+.status.cancelled {
+  background: rgba(244, 67, 54, 0.18);
+  color: #d32f2f;
+}
+
+.status.completed {
+  background: rgba(63, 81, 181, 0.18);
+  color: #3949ab;
+}
+
+.muted {
+  color: rgba(0, 0, 0, 0.54);
+}
+
+.loading {
+  padding: 3rem 0;
+}
+
+:host-context(.theme-dark) .muted {
+  color: rgba(255, 255, 255, 0.6);
+}

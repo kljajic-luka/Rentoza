@@ -1,0 +1,45 @@
+<section class="hero">
+  <div class="hero__content">
+    <h1>Find the perfect car for your next adventure</h1>
+    <p>Browse a curated collection of vehicles from trusted owners across Serbia.</p>
+    <div class="hero__actions">
+      <a mat-raised-button color="primary" routerLink="/cars">Browse cars</a>
+      <a mat-stroked-button color="primary" routerLink="/auth/register"> Become an owner </a>
+    </div>
+  </div>
+  <div class="hero__image" aria-hidden="true"></div>
+</section>
+
+<section class="featured" *ngIf="featuredCars$ | async as cars">
+  <header>
+    <h2>Featured cars</h2>
+    <a mat-button color="accent" routerLink="/cars">View all cars</a>
+  </header>
+  <div class="featured__grid" fxLayout="row wrap" fxLayoutGap="24px">
+    <mat-card
+      *ngFor="let car of cars"
+      fxFlex="100"
+      fxFlex.gt-sm="calc(50% - 24px)"
+      fxFlex.gt-md="calc(33% - 24px)"
+    >
+      <mat-card-header>
+        <div mat-card-avatar class="car-avatar">{{ car.make[0] }}</div>
+        <mat-card-title>{{ car.make }} {{ car.model }}</mat-card-title>
+        <mat-card-subtitle>{{ car.location }}</mat-card-subtitle>
+      </mat-card-header>
+      <img
+        mat-card-image
+        *ngIf="car.imageUrl"
+        [src]="car.imageUrl"
+        [alt]="car.make + ' ' + car.model"
+      />
+      <mat-card-content>
+        <p>{{ car.description || 'No description provided.' }}</p>
+      </mat-card-content>
+      <mat-card-actions>
+        <a mat-button color="primary" [routerLink]="['/cars', car.id]">View details</a>
+        <span class="price">R {{ car.pricePerDay | number : '1.0-0' }}/day</span>
+      </mat-card-actions>
+    </mat-card>
+  </div>
+</section>

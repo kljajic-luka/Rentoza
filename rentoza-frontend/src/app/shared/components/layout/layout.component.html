@@ -1,0 +1,83 @@
+<mat-sidenav-container class="layout-container" autosize>
+  <mat-sidenav
+    #sidenav
+    class="layout-sidenav"
+    [mode]="isMobile ? 'over' : 'side'"
+    [opened]="!isMobile"
+  >
+    <div class="logo">Rentoza</div>
+    <mat-nav-list>
+      <ng-container *ngIf="currentUser$ | async as user; else guestLinks">
+        <a
+          mat-list-item
+          *ngFor="let link of navigationLinks"
+          (click)="navigate(link.route)"
+          [disabled]="!canShowLink(link, user)"
+        >
+          <mat-icon matListItemIcon>{{ link.icon }}</mat-icon>
+          <span matListItemTitle>{{ link.label }}</span>
+        </a>
+      </ng-container>
+      <ng-template #guestLinks>
+        <a mat-list-item (click)="navigate('/')">
+          <mat-icon matListItemIcon>home</mat-icon>
+          <span matListItemTitle>Home</span>
+        </a>
+        <a mat-list-item (click)="navigate('/cars')">
+          <mat-icon matListItemIcon>directions_car</mat-icon>
+          <span matListItemTitle>Cars</span>
+        </a>
+      </ng-template>
+    </mat-nav-list>
+  </mat-sidenav>
+
+  <mat-sidenav-content class="layout-content">
+    <mat-toolbar color="primary" class="layout-toolbar">
+      <button
+        mat-icon-button
+        type="button"
+        *ngIf="isMobile"
+        (click)="sidenav.toggle()"
+        aria-label="Toggle navigation menu"
+      >
+        <mat-icon>menu</mat-icon>
+      </button>
+      <span class="toolbar-title" (click)="navigate('/')">Rentoza</span>
+      <span class="spacer"></span>
+      <app-theme-toggle />
+      <ng-container *ngIf="isAuthenticated$ | async as isAuthenticated">
+        <ng-container *ngIf="isAuthenticated; else guestActions">
+          <button
+            mat-icon-button
+            [matMenuTriggerFor]="accountMenu"
+            aria-label="Account actions"
+          >
+            <mat-icon>account_circle</mat-icon>
+          </button>
+          <mat-menu #accountMenu="matMenu">
+            <button mat-menu-item (click)="navigate('/users/profile')">
+              <mat-icon>person</mat-icon>
+              <span>Profile</span>
+            </button>
+            <button mat-menu-item (click)="logout()">
+              <mat-icon>logout</mat-icon>
+              <span>Logout</span>
+            </button>
+          </mat-menu>
+        </ng-container>
+        <ng-template #guestActions>
+          <button mat-button color="accent" (click)="navigate('/auth/login')">
+            Login
+          </button>
+          <button mat-stroked-button color="accent" (click)="navigate('/auth/register')">
+            Register
+          </button>
+        </ng-template>
+      </ng-container>
+    </mat-toolbar>
+
+    <section class="layout-router">
+      <router-outlet />
+    </section>
+  </mat-sidenav-content>
+</mat-sidenav-container>

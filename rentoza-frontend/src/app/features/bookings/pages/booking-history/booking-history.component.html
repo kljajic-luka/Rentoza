@@ -1,0 +1,29 @@
+<section class="bookings">
+  <header>
+    <h2>Your booking history</h2>
+    <p>Track the status of your past and upcoming trips.</p>
+  </header>
+
+  <ng-container *ngIf="bookings$ | async as bookings; else loading">
+    <mat-card *ngFor="let booking of bookings; trackBy: trackByBookingId" class="booking-card">
+      <mat-card-header>
+        <mat-card-title>{{ booking.car.make }} {{ booking.car.model }}</mat-card-title>
+        <mat-card-subtitle>{{ booking.startDate | date }} – {{ booking.endDate | date }}</mat-card-subtitle>
+      </mat-card-header>
+      <mat-card-content>
+        <p>Total: R {{ booking.totalPrice | number: '1.0-0' }}</p>
+        <span class="status" [ngClass]="booking.status.toLowerCase()">{{ booking.status }}</span>
+      </mat-card-content>
+    </mat-card>
+
+    <p class="muted" *ngIf="!bookings.length">
+      You have no bookings yet. Explore cars and start a trip!
+    </p>
+  </ng-container>
+
+  <ng-template #loading>
+    <div class="loading" fxLayout="row" fxLayoutAlign="center center">
+      <mat-progress-spinner mode="indeterminate"></mat-progress-spinner>
+    </div>
+  </ng-template>
+</section>

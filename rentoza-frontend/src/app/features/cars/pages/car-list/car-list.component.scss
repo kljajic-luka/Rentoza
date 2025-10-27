@@ -1,0 +1,30 @@
+.cars {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.cars header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.cars__card {
+  display: flex;
+  flex-direction: column;
+}
+
+.cars__card mat-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.price {
+  font-weight: 600;
+}
+
+.loading {
+  padding: 3rem 0;
+}

@@ -1,0 +1,17 @@
+.reviews {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.muted {
+  color: rgba(0, 0, 0, 0.54);
+}
+
+.loading {
+  padding: 3rem 0;
+}
+
+:host-context(.theme-dark) .muted {
+  color: rgba(255, 255, 255, 0.6);
+}

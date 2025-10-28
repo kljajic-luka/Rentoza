@@ -2,12 +2,13 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { MatCardModule } from '@angular/material/card';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatButtonModule } from '@angular/material/button';
+import { MatIconModule } from '@angular/material/icon';
 import { FlexLayoutModule } from '@ngbracket/ngx-layout';
 import { Observable } from 'rxjs';
 
 import { Review } from '@core/models/review.model';
 import { ReviewService } from '@core/services/review.service';
-import { DisplayNamePipe } from '@shared/pipes/display-name.pipe';
 
 @Component({
   selector: 'app-review-list',
@@ -16,8 +17,9 @@ import { DisplayNamePipe } from '@shared/pipes/display-name.pipe';
     CommonModule,
     MatCardModule,
     MatProgressSpinnerModule,
-    FlexLayoutModule,
-    DisplayNamePipe
+    MatButtonModule,
+    MatIconModule,
+    FlexLayoutModule
   ],
   templateUrl: './review-list.component.html',
   styleUrls: ['./review-list.component.scss'],

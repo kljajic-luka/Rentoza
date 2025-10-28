@@ -1,45 +1,107 @@
 <section class="hero">
-  <div class="hero__content">
-    <h1>Find the perfect car for your next adventure</h1>
-    <p>Browse a curated collection of vehicles from trusted owners across Serbia.</p>
-    <div class="hero__actions">
-      <a mat-raised-button color="primary" routerLink="/cars">Browse cars</a>
-      <a mat-stroked-button color="primary" routerLink="/auth/register"> Become an owner </a>
+  <div class="hero__overlay"></div>
+  <div class="hero__container">
+    <div class="hero__content">
+      <p class="hero__eyebrow">Luksuz • Električno • Spremno za avanture</p>
+      <h1>Unapredite svako putovanje sa pažljivo odabranim automobilima širom Srbije.</h1>
+      <p class="hero__lede">
+        Otkrijte premijum vozila od proverenih domaćina, besprekorne opcije preuzimanja i podršku na
+        nivou concierge usluge za nezaboravna putovanja.
+      </p>
+      <div class="hero__search-row">
+        <mat-form-field appearance="outline" class="hero__search-input">
+          <mat-label>Gde vozite?</mat-label>
+          <input matInput placeholder="Beograd, Novi Sad, Niš…" />
+        </mat-form-field>
+
+        <button type="button" mat-raised-button color="primary" class="hero__search-cta">
+          <span>Pretraži</span>
+        </button>
+        <div class="hero__actions">
+          <a mat-raised-button color="primary" routerLink="/cars">Pregledaj automobile</a>
+          <a mat-stroked-button color="accent" routerLink="/auth/register"> Postani domaćin </a>
+        </div>
+      </div>
+      <div class="hero__stats">
+        <div>
+          <span class="stat__value">4.9★</span>
+          <span class="stat__label">Zadovoljstvo gostiju</span>
+        </div>
+        <div>
+          <span class="stat__value">1.2k+</span>
+          <span class="stat__label">Verifikovanih vozila</span>
+        </div>
+        <div>
+          <span class="stat__value">24/7</span>
+          <span class="stat__label">Podrška vozačima</span>
+        </div>
+      </div>
+    </div>
+    <div class="hero__image" aria-hidden="true">
+      <div class="hero__badge">
+        <span>Izaberite svoj stil vožnje</span>
+      </div>
     </div>
   </div>
-  <div class="hero__image" aria-hidden="true"></div>
 </section>
 
 <section class="featured" *ngIf="featuredCars$ | async as cars">
   <header>
-    <h2>Featured cars</h2>
-    <a mat-button color="accent" routerLink="/cars">View all cars</a>
+    <div>
+      <p class="eyebrow">Istaknuti izbori</p>
+      <h2>Ručno odabrani automobili spremni za vašu sledeću avanturu</h2>
+    </div>
+    <a mat-stroked-button color="accent" routerLink="/cars">
+      Istražite flotu
+      <mat-icon>arrow_forward</mat-icon>
+    </a>
   </header>
-  <div class="featured__grid" fxLayout="row wrap" fxLayoutGap="24px">
+
+  <div class="featured__grid" fxLayout="row wrap" fxLayoutGap="28px">
     <mat-card
       *ngFor="let car of cars"
       fxFlex="100"
-      fxFlex.gt-sm="calc(50% - 24px)"
-      fxFlex.gt-md="calc(33% - 24px)"
+      fxFlex.gt-sm="calc(50% - 28px)"
+      fxFlex.gt-md="calc(33% - 28px)"
+      class="featured__card"
     >
-      <mat-card-header>
-        <div mat-card-avatar class="car-avatar">{{ car.make[0] }}</div>
-        <mat-card-title>{{ car.make }} {{ car.model }}</mat-card-title>
-        <mat-card-subtitle>{{ car.location }}</mat-card-subtitle>
-      </mat-card-header>
-      <img
-        mat-card-image
-        *ngIf="car.imageUrl"
-        [src]="car.imageUrl"
-        [alt]="car.make + ' ' + car.model"
-      />
-      <mat-card-content>
-        <p>{{ car.description || 'No description provided.' }}</p>
-      </mat-card-content>
-      <mat-card-actions>
-        <a mat-button color="primary" [routerLink]="['/cars', car.id]">View details</a>
-        <span class="price">R {{ car.pricePerDay | number : '1.0-0' }}/day</span>
-      </mat-card-actions>
+      <div class="featured__media">
+        <img
+          *ngIf="car.imageUrl; else placeholder"
+          [src]="car.imageUrl"
+          [alt]="car.make + ' ' + car.model"
+        />
+        <ng-template #placeholder>
+          <div class="image-placeholder">
+            <mat-icon>directions_car</mat-icon>
+          </div>
+        </ng-template>
+        <span class="chip">{{ car.year }}</span>
+      </div>
+      <div class="featured__body">
+        <div class="featured__header">
+          <h3>{{ car.make }} {{ car.model }}</h3>
+          <span class="price">{{ car.pricePerDay | number : '1.0-0' }} RSD/dan</span>
+        </div>
+        <p class="meta">{{ car.location }}</p>
+        <p class="description">{{ car.description || 'Opis trenutno nije dostupan.' }}</p>
+      </div>
+      <div class="featured__footer">
+        <a mat-flat-button color="primary" [routerLink]="['/cars', car.id]"> Pogledaj detalje </a>
+        <button mat-icon-button color="primary" aria-label="Sačuvaj automobil">
+          <mat-icon>favorite_border</mat-icon>
+        </button>
+      </div>
     </mat-card>
   </div>
+</section>
+
+<section class="cta-strip">
+  <div class="cta-strip__content">
+    <h3>Podelite svoj automobil, zarađujte bez napora.</h3>
+    <p>
+      Postavite svoje vozilo za nekoliko minuta i pridružite se rastućoj zajednici premium domaćina.
+    </p>
+  </div>
+  <a mat-raised-button color="accent" routerLink="/auth/register">Počnite sa iznajmljivanjem</a>
 </section>

@@ -1,4 +1,4 @@
-import { importProvidersFrom, provideZoneChangeDetection } from '@angular/core';
+import { APP_INITIALIZER, importProvidersFrom, provideZoneChangeDetection } from '@angular/core';
 import { bootstrapApplication } from '@angular/platform-browser';
 import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 import { HttpClientModule, provideHttpClient, withInterceptors } from '@angular/common/http';
@@ -11,21 +11,28 @@ import { App } from './app/app';
 import { routes } from './app/app.routes';
 import { authTokenInterceptor } from '@core/auth/token.interceptor';
 import { errorResponseInterceptor } from '@core/interceptors/error.interceptor';
+import { AuthService } from '@core/auth/auth.service';
 
-function tokenGetter(): string | null {
-  return localStorage.getItem('rentoza.accessToken');
+function initializeAuth(authService: AuthService): () => Promise<void> {
+  return () => authService.initializeSession().catch(() => void 0);
 }
 
 bootstrapApplication(App, {
   providers: [
     provideZoneChangeDetection({ eventCoalescing: true }),
     provideRouter(routes),
+    {
+      provide: APP_INITIALIZER,
+      useFactory: initializeAuth,
+      deps: [AuthService],
+      multi: true
+    },
     importProvidersFrom(
       BrowserAnimationsModule,
       HttpClientModule,
       JwtModule.forRoot({
         config: {
-          tokenGetter,
+          tokenGetter: () => null,
           allowedDomains: ['localhost:8080']
         }
       })

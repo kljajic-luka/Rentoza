@@ -40,7 +40,6 @@ public class CarController {
             String token = authHeader.substring(7);
             String email = jwtUtil.getEmailFromToken(token);
             String role = jwtUtil.getRoleFromToken(token);
-            System.out.println(role);
             if (!"OWNER".equalsIgnoreCase(role)) {
                 return ResponseEntity.status(403).body(Map.of("error", "Only owners can list cars"));
             }

@@ -2,6 +2,8 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { MatCardModule } from '@angular/material/card';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatButtonModule } from '@angular/material/button';
+import { MatIconModule } from '@angular/material/icon';
 import { FlexLayoutModule } from '@ngbracket/ngx-layout';
 import { Observable } from 'rxjs';
 
@@ -11,7 +13,14 @@ import { BookingService } from '@core/services/booking.service';
 @Component({
   selector: 'app-booking-history',
   standalone: true,
-  imports: [CommonModule, MatCardModule, MatProgressSpinnerModule, FlexLayoutModule],
+  imports: [
+    CommonModule,
+    MatCardModule,
+    MatProgressSpinnerModule,
+    MatButtonModule,
+    MatIconModule,
+    FlexLayoutModule
+  ],
   templateUrl: './booking-history.component.html',
   styleUrls: ['./booking-history.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush

@@ -1,34 +1,65 @@
 <ng-container *ngIf="profile$ | async as profile; else loading">
-  <mat-card class="profile-card">
-    <mat-card-header>
-      <div mat-card-avatar class="avatar">
+  <section class="profile">
+    <header>
+      <div class="avatar">
         {{ profile.firstName[0] }}
       </div>
-      <mat-card-title>{{ profile.firstName }} {{ profile.lastName }}</mat-card-title>
-      <mat-card-subtitle>{{ profile.email }}</mat-card-subtitle>
-    </mat-card-header>
+      <div>
+        <h1>{{ profile.firstName }} {{ profile.lastName }}</h1>
+        <p>{{ profile.email }}</p>
+      </div>
+      <button mat-stroked-button color="primary">
+        <mat-icon>edit</mat-icon>
+        Edit profile
+      </button>
+    </header>
 
-    <mat-card-content>
-      <dl>
-        <div>
-          <dt>Role(s)</dt>
-          <dd>
-            <mat-chip-listbox>
-              <mat-chip *ngFor="let role of profile.roles">{{ role }}</mat-chip>
-            </mat-chip-listbox>
-          </dd>
-        </div>
-        <div *ngIf="profile.phoneNumber">
-          <dt>Phone number</dt>
-          <dd>{{ profile.phoneNumber }}</dd>
-        </div>
-        <div *ngIf="profile.bio">
-          <dt>Bio</dt>
-          <dd>{{ profile.bio }}</dd>
-        </div>
-      </dl>
-    </mat-card-content>
-  </mat-card>
+    <div class="profile__grid">
+      <mat-card class="profile__card">
+        <mat-card-title>Account details</mat-card-title>
+        <mat-card-content>
+          <dl>
+            <div>
+              <dt>Role(s)</dt>
+              <dd>
+                <mat-chip-listbox>
+                  <mat-chip *ngFor="let role of profile.roles">{{ role }}</mat-chip>
+                </mat-chip-listbox>
+              </dd>
+            </div>
+            <div *ngIf="profile.phoneNumber">
+              <dt>Phone number</dt>
+              <dd>{{ profile.phoneNumber }}</dd>
+            </div>
+            <div *ngIf="profile.bio">
+              <dt>Bio</dt>
+              <dd>{{ profile.bio }}</dd>
+            </div>
+          </dl>
+        </mat-card-content>
+      </mat-card>
+
+      <mat-card class="profile__card">
+        <mat-card-title>Security & preferences</mat-card-title>
+        <mat-card-content>
+          <ul>
+            <li>
+              <mat-icon color="primary">lock</mat-icon>
+              <span>Enable two-factor authentication</span>
+            </li>
+            <li>
+              <mat-icon color="primary">notifications</mat-icon>
+              <span>Manage notification settings</span>
+            </li>
+            <li>
+              <mat-icon color="primary">dark_mode</mat-icon>
+              <span>Toggle dark theme from the sidebar</span>
+            </li>
+          </ul>
+        </mat-card-content>
+      </mat-card>
+    </div>
+  </section>
 </ng-container>
 
 <ng-template #loading>

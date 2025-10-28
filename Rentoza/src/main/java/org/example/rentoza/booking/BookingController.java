@@ -43,14 +43,13 @@ public class BookingController {
     }
 
     @GetMapping("/car/{carId}")
-    public ResponseEntity<List<Booking>> getBookingsForCar(@PathVariable Long carId) {
+    public ResponseEntity<List<BookingResponseDTO>> getBookingsForCar(@PathVariable Long carId) {
         return ResponseEntity.ok(service.getBookingsForCar(carId));
     }
 
     @PutMapping("/cancel/{id}")
     public ResponseEntity<?> cancelBooking(@PathVariable Long id) {
         try {
-            System.out.println("id" + id);
             Booking booking = service.cancelBooking(id);
             return ResponseEntity.ok(new BookingResponseDTO(
                     booking.getId(),

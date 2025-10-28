@@ -1,39 +1,125 @@
-.profile-card {
-  max-width: 520px;
-  margin: 2rem auto;
-}
-
-.avatar {
+.profile {
   display: grid;
-  place-items: center;
-  background: rgba(33, 150, 243, 0.2);
-  color: #1e88e5;
-  font-weight: 600;
-}
+  gap: 2.5rem;
 
-dl {
-  display: grid;
-  gap: 1rem;
-}
+  header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.5rem;
+    background: var(--color-surface-muted);
+    padding: 1.75rem 2rem;
+    border-radius: 24px;
+    border: 1px solid var(--color-border-subtle);
 
-dl div {
-  display: grid;
-  gap: 0.25rem;
-}
+    .avatar {
+      width: 68px;
+      height: 68px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, rgba(59, 130, 246, 0.35), rgba(99, 102, 241, 0.25));
+      display: grid;
+      place-items: center;
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: var(--color-text-inverse);
+    }
 
-dt {
-  font-weight: 600;
-  color: rgba(0, 0, 0, 0.6);
-}
+    h1 {
+      margin: 0;
+      font-size: clamp(1.8rem, 3vw, 2.4rem);
+    }
 
-dd {
-  margin: 0;
+    p {
+      margin: 0;
+      color: var(--color-text-muted);
+    }
+
+    button[mat-stroked-button] {
+      border-radius: 999px;
+      font-weight: 600;
+      min-height: 46px;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+  }
+
+  &__grid {
+    display: grid;
+    gap: 2rem;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  }
+
+  &__card {
+    border-radius: 22px;
+    box-shadow: var(--shadow-elevated);
+    background: var(--color-surface);
+
+    mat-card-title {
+      font-size: 1.15rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+    }
+
+    dl {
+      display: grid;
+      gap: 1.2rem;
+
+      div {
+        display: grid;
+        gap: 0.35rem;
+      }
+
+      dt {
+        font-weight: 600;
+        color: var(--color-text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-size: 0.75rem;
+      }
+
+      dd {
+        margin: 0;
+        font-size: 1.05rem;
+      }
+    }
+
+    ul {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 1rem;
+
+      li {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.85rem 1rem;
+        border-radius: 16px;
+        background: var(--color-surface-muted);
+
+        mat-icon {
+          color: var(--icon-color);
+        }
+      }
+    }
+  }
 }
 
 .loading {
   padding: 3rem 0;
 }
 
-:host-context(.theme-dark) dt {
-  color: rgba(255, 255, 255, 0.7);
+@media (max-width: 768px) {
+  .profile header {
+    text-align: center;
+    justify-content: center;
+  }
+
+  .profile header button {
+    width: 100%;
+    justify-content: center;
+  }
 }

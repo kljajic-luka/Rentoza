@@ -1,21 +1,45 @@
 <section class="reviews">
   <header>
-    <h2>Latest community reviews</h2>
-    <p>Hear from drivers who recently completed a trip.</p>
+    <div>
+      <p class="eyebrow">Community voices</p>
+      <h1>Latest driver reviews</h1>
+      <p>Hear first-hand experiences from guests who recently completed a trip.</p>
+    </div>
+    <button mat-stroked-button color="primary">
+      <mat-icon>tune</mat-icon>
+      Filter
+    </button>
   </header>
 
   <ng-container *ngIf="reviews$ | async as reviews; else loading">
-    <mat-card *ngFor="let review of reviews; trackBy: trackByReviewId">
-      <mat-card-header>
-        <mat-card-title>{{ review.reviewer | displayName }}</mat-card-title>
-        <mat-card-subtitle>{{ review.createdAt | date: 'medium' }}</mat-card-subtitle>
-      </mat-card-header>
-      <mat-card-content>
-        <p>{{ review.comment }}</p>
-      </mat-card-content>
-    </mat-card>
+    <div class="reviews__list" *ngIf="reviews.length; else emptyState">
+      <mat-card *ngFor="let review of reviews; trackBy: trackByReviewId" class="review-card">
+        <mat-card-header>
+          <div mat-card-avatar class="avatar">
+            {{ review.reviewerFirstName ? review.reviewerFirstName[0] : review.reviewerLastName ? review.reviewerLastName[0] : 'R' }}
+          </div>
+          <mat-card-title>
+            {{
+              review.reviewerFirstName || review.reviewerLastName
+                ? (review.reviewerFirstName || '') + ' ' + (review.reviewerLastName || '')
+                : 'Anonimni korisnik'
+            }}
+          </mat-card-title>
+          <mat-card-subtitle>{{ review.createdAt | date: 'medium' }}</mat-card-subtitle>
+        </mat-card-header>
+        <mat-card-content>
+          <p>{{ review.comment }}</p>
+        </mat-card-content>
+      </mat-card>
+    </div>
 
-    <p class="muted" *ngIf="!reviews.length">No reviews published yet.</p>
+    <ng-template #emptyState>
+      <div class="empty">
+        <mat-icon>chat_bubble_outline</mat-icon>
+        <h3>No reviews published yet</h3>
+        <p>Once guests begin leaving feedback, you will see their stories here.</p>
+      </div>
+    </ng-template>
   </ng-container>
 
   <ng-template #loading>

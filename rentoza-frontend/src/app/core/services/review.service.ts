@@ -12,7 +12,7 @@ export class ReviewService {
   constructor(private readonly http: HttpClient) {}
 
   getReviewsForCar(carId: string): Observable<Review[]> {
-    return this.http.get<Review[]>(`${this.baseUrl}/cars/${carId}`);
+    return this.http.get<Review[]>(`${this.baseUrl}/reviews/car/${carId}`);
   }
 
   getRecentReviews(): Observable<Review[]> {

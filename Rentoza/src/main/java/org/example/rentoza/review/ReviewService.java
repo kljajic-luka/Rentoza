@@ -6,6 +6,7 @@ import org.example.rentoza.booking.BookingStatus;
 import org.example.rentoza.car.Car;
 import org.example.rentoza.car.CarRepository;
 import org.example.rentoza.review.dto.ReviewRequestDTO;
+import org.example.rentoza.review.dto.ReviewResponseDTO;
 import org.example.rentoza.security.JwtUtil;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
@@ -86,10 +87,25 @@ public class ReviewService {
         return repo.save(review);
     }
 
-    public List<Review> getReviewsForCar(Long carId) {
-        return repo.findByCarId(carId);
-    }
+    public List<ReviewResponseDTO> getReviewsForCar(Long carId) {
+        var reviews = repo.findByCarId(carId);
 
+
+
+
+        List<ReviewResponseDTO> response = reviews.stream()
+                .map(r -> new ReviewResponseDTO(
+                        r.getId(),
+                        r.getRating(),
+                        r.getComment(),
+                        r.getCreatedAt(),
+                        r.getReviewer() != null ? r.getReviewer().getFirstName() : null,
+                        r.getReviewer() != null ? r.getReviewer().getLastName() : null
+                ))
+                .toList();
+
+        return response;
+    }
     public double getAverageRatingForCar(Long carId) {
         var reviews = repo.findByCarId(carId);
         return reviews.isEmpty()

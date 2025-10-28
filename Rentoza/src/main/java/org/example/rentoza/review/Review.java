@@ -31,7 +31,6 @@ public class Review {
     @Column(nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 
-    // 🔗 Relations
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "car_id")
     @JsonIgnore

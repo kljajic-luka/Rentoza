@@ -1,18 +1,88 @@
+.auth {
+  min-height: calc(100vh - 120px);
+  display: grid;
+  place-items: center;
+  padding: 3rem 1rem;
+  background: radial-gradient(circle at top left, rgba(59, 130, 246, 0.08), transparent 55%),
+    radial-gradient(circle at bottom right, rgba(99, 102, 241, 0.1), transparent 50%);
+  gap: 2.5rem;
+
+  &__intro {
+    text-align: center;
+    max-width: 460px;
+
+    h1 {
+      margin: 0 0 0.75rem;
+      font-size: clamp(2rem, 4vw, 2.6rem);
+    }
+
+    p {
+      margin: 0;
+      color: var(--color-text-muted);
+    }
+  }
+}
+
 .auth-card {
-  max-width: 420px;
-  margin: 3rem auto;
+  width: min(420px, 100%);
+  border-radius: 24px;
+  box-shadow: var(--shadow-elevated);
+  backdrop-filter: blur(8px);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+
+  &__avatar {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(99, 102, 241, 0.2));
+    border-radius: 16px;
+    width: 48px;
+    height: 48px;
+    display: grid;
+    place-items: center;
+
+    mat-icon {
+      color: rgba(59, 130, 246, 0.8);
+    }
+  }
 }
 
 .auth-form {
-  display: flex;
-  flex-direction: column;
+  display: grid;
   gap: 1.5rem;
+
+  mat-form-field {
+    width: 100%;
+
+    ::ng-deep .mdc-text-field {
+      border-radius: 16px;
+    }
+  }
+
+  button[mat-raised-button] {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    min-height: 48px;
+    font-weight: 600;
+    border-radius: 999px;
+  }
 }
 
-button[mat-raised-button] {
+mat-card-actions {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  min-height: 40px;
+  padding: 1.25rem 1.5rem;
+  color: var(--color-text-primary);
+}
+
+@media (max-width: 599px) {
+  .auth-card {
+    border-radius: 18px;
+  }
+
+  mat-card-actions {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
 }

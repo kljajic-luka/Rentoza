@@ -2,6 +2,7 @@ package org.example.rentoza.booking;
 
 import jakarta.transaction.Transactional;
 import org.example.rentoza.booking.dto.BookingRequestDTO;
+import org.example.rentoza.booking.dto.BookingResponseDTO;
 import org.example.rentoza.car.Car;
 import org.example.rentoza.car.CarRepository;
 import org.example.rentoza.security.JwtUtil;
@@ -56,10 +57,21 @@ public class BookingService {
         return repo.findByRenterEmailIgnoreCase(email);
     }
 
-    public List<Booking> getBookingsForCar(Long carId) {
-        return repo.findByCarId(carId);
-    }
+    public List<BookingResponseDTO> getBookingsForCar(Long carId) {
+        var bookings = repo.findByCarId(carId);
 
+        return bookings.stream()
+                .map(b -> new BookingResponseDTO(
+                        b.getId(),
+                        b.getCar().getId(),
+                        b.getRenter().getEmail(),
+                        b.getStartDate(),
+                        b.getEndDate(),
+                        b.getTotalPrice(),
+                        b.getStatus().name()
+                ))
+                .toList();
+    }
 
     @Transactional
     public Booking cancelBooking(Long id) {

@@ -1,80 +1,158 @@
 <ng-container *ngIf="vm$ | async as vm; else loading">
   <section class="car-detail">
-    <header>
-      <div>
-        <h2>{{ vm.car.make }} {{ vm.car.model }}</h2>
-        <p>{{ vm.car.year }} • {{ vm.car.location }}</p>
+    <div class="car-detail__header">
+      <div class="car-detail__intro">
+        <p class="eyebrow">Ekskluzivna ponuda</p>
+        <h1>{{ vm.car.make }} {{ vm.car.model }}</h1>
+        <p class="subtitle">{{ vm.car.year }} • {{ vm.car.location }}</p>
       </div>
-      <span class="price">R {{ vm.car.pricePerDay | number: '1.0-0' }}/day</span>
-    </header>
+      <div class="car-detail__price">
+        <span>{{ vm.car.pricePerDay | currency : 'RSD' : 'symbol' : '1.0-0' }}</span>
+        <small>po danu</small>
+      </div>
+    </div>
 
     <div class="car-detail__grid">
-      <mat-card class="car-detail__overview">
-        <img
-          mat-card-image
-          *ngIf="vm.car.imageUrl"
-          [src]="vm.car.imageUrl"
-          [alt]="vm.car.make + ' ' + vm.car.model"
-        />
-        <mat-card-content>
-          <p>{{ vm.car.description || 'No description available yet.' }}</p>
-        </mat-card-content>
+      <mat-card class="car-detail__gallery">
+        <div class="gallery__media">
+          <img
+            *ngIf="vm.car.imageUrl; else placeholder"
+            [src]="vm.car.imageUrl"
+            [alt]="vm.car.make + ' ' + vm.car.model"
+          />
+          <ng-template #placeholder>
+            <div class="gallery__placeholder">
+              <mat-icon>directions_car</mat-icon>
+            </div>
+          </ng-template>
+        </div>
+        <div class="gallery__details">
+          <p>{{ vm.car.description || 'Bez opisa.' }}</p>
+          <div class="gallery__meta">
+            <div>
+              <span class="meta-label">Ocena</span>
+              <span class="meta-value">{{ vm.car.rating || 'Još nema ocena' }}</span>
+            </div>
+            <div>
+              <span class="meta-label">Lokacija</span>
+              <span class="meta-value">{{ vm.car.location }}</span>
+            </div>
+          </div>
+        </div>
       </mat-card>
 
-      <mat-card class="car-detail__booking">
-        <mat-card-header>
-          <mat-card-title>Request a booking</mat-card-title>
-          <mat-card-subtitle>Choose your dates and we will notify the owner.</mat-card-subtitle>
-        </mat-card-header>
+      <ng-container *ngIf="isAuthenticated$ | async as user; else guestBooking">
+        <mat-card class="car-detail__booking">
+          <mat-card-header>
+            <div class="booking__title">
+              <mat-card-title>Zahtev za rezervaciju</mat-card-title>
+              <mat-card-subtitle>
+                Izaberite datume putovanja, a domaćin će biti obavešten.
+              </mat-card-subtitle>
+            </div>
+          </mat-card-header>
 
-        <mat-card-content>
-          <form [formGroup]="bookingForm" (ngSubmit)="submitBooking()" class="booking-form">
-            <mat-form-field appearance="outline">
-              <mat-label>Start date</mat-label>
-              <input matInput [matDatepicker]="startPicker" formControlName="startDate" />
-              <mat-datepicker-toggle matIconSuffix [for]="startPicker"></mat-datepicker-toggle>
-              <mat-datepicker #startPicker></mat-datepicker>
-              <mat-error *ngIf="bookingForm.controls.startDate.invalid">
-                Start date is required
-              </mat-error>
-            </mat-form-field>
+          <mat-card-content>
+            <form [formGroup]="bookingForm" (ngSubmit)="submitBooking()" class="booking-form">
+              <mat-form-field appearance="fill">
+                <mat-label>Datum početka</mat-label>
+                <input
+                  matInput
+                  [matDatepicker]="startPicker"
+                  formControlName="startDate"
+                  [min]="startDateMin"
+                  (dateChange)="handleStartDateChange($event.value)"
+                  [matDatepickerFilter]="startDateFilter"
+                />
+                <mat-datepicker-toggle matIconSuffix [for]="startPicker"></mat-datepicker-toggle>
+                <mat-datepicker #startPicker [dateClass]="dateClass"></mat-datepicker>
+                <mat-error *ngIf="bookingForm.controls.startDate.invalid">
+                  Datum početka je obavezan.
+                </mat-error>
+              </mat-form-field>
 
-            <mat-form-field appearance="outline">
-              <mat-label>End date</mat-label>
-              <input matInput [matDatepicker]="endPicker" formControlName="endDate" />
-              <mat-datepicker-toggle matIconSuffix [for]="endPicker"></mat-datepicker-toggle>
-              <mat-datepicker #endPicker></mat-datepicker>
-              <mat-error *ngIf="bookingForm.controls.endDate.invalid">
-                End date is required
-              </mat-error>
-            </mat-form-field>
+              <mat-form-field appearance="fill">
+                <mat-label>Datum završetka</mat-label>
+                <input
+                  matInput
+                  [matDatepicker]="endPicker"
+                  formControlName="endDate"
+                  [min]="endDateMin"
+                  (dateChange)="handleEndDateChange($event.value)"
+                  [matDatepickerFilter]="endDateFilter"
+                />
+                <mat-datepicker-toggle matIconSuffix [for]="endPicker"></mat-datepicker-toggle>
+                <mat-datepicker #endPicker [dateClass]="dateClass"></mat-datepicker>
+                <mat-error *ngIf="bookingForm.controls.endDate.invalid">
+                  Datum završetka je obavezan.
+                </mat-error>
+              </mat-form-field>
 
-            <button mat-raised-button color="primary" type="submit" [disabled]="isSubmitting()">
-              <mat-progress-spinner
-                *ngIf="isSubmitting()"
-                mode="indeterminate"
-                diameter="20"
-              ></mat-progress-spinner>
-              <span *ngIf="!isSubmitting()">Submit request</span>
-            </button>
-          </form>
-        </mat-card-content>
-      </mat-card>
+              <button mat-raised-button color="primary" type="submit" [disabled]="isSubmitting()">
+                <mat-progress-spinner
+                  *ngIf="isSubmitting()"
+                  mode="indeterminate"
+                  diameter="20"
+                ></mat-progress-spinner>
+                <span *ngIf="!isSubmitting()">Pošalji zahtev</span>
+              </button>
+            </form>
+          </mat-card-content>
+        </mat-card>
+      </ng-container>
+      <ng-template #guestBooking>
+        <mat-card class="car-detail__booking car-detail__booking--guest">
+          <mat-card-header>
+            <div class="booking__title">
+              <mat-card-title>Prijavite se da biste rezervisali</mat-card-title>
+              <mat-card-subtitle>
+                Kreirajte nalog ili se prijavite da biste poslali zahtev za rezervaciju.
+              </mat-card-subtitle>
+            </div>
+          </mat-card-header>
+          <mat-card-content class="booking-guest__content">
+            <p>Potrebno je da budete prijavljeni kako biste napravili rezervaciju ovog vozila.</p>
+            <a mat-stroked-button color="primary" routerLink="/auth/login"> Prijavite se </a>
+          </mat-card-content>
+        </mat-card>
+      </ng-template>
     </div>
   </section>
 
   <section class="reviews">
     <header>
-      <h3>Reviews</h3>
-      <span>{{ vm.reviews.length }} reviews</span>
+      <div>
+        <p class="eyebrow">Utisci vozača</p>
+        <h2>Šta su korisnici najviše voleli kod ovog vozila</h2>
+      </div>
+      <span class="pill">Broj recenzija: {{ vm.reviews.length }} </span>
     </header>
 
     <ng-container *ngIf="vm.reviews.length; else noReviews">
-      <mat-card *ngFor="let review of vm.reviews; trackBy: trackReviewById">
+      <mat-card *ngFor="let review of vm.reviews; trackBy: trackReviewById" class="review-card">
         <mat-card-header>
-          <mat-card-title>{{ review.reviewer | displayName }}</mat-card-title>
-          <mat-card-subtitle>{{ review.createdAt | date: 'mediumDate' }}</mat-card-subtitle>
+          <div mat-card-avatar class="review-avatar">
+            {{
+              review.reviewerFirstName
+                ? review.reviewerFirstName[0]
+                : review.reviewerLastName
+                ? review.reviewerLastName[0]
+                : 'R'
+            }}
+          </div>
+          <mat-card-title>
+            {{
+              review.reviewerFirstName || review.reviewerLastName
+                ? (review.reviewerFirstName || '') + ' ' + (review.reviewerLastName || '')
+                : 'Anonimni korisnik'
+            }}
+          </mat-card-title>
+          <mat-card-subtitle>
+            {{ review.createdAt | date : 'mediumDate' }}
+            • Ocena: {{ review.rating }}/5
+          </mat-card-subtitle>
         </mat-card-header>
+
         <mat-card-content>
           <p>{{ review.comment }}</p>
         </mat-card-content>
@@ -82,7 +160,7 @@
     </ng-container>
 
     <ng-template #noReviews>
-      <p class="muted">No reviews yet. Be the first to drive this car.</p>
+      <p class="muted">Još nema recenzija. Budite prvi koji će oceniti ovo vozilo.</p>
     </ng-template>
   </section>
 </ng-container>

@@ -45,7 +45,7 @@ public class ReviewController {
         }
     }
     @GetMapping("/car/{carId}")
-    public ResponseEntity<List<Review>> getReviewsForCar(@PathVariable Long carId) {
+    public ResponseEntity<List<ReviewResponseDTO>> getReviewsForCar(@PathVariable Long carId) {
         return ResponseEntity.ok(service.getReviewsForCar(carId));
     }
 

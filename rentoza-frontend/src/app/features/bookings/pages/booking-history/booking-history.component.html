@@ -1,24 +1,61 @@
 <section class="bookings">
   <header>
-    <h2>Your booking history</h2>
-    <p>Track the status of your past and upcoming trips.</p>
+    <div>
+      <p class="eyebrow">Trips & reservations</p>
+      <h1>Your booking history</h1>
+      <p>Track upcoming drives, completed adventures, and cancelled reservations in one view.</p>
+    </div>
+    <button mat-stroked-button color="primary">
+      <mat-icon>download</mat-icon>
+      Export summary
+    </button>
   </header>
 
   <ng-container *ngIf="bookings$ | async as bookings; else loading">
-    <mat-card *ngFor="let booking of bookings; trackBy: trackByBookingId" class="booking-card">
-      <mat-card-header>
-        <mat-card-title>{{ booking.car.make }} {{ booking.car.model }}</mat-card-title>
-        <mat-card-subtitle>{{ booking.startDate | date }} – {{ booking.endDate | date }}</mat-card-subtitle>
-      </mat-card-header>
-      <mat-card-content>
-        <p>Total: R {{ booking.totalPrice | number: '1.0-0' }}</p>
-        <span class="status" [ngClass]="booking.status.toLowerCase()">{{ booking.status }}</span>
-      </mat-card-content>
-    </mat-card>
+    <div class="booking-list" *ngIf="bookings.length; else emptyState">
+      <mat-card *ngFor="let booking of bookings; trackBy: trackByBookingId" class="booking-card">
+        <div class="booking-card__header">
+          <div>
+            <p class="booking-card__title">{{ booking.car.make }} {{ booking.car.model }}</p>
+            <p class="booking-card__dates">{{ booking.startDate | date }} – {{ booking.endDate | date }}</p>
+          </div>
+          <span class="status" [ngClass]="booking.status.toLowerCase()">{{ booking.status }}</span>
+        </div>
+        <div class="booking-card__body">
+          <div>
+            <span class="label">Pickup</span>
+            <span>{{ booking.startDate | date: 'mediumDate' }}</span>
+          </div>
+          <div>
+            <span class="label">Drop-off</span>
+            <span>{{ booking.endDate | date: 'mediumDate' }}</span>
+          </div>
+          <div>
+            <span class="label">Total</span>
+            <span class="amount">R {{ booking.totalPrice | number : '1.0-0' }}</span>
+          </div>
+        </div>
+        <div class="booking-card__footer">
+          <button mat-stroked-button color="primary">
+            <mat-icon>receipt_long</mat-icon>
+            View receipt
+          </button>
+          <button mat-button color="primary">
+            <mat-icon>support_agent</mat-icon>
+            Contact support
+          </button>
+        </div>
+      </mat-card>
+    </div>
 
-    <p class="muted" *ngIf="!bookings.length">
-      You have no bookings yet. Explore cars and start a trip!
-    </p>
+    <ng-template #emptyState>
+      <div class="empty">
+        <mat-icon>directions_car_filled</mat-icon>
+        <h3>No bookings yet</h3>
+        <p>You have no bookings yet. Explore cars and start a trip!</p>
+        <a mat-raised-button color="primary" routerLink="/cars">Browse cars</a>
+      </div>
+    </ng-template>
   </ng-container>
 
   <ng-template #loading>

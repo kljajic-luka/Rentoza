@@ -1,17 +1,110 @@
 .reviews {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
+  display: grid;
+  gap: 2.25rem;
+
+  header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.5rem;
+
+    .eyebrow {
+      text-transform: uppercase;
+      letter-spacing: 0.28em;
+      font-size: 0.75rem;
+      color: rgba(99, 102, 241, 0.85);
+      margin-bottom: 0.5rem;
+    }
+
+   h1 {
+     margin: 0;
+     font-size: clamp(1.8rem, 3vw, 2.3rem);
+   }
+
+    p {
+      margin: 0;
+      max-width: 540px;
+      color: var(--color-text-muted);
+    }
+
+    button[mat-stroked-button] {
+      border-radius: 999px;
+      font-weight: 600;
+      padding-inline: 1.4rem;
+      min-height: 46px;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.55rem;
+    }
+  }
+
+  &__list {
+    display: grid;
+    gap: 1.5rem;
+  }
 }
 
-.muted {
-  color: rgba(0, 0, 0, 0.54);
+.review-card {
+  border-radius: 20px;
+  padding: 1.5rem;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-soft);
+
+  mat-card-header {
+    align-items: center;
+    gap: 1rem;
+  }
+
+  mat-card-content {
+    margin-top: 1rem;
+    color: var(--color-text-muted);
+    line-height: 1.65;
+  }
+
+  .avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--icon-button-bg);
+    display: grid;
+    place-items: center;
+    font-weight: 700;
+  }
+}
+
+.empty {
+  text-align: center;
+  padding: 3rem 1.5rem;
+  border-radius: 22px;
+  border: 1px dashed rgba(148, 163, 184, 0.35);
+  background: var(--color-surface-muted);
+  display: grid;
+  gap: 1rem;
+  place-items: center;
+
+  mat-icon {
+    font-size: 48px;
+    color: var(--icon-color);
+  }
+
+  h3 {
+    margin: 0;
+  }
+
+  p {
+    margin: 0;
+    max-width: 320px;
+  }
 }
 
 .loading {
   padding: 3rem 0;
 }
 
-:host-context(.theme-dark) .muted {
-  color: rgba(255, 255, 255, 0.6);
+@media (max-width: 768px) {
+  .reviews header button {
+    width: 100%;
+    justify-content: center;
+  }
 }

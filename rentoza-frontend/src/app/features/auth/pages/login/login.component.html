@@ -1,46 +1,58 @@
-<mat-card class="auth-card">
-  <mat-card-header>
-    <mat-card-title>Sign in to Rentoza</mat-card-title>
-    <mat-card-subtitle>Manage your trips and bookings in one place.</mat-card-subtitle>
-  </mat-card-header>
+<section class="auth">
+  <div class="auth__intro">
+    <h1>Dobrodošli nazad</h1>
+    <p>Pristupite svojim putovanjima, vozilima i profilu putem sigurnog prijavljivanja.</p>
+  </div>
 
-  <mat-card-content>
-    <form [formGroup]="form" (ngSubmit)="submit()" class="auth-form">
-      <mat-form-field appearance="outline">
-        <mat-label>Email</mat-label>
-        <input matInput type="email" formControlName="email" required />
-        <mat-error *ngIf="form.controls.email.hasError('required')">
-          Email is required
-        </mat-error>
-        <mat-error *ngIf="form.controls.email.hasError('email')">
-          Please provide a valid email address
-        </mat-error>
-      </mat-form-field>
+  <mat-card class="auth-card">
+    <mat-card-header>
+      <div mat-card-avatar class="auth-card__avatar">
+        <mat-icon>lock</mat-icon>
+      </div>
+      <mat-card-title>Prijavite se na Rentoza</mat-card-title>
+      <mat-card-subtitle
+        >Upravljajte svojim rezervacijama i putovanjima na jednom mestu.</mat-card-subtitle
+      >
+    </mat-card-header>
 
-      <mat-form-field appearance="outline">
-        <mat-label>Password</mat-label>
-        <input matInput type="password" formControlName="password" required />
-        <mat-error *ngIf="form.controls.password.hasError('required')">
-          Password is required
-        </mat-error>
-        <mat-error *ngIf="form.controls.password.hasError('minlength')">
-          Password should be at least 6 characters
-        </mat-error>
-      </mat-form-field>
+    <mat-card-content>
+      <form [formGroup]="form" (ngSubmit)="submit()" class="auth-form">
+        <mat-form-field appearance="fill">
+          <mat-label>Email adresa</mat-label>
+          <input matInput type="email" formControlName="email" required />
+          <mat-error *ngIf="form.controls.email.hasError('required')">
+            Email adresa je obavezna
+          </mat-error>
+          <mat-error *ngIf="form.controls.email.hasError('email')">
+            Unesite ispravnu email adresu
+          </mat-error>
+        </mat-form-field>
 
-      <button mat-raised-button color="primary" type="submit" [disabled]="isSubmitting()">
-        <mat-progress-spinner
-          *ngIf="isSubmitting()"
-          diameter="20"
-          mode="indeterminate"
-        ></mat-progress-spinner>
-        <span *ngIf="!isSubmitting()">Sign in</span>
-      </button>
-    </form>
-  </mat-card-content>
+        <mat-form-field appearance="fill">
+          <mat-label>Lozinka</mat-label>
+          <input matInput type="password" formControlName="password" required />
+          <mat-error *ngIf="form.controls.password.hasError('required')">
+            Lozinka je obavezna
+          </mat-error>
+          <mat-error *ngIf="form.controls.password.hasError('minlength')">
+            Lozinka mora imati najmanje 6 karaktera
+          </mat-error>
+        </mat-form-field>
 
-  <mat-card-actions>
-    <span>New to Rentoza?</span>
-    <a mat-button color="accent" routerLink="/auth/register">Create an account</a>
-  </mat-card-actions>
-</mat-card>
+        <button mat-raised-button color="primary" type="submit" [disabled]="isSubmitting()">
+          <mat-progress-spinner
+            *ngIf="isSubmitting()"
+            diameter="20"
+            mode="indeterminate"
+          ></mat-progress-spinner>
+          <span *ngIf="!isSubmitting()">Prijavi se</span>
+        </button>
+      </form>
+    </mat-card-content>
+
+    <mat-card-actions>
+      <span>Novi ste na Rentozi?</span>
+      <a mat-button color="accent" routerLink="/auth/register">Kreirajte nalog</a>
+    </mat-card-actions>
+  </mat-card>
+</section>

@@ -1,6 +1,6 @@
 <section class="cars">
   <header>
-    <h2>Available cars</h2>
+    <h2>Dostupni automobili</h2>
     <p>Browse vehicles from trusted owners and book instantly.</p>
   </header>
 
@@ -13,24 +13,32 @@
         fxFlex.gt-md="calc(33% - 24px)"
         class="cars__card"
       >
-        <mat-card-header>
-          <mat-card-title>{{ car.make }} {{ car.model }}</mat-card-title>
-          <mat-card-subtitle>{{ car.year }} • {{ car.location }}</mat-card-subtitle>
-        </mat-card-header>
-        <img
-          mat-card-image
-          *ngIf="car.imageUrl"
-          [src]="car.imageUrl"
-          [alt]="car.make + ' ' + car.model"
-        />
-        <mat-card-content>
+        <div class="car-card__media">
+          <img
+            *ngIf="car.imageUrl; else placeholder"
+            [src]="car.imageUrl"
+            [alt]="car.make + ' ' + car.model"
+          />
+          <ng-template #placeholder>
+            <div class="image-placeholder">
+              <mat-icon>directions_car_filled</mat-icon>
+            </div>
+          </ng-template>
+          <span class="chip">{{ car.year }}</span>
+        </div>
+        <mat-card-content class="car-card__content">
+          <div class="car-card__header">
+            <h3>{{ car.make }} {{ car.model }}</h3>
+            <span class="price">RSD {{ car.pricePerDay | number : '1.0-0' }}/dnevno</span>
+          </div>
+          <p class="meta">{{ car.location }}</p>
           <p>{{ car.description || 'No description provided.' }}</p>
         </mat-card-content>
-        <mat-card-actions>
-          <a mat-stroked-button color="primary" [routerLink]="['/cars', car.id]">
-            View details
-          </a>
-          <span class="price">R {{ car.pricePerDay | number: '1.0-0' }}/day</span>
+        <mat-card-actions class="car-card__actions">
+          <a mat-flat-button color="primary" [routerLink]="['/cars', car.id]"> Detalji vozila </a>
+          <button mat-icon-button color="primary" aria-label="Save car">
+            <mat-icon>favorite</mat-icon>
+          </button>
         </mat-card-actions>
       </mat-card>
     </ng-container>

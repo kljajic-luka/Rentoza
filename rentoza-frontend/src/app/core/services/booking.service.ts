@@ -12,10 +12,20 @@ export class BookingService {
   constructor(private readonly http: HttpClient) {}
 
   getBookingHistory(): Observable<Booking[]> {
-    return this.http.get<Booking[]>(`${this.baseUrl}/me`);
+    return this.http.get<Booking[]>(`${this.baseUrl}/me`, {
+      withCredentials: true,
+    });
+  }
+
+  getBookingsForCar(carId: string): Observable<Booking[]> {
+    return this.http.get<Booking[]>(`${this.baseUrl}/car/${carId}`, {
+      withCredentials: true,
+    });
   }
 
   createBooking(payload: BookingRequest): Observable<Booking> {
-    return this.http.post<Booking>(this.baseUrl, payload);
+    return this.http.post<Booking>(this.baseUrl, payload, {
+      withCredentials: true,
+    });
   }
 }

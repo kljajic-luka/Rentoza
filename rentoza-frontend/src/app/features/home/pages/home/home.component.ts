@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { RouterModule } from '@angular/router';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { Router, RouterModule } from '@angular/router';
+import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -18,6 +19,7 @@ import { CarService } from '@core/services/car.service';
   imports: [
     CommonModule,
     RouterModule,
+    FormsModule,
     MatButtonModule,
     MatCardModule,
     MatFormFieldModule,
@@ -31,8 +33,20 @@ import { CarService } from '@core/services/car.service';
 })
 export class HomeComponent {
   private readonly carService = inject(CarService);
+  private readonly router = inject(Router);
 
   readonly featuredCars$: Observable<Car[]> = this.carService
     .getCars()
     .pipe(map((cars) => cars.slice(0, 3)));
+
+  readonly searchLocation = signal('');
+
+  searchCars(): void {
+    const location = this.searchLocation().trim();
+    if (location) {
+      this.router.navigate(['/cars'], { queryParams: { location } });
+    } else {
+      this.router.navigate(['/cars']);
+    }
+  }
 }

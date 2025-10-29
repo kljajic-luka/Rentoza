@@ -64,7 +64,10 @@ export class AuthService {
         withCredentials: true,
       })
       .pipe(
-        tap((response) => this.persistSession(response)),
+        tap((response) => {
+          console.log('✅ User registered successfully:', response.user);
+          this.persistSession(response);
+        }),
         map((response) => response.user as UserProfile)
       );
   }

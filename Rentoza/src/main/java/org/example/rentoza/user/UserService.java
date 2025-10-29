@@ -29,7 +29,6 @@ public class UserService {
                 .orElseThrow(() -> new EntityNotFoundException("User not found: " + email));
     }
     public User register(UserRegisterDTO dto) {
-        // Prevent duplicate email or phone
         if (repo.findByEmail(dto.getEmail()).isPresent()) {
             throw new BadRequestException("Email already registered");
         }
@@ -38,18 +37,21 @@ public class UserService {
             throw new BadRequestException("Phone number already registered");
         }
 
-        // Create new user
         User user = new User();
         user.setFirstName(dto.getFirstName());
         user.setLastName(dto.getLastName());
         user.setEmail(dto.getEmail().toLowerCase());
         user.setPhone(dto.getPhone());
         user.setPassword(encoder.encode(dto.getPassword()));
-        user.setRole(Role.USER); // uses enum now
+
+        if ("OWNER".equalsIgnoreCase(dto.getRole())) {
+            user.setRole(Role.OWNER);
+        } else {
+            user.setRole(Role.USER);
+        }
+
         user.setEnabled(true);
         user.setLocked(false);
-
-        // Initialize empty relations for consistency
         user.setCars(new ArrayList<>());
         user.setBookings(new ArrayList<>());
         user.setReviews(new ArrayList<>());

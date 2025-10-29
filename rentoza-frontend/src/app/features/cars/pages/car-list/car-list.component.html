@@ -1,7 +1,12 @@
 <section class="cars">
   <header>
-    <h2>Dostupni automobili</h2>
-    <p>Browse vehicles from trusted owners and book instantly.</p>
+    <h2>
+      <ng-container *ngIf="location$ | async as location; else defaultHeading">
+        Automobili u lokaciji: {{ location }}
+      </ng-container>
+      <ng-template #defaultHeading>Dostupni automobili</ng-template>
+    </h2>
+    <p>Pregledajte vozila od proverenih domaćina i rezervišite odmah.</p>
   </header>
 
   <div class="cars__grid" fxLayout="row wrap" fxLayoutGap="24px">
@@ -32,12 +37,12 @@
             <span class="price">RSD {{ car.pricePerDay | number : '1.0-0' }}/dnevno</span>
           </div>
           <p class="meta">{{ car.location }}</p>
-          <p>{{ car.description || 'No description provided.' }}</p>
+          <p>{{ car.description || 'Opis trenutno nije dostupan.' }}</p>
         </mat-card-content>
         <mat-card-actions class="car-card__actions">
           <a mat-flat-button color="primary" [routerLink]="['/cars', car.id]"> Detalji vozila </a>
-          <button mat-icon-button color="primary" aria-label="Save car">
-            <mat-icon>favorite</mat-icon>
+          <button mat-icon-button color="primary" aria-label="Sačuvaj automobil">
+            <mat-icon>favorite_border</mat-icon>
           </button>
         </mat-card-actions>
       </mat-card>

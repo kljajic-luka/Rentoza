@@ -1,12 +1,12 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { RouterModule } from '@angular/router';
+import { ChangeDetectionStrategy, Component, inject, OnInit } from '@angular/core';
+import { ActivatedRoute, RouterModule } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatIconModule } from '@angular/material/icon';
 import { FlexLayoutModule } from '@ngbracket/ngx-layout';
-import { Observable } from 'rxjs';
+import { Observable, switchMap, map } from 'rxjs';
 
 import { Car } from '@core/models/car.model';
 import { CarService } from '@core/services/car.service';
@@ -27,10 +27,26 @@ import { CarService } from '@core/services/car.service';
   styleUrls: ['./car-list.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class CarListComponent {
+export class CarListComponent implements OnInit {
   private readonly carService = inject(CarService);
+  private readonly route = inject(ActivatedRoute);
 
-  readonly cars$: Observable<Car[]> = this.carService.getCars();
+  cars$!: Observable<Car[]>;
+  location$: Observable<string | null> = this.route.queryParamMap.pipe(
+    map(params => params.get('location'))
+  );
+
+  ngOnInit(): void {
+    this.cars$ = this.route.queryParamMap.pipe(
+      switchMap(params => {
+        const location = params.get('location');
+        if (location) {
+          return this.carService.getCarsByLocation(location);
+        }
+        return this.carService.getCars();
+      })
+    );
+  }
 
   trackByCarId(_index: number, car: Car): string {
     return car.id;

@@ -11,15 +11,34 @@
       <div class="hero__search-row">
         <mat-form-field appearance="outline" class="hero__search-input">
           <mat-label>Gde vozite?</mat-label>
-          <input matInput placeholder="Beograd, Novi Sad, Niš…" />
+          <input
+            matInput
+            placeholder="Beograd, Novi Sad, Niš…"
+            [(ngModel)]="searchLocation"
+            (keyup.enter)="searchCars()"
+          />
         </mat-form-field>
 
-        <button type="button" mat-raised-button color="primary" class="hero__search-cta">
+        <button
+          type="button"
+          mat-raised-button
+          color="primary"
+          class="hero__search-cta"
+          (click)="searchCars()"
+        >
+          <mat-icon>search</mat-icon>
           <span>Pretraži</span>
         </button>
         <div class="hero__actions">
           <a mat-raised-button color="primary" routerLink="/cars">Pregledaj automobile</a>
-          <a mat-stroked-button color="accent" routerLink="/auth/register"> Postani domaćin </a>
+          <a
+            mat-stroked-button
+            color="accent"
+            [routerLink]="['/auth/register']"
+            [queryParams]="{ role: 'OWNER' }"
+          >
+            Postani domaćin
+          </a>
         </div>
       </div>
       <div class="hero__stats">
@@ -39,7 +58,8 @@
     </div>
     <div class="hero__image" aria-hidden="true">
       <div class="hero__badge">
-        <span>Izaberite svoj stil vožnje</span>
+        <mat-icon>verified</mat-icon>
+        <span>Provereni domaćini</span>
       </div>
     </div>
   </div>
@@ -103,5 +123,12 @@
       Postavite svoje vozilo za nekoliko minuta i pridružite se rastućoj zajednici premium domaćina.
     </p>
   </div>
-  <a mat-raised-button color="accent" routerLink="/auth/register">Počnite sa iznajmljivanjem</a>
+  <a
+    mat-raised-button
+    color="accent"
+    [routerLink]="['/auth/register']"
+    [queryParams]="{ role: 'OWNER' }"
+  >
+    Počnite sa iznajmljivanjem
+  </a>
 </section>

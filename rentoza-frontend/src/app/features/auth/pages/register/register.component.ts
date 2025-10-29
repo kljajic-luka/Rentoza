@@ -1,7 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
-import { Router, RouterModule } from '@angular/router';
+import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { ToastrService } from 'ngx-toastr';
 import { finalize } from 'rxjs';
 
@@ -37,13 +37,20 @@ export class RegisterComponent {
   private readonly authService = inject(AuthService);
   private readonly router = inject(Router);
   private readonly toastr = inject(ToastrService);
+  private readonly route = inject(ActivatedRoute);
+  private readonly requestedRole = (this.route.snapshot.queryParamMap.get('role') || '').toUpperCase();
+  protected readonly isOwnerRegistration = this.requestedRole === 'OWNER';
 
   readonly form = this.fb.nonNullable.group({
     firstName: ['', [Validators.required]],
     lastName: ['', [Validators.required]],
     email: ['', [Validators.required, Validators.email]],
-    phoneNumber: [''],
-    password: ['', [Validators.required, Validators.minLength(6)]],
+    phoneNumber: ['', [Validators.required, Validators.pattern(/^\d{8,15}$/)]],
+    password: ['', [
+      Validators.required,
+      Validators.minLength(8),
+      Validators.pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/)
+    ]],
     confirmPassword: ['', [Validators.required]]
   });
 
@@ -59,12 +66,21 @@ export class RegisterComponent {
     const { confirmPassword, ...rest } = this.form.getRawValue();
     const payload: RegisterRequest = rest;
 
+    if (this.isOwnerRegistration) {
+      payload.role = 'OWNER';
+    }
+
     this.authService
       .register(payload)
       .pipe(finalize(() => this.isSubmitting.set(false)))
       .subscribe({
         next: () => {
-          this.toastr.success('Account created! Welcome to Rentoza.');
+          this.toastr.success(
+            this.isOwnerRegistration
+              ? 'Nalog kreiran! Dobrodošli u Rentoza zajednicu domaćina.'
+              : 'Nalog kreiran! Dobrodošli u Rentoza.',
+            'Uspešna registracija'
+          );
           this.router.navigate(['/']);
         }
       });

@@ -14,7 +14,7 @@ public class UserRegisterDTO {
     @NotBlank(message = "First name is required")
     private String firstName;
 
-    @NotBlank(message = "Lasr name is required")
+    @NotBlank(message = "Last name is required")
     private String lastName;
 
     @Email(message = "Invalid email format")
@@ -30,4 +30,7 @@ public class UserRegisterDTO {
     private String password;
 
     private String phone;
+
+    private String role;
+
 }

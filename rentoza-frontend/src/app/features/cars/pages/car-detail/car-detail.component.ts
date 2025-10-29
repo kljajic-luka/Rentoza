@@ -31,7 +31,6 @@ import { CarService } from '@core/services/car.service';
 import { ReviewService } from '@core/services/review.service';
 import { BookingService } from '@core/services/booking.service';
 import { AuthService } from '@core/auth/auth.service';
-import { DisplayNamePipe } from '@shared/pipes/display-name.pipe';
 import { Booking } from '@core/models/booking.model';
 
 @Component({

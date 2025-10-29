@@ -1,7 +1,7 @@
 import { APP_INITIALIZER, importProvidersFrom, provideZoneChangeDetection } from '@angular/core';
 import { bootstrapApplication } from '@angular/platform-browser';
 import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
-import { HttpClientModule, provideHttpClient, withInterceptors } from '@angular/common/http';
+import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { provideRouter } from '@angular/router';
 import { provideNativeDateAdapter } from '@angular/material/core';
 import { JwtModule } from '@auth0/angular-jwt';
@@ -29,7 +29,6 @@ bootstrapApplication(App, {
     },
     importProvidersFrom(
       BrowserAnimationsModule,
-      HttpClientModule,
       JwtModule.forRoot({
         config: {
           tokenGetter: () => null,

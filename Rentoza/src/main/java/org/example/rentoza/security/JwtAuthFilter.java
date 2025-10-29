@@ -1,9 +1,13 @@
 package org.example.rentoza.security;
 
+import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.SignatureException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -14,8 +18,14 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 
+/**
+ * JWT authentication filter that validates Bearer tokens on each request.
+ * Applies to all endpoints except explicitly public ones defined in SecurityConfig.
+ */
 @Component
 public class JwtAuthFilter extends OncePerRequestFilter {
+
+    private static final Logger log = LoggerFactory.getLogger(JwtAuthFilter.class);
 
     private final JwtUtil jwtUtil;
     private final UserDetailsService userDetailsService;
@@ -31,16 +41,6 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                                     FilterChain filterChain)
             throws ServletException, IOException {
 
-        String path = request.getRequestURI();
-
-        // Skip auth for public routes
-        if (path.startsWith("/api/users/register") ||
-                path.startsWith("/api/users/login") ||
-                path.startsWith("/api/refresh-token")) {
-            filterChain.doFilter(request, response);
-            return;
-        }
-
         try {
             String header = request.getHeader("Authorization");
             if (header != null && header.startsWith("Bearer ")) {
@@ -51,18 +51,28 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     UserDetails userDetails = userDetailsService.loadUserByUsername(email);
                     if (jwtUtil.validateToken(token)) {
                         UsernamePasswordAuthenticationToken auth =
-                                new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
+                                new UsernamePasswordAuthenticationToken(
+                                        userDetails,
+                                        null,
+                                        userDetails.getAuthorities()
+                                );
                         auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                         SecurityContextHolder.getContext().setAuthentication(auth);
+                        log.debug("Authenticated user: {}", email);
                     }
                 }
             }
-        } catch (io.jsonwebtoken.ExpiredJwtException e) {
-            System.out.println("⚠️ Token expired: " + e.getMessage());
-        } catch (io.jsonwebtoken.SignatureException e) {
-            System.out.println("⚠️ Invalid JWT signature: " + e.getMessage());
+        } catch (ExpiredJwtException e) {
+            log.debug("JWT token expired: {}", e.getMessage());
+            // Don't log as warning - expired tokens are expected behavior
+        } catch (SignatureException e) {
+            log.warn("Invalid JWT signature from IP {}: {}",
+                    request.getRemoteAddr(), e.getMessage());
+            // This could indicate a security issue
         } catch (Exception e) {
-            System.out.println("⚠️ Unexpected JWT error: " + e.getMessage());
+            log.error("JWT validation error from IP {}: {}",
+                    request.getRemoteAddr(), e.getMessage());
+            // Unexpected errors should be logged for investigation
         }
 
         filterChain.doFilter(request, response);

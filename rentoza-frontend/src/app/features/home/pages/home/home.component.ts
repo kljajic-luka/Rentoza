@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { Router, RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -39,10 +39,10 @@ export class HomeComponent {
     .getCars()
     .pipe(map((cars) => cars.slice(0, 3)));
 
-  readonly searchLocation = signal('');
+  searchLocation = '';
 
   searchCars(): void {
-    const location = this.searchLocation().trim();
+    const location = this.searchLocation.trim();
     if (location) {
       this.router.navigate(['/cars'], { queryParams: { location } });
     } else {

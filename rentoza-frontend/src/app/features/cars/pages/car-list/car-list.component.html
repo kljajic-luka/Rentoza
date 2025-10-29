@@ -23,6 +23,7 @@
             *ngIf="car.imageUrl; else placeholder"
             [src]="car.imageUrl"
             [alt]="car.make + ' ' + car.model"
+            loading="lazy"
           />
           <ng-template #placeholder>
             <div class="image-placeholder">

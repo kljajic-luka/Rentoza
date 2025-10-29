@@ -48,11 +48,16 @@
     opacity: 0.85;
   }
 
-  &__search {
+  &__search-row {
     position: relative; /* keeps the search block above decorative elements */
     z-index: 4;
-    display: grid;
-    gap: 1.25rem;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+
+  &__search-input {
+    flex: 1 1 auto;
 
     mat-form-field {
       width: 100%;
@@ -197,16 +202,6 @@
     }
   }
 
-  &__search-row {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-  }
-
-  &__search-input {
-    flex: 1 1 auto;
-  }
-
   &__search-cta {
     flex: 0 0 auto;
     border-radius: 999px;
@@ -218,6 +213,8 @@
     font-weight: 600;
     box-shadow: 0 4px 14px rgba(59, 130, 246, 0.35);
     transition: all 220ms ease;
+    position: relative;
+    z-index: 5; /* Ensure button stays clickable above all elements */
 
     &:hover:not(:disabled) {
       box-shadow: 0 8px 24px rgba(59, 130, 246, 0.5);
@@ -481,7 +478,7 @@
     }
 
     &__image {
-      display: none;
+      min-height: 240px; /* Show badge on tablets but reduce height */
     }
 
     &__content {
@@ -491,17 +488,23 @@
 }
 
 @media (max-width: 768px) {
-  .hero__search-row {
-    flex-direction: column;
-    align-items: stretch;
+  .hero {
+    &__image {
+      display: none; /* Hide on mobile only */
+    }
 
-    .hero__search-cta {
+    &__search-row {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    &__search-cta {
       width: 100%;
       justify-content: center;
       height: 52px;
     }
 
-    .hero__actions {
+    &__actions {
       width: 100%;
 
       a {
@@ -536,8 +539,10 @@
     }
   }
 
-  .hero__search-row {
-    gap: 0.75rem;
+  .hero {
+    &__search-row {
+      gap: 0.75rem;
+    }
   }
 
   .cta-strip {

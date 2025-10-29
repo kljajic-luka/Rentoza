@@ -1,5 +1,6 @@
 package org.example.rentoza.security;
 
+import org.example.rentoza.config.AppProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -15,15 +16,18 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 import org.springframework.web.cors.*;
+import java.util.Arrays;
 import java.util.List;
 
 @Configuration
 public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
+    private final AppProperties appProperties;
 
-    public SecurityConfig(JwtAuthFilter jwtAuthFilter) {
+    public SecurityConfig(JwtAuthFilter jwtAuthFilter, AppProperties appProperties) {
         this.jwtAuthFilter = jwtAuthFilter;
+        this.appProperties = appProperties;
     }
 
     @Bean
@@ -48,11 +52,13 @@ public class SecurityConfig {
                 )
                 .headers(h -> h
                         .frameOptions(HeadersConfigurer.FrameOptionsConfig::sameOrigin)
-                        .contentSecurityPolicy(csp -> csp.policyDirectives(
-                                "default-src 'self'; img-src 'self' data: blob:; script-src 'self'; " +
-                                        "style-src 'self' 'unsafe-inline'; connect-src 'self' http://localhost:4200 https://localhost:4200;"))
+                        .contentSecurityPolicy(csp -> csp.policyDirectives(buildCspPolicy()))
                         .referrerPolicy(ref -> ref.policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.SAME_ORIGIN))
                         .xssProtection(Customizer.withDefaults())
+                        .httpStrictTransportSecurity(hsts -> hsts
+                                .includeSubDomains(true)
+                                .maxAgeInSeconds(31536000)) // 1 year
+                        .contentTypeOptions(Customizer.withDefaults()) // X-Content-Type-Options: nosniff
                 )
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
@@ -63,15 +69,40 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration c = new CorsConfiguration();
-        c.setAllowedOrigins(List.of("http://localhost:4200")); // deploy: https://app.rentoza.rs
-        c.setAllowedMethods(List.of("GET","POST","PUT","DELETE","OPTIONS"));
-        c.setAllowedHeaders(List.of("Authorization","Content-Type","Cache-Control","X-CSRF-TOKEN"));
-        c.setAllowCredentials(true); // allow cookies
+
+        // Use environment-based CORS origins
+        String[] allowedOrigins = appProperties.getCors().getAllowedOriginsArray();
+        c.setAllowedOrigins(Arrays.asList(allowedOrigins));
+
+        c.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        c.setAllowedHeaders(List.of("Authorization", "Content-Type", "Cache-Control", "X-CSRF-TOKEN"));
+        c.setAllowCredentials(true); // Required for cookies
+        c.setMaxAge(3600L); // Cache preflight requests for 1 hour
+
         UrlBasedCorsConfigurationSource s = new UrlBasedCorsConfigurationSource();
         s.registerCorsConfiguration("/**", c);
         return s;
     }
 
-    @Bean public PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(12); }
-    @Bean public AuthenticationManager authenticationManager(AuthenticationConfiguration cfg) throws Exception { return cfg.getAuthenticationManager(); }
+    /**
+     * Build Content Security Policy directive dynamically based on allowed origins
+     */
+    private String buildCspPolicy() {
+        String allowedOrigins = appProperties.getCors().getAllowedOrigins();
+        return "default-src 'self'; " +
+               "img-src 'self' data: blob: https://images.unsplash.com; " +
+               "script-src 'self'; " +
+               "style-src 'self' 'unsafe-inline'; " +
+               "connect-src 'self' " + allowedOrigins + ";";
+    }
+
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder(12);
+    }
+
+    @Bean
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration cfg) throws Exception {
+        return cfg.getAuthenticationManager();
+    }
 }

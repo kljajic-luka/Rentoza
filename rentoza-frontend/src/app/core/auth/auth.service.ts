@@ -64,10 +64,7 @@ export class AuthService {
         withCredentials: true,
       })
       .pipe(
-        tap((response) => {
-          console.log('✅ User registered successfully:', response.user);
-          this.persistSession(response);
-        }),
+        tap((response) => this.persistSession(response)),
         map((response) => response.user as UserProfile)
       );
   }
@@ -156,7 +153,6 @@ export class AuthService {
         catchError((error: HttpErrorResponse) => {
           this.refreshSubject.next(null);
           if (error.status === 401) {
-            console.info('No session found — continuing as guest');
             this.clearSession();
             return of(null);
           }

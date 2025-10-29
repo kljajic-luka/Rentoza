@@ -13,10 +13,12 @@ import { MatIconModule } from '@angular/material/icon';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   BehaviorSubject,
+  catchError,
   combineLatest,
   finalize,
   filter,
   map,
+  of,
   shareReplay,
   switchMap,
   take,
@@ -130,6 +132,10 @@ export class CarDetailComponent {
     this.carId$
       .pipe(
         switchMap((id) => this.bookingService.getBookingsForCar(id)),
+        catchError(() => {
+          // Guest users can't access bookings - that's fine, just use empty array
+          return of([]);
+        }),
         takeUntilDestroyed(this.destroyRef)
       )
       .subscribe((bookings) => this.updateBookings(bookings));

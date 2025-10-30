@@ -6,16 +6,21 @@
       </ng-container>
       <ng-template #defaultHeading>Dostupni automobili</ng-template>
     </h2>
-    <p>Pregledajte vozila od proverenih domaćina i rezervišite odmah.</p>
+    <p *ngIf="location$ | async as location; else defaultSubtitle">
+      Prikazani automobili u krugu od {{ searchRadius }} km od {{ location }}.
+    </p>
+    <ng-template #defaultSubtitle>
+      <p>Pregledajte vozila od proverenih domaćina i rezervišite odmah.</p>
+    </ng-template>
   </header>
 
-  <div class="cars__grid" fxLayout="row wrap" fxLayoutGap="24px">
+  <div class="cars__grid" fxLayout="row wrap" fxLayoutGap="28px">
     <ng-container *ngIf="cars$ | async as cars; else loading">
       <mat-card
         *ngFor="let car of cars; trackBy: trackByCarId"
         fxFlex="100"
-        fxFlex.gt-sm="calc(50% - 24px)"
-        fxFlex.gt-md="calc(33% - 24px)"
+        fxFlex.gt-sm="calc(50% - 28px)"
+        fxFlex.gt-md="calc(33% - 28px)"
         class="cars__card"
       >
         <div class="car-card__media">
@@ -37,7 +42,14 @@
             <h3>{{ car.make }} {{ car.model }}</h3>
             <span class="price">RSD {{ car.pricePerDay | number : '1.0-0' }}/dnevno</span>
           </div>
-          <p class="meta">{{ car.location }}</p>
+          <div class="car-card__location">
+            <mat-icon class="location-icon">place</mat-icon>
+            <span class="meta">{{ car.location }}</span>
+            <mat-chip *ngIf="car.distance" class="distance-chip" selected>
+              <mat-icon>near_me</mat-icon>
+              {{ car.distance }}
+            </mat-chip>
+          </div>
           <p>{{ car.description || 'Opis trenutno nije dostupan.' }}</p>
         </mat-card-content>
         <mat-card-actions class="car-card__actions">

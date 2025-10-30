@@ -1,13 +1,13 @@
 package org.example.rentoza.review;
 
 import jakarta.transaction.Transactional;
+import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingRepository;
 import org.example.rentoza.booking.BookingStatus;
 import org.example.rentoza.car.Car;
 import org.example.rentoza.car.CarRepository;
 import org.example.rentoza.review.dto.ReviewRequestDTO;
 import org.example.rentoza.review.dto.ReviewResponseDTO;
-import org.example.rentoza.security.JwtUtil;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
 import org.springframework.stereotype.Service;
@@ -24,42 +24,54 @@ public class ReviewService {
     private final BookingRepository bookingRepo;
     private final UserRepository userRepo;
 
-    private final JwtUtil jwtUtil;
     public ReviewService(
             ReviewRepository repo,
             CarRepository carRepo,
             BookingRepository bookingRepo,
-            UserRepository userRepo,
-            JwtUtil jwtUtil
+            UserRepository userRepo
     ) {
         this.repo = repo;
         this.carRepo = carRepo;
         this.bookingRepo = bookingRepo;
         this.userRepo = userRepo;
-        this.jwtUtil = jwtUtil;
     }
 
     @Transactional
     public Review addReview(ReviewRequestDTO dto, String reviewerEmail) {
-        var car = carRepo.findById(dto.getCarId())
-                .orElseThrow(() -> new RuntimeException("Car not found"));
-
         var reviewer = userRepo.findByEmail(reviewerEmail)
                 .orElseThrow(() -> new RuntimeException("Reviewer not found"));
 
-        if (car.getOwner().getEmail().equalsIgnoreCase(reviewerEmail)) {
+        if (dto.getRating() < 1 || dto.getRating() > 5) {
+            throw new RuntimeException("Rating must be between 1 and 5.");
+        }
+
+        var direction = dto.getDirection() != null ? dto.getDirection() : ReviewDirection.FROM_USER;
+
+        return switch (direction) {
+            case FROM_USER -> createRenterToOwnerReview(dto, reviewer);
+            case FROM_OWNER -> createOwnerToRenterReview(dto, reviewer);
+        };
+    }
+
+    private Review createRenterToOwnerReview(ReviewRequestDTO dto, User reviewer) {
+        if (dto.getCarId() == null) {
+            throw new RuntimeException("Car ID is required for renter reviews.");
+        }
+
+        Car car = carRepo.findById(dto.getCarId())
+                .orElseThrow(() -> new RuntimeException("Car not found"));
+
+        if (car.getOwner().getId().equals(reviewer.getId())) {
             throw new RuntimeException("You cannot review your own car.");
         }
 
-        // Check if reviewer already reviewed this car
-        if (repo.existsByCarAndReviewer(car, reviewer)) {
+        if (repo.existsByCarAndReviewerAndDirection(car, reviewer, ReviewDirection.FROM_USER)) {
             throw new RuntimeException("You have already reviewed this car.");
         }
 
-        // Verify a completed booking exists
         var bookings = bookingRepo.findByCarIdAndRenterEmailIgnoreCaseAndStatusIn(
                 dto.getCarId(),
-                reviewerEmail,
+                reviewer.getEmail(),
                 List.of(BookingStatus.COMPLETED)
         );
 
@@ -67,47 +79,101 @@ public class ReviewService {
             throw new RuntimeException("You can only review cars after completing a booking.");
         }
 
-        var booking = bookings.get(0);
-        if (booking.getEndDate().isAfter(LocalDate.now())) {
+        Booking booking = bookings.get(0);
+        if (booking.getEndDate() != null && booking.getEndDate().isAfter(LocalDate.now())) {
             throw new RuntimeException("You can only review after your rental period has ended.");
         }
 
-        // Validate rating range
-        if (dto.getRating() < 1 || dto.getRating() > 5) {
-            throw new RuntimeException("Rating must be between 1 and 5.");
-        }
-
-        var review = new Review();
-        review.setCar(car);
-        review.setReviewer(reviewer);
-        review.setRating(dto.getRating());
-        review.setComment(dto.getComment());
-        review.setCreatedAt(Instant.now());
+        var review = buildReview(
+                reviewer,
+                car.getOwner(),
+                car,
+                booking,
+                dto,
+                ReviewDirection.FROM_USER
+        );
 
         return repo.save(review);
     }
 
+    private Review createOwnerToRenterReview(ReviewRequestDTO dto, User reviewer) {
+        if (dto.getBookingId() == null) {
+            throw new RuntimeException("Booking ID is required for owner reviews.");
+        }
+
+        Booking booking = bookingRepo.findById(dto.getBookingId())
+                .orElseThrow(() -> new RuntimeException("Booking not found"));
+
+        if (!booking.getCar().getOwner().getId().equals(reviewer.getId())) {
+            throw new RuntimeException("You can only review renters for your own bookings.");
+        }
+
+        if (booking.getStatus() != BookingStatus.COMPLETED) {
+            throw new RuntimeException("Reviews can be left only after the booking is completed.");
+        }
+
+        if (booking.getEndDate() != null && booking.getEndDate().isAfter(LocalDate.now())) {
+            throw new RuntimeException("You can only review after the rental period has ended.");
+        }
+
+        if (repo.existsByBookingAndDirection(booking, ReviewDirection.FROM_OWNER)) {
+            throw new RuntimeException("You have already reviewed this renter for this booking.");
+        }
+
+        var review = buildReview(
+                reviewer,
+                booking.getRenter(),
+                booking.getCar(),
+                booking,
+                dto,
+                ReviewDirection.FROM_OWNER
+        );
+
+        return repo.save(review);
+    }
+
+    private Review buildReview(
+            User reviewer,
+            User reviewee,
+            Car car,
+            Booking booking,
+            ReviewRequestDTO dto,
+            ReviewDirection direction
+    ) {
+        var review = new Review();
+        review.setReviewer(reviewer);
+        review.setReviewee(reviewee);
+        review.setCar(car);
+        review.setBooking(booking);
+        review.setDirection(direction);
+        review.setRating(dto.getRating());
+        review.setComment(dto.getComment());
+        review.setCreatedAt(Instant.now());
+        return review;
+    }
+
     public List<ReviewResponseDTO> getReviewsForCar(Long carId) {
-        var reviews = repo.findByCarId(carId);
+        var reviews = repo.findByCarIdAndDirection(carId, ReviewDirection.FROM_USER);
 
-
-
-
-        List<ReviewResponseDTO> response = reviews.stream()
+        return reviews.stream()
                 .map(r -> new ReviewResponseDTO(
                         r.getId(),
                         r.getRating(),
                         r.getComment(),
                         r.getCreatedAt(),
+                        r.getDirection(),
                         r.getReviewer() != null ? r.getReviewer().getFirstName() : null,
-                        r.getReviewer() != null ? r.getReviewer().getLastName() : null
+                        r.getReviewer() != null ? r.getReviewer().getLastName() : null,
+                        null,
+                        r.getReviewee() != null ? r.getReviewee().getFirstName() : null,
+                        r.getReviewee() != null ? r.getReviewee().getLastName() : null,
+                        null
                 ))
                 .toList();
-
-        return response;
     }
+
     public double getAverageRatingForCar(Long carId) {
-        var reviews = repo.findByCarId(carId);
+        var reviews = repo.findByCarIdAndDirection(carId, ReviewDirection.FROM_USER);
         return reviews.isEmpty()
                 ? 0.0
                 : reviews.stream().mapToInt(Review::getRating).average().orElse(0.0);

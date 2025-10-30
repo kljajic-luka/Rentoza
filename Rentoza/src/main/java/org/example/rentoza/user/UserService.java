@@ -54,7 +54,8 @@ public class UserService {
         user.setLocked(false);
         user.setCars(new ArrayList<>());
         user.setBookings(new ArrayList<>());
-        user.setReviews(new ArrayList<>());
+        user.setReviewsGiven(new ArrayList<>());
+        user.setReviewsReceived(new ArrayList<>());
 
         return repo.save(user);
     }

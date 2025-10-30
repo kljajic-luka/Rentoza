@@ -1,9 +1,5 @@
 package org.example.rentoza.review.dto;
 
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.Setter;
-
 import java.time.Instant;
 
 public record ReviewResponseDTO(
@@ -11,6 +7,11 @@ public record ReviewResponseDTO(
         int rating,
         String comment,
         Instant createdAt,
+        org.example.rentoza.review.ReviewDirection direction,
         String reviewerFirstName,
-        String reviewerLastName
+        String reviewerLastName,
+        String reviewerAvatarUrl,
+        String revieweeFirstName,
+        String revieweeLastName,
+        String revieweeAvatarUrl
 ) {}

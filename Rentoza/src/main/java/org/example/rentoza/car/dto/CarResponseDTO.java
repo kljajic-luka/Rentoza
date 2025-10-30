@@ -3,7 +3,9 @@ package org.example.rentoza.car.dto;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.Setter;
-import org.example.rentoza.car.Car;
+import org.example.rentoza.car.*;
+
+import java.util.List;
 
 @Getter
 @Setter
@@ -21,6 +23,19 @@ public class CarResponseDTO {
     private String ownerFullName;
     private String ownerEmail;
 
+    // New production-ready fields
+    private String description;
+    private Integer seats;
+    private FuelType fuelType;
+    private Double fuelConsumption;
+    private TransmissionType transmissionType;
+    private List<Feature> features;
+    private List<String> addOns;
+    private CancellationPolicy cancellationPolicy;
+    private Integer minRentalDays;
+    private Integer maxRentalDays;
+    private List<String> imageUrls;
+
     public CarResponseDTO(Car car) {
         this.id = car.getId();
         this.brand = car.getBrand();
@@ -30,6 +45,19 @@ public class CarResponseDTO {
         this.location = car.getLocation();
         this.imageUrl = car.getImageUrl();
         this.available = car.isAvailable();
+
+        // New fields
+        this.description = car.getDescription();
+        this.seats = car.getSeats();
+        this.fuelType = car.getFuelType();
+        this.fuelConsumption = car.getFuelConsumption();
+        this.transmissionType = car.getTransmissionType();
+        this.features = car.getFeatures();
+        this.addOns = car.getAddOns();
+        this.cancellationPolicy = car.getCancellationPolicy();
+        this.minRentalDays = car.getMinRentalDays();
+        this.maxRentalDays = car.getMaxRentalDays();
+        this.imageUrls = car.getImageUrls();
 
         if (car.getOwner() != null) {
             String firstName = car.getOwner().getFirstName();

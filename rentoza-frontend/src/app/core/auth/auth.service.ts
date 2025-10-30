@@ -170,7 +170,14 @@ export class AuthService {
       .get<UserProfile>(`${environment.baseApiUrl}/users/profile`, {
         withCredentials: true,
       })
-      .pipe(tap((profile) => this.currentUserSubject.next(profile)));
+      .pipe(
+        map((profile) => ({
+          ...profile,
+          id: String(profile.id),
+          roles: profile.roles ?? [],
+        })),
+        tap((profile) => this.currentUserSubject.next(profile))
+      );
   }
 
   clearSession(): void {
@@ -191,20 +198,22 @@ export class AuthService {
     >;
     const incomingUser = (response.user as UserProfile | undefined) ?? undefined;
     const currentUser = this.currentUserSubject.value;
-    const roles = this.extractRoles(decodedPayload);
+    const rolesFromToken = this.extractRoles(decodedPayload);
+    const singleRole = (response.user as any)?.role ?? decodedPayload['role'];
+    const effectiveRoles = rolesFromToken.length ? rolesFromToken : singleRole ? [singleRole] : [];
 
     const mergedUser: UserProfile | null =
       incomingUser ??
       (currentUser
         ? {
             ...currentUser,
-            roles: roles.length ? roles : currentUser.roles,
+            roles: effectiveRoles.length ? effectiveRoles : currentUser.roles,
           }
         : this.extractUserFromPayload(decodedPayload));
 
     if (mergedUser) {
-      if (!mergedUser.roles?.length && roles.length) {
-        mergedUser.roles = roles;
+      if (!mergedUser.roles?.length && effectiveRoles.length) {
+        mergedUser.roles = effectiveRoles;
       }
       this.currentUserSubject.next({ ...mergedUser });
     }

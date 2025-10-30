@@ -25,4 +25,12 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             String renterEmail,
             List<BookingStatus> statuses
     );
+
+    long countByRenterIdAndStatus(Long renterId, BookingStatus status);
+
+    @Query("SELECT COUNT(b) FROM Booking b WHERE b.car.owner.id = :ownerId AND b.status = :status")
+    long countByOwnerIdAndStatus(
+            @Param("ownerId") Long ownerId,
+            @Param("status") BookingStatus status
+    );
 }

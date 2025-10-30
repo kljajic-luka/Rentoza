@@ -1,64 +1,113 @@
 <ng-container *ngIf="profile$ | async as profile; else loading">
   <section class="profile">
-    <header>
-      <div class="avatar">
-        {{ profile.firstName[0] }}
+    <header class="profile__header">
+      <div class="profile__identity">
+        <div class="profile__avatar">
+          <span>{{ profile.initials }}</span>
+        </div>
+        <div class="profile__headline">
+          <h1>{{ profile.firstName }} {{ profile.lastName }}</h1>
+          <div class="profile__meta">
+            <span class="profile__meta-item" *ngIf="profile.createdAt">
+              <mat-icon>calendar_today</mat-icon>
+              <span>Pridružio se {{ profile.createdAt | date : 'd. MMMM y.' }}</span>
+            </span>
+            <span class="profile__meta-item">
+              <mat-icon>mail</mat-icon>
+              <span>{{ profile.email }}</span>
+            </span>
+            <span class="profile__meta-item" *ngIf="profile.phone">
+              <mat-icon>call</mat-icon>
+              <span>{{ profile.phone }}</span>
+            </span>
+          </div>
+        </div>
       </div>
-      <div>
-        <h1>{{ profile.firstName }} {{ profile.lastName }}</h1>
-        <p>{{ profile.email }}</p>
-      </div>
-      <button mat-stroked-button color="primary">
+      <button mat-stroked-button color="primary" class="profile__edit">
         <mat-icon>edit</mat-icon>
-        Edit profile
+        Uredi profil
       </button>
     </header>
 
-    <div class="profile__grid">
-      <mat-card class="profile__card">
-        <mat-card-title>Account details</mat-card-title>
+    <section class="profile__stats">
+      <mat-card
+        *ngFor="let metric of profile.metrics"
+        class="profile__stat-card"
+        [class.profile__stat-card--accent]="metric.accent"
+      >
         <mat-card-content>
-          <dl>
-            <div>
-              <dt>Role(s)</dt>
-              <dd>
-                <mat-chip-listbox>
-                  <mat-chip *ngFor="let role of profile.roles">{{ role }}</mat-chip>
-                </mat-chip-listbox>
-              </dd>
-            </div>
-            <div *ngIf="profile.phoneNumber">
-              <dt>Phone number</dt>
-              <dd>{{ profile.phoneNumber }}</dd>
-            </div>
-            <div *ngIf="profile.bio">
-              <dt>Bio</dt>
-              <dd>{{ profile.bio }}</dd>
-            </div>
-          </dl>
+          <span class="profile__stat-value">{{ metric.value }}</span>
+          <span class="profile__stat-label">{{ metric.label }}</span>
         </mat-card-content>
       </mat-card>
+      <mat-card class="profile__stat-card">
+        <mat-card-content>
+          <span class="profile__stat-value">{{ profile.reviews.length }}</span>
+          <span class="profile__stat-label">Ukupno recenzija</span>
+        </mat-card-content>
+      </mat-card>
+    </section>
 
-      <mat-card class="profile__card">
-        <mat-card-title>Security & preferences</mat-card-title>
-        <mat-card-content>
-          <ul>
-            <li>
-              <mat-icon color="primary">lock</mat-icon>
-              <span>Enable two-factor authentication</span>
-            </li>
-            <li>
-              <mat-icon color="primary">notifications</mat-icon>
-              <span>Manage notification settings</span>
-            </li>
-            <li>
-              <mat-icon color="primary">dark_mode</mat-icon>
-              <span>Toggle dark theme from the sidebar</span>
-            </li>
-          </ul>
-        </mat-card-content>
-      </mat-card>
-    </div>
+    <section class="profile__body">
+      <div class="profile__sidebar">
+        <mat-card class="profile__card">
+          <mat-card-title>Vrsta korisnika</mat-card-title>
+          <mat-card-content>
+            <mat-divider></mat-divider>
+            <div class="profile__roles">
+              <p class="profile__role">
+                {{ profile.role === 'OWNER' ? 'Domaćin' : 'Vozač' }}
+              </p>
+            </div>
+          </mat-card-content>
+        </mat-card>
+      </div>
+      <div class="profile__reviews">
+        <div class="profile__reviews-header">
+          <h2>{{ profile.reviewSectionTitle }}</h2>
+          <span class="profile__reviews-count">({{ profile.reviews.length }})</span>
+        </div>
+        <ng-container *ngIf="profile.hasReviews; else noReviews">
+          <mat-card
+            class="profile__review-card"
+            *ngFor="let review of profile.reviews; trackBy: trackByReview"
+          >
+            <div class="profile__review-header">
+              <div class="profile__review-avatar">
+                {{
+                  review.reviewerFirstName
+                    ? review.reviewerFirstName[0]
+                    : review.reviewerLastName
+                    ? review.reviewerLastName[0]
+                    : 'R'
+                }}
+              </div>
+              <div class="profile__review-info">
+                <h3>{{ review.reviewerFirstName }} {{ review.reviewerLastName }}</h3>
+                <span class="profile__review-date">{{
+                  review.createdAt | date : 'd. MMM y.'
+                }}</span>
+              </div>
+              <div class="profile__review-rating">
+                <ng-container *ngFor="let star of starRange">
+                  <mat-icon color="accent">{{
+                    review.rating > star ? 'star' : 'star_border'
+                  }}</mat-icon>
+                </ng-container>
+                <span>{{ review.rating }}/5</span>
+              </div>
+            </div>
+            <p class="profile__review-comment">{{ review.comment }}</p>
+          </mat-card>
+        </ng-container>
+        <ng-template #noReviews>
+          <div class="profile__reviews-empty">
+            <mat-icon>chat_bubble_outline</mat-icon>
+            <p>Još uvek nema recenzija za ovog korisnika.</p>
+          </div>
+        </ng-template>
+      </div>
+    </section>
   </section>
 </ng-container>
 

@@ -48,28 +48,42 @@
   display: flex;
   flex-direction: column;
   gap: 2rem;
+
+  &__grid {
+    width: 100%;
+  }
+
+  &__card {
+    border-radius: 22px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(244, 246, 254, 0.8) 100%);
+    box-shadow: 0 32px 60px rgba(15, 23, 42, 0.12);
+    transition: all 280ms cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: pointer;
+
+    &:hover {
+      transform: translateY(-8px);
+      box-shadow: 0 40px 80px rgba(15, 23, 42, 0.2);
+    }
+
+    :host-context(.theme-dark) & {
+      background: linear-gradient(180deg, rgba(23, 25, 35, 0.85) 0%, rgba(15, 17, 25, 0.9) 100%);
+      box-shadow: 0 32px 60px rgba(15, 17, 25, 0.6);
+
+      &:hover {
+        box-shadow: 0 40px 80px rgba(15, 17, 25, 0.8);
+      }
+    }
+  }
 }
 
 .car-card {
-  border-radius: 24px;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  backdrop-filter: blur(6px);
-  background: var(--color-surface);
-  box-shadow: var(--shadow-elevated);
-  transition: all 280ms cubic-bezier(0.4, 0, 0.2, 1);
-  cursor: pointer;
-
-  &:hover {
-    transform: translateY(-8px);
-    box-shadow: 0 40px 80px rgba(15, 23, 42, 0.2);
-  }
-
   &__media {
     position: relative;
-    padding-top: 60%;
+    padding-top: 62%;
     overflow: hidden;
 
     img,
@@ -129,6 +143,36 @@
     h3 {
       margin: 0;
       font-size: 1.3rem;
+    }
+  }
+
+  &__location {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+
+    .location-icon {
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+      color: var(--icon-color);
+    }
+
+    .distance-chip {
+      margin-left: 0.25rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      height: 26px;
+      background: rgba(16, 185, 129, 0.12) !important;
+      color: rgba(5, 150, 105, 0.9) !important;
+
+      mat-icon {
+        font-size: 16px;
+        width: 16px;
+        height: 16px;
+        color: rgba(5, 150, 105, 0.8);
+      }
     }
   }
 

@@ -62,6 +62,55 @@ public class Car {
     @Column(nullable = false)
     private boolean available = true;
 
+    // ========== NEW PRODUCTION-READY FIELDS ==========
+
+    @Column(length = 1000)
+    private String description;
+
+    @NotNull
+    @Min(2)
+    @Max(9)
+    @Column(nullable = false)
+    private Integer seats = 5;
+
+    @NotNull
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private FuelType fuelType = FuelType.BENZIN;
+
+    @Min(0)
+    @Max(50)
+    @Column(name = "fuel_consumption")
+    private Double fuelConsumption; // liters per 100km
+
+    @NotNull
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private TransmissionType transmissionType = TransmissionType.MANUAL;
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "car_features", joinColumns = @JoinColumn(name = "car_id"))
+    @Column(name = "feature")
+    @Enumerated(EnumType.STRING)
+    private List<Feature> features = new ArrayList<>();
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "car_add_ons", joinColumns = @JoinColumn(name = "car_id"))
+    @Column(name = "add_on")
+    private List<String> addOns = new ArrayList<>(); // Custom add-ons like "Dečije sedište", "Zimske gume"
+
+    @Column(name = "cancellation_policy", length = 20)
+    @Enumerated(EnumType.STRING)
+    private CancellationPolicy cancellationPolicy = CancellationPolicy.FLEXIBLE;
+
+    @Column(name = "min_rental_days")
+    @Min(1)
+    private Integer minRentalDays = 1;
+
+    @Column(name = "max_rental_days")
+    @Min(1)
+    private Integer maxRentalDays = 30;
+
     @CreationTimestamp
     @Column(updatable = false)
     private Instant createdAt;

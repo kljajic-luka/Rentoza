@@ -3,9 +3,10 @@ import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/cor
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { ToastrService } from 'ngx-toastr';
-import { finalize } from 'rxjs';
+import { finalize, tap } from 'rxjs';
 
 import { AuthService } from '@core/auth/auth.service';
+import { RedirectService } from '@core/services/redirect.service';
 import { RegisterRequest } from '@core/models/auth.model';
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -26,32 +27,38 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
     MatInputModule,
     MatButtonModule,
     MatIconModule,
-    MatProgressSpinnerModule
+    MatProgressSpinnerModule,
   ],
   templateUrl: './register.component.html',
   styleUrls: ['./register.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class RegisterComponent {
   private readonly fb = inject(FormBuilder);
   private readonly authService = inject(AuthService);
+  private readonly redirectService = inject(RedirectService);
   private readonly router = inject(Router);
   private readonly toastr = inject(ToastrService);
   private readonly route = inject(ActivatedRoute);
-  private readonly requestedRole = (this.route.snapshot.queryParamMap.get('role') || '').toUpperCase();
+  private readonly requestedRole = (
+    this.route.snapshot.queryParamMap.get('role') || ''
+  ).toUpperCase();
   protected readonly isOwnerRegistration = this.requestedRole === 'OWNER';
 
   readonly form = this.fb.nonNullable.group({
     firstName: ['', [Validators.required]],
     lastName: ['', [Validators.required]],
     email: ['', [Validators.required, Validators.email]],
-    phoneNumber: ['', [Validators.required, Validators.pattern(/^\d{8,15}$/)]],
-    password: ['', [
-      Validators.required,
-      Validators.minLength(8),
-      Validators.pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/)
-    ]],
-    confirmPassword: ['', [Validators.required]]
+    phone: ['', [Validators.required, Validators.pattern(/^\d{8,15}$/)]],
+    password: [
+      '',
+      [
+        Validators.required,
+        Validators.minLength(8),
+        Validators.pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/),
+      ],
+    ],
+    confirmPassword: ['', [Validators.required]],
   });
 
   protected readonly isSubmitting = signal(false);
@@ -72,17 +79,23 @@ export class RegisterComponent {
 
     this.authService
       .register(payload)
-      .pipe(finalize(() => this.isSubmitting.set(false)))
-      .subscribe({
-        next: () => {
+      .pipe(
+        tap((user) => {
           this.toastr.success(
             this.isOwnerRegistration
               ? 'Nalog kreiran! Dobrodošli u Rentoza zajednicu domaćina.'
               : 'Nalog kreiran! Dobrodošli u Rentoza.',
             'Uspešna registracija'
           );
-          this.router.navigate(['/']);
-        }
+          // Redirect to role-specific dashboard
+          this.redirectService.redirectAfterLogin(user);
+        }),
+        finalize(() => this.isSubmitting.set(false))
+      )
+      .subscribe({
+        error: () => {
+          this.toastr.error('Greška prilikom registracije. Pokušajte ponovo.');
+        },
       });
   }
 }

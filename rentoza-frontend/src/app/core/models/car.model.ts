@@ -1,19 +1,122 @@
 import { Review } from './review.model';
 
+/**
+ * Fuel type enumeration
+ */
+export enum FuelType {
+  BENZIN = 'BENZIN',           // Gasoline/Petrol
+  DIZEL = 'DIZEL',             // Diesel
+  ELEKTRIČNI = 'ELEKTRIČNI',   // Electric
+  HIBRID = 'HIBRID',           // Hybrid
+  PLUG_IN_HIBRID = 'PLUG_IN_HIBRID' // Plug-in Hybrid
+}
+
+/**
+ * Transmission type enumeration
+ */
+export enum TransmissionType {
+  MANUAL = 'MANUAL',           // Manual
+  AUTOMATIC = 'AUTOMATIC'      // Automatic
+}
+
+/**
+ * Car features enumeration
+ */
+export enum Feature {
+  // Safety
+  ABS = 'ABS',
+  AIRBAG = 'AIRBAG',
+  PARKING_SENSORS = 'PARKING_SENSORS',
+  REVERSE_CAMERA = 'REVERSE_CAMERA',
+  BLIND_SPOT_MONITOR = 'BLIND_SPOT_MONITOR',
+  LANE_ASSIST = 'LANE_ASSIST',
+  CRUISE_CONTROL = 'CRUISE_CONTROL',
+  ADAPTIVE_CRUISE = 'ADAPTIVE_CRUISE',
+
+  // Connectivity
+  BLUETOOTH = 'BLUETOOTH',
+  USB = 'USB',
+  ANDROID_AUTO = 'ANDROID_AUTO',
+  APPLE_CARPLAY = 'APPLE_CARPLAY',
+  NAVIGATION = 'NAVIGATION',
+  WIFI = 'WIFI',
+
+  // Comfort
+  AIR_CONDITIONING = 'AIR_CONDITIONING',
+  CLIMATE_CONTROL = 'CLIMATE_CONTROL',
+  HEATED_SEATS = 'HEATED_SEATS',
+  LEATHER_SEATS = 'LEATHER_SEATS',
+  SUNROOF = 'SUNROOF',
+  PANORAMIC_ROOF = 'PANORAMIC_ROOF',
+  KEYLESS_ENTRY = 'KEYLESS_ENTRY',
+  PUSH_START = 'PUSH_START',
+  ELECTRIC_WINDOWS = 'ELECTRIC_WINDOWS',
+  POWER_STEERING = 'POWER_STEERING',
+
+  // Additional
+  ROOF_RACK = 'ROOF_RACK',
+  TOW_HITCH = 'TOW_HITCH',
+  ALLOY_WHEELS = 'ALLOY_WHEELS',
+  LED_LIGHTS = 'LED_LIGHTS',
+  FOG_LIGHTS = 'FOG_LIGHTS'
+}
+
+/**
+ * Cancellation policy enumeration
+ */
+export enum CancellationPolicy {
+  FLEXIBLE = 'FLEXIBLE',
+  MODERATE = 'MODERATE',
+  STRICT = 'STRICT',
+  NON_REFUNDABLE = 'NON_REFUNDABLE'
+}
+
+/**
+ * Main Car interface with all production-ready fields
+ */
 export interface Car {
   id: string;
-  make: string;
+  make: string;  // Note: backend uses 'brand', mapped to 'make' in frontend
   model: string;
   year: number;
   pricePerDay: number;
   location: string;
   description?: string;
   imageUrl?: string;
+  available?: boolean;
   rating?: number;
   reviews?: Review[];
+
+  // New production-ready fields
+  seats?: number;
+  fuelType?: FuelType;
+  fuelConsumption?: number;  // liters per 100km
+  transmissionType?: TransmissionType;
+  features?: Feature[];
+  addOns?: string[];
+  cancellationPolicy?: CancellationPolicy;
+  minRentalDays?: number;
+  maxRentalDays?: number;
+  imageUrls?: string[];
+
+  // Owner information
+  ownerFullName?: string;
+  ownerEmail?: string;
 }
 
 export interface CarSummary extends Car {
   availableFrom?: string;
   availableTo?: string;
 }
+
+/**
+ * Default rental rules (Serbian)
+ */
+export const CAR_RENTAL_RULES = [
+  'Zabranjeno pušenje',
+  'Vozilo vratiti sa punim rezervoarom',
+  'Bez vožnje van puta',
+  'Održavajte vozilo čistim',
+  'Prijavite eventualne štete',
+  'Vratite na vreme'
+] as const;

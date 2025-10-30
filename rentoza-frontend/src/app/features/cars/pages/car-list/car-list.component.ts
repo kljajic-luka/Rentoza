@@ -5,11 +5,17 @@ import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatIconModule } from '@angular/material/icon';
+import { MatChipsModule } from '@angular/material/chips';
 import { FlexLayoutModule } from '@ngbracket/ngx-layout';
-import { Observable, switchMap, map } from 'rxjs';
+import { Observable, switchMap, map, combineLatest } from 'rxjs';
 
 import { Car } from '@core/models/car.model';
 import { CarService } from '@core/services/car.service';
+import { getDistanceBetweenCities, formatDistance } from '@core/utils/distance.util';
+
+interface CarWithDistance extends Car {
+  distance?: string;
+}
 
 @Component({
   selector: 'app-car-list',
@@ -21,29 +27,56 @@ import { CarService } from '@core/services/car.service';
     MatButtonModule,
     MatProgressSpinnerModule,
     MatIconModule,
-    FlexLayoutModule
+    MatChipsModule,
+    FlexLayoutModule,
   ],
   templateUrl: './car-list.component.html',
   styleUrls: ['./car-list.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CarListComponent implements OnInit {
   private readonly carService = inject(CarService);
   private readonly route = inject(ActivatedRoute);
 
-  cars$!: Observable<Car[]>;
+  cars$!: Observable<CarWithDistance[]>;
   location$: Observable<string | null> = this.route.queryParamMap.pipe(
-    map(params => params.get('location'))
+    map((params) => params.get('location'))
   );
+  searchRadius = 20; // km
 
   ngOnInit(): void {
     this.cars$ = this.route.queryParamMap.pipe(
-      switchMap(params => {
+      switchMap((params) => {
         const location = params.get('location');
-        if (location) {
-          return this.carService.getCarsByLocation(location);
-        }
-        return this.carService.getCars();
+        const carsObservable = location
+          ? this.carService.getCarsByLocation(location, this.searchRadius)
+          : this.carService.getCars();
+
+        return combineLatest([carsObservable, this.location$]).pipe(
+          map(([cars, searchLocation]) => {
+            if (!searchLocation) {
+              return cars;
+            }
+
+            // Add distance information to each car
+            return cars
+              .map((car) => {
+                const distanceKm = getDistanceBetweenCities(car.location, searchLocation);
+                return {
+                  ...car,
+                  distance: distanceKm !== null ? formatDistance(distanceKm) : undefined,
+                };
+              })
+              .sort((a, b) => {
+                // Sort by distance (closest first)
+                const distA =
+                  getDistanceBetweenCities(a.location, searchLocation || '') || Infinity;
+                const distB =
+                  getDistanceBetweenCities(b.location, searchLocation || '') || Infinity;
+                return distA - distB;
+              });
+          })
+        );
       })
     );
   }

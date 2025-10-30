@@ -15,10 +15,12 @@ import java.util.Map;
 public class UserController {
 
     private final UserService service;
+    private final ProfileService profileService;
     private final JwtUtil jwtUtil;
 
-    public UserController(UserService service, JwtUtil jwtUtil) {
+    public UserController(UserService service, ProfileService profileService, JwtUtil jwtUtil) {
         this.service = service;
+        this.profileService = profileService;
         this.jwtUtil = jwtUtil;
     }
 
@@ -72,12 +74,16 @@ public class UserController {
 
     @GetMapping("/me")
     public ResponseEntity<?> getMyProfile(@RequestHeader("Authorization") String authHeader) {
-        String email = jwtUtil.getEmailFromToken(authHeader.substring(7));
-        var user = service.getUserByEmail(email)
-                .orElseThrow(() -> new EntityNotFoundException("User not found"));
-        return ResponseEntity.ok(new UserResponseDTO(
-                user.getId(), user.getFirstName(), user.getLastName(), user.getEmail(), user.getPhone(), user.getRole().name()
-        ));
+        try {
+            String email = extractEmail(authHeader);
+            var user = service.getUserByEmail(email)
+                    .orElseThrow(() -> new EntityNotFoundException("User not found"));
+            return ResponseEntity.ok(new UserResponseDTO(
+                    user.getId(), user.getFirstName(), user.getLastName(), user.getEmail(), user.getPhone(), user.getRole().name()
+            ));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(401).body(Map.of("error", e.getMessage()));
+        }
     }
 
     @PatchMapping("/profile")
@@ -86,12 +92,7 @@ public class UserController {
             @Valid @RequestBody UserProfileDTO dto
     ) {
         try {
-            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-                return ResponseEntity.status(401).body(Map.of("error", "Missing or invalid token"));
-            }
-
-            String token = authHeader.substring(7);
-            String email = jwtUtil.getEmailFromToken(token);
+            String email = extractEmail(authHeader);
 
             if (email == null) {
                 return ResponseEntity.status(401).body(Map.of("error", "Invalid token"));
@@ -111,7 +112,38 @@ public class UserController {
         } catch (io.jsonwebtoken.JwtException e) {
             return ResponseEntity.status(401).body(Map.of("error", "Token expired or invalid"));
         } catch (RuntimeException e) {
+            if ("Missing or invalid token".equals(e.getMessage())) {
+                return ResponseEntity.status(401).body(Map.of("error", e.getMessage()));
+            }
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
+    }
+
+    @GetMapping("/profile")
+    public ResponseEntity<?> getProfileSummary(@RequestHeader("Authorization") String authHeader) {
+        try {
+            String email = extractEmail(authHeader);
+            return ResponseEntity.ok(profileService.getProfileSummary(email));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(401).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/profile/details")
+    public ResponseEntity<?> getProfileDetails(@RequestHeader("Authorization") String authHeader) {
+        try {
+            String email = extractEmail(authHeader);
+            return ResponseEntity.ok(profileService.getProfileDetails(email));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(401).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    private String extractEmail(String authHeader) {
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            throw new RuntimeException("Missing or invalid token");
+        }
+        String token = authHeader.substring(7);
+        return jwtUtil.getEmailFromToken(token);
     }
 }

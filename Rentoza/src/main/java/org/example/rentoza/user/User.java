@@ -85,7 +85,11 @@ public class User {
 
     @OneToMany(mappedBy = "reviewer", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @JsonIgnore
-    private List<Review> reviews;
+    private List<Review> reviewsGiven;
+
+    @OneToMany(mappedBy = "reviewee", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @JsonIgnore
+    private List<Review> reviewsReceived;
 
     @PrePersist
     @PreUpdate

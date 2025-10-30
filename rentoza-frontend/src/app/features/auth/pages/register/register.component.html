@@ -57,11 +57,11 @@
 
         <mat-form-field appearance="fill">
           <mat-label>Broj telefona</mat-label>
-          <input matInput formControlName="phoneNumber" placeholder="+381 64 123 4567" />
-          <mat-error *ngIf="form.controls.phoneNumber.hasError('required')"
+          <input matInput formControlName="phone" />
+          <mat-error *ngIf="form.controls.phone.hasError('required')"
             >Broj telefona je obavezan</mat-error
           >
-          <mat-error *ngIf="form.controls.phoneNumber.hasError('pattern')">
+          <mat-error *ngIf="form.controls.phone.hasError('pattern')">
             Unesite ispravan broj telefona (8-15 cifara)
           </mat-error>
         </mat-form-field>

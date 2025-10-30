@@ -17,18 +17,20 @@
         <div class="booking-card__header">
           <div>
             <p class="booking-card__title">{{ booking.car.make }} {{ booking.car.model }}</p>
-            <p class="booking-card__dates">{{ booking.startDate | date }} – {{ booking.endDate | date }}</p>
+            <p class="booking-card__dates">
+              {{ booking.startDate | date }} – {{ booking.endDate | date }}
+            </p>
           </div>
           <span class="status" [ngClass]="booking.status.toLowerCase()">{{ booking.status }}</span>
         </div>
         <div class="booking-card__body">
           <div>
             <span class="label">Pickup</span>
-            <span>{{ booking.startDate | date: 'mediumDate' }}</span>
+            <span>{{ booking.startDate | date : 'mediumDate' }}</span>
           </div>
           <div>
             <span class="label">Drop-off</span>
-            <span>{{ booking.endDate | date: 'mediumDate' }}</span>
+            <span>{{ booking.endDate | date : 'mediumDate' }}</span>
           </div>
           <div>
             <span class="label">Total</span>

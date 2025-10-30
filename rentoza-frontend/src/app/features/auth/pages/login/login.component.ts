@@ -3,9 +3,10 @@ import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/cor
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { ToastrService } from 'ngx-toastr';
-import { finalize } from 'rxjs';
+import { finalize, tap } from 'rxjs';
 
 import { AuthService } from '@core/auth/auth.service';
+import { RedirectService } from '@core/services/redirect.service';
 import { LoginRequest } from '@core/models/auth.model';
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -35,6 +36,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 export class LoginComponent {
   private readonly fb = inject(FormBuilder);
   private readonly authService = inject(AuthService);
+  private readonly redirectService = inject(RedirectService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly toastr = inject(ToastrService);
@@ -57,12 +59,23 @@ export class LoginComponent {
 
     this.authService
       .login(payload)
-      .pipe(finalize(() => this.isSubmitting.set(false)))
+      .pipe(
+        tap((user) => {
+          this.toastr.success('Uspešno ste se prijavili!');
+
+          // Check if there's a return URL, otherwise use role-based redirection
+          const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
+          if (returnUrl) {
+            void this.router.navigateByUrl(returnUrl);
+          } else {
+            this.redirectService.redirectAfterLogin(user);
+          }
+        }),
+        finalize(() => this.isSubmitting.set(false))
+      )
       .subscribe({
-        next: () => {
-          this.toastr.success('Welcome back!');
-          const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl') ?? '/';
-          this.router.navigateByUrl(returnUrl);
+        error: () => {
+          this.toastr.error('Pogrešan email ili lozinka');
         }
       });
   }

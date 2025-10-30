@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.*;
 import lombok.*;
+import org.example.rentoza.booking.Booking;
 import org.example.rentoza.car.Car;
 import org.example.rentoza.user.User;
 
@@ -31,6 +32,10 @@ public class Review {
     @Column(nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private ReviewDirection direction = ReviewDirection.FROM_USER;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "car_id")
     @JsonIgnore
@@ -40,4 +45,14 @@ public class Review {
     @JoinColumn(name = "reviewer_id")
     @JsonIgnore
     private User reviewer;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "reviewee_id")
+    @JsonIgnore
+    private User reviewee;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "booking_id")
+    @JsonIgnore
+    private Booking booking;
 }

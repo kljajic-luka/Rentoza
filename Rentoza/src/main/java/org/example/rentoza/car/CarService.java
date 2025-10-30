@@ -1,10 +1,13 @@
 package org.example.rentoza.car;
 
-import org.springframework.transaction.annotation.Transactional;
 import org.example.rentoza.car.dto.CarRequestDTO;
+import org.example.rentoza.car.dto.CarResponseDTO;
 import org.example.rentoza.user.User;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 public class CarService {
@@ -39,31 +42,40 @@ public class CarService {
 
         return repo.save(car);
     }
+
     @Transactional(readOnly = true)
-    public List<Car> getAllCars() {
-        return repo.findAll();
-    }
-
-    public List<Car> getCarsByLocation(String location) {
-        return repo.findByLocationIgnoreCase(location);
-    }
-
-    public List<Car> getCarsByOwner(String email) {
-        return repo.findByOwnerEmailIgnoreCase(email);
+    public List<CarResponseDTO> getAllCars() {
+        return repo.findAll()
+                .stream()
+                .map(this::mapToResponse)
+                .collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
-    public Car getCarById(Long id) {
+    public List<CarResponseDTO> getCarsByLocation(String location) {
+        return repo.findByLocationIgnoreCase(location)
+                .stream()
+                .map(this::mapToResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<CarResponseDTO> getCarsByOwner(String email) {
+        return repo.findByOwnerEmailIgnoreCase(email)
+                .stream()
+                .map(this::mapToResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public CarResponseDTO getCarById(Long id) {
         Car car = repo.findById(id)
                 .orElseThrow(() -> new RuntimeException("Car not found with ID: " + id));
 
-        // ✅ Force initialize lazy owner before session closes
-        if (car.getOwner() != null) {
-            car.getOwner().getFirstName(); // triggers proxy initialization
-            car.getOwner().getLastName();
-            car.getOwner().getEmail();
-        }
+        return mapToResponse(car);
+    }
 
-        return car;
+    private CarResponseDTO mapToResponse(Car car) {
+        return new CarResponseDTO(car);
     }
 }

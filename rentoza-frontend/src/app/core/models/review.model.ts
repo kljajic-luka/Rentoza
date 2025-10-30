@@ -12,4 +12,9 @@ export interface Review {
   revieweeFirstName?: string;
   revieweeLastName?: string;
   revieweeAvatarUrl?: string;
+  carId?: string;
+  carBrand?: string;
+  carModel?: string;
+  carYear?: number;
+  carLocation?: string;
 }

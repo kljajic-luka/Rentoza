@@ -49,6 +49,11 @@ public class ReviewController {
         return ResponseEntity.ok(service.getReviewsForCar(carId));
     }
 
+    @GetMapping("/recent")
+    public ResponseEntity<List<ReviewResponseDTO>> getRecentReviews() {
+        return ResponseEntity.ok(service.getRecentReviews());
+    }
+
     @GetMapping("/car/{carId}/average")
     public ResponseEntity<Map<String, Double>> getAverageRating(@PathVariable Long carId) {
         return ResponseEntity.ok(Map.of("averageRating", service.getAverageRatingForCar(carId)));

@@ -57,41 +57,26 @@ public class CarController {
 
     @GetMapping
     public ResponseEntity<List<CarResponseDTO>> getAllCars() {
-        return ResponseEntity.ok(
-                service.getAllCars()
-                        .stream()
-                        .map(CarResponseDTO::new)
-                        .collect(Collectors.toList())
-        );
+        return ResponseEntity.ok(service.getAllCars());
     }
 
     // ✅ Get cars by location
     @GetMapping("/location/{location}")
     public ResponseEntity<List<CarResponseDTO>> getByLocation(@PathVariable String location) {
-        return ResponseEntity.ok(
-                service.getCarsByLocation(location)
-                        .stream()
-                        .map(CarResponseDTO::new)
-                        .collect(Collectors.toList())
-        );
+        return ResponseEntity.ok(service.getCarsByLocation(location));
     }
 
     // ✅ Get cars by owner email
     @GetMapping("/owner/{email}")
     public ResponseEntity<List<CarResponseDTO>> getByOwner(@PathVariable String email) {
-        return ResponseEntity.ok(
-                service.getCarsByOwner(email)
-                        .stream()
-                        .map(CarResponseDTO::new)
-                        .collect(Collectors.toList())
-        );
+        return ResponseEntity.ok(service.getCarsByOwner(email));
     }
 
     // ✅ Get car by ID
     @GetMapping("/{id}")
     public ResponseEntity<?> getCarById(@PathVariable Long id) {
         try {
-            return ResponseEntity.ok(new CarResponseDTO(service.getCarById(id)));
+            return ResponseEntity.ok(service.getCarById(id));
         } catch (RuntimeException e) {
             return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
         }

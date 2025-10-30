@@ -34,9 +34,9 @@ export class RedirectService {
       return '/owner';
     }
 
-    // Renters go to renter dashboard
+    // Users with USER role stay on homepage
     if (user.roles.includes('USER')) {
-      return '/renter';
+      return '/';
     }
 
     // Admin or other roles default to home

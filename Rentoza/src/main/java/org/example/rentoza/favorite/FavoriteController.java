@@ -2,10 +2,13 @@ package org.example.rentoza.favorite;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.example.rentoza.user.User;
+import org.example.rentoza.user.UserRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -19,9 +22,11 @@ import java.util.Map;
 @RequestMapping("/api/favorites")
 @RequiredArgsConstructor
 @Slf4j
+@CrossOrigin(origins = "http://localhost:4200", allowCredentials = "true")
 public class FavoriteController {
 
     private final FavoriteService favoriteService;
+    private final UserRepository userRepository;
 
     /**
      * Add a car to favorites
@@ -142,10 +147,23 @@ public class FavoriteController {
             throw new IllegalStateException("User not authenticated");
         }
 
-        try {
-            return Long.parseLong(authentication.getName());
-        } catch (NumberFormatException e) {
-            throw new IllegalStateException("Invalid user ID in authentication: " + authentication.getName());
+        Object principal = authentication.getPrincipal();
+        String username;
+
+        if (principal instanceof UserDetails userDetails) {
+            username = userDetails.getUsername();
+        } else if (principal instanceof String s) {
+            username = s;
+        } else {
+            throw new IllegalStateException("Unsupported principal type: " + principal);
         }
+
+        if ("anonymousUser".equalsIgnoreCase(username)) {
+            throw new IllegalStateException("Anonymous user cannot access favorites");
+        }
+
+        return userRepository.findByEmail(username.toLowerCase())
+                .map(User::getId)
+                .orElseThrow(() -> new IllegalStateException("Authenticated user not found: " + username));
     }
 }

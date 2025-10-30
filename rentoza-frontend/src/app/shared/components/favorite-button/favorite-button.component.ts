@@ -1,4 +1,4 @@
-import { Component, Input, inject, signal, computed, effect } from '@angular/core';
+import { Component, Input, inject, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -8,6 +8,7 @@ import { AuthService } from '@core/auth/auth.service';
 import { ToastrService } from 'ngx-toastr';
 import { Router } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
+import { firstValueFrom } from 'rxjs';
 
 /**
  * Reusable favorite button component with optimistic updates
@@ -39,29 +40,29 @@ import { toSignal } from '@angular/core/rxjs-interop';
   styles: [`
     button {
       transition: all 200ms ease;
+    }
 
-      &.favorited mat-icon {
-        color: #ef4444; // Red for favorited
-        animation: heartBeat 0.3s ease;
-      }
+    button.favorited mat-icon {
+      color: #ef4444; /* Red for favorited */
+      animation: heartBeat 0.3s ease;
+    }
 
-      &:not(.favorited) mat-icon {
-        color: rgba(100, 116, 139, 0.7);
-      }
+    button:not(.favorited) mat-icon {
+      color: rgba(100, 116, 139, 0.7);
+    }
 
-      &:hover:not(:disabled) mat-icon {
-        transform: scale(1.15);
-        color: #ef4444;
-      }
+    button:hover:not(:disabled) mat-icon {
+      transform: scale(1.15);
+      color: #ef4444;
+    }
 
-      &:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-      }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
 
-      mat-icon.animate {
-        animation: heartBeat 0.3s ease;
-      }
+    button mat-icon.animate {
+      animation: heartBeat 0.3s ease;
     }
 
     @keyframes heartBeat {
@@ -92,21 +93,13 @@ export class FavoriteButtonComponent {
   // Convert Observable to Signal
   private readonly currentUser = toSignal(this.authService.currentUser$);
 
-  // Computed signal for favorite status
-  isFavorited = computed(() => this.favoriteService.isFavorited(this.carId));
+  // Computed signal for favorite status - directly read from signal
+  isFavorited = computed(() => this.favoriteService.favoritedCarIdsSignal().has(this.carId));
 
   // Computed tooltip text
   tooltipText = computed(() =>
     this.isFavorited() ? 'Ukloni iz favorita' : 'Dodaj u favorite'
   );
-
-  // Effect to sync with service state
-  constructor() {
-    effect(() => {
-      // Subscribe to favorited car IDs changes
-      this.favoriteService.favoritedCarIds$.subscribe();
-    });
-  }
 
   async toggleFavorite(event: Event): Promise<void> {
     event.stopPropagation();
@@ -126,12 +119,10 @@ export class FavoriteButtonComponent {
     this.isAnimating.set(true);
 
     try {
-      await this.favoriteService.toggleFavorite(this.carId).toPromise();
-
-      // Show success message
-      const message = this.isFavorited()
-        ? 'Dodato u favorite'
-        : 'Uklonjeno iz favorita';
+      const response = await firstValueFrom(this.favoriteService.toggleFavorite(this.carId));
+      const message =
+        response?.message ??
+        (this.isFavorited() ? 'Dodato u favorite' : 'Uklonjeno iz favorita');
       this.toastr.success(message);
     } catch (error) {
       console.error('Error toggling favorite:', error);

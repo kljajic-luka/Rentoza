@@ -34,6 +34,7 @@ import { ReviewService } from '@core/services/review.service';
 import { BookingService } from '@core/services/booking.service';
 import { AuthService } from '@core/auth/auth.service';
 import { Booking } from '@core/models/booking.model';
+import { FavoriteButtonComponent } from '@shared/components/favorite-button/favorite-button.component';
 
 @Component({
   selector: 'app-car-detail',
@@ -51,6 +52,7 @@ import { Booking } from '@core/models/booking.model';
     MatIconModule,
     FlexLayoutModule,
     RouterModule,
+    FavoriteButtonComponent,
   ],
   templateUrl: './car-detail.component.html',
   styleUrls: ['./car-detail.component.scss'],

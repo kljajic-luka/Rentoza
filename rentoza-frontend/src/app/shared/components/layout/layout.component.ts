@@ -67,21 +67,27 @@ export class LayoutComponent implements OnInit {
 
   protected isMobile = false;
   protected readonly navigationLinks: NavLink[] = [
-    { label: 'Home', icon: 'home', route: '/' },
-    { label: 'Cars', icon: 'directions_car', route: '/cars' },
+    { label: 'Pocetna stranica', icon: 'home', route: '/' },
+    { label: 'Vozila', icon: 'directions_car', route: '/cars' },
     {
-      label: 'Bookings',
+      label: 'Bukiranja',
       icon: 'assignment',
       route: '/bookings',
       roles: ['USER', 'OWNER'],
     },
     {
-      label: 'Reviews',
+      label: 'Omiljena vozila',
+      icon: 'favorite',
+      route: '/favorites',
+      roles: ['USER', 'OWNER', 'ADMIN'],
+    },
+    {
+      label: 'Recenzije',
       icon: 'reviews',
       route: '/reviews',
     },
     {
-      label: 'Profile',
+      label: 'Profil',
       icon: 'person',
       route: '/users/profile',
       roles: ['USER', 'OWNER', 'ADMIN'],

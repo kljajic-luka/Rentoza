@@ -10,6 +10,7 @@ import org.example.rentoza.review.dto.ReviewRequestDTO;
 import org.example.rentoza.review.dto.ReviewResponseDTO;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -156,19 +157,7 @@ public class ReviewService {
         var reviews = repo.findByCarIdAndDirection(carId, ReviewDirection.FROM_USER);
 
         return reviews.stream()
-                .map(r -> new ReviewResponseDTO(
-                        r.getId(),
-                        r.getRating(),
-                        r.getComment(),
-                        r.getCreatedAt(),
-                        r.getDirection(),
-                        r.getReviewer() != null ? r.getReviewer().getFirstName() : null,
-                        r.getReviewer() != null ? r.getReviewer().getLastName() : null,
-                        null,
-                        r.getReviewee() != null ? r.getReviewee().getFirstName() : null,
-                        r.getReviewee() != null ? r.getReviewee().getLastName() : null,
-                        null
-                ))
+                .map(this::toResponse)
                 .toList();
     }
 
@@ -177,5 +166,37 @@ public class ReviewService {
         return reviews.isEmpty()
                 ? 0.0
                 : reviews.stream().mapToInt(Review::getRating).average().orElse(0.0);
+    }
+
+    public List<ReviewResponseDTO> getRecentReviews() {
+        var reviews = repo.findRecentReviews(ReviewDirection.FROM_USER, PageRequest.of(0, 10));
+        return reviews.stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    private ReviewResponseDTO toResponse(Review review) {
+        var reviewer = review.getReviewer();
+        var reviewee = review.getReviewee();
+        var car = review.getCar();
+
+        return new ReviewResponseDTO(
+                review.getId(),
+                review.getRating(),
+                review.getComment(),
+                review.getCreatedAt(),
+                review.getDirection(),
+                reviewer != null ? reviewer.getFirstName() : null,
+                reviewer != null ? reviewer.getLastName() : null,
+                null,
+                reviewee != null ? reviewee.getFirstName() : null,
+                reviewee != null ? reviewee.getLastName() : null,
+                null,
+                car != null ? car.getId() : null,
+                car != null ? car.getBrand() : null,
+                car != null ? car.getModel() : null,
+                car != null ? car.getYear() : null,
+                car != null ? car.getLocation() : null
+        );
     }
 }

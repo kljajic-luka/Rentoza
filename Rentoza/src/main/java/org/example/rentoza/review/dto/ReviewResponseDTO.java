@@ -13,5 +13,10 @@ public record ReviewResponseDTO(
         String reviewerAvatarUrl,
         String revieweeFirstName,
         String revieweeLastName,
-        String revieweeAvatarUrl
+        String revieweeAvatarUrl,
+        Long carId,
+        String carBrand,
+        String carModel,
+        Integer carYear,
+        String carLocation
 ) {}

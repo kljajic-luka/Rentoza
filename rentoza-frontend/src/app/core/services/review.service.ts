@@ -16,6 +16,6 @@ export class ReviewService {
   }
 
   getRecentReviews(): Observable<Review[]> {
-    return this.http.get<Review[]>(`${this.baseUrl}/recent`);
+    return this.http.get<Review[]>(`${this.baseUrl}/reviews/recent`);
   }
 }

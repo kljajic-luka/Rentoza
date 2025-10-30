@@ -55,6 +55,15 @@ export const routes: Routes = [
       )
   },
   {
+    path: 'favorites',
+    canActivate: [RoleGuard],
+    data: { roles: ['USER', 'OWNER', 'ADMIN'] },
+    loadComponent: () =>
+      import('@features/favorites/pages/favorites-list/favorites-list.component').then(
+        (m) => m.FavoritesListComponent
+      )
+  },
+  {
     path: 'reviews',
     loadComponent: () =>
       import('@features/reviews/pages/review-list/review-list.component').then(

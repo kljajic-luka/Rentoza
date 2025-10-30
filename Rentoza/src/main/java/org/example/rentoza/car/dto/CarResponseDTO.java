@@ -52,12 +52,12 @@ public class CarResponseDTO {
         this.fuelType = car.getFuelType();
         this.fuelConsumption = car.getFuelConsumption();
         this.transmissionType = car.getTransmissionType();
-        this.features = car.getFeatures();
-        this.addOns = car.getAddOns();
+        this.features = car.getFeatures() != null ? List.copyOf(car.getFeatures()) : List.of();
+        this.addOns = car.getAddOns() != null ? List.copyOf(car.getAddOns()) : List.of();
         this.cancellationPolicy = car.getCancellationPolicy();
         this.minRentalDays = car.getMinRentalDays();
         this.maxRentalDays = car.getMaxRentalDays();
-        this.imageUrls = car.getImageUrls();
+        this.imageUrls = car.getImageUrls() != null ? List.copyOf(car.getImageUrls()) : List.of();
 
         if (car.getOwner() != null) {
             String firstName = car.getOwner().getFirstName();

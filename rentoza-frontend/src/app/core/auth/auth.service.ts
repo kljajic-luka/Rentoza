@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, Injector } from '@angular/core';
 import { HttpClient, HttpContext, HttpErrorResponse } from '@angular/common/http';
 import { JwtHelperService } from '@auth0/angular-jwt';
 import {
@@ -32,7 +32,11 @@ export class AuthService {
   readonly currentUser$ = this.currentUserSubject.asObservable();
   readonly accessToken$ = this.accessTokenSubject.asObservable();
 
-  constructor(private readonly http: HttpClient, private readonly jwtHelper: JwtHelperService) {}
+  constructor(
+    private readonly http: HttpClient,
+    private readonly jwtHelper: JwtHelperService,
+    private readonly injector: Injector
+  ) {}
 
   /**
    * Invoked during app bootstrap to silently restore a session using the refresh cookie.
@@ -183,6 +187,12 @@ export class AuthService {
   clearSession(): void {
     this.accessTokenSubject.next(null);
     this.currentUserSubject.next(null);
+
+    // Clear favorited cars on logout
+    import('@core/services/favorite.service').then(({ FavoriteService }) => {
+      const favoriteService = this.injector.get(FavoriteService);
+      favoriteService.clearFavorites();
+    });
   }
 
   private persistSession(response: AuthResponse): void {
@@ -216,6 +226,15 @@ export class AuthService {
         mergedUser.roles = effectiveRoles;
       }
       this.currentUserSubject.next({ ...mergedUser });
+
+      // Load user's favorited cars after successful login/register
+      // Use dynamic import to avoid circular dependency
+      import('@core/services/favorite.service').then(({ FavoriteService }) => {
+        const favoriteService = this.injector.get(FavoriteService);
+        favoriteService.loadFavoritedCarIds().subscribe({
+          error: (err) => console.error('Failed to load favorited cars:', err)
+        });
+      });
     }
   }
 

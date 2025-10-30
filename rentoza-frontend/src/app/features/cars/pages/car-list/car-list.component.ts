@@ -12,6 +12,7 @@ import { Observable, switchMap, map, combineLatest } from 'rxjs';
 import { Car } from '@core/models/car.model';
 import { CarService } from '@core/services/car.service';
 import { getDistanceBetweenCities, formatDistance } from '@core/utils/distance.util';
+import { FavoriteButtonComponent } from '@shared/components/favorite-button/favorite-button.component';
 
 interface CarWithDistance extends Car {
   distance?: string;
@@ -29,6 +30,7 @@ interface CarWithDistance extends Car {
     MatIconModule,
     MatChipsModule,
     FlexLayoutModule,
+    FavoriteButtonComponent,
   ],
   templateUrl: './car-list.component.html',
   styleUrls: ['./car-list.component.scss'],

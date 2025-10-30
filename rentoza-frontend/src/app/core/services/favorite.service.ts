@@ -1,6 +1,6 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, tap, catchError, of, BehaviorSubject } from 'rxjs';
+import { Observable, tap, catchError, of, BehaviorSubject, throwError } from 'rxjs';
 import { environment } from '@environments/environment';
 import { Favorite, FavoriteToggleResponse } from '@core/models/favorite.model';
 
@@ -18,6 +18,9 @@ export class FavoriteService {
   private favoritedCarIdsSubject = new BehaviorSubject<Set<number>>(new Set());
   public favoritedCarIds$ = this.favoritedCarIdsSubject.asObservable();
 
+  // Signal for favorited car IDs (for reactive component updates)
+  public favoritedCarIdsSignal = signal<Set<number>>(new Set());
+
   // Signal for favorite count
   public favoriteCount = signal<number>(0);
 
@@ -26,24 +29,28 @@ export class FavoriteService {
    * Call this after login
    */
   loadFavoritedCarIds(): Observable<number[]> {
-    return this.http.get<number[]>(`${this.baseUrl}/car-ids`).pipe(
-      tap((carIds) => {
-        this.favoritedCarIdsSubject.next(new Set(carIds));
-        this.favoriteCount.set(carIds.length);
-      }),
-      catchError(() => {
-        this.favoritedCarIdsSubject.next(new Set());
-        this.favoriteCount.set(0);
-        return of([]);
+    return this.http
+      .get<number[]>(`${this.baseUrl}/car-ids`, {
+        withCredentials: true,
       })
-    );
+      .pipe(
+        tap((carIds) => {
+          this.updateFavoritedIds(new Set(carIds));
+        }),
+        catchError(() => {
+          this.updateFavoritedIds(new Set());
+          return of([]);
+        })
+      );
   }
 
   /**
    * Get all favorites for the user
    */
   getFavorites(): Observable<Favorite[]> {
-    return this.http.get<Favorite[]>(this.baseUrl);
+    return this.http.get<Favorite[]>(this.baseUrl, {
+      withCredentials: true
+    });
   }
 
   /**
@@ -52,19 +59,25 @@ export class FavoriteService {
   addFavorite(carId: number): Observable<Favorite> {
     // Optimistic update
     const currentIds = this.favoritedCarIdsSubject.value;
-    const newIds = new Set(currentIds);
-    newIds.add(carId);
-    this.favoritedCarIdsSubject.next(newIds);
-    this.favoriteCount.set(newIds.size);
+    const previousIds = new Set(currentIds);
+    const optimisticIds = new Set(previousIds);
+    optimisticIds.add(carId);
+    this.updateFavoritedIds(optimisticIds);
 
-    return this.http.post<Favorite>(`${this.baseUrl}/${carId}`, {}).pipe(
-      catchError((error) => {
-        // Revert on error
-        this.favoritedCarIdsSubject.next(currentIds);
-        this.favoriteCount.set(currentIds.size);
-        throw error;
-      })
-    );
+    return this.http
+      .post<Favorite>(
+        `${this.baseUrl}/${carId}`,
+        {},
+        {
+          withCredentials: true,
+        }
+      )
+      .pipe(
+        catchError((error) => {
+          this.updateFavoritedIds(previousIds);
+          return throwError(() => error);
+        })
+      );
   }
 
   /**
@@ -73,74 +86,101 @@ export class FavoriteService {
   removeFavorite(carId: number): Observable<void> {
     // Optimistic update
     const currentIds = this.favoritedCarIdsSubject.value;
-    const newIds = new Set(currentIds);
-    newIds.delete(carId);
-    this.favoritedCarIdsSubject.next(newIds);
-    this.favoriteCount.set(newIds.size);
+    const previousIds = new Set(currentIds);
+    const optimisticIds = new Set(previousIds);
+    optimisticIds.delete(carId);
+    this.updateFavoritedIds(optimisticIds);
 
-    return this.http.delete<void>(`${this.baseUrl}/${carId}`).pipe(
-      catchError((error) => {
-        // Revert on error
-        this.favoritedCarIdsSubject.next(currentIds);
-        this.favoriteCount.set(currentIds.size);
-        throw error;
+    return this.http
+      .delete<void>(`${this.baseUrl}/${carId}`, {
+        withCredentials: true,
       })
-    );
+      .pipe(
+        catchError((error) => {
+          this.updateFavoritedIds(previousIds);
+          return throwError(() => error);
+        })
+      );
   }
 
   /**
    * Toggle favorite status (add if not favorited, remove if favorited)
    */
   toggleFavorite(carId: number): Observable<FavoriteToggleResponse> {
-    const currentIds = this.favoritedCarIdsSubject.value;
+    const currentIds = new Set(this.favoritedCarIdsSubject.value);
     const wasFavorited = currentIds.has(carId);
 
     // Optimistic update
-    const newIds = new Set(currentIds);
+    const optimisticIds = new Set(currentIds);
     if (wasFavorited) {
-      newIds.delete(carId);
+      optimisticIds.delete(carId);
     } else {
-      newIds.add(carId);
+      optimisticIds.add(carId);
     }
-    this.favoritedCarIdsSubject.next(newIds);
-    this.favoriteCount.set(newIds.size);
+    this.updateFavoritedIds(optimisticIds);
 
-    return this.http.put<FavoriteToggleResponse>(`${this.baseUrl}/${carId}/toggle`, {}).pipe(
-      catchError((error) => {
-        // Revert on error
-        this.favoritedCarIdsSubject.next(currentIds);
-        this.favoriteCount.set(currentIds.size);
-        throw error;
-      })
-    );
+    return this.http
+      .put<FavoriteToggleResponse>(
+        `${this.baseUrl}/${carId}/toggle`,
+        {},
+        {
+          withCredentials: true, // ✅ ensures the backend receives the auth cookie or JWT
+        }
+      )
+      .pipe(
+        tap((response) => {
+          const finalIds = new Set(this.favoritedCarIdsSubject.value);
+          if (response.isFavorited) {
+            finalIds.add(carId);
+          } else {
+            finalIds.delete(carId);
+          }
+          this.updateFavoritedIds(finalIds);
+        }),
+        catchError((error) => {
+          // Revert on error
+          this.updateFavoritedIds(currentIds);
+          return throwError(() => error);
+        })
+      );
   }
 
   /**
    * Check if a car is favorited (from local state, no HTTP call)
    */
   isFavorited(carId: number): boolean {
-    return this.favoritedCarIdsSubject.value.has(carId);
+    return this.favoritedCarIdsSignal().has(carId);
   }
 
   /**
    * Check if a car is favorited (from server)
    */
   checkFavorite(carId: number): Observable<{ isFavorited: boolean }> {
-    return this.http.get<{ isFavorited: boolean }>(`${this.baseUrl}/${carId}/check`);
+    return this.http.get<{ isFavorited: boolean }>(`${this.baseUrl}/${carId}/check`, {
+      withCredentials: true
+    });
   }
 
   /**
    * Get favorite count for a specific car
    */
   getCarFavoriteCount(carId: number): Observable<{ count: number }> {
-    return this.http.get<{ count: number }>(`${this.baseUrl}/${carId}/count`);
+    return this.http.get<{ count: number }>(`${this.baseUrl}/${carId}/count`, {
+      withCredentials: true
+    });
   }
 
   /**
    * Clear local state (use on logout)
    */
   clearFavorites(): void {
-    this.favoritedCarIdsSubject.next(new Set());
-    this.favoriteCount.set(0);
+    this.updateFavoritedIds(new Set());
+  }
+
+  private updateFavoritedIds(ids: Set<number>): void {
+    const snapshot = new Set(ids);
+    this.favoritedCarIdsSubject.next(snapshot);
+    this.favoritedCarIdsSignal.set(snapshot);
+    this.favoriteCount.set(snapshot.size);
   }
 }

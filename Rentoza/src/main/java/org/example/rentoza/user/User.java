@@ -59,6 +59,13 @@ public class User {
     @Column(unique = true)
     private String phone;
 
+    @Column(length = 500)
+    private String avatarUrl;
+
+    @Size(max = 300, message = "Bio must be maximum 300 characters")
+    @Column(length = 300)
+    private String bio;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "user_role", length = 50)
     private Role role = Role.USER;

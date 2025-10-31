@@ -17,3 +17,21 @@ export interface BookingRequest {
   startDate: string;
   endDate: string;
 }
+
+export interface UserBooking {
+  id: number;
+  carId: number;
+  carBrand: string;
+  carModel: string;
+  carYear: number;
+  carImageUrl: string | null;
+  carLocation: string;
+  carPricePerDay: number;
+  startDate: string;
+  endDate: string;
+  totalPrice: number;
+  status: string;
+  hasReview: boolean;
+  reviewRating: number | null;
+  reviewComment: string | null;
+}

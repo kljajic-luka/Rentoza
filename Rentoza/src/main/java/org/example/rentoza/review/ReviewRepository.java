@@ -65,4 +65,7 @@ public interface ReviewRepository extends JpaRepository<Review, Long> {
     boolean existsByCarIdAndReviewerEmailIgnoreCase(Long carId, String reviewerEmail);
     boolean existsByCarAndReviewerAndDirection(Car car, User reviewer, ReviewDirection direction);
     boolean existsByBookingAndDirection(Booking booking, ReviewDirection direction);
+
+    @Query("SELECT r FROM Review r WHERE r.booking.id IN :bookingIds AND r.direction = :direction")
+    List<Review> findByBookingIdInAndDirection(@Param("bookingIds") List<Long> bookingIds, @Param("direction") ReviewDirection direction);
 }

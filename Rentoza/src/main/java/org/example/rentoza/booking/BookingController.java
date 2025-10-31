@@ -2,6 +2,7 @@ package org.example.rentoza.booking;
 
 import org.example.rentoza.booking.dto.BookingRequestDTO;
 import org.example.rentoza.booking.dto.BookingResponseDTO;
+import org.example.rentoza.booking.dto.UserBookingResponseDTO;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -17,6 +18,16 @@ public class BookingController {
 
     public BookingController(BookingService service) {
         this.service = service;
+    }
+
+    @GetMapping("/me")
+    public ResponseEntity<List<UserBookingResponseDTO>> getMyBookings(@RequestHeader("Authorization") String authHeader) {
+        try {
+            List<UserBookingResponseDTO> bookings = service.getMyBookings(authHeader);
+            return ResponseEntity.ok(bookings);
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(401).body(List.of());
+        }
     }
 
     @PostMapping

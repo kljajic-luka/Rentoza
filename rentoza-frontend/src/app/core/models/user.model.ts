@@ -42,8 +42,20 @@ export interface UserProfileDetails {
   role: UserRole;
   roles: UserRole[];
   avatarUrl?: string;
+  bio?: string;
   createdAt?: string;
   averageRating: number;
   stats: ProfileStats;
   reviews: ProfileReview[];
+}
+
+/**
+ * Request DTO for secure partial profile updates.
+ * Only contains fields users are allowed to update directly.
+ * Sensitive identity fields (name, email, role) are intentionally excluded.
+ */
+export interface UpdateProfileRequest {
+  phone?: string;
+  avatarUrl?: string;
+  bio?: string;
 }

@@ -1,68 +1,224 @@
 <section class="bookings">
-  <header>
+  <header class="bookings__header">
     <div>
-      <p class="eyebrow">Trips & reservations</p>
-      <h1>Your booking history</h1>
-      <p>Track upcoming drives, completed adventures, and cancelled reservations in one view.</p>
+      <p class="eyebrow">Vaša putovanja</p>
+      <h1>Bukiranja</h1>
+      <p class="subtitle">Pregledajte predstojeće, aktivne i završene rezervacije</p>
     </div>
-    <button mat-stroked-button color="primary">
-      <mat-icon>download</mat-icon>
-      Export summary
-    </button>
   </header>
 
-  <ng-container *ngIf="bookings$ | async as bookings; else loading">
-    <div class="booking-list" *ngIf="bookings.length; else emptyState">
-      <mat-card *ngFor="let booking of bookings; trackBy: trackByBookingId" class="booking-card">
-        <div class="booking-card__header">
-          <div>
-            <p class="booking-card__title">{{ booking.car.make }} {{ booking.car.model }}</p>
-            <p class="booking-card__dates">
-              {{ booking.startDate | date }} – {{ booking.endDate | date }}
-            </p>
-          </div>
-          <span class="status" [ngClass]="booking.status.toLowerCase()">{{ booking.status }}</span>
-        </div>
-        <div class="booking-card__body">
-          <div>
-            <span class="label">Pickup</span>
-            <span>{{ booking.startDate | date : 'mediumDate' }}</span>
-          </div>
-          <div>
-            <span class="label">Drop-off</span>
-            <span>{{ booking.endDate | date : 'mediumDate' }}</span>
-          </div>
-          <div>
-            <span class="label">Total</span>
-            <span class="amount">R {{ booking.totalPrice | number : '1.0-0' }}</span>
-          </div>
-        </div>
-        <div class="booking-card__footer">
-          <button mat-stroked-button color="primary">
-            <mat-icon>receipt_long</mat-icon>
-            View receipt
-          </button>
-          <button mat-button color="primary">
-            <mat-icon>support_agent</mat-icon>
-            Contact support
-          </button>
-        </div>
-      </mat-card>
-    </div>
-
-    <ng-template #emptyState>
-      <div class="empty">
-        <mat-icon>directions_car_filled</mat-icon>
-        <h3>No bookings yet</h3>
-        <p>You have no bookings yet. Explore cars and start a trip!</p>
-        <a mat-raised-button color="primary" routerLink="/cars">Browse cars</a>
-      </div>
-    </ng-template>
-  </ng-container>
-
-  <ng-template #loading>
-    <div class="loading" fxLayout="row" fxLayoutAlign="center center">
+  @if (isLoading()) {
+    <div class="loading">
       <mat-progress-spinner mode="indeterminate"></mat-progress-spinner>
     </div>
-  </ng-template>
+  } @else if (bookings().length === 0) {
+    <div class="empty-state">
+      <mat-icon>event_available</mat-icon>
+      <h2>Još nemate rezervacija</h2>
+      <p>Istražite vozila i započnite svoje prvo putovanje.</p>
+      <a mat-raised-button color="primary" routerLink="/cars">
+        <mat-icon>directions_car</mat-icon>
+        Pregledaj vozila
+      </a>
+    </div>
+  } @else {
+    <!-- Upcoming Bookings -->
+    @if (categorizedBookings().upcoming.length > 0) {
+      <section class="bookings__section">
+        <h2 class="section-title">
+          <mat-icon>schedule</mat-icon>
+          Predstojeće
+        </h2>
+        <div class="bookings__grid">
+          @for (booking of categorizedBookings().upcoming; track trackByBookingId($index, booking)) {
+            <mat-card class="booking-card">
+              <div class="booking-card__media">
+                @if (booking.carImageUrl) {
+                  <img [src]="booking.carImageUrl" [alt]="booking.carBrand + ' ' + booking.carModel" />
+                } @else {
+                  <div class="placeholder">
+                    <mat-icon>directions_car</mat-icon>
+                  </div>
+                }
+              </div>
+
+              <mat-card-content class="booking-card__content">
+                <div class="booking-card__header">
+                  <h3>{{ booking.carBrand }} {{ booking.carModel }}</h3>
+                  <p class="year-location">{{ booking.carYear }} • {{ booking.carLocation }}</p>
+                </div>
+
+                <div class="booking-card__timer upcoming">
+                  <mat-icon>schedule</mat-icon>
+                  <span>{{ getTimeIndicator(booking, 'upcoming') }}</span>
+                </div>
+
+                <div class="booking-card__details">
+                  <div class="detail-row">
+                    <span class="label">Početak:</span>
+                    <span class="value">{{ booking.startDate | date: 'dd.MM.yyyy' }}</span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="label">Kraj:</span>
+                    <span class="value">{{ booking.endDate | date: 'dd.MM.yyyy' }}</span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="label">Cena po danu:</span>
+                    <span class="value">{{ booking.carPricePerDay | currency: 'RSD':'symbol':'1.0-0' }}</span>
+                  </div>
+                  <div class="detail-row total">
+                    <span class="label">Ukupno:</span>
+                    <span class="value">{{ booking.totalPrice | currency: 'RSD':'symbol':'1.0-0' }}</span>
+                  </div>
+                </div>
+              </mat-card-content>
+
+              <mat-card-actions>
+                <a mat-raised-button color="primary" [routerLink]="['/cars', booking.carId]">
+                  <mat-icon>info</mat-icon>
+                  Detalji vozila
+                </a>
+              </mat-card-actions>
+            </mat-card>
+          }
+        </div>
+      </section>
+    }
+
+    <!-- Ongoing Bookings -->
+    @if (categorizedBookings().ongoing.length > 0) {
+      <section class="bookings__section">
+        <h2 class="section-title">
+          <mat-icon>directions_car</mat-icon>
+          U toku
+        </h2>
+        <div class="bookings__grid">
+          @for (booking of categorizedBookings().ongoing; track trackByBookingId($index, booking)) {
+            <mat-card class="booking-card ongoing">
+              <div class="booking-card__media">
+                @if (booking.carImageUrl) {
+                  <img [src]="booking.carImageUrl" [alt]="booking.carBrand + ' ' + booking.carModel" />
+                } @else {
+                  <div class="placeholder">
+                    <mat-icon>directions_car</mat-icon>
+                  </div>
+                }
+              </div>
+
+              <mat-card-content class="booking-card__content">
+                <div class="booking-card__header">
+                  <h3>{{ booking.carBrand }} {{ booking.carModel }}</h3>
+                  <p class="year-location">{{ booking.carYear }} • {{ booking.carLocation }}</p>
+                </div>
+
+                <div class="booking-card__timer ongoing">
+                  <mat-icon>timelapse</mat-icon>
+                  <span>{{ getTimeIndicator(booking, 'ongoing') }}</span>
+                </div>
+
+                <div class="booking-card__details">
+                  <div class="detail-row">
+                    <span class="label">Početak:</span>
+                    <span class="value">{{ booking.startDate | date: 'dd.MM.yyyy' }}</span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="label">Kraj:</span>
+                    <span class="value">{{ booking.endDate | date: 'dd.MM.yyyy' }}</span>
+                  </div>
+                  <div class="detail-row total">
+                    <span class="label">Ukupno:</span>
+                    <span class="value">{{ booking.totalPrice | currency: 'RSD':'symbol':'1.0-0' }}</span>
+                  </div>
+                </div>
+              </mat-card-content>
+
+              <mat-card-actions>
+                <a mat-raised-button color="primary" [routerLink]="['/cars', booking.carId]">
+                  <mat-icon>info</mat-icon>
+                  Detalji vozila
+                </a>
+              </mat-card-actions>
+            </mat-card>
+          }
+        </div>
+      </section>
+    }
+
+    <!-- Past Bookings -->
+    @if (categorizedBookings().past.length > 0) {
+      <section class="bookings__section">
+        <h2 class="section-title">
+          <mat-icon>history</mat-icon>
+          Završene
+        </h2>
+        <div class="bookings__grid">
+          @for (booking of categorizedBookings().past; track trackByBookingId($index, booking)) {
+            <mat-card class="booking-card past">
+              <div class="booking-card__media">
+                @if (booking.carImageUrl) {
+                  <img [src]="booking.carImageUrl" [alt]="booking.carBrand + ' ' + booking.carModel" />
+                } @else {
+                  <div class="placeholder">
+                    <mat-icon>directions_car</mat-icon>
+                  </div>
+                }
+              </div>
+
+              <mat-card-content class="booking-card__content">
+                <div class="booking-card__header">
+                  <h3>{{ booking.carBrand }} {{ booking.carModel }}</h3>
+                  <p class="year-location">{{ booking.carYear }} • {{ booking.carLocation }}</p>
+                </div>
+
+                <div class="booking-card__timer past">
+                  <mat-icon>check_circle</mat-icon>
+                  <span>{{ getTimeIndicator(booking, 'past') }}</span>
+                </div>
+
+                <div class="booking-card__details">
+                  <div class="detail-row">
+                    <span class="label">Početak:</span>
+                    <span class="value">{{ booking.startDate | date: 'dd.MM.yyyy' }}</span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="label">Kraj:</span>
+                    <span class="value">{{ booking.endDate | date: 'dd.MM.yyyy' }}</span>
+                  </div>
+                  <div class="detail-row total">
+                    <span class="label">Ukupno:</span>
+                    <span class="value">{{ booking.totalPrice | currency: 'RSD':'symbol':'1.0-0' }}</span>
+                  </div>
+                </div>
+
+                <!-- Review Section -->
+                <div class="booking-card__review">
+                  @if (!booking.hasReview) {
+                    <button mat-raised-button color="accent" [routerLink]="['/cars', booking.carId]" [fragment]="'reviews'">
+                      <mat-icon>rate_review</mat-icon>
+                      Dodaj recenziju
+                    </button>
+                  } @else {
+                    <div class="review-badge">
+                      <mat-icon class="star">star</mat-icon>
+                      <span class="rating">Vaša ocena: {{ booking.reviewRating }}/5</span>
+                      @if (booking.reviewComment) {
+                        <p class="comment">{{ booking.reviewComment }}</p>
+                      }
+                    </div>
+                  }
+                </div>
+              </mat-card-content>
+
+              <mat-card-actions>
+                <a mat-button color="primary" [routerLink]="['/cars', booking.carId]">
+                  <mat-icon>info</mat-icon>
+                  Detalji vozila
+                </a>
+              </mat-card-actions>
+            </mat-card>
+          }
+        </div>
+      </section>
+    }
+  }
 </section>

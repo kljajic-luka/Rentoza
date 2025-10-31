@@ -227,6 +227,216 @@
   height: 2.2rem;
 }
 
+// Edit Profile Panel - Turo-inspired trust-first design
+.profile__edit-panel {
+  margin: 2rem 0;
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.edit-card {
+  border-radius: 24px;
+  box-shadow: var(--shadow-elevated, 0 20px 48px -24px rgba(15, 23, 42, 0.3));
+  background: var(--color-surface);
+
+  mat-card-header {
+    padding: 2rem 2rem 1rem;
+
+    mat-card-title {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--color-text-primary);
+
+      mat-icon {
+        color: var(--color-primary, #2563eb);
+      }
+    }
+
+    mat-card-subtitle {
+      margin-top: 0.5rem;
+      font-size: 0.95rem;
+      color: var(--color-text-muted);
+    }
+  }
+}
+
+.edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+
+  &__section {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  &__section-title {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+
+    mat-icon {
+      font-size: 1.3rem;
+      width: 1.3rem;
+      height: 1.3rem;
+      color: var(--color-text-muted);
+    }
+  }
+
+  &__section-subtitle {
+    margin: 0;
+    font-size: 0.9rem;
+    color: var(--color-text-muted);
+  }
+
+  &__readonly-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1rem;
+  }
+
+  &__fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
+  }
+
+  &__field {
+    width: 100%;
+
+    &--full {
+      grid-column: 1 / -1;
+    }
+  }
+}
+
+// Read-only field styling - visual indication with lock icon
+.readonly-field {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.25rem;
+  border-radius: 16px;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border-subtle);
+  cursor: not-allowed;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: rgba(148, 163, 184, 0.1);
+  }
+
+  > mat-icon:first-child {
+    color: var(--color-text-muted);
+    font-size: 24px;
+    width: 24px;
+    height: 24px;
+  }
+
+  &__content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    flex: 1;
+  }
+
+  &__label {
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+  }
+
+  &__value {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    opacity: 0.7;
+  }
+
+  &__lock {
+    color: rgba(148, 163, 184, 0.5);
+    font-size: 20px;
+    width: 20px;
+    height: 20px;
+  }
+}
+
+// Edit card actions
+.edit-card__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  padding: 1.5rem 2rem;
+  border-top: 1px solid var(--color-border-subtle);
+
+  button {
+    min-width: 140px;
+    border-radius: 12px;
+    font-weight: 600;
+    height: 44px;
+
+    &[mat-raised-button] {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+
+      mat-progress-spinner {
+        display: inline-block;
+      }
+    }
+  }
+}
+
+// Snackbar styling
+::ng-deep {
+  .snackbar-success {
+    background-color: #10b981 !important;
+    color: white !important;
+
+    .mat-mdc-snack-bar-label {
+      color: white;
+    }
+  }
+
+  .snackbar-error {
+    background-color: #ef4444 !important;
+    color: white !important;
+
+    .mat-mdc-snack-bar-label {
+      color: white;
+    }
+  }
+
+  .snackbar-info {
+    background-color: #3b82f6 !important;
+    color: white !important;
+
+    .mat-mdc-snack-bar-label {
+      color: white;
+    }
+  }
+}
+
 .loading {
   padding: 3rem 0;
 }
@@ -254,5 +464,18 @@
   .profile__edit {
     width: 100%;
     justify-content: center;
+  }
+
+  .edit-form__readonly-grid,
+  .edit-form__fields {
+    grid-template-columns: 1fr;
+  }
+
+  .edit-card__actions {
+    flex-direction: column-reverse;
+
+    button {
+      width: 100%;
+    }
   }
 }

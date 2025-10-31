@@ -42,7 +42,7 @@ public class ProfileService {
                 user.getEmail(),
                 user.getPhone(),
                 List.of(user.getRole().name()),
-                null,
+                user.getAvatarUrl(),
                 user.getCreatedAt()
         );
     }
@@ -97,7 +97,8 @@ public class ProfileService {
                 user.getPhone(),
                 user.getRole().name(),
                 List.of(user.getRole().name()),
-                null,
+                user.getAvatarUrl(),
+                user.getBio(),
                 user.getCreatedAt(),
                 averageRating,
                 stats,

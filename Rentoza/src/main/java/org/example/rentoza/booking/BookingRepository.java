@@ -33,4 +33,12 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             @Param("ownerId") Long ownerId,
             @Param("status") BookingStatus status
     );
+
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.car c " +
+           "JOIN FETCH b.renter r " +
+           "LEFT JOIN FETCH c.owner " +
+           "WHERE r.id = :userId " +
+           "ORDER BY b.startDate DESC")
+    List<Booking> findByRenterIdWithDetails(@Param("userId") Long userId);
 }

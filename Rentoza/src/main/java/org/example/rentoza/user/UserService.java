@@ -4,6 +4,7 @@ import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
 import org.example.rentoza.user.dto.UserProfileDTO;
 import org.example.rentoza.user.dto.UserRegisterDTO;
+import org.example.rentoza.user.dto.UpdateProfileRequestDTO;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -135,5 +136,68 @@ public class UserService {
 
     public boolean passwordMatches(String raw, String encoded) {
         return encoder.matches(raw, encoded);
+    }
+
+    /**
+     * Secure partial profile update - only allows updating safe, non-identity fields.
+     * This enforces the trust-first identity model where sensitive fields like
+     * firstName, lastName, email, and role require verification/admin approval.
+     *
+     * @param email The authenticated user's email (from JWT)
+     * @param dto   Contains only editable fields: phone, avatarUrl, bio
+     * @return Updated user entity
+     * @throws EntityNotFoundException if user not found
+     * @throws BadRequestException     if validation fails or phone already in use
+     */
+    @Transactional
+    public User updateProfileSecure(String email, UpdateProfileRequestDTO dto) {
+        User user = getOrThrow(email);
+        boolean changed = false;
+
+        // ✅ PHONE - validate and check uniqueness
+        if (dto.getPhone() != null) {
+            String sanitized = dto.getPhone().trim().replaceAll("[^0-9]", "");
+            if (!sanitized.isBlank() && !sanitized.equals(user.getPhone())) {
+                if (!sanitized.matches("^[0-9]{8,15}$")) {
+                    throw new BadRequestException("Phone must contain 8-15 digits");
+                }
+                // Check uniqueness excluding current user
+                if (repo.existsByPhoneAndIdNot(sanitized, user.getId())) {
+                    throw new BadRequestException("Phone number is already in use");
+                }
+                user.setPhone(sanitized);
+                changed = true;
+            }
+        }
+
+        // ✅ AVATAR URL - basic validation
+        if (dto.getAvatarUrl() != null) {
+            String avatarUrl = dto.getAvatarUrl().trim();
+            if (!avatarUrl.equals(user.getAvatarUrl())) {
+                if (avatarUrl.length() > 500) {
+                    throw new BadRequestException("Avatar URL must be maximum 500 characters");
+                }
+                user.setAvatarUrl(avatarUrl.isBlank() ? null : avatarUrl);
+                changed = true;
+            }
+        }
+
+        // ✅ BIO - validate length
+        if (dto.getBio() != null) {
+            String bio = dto.getBio().trim();
+            if (!bio.equals(user.getBio())) {
+                if (bio.length() > 300) {
+                    throw new BadRequestException("Bio must be maximum 300 characters");
+                }
+                user.setBio(bio.isBlank() ? null : bio);
+                changed = true;
+            }
+        }
+
+        if (!changed) {
+            return user; // No changes, return existing user
+        }
+
+        return repo.saveAndFlush(user);
     }
 }

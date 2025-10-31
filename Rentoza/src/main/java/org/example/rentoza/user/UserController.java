@@ -139,6 +139,33 @@ public class UserController {
         }
     }
 
+    /**
+     * PATCH /api/users/me - Secure partial profile update endpoint
+     * Only allows updating safe fields: phone, avatarUrl, bio
+     * Sensitive fields (name, email, role) are blocked to enforce identity integrity
+     */
+    @PatchMapping("/me")
+    public ResponseEntity<?> updateMyProfile(
+            @RequestHeader("Authorization") String authHeader,
+            @Valid @RequestBody UpdateProfileRequestDTO dto
+    ) {
+        try {
+            String email = extractEmail(authHeader);
+            User updated = service.updateProfileSecure(email, dto);
+
+            // Return updated ProfileDetailsDTO to refresh frontend state
+            ProfileDetailsDTO details = profileService.getProfileDetails(email);
+            return ResponseEntity.ok(details);
+
+        } catch (UserService.BadRequestException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (EntityNotFoundException e) {
+            return ResponseEntity.status(404).body(Map.of("error", "User not found"));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(401).body(Map.of("error", "Unauthorized"));
+        }
+    }
+
     private String extractEmail(String authHeader) {
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             throw new RuntimeException("Missing or invalid token");

@@ -12,6 +12,7 @@ public record ProfileDetailsDTO(
         String role,
         List<String> roles,
         String avatarUrl,
+        String bio,
         Instant createdAt,
         double averageRating,
         ProfileStatsDTO stats,

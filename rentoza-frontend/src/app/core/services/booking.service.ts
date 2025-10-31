@@ -3,13 +3,19 @@ import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
 import { environment } from '@environments/environment';
-import { Booking, BookingRequest } from '@core/models/booking.model';
+import { Booking, BookingRequest, UserBooking } from '@core/models/booking.model';
 
 @Injectable({ providedIn: 'root' })
 export class BookingService {
   private readonly baseUrl = `${environment.baseApiUrl}/bookings`;
 
   constructor(private readonly http: HttpClient) {}
+
+  getMyBookings(): Observable<UserBooking[]> {
+    return this.http.get<UserBooking[]>(`${this.baseUrl}/me`, {
+      withCredentials: true,
+    });
+  }
 
   getBookingHistory(): Observable<Booking[]> {
     return this.http.get<Booking[]>(`${this.baseUrl}/me`, {

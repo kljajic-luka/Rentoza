@@ -23,11 +23,168 @@
           </div>
         </div>
       </div>
-      <button mat-stroked-button color="primary" class="profile__edit">
-        <mat-icon>edit</mat-icon>
-        Uredi profil
+      <button
+        mat-stroked-button
+        color="primary"
+        class="profile__edit"
+        (click)="isEditMode() ? cancelEdit() : enterEditMode(profile)"
+      >
+        <mat-icon>{{ isEditMode() ? 'close' : 'edit' }}</mat-icon>
+        {{ isEditMode() ? 'Otkaži' : 'Uredi profil' }}
       </button>
     </header>
+
+    <!-- Edit Profile Panel -->
+    <section class="profile__edit-panel" *ngIf="isEditMode()">
+      <mat-card class="edit-card">
+        <mat-card-header>
+          <mat-card-title>
+            <mat-icon>edit</mat-icon>
+            Uredi profil
+          </mat-card-title>
+          <mat-card-subtitle>
+            Ažurirajte svoje podatke. Neka polja zahtevaju verifikaciju identiteta.
+          </mat-card-subtitle>
+        </mat-card-header>
+        <mat-card-content>
+          <form [formGroup]="editForm" class="edit-form">
+            <!-- Read-only Fields Section -->
+            <div class="edit-form__section">
+              <h3 class="edit-form__section-title">
+                <mat-icon>lock</mat-icon>
+                Lični podaci (zaključano)
+              </h3>
+              <p class="edit-form__section-subtitle">
+                Promena ličnih podataka zahteva verifikaciju identiteta.
+              </p>
+
+              <div class="edit-form__readonly-grid">
+                <div class="readonly-field" (click)="showRestrictedFieldInfo()">
+                  <mat-icon>person</mat-icon>
+                  <div class="readonly-field__content">
+                    <span class="readonly-field__label">Ime</span>
+                    <span class="readonly-field__value">{{ profile.firstName }}</span>
+                  </div>
+                  <mat-icon class="readonly-field__lock">lock</mat-icon>
+                </div>
+
+                <div class="readonly-field" (click)="showRestrictedFieldInfo()">
+                  <mat-icon>person</mat-icon>
+                  <div class="readonly-field__content">
+                    <span class="readonly-field__label">Prezime</span>
+                    <span class="readonly-field__value">{{ profile.lastName }}</span>
+                  </div>
+                  <mat-icon class="readonly-field__lock">lock</mat-icon>
+                </div>
+
+                <div class="readonly-field" (click)="showRestrictedFieldInfo()">
+                  <mat-icon>email</mat-icon>
+                  <div class="readonly-field__content">
+                    <span class="readonly-field__label">Email</span>
+                    <span class="readonly-field__value">{{ profile.email }}</span>
+                  </div>
+                  <mat-icon class="readonly-field__lock">lock</mat-icon>
+                </div>
+
+                <div class="readonly-field">
+                  <mat-icon>badge</mat-icon>
+                  <div class="readonly-field__content">
+                    <span class="readonly-field__label">Vrsta korisnika</span>
+                    <span class="readonly-field__value">{{ profile.role === 'OWNER' ? 'Domaćin' : 'Vozač' }}</span>
+                  </div>
+                  <mat-icon class="readonly-field__lock">lock</mat-icon>
+                </div>
+              </div>
+            </div>
+
+            <mat-divider></mat-divider>
+
+            <!-- Editable Fields Section -->
+            <div class="edit-form__section">
+              <h3 class="edit-form__section-title">
+                <mat-icon>edit</mat-icon>
+                Podaci koje možete ažurirati
+              </h3>
+
+              <div class="edit-form__fields">
+                <mat-form-field appearance="outline" class="edit-form__field">
+                  <mat-label>Telefon</mat-label>
+                  <input
+                    matInput
+                    type="tel"
+                    formControlName="phone"
+                    placeholder="0612345678"
+                    maxlength="15"
+                  />
+                  <mat-icon matPrefix>phone</mat-icon>
+                  <mat-hint>8-15 cifara (samo brojevi)</mat-hint>
+                  <mat-error *ngIf="editForm.controls.phone.hasError('pattern')">
+                    Unesite ispravan broj telefona (8-15 cifara)
+                  </mat-error>
+                </mat-form-field>
+
+                <mat-form-field appearance="outline" class="edit-form__field">
+                  <mat-label>URL profilne slike</mat-label>
+                  <input
+                    matInput
+                    type="url"
+                    formControlName="avatarUrl"
+                    placeholder="https://example.com/avatar.jpg"
+                    maxlength="500"
+                  />
+                  <mat-icon matPrefix>camera_alt</mat-icon>
+                  <mat-hint>URL vaše profilne slike (maksimum 500 karaktera)</mat-hint>
+                  <mat-error *ngIf="editForm.controls.avatarUrl.hasError('maxlength')">
+                    URL ne može biti duži od 500 karaktera
+                  </mat-error>
+                </mat-form-field>
+
+                <mat-form-field appearance="outline" class="edit-form__field edit-form__field--full">
+                  <mat-label>Biografija</mat-label>
+                  <textarea
+                    matInput
+                    formControlName="bio"
+                    rows="4"
+                    maxlength="300"
+                    placeholder="Kratko o vama..."
+                  ></textarea>
+                  <mat-icon matPrefix>info</mat-icon>
+                  <mat-hint align="end">{{ editForm.value.bio?.length || 0 }}/300</mat-hint>
+                  <mat-error *ngIf="editForm.controls.bio.hasError('maxlength')">
+                    Biografija ne može biti duža od 300 karaktera
+                  </mat-error>
+                </mat-form-field>
+              </div>
+            </div>
+          </form>
+        </mat-card-content>
+        <mat-card-actions class="edit-card__actions">
+          <button
+            mat-button
+            type="button"
+            (click)="cancelEdit()"
+            [disabled]="isSaving()"
+          >
+            Otkaži
+          </button>
+          <button
+            mat-raised-button
+            color="primary"
+            type="button"
+            (click)="saveProfile()"
+            [disabled]="editForm.invalid || isSaving()"
+          >
+            <mat-icon *ngIf="!isSaving()">save</mat-icon>
+            <mat-progress-spinner
+              *ngIf="isSaving()"
+              mode="indeterminate"
+              diameter="20"
+            ></mat-progress-spinner>
+            {{ isSaving() ? 'Čuvanje...' : 'Sačuvaj promene' }}
+          </button>
+        </mat-card-actions>
+      </mat-card>
+    </section>
 
     <section class="profile__stats">
       <mat-card

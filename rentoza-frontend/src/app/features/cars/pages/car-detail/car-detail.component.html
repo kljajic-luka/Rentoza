@@ -15,7 +15,8 @@
       </div>
     </div>
 
-    <div class="car-detail__grid">
+    <!-- Two-column layout: Gallery + Booking -->
+    <div class="car-detail__gallery-wrapper">
       <mat-card class="car-detail__gallery">
         <div class="gallery__media">
           <img
@@ -45,6 +46,7 @@
         </div>
       </mat-card>
 
+      <!-- Booking Card - Sticky on Desktop -->
       <ng-container *ngIf="isAuthenticated$ | async as user; else guestBooking">
         <mat-card class="car-detail__booking">
           <mat-card-header>
@@ -120,6 +122,176 @@
           </mat-card-content>
         </mat-card>
       </ng-template>
+    </div>
+
+    <!-- Full-width sections below -->
+    <div class="car-detail__grid">
+
+      <!-- Key Specifications Section -->
+      <mat-card class="car-detail__specs">
+        <mat-card-header>
+          <mat-card-title>Ključne specifikacije</mat-card-title>
+        </mat-card-header>
+        <mat-card-content>
+          <div class="specs-grid">
+            <div class="spec-item">
+              <mat-icon>event_seat</mat-icon>
+              <div class="spec-content">
+                <span class="spec-label">Broj sedišta</span>
+                <span class="spec-value">{{ vm.car.seats || 'N/A' }}</span>
+              </div>
+            </div>
+            <div class="spec-item">
+              <mat-icon>settings</mat-icon>
+              <div class="spec-content">
+                <span class="spec-label">Menjač</span>
+                <span class="spec-value">{{ vm.car.transmissionType | translateEnum }}</span>
+              </div>
+            </div>
+            <div class="spec-item">
+              <mat-icon>local_gas_station</mat-icon>
+              <div class="spec-content">
+                <span class="spec-label">Gorivo</span>
+                <span class="spec-value">{{ vm.car.fuelType | translateEnum }}</span>
+              </div>
+            </div>
+            <div class="spec-item" *ngIf="vm.car.fuelConsumption">
+              <mat-icon>speed</mat-icon>
+              <div class="spec-content">
+                <span class="spec-label">Potrošnja</span>
+                <span class="spec-value">{{ vm.car.fuelConsumption }} L/100km</span>
+              </div>
+            </div>
+          </div>
+        </mat-card-content>
+      </mat-card>
+
+      <!-- Features Section -->
+      <mat-card class="car-detail__features" *ngIf="categorizeFeatures(vm.car.features) as categorized">
+        <mat-card-header>
+          <mat-card-title>Oprema i karakteristike</mat-card-title>
+        </mat-card-header>
+        <mat-card-content>
+          <div class="feature-category" *ngIf="categorized.safety.length">
+            <h3 class="category-title">
+              <mat-icon>security</mat-icon>
+              Sigurnost
+            </h3>
+            <mat-chip-set>
+              <mat-chip *ngFor="let feature of categorized.safety">
+                {{ feature | translateEnum }}
+              </mat-chip>
+            </mat-chip-set>
+          </div>
+
+          <mat-divider *ngIf="categorized.safety.length && categorized.connectivity.length"></mat-divider>
+
+          <div class="feature-category" *ngIf="categorized.connectivity.length">
+            <h3 class="category-title">
+              <mat-icon>bluetooth</mat-icon>
+              Povezivost
+            </h3>
+            <mat-chip-set>
+              <mat-chip *ngFor="let feature of categorized.connectivity">
+                {{ feature | translateEnum }}
+              </mat-chip>
+            </mat-chip-set>
+          </div>
+
+          <mat-divider *ngIf="categorized.connectivity.length && categorized.comfort.length"></mat-divider>
+
+          <div class="feature-category" *ngIf="categorized.comfort.length">
+            <h3 class="category-title">
+              <mat-icon>airline_seat_recline_extra</mat-icon>
+              Udobnost
+            </h3>
+            <mat-chip-set>
+              <mat-chip *ngFor="let feature of categorized.comfort">
+                {{ feature | translateEnum }}
+              </mat-chip>
+            </mat-chip-set>
+          </div>
+
+          <mat-divider *ngIf="categorized.comfort.length && categorized.additional.length"></mat-divider>
+
+          <div class="feature-category" *ngIf="categorized.additional.length">
+            <h3 class="category-title">
+              <mat-icon>add_circle</mat-icon>
+              Dodatno
+            </h3>
+            <mat-chip-set>
+              <mat-chip *ngFor="let feature of categorized.additional">
+                {{ feature | translateEnum }}
+              </mat-chip>
+            </mat-chip-set>
+          </div>
+        </mat-card-content>
+      </mat-card>
+
+      <!-- Rental Information Section -->
+      <mat-card class="car-detail__rental-info">
+        <mat-card-header>
+          <mat-card-title>Informacije o iznajmljivanju</mat-card-title>
+        </mat-card-header>
+        <mat-card-content>
+          <div class="rental-info-grid">
+            <div class="info-item">
+              <mat-icon>event_available</mat-icon>
+              <div class="info-content">
+                <span class="info-label">Politika otkazivanja</span>
+                <span class="info-value">{{ vm.car.cancellationPolicy | translateEnum }}</span>
+              </div>
+            </div>
+            <div class="info-item" *ngIf="vm.car.minRentalDays">
+              <mat-icon>calendar_today</mat-icon>
+              <div class="info-content">
+                <span class="info-label">Minimalno dana</span>
+                <span class="info-value">{{ vm.car.minRentalDays }}</span>
+              </div>
+            </div>
+            <div class="info-item" *ngIf="vm.car.maxRentalDays">
+              <mat-icon>date_range</mat-icon>
+              <div class="info-content">
+                <span class="info-label">Maksimalno dana</span>
+                <span class="info-value">{{ vm.car.maxRentalDays }}</span>
+              </div>
+            </div>
+          </div>
+        </mat-card-content>
+      </mat-card>
+
+      <!-- Rental Rules Section -->
+      <mat-card class="car-detail__rules">
+        <mat-card-header>
+          <mat-card-title>Pravila iznajmljivanja</mat-card-title>
+        </mat-card-header>
+        <mat-card-content>
+          <ul class="rules-list">
+            <li *ngFor="let rule of rentalRules">
+              <mat-icon>check_circle</mat-icon>
+              <span>{{ rule }}</span>
+            </li>
+          </ul>
+        </mat-card-content>
+      </mat-card>
+
+      <!-- Owner Information Section -->
+      <mat-card class="car-detail__owner" *ngIf="vm.car.ownerFullName || vm.car.ownerEmail">
+        <mat-card-header>
+          <mat-card-title>Informacije o vlasniku</mat-card-title>
+        </mat-card-header>
+        <mat-card-content>
+          <div class="owner-info">
+            <div class="owner-avatar">
+              <mat-icon>person</mat-icon>
+            </div>
+            <div class="owner-details">
+              <p class="owner-name" *ngIf="vm.car.ownerFullName">{{ vm.car.ownerFullName }}</p>
+              <p class="owner-email" *ngIf="vm.car.ownerEmail">{{ vm.car.ownerEmail }}</p>
+            </div>
+          </div>
+        </mat-card-content>
+      </mat-card>
     </div>
   </section>
 

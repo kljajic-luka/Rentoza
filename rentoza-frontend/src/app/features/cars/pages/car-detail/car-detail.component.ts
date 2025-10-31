@@ -10,6 +10,8 @@ import { MatNativeDateModule } from '@angular/material/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatIconModule } from '@angular/material/icon';
+import { MatChipsModule } from '@angular/material/chips';
+import { MatDividerModule } from '@angular/material/divider';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   BehaviorSubject,
@@ -27,7 +29,7 @@ import {
 import { ToastrService } from 'ngx-toastr';
 import { FlexLayoutModule } from '@ngbracket/ngx-layout';
 
-import { Car } from '@core/models/car.model';
+import { Car, Feature, CAR_RENTAL_RULES } from '@core/models/car.model';
 import { Review } from '@core/models/review.model';
 import { CarService } from '@core/services/car.service';
 import { ReviewService } from '@core/services/review.service';
@@ -35,6 +37,7 @@ import { BookingService } from '@core/services/booking.service';
 import { AuthService } from '@core/auth/auth.service';
 import { Booking } from '@core/models/booking.model';
 import { FavoriteButtonComponent } from '@shared/components/favorite-button/favorite-button.component';
+import { TranslateEnumPipe, FeatureHelper } from '@shared/pipes/translate-enum.pipe';
 
 @Component({
   selector: 'app-car-detail',
@@ -50,9 +53,12 @@ import { FavoriteButtonComponent } from '@shared/components/favorite-button/favo
     MatButtonModule,
     MatProgressSpinnerModule,
     MatIconModule,
+    MatChipsModule,
+    MatDividerModule,
     FlexLayoutModule,
     RouterModule,
     FavoriteButtonComponent,
+    TranslateEnumPipe,
   ],
   templateUrl: './car-detail.component.html',
   styleUrls: ['./car-detail.component.scss'],
@@ -94,6 +100,18 @@ export class CarDetailComponent {
 
   protected readonly isSubmitting = signal(false);
   readonly isAuthenticated$ = this.authService.currentUser$;
+
+  // Car rental rules and feature helper
+  protected readonly rentalRules = CAR_RENTAL_RULES;
+  protected readonly featureHelper = FeatureHelper;
+
+  // Categorized features for display
+  protected categorizeFeatures(features: Feature[] | undefined) {
+    if (!features || features.length === 0) {
+      return null;
+    }
+    return FeatureHelper.categorize(features);
+  }
 
   readonly dateClass = (date: Date): string | string[] => {
     if (this.isDateUnavailable(date)) {

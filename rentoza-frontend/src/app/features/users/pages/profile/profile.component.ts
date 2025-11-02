@@ -11,7 +11,17 @@ import { MatInputModule } from '@angular/material/input';
 import { MatDialogModule, MatDialog } from '@angular/material/dialog';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { FlexLayoutModule } from '@ngbracket/ngx-layout';
-import { Observable, map, shareReplay, Subject, switchMap, startWith, catchError, of, tap } from 'rxjs';
+import {
+  Observable,
+  map,
+  shareReplay,
+  Subject,
+  switchMap,
+  startWith,
+  catchError,
+  of,
+  tap,
+} from 'rxjs';
 
 import { ProfileReview, UserProfileDetails, UpdateProfileRequest } from '@core/models/user.model';
 import { UserRole } from '@core/models/user-role.type';
@@ -32,11 +42,11 @@ import { UserService } from '@core/services/user.service';
     MatInputModule,
     MatDialogModule,
     MatSnackBarModule,
-    FlexLayoutModule
+    FlexLayoutModule,
   ],
   templateUrl: './profile.component.html',
   styleUrls: ['./profile.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ProfileComponent {
   private readonly userService = inject(UserService);
@@ -54,25 +64,22 @@ export class ProfileComponent {
   protected readonly editForm = this.fb.nonNullable.group({
     phone: ['', [Validators.pattern(/^[0-9]{8,15}$/)]],
     avatarUrl: ['', [Validators.maxLength(500)]],
-    bio: ['', [Validators.maxLength(300)]]
+    bio: ['', [Validators.maxLength(300)]],
   });
 
-  private readonly roleLabels: Record<UserRole, { primary: string; secondary: string; reviews: string }> = {
+  private readonly roleLabels: Record<UserRole, { primary: string; reviews: string }> = {
     OWNER: {
       primary: 'Broj iznajmljivanja',
-      secondary: 'Broj putovanja',
-      reviews: 'Recenzije od vozača'
+      reviews: 'Recenzije od vozača',
     },
     USER: {
       primary: 'Broj putovanja',
-      secondary: 'Broj iznajmljivanja',
-      reviews: 'Recenzije od domaćina'
+      reviews: 'Recenzije od domaćina',
     },
     ADMIN: {
       primary: 'Broj putovanja',
-      secondary: 'Broj iznajmljivanja',
-      reviews: 'Recenzije'
-    }
+      reviews: 'Recenzije',
+    },
   } as const;
 
   protected readonly starRange = [0, 1, 2, 3, 4];
@@ -82,35 +89,32 @@ export class ProfileComponent {
     switchMap(() => this.userService.getProfileDetails()),
     map((profile) => {
       const labels = this.roleLabels[profile.role] ?? this.roleLabels.USER;
-      const highlightRole = profile.role === 'OWNER' ? profile.stats.hostedTrips : profile.stats.completedTrips;
-      const secondaryValue = profile.role === 'OWNER' ? profile.stats.completedTrips : profile.stats.hostedTrips;
+      const highlightRole =
+        profile.role === 'OWNER' ? profile.stats.hostedTrips : profile.stats.completedTrips;
 
       const metrics: ProfileMetric[] = [
         {
           label: labels.primary,
           value: highlightRole.toString(),
-          accent: true
-        },
-        {
-          label: labels.secondary,
-          value: secondaryValue.toString()
+          accent: true,
         },
         {
           label: 'Prosečna ocena',
-          value: profile.averageRating.toFixed(1)
-        }
+          value: profile.averageRating.toFixed(1),
+        },
       ];
 
-      const initials = `${profile.firstName?.charAt(0) ?? ''}${profile.lastName?.charAt(0) ?? ''}`
-        .toUpperCase()
-        .trim() || 'U';
+      const initials =
+        `${profile.firstName?.charAt(0) ?? ''}${profile.lastName?.charAt(0) ?? ''}`
+          .toUpperCase()
+          .trim() || 'U';
 
       return {
         ...profile,
         initials,
         metrics,
         reviewSectionTitle: labels.reviews,
-        hasReviews: profile.reviews.length > 0
+        hasReviews: profile.reviews.length > 0,
       } satisfies ProfileViewModel;
     }),
     shareReplay({ bufferSize: 1, refCount: true })
@@ -128,7 +132,7 @@ export class ProfileComponent {
     this.editForm.patchValue({
       phone: profile.phone ?? '',
       avatarUrl: profile.avatarUrl ?? '',
-      bio: profile.bio ?? ''
+      bio: profile.bio ?? '',
     });
   }
 
@@ -152,29 +156,32 @@ export class ProfileComponent {
     const request: UpdateProfileRequest = {
       phone: this.editForm.value.phone || undefined,
       avatarUrl: this.editForm.value.avatarUrl || undefined,
-      bio: this.editForm.value.bio || undefined
+      bio: this.editForm.value.bio || undefined,
     };
 
-    this.userService.updateMyProfile(request).pipe(
-      tap(() => {
-        this.snackBar.open('Profil uspešno ažuriran.', 'Zatvori', {
-          duration: 3000,
-          panelClass: ['snackbar-success']
-        });
-        this.isEditMode.set(false);
-        this.isSaving.set(false);
-        this.refreshProfile$.next();
-      }),
-      catchError((error) => {
-        const message = error.error?.error || 'Došlo je do greške prilikom ažuriranja profila.';
-        this.snackBar.open(message, 'Zatvori', {
-          duration: 5000,
-          panelClass: ['snackbar-error']
-        });
-        this.isSaving.set(false);
-        return of(null);
-      })
-    ).subscribe();
+    this.userService
+      .updateMyProfile(request)
+      .pipe(
+        tap(() => {
+          this.snackBar.open('Profil uspešno ažuriran.', 'Zatvori', {
+            duration: 3000,
+            panelClass: ['snackbar-success'],
+          });
+          this.isEditMode.set(false);
+          this.isSaving.set(false);
+          this.refreshProfile$.next();
+        }),
+        catchError((error) => {
+          const message = error.error?.error || 'Došlo je do greške prilikom ažuriranja profila.';
+          this.snackBar.open(message, 'Zatvori', {
+            duration: 5000,
+            panelClass: ['snackbar-error'],
+          });
+          this.isSaving.set(false);
+          return of(null);
+        })
+      )
+      .subscribe();
   }
 
   /**
@@ -186,7 +193,7 @@ export class ProfileComponent {
       'Zatvori',
       {
         duration: 6000,
-        panelClass: ['snackbar-info']
+        panelClass: ['snackbar-info'],
       }
     );
   }

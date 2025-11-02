@@ -3,7 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
 import { environment } from '@environments/environment';
-import { Review } from '@core/models/review.model';
+import { Review, RenterReviewRequest } from '@core/models/review.model';
 
 @Injectable({ providedIn: 'root' })
 export class ReviewService {
@@ -17,5 +17,17 @@ export class ReviewService {
 
   getRecentReviews(): Observable<Review[]> {
     return this.http.get<Review[]>(`${this.baseUrl}/reviews/recent`);
+  }
+
+  /**
+   * Submit a renter review for a completed booking
+   * POST /api/reviews/from-renter
+   */
+  submitRenterReview(request: RenterReviewRequest): Observable<{ id: number; rating: number; message: string }> {
+    return this.http.post<{ id: number; rating: number; message: string }>(
+      `${this.baseUrl}/reviews/from-renter`,
+      request,
+      { withCredentials: true }
+    );
   }
 }

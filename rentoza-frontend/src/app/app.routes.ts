@@ -47,12 +47,26 @@ export const routes: Routes = [
   },
   {
     path: 'bookings',
-    canActivate: [RoleGuard],
-    data: { roles: ['USER', 'OWNER', 'ADMIN'] },
-    loadComponent: () =>
-      import('@features/bookings/pages/booking-history/booking-history.component').then(
-        (m) => m.BookingHistoryComponent
-      )
+    children: [
+      {
+        path: '',
+        canActivate: [RoleGuard],
+        data: { roles: ['USER', 'OWNER', 'ADMIN'] },
+        loadComponent: () =>
+          import('@features/bookings/pages/booking-history/booking-history.component').then(
+            (m) => m.BookingHistoryComponent
+          )
+      },
+      {
+        path: ':id/review',
+        canActivate: [RoleGuard],
+        data: { roles: ['USER', 'OWNER', 'ADMIN'] },
+        loadComponent: () =>
+          import('@features/bookings/pages/add-review/add-review.component').then(
+            (m) => m.AddReviewComponent
+          )
+      }
+    ]
   },
   {
     path: 'favorites',

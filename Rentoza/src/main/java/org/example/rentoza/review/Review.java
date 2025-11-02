@@ -29,6 +29,27 @@ public class Review {
     @Size(max = 500)
     private String comment;
 
+    // Category-based ratings (1-5) - for detailed renter reviews
+    @Min(1)
+    @Max(5)
+    private Integer cleanlinessRating;
+
+    @Min(1)
+    @Max(5)
+    private Integer maintenanceRating;
+
+    @Min(1)
+    @Max(5)
+    private Integer communicationRating;
+
+    @Min(1)
+    @Max(5)
+    private Integer convenienceRating;
+
+    @Min(1)
+    @Max(5)
+    private Integer accuracyRating;
+
     @Column(nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 

@@ -193,7 +193,7 @@
                 <!-- Review Section -->
                 <div class="booking-card__review">
                   @if (!booking.hasReview) {
-                    <button mat-raised-button color="accent" [routerLink]="['/cars', booking.carId]" [fragment]="'reviews'">
+                    <button mat-raised-button color="accent" [routerLink]="['/bookings', booking.id, 'review']">
                       <mat-icon>rate_review</mat-icon>
                       Dodaj recenziju
                     </button>

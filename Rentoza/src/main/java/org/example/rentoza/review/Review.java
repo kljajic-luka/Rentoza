@@ -50,6 +50,15 @@ public class Review {
     @Max(5)
     private Integer accuracyRating;
 
+    // Owner review ratings (1-5) - for reviewing renters
+    @Min(1)
+    @Max(5)
+    private Integer timelinessRating;
+
+    @Min(1)
+    @Max(5)
+    private Integer respectForRulesRating;
+
     @Column(nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 

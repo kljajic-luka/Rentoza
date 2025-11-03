@@ -5,6 +5,10 @@
   transition: background-color 200ms ease;
 }
 
+.hidden {
+  display: none !important;
+}
+
 .layout-sidenav {
   width: 296px;
   background: var(--sidenav-bg);

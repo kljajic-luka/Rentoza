@@ -1,0 +1,91 @@
+<div class="owner-dashboard">
+  <header class="owner-dashboard__header">
+    <div>
+      <p class="eyebrow">KONTROLNA TABLA</p>
+      <h1>Dobro došli nazad!</h1>
+      <p class="subtitle">Pregledajte performanse svojih vozila i upravljajte rezervacijama</p>
+    </div>
+  </header>
+
+  @if (isLoading()) {
+  <div class="loading">
+    <mat-spinner diameter="48"></mat-spinner>
+  </div>
+  } @else {
+  <!-- Stats Grid -->
+  <section class="stats-grid">
+    <mat-card class="stat-card stat-card--primary">
+      <mat-icon class="stat-card__icon">directions_car</mat-icon>
+      <div class="stat-card__content">
+        <h2 class="stat-card__value">{{ stats().totalCars }}</h2>
+        <p class="stat-card__label">Ukupno vozila</p>
+      </div>
+    </mat-card>
+
+    <mat-card class="stat-card stat-card--success">
+      <mat-icon class="stat-card__icon">event</mat-icon>
+      <div class="stat-card__content">
+        <h2 class="stat-card__value">{{ stats().totalBookings }}</h2>
+        <p class="stat-card__label">Ukupne rezervacije</p>
+      </div>
+    </mat-card>
+
+    <mat-card class="stat-card stat-card--accent">
+      <mat-icon class="stat-card__icon">payments</mat-icon>
+      <div class="stat-card__content">
+        <h2 class="stat-card__value">
+          {{ stats().monthlyEarnings | currency : 'RSD' : 'symbol' : '1.0-0' }}
+        </h2>
+        <p class="stat-card__label">Mesečna zarada</p>
+      </div>
+    </mat-card>
+
+    <mat-card class="stat-card stat-card--warning">
+      <mat-icon class="stat-card__icon">star</mat-icon>
+      <div class="stat-card__content">
+        <h2 class="stat-card__value">{{ stats().averageRating }}</h2>
+        <p class="stat-card__label">Prosečna ocena</p>
+      </div>
+    </mat-card>
+  </section>
+
+  <!-- Quick Actions -->
+  <section class="quick-actions">
+    <h2 class="section-title">Brze radnje</h2>
+    <div class="actions-grid">
+      <mat-card class="action-card" [routerLink]="['/owner/cars/new']">
+        <mat-icon>add_circle</mat-icon>
+        <h3>Dodaj vozilo</h3>
+        <p>Objavite novo vozilo za iznajmljivanje</p>
+      </mat-card>
+
+      <mat-card class="action-card" [routerLink]="['/owner/cars']">
+        <mat-icon>garage</mat-icon>
+        <h3>Moja vozila</h3>
+        <p>Upravljajte svojom flotom vozila</p>
+      </mat-card>
+
+      <mat-card class="action-card" [routerLink]="['/owner/bookings']">
+        <mat-icon>event_note</mat-icon>
+        <h3>Rezervacije</h3>
+        <p>Pregledajte sve rezervacije</p>
+      </mat-card>
+
+      <mat-card class="action-card" [routerLink]="['/owner/earnings']">
+        <mat-icon>account_balance_wallet</mat-icon>
+        <h3>Zarada</h3>
+        <p>Pratite svoju zaradu</p>
+      </mat-card>
+    </div>
+  </section>
+
+  <!-- Recent Activity Placeholder -->
+  <section class="recent-activity">
+    <h2 class="section-title">Nedavna aktivnost</h2>
+    <mat-card class="empty-state-card">
+      <mat-icon>history</mat-icon>
+      <p>Nema nedavne aktivnosti</p>
+    </mat-card>
+  </section>
+  }
+</div>

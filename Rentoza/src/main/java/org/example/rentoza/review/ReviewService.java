@@ -9,6 +9,7 @@ import org.example.rentoza.car.CarRepository;
 import org.example.rentoza.review.dto.ReviewRequestDTO;
 import org.example.rentoza.review.dto.ReviewResponseDTO;
 import org.example.rentoza.review.dto.RenterReviewRequestDTO;
+import org.example.rentoza.review.dto.OwnerReviewRequestDTO;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
 import org.springframework.data.domain.PageRequest;
@@ -261,6 +262,69 @@ public class ReviewService {
         review.setCommunicationRating(dto.getCommunicationRating());
         review.setConvenienceRating(dto.getConvenienceRating());
         review.setAccuracyRating(dto.getAccuracyRating());
+        review.setCreatedAt(Instant.now());
+
+        return repo.save(review);
+    }
+
+    /**
+     * Secure owner review submission with category-based ratings.
+     * Validates:
+     * - User is authenticated owner of the booking's car
+     * - Booking status is COMPLETED
+     * - No existing owner review for this booking
+     * - All category ratings are valid (1-5)
+     */
+    @Transactional
+    public Review createOwnerReview(OwnerReviewRequestDTO dto, String ownerEmail) {
+        // 1. Get authenticated owner
+        User owner = userRepo.findByEmail(ownerEmail)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        // 2. Get booking and verify ownership + status
+        Booking booking = bookingRepo.findById(dto.getBookingId())
+                .orElseThrow(() -> new RuntimeException("Booking not found"));
+
+        // 3. Security check: Is this user the owner of the car?
+        if (!booking.getCar().getOwner().getId().equals(owner.getId())) {
+            throw new RuntimeException("Unauthorized: You can only review bookings for your own cars");
+        }
+
+        // 4. Status check: Is the booking completed?
+        if (booking.getStatus() != BookingStatus.COMPLETED) {
+            throw new RuntimeException("Reviews can only be submitted for completed bookings");
+        }
+
+        // 5. Date check: Has the rental period ended?
+        if (booking.getEndDate() != null && booking.getEndDate().isAfter(LocalDate.now())) {
+            throw new RuntimeException("You can only review after the rental period has ended");
+        }
+
+        // 6. Duplicate check: Has owner already reviewed this booking?
+        if (repo.existsByBookingAndDirection(booking, ReviewDirection.FROM_OWNER)) {
+            throw new RuntimeException("You have already reviewed this renter for this booking");
+        }
+
+        // 7. Calculate average rating from all categories
+        int totalRating = dto.getCommunicationRating() +
+                dto.getCleanlinessRating() +
+                dto.getTimelinessRating() +
+                dto.getRespectForRulesRating();
+        int averageRating = Math.round((float) totalRating / 4);
+
+        // 8. Build and save review
+        Review review = new Review();
+        review.setReviewer(owner);
+        review.setReviewee(booking.getRenter());
+        review.setCar(booking.getCar());
+        review.setBooking(booking);
+        review.setDirection(ReviewDirection.FROM_OWNER);
+        review.setRating(averageRating);
+        review.setComment(dto.getComment());
+        review.setCommunicationRating(dto.getCommunicationRating());
+        review.setCleanlinessRating(dto.getCleanlinessRating());
+        review.setTimelinessRating(dto.getTimelinessRating());
+        review.setRespectForRulesRating(dto.getRespectForRulesRating());
         review.setCreatedAt(Instant.now());
 
         return repo.save(review);

@@ -1,0 +1,54 @@
+<div class="owner-reviews">
+  <header class="owner-reviews__header">
+    <div>
+      <p class="eyebrow">RECENZIJE</p>
+      <h1>Recenzije</h1>
+      <p class="subtitle">Pregledajte primljene i poslate recenzije</p>
+    </div>
+  </header>
+
+  @if (isLoading()) {
+    <div class="loading-container">
+      <mat-spinner diameter="48"></mat-spinner>
+      <p>Učitavanje recenzija...</p>
+    </div>
+  } @else {
+    <mat-tab-group class="reviews-tabs" animationDuration="200ms">
+      <!-- Received Reviews -->
+      <mat-tab>
+        <ng-template mat-tab-label>
+          <mat-icon>thumb_up</mat-icon>
+          Primljene ({{ receivedReviews().length }})
+        </ng-template>
+
+        <div class="tab-content">
+          @if (receivedReviews().length === 0) {
+            <div class="empty-state">
+              <mat-icon>rate_review</mat-icon>
+              <h3>Još nema recenzija</h3>
+              <p>Kada zakupci ocene vaša vozila, videćete recenzije ovde.</p>
+            </div>
+          }
+        </div>
+      </mat-tab>
+
+      <!-- Given Reviews -->
+      <mat-tab>
+        <ng-template mat-tab-label>
+          <mat-icon>edit</mat-icon>
+          Poslate ({{ givenReviews().length }})
+        </ng-template>
+
+        <div class="tab-content">
+          @if (givenReviews().length === 0) {
+            <div class="empty-state">
+              <mat-icon>comment</mat-icon>
+              <h3>Još niste ocenili nijednog zakupca</h3>
+              <p>Ocenite zakupce nakon završenih rezervacija.</p>
+            </div>
+          }
+        </div>
+      </mat-tab>
+    </mat-tab-group>
+  }
+</div>

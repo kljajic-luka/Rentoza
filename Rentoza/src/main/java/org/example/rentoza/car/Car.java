@@ -57,6 +57,9 @@ public class Car {
     @Column(nullable = false)
     private String location;
 
+    // TODO: Long-term: Switch to cloud storage URLs (S3, Cloudinary, etc.)
+    // Currently supports Base64-encoded images for MVP
+    @Column(name = "image_url", columnDefinition = "LONGTEXT")
     private String imageUrl;
 
     @Column(nullable = false)
@@ -118,9 +121,11 @@ public class Car {
     @UpdateTimestamp
     private Instant updatedAt;
 
+    // TODO: Long-term: Switch to cloud storage URLs (S3, Cloudinary, etc.)
+    // Currently supports Base64-encoded images for MVP (up to 10 images)
     @ElementCollection
     @CollectionTable(name = "car_images", joinColumns = @JoinColumn(name = "car_id"))
-    @Column(name = "image_url")
+    @Column(name = "image_url", columnDefinition = "LONGTEXT")
     private List<String> imageUrls = new ArrayList<>();
 
     // 🔗 Relations

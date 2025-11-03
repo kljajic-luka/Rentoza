@@ -1,0 +1,89 @@
+.owner-reviews {
+  min-height: 100vh;
+  background: var(--color-bg);
+
+  &__header {
+    padding: 2rem 1.5rem;
+    max-width: 1200px;
+    margin: 0 auto;
+
+    h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      margin: 0.5rem 0;
+      color: var(--color-text-primary);
+    }
+
+    .subtitle {
+      color: var(--color-text-muted);
+      font-size: 1rem;
+      margin: 0.25rem 0 0 0;
+    }
+  }
+}
+
+.reviews-tabs {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1.5rem 3rem;
+
+  ::ng-deep {
+    .mat-mdc-tab .mat-icon {
+      margin-right: 0.5rem;
+    }
+
+    .mat-mdc-tab-body-wrapper {
+      margin-top: 2rem;
+    }
+  }
+}
+
+.tab-content {
+  min-height: 400px;
+}
+
+.loading-container,
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 2rem;
+  text-align: center;
+
+  mat-icon {
+    font-size: 4rem;
+    width: 4rem;
+    height: 4rem;
+    color: var(--color-text-muted);
+    opacity: 0.5;
+    margin-bottom: 1.5rem;
+  }
+
+  h3 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin: 0 0 0.5rem 0;
+  }
+
+  p {
+    color: var(--color-text-muted);
+    font-size: 1rem;
+    margin: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  .owner-reviews__header {
+    padding: 1.5rem 1rem;
+
+    h1 {
+      font-size: 1.75rem;
+    }
+  }
+
+  .reviews-tabs {
+    padding: 0 1rem 2rem;
+  }
+}

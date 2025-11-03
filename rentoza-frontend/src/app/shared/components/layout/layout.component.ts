@@ -66,32 +66,25 @@ export class LayoutComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef);
 
   protected isMobile = false;
-  protected readonly navigationLinks: NavLink[] = [
-    { label: 'Pocetna stranica', icon: 'home', route: '/' },
-    { label: 'Vozila', icon: 'directions_car', route: '/cars' },
-    {
-      label: 'Bukiranja',
-      icon: 'assignment',
-      route: '/bookings',
-      roles: ['USER', 'OWNER'],
-    },
-    {
-      label: 'Omiljena vozila',
-      icon: 'favorite',
-      route: '/favorites',
-      roles: ['USER', 'OWNER', 'ADMIN'],
-    },
-    {
-      label: 'Recenzije',
-      icon: 'reviews',
-      route: '/reviews',
-    },
-    {
-      label: 'Profil',
-      icon: 'person',
-      route: '/users/profile',
-      roles: ['USER', 'OWNER', 'ADMIN'],
-    },
+
+  // Renter navigation links (USER role)
+  protected readonly renterLinks: NavLink[] = [
+    { label: 'Početna', icon: 'home', route: '/pocetna' },
+    { label: 'Vozila', icon: 'directions_car', route: '/vozila' },
+    { label: 'Rezervacije', icon: 'assignment', route: '/bookings', roles: ['USER', 'ADMIN'] },
+    { label: 'Omiljeni', icon: 'favorite', route: '/favorites', roles: ['USER', 'ADMIN'] },
+    { label: 'Profil', icon: 'person', route: '/users/profile', roles: ['USER', 'ADMIN'] },
+  ];
+
+  // Owner navigation links (OWNER role)
+  protected readonly ownerLinks: NavLink[] = [
+    { label: 'Dashboard', icon: 'dashboard', route: '/owner/dashboard', roles: ['OWNER', 'ADMIN'] },
+    { label: 'Moja vozila', icon: 'directions_car', route: '/owner/cars', roles: ['OWNER', 'ADMIN'] },
+    { label: 'Rezervacije', icon: 'event', route: '/owner/bookings', roles: ['OWNER', 'ADMIN'] },
+    { label: 'Zarada', icon: 'account_balance_wallet', route: '/owner/earnings', roles: ['OWNER', 'ADMIN'] },
+    { label: 'Recenzije', icon: 'rate_review', route: '/owner/reviews', roles: ['OWNER', 'ADMIN'] },
+    { label: 'Verifikacija', icon: 'verified', route: '/owner/verification', roles: ['OWNER', 'ADMIN'] },
+    { label: 'Profil', icon: 'person', route: '/users/profile', roles: ['OWNER', 'ADMIN'] },
   ];
 
   protected readonly currentUser$ = this.authService.currentUser$;
@@ -116,6 +109,27 @@ export class LayoutComponent implements OnInit {
         takeUntilDestroyed(this.destroyRef)
       )
       .subscribe(() => this.sidenav?.close());
+  }
+
+  /**
+   * Get navigation links based on user role
+   */
+  protected getNavigationLinks(user: UserProfile | null): NavLink[] {
+    if (!user) {
+      return this.renterLinks; // Show renter links for guests
+    }
+
+    // Check if user is an OWNER (but not a regular USER)
+    const isOwner = user.roles?.includes('OWNER') ?? false;
+    const isRegularUser = user.roles?.includes('USER') ?? false;
+
+    // If user has OWNER role, show owner navigation
+    if (isOwner && !isRegularUser) {
+      return this.ownerLinks;
+    }
+
+    // Otherwise show renter navigation
+    return this.renterLinks;
   }
 
   protected canShowLink(link: NavLink, user: UserProfile | null): boolean {

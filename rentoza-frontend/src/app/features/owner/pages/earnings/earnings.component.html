@@ -1,0 +1,126 @@
+<div class="earnings">
+  <header class="earnings__header">
+    <div>
+      <p class="eyebrow">ZARADA</p>
+      <h1>Vaša zarada</h1>
+      <p class="subtitle">Pratite prihode od iznajmljivanja</p>
+    </div>
+
+    <mat-form-field appearance="outline" class="period-select">
+      <mat-label>Period</mat-label>
+      <mat-select [formControl]="periodControl">
+        <mat-option value="all">Sve vreme</mat-option>
+        <mat-option value="thisMonth">Ovaj mesec</mat-option>
+        <mat-option value="lastMonth">Prethodni mesec</mat-option>
+        <mat-option value="thisYear">Ova godina</mat-option>
+      </mat-select>
+    </mat-form-field>
+  </header>
+
+  @if (isLoading()) {
+    <div class="loading-container">
+      <mat-spinner diameter="48"></mat-spinner>
+      <p>Učitavanje podataka o zaradi...</p>
+    </div>
+  } @else {
+    <div class="earnings-container">
+      <!-- Summary Stats -->
+      <div class="stats-grid">
+        <mat-card class="stat-card highlight">
+          <div class="stat-icon">
+            <mat-icon>account_balance_wallet</mat-icon>
+          </div>
+          <div class="stat-content">
+            <p class="stat-label">Ukupna zarada</p>
+            <h2 class="stat-value">{{ earningsData().totalEarnings | currency:'RSD':'symbol':'1.0-0' }}</h2>
+            <p class="stat-subtitle">Svih vremena</p>
+          </div>
+        </mat-card>
+
+        <mat-card class="stat-card">
+          <div class="stat-icon">
+            <mat-icon>calendar_today</mat-icon>
+          </div>
+          <div class="stat-content">
+            <p class="stat-label">Ovaj mesec</p>
+            <h2 class="stat-value">{{ earningsData().thisMonth | currency:'RSD':'symbol':'1.0-0' }}</h2>
+            @if (isPositiveChange()) {
+              <p class="stat-change positive">
+                <mat-icon>trending_up</mat-icon>
+                +{{ getPercentageChange() | number:'1.0-1' }}% od prošlog meseca
+              </p>
+            } @else {
+              <p class="stat-change negative">
+                <mat-icon>trending_down</mat-icon>
+                {{ getPercentageChange() | number:'1.0-1' }}% od prošlog meseca
+              </p>
+            }
+          </div>
+        </mat-card>
+
+        <mat-card class="stat-card">
+          <div class="stat-icon">
+            <mat-icon>show_chart</mat-icon>
+          </div>
+          <div class="stat-content">
+            <p class="stat-label">Prosek po rezervaciji</p>
+            <h2 class="stat-value">{{ earningsData().averagePerBooking | currency:'RSD':'symbol':'1.0-0' }}</h2>
+            <p class="stat-subtitle">Prosečna zarada</p>
+          </div>
+        </mat-card>
+      </div>
+
+      <!-- Earnings by Car -->
+      <mat-card class="earnings-breakdown">
+        <mat-card-header>
+          <mat-card-title>
+            <mat-icon>directions_car</mat-icon>
+            Zarada po vozilu
+          </mat-card-title>
+        </mat-card-header>
+
+        <mat-card-content>
+          @if (earningsData().carEarnings.length === 0) {
+            <div class="empty-state">
+              <mat-icon>receipt_long</mat-icon>
+              <p>Još nemate zaradu</p>
+            </div>
+          } @else {
+            <div class="car-earnings-list">
+              @for (car of earningsData().carEarnings; track car.carId) {
+                <div class="car-earning-item">
+                  <div class="car-info">
+                    <div class="car-icon">
+                      <mat-icon>directions_car</mat-icon>
+                    </div>
+                    <div class="car-details">
+                      <h4>{{ car.brand }} {{ car.model }}</h4>
+                      <p>{{ car.bookingsCount }} rezervacija</p>
+                    </div>
+                  </div>
+                  <div class="car-amount">
+                    <span class="amount">{{ car.earnings | currency:'RSD':'symbol':'1.0-0' }}</span>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </mat-card-content>
+      </mat-card>
+
+      <!-- Info Card -->
+      <mat-card class="info-card">
+        <mat-card-content>
+          <div class="info-content">
+            <mat-icon>info</mat-icon>
+            <div>
+              <h4>Informacije o isplati</h4>
+              <p>Sredstva se isplaćuju na vaš registrovani bankovni račun 7 dana nakon završetka rezervacije.</p>
+              <p class="small">Za dodatne informacije kontaktirajte našu podršku.</p>
+            </div>
+          </div>
+        </mat-card-content>
+      </mat-card>
+    </div>
+  }
+</div>

@@ -18,21 +18,24 @@
         <ng-container *ngIf="currentUser$ | async as user; else guestLinks">
           <a
             mat-list-item
-            *ngFor="let link of navigationLinks"
+            *ngFor="let link of getNavigationLinks(user)"
             [routerLink]="link.route"
             routerLinkActive="active"
             (click)="navigate(link.route)"
-            [disabled]="!canShowLink(link, user)"
+            [class.hidden]="!canShowLink(link, user)"
           >
+            <mat-icon matListItemIcon>{{ link.icon }}</mat-icon>
             <span matListItemTitle>{{ link.label }}</span>
           </a>
         </ng-container>
         <ng-template #guestLinks>
-          <a mat-list-item (click)="navigate('/')">
+          <a mat-list-item (click)="navigate('/pocetna')">
+            <mat-icon matListItemIcon>home</mat-icon>
             <span matListItemTitle>Početna</span>
           </a>
-          <a mat-list-item (click)="navigate('/cars')">
-            <span matListItemTitle>Automobili</span>
+          <a mat-list-item (click)="navigate('/vozila')">
+            <mat-icon matListItemIcon>directions_car</mat-icon>
+            <span matListItemTitle>Vozila</span>
           </a>
         </ng-template>
       </mat-nav-list>

@@ -1,6 +1,7 @@
 import { Routes } from '@angular/router';
 
 import { RoleGuard } from '@core/guards/role.guard';
+import { RoleRedirectGuard } from '@core/guards/role-redirect.guard';
 
 export const routes: Routes = [
   {
@@ -29,10 +30,23 @@ export const routes: Routes = [
     ]
   },
   {
+    path: 'pocetna',
+    canActivate: [RoleRedirectGuard],
+    loadComponent: () =>
+      import('@features/home/pages/home/home.component').then((m) => m.HomeComponent)
+  },
+  {
+    path: 'vozila',
+    canActivate: [RoleRedirectGuard],
+    loadComponent: () =>
+      import('@features/cars/pages/car-list/car-list.component').then((m) => m.CarListComponent)
+  },
+  {
     path: 'cars',
     children: [
       {
         path: '',
+        canActivate: [RoleRedirectGuard],
         loadComponent: () =>
           import('@features/cars/pages/car-list/car-list.component').then((m) => m.CarListComponent)
       },
@@ -50,8 +64,8 @@ export const routes: Routes = [
     children: [
       {
         path: '',
-        canActivate: [RoleGuard],
-        data: { roles: ['USER', 'OWNER', 'ADMIN'] },
+        canActivate: [RoleGuard, RoleRedirectGuard],
+        data: { roles: ['USER', 'ADMIN'] },
         loadComponent: () =>
           import('@features/bookings/pages/booking-history/booking-history.component').then(
             (m) => m.BookingHistoryComponent
@@ -59,8 +73,8 @@ export const routes: Routes = [
       },
       {
         path: ':id/review',
-        canActivate: [RoleGuard],
-        data: { roles: ['USER', 'OWNER', 'ADMIN'] },
+        canActivate: [RoleGuard, RoleRedirectGuard],
+        data: { roles: ['USER', 'ADMIN'] },
         loadComponent: () =>
           import('@features/bookings/pages/add-review/add-review.component').then(
             (m) => m.AddReviewComponent
@@ -70,8 +84,8 @@ export const routes: Routes = [
   },
   {
     path: 'favorites',
-    canActivate: [RoleGuard],
-    data: { roles: ['USER', 'OWNER', 'ADMIN'] },
+    canActivate: [RoleGuard, RoleRedirectGuard],
+    data: { roles: ['USER', 'ADMIN'] },
     loadComponent: () =>
       import('@features/favorites/pages/favorites-list/favorites-list.component').then(
         (m) => m.FavoritesListComponent
@@ -83,6 +97,67 @@ export const routes: Routes = [
       import('@features/reviews/pages/review-list/review-list.component').then(
         (m) => m.ReviewListComponent
       )
+  },
+  {
+    path: 'owner',
+    canActivate: [RoleGuard, RoleRedirectGuard],
+    data: { roles: ['OWNER', 'ADMIN'] },
+    children: [
+      {
+        path: '',
+        pathMatch: 'full',
+        redirectTo: 'dashboard'
+      },
+      {
+        path: 'dashboard',
+        loadComponent: () =>
+          import('@features/owner/pages/dashboard/owner-dashboard.component').then(
+            (m) => m.OwnerDashboardComponent
+          )
+      },
+      {
+        path: 'cars',
+        loadComponent: () =>
+          import('@features/owner/pages/my-cars/my-cars.component').then(
+            (m) => m.MyCarsComponent
+          )
+      },
+      {
+        path: 'cars/new',
+        loadComponent: () =>
+          import('@features/owner/pages/add-car-wizard/add-car-wizard.component').then(
+            (m) => m.AddCarWizardComponent
+          )
+      },
+      {
+        path: 'bookings',
+        loadComponent: () =>
+          import('@features/owner/pages/bookings/owner-bookings.component').then(
+            (m) => m.OwnerBookingsComponent
+          )
+      },
+      {
+        path: 'earnings',
+        loadComponent: () =>
+          import('@features/owner/pages/earnings/earnings.component').then(
+            (m) => m.EarningsComponent
+          )
+      },
+      {
+        path: 'reviews',
+        loadComponent: () =>
+          import('@features/owner/pages/reviews/owner-reviews.component').then(
+            (m) => m.OwnerReviewsComponent
+          )
+      },
+      {
+        path: 'verification',
+        loadComponent: () =>
+          import('@features/owner/pages/verification/verification.component').then(
+            (m) => m.VerificationComponent
+          )
+      }
+    ]
   },
   {
     path: 'users',

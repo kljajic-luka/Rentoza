@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import org.example.rentoza.review.dto.ReviewRequestDTO;
 import org.example.rentoza.review.dto.ReviewResponseDTO;
 import org.example.rentoza.review.dto.RenterReviewRequestDTO;
+import org.example.rentoza.review.dto.OwnerReviewRequestDTO;
 import org.example.rentoza.security.JwtUtil;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -81,6 +82,47 @@ public class ReviewController {
 
             // Create review with full security validation
             Review saved = service.createRenterReview(dto, renterEmail);
+
+            return ResponseEntity.ok(Map.of(
+                    "id", saved.getId(),
+                    "rating", saved.getRating(),
+                    "message", "Review successfully submitted"
+            ));
+
+        } catch (RuntimeException e) {
+            // Handle specific error cases
+            String message = e.getMessage();
+            if (message.contains("Unauthorized") || message.contains("not found")) {
+                return ResponseEntity.status(403).body(Map.of("error", message));
+            } else if (message.contains("already reviewed")) {
+                return ResponseEntity.status(409).body(Map.of("error", message));
+            } else {
+                return ResponseEntity.badRequest().body(Map.of("error", message));
+            }
+        }
+    }
+
+    /**
+     * POST /api/reviews/from-owner - Secure owner review submission
+     * Creates a review from owner to renter after completing a booking.
+     * Validates authentication, booking ownership, completion status, and prevents duplicates.
+     */
+    @PostMapping("/from-owner")
+    public ResponseEntity<?> createOwnerReview(
+            @RequestBody @Valid OwnerReviewRequestDTO dto,
+            @RequestHeader("Authorization") String authHeader
+    ) {
+        try {
+            // Extract JWT token from header
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                return ResponseEntity.status(401).body(Map.of("error", "Missing or invalid Authorization header"));
+            }
+
+            String token = authHeader.substring(7);
+            String ownerEmail = jwtUtil.getEmailFromToken(token);
+
+            // Create review with full security validation
+            Review saved = service.createOwnerReview(dto, ownerEmail);
 
             return ResponseEntity.ok(Map.of(
                     "id", saved.getId(),

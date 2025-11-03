@@ -12,7 +12,7 @@ import { isWithinRadius } from '@core/utils/distance.util';
  */
 interface BackendCarDTO {
   id: string;
-  brand: string;  // Backend uses 'brand'
+  brand: string; // Backend uses 'brand'
   model: string;
   year: number;
   pricePerDay: number;
@@ -48,14 +48,14 @@ export class CarService {
     const { brand, ...rest } = backendCar;
     return {
       ...rest,
-      make: brand  // Map 'brand' to 'make'
+      make: brand, // Map 'brand' to 'make'
     } as Car;
   }
 
   getCars(): Observable<Car[]> {
-    return this.http.get<any[]>(this.baseUrl).pipe(
-      map(cars => cars.map(car => this.mapBackendCarToFrontend(car)))
-    );
+    return this.http
+      .get<any[]>(this.baseUrl)
+      .pipe(map((cars) => cars.map((car) => this.mapBackendCarToFrontend(car))));
   }
 
   /**
@@ -66,7 +66,7 @@ export class CarService {
   getCarsByLocation(location: string, radiusKm: number = 20): Observable<Car[]> {
     // Get all cars and filter client-side for radius search
     return this.getCars().pipe(
-      map(cars => cars.filter(car => isWithinRadius(car.location, location, radiusKm)))
+      map((cars) => cars.filter((car) => isWithinRadius(car.location, location, radiusKm)))
     );
   }
 
@@ -75,18 +75,84 @@ export class CarService {
    * This is a fallback method in case backend implements radius filtering
    */
   getCarsByLocationBackend(location: string): Observable<Car[]> {
-    return this.http.get<any[]>(`${this.baseUrl}/location/${location}`).pipe(
-      map(cars => cars.map(car => this.mapBackendCarToFrontend(car)))
-    );
+    return this.http
+      .get<any[]>(`${this.baseUrl}/location/${location}`)
+      .pipe(map((cars) => cars.map((car) => this.mapBackendCarToFrontend(car))));
   }
 
   getCarById(id: string): Observable<Car> {
-    return this.http.get<any>(`${this.baseUrl}/${id}`).pipe(
-      map(car => this.mapBackendCarToFrontend(car))
-    );
+    return this.http
+      .get<any>(`${this.baseUrl}/${id}`)
+      .pipe(map((car) => this.mapBackendCarToFrontend(car)));
   }
 
   getCarReviews(id: string): Observable<Review[]> {
     return this.http.get<Review[]>(`${this.baseUrl}/${id}/reviews`);
+  }
+
+  // ========== Owner Operations ==========
+
+  /**
+   * Get all cars for a specific owner
+   * @param ownerEmail Email of the owner
+   */
+  getOwnerCars(ownerEmail: string): Observable<Car[]> {
+    return this.http
+      .get<any[]>(`${this.baseUrl}/owner/${ownerEmail}`)
+      .pipe(map((cars) => cars.map((car) => this.mapBackendCarToFrontend(car))));
+  }
+
+  /**
+   * Add a new car (owner only)
+   * @param carData Car data to add (frontend format with 'make')
+   */
+  addCar(carData: Partial<Car>): Observable<Car> {
+    // Map frontend 'make' to backend 'brand'
+    const { make, ...rest } = carData;
+    const backendData = {
+      ...rest,
+      brand: make,
+    };
+
+    return this.http
+      .post<any>(`${this.baseUrl}/add`, backendData)
+      .pipe(map((car) => this.mapBackendCarToFrontend(car)));
+  }
+
+  /**
+   * Update an existing car (owner only)
+   * @param id Car ID
+   * @param carData Updated car data (frontend format with 'make')
+   */
+  updateCar(id: string, carData: Partial<Car>): Observable<Car> {
+    // Map frontend 'make' to backend 'brand'
+    const { make, ...rest } = carData;
+    const backendData = {
+      ...rest,
+      brand: make,
+    };
+
+    return this.http
+      .put<any>(`${this.baseUrl}/${id}`, backendData)
+      .pipe(map((car) => this.mapBackendCarToFrontend(car)));
+  }
+
+  /**
+   * Delete a car (owner only)
+   * @param id Car ID
+   */
+  deleteCar(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.baseUrl}/${id}`);
+  }
+
+  /**
+   * Toggle car availability (owner only)
+   * @param id Car ID
+   * @param available New availability status
+   */
+  toggleAvailability(id: string, available: boolean): Observable<Car> {
+    return this.http
+      .patch<any>(`${this.baseUrl}/${id}/availability`, { available })
+      .pipe(map((car) => this.mapBackendCarToFrontend(car)));
   }
 }

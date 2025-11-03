@@ -1,0 +1,164 @@
+<div class="owner-bookings">
+  <header class="owner-bookings__header">
+    <div>
+      <p class="eyebrow">REZERVACIJE</p>
+      <h1>Rezervacije vaših vozila</h1>
+      <p class="subtitle">Pratite sve rezervacije i upravljajte njima</p>
+    </div>
+  </header>
+
+  @if (isLoading()) {
+    <div class="loading-container">
+      <mat-spinner diameter="48"></mat-spinner>
+      <p>Učitavanje rezervacija...</p>
+    </div>
+  } @else {
+    <mat-tab-group class="bookings-tabs" animationDuration="200ms">
+      <!-- Upcoming Bookings -->
+      <mat-tab>
+        <ng-template mat-tab-label>
+          <mat-icon>event</mat-icon>
+          Predstojeće ({{ upcomingBookings().length }})
+        </ng-template>
+
+        <div class="tab-content">
+          @if (upcomingBookings().length === 0) {
+            <div class="empty-state">
+              <mat-icon>event_available</mat-icon>
+              <h3>Nema predstojećih rezervacija</h3>
+              <p>Kada zakupci rezervišu vaša vozila, videćete ih ovde.</p>
+            </div>
+          } @else {
+            <div class="bookings-grid">
+              @for (booking of upcomingBookings(); track booking.id) {
+                <mat-card class="booking-card">
+                  <mat-card-header>
+                    <mat-card-title>{{ booking.car.make }} {{ booking.car.model }}</mat-card-title>
+                    <mat-card-subtitle>{{ booking.startDate | date:'dd.MM.yyyy' }} - {{ booking.endDate | date:'dd.MM.yyyy' }}</mat-card-subtitle>
+                  </mat-card-header>
+                  <mat-card-content>
+                    <div class="booking-info">
+                      <div class="info-row">
+                        <mat-icon>person</mat-icon>
+                        <span>Zakupac: {{ booking.renter.firstName }} {{ booking.renter.lastName }}</span>
+                      </div>
+                      <div class="info-row">
+                        <mat-icon>payments</mat-icon>
+                        <span>{{ booking.totalPrice | currency:'RSD':'symbol':'1.0-0' }}</span>
+                      </div>
+                      <div class="info-row">
+                        <mat-chip [class]="getStatusClass(booking.status)">
+                          {{ getStatusLabel(booking.status) }}
+                        </mat-chip>
+                      </div>
+                    </div>
+                  </mat-card-content>
+                </mat-card>
+              }
+            </div>
+          }
+        </div>
+      </mat-tab>
+
+      <!-- Active Bookings -->
+      <mat-tab>
+        <ng-template mat-tab-label>
+          <mat-icon>directions_car</mat-icon>
+          U toku ({{ activeBookings().length }})
+        </ng-template>
+
+        <div class="tab-content">
+          @if (activeBookings().length === 0) {
+            <div class="empty-state">
+              <mat-icon>car_rental</mat-icon>
+              <h3>Nema aktivnih iznajmljivanja</h3>
+              <p>Trenutno nema vozila koja su na iznajmljivanju.</p>
+            </div>
+          } @else {
+            <div class="bookings-grid">
+              @for (booking of activeBookings(); track booking.id) {
+                <mat-card class="booking-card">
+                  <mat-card-header>
+                    <mat-card-title>{{ booking.car.make }} {{ booking.car.model }}</mat-card-title>
+                    <mat-card-subtitle>{{ booking.startDate | date:'dd.MM.yyyy' }} - {{ booking.endDate | date:'dd.MM.yyyy' }}</mat-card-subtitle>
+                  </mat-card-header>
+                  <mat-card-content>
+                    <div class="booking-info">
+                      <div class="info-row">
+                        <mat-icon>person</mat-icon>
+                        <span>Zakupac: {{ booking.renter.firstName }} {{ booking.renter.lastName }}</span>
+                      </div>
+                      <div class="info-row">
+                        <mat-icon>payments</mat-icon>
+                        <span>{{ booking.totalPrice | currency:'RSD':'symbol':'1.0-0' }}</span>
+                      </div>
+                      <div class="info-row">
+                        <mat-chip class="status-active">
+                          U toku
+                        </mat-chip>
+                      </div>
+                    </div>
+                  </mat-card-content>
+                </mat-card>
+              }
+            </div>
+          }
+        </div>
+      </mat-tab>
+
+      <!-- Completed Bookings -->
+      <mat-tab>
+        <ng-template mat-tab-label>
+          <mat-icon>check_circle</mat-icon>
+          Završene ({{ completedBookings().length }})
+        </ng-template>
+
+        <div class="tab-content">
+          @if (completedBookings().length === 0) {
+            <div class="empty-state">
+              <mat-icon>history</mat-icon>
+              <h3>Nema završenih rezervacija</h3>
+              <p>Ovde će se pojaviti sve završene rezervacije.</p>
+            </div>
+          } @else {
+            <div class="bookings-grid">
+              @for (booking of completedBookings(); track booking.id) {
+                <mat-card class="booking-card">
+                  <mat-card-header>
+                    <mat-card-title>{{ booking.car.make }} {{ booking.car.model }}</mat-card-title>
+                    <mat-card-subtitle>{{ booking.startDate | date:'dd.MM.yyyy' }} - {{ booking.endDate | date:'dd.MM.yyyy' }}</mat-card-subtitle>
+                  </mat-card-header>
+                  <mat-card-content>
+                    <div class="booking-info">
+                      <div class="info-row">
+                        <mat-icon>person</mat-icon>
+                        <span>Zakupac: {{ booking.renter.firstName }} {{ booking.renter.lastName }}</span>
+                      </div>
+                      <div class="info-row">
+                        <mat-icon>payments</mat-icon>
+                        <span>{{ booking.totalPrice | currency:'RSD':'symbol':'1.0-0' }}</span>
+                      </div>
+                      <div class="info-row">
+                        <mat-chip class="status-completed">
+                          Završeno
+                        </mat-chip>
+                      </div>
+                    </div>
+                  </mat-card-content>
+                  <mat-card-actions>
+                    @if (canReviewRenter(booking)) {
+                      <button mat-raised-button color="primary" (click)="reviewRenter(booking)">
+                        <mat-icon>rate_review</mat-icon>
+                        Ostavi recenziju
+                      </button>
+                    }
+                  </mat-card-actions>
+                </mat-card>
+              }
+            </div>
+          }
+        </div>
+      </mat-tab>
+    </mat-tab-group>
+  }
+</div>

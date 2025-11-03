@@ -1,0 +1,112 @@
+<div class="my-cars">
+  <header class="my-cars__header">
+    <div>
+      <p class="eyebrow">UPRAVLJANJE</p>
+      <h1>Moja vozila</h1>
+      <p class="subtitle">Pregledajte i upravljajte svojom flotom vozila</p>
+    </div>
+  </header>
+
+  @if (isLoading()) {
+    <div class="loading">
+      <mat-spinner diameter="48"></mat-spinner>
+    </div>
+  } @else if (cars().length === 0) {
+    <div class="empty-state">
+      <mat-icon>directions_car_filled</mat-icon>
+      <h2>Nemate vozila</h2>
+      <p>Dodajte svoje prvo vozilo i počnite da zarađujete</p>
+      <button mat-raised-button color="primary" [routerLink]="['/owner/cars/new']">
+        <mat-icon>add_circle</mat-icon>
+        Dodaj vozilo
+      </button>
+    </div>
+  } @else {
+    <div class="cars-grid">
+      @for (car of cars(); track car.id) {
+        <mat-card class="car-card">
+          <div class="car-card__image-wrapper">
+            @if (car.imageUrl) {
+              <img [src]="car.imageUrl" [alt]="car.make + ' ' + car.model" class="car-card__image" />
+            } @else {
+              <div class="car-card__placeholder">
+                <mat-icon>directions_car</mat-icon>
+              </div>
+            }
+            <div class="car-card__status-badge" [ngClass]="getStatusClass(car)">
+              {{ getStatusLabel(car) }}
+            </div>
+          </div>
+
+          <mat-card-content class="car-card__content">
+            <div class="car-card__header">
+              <h3 class="car-card__title">{{ car.make }} {{ car.model }}</h3>
+              <button mat-icon-button [matMenuTriggerFor]="menu" class="car-card__menu">
+                <mat-icon>more_vert</mat-icon>
+              </button>
+              <mat-menu #menu="matMenu">
+                <button mat-menu-item (click)="editCar(car)">
+                  <mat-icon>edit</mat-icon>
+                  <span>Uredi</span>
+                </button>
+                <button mat-menu-item (click)="toggleAvailability(car)">
+                  <mat-icon>{{ car.available ? 'visibility_off' : 'visibility' }}</mat-icon>
+                  <span>{{ car.available ? 'Deaktiviraj' : 'Aktiviraj' }}</span>
+                </button>
+                <button mat-menu-item (click)="previewCar(car)">
+                  <mat-icon>open_in_new</mat-icon>
+                  <span>Pregled</span>
+                </button>
+                <mat-divider></mat-divider>
+                <button mat-menu-item (click)="deleteCar(car)" class="delete-action">
+                  <mat-icon>delete</mat-icon>
+                  <span>Obriši</span>
+                </button>
+              </mat-menu>
+            </div>
+
+            <p class="car-card__year">{{ car.year }}</p>
+
+            <div class="car-card__details">
+              <div class="detail-item">
+                <mat-icon>location_on</mat-icon>
+                <span>{{ car.location }}</span>
+              </div>
+              <div class="detail-item">
+                <mat-icon>event_seat</mat-icon>
+                <span>{{ car.seats }} sedišta</span>
+              </div>
+              @if (car.rating) {
+                <div class="detail-item">
+                  <mat-icon class="star-icon">star</mat-icon>
+                  <span>{{ car.rating }}</span>
+                </div>
+              }
+            </div>
+
+            <div class="car-card__price">
+              <span class="price-amount">{{ car.pricePerDay | currency: 'RSD':'symbol':'1.0-0' }}</span>
+              <span class="price-label">/ dan</span>
+            </div>
+          </mat-card-content>
+
+          <mat-card-actions class="car-card__actions">
+            <button mat-button color="primary" (click)="editCar(car)">
+              <mat-icon>edit</mat-icon>
+              Uredi
+            </button>
+            <button mat-button (click)="previewCar(car)">
+              <mat-icon>visibility</mat-icon>
+              Pregled
+            </button>
+          </mat-card-actions>
+        </mat-card>
+      }
+    </div>
+  }
+
+  <!-- Floating Action Button -->
+  <button mat-fab color="primary" class="fab-add" [routerLink]="['/owner/cars/new']" aria-label="Dodaj vozilo">
+    <mat-icon>add</mat-icon>
+  </button>
+</div>

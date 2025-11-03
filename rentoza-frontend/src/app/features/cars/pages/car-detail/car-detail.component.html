@@ -5,7 +5,7 @@
         <p class="eyebrow">Ekskluzivna ponuda</p>
         <div style="display: flex; align-items: center; gap: 1rem;">
           <h1 style="margin: 0;">{{ vm.car.make }} {{ vm.car.model }}</h1>
-          <app-favorite-button [carId]="+vm.car.id"></app-favorite-button>
+          <app-favorite-button *ngIf="!(isOwner$ | async)" [carId]="+vm.car.id"></app-favorite-button>
         </div>
         <p class="subtitle">{{ vm.car.year }} • {{ vm.car.location }}</p>
       </div>
@@ -46,9 +46,9 @@
         </div>
       </mat-card>
 
-      <!-- Booking Card - Sticky on Desktop -->
+      <!-- Booking Card - Sticky on Desktop (hidden for owners) -->
       <ng-container *ngIf="isAuthenticated$ | async as user; else guestBooking">
-        <mat-card class="car-detail__booking">
+        <mat-card *ngIf="!(isOwner$ | async)" class="car-detail__booking">
           <mat-card-header>
             <div class="booking__title">
               <mat-card-title>Zahtev za rezervaciju</mat-card-title>
@@ -107,7 +107,7 @@
         </mat-card>
       </ng-container>
       <ng-template #guestBooking>
-        <mat-card class="car-detail__booking car-detail__booking--guest">
+        <mat-card *ngIf="!(isOwner$ | async)" class="car-detail__booking car-detail__booking--guest">
           <mat-card-header>
             <div class="booking__title">
               <mat-card-title>Prijavite se da biste rezervisali</mat-card-title>

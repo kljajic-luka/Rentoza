@@ -46,7 +46,8 @@ public class CarService {
 
     @Transactional(readOnly = true)
     public List<CarResponseDTO> getAllCars() {
-        return repo.findAll()
+        // Public listing - only show available cars to users
+        return repo.findByAvailableTrue()
                 .stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
@@ -54,7 +55,8 @@ public class CarService {
 
     @Transactional(readOnly = true)
     public List<CarResponseDTO> getCarsByLocation(String location) {
-        return repo.findByLocationIgnoreCase(location)
+        // Public listing - only show available cars to users
+        return repo.findByLocationIgnoreCaseAndAvailableTrue(location)
                 .stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
@@ -74,6 +76,108 @@ public class CarService {
                 .orElseThrow(() -> new RuntimeException("Car not found with ID: " + id));
 
         return mapToResponse(car);
+    }
+
+    @Transactional
+    public CarResponseDTO updateCar(Long carId, CarRequestDTO dto, User requester) {
+        Car car = repo.findById(carId)
+                .orElseThrow(() -> new RuntimeException("Car not found with ID: " + carId));
+
+        // Verify ownership
+        if (!car.getOwner().getId().equals(requester.getId())) {
+            throw new RuntimeException("You do not have permission to edit this car");
+        }
+
+        // Update fields
+        if (dto.getBrand() != null && !dto.getBrand().isBlank()) {
+            car.setBrand(dto.getBrand().trim());
+        }
+        if (dto.getModel() != null && !dto.getModel().isBlank()) {
+            car.setModel(dto.getModel().trim());
+        }
+        if (dto.getYear() != null) {
+            car.setYear(dto.getYear());
+        }
+        if (dto.getPricePerDay() != null && dto.getPricePerDay() > 0) {
+            car.setPricePerDay(dto.getPricePerDay());
+        }
+        if (dto.getLocation() != null && !dto.getLocation().isBlank()) {
+            car.setLocation(dto.getLocation().trim().toLowerCase());
+        }
+        if (dto.getDescription() != null) {
+            car.setDescription(dto.getDescription());
+        }
+        if (dto.getSeats() != null) {
+            car.setSeats(dto.getSeats());
+        }
+        if (dto.getFuelType() != null) {
+            car.setFuelType(dto.getFuelType());
+        }
+        if (dto.getFuelConsumption() != null) {
+            car.setFuelConsumption(dto.getFuelConsumption());
+        }
+        if (dto.getTransmissionType() != null) {
+            car.setTransmissionType(dto.getTransmissionType());
+        }
+        if (dto.getFeatures() != null) {
+            car.getFeatures().clear();
+            car.getFeatures().addAll(dto.getFeatures());
+        }
+        if (dto.getAddOns() != null) {
+            car.getAddOns().clear();
+            car.getAddOns().addAll(dto.getAddOns());
+        }
+        if (dto.getCancellationPolicy() != null) {
+            car.setCancellationPolicy(dto.getCancellationPolicy());
+        }
+        if (dto.getMinRentalDays() != null) {
+            car.setMinRentalDays(dto.getMinRentalDays());
+        }
+        if (dto.getMaxRentalDays() != null) {
+            car.setMaxRentalDays(dto.getMaxRentalDays());
+        }
+        if (dto.getImageUrl() != null) {
+            car.setImageUrl(dto.getImageUrl());
+        }
+        if (dto.getImageUrls() != null) {
+            car.getImageUrls().clear();
+            car.getImageUrls().addAll(dto.getImageUrls());
+        }
+
+        Car savedCar = repo.save(car);
+        // Return DTO to avoid lazy initialization issues
+        return mapToResponse(savedCar);
+    }
+
+    @Transactional
+    public CarResponseDTO toggleAvailability(Long carId, boolean available, User requester) {
+        Car car = repo.findById(carId)
+                .orElseThrow(() -> new RuntimeException("Car not found with ID: " + carId));
+
+        // Verify ownership
+        if (!car.getOwner().getId().equals(requester.getId())) {
+            throw new RuntimeException("You do not have permission to modify this car");
+        }
+
+        car.setAvailable(available);
+        Car savedCar = repo.save(car);
+        // Return DTO to avoid lazy initialization issues
+        return mapToResponse(savedCar);
+    }
+
+    @Transactional
+    public void deleteCar(Long carId, User requester) {
+        Car car = repo.findById(carId)
+                .orElseThrow(() -> new RuntimeException("Car not found with ID: " + carId));
+
+        // Verify ownership
+        if (!car.getOwner().getId().equals(requester.getId())) {
+            throw new RuntimeException("You do not have permission to delete this car");
+        }
+
+        // Cascade delete will handle car_images, car_features, car_add_ons
+        // due to orphanRemoval = true in entity
+        repo.delete(car);
     }
 
     private CarResponseDTO mapToResponse(Car car) {

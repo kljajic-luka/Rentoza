@@ -329,4 +329,32 @@ public class ReviewService {
 
         return repo.save(review);
     }
+
+    /**
+     * Get reviews received by a user (reviews where they are the reviewee)
+     * Used for owner reviews page - shows reviews FROM renters
+     */
+    public List<ReviewResponseDTO> getReviewsReceivedByEmail(String email) {
+        List<Review> reviews = userRepo.findByEmail(email)
+                .map(repo::findByReviewee)
+                .orElseGet(List::of);
+
+        return reviews.stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    /**
+     * Get reviews given by owner (reviews where owner is the reviewer)
+     * Used for owner reviews page - shows reviews TO renters
+     */
+    public List<ReviewResponseDTO> getReviewsGivenByOwner(String email) {
+        List<Review> reviews = userRepo.findByEmail(email)
+                .map(owner -> repo.findByReviewerAndDirection(owner, ReviewDirection.FROM_OWNER))
+                .orElseGet(List::of);
+
+        return reviews.stream()
+                .map(this::toResponse)
+                .toList();
+    }
 }

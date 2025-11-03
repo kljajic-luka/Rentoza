@@ -2,14 +2,24 @@ import { Car } from './car.model';
 import { User } from './user.model';
 
 export interface Booking {
-  id: string;
-  car: Pick<Car, 'id' | 'make' | 'model' | 'imageUrl'>;
-  renter: Pick<User, 'id' | 'firstName' | 'lastName'>;
+  id: string | number;
+  car: {
+    id: string | number;
+    make: string;
+    model: string;
+    imageUrl?: string;
+  };
+  renter: {
+    id: string | number;
+    firstName?: string;
+    lastName?: string;
+  };
   startDate: string;
   endDate: string;
   totalPrice: number;
-  status: 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED';
+  status: 'PENDING' | 'CONFIRMED' | 'ACTIVE' | 'CANCELLED' | 'COMPLETED';
   createdAt: string;
+  hasOwnerReview?: boolean;
 }
 
 export interface BookingRequest {

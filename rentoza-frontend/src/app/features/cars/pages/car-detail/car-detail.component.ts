@@ -100,6 +100,9 @@ export class CarDetailComponent {
 
   protected readonly isSubmitting = signal(false);
   readonly isAuthenticated$ = this.authService.currentUser$;
+  readonly isOwner$ = this.authService.currentUser$.pipe(
+    map(user => user?.roles?.includes('OWNER') ?? false)
+  );
 
   // Car rental rules and feature helper
   protected readonly rentalRules = CAR_RENTAL_RULES;

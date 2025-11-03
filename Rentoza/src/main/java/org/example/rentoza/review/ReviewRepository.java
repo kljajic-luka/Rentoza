@@ -68,4 +68,27 @@ public interface ReviewRepository extends JpaRepository<Review, Long> {
 
     @Query("SELECT r FROM Review r WHERE r.booking.id IN :bookingIds AND r.direction = :direction")
     List<Review> findByBookingIdInAndDirection(@Param("bookingIds") List<Long> bookingIds, @Param("direction") ReviewDirection direction);
+
+    @Query("""
+            SELECT r
+            FROM Review r
+            JOIN FETCH r.reviewer
+            JOIN FETCH r.reviewee
+            JOIN FETCH r.car
+            WHERE r.reviewee = :user
+            ORDER BY r.createdAt DESC
+            """)
+    List<Review> findByReviewee(@Param("user") User user);
+
+    @Query("""
+            SELECT r
+            FROM Review r
+            JOIN FETCH r.reviewer
+            JOIN FETCH r.reviewee
+            JOIN FETCH r.car
+            WHERE r.reviewer = :user
+              AND r.direction = :direction
+            ORDER BY r.createdAt DESC
+            """)
+    List<Review> findByReviewerAndDirection(@Param("user") User user, @Param("direction") ReviewDirection direction);
 }

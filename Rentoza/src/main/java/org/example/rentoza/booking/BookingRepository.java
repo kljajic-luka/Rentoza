@@ -1,5 +1,6 @@
 package org.example.rentoza.booking;
 
+import org.example.rentoza.car.Car;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -12,6 +13,9 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     @Query("SELECT b FROM Booking b JOIN FETCH b.renter JOIN FETCH b.car WHERE b.car.id = :carId")
     List<Booking> findByCarId(@Param("carId") Long carId);
     List<Booking> findByRenterEmailIgnoreCase(String email);
+
+    @Query("SELECT b FROM Booking b JOIN FETCH b.renter JOIN FETCH b.car WHERE b.car = :car")
+    List<Booking> findByCar(@Param("car") Car car);
 
     List<Booking> findByCarIdAndEndDateAfterAndStartDateBefore(Long carId, LocalDate start, LocalDate end);
 

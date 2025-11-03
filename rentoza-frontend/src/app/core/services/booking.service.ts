@@ -34,4 +34,13 @@ export class BookingService {
       withCredentials: true,
     });
   }
+
+  /**
+   * Get all bookings for owner's cars
+   */
+  getOwnerBookings(ownerEmail: string): Observable<Booking[]> {
+    return this.http.get<Booking[]>(`${environment.baseApiUrl}/owner/bookings/${ownerEmail}`, {
+      withCredentials: true,
+    });
+  }
 }

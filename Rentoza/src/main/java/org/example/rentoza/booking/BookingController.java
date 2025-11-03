@@ -34,15 +34,7 @@ public class BookingController {
     public ResponseEntity<?> createBooking(@RequestBody BookingRequestDTO dto, @RequestHeader("Authorization") String authHeader) {
         try {
             Booking booking = service.createBooking(dto, authHeader);
-            return ResponseEntity.ok(new BookingResponseDTO(
-                    booking.getId(),
-                    booking.getCar().getId(),
-                    booking.getRenter().getEmail(),
-                    booking.getStartDate(),
-                    booking.getEndDate(),
-                    booking.getTotalPrice(),
-                    booking.getStatus().name()
-            ));
+            return ResponseEntity.ok(new BookingResponseDTO(booking));
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
@@ -62,15 +54,7 @@ public class BookingController {
     public ResponseEntity<?> cancelBooking(@PathVariable Long id) {
         try {
             Booking booking = service.cancelBooking(id);
-            return ResponseEntity.ok(new BookingResponseDTO(
-                    booking.getId(),
-                    booking.getCar().getId(),
-                    booking.getRenter().getEmail(),
-                    booking.getStartDate(),
-                    booking.getEndDate(),
-                    booking.getTotalPrice(),
-                    booking.getStatus().name()
-            ));
+            return ResponseEntity.ok(new BookingResponseDTO(booking));
         } catch (RuntimeException e) {
             return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
         }

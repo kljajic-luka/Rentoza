@@ -142,4 +142,22 @@ public class ReviewController {
             }
         }
     }
+
+    /**
+     * GET /api/reviews/received/{email} - Get reviews received by owner
+     * Returns all reviews where the owner is the reviewee (reviews from renters)
+     */
+    @GetMapping("/received/{email}")
+    public ResponseEntity<List<ReviewResponseDTO>> getReceivedReviews(@PathVariable String email) {
+        return ResponseEntity.ok(service.getReviewsReceivedByEmail(email));
+    }
+
+    /**
+     * GET /api/reviews/from-owner/{email} - Get reviews given by owner
+     * Returns all reviews where the owner is the reviewer (reviews to renters)
+     */
+    @GetMapping("/from-owner/{email}")
+    public ResponseEntity<List<ReviewResponseDTO>> getReviewsFromOwner(@PathVariable String email) {
+        return ResponseEntity.ok(service.getReviewsGivenByOwner(email));
+    }
 }

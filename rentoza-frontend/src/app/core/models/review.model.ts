@@ -33,6 +33,18 @@ export interface RenterReviewRequest {
 }
 
 /**
+ * Request payload for owner-to-renter review with category ratings
+ */
+export interface OwnerReviewRequest {
+  bookingId: number;
+  communicationRating: number;
+  cleanlinessRating: number;
+  timelinessRating: number;
+  respectForRulesRating: number;
+  comment?: string;
+}
+
+/**
  * Review categories for UI display
  */
 export interface ReviewCategory {
@@ -48,4 +60,21 @@ export const REVIEW_CATEGORIES: Omit<ReviewCategory, 'rating'>[] = [
   { key: 'communicationRating', label: 'Komunikacija', icon: 'chat' },
   { key: 'convenienceRating', label: 'Pogodnost', icon: 'star' },
   { key: 'accuracyRating', label: 'Tačnost opisa', icon: 'verified' },
+];
+
+/**
+ * Review categories for owner reviews of renters
+ */
+export interface OwnerReviewCategory {
+  key: keyof Omit<OwnerReviewRequest, 'bookingId' | 'comment'>;
+  label: string;
+  icon: string;
+  rating: number;
+}
+
+export const OWNER_REVIEW_CATEGORIES: Omit<OwnerReviewCategory, 'rating'>[] = [
+  { key: 'communicationRating', label: 'Komunikacija', icon: 'chat' },
+  { key: 'cleanlinessRating', label: 'Čistoća vozila', icon: 'cleaning_services' },
+  { key: 'timelinessRating', label: 'Blagovremenost', icon: 'schedule' },
+  { key: 'respectForRulesRating', label: 'Poštovanje pravila', icon: 'gavel' },
 ];

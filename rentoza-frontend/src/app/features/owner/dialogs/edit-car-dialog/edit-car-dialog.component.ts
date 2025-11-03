@@ -1,83 +1,61 @@
-import { Component, OnInit, inject, signal, ViewChild } from '@angular/core';
+import { Component, Inject, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Router, RouterLink } from '@angular/router';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { MatStepperModule, MatStepper } from '@angular/material/stepper';
+import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
-import { MatIconModule } from '@angular/material/icon';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
-import { MatRadioModule } from '@angular/material/radio';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatChipsModule } from '@angular/material/chips';
-import { MatCardModule } from '@angular/material/card';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { STEPPER_GLOBAL_OPTIONS } from '@angular/cdk/stepper';
+import { MatIconModule } from '@angular/material/icon';
 
 import {
+  Car,
   FuelType,
   TransmissionType,
   Feature,
   CancellationPolicy,
-  CAR_RENTAL_RULES,
-  Car,
 } from '@core/models/car.model';
 import { CarService } from '@core/services/car.service';
-import { AuthService } from '@core/auth/auth.service';
 
 @Component({
-  selector: 'app-add-car-wizard',
+  selector: 'app-edit-car-dialog',
   standalone: true,
   imports: [
     CommonModule,
     ReactiveFormsModule,
-    RouterLink,
-    MatStepperModule,
+    MatDialogModule,
     MatButtonModule,
-    MatIconModule,
     MatFormFieldModule,
     MatInputModule,
     MatSelectModule,
-    MatRadioModule,
     MatCheckboxModule,
     MatChipsModule,
-    MatCardModule,
     MatProgressSpinnerModule,
     MatSnackBarModule,
+    MatIconModule,
   ],
-  providers: [
-    {
-      provide: STEPPER_GLOBAL_OPTIONS,
-      useValue: { displayDefaultIndicatorType: false, showError: true },
-    },
-  ],
-  templateUrl: './add-car-wizard.component.html',
-  styleUrls: ['./add-car-wizard.component.scss'],
+  templateUrl: './edit-car-dialog.component.html',
+  styleUrls: ['./edit-car-dialog.component.scss'],
 })
-export class AddCarWizardComponent implements OnInit {
+export class EditCarDialogComponent implements OnInit {
   private readonly fb = inject(FormBuilder);
-  private readonly router = inject(Router);
-  private readonly snackBar = inject(MatSnackBar);
   private readonly carService = inject(CarService);
-  private readonly authService = inject(AuthService);
-
-  @ViewChild('stepper') stepper!: MatStepper;
+  private readonly snackBar = inject(MatSnackBar);
+  private readonly dialogRef = inject(MatDialogRef<EditCarDialogComponent>);
 
   protected readonly isSubmitting = signal(false);
   protected readonly selectedFeatures = signal<Feature[]>([]);
-  protected readonly addOns = signal<string[]>([]);
-  protected readonly imageUrls = signal<string[]>([]);
 
   // Enums for templates
   protected readonly FuelType = FuelType;
   protected readonly TransmissionType = TransmissionType;
   protected readonly CancellationPolicy = CancellationPolicy;
   protected readonly Feature = Feature;
-  protected readonly rentalRules = CAR_RENTAL_RULES;
 
-  // Arrays for templates (to avoid Serbian characters in template)
   protected readonly fuelTypes = [
     FuelType.BENZIN,
     FuelType.DIZEL,
@@ -93,7 +71,6 @@ export class AddCarWizardComponent implements OnInit {
     CancellationPolicy.NON_REFUNDABLE,
   ];
 
-  // Grouped features
   protected readonly featureGroups = {
     safety: [
       Feature.ABS,
@@ -134,8 +111,7 @@ export class AddCarWizardComponent implements OnInit {
     ],
   };
 
-  // Step 1: Basic Information
-  protected readonly basicInfoForm = this.fb.nonNullable.group({
+  protected readonly editForm = this.fb.nonNullable.group({
     brand: ['', [Validators.required, Validators.minLength(2)]],
     model: ['', [Validators.required, Validators.minLength(2)]],
     year: [
@@ -145,28 +121,42 @@ export class AddCarWizardComponent implements OnInit {
     location: ['', [Validators.required, Validators.minLength(2)]],
     pricePerDay: [0, [Validators.required, Validators.min(10)]],
     description: ['', [Validators.maxLength(1000)]],
-  });
-
-  // Step 2: Specifications
-  protected readonly specificationsForm = this.fb.nonNullable.group({
     seats: [5, [Validators.required, Validators.min(2), Validators.max(9)]],
     fuelType: [FuelType.BENZIN, [Validators.required]],
     transmissionType: [TransmissionType.MANUAL, [Validators.required]],
     fuelConsumption: [0, [Validators.min(0), Validators.max(50)]],
-  });
-
-  // Step 5: Policies
-  protected readonly policiesForm = this.fb.nonNullable.group({
     cancellationPolicy: [CancellationPolicy.FLEXIBLE, [Validators.required]],
     minRentalDays: [1, [Validators.required, Validators.min(1)]],
     maxRentalDays: [30, [Validators.required, Validators.min(1)]],
   });
 
+  constructor(@Inject(MAT_DIALOG_DATA) public data: { car: Car }) {}
+
   ngOnInit(): void {
-    // Initialize with default values
+    // Pre-fill form with existing car data
+    const car = this.data.car;
+    this.editForm.patchValue({
+      brand: car.make,
+      model: car.model,
+      year: car.year,
+      location: car.location,
+      pricePerDay: car.pricePerDay,
+      description: car.description || '',
+      seats: car.seats || 5,
+      fuelType: car.fuelType || FuelType.BENZIN,
+      transmissionType: car.transmissionType || TransmissionType.MANUAL,
+      fuelConsumption: car.fuelConsumption || 0,
+      cancellationPolicy: car.cancellationPolicy || CancellationPolicy.FLEXIBLE,
+      minRentalDays: car.minRentalDays || 1,
+      maxRentalDays: car.maxRentalDays || 30,
+    });
+
+    // Pre-select features
+    if (car.features) {
+      this.selectedFeatures.set([...car.features]);
+    }
   }
 
-  // Feature Selection
   protected toggleFeature(feature: Feature): void {
     const current = this.selectedFeatures();
     const index = current.indexOf(feature);
@@ -182,102 +172,45 @@ export class AddCarWizardComponent implements OnInit {
     return this.selectedFeatures().includes(feature);
   }
 
-  // Add-ons Management
-  protected addAddOn(input: HTMLInputElement): void {
-    const value = input.value.trim();
-    if (value && !this.addOns().includes(value)) {
-      this.addOns.update((addOns) => [...addOns, value]);
-      input.value = '';
-    }
-  }
-
-  protected removeAddOn(addOn: string): void {
-    this.addOns.update((addOns) => addOns.filter((a) => a !== addOn));
-  }
-
-  // Photo Management
-  protected handleFileSelect(event: Event): void {
-    const input = event.target as HTMLInputElement;
-    if (!input.files) return;
-
-    const files = Array.from(input.files);
-    const maxFiles = 10 - this.imageUrls().length;
-
-    files.slice(0, maxFiles).forEach((file) => {
-      if (file.size > 5 * 1024 * 1024) {
-        this.snackBar.open('Slika je prevelika (max 5MB)', 'Zatvori', { duration: 3000 });
-        return;
-      }
-
-      const reader = new FileReader();
-      reader.onload = () => {
-        this.imageUrls.update((urls) => [...urls, reader.result as string]);
-      };
-      reader.readAsDataURL(file);
-    });
-
-    input.value = '';
-  }
-
-  protected removeImage(index: number): void {
-    this.imageUrls.update((urls) => urls.filter((_, i) => i !== index));
-  }
-
-  // Form Submission
-  protected async submitForm(): Promise<void> {
+  protected submitForm(): void {
     if (this.isSubmitting()) return;
 
-    // Validate all steps
-    if (
-      this.basicInfoForm.invalid ||
-      this.specificationsForm.invalid ||
-      this.policiesForm.invalid
-    ) {
+    if (this.editForm.invalid) {
       this.snackBar.open('Molimo popunite sva obavezna polja', 'Zatvori', { duration: 3000 });
-      return;
-    }
-
-    // Validate at least one image
-    if (this.imageUrls().length === 0) {
-      this.snackBar.open('Molimo dodajte bar jednu sliku vozila', 'Zatvori', { duration: 3000 });
       return;
     }
 
     this.isSubmitting.set(true);
 
-    const carData: Partial<Car> = {
-      make: this.basicInfoForm.value.brand!, // Frontend 'make' = backend 'brand'
-      model: this.basicInfoForm.value.model!,
-      year: this.basicInfoForm.value.year!,
-      location: this.basicInfoForm.value.location!,
-      pricePerDay: this.basicInfoForm.value.pricePerDay!,
-      description: this.basicInfoForm.value.description,
-      seats: this.specificationsForm.value.seats!,
-      fuelType: this.specificationsForm.value.fuelType!,
-      transmissionType: this.specificationsForm.value.transmissionType!,
-      fuelConsumption: this.specificationsForm.value.fuelConsumption,
+    const updatedData: Partial<Car> = {
+      make: this.editForm.value.brand!,
+      model: this.editForm.value.model!,
+      year: this.editForm.value.year!,
+      location: this.editForm.value.location!,
+      pricePerDay: this.editForm.value.pricePerDay!,
+      description: this.editForm.value.description,
+      seats: this.editForm.value.seats!,
+      fuelType: this.editForm.value.fuelType!,
+      transmissionType: this.editForm.value.transmissionType!,
+      fuelConsumption: this.editForm.value.fuelConsumption,
       features: this.selectedFeatures(),
-      addOns: this.addOns(),
-      cancellationPolicy: this.policiesForm.value.cancellationPolicy!,
-      minRentalDays: this.policiesForm.value.minRentalDays!,
-      maxRentalDays: this.policiesForm.value.maxRentalDays!,
-      imageUrls: this.imageUrls(),
-      imageUrl: this.imageUrls()[0], // Primary image
-      available: true, // New cars are available by default
+      cancellationPolicy: this.editForm.value.cancellationPolicy!,
+      minRentalDays: this.editForm.value.minRentalDays!,
+      maxRentalDays: this.editForm.value.maxRentalDays!,
     };
 
-    this.carService.addCar(carData).subscribe({
-      next: (car) => {
-        this.snackBar.open('Vozilo uspešno dodato! Na čekanju je za odobrenje.', 'Zatvori', {
-          duration: 4000,
+    this.carService.updateCar(this.data.car.id, updatedData).subscribe({
+      next: (updatedCar) => {
+        this.snackBar.open('Vozilo uspešno ažurirano!', 'Zatvori', {
+          duration: 3000,
           panelClass: ['snackbar-success'],
         });
-        this.router.navigate(['/owner/cars']);
+        this.dialogRef.close(updatedCar);
       },
       error: (error) => {
-        console.error('Error adding car:', error);
+        console.error('Error updating car:', error);
         this.snackBar.open(
-          error.error?.message || 'Greška pri dodavanju vozila. Pokušajte ponovo.',
+          error.error?.message || 'Greška pri ažuriranju vozila. Pokušajte ponovo.',
           'Zatvori',
           { duration: 5000 }
         );
@@ -286,12 +219,8 @@ export class AddCarWizardComponent implements OnInit {
     });
   }
 
-  protected cancelWizard(): void {
-    if (
-      confirm('Da li ste sigurni da želite da odustanete? Svi uneti podaci će biti izgubljeni.')
-    ) {
-      this.router.navigate(['/owner/cars']);
-    }
+  protected cancel(): void {
+    this.dialogRef.close();
   }
 
   // Translation helpers
@@ -321,7 +250,6 @@ export class AddCarWizardComponent implements OnInit {
   }
 
   protected translateFeature(feature: Feature): string {
-    // Serbian translations for all features
     const translations: Record<Feature, string> = {
       [Feature.ABS]: 'ABS',
       [Feature.AIRBAG]: 'Vazdušni jastuci',

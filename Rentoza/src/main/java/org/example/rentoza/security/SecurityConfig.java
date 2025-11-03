@@ -72,7 +72,7 @@ public class SecurityConfig {
         String[] allowedOrigins = appProperties.getCors().getAllowedOriginsArray();
         c.setAllowedOrigins(Arrays.asList(allowedOrigins));
 
-        c.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        c.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         c.setAllowedHeaders(List.of("Authorization", "Content-Type", "Cache-Control", "X-CSRF-TOKEN"));
         c.setAllowCredentials(true); // Required for cookies
         c.setMaxAge(3600L); // Cache preflight requests for 1 hour

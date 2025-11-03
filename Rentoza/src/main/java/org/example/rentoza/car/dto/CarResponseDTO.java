@@ -42,7 +42,7 @@ public class CarResponseDTO {
         this.model = car.getModel();
         this.year = car.getYear();
         this.pricePerDay = car.getPricePerDay();
-        this.location = car.getLocation();
+        this.location = capitalizeLocation(car.getLocation());
         this.imageUrl = car.getImageUrl();
         this.available = car.isAvailable();
 
@@ -69,5 +69,33 @@ public class CarResponseDTO {
             this.ownerFullName = null;
             this.ownerEmail = null;
         }
+    }
+
+    /**
+     * Capitalize first letter of each word in location
+     * E.g., "novi sad" -> "Novi Sad"
+     */
+    private String capitalizeLocation(String location) {
+        if (location == null || location.isEmpty()) {
+            return location;
+        }
+
+        String[] words = location.split("\\s+");
+        StringBuilder result = new StringBuilder();
+
+        for (int i = 0; i < words.length; i++) {
+            if (i > 0) {
+                result.append(" ");
+            }
+            String word = words[i];
+            if (!word.isEmpty()) {
+                result.append(Character.toUpperCase(word.charAt(0)));
+                if (word.length() > 1) {
+                    result.append(word.substring(1).toLowerCase());
+                }
+            }
+        }
+
+        return result.toString();
     }
 }

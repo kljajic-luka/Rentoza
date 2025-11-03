@@ -1,5 +1,6 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { filter, take } from 'rxjs';
 import { MatTabsModule } from '@angular/material/tabs';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
@@ -7,8 +8,12 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 
 import { Booking } from '@core/models/booking.model';
+import { BookingService } from '@core/services/booking.service';
+import { AuthService } from '@core/auth/auth.service';
+import { OwnerReviewDialogComponent } from '@features/owner/dialogs/owner-review-dialog/owner-review-dialog.component';
 
 @Component({
   selector: 'app-owner-bookings',
@@ -21,13 +26,17 @@ import { Booking } from '@core/models/booking.model';
     MatIconModule,
     MatChipsModule,
     MatProgressSpinnerModule,
-    MatSnackBarModule
+    MatSnackBarModule,
+    MatDialogModule
   ],
   templateUrl: './owner-bookings.component.html',
   styleUrls: ['./owner-bookings.component.scss']
 })
 export class OwnerBookingsComponent implements OnInit {
   private readonly snackBar = inject(MatSnackBar);
+  private readonly bookingService = inject(BookingService);
+  private readonly authService = inject(AuthService);
+  private readonly dialog = inject(MatDialog);
 
   protected readonly isLoading = signal(false);
   protected readonly upcomingBookings = signal<Booking[]>([]);
@@ -41,14 +50,71 @@ export class OwnerBookingsComponent implements OnInit {
   private loadOwnerBookings(): void {
     this.isLoading.set(true);
 
-    // TODO: Fetch from backend GET /api/bookings/owner/{email}
-    setTimeout(() => {
-      // Mock data for now
-      this.upcomingBookings.set([]);
-      this.activeBookings.set([]);
-      this.completedBookings.set([]);
-      this.isLoading.set(false);
-    }, 500);
+    this.authService.currentUser$
+      .pipe(
+        filter((user): user is NonNullable<typeof user> => {
+          const isValid = user !== null && !!(user.email || user.id);
+          return isValid;
+        }),
+        take(1)
+      )
+      .subscribe({
+        next: (user) => {
+          const email = user.email || user.id;
+          this.bookingService.getOwnerBookings(email).subscribe({
+            next: (bookings) => {
+              // Defensive check: ensure bookings is an array
+              if (!Array.isArray(bookings)) {
+                console.warn('Received non-array bookings response:', bookings);
+                this.upcomingBookings.set([]);
+                this.activeBookings.set([]);
+                this.completedBookings.set([]);
+                this.isLoading.set(false);
+                return;
+              }
+
+              // Group bookings by status
+              const upcoming: Booking[] = [];
+              const active: Booking[] = [];
+              const completed: Booking[] = [];
+
+              bookings.forEach((booking) => {
+                // Defensive check: ensure booking has required properties
+                if (!booking || !booking.status) {
+                  console.warn('Invalid booking object:', booking);
+                  return;
+                }
+
+                switch (booking.status) {
+                  case 'CONFIRMED':
+                    upcoming.push(booking);
+                    break;
+                  case 'ACTIVE':
+                    active.push(booking);
+                    break;
+                  case 'COMPLETED':
+                    completed.push(booking);
+                    break;
+                }
+              });
+
+              this.upcomingBookings.set(upcoming);
+              this.activeBookings.set(active);
+              this.completedBookings.set(completed);
+              this.isLoading.set(false);
+            },
+            error: (error) => {
+              console.error('Error loading owner bookings:', error);
+              this.snackBar.open('Greška pri učitavanju rezervacija', 'Zatvori', { duration: 3000 });
+              this.isLoading.set(false);
+            },
+          });
+        },
+        error: (error) => {
+          console.error('Error getting user:', error);
+          this.isLoading.set(false);
+        },
+      });
   }
 
   protected getStatusClass(status: string): string {
@@ -80,12 +146,24 @@ export class OwnerBookingsComponent implements OnInit {
   }
 
   protected canReviewRenter(booking: Booking): boolean {
-    // Can review if booking is completed and not already reviewed
-    return booking.status === 'COMPLETED'; // TODO: Add check for existing review
+    // Can review if booking is completed and owner hasn't reviewed yet
+    return booking.status === 'COMPLETED' && !booking.hasOwnerReview;
   }
 
   protected reviewRenter(booking: Booking): void {
-    // TODO: Navigate to owner review form with booking ID
-    this.snackBar.open('Recenzija zakupca - u izradi', 'Zatvori', { duration: 2000 });
+    const dialogRef = this.dialog.open(OwnerReviewDialogComponent, {
+      width: '700px',
+      maxWidth: '95vw',
+      maxHeight: '90vh',
+      data: { booking },
+      disableClose: false
+    });
+
+    dialogRef.afterClosed().subscribe((success: boolean) => {
+      if (success) {
+        // Refresh bookings to update the hasOwnerReview flag
+        this.loadOwnerBookings();
+      }
+    });
   }
 }

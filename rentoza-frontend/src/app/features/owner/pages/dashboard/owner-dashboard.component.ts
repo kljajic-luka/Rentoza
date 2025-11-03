@@ -8,7 +8,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { take } from 'rxjs';
+import { filter, take, tap } from 'rxjs';
 
 import { AuthService } from '@core/auth/auth.service';
 import { environment } from '@environments/environment';
@@ -24,10 +24,10 @@ import { environment } from '@environments/environment';
     MatIconModule,
     MatProgressSpinnerModule,
     MatDividerModule,
-    MatSnackBarModule
+    MatSnackBarModule,
   ],
   templateUrl: './owner-dashboard.component.html',
-  styleUrls: ['./owner-dashboard.component.scss']
+  styleUrls: ['./owner-dashboard.component.scss'],
 })
 export class OwnerDashboardComponent implements OnInit {
   private readonly http = inject(HttpClient);
@@ -41,7 +41,7 @@ export class OwnerDashboardComponent implements OnInit {
     totalCars: 0,
     totalBookings: 0,
     monthlyEarnings: 0,
-    averageRating: 0
+    averageRating: 0,
   });
 
   ngOnInit(): void {
@@ -51,36 +51,37 @@ export class OwnerDashboardComponent implements OnInit {
   private loadDashboardData(): void {
     this.isLoading.set(true);
 
-    this.authService.currentUser$.pipe(take(1)).subscribe({
-      next: (user) => {
-        if (!user?.email) {
-          this.snackBar.open('Greška: Korisnik nije prijavljen', 'Zatvori', { duration: 3000 });
-          this.isLoading.set(false);
-          return;
-        }
-
-        // Fetch owner statistics from backend
-        this.http.get<{
-          totalCars: number;
-          totalBookings: number;
-          monthlyEarnings: number;
-          averageRating: number;
-        }>(`${this.baseUrl}/stats/${user.email}`).subscribe({
-          next: (data) => {
-            this.stats.set(data);
-            this.isLoading.set(false);
-          },
-          error: (error) => {
-            console.error('Error loading dashboard stats:', error);
-            this.snackBar.open('Greška pri učitavanju podataka', 'Zatvori', { duration: 3000 });
-            this.isLoading.set(false);
-          }
-        });
-      },
-      error: () => {
-        this.snackBar.open('Greška: Korisnik nije prijavljen', 'Zatvori', { duration: 3000 });
-        this.isLoading.set(false);
-      }
-    });
+    this.authService.currentUser$
+      .pipe(
+        filter((user): user is NonNullable<typeof user> => {
+          const isValid = user !== null && !!(user.email || user.id);
+          return isValid;
+        }),
+        take(1)
+      )
+      .subscribe({
+        next: (user) => {
+          const email = user.email || user.id;
+          // Fetch owner statistics from backend
+          this.http
+            .get<{
+              totalCars: number;
+              totalBookings: number;
+              monthlyEarnings: number;
+              averageRating: number;
+            }>(`${this.baseUrl}/stats/${email}`)
+            .subscribe({
+              next: (data) => {
+                this.stats.set(data);
+                this.isLoading.set(false);
+              },
+              error: (error) => {
+                console.error('Error loading dashboard stats:', error);
+                this.snackBar.open('Greška pri učitavanju podataka', 'Zatvori', { duration: 3000 });
+                this.isLoading.set(false);
+              },
+            });
+        },
+      });
   }
 }

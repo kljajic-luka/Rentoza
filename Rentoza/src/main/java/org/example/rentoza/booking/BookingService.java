@@ -68,15 +68,7 @@ public class BookingService {
         var bookings = repo.findByCarId(carId);
 
         return bookings.stream()
-                .map(b -> new BookingResponseDTO(
-                        b.getId(),
-                        b.getCar().getId(),
-                        b.getRenter().getEmail(),
-                        b.getStartDate(),
-                        b.getEndDate(),
-                        b.getTotalPrice(),
-                        b.getStatus().name()
-                ))
+                .map(BookingResponseDTO::new)
                 .toList();
     }
 

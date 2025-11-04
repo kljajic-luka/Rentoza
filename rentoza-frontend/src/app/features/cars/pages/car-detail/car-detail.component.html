@@ -18,18 +18,50 @@
     <!-- Two-column layout: Gallery + Booking -->
     <div class="car-detail__gallery-wrapper">
       <mat-card class="car-detail__gallery">
-        <div class="gallery__media">
-          <img
-            *ngIf="vm.car.imageUrl; else placeholder"
-            [src]="vm.car.imageUrl"
-            [alt]="vm.car.make + ' ' + vm.car.model"
-            loading="lazy"
-          />
-          <ng-template #placeholder>
+        <div
+          class="gallery__media"
+          (click)="openFullscreenViewer(vm.car)"
+          (swipeleft)="nextImage(vm.car)"
+          (swiperight)="previousImage(vm.car)">
+          @if (getCurrentImage(vm.car); as currentImage) {
+            <img
+              [src]="currentImage"
+              [alt]="vm.car.make + ' ' + vm.car.model"
+              loading="lazy"
+              class="gallery__image"
+            />
+
+            @if (getCarImages(vm.car).length > 1) {
+              <button
+                mat-icon-button
+                class="gallery__nav-button gallery__nav-button--left"
+                (click)="previousImage(vm.car, $event)"
+                aria-label="Previous image">
+                <mat-icon>chevron_left</mat-icon>
+              </button>
+
+              <button
+                mat-icon-button
+                class="gallery__nav-button gallery__nav-button--right"
+                (click)="nextImage(vm.car, $event)"
+                aria-label="Next image">
+                <mat-icon>chevron_right</mat-icon>
+              </button>
+
+              <div class="gallery__image-counter">
+                {{ currentImageIndex() + 1 }} / {{ getCarImages(vm.car).length }}
+              </div>
+            }
+
+            <div class="gallery__click-hint">
+              <mat-icon>fullscreen</mat-icon>
+              <span>Kliknite za prikaz</span>
+            </div>
+          } @else {
             <div class="gallery__placeholder">
               <mat-icon>directions_car</mat-icon>
             </div>
-          </ng-template>
+          }
         </div>
         <div class="gallery__details">
           <p>{{ vm.car.description || 'Bez opisa.' }}</p>

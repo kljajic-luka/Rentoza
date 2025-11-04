@@ -107,8 +107,9 @@
   position: relative;
   padding-top: 60%;
   overflow: hidden;
+  cursor: pointer;
 
-  img,
+  .gallery__image,
   .gallery__placeholder {
     position: absolute;
     inset: 0;
@@ -118,7 +119,7 @@
     transition: transform 0.35s ease;
   }
 
-  img:hover {
+  .gallery__image:hover {
     transform: scale(1.05);
   }
 
@@ -126,10 +127,138 @@
     display: grid;
     place-items: center;
     background: var(--color-surface-muted);
+    cursor: default;
 
     mat-icon {
       font-size: 48px;
       color: var(--icon-color);
+    }
+  }
+
+  // Carousel navigation buttons
+  .gallery__nav-button {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(0, 0, 0, 0.5);
+    color: white;
+    backdrop-filter: blur(10px);
+    width: 48px;
+    height: 48px;
+    opacity: 0;
+    transition: all 0.3s ease;
+    z-index: 2;
+
+    mat-icon {
+      font-size: 28px;
+      width: 28px;
+      height: 28px;
+    }
+
+    &:hover {
+      background: rgba(0, 0, 0, 0.7);
+      transform: translateY(-50%) scale(1.1);
+    }
+
+    &--left {
+      left: 1rem;
+    }
+
+    &--right {
+      right: 1rem;
+    }
+  }
+
+  // Image counter
+  .gallery__image-counter {
+    position: absolute;
+    bottom: 1rem;
+    right: 1rem;
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 0.4rem 0.8rem;
+    border-radius: 16px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    backdrop-filter: blur(10px);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    z-index: 2;
+  }
+
+  // Fullscreen hint
+  .gallery__click-hint {
+    position: absolute;
+    top: 1rem;
+    left: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: rgba(0, 0, 0, 0.6);
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    backdrop-filter: blur(10px);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    z-index: 2;
+
+    mat-icon {
+      font-size: 20px;
+      width: 20px;
+      height: 20px;
+    }
+  }
+
+  // Show controls on hover
+  &:hover {
+    .gallery__nav-button,
+    .gallery__image-counter,
+    .gallery__click-hint {
+      opacity: 1;
+    }
+  }
+
+  // Always show on touch devices
+  @media (hover: none) {
+    .gallery__nav-button,
+    .gallery__image-counter {
+      opacity: 1;
+    }
+
+    .gallery__click-hint {
+      display: none;
+    }
+  }
+
+  // Mobile responsive
+  @media (max-width: 768px) {
+    .gallery__nav-button {
+      width: 40px;
+      height: 40px;
+
+      mat-icon {
+        font-size: 24px;
+        width: 24px;
+        height: 24px;
+      }
+
+      &--left {
+        left: 0.5rem;
+      }
+
+      &--right {
+        right: 0.5rem;
+      }
+    }
+
+    .gallery__image-counter {
+      bottom: 0.5rem;
+      right: 0.5rem;
+      font-size: 0.75rem;
+      padding: 0.3rem 0.6rem;
     }
   }
 }

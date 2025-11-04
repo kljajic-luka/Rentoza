@@ -276,3 +276,19 @@ hr {
   letter-spacing: 0.08em;
   transition: background-color 200ms ease, color 200ms ease;
 }
+
+/* 🖼️ Fullscreen dialog styles */
+.fullscreen-dialog {
+  .mat-mdc-dialog-container {
+    padding: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    overflow: hidden !important;
+
+    .mat-mdc-dialog-surface {
+      background: transparent !important;
+      box-shadow: none !important;
+    }
+  }
+}

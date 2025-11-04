@@ -1,68 +1,157 @@
-<section class="cars">
-  <header>
-    <h2>
-      <ng-container *ngIf="location$ | async as location; else defaultHeading">
-        Automobili u lokaciji: {{ location }}
-      </ng-container>
-      <ng-template #defaultHeading>Dostupni automobili</ng-template>
-    </h2>
-    <p *ngIf="location$ | async as location; else defaultSubtitle">
-      Prikazani automobili u krugu od {{ searchRadius }} km od {{ location }}.
-    </p>
-    <ng-template #defaultSubtitle>
+<section class="car-list-page">
+  <!-- Page Header -->
+  <header class="page-header">
+    <div class="page-header__copy">
+      <div class="eyebrow">Dostupna vozila</div>
+      <h1>Pronađite savršeno vozilo</h1>
       <p>Pregledajte vozila od proverenih domaćina i rezervišite odmah.</p>
-    </ng-template>
+    </div>
   </header>
 
-  <div class="cars__grid" fxLayout="row wrap" fxLayoutGap="28px">
-    <ng-container *ngIf="cars$ | async as cars; else loading">
-      <mat-card
-        *ngFor="let car of cars; trackBy: trackByCarId"
-        fxFlex="100"
-        fxFlex.gt-sm="calc(50% - 28px)"
-        fxFlex.gt-md="calc(33% - 28px)"
-        class="cars__card"
-      >
-        <div class="car-card__media">
-          <img
-            *ngIf="car.imageUrl; else placeholder"
-            [src]="car.imageUrl"
-            [alt]="car.make + ' ' + car.model"
-            loading="lazy"
-          />
-          <ng-template #placeholder>
-            <div class="image-placeholder">
-              <mat-icon>directions_car_filled</mat-icon>
-            </div>
-          </ng-template>
-          <span class="chip">{{ car.year }}</span>
-        </div>
-        <mat-card-content class="car-card__content">
-          <div class="car-card__header">
-            <h3>{{ car.make }} {{ car.model }}</h3>
-            <span class="price">RSD {{ car.pricePerDay | number : '1.0-0' }}/dnevno</span>
-          </div>
-          <div class="car-card__location">
-            <mat-icon class="location-icon">place</mat-icon>
-            <span class="meta">{{ car.location }}</span>
-            <mat-chip *ngIf="car.distance" class="distance-chip" selected>
-              <mat-icon>near_me</mat-icon>
-              {{ car.distance }}
-            </mat-chip>
-          </div>
-          <p>{{ car.description || 'Opis trenutno nije dostupan.' }}</p>
-        </mat-card-content>
-        <mat-card-actions class="car-card__actions">
-          <a mat-flat-button color="primary" [routerLink]="['/cars', car.id]"> Detalji vozila </a>
-          <app-favorite-button [carId]="+car.id"></app-favorite-button>
-        </mat-card-actions>
-      </mat-card>
-    </ng-container>
-  </div>
+  <!-- Filters Component (Now with Drawer) -->
+  <ng-container *ngIf="searchResults$ | async as results">
+    <app-car-filters
+      [totalResults]="results.totalElements"
+      [initialCriteria]="searchCriteria$.value"
+      [triggerReset]="(resetForm$ | async) ?? false"
+      (filtersChanged)="onFiltersChanged($event)"
+      (resetTriggered)="onResetFilters()"
+    ></app-car-filters>
+  </ng-container>
 
-  <ng-template #loading>
-    <div class="loading" fxLayout="row" fxLayoutAlign="center center">
-      <mat-progress-spinner mode="indeterminate"></mat-progress-spinner>
-    </div>
-  </ng-template>
+  <!-- Main Content -->
+  <div class="content-grid">
+    <!-- Results Area -->
+    <main class="results">
+      <!-- Loading Overlay (Turo-style dim effect) -->
+      <div class="loading-overlay" *ngIf="isLoading$ | async">
+        <mat-progress-spinner mode="indeterminate" diameter="40"></mat-progress-spinner>
+      </div>
+
+      <ng-container *ngIf="searchResults$ | async as results; else loading">
+        <!-- Active Filter Chips -->
+        <div class="filter-chips" *ngIf="(activeFilterChips$ | async)?.length">
+          <div class="filter-chips__header">
+            <span class="label">Aktivni filteri:</span>
+            <button mat-button (click)="clearAllFilters()" class="clear-all">
+              <mat-icon>close</mat-icon>
+              Obriši sve
+            </button>
+          </div>
+          <mat-chip-set>
+            <mat-chip *ngFor="let chip of activeFilterChips$ | async">
+              <strong>{{ chip.label }}:</strong> {{ chip.value }}
+            </mat-chip>
+          </mat-chip-set>
+        </div>
+
+        <!-- Results Count -->
+        <div class="results-header">
+          <h2>
+            {{ results.totalElements }}
+            {{ results.totalElements === 1 ? 'vozilo pronađeno' : 'vozila pronađeno' }}
+          </h2>
+        </div>
+
+        <!-- Car Grid -->
+        <div class="cars-grid" *ngIf="results.content.length > 0; else noResults">
+          <mat-card
+            *ngFor="let car of results.content; trackBy: trackByCarId"
+            class="car-card fade-in-card"
+          >
+            <div class="car-card__media">
+              <img
+                *ngIf="car.imageUrl; else placeholder"
+                [src]="car.imageUrl"
+                [alt]="car.make + ' ' + car.model"
+                loading="lazy"
+              />
+              <ng-template #placeholder>
+                <div class="image-placeholder">
+                  <mat-icon>directions_car_filled</mat-icon>
+                </div>
+              </ng-template>
+              <span class="year-badge">{{ car.year }}</span>
+            </div>
+
+            <mat-card-content class="car-card__content">
+              <div class="car-card__header">
+                <h3>{{ car.make }} {{ car.model }}</h3>
+                <span class="price">{{ car.pricePerDay | number : '1.0-0' }} RSD</span>
+              </div>
+
+              <div class="car-card__meta">
+                <div class="meta-item">
+                  <mat-icon>place</mat-icon>
+                  <span>{{ car.location }}</span>
+                </div>
+                <div class="meta-item" *ngIf="car.seats">
+                  <mat-icon>airline_seat_recline_normal</mat-icon>
+                  <span>{{ car.seats }} sedišta</span>
+                </div>
+                <div class="meta-item" *ngIf="car.transmissionType">
+                  <mat-icon>settings</mat-icon>
+                  <span>{{ car.transmissionType | translateEnum }}</span>
+                </div>
+              </div>
+
+              <p class="description">
+                {{ car.description || 'Opis trenutno nije dostupan.' }}
+              </p>
+
+              <!-- Features -->
+              <div class="features" *ngIf="car.features && car.features.length > 0">
+                <mat-chip-set>
+                  <mat-chip *ngFor="let feature of car.features.slice(0, 3)">
+                    {{ feature | translateEnum }}
+                  </mat-chip>
+                  <mat-chip *ngIf="car.features.length > 3">
+                    +{{ car.features.length - 3 }}
+                  </mat-chip>
+                </mat-chip-set>
+              </div>
+            </mat-card-content>
+
+            <mat-card-actions class="car-card__actions">
+              <a mat-flat-button color="primary" [routerLink]="['/cars', car.id]">
+                Detalji vozila
+              </a>
+              <app-favorite-button [carId]="+car.id"></app-favorite-button>
+            </mat-card-actions>
+          </mat-card>
+        </div>
+
+        <!-- Empty State -->
+        <ng-template #noResults>
+          <div class="empty-state">
+            <mat-icon>search_off</mat-icon>
+            <h3>Nema rezultata</h3>
+            <p>Pokušajte da promenite filtere ili obrišite neke od postojećih.</p>
+            <button mat-flat-button color="primary" (click)="clearAllFilters()">
+              Obriši sve filtere
+            </button>
+          </div>
+        </ng-template>
+
+        <!-- Pagination -->
+        <mat-paginator
+          *ngIf="results.content.length > 0"
+          [length]="results.totalElements"
+          [pageSize]="results.pageSize"
+          [pageIndex]="results.currentPage"
+          [pageSizeOptions]="[10, 20, 50]"
+          (page)="onPageChange($event)"
+          showFirstLastButtons
+        ></mat-paginator>
+      </ng-container>
+
+      <!-- Loading State -->
+      <ng-template #loading>
+        <div class="loading-state">
+          <mat-progress-spinner mode="indeterminate"></mat-progress-spinner>
+          <p>Učitavanje vozila...</p>
+        </div>
+      </ng-template>
+    </main>
+  </div>
 </section>

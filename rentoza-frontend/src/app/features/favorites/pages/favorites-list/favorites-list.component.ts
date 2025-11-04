@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, signal, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterModule } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
@@ -310,7 +310,7 @@ import { finalize } from 'rxjs';
     }
   `]
 })
-export class FavoritesListComponent {
+export class FavoritesListComponent implements OnInit {
   private readonly favoriteService = inject(FavoriteService);
   private readonly router = inject(Router);
 

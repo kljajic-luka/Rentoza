@@ -1,9 +1,11 @@
 package org.example.rentoza.car;
 
+import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import org.example.rentoza.car.dto.CarSearchCriteria;
+import org.example.rentoza.common.StringNormalizationUtil;
 import org.springframework.data.jpa.domain.Specification;
 
 import java.util.ArrayList;
@@ -36,18 +38,20 @@ public class CarSpecification {
                         root.get("pricePerDay"), criteria.getMaxPrice()));
             }
 
-            // Brand filtering (case-insensitive)
+            // Brand filtering (case-insensitive with accent normalization)
             if (criteria.getMake() != null && !criteria.getMake().isBlank()) {
-                predicates.add(criteriaBuilder.like(
-                        criteriaBuilder.lower(root.get("brand")),
-                        "%" + criteria.getMake().toLowerCase() + "%"));
+                Expression<String> normalizedBrand = createNormalizedExpression(
+                        criteriaBuilder, root.get("brand"));
+                String normalizedSearch = StringNormalizationUtil.normalizeSearchString(criteria.getMake());
+                predicates.add(criteriaBuilder.like(normalizedBrand, "%" + normalizedSearch + "%"));
             }
 
-            // Model filtering (case-insensitive)
+            // Model filtering (case-insensitive with accent normalization)
             if (criteria.getModel() != null && !criteria.getModel().isBlank()) {
-                predicates.add(criteriaBuilder.like(
-                        criteriaBuilder.lower(root.get("model")),
-                        "%" + criteria.getModel().toLowerCase() + "%"));
+                Expression<String> normalizedModel = createNormalizedExpression(
+                        criteriaBuilder, root.get("model"));
+                String normalizedSearch = StringNormalizationUtil.normalizeSearchString(criteria.getModel());
+                predicates.add(criteriaBuilder.like(normalizedModel, "%" + normalizedSearch + "%"));
             }
 
             // Year filtering
@@ -60,11 +64,12 @@ public class CarSpecification {
                         root.get("year"), criteria.getMaxYear()));
             }
 
-            // Location filtering (case-insensitive)
+            // Location filtering (case-insensitive with accent normalization)
             if (criteria.getLocation() != null && !criteria.getLocation().isBlank()) {
-                predicates.add(criteriaBuilder.like(
-                        criteriaBuilder.lower(root.get("location")),
-                        "%" + criteria.getLocation().toLowerCase() + "%"));
+                Expression<String> normalizedLocation = createNormalizedExpression(
+                        criteriaBuilder, root.get("location"));
+                String normalizedSearch = StringNormalizationUtil.normalizeSearchString(criteria.getLocation());
+                predicates.add(criteriaBuilder.like(normalizedLocation, "%" + normalizedSearch + "%"));
             }
 
             // Seats filtering
@@ -119,14 +124,16 @@ public class CarSpecification {
                         root.get("pricePerDay"), criteria.getMaxPrice()));
             }
             if (criteria.getMake() != null && !criteria.getMake().isBlank()) {
-                predicates.add(criteriaBuilder.like(
-                        criteriaBuilder.lower(root.get("brand")),
-                        "%" + criteria.getMake().toLowerCase() + "%"));
+                Expression<String> normalizedBrand = createNormalizedExpression(
+                        criteriaBuilder, root.get("brand"));
+                String normalizedSearch = StringNormalizationUtil.normalizeSearchString(criteria.getMake());
+                predicates.add(criteriaBuilder.like(normalizedBrand, "%" + normalizedSearch + "%"));
             }
             if (criteria.getModel() != null && !criteria.getModel().isBlank()) {
-                predicates.add(criteriaBuilder.like(
-                        criteriaBuilder.lower(root.get("model")),
-                        "%" + criteria.getModel().toLowerCase() + "%"));
+                Expression<String> normalizedModel = createNormalizedExpression(
+                        criteriaBuilder, root.get("model"));
+                String normalizedSearch = StringNormalizationUtil.normalizeSearchString(criteria.getModel());
+                predicates.add(criteriaBuilder.like(normalizedModel, "%" + normalizedSearch + "%"));
             }
             if (criteria.getMinYear() != null) {
                 predicates.add(criteriaBuilder.greaterThanOrEqualTo(
@@ -137,9 +144,10 @@ public class CarSpecification {
                         root.get("year"), criteria.getMaxYear()));
             }
             if (criteria.getLocation() != null && !criteria.getLocation().isBlank()) {
-                predicates.add(criteriaBuilder.like(
-                        criteriaBuilder.lower(root.get("location")),
-                        "%" + criteria.getLocation().toLowerCase() + "%"));
+                Expression<String> normalizedLocation = createNormalizedExpression(
+                        criteriaBuilder, root.get("location"));
+                String normalizedSearch = StringNormalizationUtil.normalizeSearchString(criteria.getLocation());
+                predicates.add(criteriaBuilder.like(normalizedLocation, "%" + normalizedSearch + "%"));
             }
             if (criteria.getMinSeats() != null) {
                 predicates.add(criteriaBuilder.greaterThanOrEqualTo(
@@ -161,5 +169,25 @@ public class CarSpecification {
 
             return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
         };
+    }
+
+    /**
+     * Creates a normalized string expression for accent-insensitive search
+     * Applies Serbian character normalization: š→s, ć→c, č→c, ž→z, đ→dj
+     */
+    private static Expression<String> createNormalizedExpression(
+            jakarta.persistence.criteria.CriteriaBuilder cb,
+            jakarta.persistence.criteria.Expression<String> field) {
+        
+        Expression<String> normalized = cb.lower(field);
+        
+        // Replace Serbian Latin characters with their base forms
+        normalized = cb.function("REPLACE", String.class, normalized, cb.literal("š"), cb.literal("s"));
+        normalized = cb.function("REPLACE", String.class, normalized, cb.literal("ć"), cb.literal("c"));
+        normalized = cb.function("REPLACE", String.class, normalized, cb.literal("č"), cb.literal("c"));
+        normalized = cb.function("REPLACE", String.class, normalized, cb.literal("ž"), cb.literal("z"));
+        normalized = cb.function("REPLACE", String.class, normalized, cb.literal("đ"), cb.literal("dj"));
+        
+        return normalized;
     }
 }

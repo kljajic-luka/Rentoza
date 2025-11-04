@@ -1,11 +1,13 @@
 import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable, map } from 'rxjs';
 
 import { environment } from '@environments/environment';
 import { Car } from '@core/models/car.model';
 import { Review } from '@core/models/review.model';
+import { CarSearchCriteria, PagedResponse } from '@core/models/car-search.model';
 import { isWithinRadius } from '@core/utils/distance.util';
+import { normalizeSearchString } from '@core/utils/string-normalization.util';
 
 /**
  * Backend Car DTO interface (uses 'brand' instead of 'make')
@@ -56,6 +58,93 @@ export class CarService {
     return this.http
       .get<any[]>(this.baseUrl)
       .pipe(map((cars) => cars.map((car) => this.mapBackendCarToFrontend(car))));
+  }
+
+  /**
+   * Search cars with filters, sorting, and pagination
+   * @param criteria Search criteria
+   * @returns Paginated response with cars
+   */
+  searchCars(criteria: CarSearchCriteria): Observable<PagedResponse<Car>> {
+    let params = new HttpParams();
+
+    // Add all non-null/undefined criteria to params
+    // Apply normalization to text-based filters
+    if (criteria.minPrice !== undefined) {
+      params = params.set('minPrice', criteria.minPrice.toString());
+    }
+    if (criteria.maxPrice !== undefined) {
+      params = params.set('maxPrice', criteria.maxPrice.toString());
+    }
+    if (criteria.vehicleType) {
+      params = params.set('vehicleType', normalizeSearchString(criteria.vehicleType));
+    }
+    if (criteria.make) {
+      params = params.set('make', normalizeSearchString(criteria.make));
+    }
+    if (criteria.model) {
+      params = params.set('model', normalizeSearchString(criteria.model));
+    }
+    if (criteria.minYear !== undefined) {
+      params = params.set('minYear', criteria.minYear.toString());
+    }
+    if (criteria.maxYear !== undefined) {
+      params = params.set('maxYear', criteria.maxYear.toString());
+    }
+    if (criteria.location) {
+      params = params.set('location', normalizeSearchString(criteria.location));
+    }
+    if (criteria.minSeats !== undefined) {
+      params = params.set('minSeats', criteria.minSeats.toString());
+    }
+    if (criteria.transmission) {
+      params = params.set('transmission', criteria.transmission);
+    }
+    if (criteria.features && criteria.features.length > 0) {
+      // Send features as comma-separated string
+      params = params.set('features', criteria.features.join(','));
+    }
+    if (criteria.page !== undefined) {
+      params = params.set('page', criteria.page.toString());
+    }
+    if (criteria.size !== undefined) {
+      params = params.set('size', criteria.size.toString());
+    }
+    if (criteria.sort) {
+      params = params.set('sort', criteria.sort);
+    }
+
+    return this.http.get<any>(`${this.baseUrl}/search`, { params }).pipe(
+      map((response) => ({
+        content: response.content.map((car: any) => this.mapBackendCarToFrontend(car)),
+        totalElements: response.totalElements,
+        totalPages: response.totalPages,
+        currentPage: response.currentPage,
+        pageSize: response.pageSize,
+        hasNext: response.hasNext,
+        hasPrevious: response.hasPrevious,
+      }))
+    );
+  }
+
+  /**
+   * Get the maximum price per day from all available cars
+   * Used for dynamic price slider range
+   */
+  getMaxPrice(): Observable<number> {
+    const params = new HttpParams()
+      .set('page', '0')
+      .set('size', '1')
+      .set('sort', 'pricePerDay,desc');
+
+    return this.http.get<any>(`${this.baseUrl}/search`, { params }).pipe(
+      map((response) => {
+        if (response.content && response.content.length > 0) {
+          return Math.ceil(response.content[0].pricePerDay);
+        }
+        return 500; // Fallback to 500 if no cars found
+      })
+    );
   }
 
   /**

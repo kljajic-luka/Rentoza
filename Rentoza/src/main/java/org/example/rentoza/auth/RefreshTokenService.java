@@ -52,14 +52,17 @@ public class RefreshTokenService {
         String raw = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
 
         String hash = hashToken(raw);
-        RefreshToken entity = new RefreshToken(
-                null,
-                email,
-                hash,
-                Instant.now().plusSeconds(60L * 60 * 24 * TOKEN_EXPIRY_DAYS),
-                false,
-                null
-        );
+        Instant expiresAt = Instant.now().plusSeconds(60L * 60 * 24 * TOKEN_EXPIRY_DAYS);
+
+        RefreshToken entity = RefreshToken.builder()
+                .userEmail(email)
+                .tokenHash(hash)
+                .expiresAt(expiresAt)
+                .createdAt(Instant.now())
+                .revoked(false)
+                .used(false)
+                .build();
+
         repo.save(entity);
         log.debug("Issued new refresh token for user: {}", email);
         return raw; // return the raw token (stored only client-side in cookie)

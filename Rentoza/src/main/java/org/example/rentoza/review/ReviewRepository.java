@@ -14,6 +14,7 @@ public interface ReviewRepository extends JpaRepository<Review, Long> {
             SELECT DISTINCT r
             FROM Review r
             JOIN FETCH r.reviewer
+            JOIN FETCH r.reviewee
             JOIN FETCH r.car c
             WHERE c.id = :carId
               AND r.direction = :direction
@@ -52,6 +53,7 @@ public interface ReviewRepository extends JpaRepository<Review, Long> {
             SELECT DISTINCT r
             FROM Review r
             JOIN FETCH r.reviewer
+            JOIN FETCH r.reviewee
             JOIN FETCH r.car c
             WHERE r.direction = :direction
             ORDER BY r.createdAt DESC

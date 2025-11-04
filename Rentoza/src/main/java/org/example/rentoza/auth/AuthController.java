@@ -1,6 +1,7 @@
 package org.example.rentoza.auth;
 
 import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import org.example.rentoza.config.AppProperties;
@@ -37,14 +38,14 @@ public class AuthController {
     private final UserRepository userRepo;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
-    private final RefreshTokenService refreshTokenService;
+    private final RefreshTokenServiceEnhanced refreshTokenService;
     private final AppProperties appProperties;
 
     public AuthController(UserService userService,
                           UserRepository userRepo,
                           PasswordEncoder passwordEncoder,
                           JwtUtil jwtUtil,
-                          RefreshTokenService refreshTokenService,
+                          RefreshTokenServiceEnhanced refreshTokenService,
                           AppProperties appProperties) {
         this.userService = userService;
         this.userRepo = userRepo;
@@ -83,11 +84,15 @@ public class AuthController {
     }
 
     @PostMapping("/register")
-    public ResponseEntity<?> register(@Valid @RequestBody UserRegisterDTO dto) {
+    public ResponseEntity<?> register(@Valid @RequestBody UserRegisterDTO dto, HttpServletRequest request) {
         try {
             User user = userService.register(dto);
             String accessToken = jwtUtil.generateToken(user.getEmail(), user.getRole().name());
-            String refreshRaw = refreshTokenService.issue(user.getEmail());
+
+            // Issue refresh token with IP/UserAgent fingerprinting
+            String ipAddress = RefreshTokenServiceEnhanced.extractIpAddress(request);
+            String userAgent = RefreshTokenServiceEnhanced.extractUserAgent(request);
+            String refreshRaw = refreshTokenService.issue(user.getEmail(), ipAddress, userAgent);
 
             ResponseCookie cookie = createRefreshTokenCookie(refreshRaw);
 
@@ -114,7 +119,9 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<?> login(@Valid @RequestBody UserLoginDTO dto, HttpServletResponse res) {
+    public ResponseEntity<?> login(@Valid @RequestBody UserLoginDTO dto,
+                                   HttpServletRequest request,
+                                   HttpServletResponse res) {
         var userOpt = userService.getUserByEmail(dto.getEmail());
         if (userOpt.isEmpty()) {
             log.warn("Login attempt for non-existent user: email={}", dto.getEmail());
@@ -128,7 +135,11 @@ public class AuthController {
         }
 
         String accessToken = jwtUtil.generateToken(user.getEmail(), user.getRole().name());
-        String refreshRaw = refreshTokenService.issue(user.getEmail());
+
+        // Issue refresh token with IP/UserAgent fingerprinting
+        String ipAddress = RefreshTokenServiceEnhanced.extractIpAddress(request);
+        String userAgent = RefreshTokenServiceEnhanced.extractUserAgent(request);
+        String refreshRaw = refreshTokenService.issue(user.getEmail(), ipAddress, userAgent);
 
         ResponseCookie cookie = createRefreshTokenCookie(refreshRaw);
         res.addHeader("Set-Cookie", cookie.toString());
@@ -151,15 +162,21 @@ public class AuthController {
     @PostMapping("/refresh")
     public ResponseEntity<?> refresh(
             @CookieValue(value = REFRESH_COOKIE, required = false) String refreshCookie,
+            HttpServletRequest request,
             HttpServletResponse res) {
 
         if (refreshCookie == null || refreshCookie.isBlank()) {
             log.debug("Refresh attempt with no cookie - guest user");
-            return ResponseEntity.status(401).body(Map.of("message", "No session"));
+            return ResponseEntity.status(401).body(Map.of("error", "No session"));
         }
 
         try {
-            var result = refreshTokenService.rotate(refreshCookie);
+            // Extract IP/UserAgent for fingerprint validation
+            String ipAddress = RefreshTokenServiceEnhanced.extractIpAddress(request);
+            String userAgent = RefreshTokenServiceEnhanced.extractUserAgent(request);
+
+            // Rotate token with enhanced security (reuse detection, fingerprint validation)
+            var result = refreshTokenService.rotate(refreshCookie, ipAddress, userAgent);
 
             // Fetch user to get actual role (not hardcoded)
             var userOpt = userService.getUserByEmail(result.email());
@@ -176,8 +193,23 @@ public class AuthController {
 
             log.debug("Token refreshed successfully: email={}", result.email());
             return ResponseEntity.ok(Map.of("accessToken", accessToken));
-        } catch (RuntimeException e) {
+
+        } catch (InvalidRefreshTokenException e) {
+            // Standardized error response for token issues (401)
             log.warn("Token refresh failed: {}", e.getMessage());
+
+            // Clear cookie on any token error
+            ResponseCookie cleared = clearRefreshTokenCookie();
+            res.addHeader("Set-Cookie", cleared.toString());
+
+            return ResponseEntity.status(401).body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Unexpected error during token refresh", e);
+
+            // Clear cookie on error
+            ResponseCookie cleared = clearRefreshTokenCookie();
+            res.addHeader("Set-Cookie", cleared.toString());
+
             return ResponseEntity.status(401).body(Map.of("error", "Invalid or expired session"));
         }
     }
@@ -197,9 +229,9 @@ public class AuthController {
             }
         }
 
-        // Revoke all refresh tokens for this user
-        if (email != null && refreshCookie != null) {
-            refreshTokenService.revokeAll(email);
+        // Revoke all refresh tokens for this user with audit trail
+        if (email != null) {
+            refreshTokenService.revokeAll(email, "USER_LOGOUT");
             log.info("User logged out successfully: email={}", email);
         }
 

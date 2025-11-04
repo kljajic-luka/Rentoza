@@ -2,7 +2,13 @@ package org.example.rentoza.car;
 
 import org.example.rentoza.car.dto.CarRequestDTO;
 import org.example.rentoza.car.dto.CarResponseDTO;
+import org.example.rentoza.car.dto.CarSearchCriteria;
 import org.example.rentoza.user.User;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -178,6 +184,72 @@ public class CarService {
         // Cascade delete will handle car_images, car_features, car_add_ons
         // due to orphanRemoval = true in entity
         repo.delete(car);
+    }
+
+    /**
+     * Search cars with dynamic filtering, sorting, and pagination
+     * @param criteria Search criteria with optional filters
+     * @return Page of car response DTOs
+     */
+    @Transactional(readOnly = true)
+    public Page<CarResponseDTO> searchCars(CarSearchCriteria criteria) {
+        // Normalize and validate criteria
+        criteria.normalize();
+
+        // Build specification from criteria
+        Specification<Car> spec = CarSpecification.fromCriteriaWithAnyFeature(criteria);
+
+        // Build pageable with sorting
+        Pageable pageable = buildPageable(criteria);
+
+        // Execute query
+        Page<Car> carPage = repo.findAll(spec, pageable);
+
+        // Map to DTOs
+        return carPage.map(this::mapToResponse);
+    }
+
+    /**
+     * Build Pageable object with sorting from criteria
+     */
+    private Pageable buildPageable(CarSearchCriteria criteria) {
+        int page = criteria.getPage() != null ? criteria.getPage() : 0;
+        int size = criteria.getSize() != null ? criteria.getSize() : 20;
+
+        // Parse sort parameter (e.g., "price,asc" or "year,desc")
+        Sort sort = Sort.unsorted();
+        if (criteria.getSort() != null && !criteria.getSort().isBlank()) {
+            String[] sortParts = criteria.getSort().split(",");
+            if (sortParts.length == 2) {
+                String field = sortParts[0].trim();
+                String direction = sortParts[1].trim();
+
+                // Whitelist allowed sort fields to prevent arbitrary sorting
+                if (isValidSortField(field)) {
+                    Sort.Direction sortDirection = direction.equalsIgnoreCase("desc")
+                            ? Sort.Direction.DESC
+                            : Sort.Direction.ASC;
+                    sort = Sort.by(sortDirection, field);
+                }
+            }
+        } else {
+            // Default sorting: newest first (by id DESC as proxy for creation order)
+            sort = Sort.by(Sort.Direction.DESC, "id");
+        }
+
+        return PageRequest.of(page, size, sort);
+    }
+
+    /**
+     * Validate sort field to prevent arbitrary field sorting
+     */
+    private boolean isValidSortField(String field) {
+        return field.equals("pricePerDay") ||
+                field.equals("year") ||
+                field.equals("brand") ||
+                field.equals("model") ||
+                field.equals("seats") ||
+                field.equals("id");
     }
 
     private CarResponseDTO mapToResponse(Car car) {

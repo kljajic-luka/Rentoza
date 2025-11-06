@@ -87,7 +87,7 @@ public class AuthController {
     public ResponseEntity<?> register(@Valid @RequestBody UserRegisterDTO dto, HttpServletRequest request) {
         try {
             User user = userService.register(dto);
-            String accessToken = jwtUtil.generateToken(user.getEmail(), user.getRole().name());
+            String accessToken = jwtUtil.generateToken(user.getEmail(), user.getRole().name(), user.getId());
 
             // Issue refresh token with IP/UserAgent fingerprinting
             String ipAddress = RefreshTokenServiceEnhanced.extractIpAddress(request);
@@ -134,7 +134,7 @@ public class AuthController {
             return ResponseEntity.status(401).body(Map.of("error", "Invalid credentials"));
         }
 
-        String accessToken = jwtUtil.generateToken(user.getEmail(), user.getRole().name());
+        String accessToken = jwtUtil.generateToken(user.getEmail(), user.getRole().name(), user.getId());
 
         // Issue refresh token with IP/UserAgent fingerprinting
         String ipAddress = RefreshTokenServiceEnhanced.extractIpAddress(request);
@@ -185,8 +185,9 @@ public class AuthController {
                 return ResponseEntity.status(401).body(Map.of("error", "Invalid session"));
             }
 
-            String role = userOpt.get().getRole().name();
-            var accessToken = jwtUtil.generateToken(result.email(), role);
+            User user = userOpt.get();
+            String role = user.getRole().name();
+            var accessToken = jwtUtil.generateToken(result.email(), role, user.getId());
 
             ResponseCookie cookie = createRefreshTokenCookie(result.newToken());
             res.addHeader("Set-Cookie", cookie.toString());

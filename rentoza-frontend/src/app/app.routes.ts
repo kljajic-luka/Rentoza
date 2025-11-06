@@ -177,6 +177,13 @@ export const routes: Routes = [
     ]
   },
   {
+    path: 'messages',
+    canActivate: [RoleGuard, RoleRedirectGuard],
+    data: { roles: ['USER', 'OWNER', 'ADMIN'] },
+    loadComponent: () =>
+      import('@features/messages/pages/messages/messages.component').then((m) => m.MessagesComponent)
+  },
+  {
     path: '**',
     loadComponent: () =>
       import('@shared/components/not-found/not-found.component').then((m) => m.NotFoundComponent)

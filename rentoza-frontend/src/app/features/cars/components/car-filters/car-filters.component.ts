@@ -282,7 +282,16 @@ export class CarFiltersComponent implements OnInit, OnDestroy {
   }
 
   get activeFiltersCount(): number {
+    // Null-safe check for form existence
+    if (!this.filterForm) {
+      return 0;
+    }
+
     const formValue = this.filterForm.value;
+    if (!formValue) {
+      return 0;
+    }
+
     let count = 0;
 
     if (formValue.minPrice !== this.minPriceLimit) count++;

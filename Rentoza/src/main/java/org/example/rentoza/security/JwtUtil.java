@@ -40,6 +40,17 @@ public class JwtUtil {
                 .compact();
     }
 
+    // Enhanced method with userId included
+    public String generateToken(String email, String role, Long userId) {
+        return Jwts.builder()
+                .setClaims(Map.of("role", role, "userId", userId.toString()))
+                .setSubject(email)
+                .setIssuedAt(new Date())
+                .setExpiration(new Date(System.currentTimeMillis() + expirationMs))
+                .signWith(key, SignatureAlgorithm.HS256)
+                .compact();
+    }
+
     // Simplified method for backward compatibility (no role param)
     public String generateToken(String email) {
         return generateToken(email, "USER");
@@ -51,6 +62,10 @@ public class JwtUtil {
 
     public String getEmailFromToken(String token) {
         return extractClaim(token, Claims::getSubject);
+    }
+
+    public String getUserIdFromToken(String token) {
+        return extractClaim(token, claims -> claims.get("userId", String.class));
     }
 
     public String getRoleFromToken(String token) {

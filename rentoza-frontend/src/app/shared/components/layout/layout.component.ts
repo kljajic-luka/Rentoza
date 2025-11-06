@@ -72,6 +72,7 @@ export class LayoutComponent implements OnInit {
     { label: 'Početna', icon: 'home', route: '/pocetna' },
     { label: 'Vozila', icon: 'directions_car', route: '/vozila' },
     { label: 'Rezervacije', icon: 'assignment', route: '/bookings', roles: ['USER', 'ADMIN'] },
+    { label: 'Poruke', icon: 'chat', route: '/messages', roles: ['USER', 'ADMIN'] },
     { label: 'Omiljeni', icon: 'favorite', route: '/favorites', roles: ['USER', 'ADMIN'] },
     { label: 'Profil', icon: 'person', route: '/users/profile', roles: ['USER', 'ADMIN'] },
   ];
@@ -81,6 +82,7 @@ export class LayoutComponent implements OnInit {
     { label: 'Dashboard', icon: 'dashboard', route: '/owner/dashboard', roles: ['OWNER', 'ADMIN'] },
     { label: 'Moja vozila', icon: 'directions_car', route: '/owner/cars', roles: ['OWNER', 'ADMIN'] },
     { label: 'Rezervacije', icon: 'event', route: '/owner/bookings', roles: ['OWNER', 'ADMIN'] },
+    { label: 'Poruke', icon: 'chat', route: '/messages', roles: ['OWNER', 'ADMIN'] },
     { label: 'Zarada', icon: 'account_balance_wallet', route: '/owner/earnings', roles: ['OWNER', 'ADMIN'] },
     { label: 'Recenzije', icon: 'rate_review', route: '/owner/reviews', roles: ['OWNER', 'ADMIN'] },
     { label: 'Verifikacija', icon: 'verified', route: '/owner/verification', roles: ['OWNER', 'ADMIN'] },

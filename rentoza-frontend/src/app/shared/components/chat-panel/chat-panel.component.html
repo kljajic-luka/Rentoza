@@ -1,0 +1,105 @@
+<div class="chat-panel">
+  <!-- Header -->
+  <div class="chat-header">
+    <div class="header-content">
+      <mat-icon>chat</mat-icon>
+      <span class="header-title">Messages</span>
+      @if (conversation()?.unreadCount && conversation()!.unreadCount! > 0) {
+      <mat-icon [matBadge]="conversation()!.unreadCount!" matBadgeColor="warn" matBadgeSize="small">
+        notifications
+      </mat-icon>
+      }
+    </div>
+    <div
+      class="status-indicator"
+      [class.locked]="isMessagingLocked"
+      [class.active]="conversation()?.status === 'ACTIVE'"
+    >
+      {{ statusMessage }}
+    </div>
+  </div>
+
+  <!-- Loading State -->
+  @if (isLoading()) {
+  <div class="loading-container">
+    <mat-spinner diameter="40"></mat-spinner>
+    <p>Loading conversation...</p>
+  </div>
+  }
+
+  <!-- Messages Container -->
+  @else if (conversation()) {
+  <div class="messages-container" (scroll)="markAsRead()">
+    @if (messages().length === 0) {
+    <div class="empty-state">
+      <mat-icon>forum</mat-icon>
+      <p>No messages yet</p>
+      <span>Start the conversation!</span>
+    </div>
+    } @else { @for (message of messages(); track message.id) {
+    <div
+      class="message"
+      [class.own-message]="message.senderId === currentUserId()"
+      [class.other-message]="message.senderId !== currentUserId()"
+    >
+      <div class="message-bubble">
+        <div class="message-header">
+          <span class="sender-name">
+            {{
+              message.senderId === currentUserId()
+                ? 'You'
+                : message.senderId === renterId
+                ? 'Renter'
+                : 'Owner'
+            }}
+          </span>
+          <span class="message-time">{{ message.timestamp | date : 'short' }}</span>
+        </div>
+        <div class="message-content">{{ message.content }}</div>
+        @if (message.mediaUrl) {
+        <img [src]="message.mediaUrl" alt="Attachment" class="message-media" />
+        }
+      </div>
+    </div>
+    } }
+  </div>
+
+  <!-- Input Area -->
+  <div class="input-container" [class.disabled]="isMessagingLocked">
+    @if (isMessagingLocked) {
+    <div class="locked-message">
+      <mat-icon>lock</mat-icon>
+      <span>Messaging is currently locked. Request a booking to start chatting.</span>
+    </div>
+    } @else {
+    <mat-form-field appearance="outline" class="message-input">
+      <input
+        matInput
+        [(ngModel)]="messageContent"
+        placeholder="Type your message..."
+        (keyup.enter)="sendMessage()"
+        [disabled]="isMessagingLocked"
+      />
+    </mat-form-field>
+    <button
+      mat-fab
+      color="primary"
+      (click)="sendMessage()"
+      [disabled]="!messageContent().trim() || isMessagingLocked"
+      class="send-button"
+    >
+      <mat-icon>send</mat-icon>
+    </button>
+    }
+  </div>
+  }
+
+  <!-- Error State -->
+  @else {
+  <div class="error-state">
+    <mat-icon>error_outline</mat-icon>
+    <p>Unable to load conversation</p>
+    <button mat-raised-button color="primary" (click)="loadConversation()">Retry</button>
+  </div>
+  }
+</div>

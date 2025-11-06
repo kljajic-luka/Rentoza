@@ -1,11 +1,13 @@
 package org.example.rentoza.booking;
 
 import jakarta.transaction.Transactional;
+import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.booking.dto.BookingRequestDTO;
 import org.example.rentoza.booking.dto.BookingResponseDTO;
 import org.example.rentoza.booking.dto.UserBookingResponseDTO;
 import org.example.rentoza.car.Car;
 import org.example.rentoza.car.CarRepository;
+import org.example.rentoza.chat.ChatServiceClient;
 import org.example.rentoza.review.Review;
 import org.example.rentoza.review.ReviewDirection;
 import org.example.rentoza.review.ReviewRepository;
@@ -21,6 +23,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
+@Slf4j
 public class BookingService {
 
     private final BookingRepository repo;
@@ -28,15 +31,19 @@ public class BookingService {
     private final UserRepository userRepo;
     private final ReviewRepository reviewRepo;
     private final JwtUtil jwtUtil;
+    private final ChatServiceClient chatServiceClient;
 
-    public BookingService(BookingRepository repo, CarRepository carRepo, UserRepository userRepo, ReviewRepository reviewRepo, JwtUtil jwtUtil) {
+    public BookingService(BookingRepository repo, CarRepository carRepo, UserRepository userRepo, 
+                          ReviewRepository reviewRepo, JwtUtil jwtUtil, ChatServiceClient chatServiceClient) {
         this.repo = repo;
         this.carRepo = carRepo;
         this.userRepo = userRepo;
         this.reviewRepo = reviewRepo;
         this.jwtUtil = jwtUtil;
+        this.chatServiceClient = chatServiceClient;
     }
 
+    @Transactional
     public Booking createBooking(BookingRequestDTO dto, String authHeader) {
         String token = authHeader.substring(7);
         String renterEmail = jwtUtil.getEmailFromToken(token);
@@ -57,7 +64,30 @@ public class BookingService {
         long days = ChronoUnit.DAYS.between(dto.getStartDate(), dto.getEndDate());
         booking.setTotalPrice(days * car.getPricePerDay());
 
-        return repo.save(booking);
+        Booking savedBooking = repo.save(booking);
+
+        // Initialize car and owner to avoid lazy loading issues
+        Hibernate.initialize(savedBooking.getCar());
+        Hibernate.initialize(savedBooking.getCar().getOwner());
+
+        // Create conversation in chat microservice asynchronously
+        try {
+            log.info("Creating conversation for booking {} between renter {} and owner {}", 
+                    savedBooking.getId(), renter.getId(), car.getOwner().getId());
+            
+            chatServiceClient.createConversationAsync(
+                    savedBooking.getId().toString(),
+                    renter.getId().toString(),
+                    car.getOwner().getId().toString(),
+                    token
+            );
+        } catch (Exception e) {
+            // Log error but don't fail the booking
+            log.error("Failed to initiate conversation creation for booking {}: {}", 
+                    savedBooking.getId(), e.getMessage());
+        }
+
+        return savedBooking;
     }
 
     public List<Booking> getBookingsByUser(String email) {

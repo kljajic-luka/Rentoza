@@ -1,3 +1,15 @@
+// Polyfill for Node.js globals in browser environment
+// Required for sockjs-client and stompjs which expect Node.js globals
+(window as any).global = window;
+(window as any).process = {
+  env: { DEBUG: undefined },
+  version: '',
+  nextTick: (fn: Function) => setTimeout(fn, 0)
+};
+(window as any).Buffer = (window as any).Buffer || {
+  isBuffer: () => false
+};
+
 import { APP_INITIALIZER, importProvidersFrom, provideZoneChangeDetection } from '@angular/core';
 import { bootstrapApplication } from '@angular/platform-browser';
 import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
@@ -25,22 +37,22 @@ bootstrapApplication(App, {
       provide: APP_INITIALIZER,
       useFactory: initializeAuth,
       deps: [AuthService],
-      multi: true
+      multi: true,
     },
     importProvidersFrom(
       BrowserAnimationsModule,
       JwtModule.forRoot({
         config: {
           tokenGetter: () => null,
-          allowedDomains: ['localhost:8080']
-        }
+          allowedDomains: ['localhost:8080', 'localhost:8081'], // Allow both main API and chat service
+        },
       })
     ),
     provideHttpClient(withInterceptors([authTokenInterceptor, errorResponseInterceptor])),
     provideNativeDateAdapter(),
     provideToastr({
       positionClass: 'toast-bottom-right',
-      preventDuplicates: true
-    })
-  ]
+      preventDuplicates: true,
+    }),
+  ],
 }).catch((err) => console.error(err));

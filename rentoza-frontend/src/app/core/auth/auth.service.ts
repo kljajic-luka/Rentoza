@@ -100,6 +100,13 @@ export class AuthService {
     return this.accessTokenSubject.value;
   }
 
+  /**
+   * Get the current user synchronously
+   */
+  getCurrentUser(): UserProfile | null {
+    return this.currentUserSubject.value;
+  }
+
   isAuthenticated(): boolean {
     const token = this.accessTokenSubject.value;
     return Boolean(token && !this.jwtHelper.isTokenExpired(token));

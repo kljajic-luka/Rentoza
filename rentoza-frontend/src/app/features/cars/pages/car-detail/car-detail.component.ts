@@ -1,6 +1,15 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, DestroyRef, HostListener, Inject, inject, signal, computed } from '@angular/core';
-import { ActivatedRoute, RouterModule } from '@angular/router';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  HostListener,
+  Inject,
+  inject,
+  signal,
+  computed,
+} from '@angular/core';
+import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -12,7 +21,12 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatIconModule } from '@angular/material/icon';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatDividerModule } from '@angular/material/divider';
-import { MatDialogModule, MatDialog, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
+import {
+  MatDialogModule,
+  MatDialog,
+  MatDialogRef,
+  MAT_DIALOG_DATA,
+} from '@angular/material/dialog';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   BehaviorSubject,
@@ -68,6 +82,7 @@ import { TranslateEnumPipe, FeatureHelper } from '@shared/pipes/translate-enum.p
 })
 export class CarDetailComponent {
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   private readonly fb = inject(FormBuilder);
   private readonly carService = inject(CarService);
   private readonly reviewService = inject(ReviewService);
@@ -108,7 +123,7 @@ export class CarDetailComponent {
   protected readonly isSubmitting = signal(false);
   readonly isAuthenticated$ = this.authService.currentUser$;
   readonly isOwner$ = this.authService.currentUser$.pipe(
-    map(user => user?.roles?.includes('OWNER') ?? false)
+    map((user) => user?.roles?.includes('OWNER') ?? false)
   );
 
   // Car rental rules and feature helper
@@ -208,9 +223,16 @@ export class CarDetailComponent {
         finalize(() => this.isSubmitting.set(false))
       )
       .subscribe({
-        next: () => {
-          this.toastr.success('Booking request submitted successfully!');
+        next: (booking) => {
+          this.toastr.success(
+            'Booking request submitted successfully! A new conversation has been created. Check your Messages.',
+            'Success',
+            { timeOut: 5000 }
+          );
           this.refreshBookings();
+
+          // No automatic redirect - user can navigate to Messages manually
+          // The backend will create a conversation automatically via ChatServiceClient
         },
       });
   }
@@ -393,9 +415,8 @@ export class CarDetailComponent {
     const images = this.getCarImages(car);
     if (images.length <= 1) return;
 
-    const newIndex = this.currentImageIndex() === 0
-      ? images.length - 1
-      : this.currentImageIndex() - 1;
+    const newIndex =
+      this.currentImageIndex() === 0 ? images.length - 1 : this.currentImageIndex() - 1;
     this.currentImageIndex.set(newIndex);
   }
 
@@ -407,9 +428,8 @@ export class CarDetailComponent {
     const images = this.getCarImages(car);
     if (images.length <= 1) return;
 
-    const newIndex = this.currentImageIndex() === images.length - 1
-      ? 0
-      : this.currentImageIndex() + 1;
+    const newIndex =
+      this.currentImageIndex() === images.length - 1 ? 0 : this.currentImageIndex() + 1;
     this.currentImageIndex.set(newIndex);
   }
 
@@ -424,7 +444,7 @@ export class CarDetailComponent {
       data: {
         images,
         currentIndex: this.currentImageIndex(),
-        carName: `${car.make} ${car.model}`
+        carName: `${car.make} ${car.model}`,
       },
       panelClass: 'fullscreen-dialog',
       maxWidth: '100vw',
@@ -461,19 +481,17 @@ export class CarDetailComponent {
         mat-icon-button
         class="close-button"
         (click)="close()"
-        aria-label="Close fullscreen viewer">
+        aria-label="Close fullscreen viewer"
+      >
         <mat-icon>close</mat-icon>
       </button>
 
-      <div
-        class="image-container"
-        (swipeleft)="next()"
-        (swiperight)="previous()">
+      <div class="image-container" (swipeleft)="next()" (swiperight)="previous()">
         @if (isLoading()) {
-          <div class="loading-indicator">
-            <mat-icon>hourglass_empty</mat-icon>
-            <p>Učitavanje slike...</p>
-          </div>
+        <div class="loading-indicator">
+          <mat-icon>hourglass_empty</mat-icon>
+          <p>Učitavanje slike...</p>
+        </div>
         }
 
         <img
@@ -485,146 +503,51 @@ export class CarDetailComponent {
         />
 
         @if (data.images.length > 1) {
-          <button
-            mat-icon-button
-            class="nav-button nav-button--left"
-            (click)="previous()"
-            [disabled]="isLoading()"
-            aria-label="Previous image">
-            <mat-icon>chevron_left</mat-icon>
-          </button>
+        <button
+          mat-icon-button
+          class="nav-button nav-button--left"
+          (click)="previous()"
+          [disabled]="isLoading()"
+          aria-label="Previous image"
+        >
+          <mat-icon>chevron_left</mat-icon>
+        </button>
 
-          <button
-            mat-icon-button
-            class="nav-button nav-button--right"
-            (click)="next()"
-            [disabled]="isLoading()"
-            aria-label="Next image">
-            <mat-icon>chevron_right</mat-icon>
-          </button>
+        <button
+          mat-icon-button
+          class="nav-button nav-button--right"
+          (click)="next()"
+          [disabled]="isLoading()"
+          aria-label="Next image"
+        >
+          <mat-icon>chevron_right</mat-icon>
+        </button>
 
-          <div class="image-counter">
-            {{ currentIndex() + 1 }} / {{ data.images.length }}
-          </div>
+        <div class="image-counter">{{ currentIndex() + 1 }} / {{ data.images.length }}</div>
         }
       </div>
     </div>
   `,
-  styles: [`
-    .image-viewer {
-      position: relative;
-      width: 100vw;
-      height: 100vh;
-      background: rgba(0, 0, 0, 0.95);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .close-button {
-      position: absolute;
-      top: 1rem;
-      right: 1rem;
-      z-index: 10;
-      background: rgba(255, 255, 255, 0.1);
-      color: white;
-      backdrop-filter: blur(10px);
-      width: 48px;
-      height: 48px;
-
-      mat-icon {
-        font-size: 28px;
-        width: 28px;
-        height: 28px;
+  styles: [
+    `
+      .image-viewer {
+        position: relative;
+        width: 100vw;
+        height: 100vh;
+        background: rgba(0, 0, 0, 0.95);
+        display: flex;
+        align-items: center;
+        justify-content: center;
       }
 
-      &:hover {
-        background: rgba(255, 255, 255, 0.2);
-      }
-    }
-
-    .image-container {
-      position: relative;
-      width: 100%;
-      height: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 4rem 2rem 2rem;
-
-      img {
-        max-width: 100%;
-        max-height: 100%;
-        object-fit: contain;
-        opacity: 0;
-        transition: opacity 0.3s ease;
-
-        &.loaded {
-          opacity: 1;
-        }
-      }
-    }
-
-    .loading-indicator {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 1rem;
-      color: white;
-
-      mat-icon {
-        font-size: 48px;
-        width: 48px;
-        height: 48px;
-        animation: pulse 1.5s ease-in-out infinite;
-      }
-
-      @keyframes pulse {
-        0%, 100% { opacity: 0.4; }
-        50% { opacity: 1; }
-      }
-    }
-
-    .nav-button {
-      position: absolute;
-      top: 50%;
-      transform: translateY(-50%);
-      background: rgba(255, 255, 255, 0.1);
-      color: white;
-      backdrop-filter: blur(10px);
-      width: 56px;
-      height: 56px;
-      transition: all 0.2s ease;
-
-      mat-icon {
-        font-size: 32px;
-        width: 32px;
-        height: 32px;
-      }
-
-      &:hover:not(:disabled) {
-        background: rgba(255, 255, 255, 0.2);
-        transform: translateY(-50%) scale(1.1);
-      }
-
-      &:disabled {
-        opacity: 0.3;
-        cursor: not-allowed;
-      }
-
-      &--left {
-        left: 2rem;
-      }
-
-      &--right {
-        right: 2rem;
-      }
-
-      @media (max-width: 768px) {
+      .close-button {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        z-index: 10;
+        background: rgba(255, 255, 255, 0.1);
+        color: white;
+        backdrop-filter: blur(10px);
         width: 48px;
         height: 48px;
 
@@ -634,37 +557,140 @@ export class CarDetailComponent {
           height: 28px;
         }
 
+        &:hover {
+          background: rgba(255, 255, 255, 0.2);
+        }
+      }
+
+      .image-container {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 4rem 2rem 2rem;
+
+        img {
+          max-width: 100%;
+          max-height: 100%;
+          object-fit: contain;
+          opacity: 0;
+          transition: opacity 0.3s ease;
+
+          &.loaded {
+            opacity: 1;
+          }
+        }
+      }
+
+      .loading-indicator {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 1rem;
+        color: white;
+
+        mat-icon {
+          font-size: 48px;
+          width: 48px;
+          height: 48px;
+          animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+          0%,
+          100% {
+            opacity: 0.4;
+          }
+          50% {
+            opacity: 1;
+          }
+        }
+      }
+
+      .nav-button {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        background: rgba(255, 255, 255, 0.1);
+        color: white;
+        backdrop-filter: blur(10px);
+        width: 56px;
+        height: 56px;
+        transition: all 0.2s ease;
+
+        mat-icon {
+          font-size: 32px;
+          width: 32px;
+          height: 32px;
+        }
+
+        &:hover:not(:disabled) {
+          background: rgba(255, 255, 255, 0.2);
+          transform: translateY(-50%) scale(1.1);
+        }
+
+        &:disabled {
+          opacity: 0.3;
+          cursor: not-allowed;
+        }
+
         &--left {
-          left: 1rem;
+          left: 2rem;
         }
 
         &--right {
-          right: 1rem;
+          right: 2rem;
+        }
+
+        @media (max-width: 768px) {
+          width: 48px;
+          height: 48px;
+
+          mat-icon {
+            font-size: 28px;
+            width: 28px;
+            height: 28px;
+          }
+
+          &--left {
+            left: 1rem;
+          }
+
+          &--right {
+            right: 1rem;
+          }
         }
       }
-    }
 
-    .image-counter {
-      position: absolute;
-      bottom: 2rem;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(0, 0, 0, 0.6);
-      color: white;
-      padding: 0.5rem 1rem;
-      border-radius: 20px;
-      font-size: 0.9rem;
-      font-weight: 500;
-      backdrop-filter: blur(10px);
-    }
-  `]
+      .image-counter {
+        position: absolute;
+        bottom: 2rem;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0, 0, 0, 0.6);
+        color: white;
+        padding: 0.5rem 1rem;
+        border-radius: 20px;
+        font-size: 0.9rem;
+        font-weight: 500;
+        backdrop-filter: blur(10px);
+      }
+    `,
+  ],
 })
 export class ImageViewerDialogComponent {
   protected readonly currentIndex = signal(0);
   protected readonly isLoading = signal(true);
 
   constructor(
-    @Inject(MAT_DIALOG_DATA) protected readonly data: {
+    @Inject(MAT_DIALOG_DATA)
+    protected readonly data: {
       images: string[];
       currentIndex: number;
       carName: string;
@@ -684,9 +710,8 @@ export class ImageViewerDialogComponent {
     if (this.isLoading()) return;
 
     this.isLoading.set(true);
-    const newIndex = this.currentIndex() === 0
-      ? this.data.images.length - 1
-      : this.currentIndex() - 1;
+    const newIndex =
+      this.currentIndex() === 0 ? this.data.images.length - 1 : this.currentIndex() - 1;
     this.currentIndex.set(newIndex);
   }
 
@@ -694,9 +719,8 @@ export class ImageViewerDialogComponent {
     if (this.isLoading()) return;
 
     this.isLoading.set(true);
-    const newIndex = this.currentIndex() === this.data.images.length - 1
-      ? 0
-      : this.currentIndex() + 1;
+    const newIndex =
+      this.currentIndex() === this.data.images.length - 1 ? 0 : this.currentIndex() + 1;
     this.currentIndex.set(newIndex);
   }
 

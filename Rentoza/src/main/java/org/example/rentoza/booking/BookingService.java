@@ -64,6 +64,11 @@ public class BookingService {
         return repo.findByRenterEmailIgnoreCase(email);
     }
 
+    public Booking getBookingById(Long id) {
+        return repo.findById(id)
+                .orElseThrow(() -> new RuntimeException("Booking not found"));
+    }
+
     public List<BookingResponseDTO> getBookingsForCar(Long carId) {
         var bookings = repo.findByCarId(carId);
 

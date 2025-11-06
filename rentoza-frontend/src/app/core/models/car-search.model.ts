@@ -58,15 +58,3 @@ export enum CarSortOption {
   YEAR_DESC = 'year,desc',
   YEAR_ASC = 'year,asc',
 }
-
-/**
- * Vehicle type categories for filtering
- */
-export enum VehicleType {
-  CAR = 'car',
-  SUV = 'suv',
-  VAN = 'van',
-  MINIVAN = 'minivan',
-  TRUCK = 'truck',
-  CARGO_VAN = 'cargo_van',
-}

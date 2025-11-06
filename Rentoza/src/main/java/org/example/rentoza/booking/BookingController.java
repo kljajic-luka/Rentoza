@@ -3,6 +3,7 @@ package org.example.rentoza.booking;
 import org.example.rentoza.booking.dto.BookingRequestDTO;
 import org.example.rentoza.booking.dto.BookingResponseDTO;
 import org.example.rentoza.booking.dto.UserBookingResponseDTO;
+import org.example.rentoza.security.JwtUtil;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -11,13 +12,14 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/bookings")
-@CrossOrigin(origins = "*")
 public class BookingController {
 
     private final BookingService service;
+    private final JwtUtil jwtUtil;
 
-    public BookingController(BookingService service) {
+    public BookingController(BookingService service, JwtUtil jwtUtil) {
         this.service = service;
+        this.jwtUtil = jwtUtil;
     }
 
     @GetMapping("/me")
@@ -41,8 +43,28 @@ public class BookingController {
     }
 
     @GetMapping("/user/{email}")
-    public ResponseEntity<List<Booking>> getUserBookings(@PathVariable String email) {
-        return ResponseEntity.ok(service.getBookingsByUser(email));
+    public ResponseEntity<?> getUserBookings(
+            @PathVariable String email,
+            @RequestHeader(value = "Authorization", required = false) String authHeader
+    ) {
+        try {
+            // Verify authentication
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                return ResponseEntity.status(401).body(Map.of("error", "Authentication required"));
+            }
+
+            String token = authHeader.substring(7);
+            String authenticatedEmail = jwtUtil.getEmailFromToken(token);
+
+            // Verify the authenticated user can only access their own bookings
+            if (!authenticatedEmail.equalsIgnoreCase(email)) {
+                return ResponseEntity.status(403).body(Map.of("error", "Unauthorized to access other users' bookings"));
+            }
+
+            return ResponseEntity.ok(service.getBookingsByUser(email));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(401).body(Map.of("error", "Invalid token"));
+        }
     }
 
     @GetMapping("/car/{carId}")
@@ -51,8 +73,27 @@ public class BookingController {
     }
 
     @PutMapping("/cancel/{id}")
-    public ResponseEntity<?> cancelBooking(@PathVariable Long id) {
+    public ResponseEntity<?> cancelBooking(
+            @PathVariable Long id,
+            @RequestHeader(value = "Authorization", required = false) String authHeader
+    ) {
         try {
+            // Verify authentication
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                return ResponseEntity.status(401).body(Map.of("error", "Authentication required"));
+            }
+
+            String token = authHeader.substring(7);
+            String authenticatedEmail = jwtUtil.getEmailFromToken(token);
+
+            // Get the booking to verify ownership
+            Booking bookingToCancel = service.getBookingById(id);
+
+            // Verify the authenticated user is the renter who created the booking
+            if (!bookingToCancel.getRenter().getEmail().equalsIgnoreCase(authenticatedEmail)) {
+                return ResponseEntity.status(403).body(Map.of("error", "Unauthorized to cancel this booking"));
+            }
+
             Booking booking = service.cancelBooking(id);
             return ResponseEntity.ok(new BookingResponseDTO(booking));
         } catch (RuntimeException e) {

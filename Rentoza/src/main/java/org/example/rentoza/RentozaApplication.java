@@ -12,6 +12,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 public class RentozaApplication {
     public static void main(String[] args) {
         SpringApplication.run(RentozaApplication.class, args);
+        
     }
 
     @Bean

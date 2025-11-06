@@ -34,6 +34,7 @@ public class OwnerService {
 
     /**
      * Get comprehensive statistics for owner dashboard
+     * Optimized to avoid N+1 query problems
      */
     @Transactional(readOnly = true)
     public OwnerStatsDTO getOwnerStats(String ownerEmail) {
@@ -44,27 +45,19 @@ public class OwnerService {
         List<Car> ownerCars = carRepo.findByOwner(owner);
         int totalCars = ownerCars.size();
 
-        // 2. Count total bookings across all owner's cars
-        int totalBookings = 0;
-        for (Car car : ownerCars) {
-            totalBookings += bookingRepo.findByCar(car).size();
-        }
+        // 2. Fetch all bookings for all owner's cars in a single query (avoids N+1)
+        List<Booking> allBookings = bookingRepo.findByCarOwnerIdWithDetails(owner.getId());
+        int totalBookings = allBookings.size();
 
         // 3. Calculate monthly earnings (current month only)
         LocalDate startOfMonth = LocalDate.now().withDayOfMonth(1);
-
-        double monthlyEarnings = 0.0;
-        for (Car car : ownerCars) {
-            List<Booking> carBookings = bookingRepo.findByCar(car);
-            for (Booking booking : carBookings) {
-                // Count only COMPLETED or ACTIVE bookings from current month
-                if ((booking.getStatus() == BookingStatus.COMPLETED || booking.getStatus() == BookingStatus.ACTIVE)
-                        && booking.getStartDate() != null
-                        && !booking.getStartDate().isBefore(startOfMonth)) {
-                    monthlyEarnings += booking.getTotalPrice();
-                }
-            }
-        }
+        double monthlyEarnings = allBookings.stream()
+                .filter(booking -> (booking.getStatus() == BookingStatus.COMPLETED ||
+                                   booking.getStatus() == BookingStatus.ACTIVE) &&
+                                   booking.getStartDate() != null &&
+                                   !booking.getStartDate().isBefore(startOfMonth))
+                .mapToDouble(Booking::getTotalPrice)
+                .sum();
 
         // 4. Calculate average rating from reviews received by owner
         List<Review> receivedReviews = reviewRepo.findByReviewee(owner);
@@ -82,18 +75,15 @@ public class OwnerService {
 
     /**
      * Get all bookings for owner's cars
+     * Optimized to avoid N+1 query problems
      */
     @Transactional(readOnly = true)
     public List<BookingResponseDTO> getOwnerBookings(String ownerEmail) {
         User owner = userRepo.findByEmail(ownerEmail)
                 .orElseThrow(() -> new RuntimeException("Owner not found"));
 
-        List<Car> ownerCars = carRepo.findByOwner(owner);
-        List<Booking> allBookings = new ArrayList<>();
-
-        for (Car car : ownerCars) {
-            allBookings.addAll(bookingRepo.findByCar(car));
-        }
+        // Fetch all bookings for all owner's cars in a single query (avoids N+1)
+        List<Booking> allBookings = bookingRepo.findByCarOwnerIdWithDetails(owner.getId());
 
         // Sort by start date (newest first)
         allBookings.sort((b1, b2) -> {
@@ -102,12 +92,19 @@ public class OwnerService {
             return b2.getStartDate().compareTo(b1.getStartDate());
         });
 
-        // Convert to DTOs and check for owner reviews
+        // Batch fetch owner reviews for all bookings (avoids N+1)
+        List<Long> bookingIds = allBookings.stream().map(Booking::getId).toList();
+        List<Review> ownerReviews = reviewRepo.findByBookingIdInAndDirection(bookingIds, ReviewDirection.FROM_OWNER);
+        Map<Long, Boolean> hasOwnerReviewMap = new HashMap<>();
+        for (Review review : ownerReviews) {
+            hasOwnerReviewMap.put(review.getBooking().getId(), true);
+        }
+
+        // Convert to DTOs and set review flags
         List<BookingResponseDTO> result = new ArrayList<>();
         for (Booking booking : allBookings) {
             BookingResponseDTO dto = new BookingResponseDTO(booking);
-            // Check if owner has already reviewed this booking
-            dto.setHasOwnerReview(reviewRepo.existsByBookingAndDirection(booking, ReviewDirection.FROM_OWNER));
+            dto.setHasOwnerReview(hasOwnerReviewMap.getOrDefault(booking.getId(), false));
             result.add(dto);
         }
 
@@ -116,13 +113,15 @@ public class OwnerService {
 
     /**
      * Get owner earnings breakdown
+     * Optimized to avoid N+1 query problems
      */
     @Transactional(readOnly = true)
     public OwnerEarningsDTO getOwnerEarnings(String ownerEmail) {
         User owner = userRepo.findByEmail(ownerEmail)
                 .orElseThrow(() -> new RuntimeException("Owner not found"));
 
-        List<Car> ownerCars = carRepo.findByOwner(owner);
+        // Fetch all bookings for all owner's cars in a single query (avoids N+1)
+        List<Booking> allBookings = bookingRepo.findByCarOwnerIdWithDetails(owner.getId());
 
         // Calculate time boundaries
         LocalDate startOfMonth = LocalDate.now().withDayOfMonth(1);
@@ -135,36 +134,41 @@ public class OwnerService {
 
         Map<Long, OwnerEarningsDTO.CarEarningDTO> carEarningsMap = new HashMap<>();
 
-        for (Car car : ownerCars) {
-            List<Booking> carBookings = bookingRepo.findByCar(car);
-            double carTotal = 0.0;
-            int carBookingCount = 0;
+        for (Booking booking : allBookings) {
+            if (booking.getStatus() == BookingStatus.COMPLETED || booking.getStatus() == BookingStatus.ACTIVE) {
+                Car car = booking.getCar();
+                double price = booking.getTotalPrice();
 
-            for (Booking booking : carBookings) {
-                if (booking.getStatus() == BookingStatus.COMPLETED || booking.getStatus() == BookingStatus.ACTIVE) {
-                    double price = booking.getTotalPrice();
-                    totalEarnings += price;
-                    carTotal += price;
-                    carBookingCount++;
-                    totalBookings++;
+                totalEarnings += price;
+                totalBookings++;
 
-                    if (booking.getStartDate() != null && !booking.getStartDate().isBefore(startOfMonth)) {
-                        monthlyEarnings += price;
-                    }
-                    if (booking.getStartDate() != null && !booking.getStartDate().isBefore(startOfYear)) {
-                        yearlyEarnings += price;
-                    }
+                if (booking.getStartDate() != null && !booking.getStartDate().isBefore(startOfMonth)) {
+                    monthlyEarnings += price;
                 }
-            }
+                if (booking.getStartDate() != null && !booking.getStartDate().isBefore(startOfYear)) {
+                    yearlyEarnings += price;
+                }
 
-            if (carBookingCount > 0) {
-                carEarningsMap.put(car.getId(), new OwnerEarningsDTO.CarEarningDTO(
-                        car.getId(),
-                        car.getBrand(),
-                        car.getModel(),
-                        carTotal,
-                        carBookingCount
-                ));
+                // Update per-car earnings
+                OwnerEarningsDTO.CarEarningDTO carEarning = carEarningsMap.get(car.getId());
+                if (carEarning == null) {
+                    carEarningsMap.put(car.getId(), new OwnerEarningsDTO.CarEarningDTO(
+                            car.getId(),
+                            car.getBrand(),
+                            car.getModel(),
+                            price,
+                            1
+                    ));
+                } else {
+                    // Update existing entry
+                    carEarningsMap.put(car.getId(), new OwnerEarningsDTO.CarEarningDTO(
+                            car.getId(),
+                            car.getBrand(),
+                            car.getModel(),
+                            carEarning.getEarnings() + price,
+                            carEarning.getBookingCount() + 1
+                    ));
+                }
             }
         }
 

@@ -14,7 +14,6 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/reviews")
-@CrossOrigin(origins = "*")
 public class ReviewController {
 
     private final ReviewService service;
@@ -146,18 +145,50 @@ public class ReviewController {
     /**
      * GET /api/reviews/received/{email} - Get reviews received by owner
      * Returns all reviews where the owner is the reviewee (reviews from renters)
+     * Requires authentication to prevent anonymous scraping
      */
     @GetMapping("/received/{email}")
-    public ResponseEntity<List<ReviewResponseDTO>> getReceivedReviews(@PathVariable String email) {
-        return ResponseEntity.ok(service.getReviewsReceivedByEmail(email));
+    public ResponseEntity<?> getReceivedReviews(
+            @PathVariable String email,
+            @RequestHeader(value = "Authorization", required = false) String authHeader
+    ) {
+        try {
+            // Verify authentication to prevent anonymous access
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                return ResponseEntity.status(401).body(Map.of("error", "Authentication required"));
+            }
+
+            String token = authHeader.substring(7);
+            jwtUtil.getEmailFromToken(token); // Validate token
+
+            return ResponseEntity.ok(service.getReviewsReceivedByEmail(email));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(401).body(Map.of("error", "Invalid token"));
+        }
     }
 
     /**
      * GET /api/reviews/from-owner/{email} - Get reviews given by owner
      * Returns all reviews where the owner is the reviewer (reviews to renters)
+     * Requires authentication to prevent anonymous scraping
      */
     @GetMapping("/from-owner/{email}")
-    public ResponseEntity<List<ReviewResponseDTO>> getReviewsFromOwner(@PathVariable String email) {
-        return ResponseEntity.ok(service.getReviewsGivenByOwner(email));
+    public ResponseEntity<?> getReviewsFromOwner(
+            @PathVariable String email,
+            @RequestHeader(value = "Authorization", required = false) String authHeader
+    ) {
+        try {
+            // Verify authentication to prevent anonymous access
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                return ResponseEntity.status(401).body(Map.of("error", "Authentication required"));
+            }
+
+            String token = authHeader.substring(7);
+            jwtUtil.getEmailFromToken(token); // Validate token
+
+            return ResponseEntity.ok(service.getReviewsGivenByOwner(email));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(401).body(Map.of("error", "Invalid token"));
+        }
     }
 }

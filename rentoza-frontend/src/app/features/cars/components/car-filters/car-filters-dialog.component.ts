@@ -1,6 +1,13 @@
 import { CommonModule } from '@angular/common';
-import { Component, inject, Inject } from '@angular/core';
-import { FormGroup, ReactiveFormsModule } from '@angular/forms';
+import {
+  ChangeDetectionStrategy,
+  ChangeDetectorRef,
+  Component,
+  inject,
+  Inject,
+  OnInit,
+} from '@angular/core';
+import { FormBuilder, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -15,7 +22,12 @@ import { CarSortOption } from '@core/models/car-search.model';
 import { TranslateEnumPipe } from '@shared/pipes/translate-enum.pipe';
 
 interface CarFiltersDialogData {
-  filterForm: FormGroup;
+  /**
+   * The initial values for the filter form.
+   * Passed as a plain object to ensure the dialog is completely isolated
+   * from the parent component's FormGroup instance.
+   */
+  value: any;
   totalResults: number;
   availableMakes: string[];
   availableFeatures: Feature[];
@@ -28,7 +40,6 @@ interface CarFiltersDialogData {
   maxSeatsLimit: number;
   TransmissionType: typeof TransmissionType;
   Feature: typeof Feature;
-  activeFiltersCount: number;
 }
 
 @Component({
@@ -56,7 +67,7 @@ interface CarFiltersDialogData {
         </button>
       </div>
 
-      <mat-dialog-content [formGroup]="data.filterForm">
+      <mat-dialog-content [formGroup]="dialogForm">
         <div class="filters-grid">
           <!-- Sort -->
           <div class="filter-item full-width">
@@ -75,8 +86,8 @@ interface CarFiltersDialogData {
             <label class="filter-label">
               Cena po danu
               <span class="filter-value">
-                {{ data.filterForm.get('minPrice')?.value | number : '1.0-0' }} -
-                {{ data.filterForm.get('maxPrice')?.value | number : '1.0-0' }} RSD
+                {{ dialogForm.get('minPrice')?.value | number : '1.0-0' }} -
+                {{ dialogForm.get('maxPrice')?.value | number : '1.0-0' }} RSD
               </span>
             </label>
             <mat-slider [min]="data.minPriceLimit" [max]="data.maxPriceLimit" [step]="10" discrete>
@@ -132,8 +143,8 @@ interface CarFiltersDialogData {
             <label class="filter-label">
               Godište
               <span class="filter-value">
-                {{ data.filterForm.get('minYear')?.value }} -
-                {{ data.filterForm.get('maxYear')?.value }}
+                {{ dialogForm.get('minYear')?.value }} -
+                {{ dialogForm.get('maxYear')?.value }}
               </span>
             </label>
             <mat-slider [min]="data.minYearLimit" [max]="data.maxYearLimit" [step]="1" discrete>
@@ -146,7 +157,7 @@ interface CarFiltersDialogData {
           <div class="filter-item full-width">
             <label class="filter-label">
               Broj sedišta
-              <span class="filter-value">{{ data.filterForm.get('minSeats')?.value }}+</span>
+              <span class="filter-value">{{ dialogForm.get('minSeats')?.value }}+</span>
             </label>
             <mat-slider [min]="data.minSeatsLimit" [max]="data.maxSeatsLimit" [step]="1" discrete>
               <input matSliderThumb formControlName="minSeats" />
@@ -156,28 +167,22 @@ interface CarFiltersDialogData {
           <!-- Features -->
           <div class="filter-item full-width">
             <label class="filter-label">Dodatna oprema</label>
-            <div class="features-chips">
-              <mat-chip-option
-                *ngFor="let feature of data.availableFeatures"
-                [selected]="isFeatureSelected(feature)"
-                (click)="toggleFeature(feature)"
-              >
+            <mat-chip-listbox
+              class="features-chips"
+              formControlName="features"
+              multiple
+              aria-label="Izaberite dodatnu opremu"
+            >
+              <mat-chip-option *ngFor="let feature of data.availableFeatures" [value]="feature">
                 {{ feature | translateEnum }}
               </mat-chip-option>
-            </div>
+            </mat-chip-listbox>
           </div>
         </div>
       </mat-dialog-content>
 
       <mat-dialog-actions>
-        <button
-          mat-button
-          class="reset-btn"
-          (click)="reset()"
-          [disabled]="data.activeFiltersCount === 0"
-        >
-          Obriši sve
-        </button>
+        <button mat-button class="reset-btn" (click)="reset()">Obriši sve</button>
         <button mat-flat-button color="primary" class="show-results-btn" (click)="apply()">
           Prikaži {{ data.totalResults }} rezultata
         </button>
@@ -380,41 +385,63 @@ interface CarFiltersDialogData {
       }
     `,
   ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class CarFiltersDialogComponent {
+export class CarFiltersDialogComponent implements OnInit {
   private readonly dialogRef = inject(MatDialogRef<CarFiltersDialogComponent>);
+  private readonly cdr = inject(ChangeDetectorRef);
+  private readonly fb = inject(FormBuilder);
+
+  // This dialog will have its own, completely isolated FormGroup.
+  dialogForm!: FormGroup;
+
+  // Flag to force re-rendering of the chip list.
+  renderChips = true;
 
   constructor(@Inject(MAT_DIALOG_DATA) public data: CarFiltersDialogData) {}
 
-  toggleFeature(feature: Feature): void {
-    const currentFeatures = this.data.filterForm.get('features')?.value || [];
-    const index = currentFeatures.indexOf(feature);
+  ngOnInit(): void {
+    // Create a new, isolated FormGroup from the plain value object passed by the parent.
+    this.dialogForm = this.fb.group({
+      minPrice: [this.data.value.minPrice],
+      maxPrice: [this.data.value.maxPrice],
+      make: [this.data.value.make],
+      model: [this.data.value.model],
+      minYear: [this.data.value.minYear],
+      maxYear: [this.data.value.maxYear],
+      location: [this.data.value.location],
+      minSeats: [this.data.value.minSeats],
+      transmission: [this.data.value.transmission],
+      // Ensure features is a new array to prevent reference issues.
+      features: [this.data.value.features ? [...this.data.value.features] : []],
+      sort: [this.data.value.sort],
+    });
 
-    const updatedFeatures = [...currentFeatures];
-
-    if (index > -1) {
-      updatedFeatures.splice(index, 1);
-    } else {
-      updatedFeatures.push(feature);
-    }
-
-    this.data.filterForm.patchValue({ features: updatedFeatures }, { emitEvent: true });
-  }
-
-  isFeatureSelected(feature: Feature): boolean {
-    const features = this.data.filterForm.get('features')?.value || [];
-    return features.includes(feature);
+    // Force chip list reconstruction on dialog open as well to break any residual
+    // Angular Material SelectionModel state from previous opens.
+    this.renderChips = false;
+    this.cdr.detectChanges();
+    this.renderChips = true;
+    this.cdr.detectChanges();
   }
 
   apply(): void {
-    this.dialogRef.close('apply');
+    // On apply, return the action and the final form value to the parent.
+    this.dialogRef.close({ action: 'apply', value: this.dialogForm.value });
   }
 
+  /**
+   * Requests a global reset by closing the dialog with the reset action.
+   * The parent handles the actual filter clearing to keep the flow centralized.
+   */
   reset(): void {
-    this.dialogRef.close('reset');
+    // Close the dialog and notify the parent that a reset occurred.
+    // The parent is now responsible for its own state update and API call.
+    this.dialogRef.close({ action: 'reset' });
   }
 
   close(): void {
+    // On cancel (e.g., 'X' button), return nothing or a 'cancel' action.
     this.dialogRef.close();
   }
 }

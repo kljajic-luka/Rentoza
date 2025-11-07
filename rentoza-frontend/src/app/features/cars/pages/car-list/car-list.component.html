@@ -13,7 +13,6 @@
     <app-car-filters
       [totalResults]="results.totalElements"
       [initialCriteria]="searchCriteria$.value"
-      [triggerReset]="(resetForm$ | async) ?? false"
       (filtersChanged)="onFiltersChanged($event)"
       (resetTriggered)="onResetFilters()"
     ></app-car-filters>
@@ -33,7 +32,7 @@
         <div class="filter-chips" *ngIf="(activeFilterChips$ | async)?.length">
           <div class="filter-chips__header">
             <span class="label">Aktivni filteri:</span>
-            <button mat-button (click)="clearAllFilters()" class="clear-all">
+            <button mat-button (click)="onClearAllFiltersClick()" class="clear-all">
               <mat-icon>close</mat-icon>
               Obriši sve
             </button>
@@ -127,7 +126,7 @@
             <mat-icon>search_off</mat-icon>
             <h3>Nema rezultata</h3>
             <p>Pokušajte da promenite filtere ili obrišite neke od postojećih.</p>
-            <button mat-flat-button color="primary" (click)="clearAllFilters()">
+            <button mat-flat-button color="primary" (click)="onClearAllFiltersClick()">
               Obriši sve filtere
             </button>
           </div>

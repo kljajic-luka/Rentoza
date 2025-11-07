@@ -1,5 +1,12 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, inject, OnInit, OnDestroy } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  inject,
+  OnInit,
+  OnDestroy,
+  ViewChild,
+} from '@angular/core';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
@@ -54,6 +61,9 @@ export class CarListComponent implements OnInit, OnDestroy {
   private readonly router = inject(Router);
   private readonly destroy$ = new Subject<void>();
 
+  // Reference to child filter component for direct method calls
+  @ViewChild(CarFiltersComponent) filtersComponent!: CarFiltersComponent;
+
   // Search state
   readonly searchCriteria$ = new BehaviorSubject<CarSearchCriteria>({
     page: 0,
@@ -63,14 +73,14 @@ export class CarListComponent implements OnInit, OnDestroy {
   // Loading state for smooth spinner overlay
   readonly isLoading$ = new BehaviorSubject<boolean>(false);
 
-  // Subject to trigger filter form reset in child component
-  readonly resetForm$ = new BehaviorSubject<boolean>(false);
+  // REMOVED: resetForm$ - no longer broadcast reset commands to child
+  // Parent will call child.resetFilters() directly via ViewChild reference
 
   // Search results
   readonly searchResults$: Observable<PagedResponse<Car>> = this.searchCriteria$.pipe(
-    tap(() => this.isLoading$.next(true)), // Start loading
     debounceTime(100),
     distinctUntilChanged((prev, curr) => JSON.stringify(prev) === JSON.stringify(curr)),
+    tap(() => this.isLoading$.next(true)), // Start loading only when a real fetch will run
     switchMap((criteria) => this.carService.searchCars(criteria)),
     tap((results) => {
       // Update URL with current filters (instant sync)
@@ -166,10 +176,12 @@ export class CarListComponent implements OnInit, OnDestroy {
     };
 
     this.searchCriteria$.next(defaultCriteria);
+
     this.updateActiveFilterChips(defaultCriteria);
 
-    // Trigger reset in child component
-    this.resetForm$.next(true);
+    // REMOVED: No longer call resetForm$.next(true) - this created circular reset
+    // The child component already called resetFilters() which emitted resetTriggered
+    // that triggered this clearAllFilters() method. No need to echo back.
 
     // Clear URL query params
     this.router.navigate([], {
@@ -182,6 +194,18 @@ export class CarListComponent implements OnInit, OnDestroy {
   onResetFilters(): void {
     // Called when reset button is clicked in filter component
     this.clearAllFilters();
+  }
+
+  /**
+   * NEW: Handler for "Obriši sve filtere" button clicks on the main page.
+   * This directly calls the child filter component's resetFilters() method.
+   * The child will then emit resetTriggered, which calls onResetFilters() above.
+   * This establishes one-way flow: UI click → child reset → parent clears.
+   */
+  onClearAllFiltersClick(): void {
+    if (this.filtersComponent) {
+      this.filtersComponent.resetFilters(true);
+    }
   }
 
   private updateActiveFilterChips(criteria: CarSearchCriteria): void {

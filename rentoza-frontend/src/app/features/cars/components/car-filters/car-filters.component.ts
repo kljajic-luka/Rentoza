@@ -30,6 +30,20 @@ import { Feature, TransmissionType } from '@core/models/car.model';
 import { CarService } from '@core/services/car.service';
 import { CarFiltersDialogComponent } from './car-filters-dialog.component';
 
+type CarFiltersFormValue = {
+  minPrice: number;
+  maxPrice: number;
+  make: string | null;
+  model: string | null;
+  minYear: number;
+  maxYear: number;
+  location: string | null;
+  minSeats: number;
+  transmission: TransmissionType | null;
+  features: Feature[];
+  sort: CarSortOption;
+};
+
 @Component({
   selector: 'app-car-filters',
   standalone: true,
@@ -72,18 +86,17 @@ export class CarFiltersComponent implements OnInit, OnDestroy {
 
   @Input() totalResults = 0;
   @Input() initialCriteria?: CarSearchCriteria;
-  @Input() set triggerReset(value: boolean) {
-    if (value) {
-      this.resetFilters();
-    }
-  }
+  // REMOVED: triggerReset @Input - parent will call resetFilters() directly via @ViewChild
+  // This eliminates the circular reset flow where parent broadcasts reset back to child
   @Output() filtersChanged = new EventEmitter<CarSearchCriteria>();
   @Output() resetTriggered = new EventEmitter<void>();
 
   filterForm!: FormGroup;
 
   // Store initial defaults for reactive comparison
-  private initialDefaults: any = {};
+  private initialDefaults!: CarFiltersFormValue;
+  // Guard against reentrant reset calls
+  private isResetting = false;
 
   // Enums for templates
   readonly TransmissionType = TransmissionType;
@@ -164,20 +177,7 @@ export class CarFiltersComponent implements OnInit, OnDestroy {
   }
 
   private initializeForm(): void {
-    // Store initial defaults for later comparison
-    this.initialDefaults = {
-      minPrice: this.minPriceLimit,
-      maxPrice: this.maxPriceLimit,
-      make: null,
-      model: null,
-      minYear: this.minYearLimit,
-      maxYear: this.maxYearLimit,
-      location: null,
-      minSeats: this.minSeatsLimit,
-      transmission: null,
-      features: [],
-      sort: CarSortOption.RELEVANCE,
-    };
+    this.initialDefaults = this.buildDefaultFormValue();
 
     this.filterForm = this.fb.group({
       // Price
@@ -202,7 +202,7 @@ export class CarFiltersComponent implements OnInit, OnDestroy {
       transmission: [this.initialCriteria?.transmission ?? this.initialDefaults.transmission],
 
       // Features
-      features: [this.initialCriteria?.features ?? this.initialDefaults.features],
+      features: [this.initialCriteria?.features ? [...this.initialCriteria.features] : []],
 
       // Sorting
       sort: [this.initialCriteria?.sort ?? this.initialDefaults.sort],
@@ -261,14 +261,64 @@ export class CarFiltersComponent implements OnInit, OnDestroy {
     this.filtersChanged.emit(criteria);
   }
 
-  resetFilters(): void {
-    // Reset form to initial default values
-    this.filterForm.patchValue(this.initialDefaults, { emitEvent: false });
+  /**
+   * Single source of truth for clearing all filters.
+   * Called by both main page reset button and dialog reset button.
+   * Guard prevents reentrant calls during async operations.
+   */
+  resetFilters(shouldEmit: boolean = true): void {
+    // GUARD: Prevent circular/reentrant reset calls
+    if (this.isResetting) {
+      return;
+    }
 
-    // Emit reset event to parent to clear URL and trigger fresh search
-    this.resetTriggered.emit();
+    this.isResetting = true;
+
+    this.clearAllFilters();
+
+    // Emit reset event to parent to clear URL and trigger fresh search.
+    // This is the single point of emission for a reset action.
+    if (shouldEmit) {
+      this.resetTriggered.emit();
+    }
+
+    this.isResetting = false;
   }
 
+  private buildDefaultFormValue(): CarFiltersFormValue {
+    return {
+      minPrice: this.minPriceLimit,
+      maxPrice: this.maxPriceLimit,
+      make: null,
+      model: null,
+      minYear: this.minYearLimit,
+      maxYear: this.maxYearLimit,
+      location: null,
+      minSeats: this.minSeatsLimit,
+      transmission: null,
+      features: [], // Always default to a fresh, empty array.
+      sort: CarSortOption.RELEVANCE,
+    };
+  }
+
+  private clearAllFilters(): void {
+    // Ensure the entire form resets to defaults, but do not emit changes yet.
+    const defaultValues = this.buildDefaultFormValue();
+
+    // Reset the entire form to default values without emitting events.
+    this.filterForm.reset(defaultValues, { emitEvent: false });
+
+    // IMPORTANT: Explicitly set 'features' to a NEW empty array.
+    // This ensures a fresh reference, critical for breaking stale UI state.
+    const featuresControl = this.filterForm.get('features');
+    featuresControl?.setValue([], { emitEvent: false });
+
+    this.filterForm.markAsPristine();
+    this.filterForm.markAsUntouched();
+
+    // CRITICAL: Force change detection to update activeFiltersCount and UI
+    this.cdr.detectChanges();
+  }
   formatPriceLabel(value: number): string {
     return `${value} RSD`;
   }
@@ -281,44 +331,55 @@ export class CarFiltersComponent implements OnInit, OnDestroy {
     return `${value}`;
   }
 
+  /**
+   * Computes active filter count from FRESH form value, not cached controls.
+   * This prevents stale counts after reset operations.
+   */
   get activeFiltersCount(): number {
     // Null-safe check for form existence
     if (!this.filterForm) {
       return 0;
     }
 
-    const formValue = this.filterForm.value;
-    if (!formValue) {
+    // ALWAYS get fresh value from form, never use cached control references
+    const v = this.filterForm.value;
+    if (!v) {
       return 0;
     }
 
+    // Count filters that differ from defaults
     let count = 0;
+    if (v.minPrice !== this.minPriceLimit) count++;
+    if (v.maxPrice !== this.maxPriceLimit) count++;
+    if (v.make) count++;
+    if (v.model) count++;
+    if (v.minYear !== this.minYearLimit) count++;
+    if (v.maxYear !== this.maxYearLimit) count++;
+    if (v.location) count++;
+    if (v.minSeats !== this.minSeatsLimit) count++;
+    if (v.transmission) count++;
 
-    if (formValue.minPrice !== this.minPriceLimit) count++;
-    if (formValue.maxPrice !== this.maxPriceLimit) count++;
-    if (formValue.make) count++;
-    if (formValue.model) count++;
-    if (formValue.minYear !== this.minYearLimit) count++;
-    if (formValue.maxYear !== this.maxYearLimit) count++;
-    if (formValue.location) count++;
-    if (formValue.minSeats !== this.minSeatsLimit) count++;
-    if (formValue.transmission) count++;
-    if (formValue.features?.length > 0) count++;
+    // Check features array length from CURRENT value
+    const featuresLength = v.features?.length ?? 0;
+    if (featuresLength > 0) {
+      count++;
+    }
 
     return count;
   }
 
   openFiltersDialog(): void {
-    // Save current form state to restore on cancel
-    const originalFormValue = { ...this.filterForm.value };
-
     const dialogRef = this.dialog.open(CarFiltersDialogComponent, {
       width: '80%',
       maxWidth: '900px',
       maxHeight: '90vh',
       panelClass: 'filters-dialog',
+      // Unique id forces Angular Material to treat each open as a new instance
+      id: `filters-${Date.now()}`,
       data: {
-        filterForm: this.filterForm,
+        // CRITICAL: Pass a plain 'value' object, not the FormGroup instance.
+        // This ensures the dialog is completely isolated.
+        value: { ...this.filterForm.value },
         totalResults: this.totalResults,
         availableMakes: this.availableMakes,
         availableFeatures: this.availableFeatures,
@@ -331,24 +392,38 @@ export class CarFiltersComponent implements OnInit, OnDestroy {
         maxSeatsLimit: this.maxSeatsLimit,
         TransmissionType: this.TransmissionType,
         Feature: this.Feature,
-        activeFiltersCount: this.activeFiltersCount,
       },
       autoFocus: false,
       restoreFocus: false,
     });
 
-    dialogRef.afterClosed().subscribe((result) => {
-      if (result === 'apply') {
-        // Apply filters and update car list
-        this.emitFilters();
-      } else if (result === 'reset') {
-        // Reset filters to defaults
-        this.resetFilters();
-      } else {
-        // Cancel or backdrop click - restore original form values without applying
-        this.filterForm.patchValue(originalFormValue, { emitEvent: false });
-      }
-      this.cdr.markForCheck();
-    });
+    // Use take(1) to ensure handler only fires once and prevent memory leaks.
+    dialogRef
+      .afterClosed()
+      .pipe(take(1))
+      .subscribe((result) => {
+        // Do nothing if the dialog was cancelled (e.g., backdrop click or 'X' button).
+        if (!result) {
+          return;
+        }
+
+        if (result.action === 'apply') {
+          // The dialog is asking to apply its final state to the parent.
+          this.filterForm.patchValue(result.value, { emitEvent: false });
+          // IMPORTANT: Ensure features is a fresh array.
+          this.filterForm
+            .get('features')
+            ?.setValue(result.value.features ? [...result.value.features] : [], {
+              emitEvent: false,
+            });
+          this.emitFilters(); // Emit once after all changes are applied.
+        } else if (result.action === 'reset') {
+          // The dialog is asking the parent to reset itself.
+          // The `true` argument tells resetFilters to emit the reset event.
+          this.resetFilters(true);
+        }
+
+        this.cdr.markForCheck();
+      });
   }
 }

@@ -10,7 +10,12 @@
   isBuffer: () => false,
 };
 
-import { APP_INITIALIZER, importProvidersFrom, provideZoneChangeDetection, isDevMode } from '@angular/core';
+import {
+  APP_INITIALIZER,
+  importProvidersFrom,
+  provideZoneChangeDetection,
+  isDevMode,
+} from '@angular/core';
 import { bootstrapApplication } from '@angular/platform-browser';
 import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';

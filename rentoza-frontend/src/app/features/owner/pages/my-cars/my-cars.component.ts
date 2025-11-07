@@ -89,9 +89,7 @@ export class MyCarsComponent implements OnInit {
     dialogRef.afterClosed().subscribe((updatedCar: Car | undefined) => {
       if (updatedCar) {
         // Update the car in local state
-        this.cars.update((cars) =>
-          cars.map((c) => (c.id === updatedCar.id ? updatedCar : c))
-        );
+        this.cars.update((cars) => cars.map((c) => (c.id === updatedCar.id ? updatedCar : c)));
       }
     });
   }
@@ -105,6 +103,7 @@ export class MyCarsComponent implements OnInit {
         this.cars.update((cars) =>
           cars.map((c) => (c.id === car.id ? { ...c, available: updatedCar.available } : c))
         );
+        this.carService.clearSearchCache(); // Clear cache to ensure fresh results
         const status = updatedCar.available ? 'aktivirano' : 'deaktivirano';
         this.snackBar.open(`Vozilo ${status}`, 'Zatvori', { duration: 2000 });
       },
@@ -123,6 +122,7 @@ export class MyCarsComponent implements OnInit {
     this.carService.deleteCar(car.id).subscribe({
       next: () => {
         this.cars.update((cars) => cars.filter((c) => c.id !== car.id));
+        this.carService.clearSearchCache(); // Clear cache to ensure fresh results
         this.snackBar.open('Vozilo obrisano', 'Zatvori', { duration: 2000 });
       },
       error: (error) => {

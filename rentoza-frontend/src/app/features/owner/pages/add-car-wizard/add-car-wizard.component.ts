@@ -268,6 +268,7 @@ export class AddCarWizardComponent implements OnInit {
 
     this.carService.addCar(carData).subscribe({
       next: (car) => {
+        this.carService.clearSearchCache(); // Clear cache to ensure fresh results
         this.snackBar.open('Vozilo uspešno dodato! Na čekanju je za odobrenje.', 'Zatvori', {
           duration: 4000,
           panelClass: ['snackbar-success'],

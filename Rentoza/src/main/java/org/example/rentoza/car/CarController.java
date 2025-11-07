@@ -3,10 +3,12 @@ package org.example.rentoza.car;
 import org.example.rentoza.car.dto.CarRequestDTO;
 import org.example.rentoza.car.dto.CarResponseDTO;
 import org.example.rentoza.car.dto.CarSearchCriteria;
+import org.example.rentoza.config.CachingConfig;
 import org.example.rentoza.security.JwtUtil;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
 import org.springframework.data.domain.Page;
+import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -251,5 +253,33 @@ public class CarController {
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
+    }
+
+    /**
+     * Get all available car features (static data)
+     * Cache-Control: public, max-age=86400, immutable
+     */
+    @GetMapping("/features")
+    public ResponseEntity<List<String>> getAllFeatures() {
+        List<String> features = Arrays.stream(Feature.values())
+                .map(Enum::name)
+                .collect(Collectors.toList());
+        
+        return ResponseEntity.ok()
+                .cacheControl(CachingConfig.longCacheControl())
+                .body(features);
+    }
+
+    /**
+     * Get all available car makes (semi-static data)
+     * Cache-Control: public, max-age=3600
+     */
+    @GetMapping("/makes")
+    public ResponseEntity<List<String>> getAllMakes() {
+        List<String> makes = service.getAllMakes();
+        
+        return ResponseEntity.ok()
+                .cacheControl(CachingConfig.defaultCacheControl())
+                .body(makes);
     }
 }

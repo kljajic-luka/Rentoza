@@ -201,6 +201,7 @@ export class EditCarDialogComponent implements OnInit {
 
     this.carService.updateCar(this.data.car.id, updatedData).subscribe({
       next: (updatedCar) => {
+        this.carService.clearSearchCache(); // Clear cache to ensure fresh results
         this.snackBar.open('Vozilo uspešno ažurirano!', 'Zatvori', {
           duration: 3000,
           panelClass: ['snackbar-success'],

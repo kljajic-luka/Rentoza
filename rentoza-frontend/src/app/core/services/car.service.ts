@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { Observable, map } from 'rxjs';
+import { Observable, map, shareReplay } from 'rxjs';
 
 import { environment } from '@environments/environment';
 import { Car } from '@core/models/car.model';
@@ -8,6 +8,7 @@ import { Review } from '@core/models/review.model';
 import { CarSearchCriteria, PagedResponse } from '@core/models/car-search.model';
 import { isWithinRadius } from '@core/utils/distance.util';
 import { normalizeSearchString } from '@core/utils/string-normalization.util';
+import { clearHttpCacheByPattern } from '@core/interceptors/http-cache.interceptor';
 
 /**
  * Backend Car DTO interface (uses 'brand' instead of 'make')
@@ -40,6 +41,10 @@ interface BackendCarDTO {
 export class CarService {
   private readonly baseUrl = `${environment.baseApiUrl}/cars`;
 
+  // Cache for search results to avoid duplicate requests
+  private searchCache = new Map<string, Observable<PagedResponse<Car>>>();
+  private readonly CACHE_SIZE = 20; // Keep last 20 search queries
+
   constructor(private readonly http: HttpClient) {}
 
   /**
@@ -62,59 +67,71 @@ export class CarService {
 
   /**
    * Search cars with filters, sorting, and pagination
+   * Includes request deduplication and caching for performance
    * @param criteria Search criteria
    * @returns Paginated response with cars
    */
   searchCars(criteria: CarSearchCriteria): Observable<PagedResponse<Car>> {
+    // Create cache key from criteria
+    const cacheKey = JSON.stringify(this.cleanCriteria(criteria));
+
+    // Check cache first
+    if (this.searchCache.has(cacheKey)) {
+      return this.searchCache.get(cacheKey)!;
+    }
+
+    // Clean criteria - remove empty/null/default values to minimize payload
+    const cleanedCriteria = this.cleanCriteria(criteria);
     let params = new HttpParams();
 
-    // Add all non-null/undefined criteria to params
+    // Add only non-null/undefined criteria to params
     // Apply normalization to text-based filters
-    if (criteria.minPrice !== undefined) {
-      params = params.set('minPrice', criteria.minPrice.toString());
+    if (cleanedCriteria.minPrice !== undefined) {
+      params = params.set('minPrice', cleanedCriteria.minPrice.toString());
     }
-    if (criteria.maxPrice !== undefined) {
-      params = params.set('maxPrice', criteria.maxPrice.toString());
+    if (cleanedCriteria.maxPrice !== undefined) {
+      params = params.set('maxPrice', cleanedCriteria.maxPrice.toString());
     }
-    if (criteria.vehicleType) {
-      params = params.set('vehicleType', normalizeSearchString(criteria.vehicleType));
+    if (cleanedCriteria.vehicleType) {
+      params = params.set('vehicleType', normalizeSearchString(cleanedCriteria.vehicleType));
     }
-    if (criteria.make) {
-      params = params.set('make', normalizeSearchString(criteria.make));
+    if (cleanedCriteria.make) {
+      params = params.set('make', normalizeSearchString(cleanedCriteria.make));
     }
-    if (criteria.model) {
-      params = params.set('model', normalizeSearchString(criteria.model));
+    if (cleanedCriteria.model) {
+      params = params.set('model', normalizeSearchString(cleanedCriteria.model));
     }
-    if (criteria.minYear !== undefined) {
-      params = params.set('minYear', criteria.minYear.toString());
+    if (cleanedCriteria.minYear !== undefined) {
+      params = params.set('minYear', cleanedCriteria.minYear.toString());
     }
-    if (criteria.maxYear !== undefined) {
-      params = params.set('maxYear', criteria.maxYear.toString());
+    if (cleanedCriteria.maxYear !== undefined) {
+      params = params.set('maxYear', cleanedCriteria.maxYear.toString());
     }
-    if (criteria.location) {
-      params = params.set('location', normalizeSearchString(criteria.location));
+    if (cleanedCriteria.location) {
+      params = params.set('location', normalizeSearchString(cleanedCriteria.location));
     }
-    if (criteria.minSeats !== undefined) {
-      params = params.set('minSeats', criteria.minSeats.toString());
+    if (cleanedCriteria.minSeats !== undefined) {
+      params = params.set('minSeats', cleanedCriteria.minSeats.toString());
     }
-    if (criteria.transmission) {
-      params = params.set('transmission', criteria.transmission);
+    if (cleanedCriteria.transmission) {
+      params = params.set('transmission', cleanedCriteria.transmission);
     }
-    if (criteria.features && criteria.features.length > 0) {
+    if (cleanedCriteria.features && cleanedCriteria.features.length > 0) {
       // Send features as comma-separated string
-      params = params.set('features', criteria.features.join(','));
+      params = params.set('features', cleanedCriteria.features.join(','));
     }
-    if (criteria.page !== undefined) {
-      params = params.set('page', criteria.page.toString());
+    if (cleanedCriteria.page !== undefined) {
+      params = params.set('page', cleanedCriteria.page.toString());
     }
-    if (criteria.size !== undefined) {
-      params = params.set('size', criteria.size.toString());
+    if (cleanedCriteria.size !== undefined) {
+      params = params.set('size', cleanedCriteria.size.toString());
     }
-    if (criteria.sort) {
-      params = params.set('sort', criteria.sort);
+    if (cleanedCriteria.sort) {
+      params = params.set('sort', cleanedCriteria.sort);
     }
 
-    return this.http.get<any>(`${this.baseUrl}/search`, { params }).pipe(
+    // Create the observable with shareReplay to deduplicate simultaneous requests
+    const request$ = this.http.get<any>(`${this.baseUrl}/search`, { params }).pipe(
       map((response) => ({
         content: response.content.map((car: any) => this.mapBackendCarToFrontend(car)),
         totalElements: response.totalElements,
@@ -123,8 +140,76 @@ export class CarService {
         pageSize: response.pageSize,
         hasNext: response.hasNext,
         hasPrevious: response.hasPrevious,
-      }))
+      })),
+      shareReplay({ bufferSize: 1, refCount: true })
     );
+
+    // Add to cache
+    this.searchCache.set(cacheKey, request$);
+
+    // Limit cache size
+    if (this.searchCache.size > this.CACHE_SIZE) {
+      const firstKey = this.searchCache.keys().next().value;
+      if (firstKey) {
+        this.searchCache.delete(firstKey);
+      }
+    }
+
+    return request$;
+  }
+
+  /**
+   * Clean search criteria by removing empty strings, null values, and empty arrays
+   * This minimizes the JSON payload and cache key size
+   */
+  private cleanCriteria(criteria: CarSearchCriteria): CarSearchCriteria {
+    const cleaned: CarSearchCriteria = {};
+
+    // Only include non-empty, non-null values
+    if (criteria.minPrice !== undefined && criteria.minPrice !== null) {
+      cleaned.minPrice = criteria.minPrice;
+    }
+    if (criteria.maxPrice !== undefined && criteria.maxPrice !== null) {
+      cleaned.maxPrice = criteria.maxPrice;
+    }
+    if (criteria.vehicleType && criteria.vehicleType.trim()) {
+      cleaned.vehicleType = criteria.vehicleType.trim();
+    }
+    if (criteria.make && criteria.make.trim()) {
+      cleaned.make = criteria.make.trim();
+    }
+    if (criteria.model && criteria.model.trim()) {
+      cleaned.model = criteria.model.trim();
+    }
+    if (criteria.minYear !== undefined && criteria.minYear !== null) {
+      cleaned.minYear = criteria.minYear;
+    }
+    if (criteria.maxYear !== undefined && criteria.maxYear !== null) {
+      cleaned.maxYear = criteria.maxYear;
+    }
+    if (criteria.location && criteria.location.trim()) {
+      cleaned.location = criteria.location.trim();
+    }
+    if (criteria.minSeats !== undefined && criteria.minSeats !== null) {
+      cleaned.minSeats = criteria.minSeats;
+    }
+    if (criteria.transmission) {
+      cleaned.transmission = criteria.transmission;
+    }
+    if (criteria.features && criteria.features.length > 0) {
+      cleaned.features = criteria.features;
+    }
+    if (criteria.page !== undefined && criteria.page !== null) {
+      cleaned.page = criteria.page;
+    }
+    if (criteria.size !== undefined && criteria.size !== null) {
+      cleaned.size = criteria.size;
+    }
+    if (criteria.sort && criteria.sort.trim()) {
+      cleaned.sort = criteria.sort.trim();
+    }
+
+    return cleaned;
   }
 
   /**
@@ -177,6 +262,17 @@ export class CarService {
 
   getCarReviews(id: string): Observable<Review[]> {
     return this.http.get<Review[]>(`${this.baseUrl}/${id}/reviews`);
+  }
+
+  /**
+   * Clear the search cache
+   * Useful after CRUD operations on cars to ensure fresh data
+   * Also clears HTTP interceptor cache
+   */
+  clearSearchCache(): void {
+    this.searchCache.clear();
+    // Clear HTTP cache for car-related endpoints
+    clearHttpCacheByPattern('/api/cars');
   }
 
   // ========== Owner Operations ==========

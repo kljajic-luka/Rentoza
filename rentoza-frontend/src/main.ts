@@ -4,18 +4,19 @@
 (window as any).process = {
   env: { DEBUG: undefined },
   version: '',
-  nextTick: (fn: Function) => setTimeout(fn, 0)
+  nextTick: (fn: Function) => setTimeout(fn, 0),
 };
 (window as any).Buffer = (window as any).Buffer || {
-  isBuffer: () => false
+  isBuffer: () => false,
 };
 
-import { APP_INITIALIZER, importProvidersFrom, provideZoneChangeDetection } from '@angular/core';
+import { APP_INITIALIZER, importProvidersFrom, provideZoneChangeDetection, isDevMode } from '@angular/core';
 import { bootstrapApplication } from '@angular/platform-browser';
 import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { provideRouter } from '@angular/router';
 import { provideNativeDateAdapter } from '@angular/material/core';
+import { provideServiceWorker } from '@angular/service-worker';
 import { JwtModule } from '@auth0/angular-jwt';
 import { provideToastr } from 'ngx-toastr';
 
@@ -23,10 +24,21 @@ import { App } from './app/app';
 import { routes } from './app/app.routes';
 import { authTokenInterceptor } from '@core/auth/token.interceptor';
 import { errorResponseInterceptor } from '@core/interceptors/error.interceptor';
+import { httpCacheInterceptor } from '@core/interceptors/http-cache.interceptor';
 import { AuthService } from '@core/auth/auth.service';
+import { PerformanceMonitoringService } from '@core/services/performance-monitoring.service';
+import { environment } from '@environments/environment';
 
 function initializeAuth(authService: AuthService): () => Promise<void> {
   return () => authService.initializeSession().catch(() => void 0);
+}
+
+function initializePerformanceMonitoring(perfService: PerformanceMonitoringService): () => void {
+  return () => {
+    if (environment.production) {
+      perfService.initMonitoring();
+    }
+  };
 }
 
 bootstrapApplication(App, {
@@ -39,6 +51,12 @@ bootstrapApplication(App, {
       deps: [AuthService],
       multi: true,
     },
+    {
+      provide: APP_INITIALIZER,
+      useFactory: initializePerformanceMonitoring,
+      deps: [PerformanceMonitoringService],
+      multi: true,
+    },
     importProvidersFrom(
       BrowserAnimationsModule,
       JwtModule.forRoot({
@@ -48,11 +66,17 @@ bootstrapApplication(App, {
         },
       })
     ),
-    provideHttpClient(withInterceptors([authTokenInterceptor, errorResponseInterceptor])),
+    provideHttpClient(
+      withInterceptors([authTokenInterceptor, httpCacheInterceptor, errorResponseInterceptor])
+    ),
     provideNativeDateAdapter(),
     provideToastr({
       positionClass: 'toast-bottom-right',
       preventDuplicates: true,
+    }),
+    provideServiceWorker('ngsw-worker.js', {
+      enabled: !isDevMode(),
+      registrationStrategy: 'registerWhenStable:30000',
     }),
   ],
 }).catch((err) => console.error(err));

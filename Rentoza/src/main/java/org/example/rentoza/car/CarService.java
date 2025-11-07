@@ -255,4 +255,16 @@ public class CarService {
     private CarResponseDTO mapToResponse(Car car) {
         return new CarResponseDTO(car);
     }
+
+    /**
+     * Get all distinct car makes from the database
+     * Used for filter dropdowns
+     */
+    public List<String> getAllMakes() {
+        return repo.findAll().stream()
+                .map(Car::getBrand)
+                .distinct()
+                .sorted()
+                .collect(Collectors.toList());
+    }
 }

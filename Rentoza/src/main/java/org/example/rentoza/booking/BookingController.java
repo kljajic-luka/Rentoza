@@ -3,7 +3,9 @@ package org.example.rentoza.booking;
 import org.example.rentoza.booking.dto.BookingRequestDTO;
 import org.example.rentoza.booking.dto.BookingResponseDTO;
 import org.example.rentoza.booking.dto.UserBookingResponseDTO;
+import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.security.JwtUtil;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -70,6 +72,46 @@ public class BookingController {
     @GetMapping("/car/{carId}")
     public ResponseEntity<List<BookingResponseDTO>> getBookingsForCar(@PathVariable Long carId) {
         return ResponseEntity.ok(service.getBookingsForCar(carId));
+    }
+
+    /**
+     * Get booking by ID - for internal service communication
+     * Accessible with INTERNAL_SERVICE authority
+     * Returns full booking details with eagerly loaded relationships
+     */
+    @GetMapping("/{id}")
+    public ResponseEntity<?> getBookingById(@PathVariable Long id) {
+        try {
+            Booking booking = service.getBookingById(id);
+            return ResponseEntity.ok(new BookingResponseDTO(booking));
+        } catch (ResourceNotFoundException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of(
+                            "id", id,
+                            "error", "Booking not found",
+                            "message", e.getMessage()
+                    ));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of(
+                            "id", id,
+                            "error", "Failed to fetch booking",
+                            "message", e.getMessage()
+                    ));
+        }
+    }
+
+    /**
+     * Debug endpoint - list all booking IDs (for development/testing)
+     * Accessible with INTERNAL_SERVICE authority
+     */
+    @GetMapping("/debug/ids")
+    public ResponseEntity<Map<String, Object>> getAllBookingIds() {
+        List<Long> ids = service.getAllBookingIds();
+        return ResponseEntity.ok(Map.of(
+                "count", ids.size(),
+                "bookingIds", ids
+        ));
     }
 
     @PutMapping("/cancel/{id}")

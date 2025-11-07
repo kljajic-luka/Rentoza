@@ -165,6 +165,28 @@ public class UserController {
         }
     }
 
+    /**
+     * Get user profile by ID (for chat service enrichment)
+     * Public endpoint for inter-service communication
+     */
+    @GetMapping("/profile/{userId}")
+    public ResponseEntity<?> getUserProfileById(@PathVariable Long userId) {
+        try {
+            User user = service.getUserById(userId)
+                    .orElseThrow(() -> new EntityNotFoundException("User not found with ID: " + userId));
+            return ResponseEntity.ok(new UserResponseDTO(
+                    user.getId(),
+                    user.getFirstName(),
+                    user.getLastName(),
+                    user.getEmail(),
+                    user.getPhone(),
+                    user.getRole().name()
+            ));
+        } catch (EntityNotFoundException e) {
+            return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
+        }
+    }
+
     private String extractEmail(String authHeader) {
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             throw new RuntimeException("Missing or invalid token");

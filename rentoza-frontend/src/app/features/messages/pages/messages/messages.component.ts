@@ -29,8 +29,7 @@ import { Subject, takeUntil } from 'rxjs';
 import { ChatService } from '@core/services/chat.service';
 import { AuthService } from '@core/auth/auth.service';
 import { ThemeService } from '@core/services/theme.service';
-import { ConversationDTO, MessageDTO } from '@core/models/chat.model';
-import { ConversationEnrichmentService } from '@core/services/conversation-enrichment.service';
+import { ConversationDTO, MessageDTO, MessageStatusUpdate } from '@core/models/chat.model';
 
 @Component({
   selector: 'app-messages',
@@ -57,7 +56,6 @@ export class MessagesComponent implements OnInit, OnDestroy, AfterViewChecked {
   private readonly chatService = inject(ChatService);
   private readonly authService = inject(AuthService);
   readonly themeService = inject(ThemeService);
-  private readonly enrichmentService = inject(ConversationEnrichmentService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly cdr = inject(ChangeDetectorRef);
@@ -103,7 +101,6 @@ export class MessagesComponent implements OnInit, OnDestroy, AfterViewChecked {
       await this.chatService.initializeWebSocket();
       this.wsConnected.set(true);
     } catch (error) {
-      console.error('[MessagesComponent] Failed to initialize WebSocket:', error);
       this.wsConnected.set(false);
     }
 
@@ -112,9 +109,15 @@ export class MessagesComponent implements OnInit, OnDestroy, AfterViewChecked {
       this.handleNewMessage(message);
     });
 
+    // Subscribe to message status updates (sent, delivered, read)
+    this.chatService.messageStatusUpdates$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((statusUpdate) => {
+        this.handleMessageStatusUpdate(statusUpdate);
+      });
+
     // Subscribe to conversations updates
     this.chatService.conversations$.pipe(takeUntil(this.destroy$)).subscribe((convs) => {
-      console.log('[MessagesComponent] Conversations updated:', convs.length);
       this.conversations.set(convs);
       this.cdr.detectChanges(); // Trigger change detection
     });
@@ -122,7 +125,6 @@ export class MessagesComponent implements OnInit, OnDestroy, AfterViewChecked {
     // Subscribe to active conversation updates
     this.chatService.activeConversation$.pipe(takeUntil(this.destroy$)).subscribe((conv) => {
       if (conv) {
-        console.log('[MessagesComponent] Active conversation updated:', conv.id);
         this.selectedConversation.set(conv);
       }
     });
@@ -153,19 +155,12 @@ export class MessagesComponent implements OnInit, OnDestroy, AfterViewChecked {
 
   private async loadConversations(): Promise<void> {
     this.isLoading.set(true);
-    console.log('[MessagesComponent] Loading conversations...');
 
     try {
       const conversations = await this.chatService.getUserConversations().toPromise();
-      console.log('[MessagesComponent] Loaded conversations:', conversations);
 
-      // Enrich conversations with booking and user details
-      const enriched = await this.enrichmentService
-        .enrichConversations(conversations || [])
-        .toPromise();
-      console.log('[MessagesComponent] Enriched conversations:', enriched);
-
-      this.conversations.set(enriched || []);
+      // Conversations are now enriched by the backend
+      this.conversations.set(conversations || []);
       this.isLoading.set(false);
 
       // Manually trigger change detection after loading
@@ -173,11 +168,9 @@ export class MessagesComponent implements OnInit, OnDestroy, AfterViewChecked {
 
       // Auto-select first conversation if none selected
       if (!this.selectedConversation() && this.conversations().length > 0) {
-        console.log('[MessagesComponent] Auto-selecting first conversation');
         this.selectConversation(this.conversations()[0]);
       }
     } catch (error) {
-      console.error('[MessagesComponent] Error loading conversations:', error);
       this.isLoading.set(false);
       this.cdr.detectChanges();
     }
@@ -202,7 +195,6 @@ export class MessagesComponent implements OnInit, OnDestroy, AfterViewChecked {
         this.lastMessageCount = conv.messages?.length || 0;
       },
       error: (err) => {
-        console.error('[MessagesComponent] Error loading conversation:', err);
         this.isLoadingMessages.set(false);
       },
     });
@@ -234,7 +226,6 @@ export class MessagesComponent implements OnInit, OnDestroy, AfterViewChecked {
         this.shouldScrollToBottom = true;
       },
       error: (err) => {
-        console.error('[MessagesComponent] Error sending message:', err);
         this.isSendingMessage.set(false);
       },
     });
@@ -257,6 +248,33 @@ export class MessagesComponent implements OnInit, OnDestroy, AfterViewChecked {
     }
   }
 
+  /**
+   * Handle real-time message status updates (sent, delivered, read)
+   */
+  private handleMessageStatusUpdate(statusUpdate: MessageStatusUpdate): void {
+    const currentMessages = this.messages();
+    const selectedConv = this.selectedConversation();
+
+    // Only update if for current conversation
+    if (selectedConv && selectedConv.id === statusUpdate.conversationId) {
+      const updatedMessages = currentMessages.map((msg) => {
+        if (msg.id === statusUpdate.messageId) {
+          return {
+            ...msg,
+            sentAt: statusUpdate.sentAt || msg.sentAt,
+            deliveredAt: statusUpdate.deliveredAt || msg.deliveredAt,
+            readAt: statusUpdate.readAt || msg.readAt,
+            readBy: statusUpdate.readBy || msg.readBy,
+          };
+        }
+        return msg;
+      });
+
+      this.messages.set(updatedMessages);
+      this.cdr.detectChanges();
+    }
+  }
+
   private markAsRead(): void {
     const conv = this.selectedConversation();
     if (conv && conv.unreadCount > 0) {
@@ -271,7 +289,7 @@ export class MessagesComponent implements OnInit, OnDestroy, AfterViewChecked {
         container.scrollTop = container.scrollHeight;
       }
     } catch (err) {
-      console.error('[MessagesComponent] Error scrolling to bottom:', err);
+      // Silent error handling
     }
   }
 
@@ -279,25 +297,41 @@ export class MessagesComponent implements OnInit, OnDestroy, AfterViewChecked {
     return message.senderId === this.currentUserId();
   }
 
-  formatTime(timestamp: string): string {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
+  formatTime(timestamp: string | undefined): string {
+    if (!timestamp) return 'Recently';
 
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
+    try {
+      const date = new Date(timestamp);
+      if (isNaN(date.getTime())) return 'Recently';
 
-    return date.toLocaleDateString();
+      const now = new Date();
+      const diffMs = now.getTime() - date.getTime();
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMs / 3600000);
+      const diffDays = Math.floor(diffMs / 86400000);
+
+      if (diffMins < 1) return 'Just now';
+      if (diffMins < 60) return `${diffMins}m ago`;
+      if (diffHours < 24) return `${diffHours}h ago`;
+      if (diffDays < 7) return `${diffDays}d ago`;
+
+      return date.toLocaleDateString();
+    } catch (e) {
+      return 'Recently';
+    }
   }
 
-  formatMessageTime(timestamp: string): string {
-    const date = new Date(timestamp);
-    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  formatMessageTime(timestamp: string | undefined): string {
+    if (!timestamp) return '';
+
+    try {
+      const date = new Date(timestamp);
+      if (isNaN(date.getTime())) return '';
+
+      return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    } catch (e) {
+      return '';
+    }
   }
 
   /**
@@ -306,10 +340,10 @@ export class MessagesComponent implements OnInit, OnDestroy, AfterViewChecked {
   getOtherParticipantName(conv: ConversationDTO): string {
     const isOwner = conv.ownerId === this.currentUserId();
 
-    // Use enriched data if available
-    if (isOwner && conv.renterName) {
+    // Use enriched data if available and not default values
+    if (isOwner && conv.renterName && conv.renterName !== 'Renter') {
       return conv.renterName;
-    } else if (!isOwner && conv.ownerName) {
+    } else if (!isOwner && conv.ownerName && conv.ownerName !== 'Owner') {
       return conv.ownerName;
     }
 
@@ -318,9 +352,21 @@ export class MessagesComponent implements OnInit, OnDestroy, AfterViewChecked {
   }
 
   /**
-   * Determine trip status based on booking dates
+   * Determine trip status based on booking dates or backend-provided value
    */
-  getTripStatus(conv: ConversationDTO): 'current' | 'future' | 'past' | 'unknown' {
+  getTripStatus(conv: ConversationDTO): 'current' | 'future' | 'past' | 'unknown' | 'unavailable' {
+    // Use backend-provided tripStatus if available
+    if (conv.tripStatus) {
+      const status = conv.tripStatus.toLowerCase();
+      if (status === 'unavailable') {
+        return 'unavailable';
+      }
+      if (status === 'current' || status === 'future' || status === 'past') {
+        return status as 'current' | 'future' | 'past';
+      }
+    }
+
+    // Fallback to client-side calculation if not provided
     if (!conv.startDate || !conv.endDate) {
       return 'unknown';
     }
@@ -354,6 +400,11 @@ export class MessagesComponent implements OnInit, OnDestroy, AfterViewChecked {
    * Get formatted conversation subtitle with trip context
    */
   getConversationSubtitle(conv: ConversationDTO): string {
+    // Handle unavailable trip data
+    if (conv.tripStatus === 'Unavailable') {
+      return 'Trip information unavailable';
+    }
+
     const tripStatus = this.getTripStatus(conv);
     const carInfo = this.getCarInfo(conv);
 
@@ -377,11 +428,17 @@ export class MessagesComponent implements OnInit, OnDestroy, AfterViewChecked {
    * Get car information string
    */
   getCarInfo(conv: ConversationDTO): string {
-    if (!conv.carBrand || !conv.carModel) {
+    // Skip if car brand/model are "Unknown" (backend default)
+    if (
+      !conv.carBrand ||
+      !conv.carModel ||
+      conv.carBrand === 'Unknown' ||
+      conv.carModel === 'Unknown'
+    ) {
       return '';
     }
 
-    const year = conv.carYear ? `${conv.carYear} ` : '';
+    const year = conv.carYear && conv.carYear > 0 ? `${conv.carYear} ` : '';
     return `${year}${conv.carBrand} ${conv.carModel}`;
   }
 
@@ -436,15 +493,19 @@ export class MessagesComponent implements OnInit, OnDestroy, AfterViewChecked {
       return '';
     }
 
-    // If message was read (either has readAt or is in readBy array)
-    if (message.readAt || (message.readBy && message.readBy.length > 0)) {
+    // If message was read (has readAt timestamp or is in readBy array)
+    if (message.readAt || (message.readBy && message.readBy.length > 1)) {
       return 'done_all'; // Double check (read)
     }
 
-    // For now, all sent messages show as delivered since we don't track delivery separately
-    // In the future, you can add deliveredAt field
-    if (message.timestamp) {
+    // If message was delivered (has deliveredAt)
+    if (message.deliveredAt) {
       return 'done_all'; // Double check (delivered)
+    }
+
+    // If message was sent (has sentAt or timestamp)
+    if (message.sentAt || message.timestamp) {
+      return 'done'; // Single check (sent)
     }
 
     return 'schedule'; // Sending
@@ -459,15 +520,43 @@ export class MessagesComponent implements OnInit, OnDestroy, AfterViewChecked {
     }
 
     // If message was read
-    if (message.readAt || (message.readBy && message.readBy.length > 0)) {
-      return 'read'; // Blue
+    if (message.readAt || (message.readBy && message.readBy.length > 1)) {
+      return 'read'; // Blue double check
     }
 
-    // If message was sent/delivered
-    if (message.timestamp) {
-      return 'delivered'; // Gray
+    // If message was delivered
+    if (message.deliveredAt) {
+      return 'delivered'; // Gray double check
     }
 
-    return 'sending'; // Gray
+    // If message was sent
+    if (message.sentAt || message.timestamp) {
+      return 'sent'; // Gray single check
+    }
+
+    return 'sending'; // Gray clock
+  }
+
+  /**
+   * Get message status tooltip text
+   */
+  getMessageStatusTooltip(message: MessageDTO): string {
+    if (!this.isOwnMessage(message)) {
+      return '';
+    }
+
+    if (message.readAt || (message.readBy && message.readBy.length > 1)) {
+      return 'Read';
+    }
+
+    if (message.deliveredAt) {
+      return 'Delivered';
+    }
+
+    if (message.sentAt || message.timestamp) {
+      return 'Sent';
+    }
+
+    return 'Sending...';
   }
 }

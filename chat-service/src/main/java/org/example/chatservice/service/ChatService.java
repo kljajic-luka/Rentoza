@@ -24,6 +24,7 @@ import reactor.core.publisher.Mono;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -34,6 +35,7 @@ public class ChatService {
     private final ConversationRepository conversationRepository;
     private final MessageRepository messageRepository;
     private final SimpMessagingTemplate messagingTemplate;
+    private final BackendApiClient backendApiClient;
 
     @Transactional
     public ConversationDTO createConversation(CreateConversationRequest request) {
@@ -93,7 +95,8 @@ public class ChatService {
         dto.setMessages(messages);
         dto.setUnreadCount(messageRepository.countUnreadMessages(conversation.getId(), userId));
 
-        return dto;
+        // Enrich with backend data
+        return enrichDtoWithBackendData(dto);
     }
 
     @Transactional
@@ -187,9 +190,144 @@ public class ChatService {
                 .map(conv -> {
                     ConversationDTO dto = toDTO(conv, userId);
                     dto.setUnreadCount(messageRepository.countUnreadMessages(conv.getId(), userId));
-                    return dto;
+                    return enrichDtoWithBackendData(dto);
                 })
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Enrich conversation DTO with booking and user details from main backend
+     */
+    private ConversationDTO enrichDtoWithBackendData(ConversationDTO dto) {
+        try {
+            log.debug("🔄 Starting enrichment for conversation {} (booking: {})", dto.getId(), dto.getBookingId());
+            
+            // Fetch booking and user details in parallel
+            Mono<BookingDetailsDTO> bookingDetailsMono = backendApiClient.getBookingDetails(dto.getBookingId())
+                    .doOnSuccess(b -> log.debug("✅ Received booking details for {}", dto.getBookingId()))
+                    .doOnError(e -> log.error("❌ Failed to get booking details: {}", e.getMessage()));
+            
+            Mono<UserDetailsDTO> renterDetailsMono = backendApiClient.getUserDetails(dto.getRenterId())
+                    .doOnSuccess(r -> log.debug("✅ Received renter details for {}", dto.getRenterId()))
+                    .doOnError(e -> log.error("❌ Failed to get renter details: {}", e.getMessage()));
+            
+            Mono<UserDetailsDTO> ownerDetailsMono = backendApiClient.getUserDetails(dto.getOwnerId())
+                    .doOnSuccess(o -> log.debug("✅ Received owner details for {}", dto.getOwnerId()))
+                    .doOnError(e -> log.error("❌ Failed to get owner details: {}", e.getMessage()));
+
+            return Mono.zip(bookingDetailsMono, renterDetailsMono, ownerDetailsMono)
+                    .map(tuple -> {
+                        BookingDetailsDTO booking = tuple.getT1();
+                        UserDetailsDTO renter = tuple.getT2();
+                        UserDetailsDTO owner = tuple.getT3();
+
+                        // Check if booking is a fallback (not found in backend)
+                        boolean isBookingFallback = booking != null && booking.isFallback();
+
+                        // Enrich with booking and car details (with fallbacks)
+                        if (booking != null && !isBookingFallback) {
+                            if (booking.getCar() != null) {
+                                dto.setCarBrand(booking.getCar().getBrand() != null 
+                                        ? booking.getCar().getBrand() : "Unknown");
+                                dto.setCarModel(booking.getCar().getModel() != null 
+                                        ? booking.getCar().getModel() : "Unknown");
+                                dto.setCarYear(booking.getCar().getYear() != null 
+                                        ? booking.getCar().getYear() : 0);
+                            }
+                            
+                            if (booking.getStartDate() != null) {
+                                dto.setStartDate(booking.getStartDate().toString());
+                            }
+                            
+                            if (booking.getEndDate() != null) {
+                                dto.setEndDate(booking.getEndDate().toString());
+                            }
+                            
+                            // Calculate trip status
+                            String tripStatus = calculateTripStatus(booking.getStartDate(), booking.getEndDate());
+                            dto.setTripStatus(tripStatus != null ? tripStatus : "Unknown");
+                        } else {
+                            // Booking not found or is fallback - mark as unavailable
+                            dto.setCarBrand("Unknown");
+                            dto.setCarModel("Unknown");
+                            dto.setCarYear(0);
+                            dto.setTripStatus("Unavailable");
+                            
+                            if (isBookingFallback) {
+                                log.warn("⚠️ Enrichment fallback used for bookingId={} (not found on main backend)", 
+                                        dto.getBookingId());
+                            }
+                        }
+
+                        // Enrich with user names (with fallbacks)
+                        if (renter != null && renter.getFirstName() != null) {
+                            String lastName = renter.getLastName() != null ? " " + renter.getLastName() : "";
+                            dto.setRenterName(renter.getFirstName() + lastName);
+                        } else {
+                            dto.setRenterName("Renter");
+                        }
+
+                        if (owner != null && owner.getFirstName() != null) {
+                            String lastName = owner.getLastName() != null ? " " + owner.getLastName() : "";
+                            dto.setOwnerName(owner.getFirstName() + lastName);
+                        } else {
+                            dto.setOwnerName("Owner");
+                        }
+
+                        // Log enrichment result based on whether fallback was used
+                        if (isBookingFallback) {
+                            log.info("⚠️ Enriched conversation [bookingId={}] with FALLBACK: {} ↔ {}, trip: {}", 
+                                    dto.getBookingId(),
+                                    dto.getRenterName(),
+                                    dto.getOwnerName(),
+                                    dto.getTripStatus());
+                        } else {
+                            log.info("✅ Enriched conversation [bookingId={}]: {} ↔ {}, trip: {} trip with {} {} {}", 
+                                    dto.getBookingId(),
+                                    dto.getRenterName(),
+                                    dto.getOwnerName(),
+                                    dto.getTripStatus(),
+                                    dto.getCarYear() > 0 ? dto.getCarYear() : "",
+                                    dto.getCarBrand(),
+                                    dto.getCarModel());
+                        }
+
+                        return dto;
+                    })
+                    .doOnError(e -> log.warn("⚠️ Partial enrichment failure for conversation {}: {}", 
+                            dto.getId(), e.getMessage()))
+                    .onErrorReturn(dto) // Return DTO with safe defaults on error
+                    .block(); // Block to get the result synchronously
+        } catch (Exception e) {
+            log.error("❌ Error enriching conversation {}: {}", dto.getId(), e.getMessage(), e);
+            // Ensure safe defaults are set even on exception
+            if (dto.getRenterName() == null) dto.setRenterName("Renter");
+            if (dto.getOwnerName() == null) dto.setOwnerName("Owner");
+            if (dto.getCarBrand() == null) dto.setCarBrand("Unknown");
+            if (dto.getCarModel() == null) dto.setCarModel("Unknown");
+            if (dto.getCarYear() == null) dto.setCarYear(0);
+            if (dto.getTripStatus() == null) dto.setTripStatus("Unknown");
+            return dto;
+        }
+    }
+
+    /**
+     * Calculate trip status based on start and end dates
+     */
+    private String calculateTripStatus(java.time.LocalDate startDate, java.time.LocalDate endDate) {
+        if (startDate == null || endDate == null) {
+            return "Unknown";
+        }
+        
+        java.time.LocalDate today = java.time.LocalDate.now();
+        
+        if (today.isBefore(startDate)) {
+            return "Future";
+        } else if (today.isAfter(endDate)) {
+            return "Past";
+        } else {
+            return "Current";
+        }
     }
 
     private ConversationDTO toDTO(Conversation conversation, String userId) {
@@ -200,21 +338,37 @@ public class ChatService {
                 .ownerId(conversation.getOwnerId())
                 .status(conversation.getStatus())
                 .createdAt(conversation.getCreatedAt())
-                .lastMessageAt(conversation.getLastMessageAt())
+                // Use lastMessageAt if available, otherwise fall back to createdAt
+                .lastMessageAt(conversation.getLastMessageAt() != null 
+                        ? conversation.getLastMessageAt() 
+                        : conversation.getCreatedAt())
                 .messagingAllowed(conversation.isMessagingAllowed())
+                // Initialize with safe defaults - will be enriched later
+                .renterName("Renter")
+                .ownerName("Owner")
+                .carBrand("Unknown")
+                .carModel("Unknown")
+                .carYear(0)
+                .tripStatus("Unknown")
                 .build();
     }
 
     private MessageDTO toMessageDTO(Message message, String userId) {
+        boolean isRead = message.getReadBy() != null && !message.getReadBy().isEmpty();
+        
         return MessageDTO.builder()
                 .id(message.getId())
                 .conversationId(message.getConversationId())
                 .senderId(message.getSenderId())
                 .content(message.getContent())
                 .timestamp(message.getTimestamp())
-                .readBy(message.getReadBy())
+                .readBy(message.getReadBy() != null ? message.getReadBy() : Set.of())
                 .mediaUrl(message.getMediaUrl())
                 .isOwnMessage(message.getSenderId().equals(userId))
+                // Ensure all timestamp fields are non-null
+                .sentAt(message.getTimestamp()) // Sent time is the creation timestamp
+                .deliveredAt(message.getTimestamp()) // For now, consider delivered immediately
+                .readAt(isRead ? message.getTimestamp() : null) // Only set if actually read
                 .build();
     }
 }

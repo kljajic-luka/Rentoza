@@ -37,8 +37,9 @@ public class BookingResponseDTO {
     @AllArgsConstructor
     public static class CarDetailsDTO {
         private Long id;
-        private String make;
+        private String brand;  // Changed from 'make' to 'brand' for consistency
         private String model;
+        private Integer year;  // Added year field
         private String imageUrl;
     }
 
@@ -66,6 +67,7 @@ public class BookingResponseDTO {
                     booking.getCar().getId(),
                     booking.getCar().getBrand(),
                     booking.getCar().getModel(),
+                    booking.getCar().getYear(),
                     booking.getCar().getImageUrl()
             );
         }

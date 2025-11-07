@@ -8,6 +8,7 @@ import {
   MessageDTO,
   SendMessageRequest,
   CreateConversationRequest,
+  MessageStatusUpdate,
 } from '@core/models/chat.model';
 import { WebSocketService, WebSocketConnectionStatus } from './websocket.service';
 import { AuthService } from '@core/auth/auth.service';
@@ -24,6 +25,7 @@ export class ChatService implements OnDestroy {
   private readonly chatApiUrl = environment.chatApiUrl || 'http://localhost:8081/api';
 
   private messageSubject = new Subject<MessageDTO>();
+  private messageStatusUpdateSubject = new Subject<MessageStatusUpdate>();
   private conversationsSubject = new BehaviorSubject<ConversationDTO[]>([]);
   private activeConversationSubject = new BehaviorSubject<ConversationDTO | null>(null);
   private destroy$ = new Subject<void>();
@@ -32,13 +34,13 @@ export class ChatService implements OnDestroy {
   private webSocketInitPromise: Promise<void> | null = null;
 
   public messages$ = this.messageSubject.asObservable();
+  public messageStatusUpdates$ = this.messageStatusUpdateSubject.asObservable();
   public conversations$ = this.conversationsSubject.asObservable();
   public activeConversation$ = this.activeConversationSubject.asObservable();
 
   constructor() {
     // Subscribe to WebSocket status changes
     this.webSocketService.status$.pipe(takeUntil(this.destroy$)).subscribe((status) => {
-      console.log('[ChatService] WebSocket status:', status);
       if (
         status === WebSocketConnectionStatus.DISCONNECTED ||
         status === WebSocketConnectionStatus.ERROR
@@ -60,13 +62,11 @@ export class ChatService implements OnDestroy {
   async initializeWebSocket(): Promise<void> {
     // If already initialized, return immediately
     if (this.isWebSocketInitialized && this.webSocketService.isConnected()) {
-      console.log('[ChatService] WebSocket already initialized and connected');
       return;
     }
 
     // If initialization is in progress, return the existing promise
     if (this.webSocketInitPromise) {
-      console.log('[ChatService] WebSocket initialization already in progress');
       return this.webSocketInitPromise;
     }
 
@@ -97,7 +97,7 @@ export class ChatService implements OnDestroy {
           const msg: MessageDTO = JSON.parse(message.body);
           this.handleIncomingMessage(msg);
         } catch (error) {
-          console.error('[ChatService] Error processing WebSocket message:', error);
+          // Silent error handling
         }
       });
 
@@ -107,14 +107,22 @@ export class ChatService implements OnDestroy {
           const msg: MessageDTO = JSON.parse(message.body);
           this.handleIncomingMessage(msg);
         } catch (error) {
-          console.error('[ChatService] Error processing WebSocket message:', error);
+          // Silent error handling
+        }
+      });
+
+      // Subscribe to message status updates (delivered, read receipts)
+      this.webSocketService.subscribe('/user/queue/message-status', (message) => {
+        try {
+          const statusUpdate: MessageStatusUpdate = JSON.parse(message.body);
+          this.handleMessageStatusUpdate(statusUpdate);
+        } catch (error) {
+          // Silent error handling
         }
       });
 
       this.isWebSocketInitialized = true;
-      console.log('[ChatService] WebSocket initialized successfully');
     } catch (error) {
-      console.error('[ChatService] Failed to initialize WebSocket:', error);
       this.isWebSocketInitialized = false;
       throw error;
     }
@@ -138,7 +146,6 @@ export class ChatService implements OnDestroy {
         // Add to conversations list
         const conversations = this.conversationsSubject.value;
         this.conversationsSubject.next([conversation, ...conversations]);
-        console.log('[ChatService] Conversation created:', conversation.id);
       }),
       catchError(this.handleError.bind(this))
     );
@@ -156,7 +163,6 @@ export class ChatService implements OnDestroy {
       .pipe(
         tap((conversation) => {
           this.activeConversationSubject.next(conversation);
-          console.log('[ChatService] Conversation loaded:', conversation.id);
         }),
         shareReplay(1),
         catchError(this.handleError.bind(this))
@@ -173,7 +179,6 @@ export class ChatService implements OnDestroy {
         tap((message) => {
           // Optimistically add to active conversation
           this.addMessageToActiveConversation(message);
-          console.log('[ChatService] Message sent:', message.id);
         }),
         catchError((error) => {
           this.toastr.error('Failed to send message', 'Error');
@@ -187,7 +192,6 @@ export class ChatService implements OnDestroy {
    */
   sendMessageViaWebSocket(bookingId: string, content: string): void {
     if (!this.webSocketService.isConnected()) {
-      console.warn('[ChatService] WebSocket not connected, falling back to HTTP');
       this.sendMessage(bookingId, { content }).subscribe();
       return;
     }
@@ -225,7 +229,6 @@ export class ChatService implements OnDestroy {
    * Get all conversations for the authenticated user
    */
   getUserConversations(): Observable<ConversationDTO[]> {
-    console.log('[ChatService] Fetching conversations from:', `${this.chatApiUrl}/conversations`);
     return this.http.get<ConversationDTO[]>(`${this.chatApiUrl}/conversations`).pipe(
       map((conversations) => {
         // Sort by lastMessageAt (most recent first)
@@ -237,12 +240,6 @@ export class ChatService implements OnDestroy {
         return sorted;
       }),
       tap((conversations) => {
-        console.log(
-          '[ChatService] Loaded and sorted',
-          conversations.length,
-          'conversations:',
-          conversations
-        );
         this.conversationsSubject.next(conversations);
       }),
       retry({
@@ -250,7 +247,6 @@ export class ChatService implements OnDestroy {
         delay: 1000,
       }),
       catchError((error) => {
-        console.error('[ChatService] Error loading conversations:', error);
         this.toastr.error('Failed to load conversations', 'Error');
         return this.handleError(error);
       })
@@ -320,6 +316,37 @@ export class ChatService implements OnDestroy {
   }
 
   /**
+   * Handle message status updates (sent, delivered, read)
+   */
+  private handleMessageStatusUpdate(statusUpdate: MessageStatusUpdate): void {
+    // Emit to status update stream
+    this.messageStatusUpdateSubject.next(statusUpdate);
+
+    // Update message in active conversation
+    const activeConv = this.activeConversationSubject.value;
+    if (activeConv && activeConv.id === statusUpdate.conversationId) {
+      const messages = activeConv.messages || [];
+      const updatedMessages = messages.map((msg) => {
+        if (msg.id === statusUpdate.messageId) {
+          return {
+            ...msg,
+            sentAt: statusUpdate.sentAt || msg.sentAt,
+            deliveredAt: statusUpdate.deliveredAt || msg.deliveredAt,
+            readAt: statusUpdate.readAt || msg.readAt,
+            readBy: statusUpdate.readBy || msg.readBy,
+          };
+        }
+        return msg;
+      });
+
+      this.activeConversationSubject.next({
+        ...activeConv,
+        messages: updatedMessages,
+      });
+    }
+  }
+
+  /**
    * Update conversation with new message from WebSocket
    */
   private updateConversationWithNewMessage(message: MessageDTO): void {
@@ -349,7 +376,6 @@ export class ChatService implements OnDestroy {
 
     // If conversation not found, it might be new - reload conversations
     if (!conversationFound) {
-      console.log('[ChatService] New conversation detected, reloading...');
       this.getUserConversations().subscribe();
     }
   }
@@ -376,26 +402,12 @@ export class ChatService implements OnDestroy {
    * Centralized error handling
    */
   private handleError(error: HttpErrorResponse): Observable<never> {
-    let errorMessage = 'An error occurred';
-
-    if (error.error instanceof ErrorEvent) {
-      // Client-side error
-      errorMessage = `Error: ${error.error.message}`;
-    } else {
-      // Server-side error
-      errorMessage = `Error ${error.status}: ${error.message}`;
-      if (error.error?.message) {
-        errorMessage = error.error.message;
-      }
-    }
-
-    console.error('[ChatService] HTTP Error:', errorMessage, error);
     return throwError(() => error);
   }
 
   // Keep legacy polling methods for backward compatibility
   startPolling(bookingId: string, intervalMs = 3000): void {
-    console.warn('[ChatService] Polling is deprecated. Use WebSocket instead.');
+    // Polling is deprecated - no-op
   }
 
   stopPolling(): void {

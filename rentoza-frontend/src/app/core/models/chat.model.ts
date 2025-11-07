@@ -32,7 +32,7 @@ export interface ConversationDTO {
   unreadCount: number;
   messagingAllowed: boolean;
 
-  // Extended fields for UI context (fetched separately)
+  // Extended fields for UI context (enriched from backend)
   carBrand?: string;
   carModel?: string;
   carYear?: number;
@@ -40,6 +40,7 @@ export interface ConversationDTO {
   ownerName?: string;
   startDate?: string;
   endDate?: string;
+  tripStatus?: string; // "Current", "Future", "Past", or "Unknown"
 }
 
 export interface SendMessageRequest {
@@ -52,4 +53,13 @@ export interface CreateConversationRequest {
   renterId: string;
   ownerId: string;
   initialMessage?: string;
+}
+
+export interface MessageStatusUpdate {
+  messageId: number;
+  conversationId: number;
+  sentAt?: string;
+  deliveredAt?: string;
+  readAt?: string;
+  readBy?: string[];
 }

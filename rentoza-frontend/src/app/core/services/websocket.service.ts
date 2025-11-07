@@ -62,12 +62,10 @@ export class WebSocketService implements OnDestroy {
    */
   async connect(): Promise<void> {
     if (this.isConnecting) {
-      console.log('[WebSocket] Connection already in progress');
       return;
     }
 
     if (this.stompClient?.connected) {
-      console.log('[WebSocket] Already connected');
       return;
     }
 
@@ -94,10 +92,8 @@ export class WebSocketService implements OnDestroy {
           connectHeaders: {
             Authorization: `Bearer ${token}`,
           },
-          debug: (str) => {
-            if (!environment.production) {
-              console.log('[WebSocket Debug]:', str);
-            }
+          debug: () => {
+            // Debug logging disabled
           },
           reconnectDelay: 0, // We handle reconnection manually
           heartbeatIncoming: 10000, // 10 seconds
@@ -106,7 +102,6 @@ export class WebSocketService implements OnDestroy {
 
         // Set up connection callbacks
         this.stompClient.onConnect = () => {
-          console.log('[WebSocket] Connected successfully');
           this.isConnecting = false;
           this.reconnectionAttempts = 0;
           this.connectionStatus$.next(WebSocketConnectionStatus.CONNECTED);
@@ -118,8 +113,6 @@ export class WebSocketService implements OnDestroy {
         };
 
         this.stompClient.onStompError = (frame) => {
-          console.error('[WebSocket] STOMP Error:', frame.headers['message']);
-          console.error('[WebSocket] Details:', frame.body);
           this.isConnecting = false;
           this.connectionStatus$.next(WebSocketConnectionStatus.ERROR);
 
@@ -128,8 +121,7 @@ export class WebSocketService implements OnDestroy {
           reject(error);
         };
 
-        this.stompClient.onWebSocketClose = (event) => {
-          console.log('[WebSocket] Connection closed:', event);
+        this.stompClient.onWebSocketClose = () => {
           this.isConnecting = false;
 
           if (!this.isManualDisconnect) {
@@ -141,7 +133,6 @@ export class WebSocketService implements OnDestroy {
         };
 
         this.stompClient.onWebSocketError = (error) => {
-          console.error('[WebSocket] WebSocket error:', error);
           this.isConnecting = false;
           this.connectionStatus$.next(WebSocketConnectionStatus.ERROR);
           this.handleConnectionError(error);
@@ -154,7 +145,6 @@ export class WebSocketService implements OnDestroy {
             takeUntil(this.destroy$)
           )
           .subscribe(() => {
-            console.log('[WebSocket] Token refreshed, reconnecting...');
             this.reconnectWithNewToken();
           });
 
@@ -188,7 +178,7 @@ export class WebSocketService implements OnDestroy {
         try {
           subscription.unsubscribe();
         } catch (error) {
-          console.warn('[WebSocket] Error unsubscribing:', error);
+          // Silent error handling
         }
       });
       this.subscriptions.clear();
@@ -197,12 +187,11 @@ export class WebSocketService implements OnDestroy {
       try {
         this.stompClient.deactivate();
       } catch (error) {
-        console.warn('[WebSocket] Error deactivating client:', error);
+        // Silent error handling
       }
 
       this.stompClient = null;
       this.connectionStatus$.next(WebSocketConnectionStatus.DISCONNECTED);
-      console.log('[WebSocket] Disconnected');
     }
   }
 
@@ -211,7 +200,6 @@ export class WebSocketService implements OnDestroy {
    */
   subscribe(destination: string, callback: messageCallbackType): void {
     if (!this.stompClient?.connected) {
-      console.warn('[WebSocket] Not connected. Will subscribe when connected:', destination);
       // Store for later subscription
       this.subscriptions.set(destination, { destination, callback } as any);
       return;
@@ -222,7 +210,7 @@ export class WebSocketService implements OnDestroy {
       try {
         this.subscriptions.get(destination)?.unsubscribe();
       } catch (error) {
-        console.warn('[WebSocket] Error unsubscribing:', error);
+        // Silent error handling
       }
     }
 
@@ -233,14 +221,13 @@ export class WebSocketService implements OnDestroy {
           this.messageSubject.next({ destination, body });
           callback(message);
         } catch (error) {
-          console.error('[WebSocket] Error parsing message:', error);
+          // Silent error handling
         }
       });
 
       this.subscriptions.set(destination, subscription);
-      console.log('[WebSocket] Subscribed to:', destination);
     } catch (error) {
-      console.error('[WebSocket] Error subscribing to destination:', destination, error);
+      // Silent error handling
     }
   }
 
@@ -253,10 +240,9 @@ export class WebSocketService implements OnDestroy {
       try {
         subscription.unsubscribe();
       } catch (error) {
-        console.warn('[WebSocket] Error unsubscribing:', error);
+        // Silent error handling
       }
       this.subscriptions.delete(destination);
-      console.log('[WebSocket] Unsubscribed from:', destination);
     }
   }
 
@@ -265,7 +251,6 @@ export class WebSocketService implements OnDestroy {
    */
   send(destination: string, body: any): void {
     if (!this.stompClient?.connected) {
-      console.warn('[WebSocket] Not connected. Cannot send message to:', destination);
       this.toastr.warning('Connection lost. Please wait...', 'WebSocket');
       return;
     }
@@ -275,10 +260,7 @@ export class WebSocketService implements OnDestroy {
         destination,
         body: JSON.stringify(body),
       });
-
-      console.log('[WebSocket] Sent message to:', destination);
     } catch (error) {
-      console.error('[WebSocket] Error sending message:', error);
       this.toastr.error('Failed to send message', 'WebSocket');
     }
   }
@@ -316,7 +298,6 @@ export class WebSocketService implements OnDestroy {
     }
 
     if (this.reconnectionAttempts >= this.reconnectionConfig.maxAttempts) {
-      console.error('[WebSocket] Max reconnection attempts reached');
       this.toastr.error('Unable to connect to chat service', 'Connection Error');
       return;
     }
@@ -330,16 +311,11 @@ export class WebSocketService implements OnDestroy {
     this.reconnectionAttempts++;
     this.connectionStatus$.next(WebSocketConnectionStatus.RECONNECTING);
 
-    console.log(
-      `[WebSocket] Scheduling reconnection attempt ${this.reconnectionAttempts}/${this.reconnectionConfig.maxAttempts} in ${delay}ms`
-    );
-
     this.reconnectionTimer = timer(delay)
       .pipe(takeUntil(this.destroy$))
       .subscribe(() => {
-        console.log(`[WebSocket] Attempting reconnection ${this.reconnectionAttempts}/${this.reconnectionConfig.maxAttempts}`);
-        this.connect().catch((error) => {
-          console.error('[WebSocket] Reconnection failed:', error);
+        this.connect().catch(() => {
+          // Silent error handling
         });
       });
   }
@@ -352,7 +328,7 @@ export class WebSocketService implements OnDestroy {
     try {
       await this.connect();
     } catch (error) {
-      console.error('[WebSocket] Failed to reconnect with new token:', error);
+      // Silent error handling
     }
   }
 
@@ -380,8 +356,6 @@ export class WebSocketService implements OnDestroy {
    * Handle connection errors
    */
   private handleConnectionError(error: any): void {
-    console.error('[WebSocket] Connection error:', error);
-
     // Don't show error toast on first connection attempt
     if (this.reconnectionAttempts > 0) {
       const message = error?.message || 'Connection failed';

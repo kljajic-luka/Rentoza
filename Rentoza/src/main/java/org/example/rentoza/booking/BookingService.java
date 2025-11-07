@@ -8,6 +8,7 @@ import org.example.rentoza.booking.dto.UserBookingResponseDTO;
 import org.example.rentoza.car.Car;
 import org.example.rentoza.car.CarRepository;
 import org.example.rentoza.chat.ChatServiceClient;
+import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.review.Review;
 import org.example.rentoza.review.ReviewDirection;
 import org.example.rentoza.review.ReviewRepository;
@@ -94,9 +95,19 @@ public class BookingService {
         return repo.findByRenterEmailIgnoreCase(email);
     }
 
+    /**
+     * Get booking by ID with all related entities eagerly loaded to prevent lazy-loading issues
+     * Used for internal service-to-service communication
+     */
     public Booking getBookingById(Long id) {
-        return repo.findById(id)
-                .orElseThrow(() -> new RuntimeException("Booking not found"));
+        return repo.findByIdWithRelations(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking not found with id: " + id));
+    }
+
+    public List<Long> getAllBookingIds() {
+        return repo.findAll().stream()
+                .map(Booking::getId)
+                .collect(Collectors.toList());
     }
 
     public List<BookingResponseDTO> getBookingsForCar(Long carId) {

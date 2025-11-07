@@ -114,13 +114,7 @@
                   *ngIf="isOwnMessage(message)"
                   class="message-status"
                   [class]="getMessageStatusClass(message)"
-                  [matTooltip]="
-                    getMessageStatusClass(message) === 'read'
-                      ? 'Read'
-                      : getMessageStatusClass(message) === 'delivered'
-                      ? 'Delivered'
-                      : 'Sent'
-                  "
+                  [matTooltip]="getMessageStatusTooltip(message)"
                 >
                   {{ getMessageStatusIcon(message) }}
                 </mat-icon>

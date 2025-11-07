@@ -134,6 +134,10 @@ public class UserService {
         return repo.findByEmail(email);
     }
 
+    public Optional<User> getUserById(Long id) {
+        return repo.findById(id);
+    }
+
     public boolean passwordMatches(String raw, String encoded) {
         return encoder.matches(raw, encoded);
     }

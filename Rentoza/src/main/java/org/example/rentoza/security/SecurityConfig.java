@@ -23,10 +23,14 @@ import java.util.List;
 public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
+    private final ServiceAuthenticationFilter serviceAuthenticationFilter;
     private final AppProperties appProperties;
 
-    public SecurityConfig(JwtAuthFilter jwtAuthFilter, AppProperties appProperties) {
+    public SecurityConfig(JwtAuthFilter jwtAuthFilter, 
+                          ServiceAuthenticationFilter serviceAuthenticationFilter, 
+                          AppProperties appProperties) {
         this.jwtAuthFilter = jwtAuthFilter;
+        this.serviceAuthenticationFilter = serviceAuthenticationFilter;
         this.appProperties = appProperties;
     }
 
@@ -46,6 +50,20 @@ public class SecurityConfig {
                         ).permitAll()
                         .requestMatchers(HttpMethod.GET, "/uploads/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/bookings/car/**").permitAll()
+                        // User endpoints - must come before catch-all rules
+                        .requestMatchers("/api/users/me").authenticated()
+                        .requestMatchers(HttpMethod.PATCH, "/api/users/me").authenticated()
+                        .requestMatchers("/api/users/profile", "/api/users/profile/details").authenticated()
+                        .requestMatchers(HttpMethod.PATCH, "/api/users/profile").authenticated()
+                        // Bookings user endpoints - must come before internal service rules
+                        .requestMatchers("/api/bookings/me").authenticated()
+                        .requestMatchers("/api/bookings/user/**").authenticated()
+                        .requestMatchers(HttpMethod.PUT, "/api/bookings/cancel/**").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/bookings").authenticated()
+                        // Internal service endpoints - only specific endpoints require INTERNAL_SERVICE authority
+                        .requestMatchers(HttpMethod.GET, "/api/users/profile/*").hasAuthority("INTERNAL_SERVICE")
+                        .requestMatchers(HttpMethod.GET, "/api/bookings/*").hasAuthority("INTERNAL_SERVICE")
+                        .requestMatchers(HttpMethod.GET, "/api/bookings/debug/**").hasAuthority("INTERNAL_SERVICE")
                         .requestMatchers("/api/favorites/**").authenticated()
                         .anyRequest().authenticated()
                 )
@@ -60,6 +78,8 @@ public class SecurityConfig {
                         .contentTypeOptions(Customizer.withDefaults()) // X-Content-Type-Options: nosniff
                 )
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                // Add ServiceAuthenticationFilter before JwtAuthFilter
+                .addFilterBefore(serviceAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

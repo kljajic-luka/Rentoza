@@ -34,4 +34,5 @@ public class ConversationDTO {
     private String ownerName;
     private String startDate;
     private String endDate;
+    private String tripStatus; // "Current", "Future", or "Past"
 }

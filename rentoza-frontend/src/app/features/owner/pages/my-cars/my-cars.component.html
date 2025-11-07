@@ -49,6 +49,10 @@
                   <mat-icon>edit</mat-icon>
                   <span>Uredi</span>
                 </button>
+                <button mat-menu-item (click)="openCalendarDialog(car)">
+                  <mat-icon>calendar_today</mat-icon>
+                  <span>Upravljaj kalendarom</span>
+                </button>
                 <button mat-menu-item (click)="toggleAvailability(car)">
                   <mat-icon>{{ car.available ? 'visibility_off' : 'visibility' }}</mat-icon>
                   <span>{{ car.available ? 'Deaktiviraj' : 'Aktiviraj' }}</span>

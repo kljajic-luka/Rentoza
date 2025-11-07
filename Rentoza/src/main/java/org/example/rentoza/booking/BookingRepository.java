@@ -73,4 +73,17 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
            "LEFT JOIN FETCH c.owner " +
            "WHERE b.id = :id")
     java.util.Optional<Booking> findByIdWithRelations(@Param("id") Long id);
+
+    /**
+     * Check if there are any confirmed bookings overlapping with the given date range for a car.
+     * Used for validation when blocking dates or creating new bookings.
+     */
+    @Query("SELECT COUNT(b) > 0 FROM Booking b WHERE b.car.id = :carId " +
+           "AND b.status IN ('ACTIVE', 'CONFIRMED') " +
+           "AND b.startDate <= :endDate AND b.endDate >= :startDate")
+    boolean existsOverlappingBookings(
+            @Param("carId") Long carId,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate
+    );
 }

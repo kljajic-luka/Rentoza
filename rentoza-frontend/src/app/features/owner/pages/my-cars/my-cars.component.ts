@@ -16,6 +16,7 @@ import { Car } from '@core/models/car.model';
 import { CarService } from '@core/services/car.service';
 import { AuthService } from '@core/auth/auth.service';
 import { EditCarDialogComponent } from '../../dialogs/edit-car-dialog/edit-car-dialog.component';
+import { CarAvailabilityDialogComponent } from '../../components/car-availability-dialog/car-availability-dialog.component';
 
 @Component({
   selector: 'app-my-cars',
@@ -143,5 +144,18 @@ export class MyCarsComponent implements OnInit {
 
   protected getStatusClass(car: Car): string {
     return car.available ? 'status-active' : 'status-inactive';
+  }
+
+  /**
+   * Open the availability calendar dialog for managing blocked dates
+   */
+  protected openCalendarDialog(car: Car): void {
+    this.dialog.open(CarAvailabilityDialogComponent, {
+      width: '700px',
+      maxWidth: '90vw',
+      maxHeight: '90vh',
+      data: { car },
+      disableClose: false,
+    });
   }
 }

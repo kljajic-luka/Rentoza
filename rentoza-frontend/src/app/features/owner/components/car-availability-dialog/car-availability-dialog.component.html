@@ -1,0 +1,132 @@
+<div class="availability-dialog">
+  <!-- Header -->
+  <div class="dialog-header">
+    <div class="car-info">
+      <div class="car-image" *ngIf="data.car.imageUrl">
+        <img [src]="data.car.imageUrl" [alt]="data.car.make + ' ' + data.car.model" />
+      </div>
+      <div class="car-details">
+        <h2 mat-dialog-title>{{ data.car.make }} {{ data.car.model }}</h2>
+        <p class="car-year">{{ data.car.year }}</p>
+      </div>
+    </div>
+    <button mat-icon-button class="close-btn" (click)="close()" aria-label="Zatvori">
+      <mat-icon>close</mat-icon>
+    </button>
+  </div>
+
+  <!-- Loading Overlay -->
+  <div class="loading-overlay" *ngIf="isLoading">
+    <mat-progress-spinner mode="indeterminate" diameter="40"></mat-progress-spinner>
+  </div>
+
+  <!-- Content -->
+  <mat-dialog-content>
+    <!-- Date Range Selection -->
+    <mat-card class="date-selection-card">
+      <h3>Blokiranje datuma</h3>
+      <p class="description">
+        Izaberite raspon datuma koji želite da blokirate. Blokirani datumi neće biti dostupni za
+        rezervaciju.
+      </p>
+
+      <form [formGroup]="dateRangeForm" class="date-range-form">
+        <mat-form-field appearance="outline" class="date-field">
+          <mat-label>Početni datum</mat-label>
+          <input
+            matInput
+            [matDatepicker]="startPicker"
+            formControlName="startDate"
+            [min]="startDateMin"
+            [matDatepickerFilter]="dateFilter"
+            (dateChange)="handleStartDateChange($event.value)"
+            placeholder="Izaberite datum"
+          />
+          <mat-datepicker-toggle matIconSuffix [for]="startPicker"></mat-datepicker-toggle>
+          <mat-datepicker #startPicker></mat-datepicker>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" class="date-field">
+          <mat-label>Krajnji datum</mat-label>
+          <input
+            matInput
+            [matDatepicker]="endPicker"
+            formControlName="endDate"
+            [min]="endDateMin"
+            [matDatepickerFilter]="endDateFilter"
+            (dateChange)="handleEndDateChange($event.value)"
+            placeholder="Izaberite datum"
+          />
+          <mat-datepicker-toggle matIconSuffix [for]="endPicker"></mat-datepicker-toggle>
+          <mat-datepicker #endPicker></mat-datepicker>
+        </mat-form-field>
+
+        <button
+          mat-flat-button
+          color="primary"
+          (click)="blockDates()"
+          [disabled]="dateRangeForm.invalid || isLoading"
+          class="block-btn"
+        >
+          <mat-icon>block</mat-icon>
+          Blokiraj datume
+        </button>
+      </form>
+    </mat-card>
+
+    <!-- Legend -->
+    <div class="legend">
+      <div class="legend-item">
+        <span class="legend-color legend-available"></span>
+        <span>Dostupno</span>
+      </div>
+      <div class="legend-item">
+        <span class="legend-color legend-booked"></span>
+        <span>Rezervisano</span>
+      </div>
+      <div class="legend-item">
+        <span class="legend-color legend-blocked"></span>
+        <span>Blokirano</span>
+      </div>
+    </div>
+
+    <!-- Blocked Dates List -->
+    <div class="blocked-dates-section" *ngIf="blockedDates.length > 0">
+      <h3>Blokirani datumi</h3>
+      <div class="blocked-dates-list">
+        <mat-card *ngFor="let block of blockedDates" class="blocked-date-card">
+          <div class="date-range">
+            <mat-icon class="date-icon">event_busy</mat-icon>
+            <div class="dates">
+              <strong>{{ formatDate(block.startDate) }}</strong>
+              <span class="separator">—</span>
+              <strong>{{ formatDate(block.endDate) }}</strong>
+            </div>
+          </div>
+          <button
+            mat-icon-button
+            color="warn"
+            (click)="unblockDates(block)"
+            [disabled]="isLoading"
+            aria-label="Odblokiraj datume"
+            class="unblock-btn"
+          >
+            <mat-icon>delete</mat-icon>
+          </button>
+        </mat-card>
+      </div>
+    </div>
+
+    <!-- Empty State -->
+    <div class="empty-state" *ngIf="blockedDates.length === 0 && !isLoading">
+      <mat-icon>event_available</mat-icon>
+      <p>Nema blokiranih datuma</p>
+      <p class="hint">Izaberite raspon datuma iznad da blokirate termine</p>
+    </div>
+  </mat-dialog-content>
+
+  <!-- Actions -->
+  <mat-dialog-actions>
+    <button mat-button (click)="close()">Zatvori</button>
+  </mat-dialog-actions>
+</div>

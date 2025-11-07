@@ -49,8 +49,10 @@ import { Review } from '@core/models/review.model';
 import { CarService } from '@core/services/car.service';
 import { ReviewService } from '@core/services/review.service';
 import { BookingService } from '@core/services/booking.service';
+import { AvailabilityService } from '@core/services/availability.service';
 import { AuthService } from '@core/auth/auth.service';
 import { Booking } from '@core/models/booking.model';
+import { BlockedDate } from '@core/models/blocked-date.model';
 import { FavoriteButtonComponent } from '@shared/components/favorite-button/favorite-button.component';
 import { TranslateEnumPipe, FeatureHelper } from '@shared/pipes/translate-enum.pipe';
 
@@ -87,6 +89,7 @@ export class CarDetailComponent {
   private readonly carService = inject(CarService);
   private readonly reviewService = inject(ReviewService);
   private readonly bookingService = inject(BookingService);
+  private readonly availabilityService = inject(AvailabilityService);
   private readonly toastr = inject(ToastrService);
   private readonly authService = inject(AuthService);
   private readonly destroyRef = inject(DestroyRef);
@@ -94,6 +97,7 @@ export class CarDetailComponent {
 
   private selectedCarId = '';
   readonly bookingsSubject = new BehaviorSubject<Booking[]>([]);
+  readonly blockedDatesSubject = new BehaviorSubject<BlockedDate[]>([]);
   startDateMin: Date = this.normalizeDate(new Date());
   endDateMin: Date = this.addDays(this.startDateMin, 1);
 
@@ -174,16 +178,31 @@ export class CarDetailComponent {
   });
 
   constructor() {
+    // Load both bookings and blocked dates for availability checking
     this.carId$
       .pipe(
-        switchMap((id) => this.bookingService.getBookingsForCar(id)),
-        catchError(() => {
-          // Guest users can't access bookings - that's fine, just use empty array
-          return of([]);
-        }),
+        switchMap((id) =>
+          combineLatest({
+            bookings: this.bookingService.getBookingsForCar(id).pipe(
+              catchError(() => {
+                // Guest users can't access bookings - that's fine, just use empty array
+                return of([]);
+              })
+            ),
+            blockedDates: this.availabilityService.getBlockedDatesForCar(+id).pipe(
+              catchError(() => {
+                // If blocked dates fail to load, use empty array
+                return of([]);
+              })
+            ),
+          })
+        ),
         takeUntilDestroyed(this.destroyRef)
       )
-      .subscribe((bookings) => this.updateBookings(bookings));
+      .subscribe(({ bookings, blockedDates }) => {
+        this.updateBookings(bookings);
+        this.blockedDatesSubject.next(blockedDates);
+      });
   }
 
   submitBooking(): void {
@@ -297,9 +316,18 @@ export class CarDetailComponent {
 
   private isDateUnavailable(date: Date): boolean {
     const normalized = this.normalizeDate(date);
-    return this.bookingsSubject.value.some((booking) =>
+
+    // Check if date is in any booking
+    const isBooked = this.bookingsSubject.value.some((booking) =>
       this.isDateWithinRange(normalized, booking.startDate, booking.endDate)
     );
+
+    // Check if date is in any blocked range
+    const isBlocked = this.blockedDatesSubject.value.some((blocked) =>
+      this.isDateWithinRange(normalized, blocked.startDate, blocked.endDate)
+    );
+
+    return isBooked || isBlocked;
   }
 
   private rangesOverlap(startA: Date, endA: Date, startB: Date, endB: Date): boolean {
@@ -320,7 +348,17 @@ export class CarDetailComponent {
       candidate = today;
     }
 
-    const sorted = [...this.bookingsSubject.value].sort(
+    // Combine bookings and blocked dates for checking
+    const unavailableRanges = [
+      ...this.bookingsSubject.value.map((b) => ({
+        startDate: b.startDate,
+        endDate: b.endDate,
+      })),
+      ...this.blockedDatesSubject.value.map((b) => ({
+        startDate: b.startDate,
+        endDate: b.endDate,
+      })),
+    ].sort(
       (a, b) =>
         this.normalizeDate(a.startDate).getTime() - this.normalizeDate(b.startDate).getTime()
     );
@@ -328,9 +366,9 @@ export class CarDetailComponent {
     let adjusted = true;
     while (adjusted) {
       adjusted = false;
-      for (const booking of sorted) {
-        const startDate = this.normalizeDate(booking.startDate);
-        const endDate = this.normalizeDate(booking.endDate);
+      for (const range of unavailableRanges) {
+        const startDate = this.normalizeDate(range.startDate);
+        const endDate = this.normalizeDate(range.endDate);
 
         if (candidate >= startDate && candidate <= endDate) {
           candidate = this.addDays(endDate, 1);
@@ -344,7 +382,8 @@ export class CarDetailComponent {
   }
 
   private isDateRangeFree(start: Date, end: Date): boolean {
-    return !this.bookingsSubject.value.some((booking) =>
+    // Check if range overlaps with any booking
+    const hasBookingConflict = this.bookingsSubject.value.some((booking) =>
       this.rangesOverlap(
         start,
         end,
@@ -352,6 +391,18 @@ export class CarDetailComponent {
         this.normalizeDate(booking.endDate)
       )
     );
+
+    // Check if range overlaps with any blocked date range
+    const hasBlockedConflict = this.blockedDatesSubject.value.some((blocked) =>
+      this.rangesOverlap(
+        start,
+        end,
+        this.normalizeDate(blocked.startDate),
+        this.normalizeDate(blocked.endDate)
+      )
+    );
+
+    return !hasBookingConflict && !hasBlockedConflict;
   }
 
   private updateBookings(bookings: Booking[]): void {

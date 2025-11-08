@@ -27,6 +27,7 @@ public class Review {
     private int rating;
 
     @Size(max = 500)
+    @Column(length = 500, columnDefinition = "VARCHAR(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
     private String comment;
 
     // Category-based ratings (1-5) - for detailed renter reviews

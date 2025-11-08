@@ -1,11 +1,15 @@
 package org.example.rentoza.review;
 
 import jakarta.transaction.Transactional;
+import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingRepository;
 import org.example.rentoza.booking.BookingStatus;
 import org.example.rentoza.car.Car;
 import org.example.rentoza.car.CarRepository;
+import org.example.rentoza.notification.NotificationService;
+import org.example.rentoza.notification.NotificationType;
+import org.example.rentoza.notification.dto.CreateNotificationRequestDTO;
 import org.example.rentoza.review.dto.ReviewRequestDTO;
 import org.example.rentoza.review.dto.ReviewResponseDTO;
 import org.example.rentoza.review.dto.RenterReviewRequestDTO;
@@ -20,23 +24,27 @@ import java.time.LocalDate;
 import java.util.List;
 
 @Service
+@Slf4j
 public class ReviewService {
 
     private final ReviewRepository repo;
     private final CarRepository carRepo;
     private final BookingRepository bookingRepo;
     private final UserRepository userRepo;
+    private final NotificationService notificationService;
 
     public ReviewService(
             ReviewRepository repo,
             CarRepository carRepo,
             BookingRepository bookingRepo,
-            UserRepository userRepo
+            UserRepository userRepo,
+            NotificationService notificationService
     ) {
         this.repo = repo;
         this.carRepo = carRepo;
         this.bookingRepo = bookingRepo;
         this.userRepo = userRepo;
+        this.notificationService = notificationService;
     }
 
     @Transactional
@@ -264,7 +272,28 @@ public class ReviewService {
         review.setAccuracyRating(dto.getAccuracyRating());
         review.setCreatedAt(Instant.now());
 
-        return repo.save(review);
+        Review savedReview = repo.save(review);
+
+        // Send notification to owner
+        try {
+            User owner = booking.getCar().getOwner();
+            String carInfo = booking.getCar().getBrand() + " " + booking.getCar().getModel();
+            String stars = "⭐".repeat(averageRating);
+
+            notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                    .recipientId(owner.getId())
+                    .type(NotificationType.REVIEW_RECEIVED)
+                    .message(renter.getFirstName() + " " + renter.getLastName() +
+                            " je ostavio/la recenziju za " + carInfo + " " + stars)
+                    .relatedEntityId("review-" + savedReview.getId())
+                    .build());
+
+            log.info("Review received notification sent to owner {} for review {}", owner.getId(), savedReview.getId());
+        } catch (Exception e) {
+            log.error("Failed to send review notification: {}", e.getMessage(), e);
+        }
+
+        return savedReview;
     }
 
     /**
@@ -327,7 +356,27 @@ public class ReviewService {
         review.setRespectForRulesRating(dto.getRespectForRulesRating());
         review.setCreatedAt(Instant.now());
 
-        return repo.save(review);
+        Review savedReview = repo.save(review);
+
+        // Send notification to renter
+        try {
+            User renter = booking.getRenter();
+            String stars = "⭐".repeat(averageRating);
+
+            notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                    .recipientId(renter.getId())
+                    .type(NotificationType.REVIEW_RECEIVED)
+                    .message(owner.getFirstName() + " " + owner.getLastName() +
+                            " je ostavio/la recenziju " + stars)
+                    .relatedEntityId("review-" + savedReview.getId())
+                    .build());
+
+            log.info("Review received notification sent to renter {} for review {}", renter.getId(), savedReview.getId());
+        } catch (Exception e) {
+            log.error("Failed to send review notification: {}", e.getMessage(), e);
+        }
+
+        return savedReview;
     }
 
     /**

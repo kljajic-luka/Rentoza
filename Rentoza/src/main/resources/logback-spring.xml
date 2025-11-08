@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <conversionRule conversionWord="clr" class="org.springframework.boot.logging.logback.ColorConverter"/>
+    <conversionRule conversionWord="wex" class="org.springframework.boot.logging.logback.WhitespaceThrowableProxyConverter"/>
+    <conversionRule conversionWord="wEx" class="org.springframework.boot.logging.logback.ExtendedWhitespaceThrowableProxyConverter"/>
+    <!-- =============================================================================
+         Rentoza Application - Logback Configuration
+         ============================================================================= -->
+
+    <!-- Property for log pattern - clean and readable -->
+    <property name="LOG_PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"/>
+
+    <!-- Property for colored console pattern (development) with correlation ID -->
+    <property name="CONSOLE_LOG_PATTERN"
+              value="%clr(%d{HH:mm:ss.SSS}){faint} %clr([%X{correlationId:---------}]){blue} %clr(%-5level){highlight} %clr(%logger{36}){cyan} - %msg%n"/>
+    
+    <!-- Property for SQL-specific pattern with visual markers -->
+    <property name="SQL_LOG_PATTERN"
+              value="%clr(%d{HH:mm:ss.SSS}){faint} %clr([%X{correlationId:---------}]){blue} %clr([SQL]){green} - %msg%n"/>
+
+    <!-- =============================================================================
+         CONSOLE APPENDER (Development & Production)
+         ============================================================================= -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${CONSOLE_LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- =============================================================================
+         SQL CONSOLE APPENDER (Development - Enhanced SQL Logging)
+         ============================================================================= -->
+    <appender name="SQL_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${SQL_LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+        <!-- Only show SQL logs, filter out other messages -->
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>DEBUG</level>
+        </filter>
+    </appender>
+
+    <!-- =============================================================================
+         FILE APPENDER (Production - Rolling)
+         ============================================================================= -->
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_FILE:-logs/application.log}</file>
+        <encoder>
+            <pattern>${LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <!-- Rollover daily -->
+            <fileNamePattern>${LOG_FILE_DIR:-logs}/application-%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <!-- Each file max 10MB -->
+            <maxFileSize>10MB</maxFileSize>
+            <!-- Keep 30 days of history -->
+            <maxHistory>30</maxHistory>
+            <!-- Total size cap of 1GB -->
+            <totalSizeCap>1GB</totalSizeCap>
+        </rollingPolicy>
+    </appender>
+
+    <!-- =============================================================================
+         ASYNC APPENDERS (Better Performance for Production)
+         ============================================================================= -->
+    <appender name="ASYNC_CONSOLE" class="ch.qos.logback.classic.AsyncAppender">
+        <queueSize>512</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <appender-ref ref="CONSOLE"/>
+    </appender>
+
+    <appender name="ASYNC_FILE" class="ch.qos.logback.classic.AsyncAppender">
+        <queueSize>512</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <appender-ref ref="FILE"/>
+    </appender>
+
+    <!-- =============================================================================
+         DEVELOPMENT PROFILE CONFIGURATION
+         ============================================================================= -->
+    <springProfile name="dev">
+        <!-- Rentoza Application - INFO level shows key business events -->
+        <logger name="org.example.rentoza" level="INFO" additivity="false">
+            <appender-ref ref="CONSOLE"/>
+        </logger>
+
+        <!-- Spring Framework - WARN to reduce noise, ERROR for critical issues -->
+        <logger name="org.springframework" level="WARN"/>
+        <logger name="org.springframework.web" level="INFO"/>
+        <logger name="org.springframework.security" level="WARN"/>
+        <logger name="org.springframework.boot" level="INFO"/>
+
+        <!-- Hibernate/JPA - Enhanced SQL logging with custom formatting -->
+        <logger name="org.hibernate" level="WARN"/>
+        <logger name="org.hibernate.SQL" level="${SQL_DEBUG_LEVEL:-WARN}" additivity="false">
+            <appender-ref ref="SQL_CONSOLE"/>
+        </logger>
+        <logger name="org.hibernate.type.descriptor.sql.BasicBinder" level="${SQL_DEBUG_LEVEL:-WARN}" additivity="false">
+            <appender-ref ref="SQL_CONSOLE"/>
+        </logger>
+        <logger name="org.hibernate.orm.jdbc.bind" level="${SQL_DEBUG_LEVEL:-WARN}" additivity="false">
+            <appender-ref ref="SQL_CONSOLE"/>
+        </logger>
+        <logger name="org.hibernate.type" level="WARN"/>
+        <logger name="org.hibernate.stat" level="INFO"/> <!-- For SQL execution statistics -->
+
+        <!-- HikariCP Connection Pool - INFO for connection events -->
+        <logger name="com.zaxxer.hikari" level="INFO"/>
+
+        <!-- WebSocket - WARN to reduce noise -->
+        <logger name="org.springframework.messaging" level="WARN"/>
+        <logger name="org.springframework.web.socket" level="WARN"/>
+
+        <!-- Mail - INFO to see email sending summaries -->
+        <logger name="org.springframework.mail" level="INFO"/>
+
+        <!-- Thymeleaf - WARN to reduce template processing noise -->
+        <logger name="org.thymeleaf" level="WARN"/>
+
+        <!-- Root logger -->
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+    </springProfile>
+
+    <!-- =============================================================================
+         PRODUCTION PROFILE CONFIGURATION
+         ============================================================================= -->
+    <springProfile name="prod">
+        <!-- Rentoza Application - INFO for business-critical events only -->
+        <logger name="org.example.rentoza" level="INFO" additivity="false">
+            <appender-ref ref="ASYNC_CONSOLE"/>
+            <appender-ref ref="ASYNC_FILE"/>
+        </logger>
+
+        <!-- Spring Framework - WARN or ERROR only -->
+        <logger name="org.springframework" level="WARN"/>
+        <logger name="org.springframework.web" level="WARN"/>
+        <logger name="org.springframework.security" level="WARN"/>
+        <logger name="org.springframework.boot" level="WARN"/>
+
+        <!-- Hibernate/JPA - WARN or ERROR only (no SQL in production) -->
+        <logger name="org.hibernate" level="WARN"/>
+        <logger name="org.hibernate.SQL" level="WARN"/>
+        <logger name="org.hibernate.type" level="WARN"/>
+
+        <!-- HikariCP Connection Pool - WARN for connection issues -->
+        <logger name="com.zaxxer.hikari" level="WARN"/>
+
+        <!-- WebSocket - WARN only -->
+        <logger name="org.springframework.messaging" level="WARN"/>
+        <logger name="org.springframework.web.socket" level="WARN"/>
+
+        <!-- Mail - INFO to see email sending events -->
+        <logger name="org.springframework.mail" level="INFO"/>
+
+        <!-- Thymeleaf - WARN only -->
+        <logger name="org.thymeleaf" level="WARN"/>
+
+        <!-- External libraries - ERROR only -->
+        <logger name="com.mysql" level="ERROR"/>
+        <logger name="org.apache" level="ERROR"/>
+
+        <!-- Root logger - WARN to catch unexpected issues -->
+        <root level="WARN">
+            <appender-ref ref="ASYNC_CONSOLE"/>
+            <appender-ref ref="ASYNC_FILE"/>
+        </root>
+    </springProfile>
+
+    <!-- =============================================================================
+         SPECIAL LOGGERS (All Profiles)
+         ============================================================================= -->
+
+    <!-- SQL Debug Toggle - Enable with app.debug.sql=true -->
+    <!-- Set SQL_DEBUG_LEVEL=DEBUG in environment or application properties -->
+
+    <!-- Silence noisy libraries -->
+    <logger name="org.hibernate.jpa.internal.util.LogHelper" level="WARN"/>
+    <logger name="org.hibernate.engine.jdbc.spi.SqlExceptionHelper" level="ERROR"/>
+    <logger name="org.apache.catalina.startup.DigesterFactory" level="ERROR"/>
+    <logger name="org.apache.catalina.util.LifecycleBase" level="ERROR"/>
+    <logger name="org.apache.tomcat.util.net.NioSelectorPool" level="WARN"/>
+
+    <!-- Firebase - INFO for push notification events -->
+    <logger name="com.google.firebase" level="INFO"/>
+
+    <!-- Commons Logging - Redirect to SLF4J -->
+    <logger name="org.apache.commons.logging" level="WARN"/>
+
+</configuration>

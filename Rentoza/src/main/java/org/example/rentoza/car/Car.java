@@ -67,7 +67,7 @@ public class Car {
 
     // ========== NEW PRODUCTION-READY FIELDS ==========
 
-    @Column(length = 1000)
+    @Column(length = 1000, columnDefinition = "VARCHAR(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
     private String description;
 
     @NotNull

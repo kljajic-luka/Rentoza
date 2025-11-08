@@ -9,6 +9,9 @@ import org.example.rentoza.car.Car;
 import org.example.rentoza.car.CarRepository;
 import org.example.rentoza.chat.ChatServiceClient;
 import org.example.rentoza.exception.ResourceNotFoundException;
+import org.example.rentoza.notification.NotificationService;
+import org.example.rentoza.notification.NotificationType;
+import org.example.rentoza.notification.dto.CreateNotificationRequestDTO;
 import org.example.rentoza.review.Review;
 import org.example.rentoza.review.ReviewDirection;
 import org.example.rentoza.review.ReviewRepository;
@@ -33,15 +36,18 @@ public class BookingService {
     private final ReviewRepository reviewRepo;
     private final JwtUtil jwtUtil;
     private final ChatServiceClient chatServiceClient;
+    private final NotificationService notificationService;
 
-    public BookingService(BookingRepository repo, CarRepository carRepo, UserRepository userRepo, 
-                          ReviewRepository reviewRepo, JwtUtil jwtUtil, ChatServiceClient chatServiceClient) {
+    public BookingService(BookingRepository repo, CarRepository carRepo, UserRepository userRepo,
+                          ReviewRepository reviewRepo, JwtUtil jwtUtil, ChatServiceClient chatServiceClient,
+                          NotificationService notificationService) {
         this.repo = repo;
         this.carRepo = carRepo;
         this.userRepo = userRepo;
         this.reviewRepo = reviewRepo;
         this.jwtUtil = jwtUtil;
         this.chatServiceClient = chatServiceClient;
+        this.notificationService = notificationService;
     }
 
     @Transactional
@@ -73,9 +79,9 @@ public class BookingService {
 
         // Create conversation in chat microservice asynchronously
         try {
-            log.info("Creating conversation for booking {} between renter {} and owner {}", 
+            log.info("Creating conversation for booking {} between renter {} and owner {}",
                     savedBooking.getId(), renter.getId(), car.getOwner().getId());
-            
+
             chatServiceClient.createConversationAsync(
                     savedBooking.getId().toString(),
                     renter.getId().toString(),
@@ -84,8 +90,33 @@ public class BookingService {
             );
         } catch (Exception e) {
             // Log error but don't fail the booking
-            log.error("Failed to initiate conversation creation for booking {}: {}", 
+            log.error("Failed to initiate conversation creation for booking {}: {}",
                     savedBooking.getId(), e.getMessage());
+        }
+
+        // Send booking confirmed notifications to both renter and owner
+        try {
+            String carInfo = car.getBrand() + " " + car.getModel();
+
+            // Notify renter
+            notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                    .recipientId(renter.getId())
+                    .type(NotificationType.BOOKING_CONFIRMED)
+                    .message("Vaša rezervacija za " + carInfo + " je potvrđena!")
+                    .relatedEntityId("booking-" + savedBooking.getId())
+                    .build());
+
+            // Notify owner
+            notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                    .recipientId(car.getOwner().getId())
+                    .type(NotificationType.BOOKING_CONFIRMED)
+                    .message("Nova rezervacija za " + carInfo + " od " + renter.getFirstName() + " " + renter.getLastName())
+                    .relatedEntityId("booking-" + savedBooking.getId())
+                    .build());
+
+            log.info("Booking confirmed notifications sent for booking {}", savedBooking.getId());
+        } catch (Exception e) {
+            log.error("Failed to send booking confirmed notifications: {}", e.getMessage(), e);
         }
 
         return savedBooking;
@@ -127,6 +158,34 @@ public class BookingService {
         // Force initialize before leaving the transaction
         Hibernate.initialize(booking.getCar());
         Hibernate.initialize(booking.getRenter());
+        Hibernate.initialize(booking.getCar().getOwner());
+
+        // Send booking cancelled notifications to both renter and owner
+        try {
+            Car car = booking.getCar();
+            User renter = booking.getRenter();
+            String carInfo = car.getBrand() + " " + car.getModel();
+
+            // Notify renter
+            notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                    .recipientId(renter.getId())
+                    .type(NotificationType.BOOKING_CANCELLED)
+                    .message("Vaša rezervacija za " + carInfo + " je otkazana.")
+                    .relatedEntityId("booking-" + booking.getId())
+                    .build());
+
+            // Notify owner
+            notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                    .recipientId(car.getOwner().getId())
+                    .type(NotificationType.BOOKING_CANCELLED)
+                    .message("Rezervacija za " + carInfo + " od " + renter.getFirstName() + " " + renter.getLastName() + " je otkazana.")
+                    .relatedEntityId("booking-" + booking.getId())
+                    .build());
+
+            log.info("Booking cancelled notifications sent for booking {}", booking.getId());
+        } catch (Exception e) {
+            log.error("Failed to send booking cancelled notifications: {}", e.getMessage(), e);
+        }
 
         return booking;
     }

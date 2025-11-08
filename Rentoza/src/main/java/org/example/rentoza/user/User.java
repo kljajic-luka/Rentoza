@@ -63,7 +63,7 @@ public class User {
     private String avatarUrl;
 
     @Size(max = 300, message = "Bio must be maximum 300 characters")
-    @Column(length = 300)
+    @Column(length = 300, columnDefinition = "VARCHAR(300) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
     private String bio;
 
     @Enumerated(EnumType.STRING)

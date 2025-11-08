@@ -1,5 +1,7 @@
 package org.example.rentoza.security;
 
+import org.example.rentoza.auth.oauth2.CustomOAuth2UserService;
+import org.example.rentoza.auth.oauth2.OAuth2AuthenticationSuccessHandler;
 import org.example.rentoza.config.AppProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -10,8 +12,6 @@ import org.springframework.security.config.annotation.authentication.configurati
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.HeadersConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
@@ -25,13 +25,19 @@ public class SecurityConfig {
     private final JwtAuthFilter jwtAuthFilter;
     private final ServiceAuthenticationFilter serviceAuthenticationFilter;
     private final AppProperties appProperties;
+    private final CustomOAuth2UserService customOAuth2UserService;
+    private final OAuth2AuthenticationSuccessHandler oauth2SuccessHandler;
 
-    public SecurityConfig(JwtAuthFilter jwtAuthFilter, 
-                          ServiceAuthenticationFilter serviceAuthenticationFilter, 
-                          AppProperties appProperties) {
+    public SecurityConfig(JwtAuthFilter jwtAuthFilter,
+                          ServiceAuthenticationFilter serviceAuthenticationFilter,
+                          AppProperties appProperties,
+                          CustomOAuth2UserService customOAuth2UserService,
+                          OAuth2AuthenticationSuccessHandler oauth2SuccessHandler) {
         this.jwtAuthFilter = jwtAuthFilter;
         this.serviceAuthenticationFilter = serviceAuthenticationFilter;
         this.appProperties = appProperties;
+        this.customOAuth2UserService = customOAuth2UserService;
+        this.oauth2SuccessHandler = oauth2SuccessHandler;
     }
 
     @Bean
@@ -40,14 +46,18 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
+                        // Public auth endpoints (local + OAuth2)
                         .requestMatchers(
                                 "/api/auth/login",
                                 "/api/auth/register",
                                 "/api/auth/refresh",
                                 "/api/auth/logout",
+                                "/api/auth/google/**",
                                 "/api/cars/**",
                                 "/api/reviews/car/**"
                         ).permitAll()
+                        // OAuth2 endpoints - required for Google login flow
+                        .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/uploads/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/bookings/car/**").permitAll()
                         // User endpoints - must come before catch-all rules
@@ -78,6 +88,13 @@ public class SecurityConfig {
                         .contentTypeOptions(Customizer.withDefaults()) // X-Content-Type-Options: nosniff
                 )
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                // Configure OAuth2 login
+                .oauth2Login(oauth2 -> oauth2
+                        .userInfoEndpoint(userInfo -> userInfo
+                                .userService(customOAuth2UserService)
+                        )
+                        .successHandler(oauth2SuccessHandler)
+                )
                 // Add ServiceAuthenticationFilter before JwtAuthFilter
                 .addFilterBefore(serviceAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
@@ -113,11 +130,6 @@ public class SecurityConfig {
                "script-src 'self'; " +
                "style-src 'self' 'unsafe-inline'; " +
                "connect-src 'self' " + allowedOrigins + ";";
-    }
-
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder(12);
     }
 
     @Bean

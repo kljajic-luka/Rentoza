@@ -107,6 +107,14 @@ export class AuthService {
     return this.currentUserSubject.value;
   }
 
+  /**
+   * Set access token directly (used for OAuth2 callback)
+   * This allows Google OAuth2 to inject the JWT token received from backend
+   */
+  setAccessToken(token: string): void {
+    this.accessTokenSubject.next(token);
+  }
+
   isAuthenticated(): boolean {
     const token = this.accessTokenSubject.value;
     return Boolean(token && !this.jwtHelper.isTokenExpired(token));

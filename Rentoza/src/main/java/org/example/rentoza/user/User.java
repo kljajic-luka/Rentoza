@@ -22,7 +22,8 @@ import java.util.List;
         },
         indexes = {
                 @Index(name = "idx_user_email", columnList = "email"),
-                @Index(name = "idx_user_phone", columnList = "phone")
+                @Index(name = "idx_user_phone", columnList = "phone"),
+                @Index(name = "idx_user_google_id", columnList = "google_id")
         }
 )
 @Getter
@@ -54,6 +55,13 @@ public class User {
     @JsonIgnore
     @Column(nullable = false)
     private String password;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "auth_provider", nullable = false, length = 20)
+    private AuthProvider authProvider = AuthProvider.LOCAL;
+
+    @Column(name = "google_id", unique = true, length = 100)
+    private String googleId;
 
     @Pattern(regexp = "^[0-9]{8,15}$")
     @Column(unique = true)

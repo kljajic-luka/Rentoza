@@ -1,0 +1,20 @@
+<section class="auth-callback">
+  <mat-card class="auth-callback__card">
+    <mat-card-content>
+      <!-- Loading state -->
+      <div *ngIf="isProcessing() && !errorMessage()" class="auth-callback__loading">
+        <mat-spinner diameter="60"></mat-spinner>
+        <h2>Prijavljivanje u toku...</h2>
+        <p>Molimo sačekajte dok završavamo proces autentifikacije.</p>
+      </div>
+
+      <!-- Error state -->
+      <div *ngIf="errorMessage()" class="auth-callback__error">
+        <mat-icon color="warn" class="auth-callback__error-icon">error</mat-icon>
+        <h2>Autentifikacija nije uspela</h2>
+        <p>{{ errorMessage() }}</p>
+        <p class="auth-callback__redirect-message">Preusmeravanje na stranicu za prijavljivanje...</p>
+      </div>
+    </mat-card-content>
+  </mat-card>
+</section>

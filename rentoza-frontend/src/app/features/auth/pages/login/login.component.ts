@@ -8,6 +8,7 @@ import { finalize, tap } from 'rxjs';
 import { AuthService } from '@core/auth/auth.service';
 import { RedirectService } from '@core/services/redirect.service';
 import { LoginRequest } from '@core/models/auth.model';
+import { environment } from '@environments/environment';
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -78,5 +79,25 @@ export class LoginComponent {
           this.toastr.error('Pogrešan email ili lozinka');
         }
       });
+  }
+
+  /**
+   * Initiate Google OAuth2 sign-in flow
+   * Redirects user to backend OAuth2 authorization endpoint
+   */
+  signInWithGoogle(): void {
+    // Construct the Google OAuth2 authorization URL
+    const googleAuthUrl = `${environment.baseApiUrl}/oauth2/authorization/google`;
+
+    // Preserve return URL if exists
+    const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
+    if (returnUrl) {
+      // Store return URL in session storage to retrieve after OAuth2 callback
+      sessionStorage.setItem('oauth2_return_url', returnUrl);
+    }
+
+    // Redirect to backend OAuth2 endpoint
+    // Backend will redirect to Google, then back to /auth/callback with token
+    window.location.href = googleAuthUrl;
   }
 }

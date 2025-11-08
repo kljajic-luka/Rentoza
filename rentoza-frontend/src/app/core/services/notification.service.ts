@@ -6,7 +6,7 @@ import { Client, IMessage, StompSubscription } from '@stomp/stompjs';
 import { ToastrService } from 'ngx-toastr';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
-import { environment } from '@env/environment';
+import { environment } from '@environments/environment';
 import {
   Notification,
   RegisterDeviceTokenRequest,
@@ -57,7 +57,7 @@ export class NotificationService {
     }
 
     this.stompClient = new Client({
-      brokerURL: environment.wsUrl,
+      brokerURL: environment.chatWsUrl,
       debug: (str) => console.log('STOMP Debug:', str),
       reconnectDelay: 5000,
       heartbeatIncoming: 4000,

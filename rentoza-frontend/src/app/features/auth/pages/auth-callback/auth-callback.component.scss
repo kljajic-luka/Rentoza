@@ -1,0 +1,50 @@
+.auth-callback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 2rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+
+  &__card {
+    max-width: 500px;
+    width: 100%;
+    padding: 2rem;
+  }
+
+  &__loading,
+  &__error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 2rem 1rem;
+
+    h2 {
+      margin: 1.5rem 0 0.5rem;
+      font-size: 1.5rem;
+      font-weight: 500;
+      color: #333;
+    }
+
+    p {
+      margin: 0.5rem 0;
+      color: #666;
+      font-size: 1rem;
+      line-height: 1.5;
+    }
+  }
+
+  &__error-icon {
+    font-size: 64px;
+    width: 64px;
+    height: 64px;
+  }
+
+  &__redirect-message {
+    margin-top: 1rem !important;
+    font-size: 0.875rem !important;
+    font-style: italic;
+    color: #999 !important;
+  }
+}

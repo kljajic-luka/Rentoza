@@ -1,5 +1,6 @@
 package org.example.rentoza.security;
 
+import org.example.rentoza.auth.oauth2.CustomAuthorizationRequestResolver;
 import org.example.rentoza.auth.oauth2.CustomOAuth2UserService;
 import org.example.rentoza.auth.oauth2.OAuth2AuthenticationSuccessHandler;
 import org.example.rentoza.config.AppProperties;
@@ -33,6 +34,7 @@ public class SecurityConfig {
     private final AppProperties appProperties;
     private final CustomOAuth2UserService customOAuth2UserService;
     private final OAuth2AuthenticationSuccessHandler oauth2SuccessHandler;
+    private final CustomAuthorizationRequestResolver customAuthorizationRequestResolver;
     private final ClientRegistrationRepository clientRegistrationRepository;
 
     public SecurityConfig(JwtAuthFilter jwtAuthFilter,
@@ -40,12 +42,14 @@ public class SecurityConfig {
                           AppProperties appProperties,
                           CustomOAuth2UserService customOAuth2UserService,
                           OAuth2AuthenticationSuccessHandler oauth2SuccessHandler,
+                          CustomAuthorizationRequestResolver customAuthorizationRequestResolver,
                           ClientRegistrationRepository clientRegistrationRepository) {
         this.jwtAuthFilter = jwtAuthFilter;
         this.serviceAuthenticationFilter = serviceAuthenticationFilter;
         this.appProperties = appProperties;
         this.customOAuth2UserService = customOAuth2UserService;
         this.oauth2SuccessHandler = oauth2SuccessHandler;
+        this.customAuthorizationRequestResolver = customAuthorizationRequestResolver;
         this.clientRegistrationRepository = clientRegistrationRepository;
     }
 
@@ -120,8 +124,14 @@ public class SecurityConfig {
                 // - FavoriteController has fallback to handle DefaultOidcUser gracefully
                 // - JWT validation happens on every request (stateless verification)
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                // Configure OAuth2 login
+                // Configure OAuth2 login with role-based registration support
                 .oauth2Login(oauth2 -> oauth2
+                        // ROLE-BASED REGISTRATION: Custom authorization request resolver
+                        // Captures ?role=owner from frontend and embeds it in OAuth2 state parameter
+                        // This enables owner registration via Google OAuth2
+                        .authorizationEndpoint(authorization -> authorization
+                                .authorizationRequestResolver(customAuthorizationRequestResolver)
+                        )
                         .userInfoEndpoint(userInfo -> userInfo
                                 .userService(customOAuth2UserService)
                         )

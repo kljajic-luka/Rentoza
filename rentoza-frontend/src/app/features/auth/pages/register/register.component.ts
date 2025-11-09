@@ -102,21 +102,37 @@ export class RegisterComponent {
 
   /**
    * Initiate Google OAuth2 registration flow
-   * Redirects user to backend OAuth2 registration endpoint
+   * Redirects user to backend OAuth2 authorization endpoint with role context
+   *
+   * ROLE-BASED REGISTRATION:
+   * - For regular users: /oauth2/authorization/google (defaults to USER role)
+   * - For owner registration: /oauth2/authorization/google?role=owner
+   * - Backend's CustomAuthorizationRequestResolver captures the role parameter
+   * - Role is embedded in OAuth2 state parameter for secure propagation
+   * - After Google callback, user is provisioned with the correct role
    */
   registerWithGoogle(): void {
-    // Construct the Google OAuth2 registration URL
-    // This endpoint sets REGISTER mode in session before redirecting to OAuth2
-    const googleRegisterUrl = `${environment.baseApiUrl}/auth/google/register`;
+    // CRITICAL: OAuth2 endpoints are at root level (/oauth2/...), not under /api
+    // environment.baseApiUrl = 'http://localhost:8080/api'
+    // But OAuth2 endpoint is at: http://localhost:8080/oauth2/authorization/google
+    // So we need to strip '/api' and use the base URL only
+    const baseUrl = environment.baseApiUrl.replace('/api', '');
+    let googleAuthUrl = `${baseUrl}/oauth2/authorization/google`;
 
-    // Preserve role if registering as owner
+    // CRITICAL: Pass role as query parameter for backend to capture
+    // The backend expects ?role=owner to provision user as OWNER
+    // Without this parameter, users default to USER role
     if (this.isOwnerRegistration) {
-      // Store role in session storage to apply after OAuth2 callback
-      sessionStorage.setItem('oauth2_register_role', 'OWNER');
+      googleAuthUrl += '?role=owner';
     }
 
-    // Redirect to backend Google registration endpoint
-    // Backend will set mode=REGISTER in session, then redirect to Google
-    window.location.href = googleRegisterUrl;
+    // Redirect to backend OAuth2 authorization endpoint
+    // Backend will:
+    // 1. Validate and embed role in OAuth2 state parameter
+    // 2. Redirect to Google for authentication
+    // 3. Handle callback and provision user with correct role
+    // 4. Generate JWT with role claim
+    // 5. Redirect to frontend with JWT token
+    window.location.href = googleAuthUrl;
   }
 }

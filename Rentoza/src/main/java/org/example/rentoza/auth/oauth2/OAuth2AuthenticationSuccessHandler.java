@@ -72,12 +72,19 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
                                         HttpServletResponse response,
                                         Authentication authentication) throws IOException {
         try {
+            // ROLE CONTEXT EXTRACTION: Extract role from OAuth2 state parameter
+            // The state parameter is validated by Spring Security's OAuth2 flow
+            // Our CustomAuthorizationRequestResolver embedded role context: "state|role=OWNER"
+            String state = request.getParameter("state");
+
+            Role requestedRole = extractAndValidateRole(state);
+
             // Extract user from OAuth2 authentication
             OAuth2UserPrincipal principal = resolvePrincipal(authentication.getPrincipal());
-            User user = ensureUserProvisioned(principal);
+            User user = ensureUserProvisioned(principal, requestedRole);
 
-            log.info("OAuth2 authentication successful for user: email={}, provider={}",
-                    user.getEmail(), user.getAuthProvider());
+            log.info("OAuth2 authentication successful for user: email={}, provider={}, role={}",
+                    user.getEmail(), user.getAuthProvider(), user.getRole());
 
             // Generate JWT access token (same format as local login)
             String accessToken = jwtUtil.generateToken(user.getEmail(), user.getRole().name(), user.getId());
@@ -187,7 +194,7 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
         return value != null ? value.toString() : null;
     }
 
-    private User ensureUserProvisioned(OAuth2UserPrincipal principal) {
+    private User ensureUserProvisioned(OAuth2UserPrincipal principal, Role requestedRole) {
         User user = principal.getUser();
         String email = user != null ? user.getEmail() : null;
 
@@ -209,12 +216,28 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
         final String resolvedEmail = email;
         final User resolvedUser = user;
         final Map<String, Object> attrs = principal.getAttributes();
+        final Role finalRole = requestedRole;
 
         return userRepository.findByEmail(resolvedEmail)
-                .orElseGet(() -> provisionNewUser(resolvedEmail, resolvedUser, attrs));
+                .orElseGet(() -> provisionNewUser(resolvedEmail, resolvedUser, attrs, finalRole));
     }
 
-    private User provisionNewUser(String email, User currentUser, Map<String, Object> attributes) {
+    /**
+     * Provisions a new OAuth2 user with the specified role.
+     *
+     * ROLE ASSIGNMENT:
+     * - Uses the validated role from extractAndValidateRole()
+     * - Allows OWNER role when explicitly requested via ?role=owner
+     * - Defaults to USER for all other cases
+     * - Role is persisted in database and reflected in JWT
+     *
+     * @param email User email from OAuth2 attributes
+     * @param currentUser Transient user object (may be null)
+     * @param attributes OAuth2 user attributes
+     * @param role Validated role (OWNER or USER)
+     * @return Persisted user entity
+     */
+    private User provisionNewUser(String email, User currentUser, Map<String, Object> attributes, Role role) {
         User newUser = currentUser != null ? currentUser : new User();
         newUser.setEmail(email);
 
@@ -244,7 +267,12 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
         }
         newUser.setAvatarUrl(picture);
         newUser.setAuthProvider(AuthProvider.GOOGLE);
-        newUser.setRole(Role.USER);
+
+        // ROLE-BASED REGISTRATION: Use validated role from OAuth2 state parameter
+        // This enables owner registration via Google OAuth2
+        newUser.setRole(role);
+        log.debug("Provisioning OAuth2 user with role: {}", role);
+
         newUser.setEnabled(true);
         newUser.setLocked(false);
 
@@ -258,7 +286,7 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
 
         try {
             User savedUser = userRepository.save(newUser);
-            log.info("Provisioned new OAuth2 user: {}", savedUser.getEmail());
+            log.info("Provisioned new OAuth2 user: {} with role: {}", savedUser.getEmail(), savedUser.getRole());
             return savedUser;
         } catch (DataIntegrityViolationException ex) {
             log.warn("Race condition while provisioning OAuth2 user {}. Attempting to reuse existing record.", email);
@@ -277,5 +305,40 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
             }
         }
         return "";
+    }
+
+    /**
+     * Extracts and validates role from OAuth2 state parameter.
+     *
+     * SECURITY VALIDATION:
+     * - Only allows OWNER role to be explicitly requested
+     * - Defaults to USER for all other cases (including invalid/missing role)
+     * - Prevents arbitrary role assignment (admin, system, etc.)
+     *
+     * @param state OAuth2 state parameter from callback
+     * @return Validated role (OWNER or USER)
+     */
+    private Role extractAndValidateRole(String state) {
+        if (state == null || state.isBlank()) {
+            return Role.USER;
+        }
+
+        // Extract role from state using CustomAuthorizationRequestResolver's format
+        String roleStr = CustomAuthorizationRequestResolver.extractRoleFromState(state);
+
+        if (roleStr == null || roleStr.isBlank()) {
+            return Role.USER;
+        }
+
+        // SECURITY: Validate role - only allow OWNER or USER
+        if ("OWNER".equalsIgnoreCase(roleStr)) {
+            return Role.OWNER;
+        } else if ("USER".equalsIgnoreCase(roleStr)) {
+            return Role.USER;
+        } else {
+            // Reject any other role (admin, system, etc.)
+            log.warn("Invalid role in OAuth2 state: {}. Defaulting to USER.", roleStr);
+            return Role.USER;
+        }
     }
 }

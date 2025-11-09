@@ -75,6 +75,9 @@ public class GoogleAuthController {
      * Initiate Google OAuth2 registration flow.
      * Sets REGISTER mode in session and redirects to OAuth2 authorization endpoint.
      *
+     * CRITICAL: This endpoint preserves all query parameters (especially ?role=owner)
+     * when redirecting to /oauth2/authorization/google
+     *
      * This endpoint is called by the frontend when user clicks "Register with Google".
      * It stores the registration intent in the session, then redirects to the standard
      * OAuth2 authorization flow.
@@ -96,7 +99,13 @@ public class GoogleAuthController {
                 .build()
                 .toUriString();
 
+        // CRITICAL: Preserve query parameters (especially ?role=owner)
         String oauth2AuthUrl = baseUrl + "/oauth2/authorization/google";
+        String queryString = request.getQueryString();
+        if (queryString != null && !queryString.isBlank()) {
+            oauth2AuthUrl += "?" + queryString;
+        }
+        
         response.sendRedirect(oauth2AuthUrl);
     }
 

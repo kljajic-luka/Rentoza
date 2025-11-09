@@ -86,8 +86,11 @@ export class LoginComponent {
    * Redirects user to backend OAuth2 authorization endpoint
    */
   signInWithGoogle(): void {
-    // Construct the Google OAuth2 authorization URL
-    const googleAuthUrl = `${environment.baseApiUrl}/oauth2/authorization/google`;
+    // CRITICAL: OAuth2 endpoints are at root level (/oauth2/...), not under /api
+    // environment.baseApiUrl = 'http://localhost:8080/api'
+    // But OAuth2 endpoint is at: http://localhost:8080/oauth2/authorization/google
+    const baseUrl = environment.baseApiUrl.replace('/api', '');
+    const googleAuthUrl = `${baseUrl}/oauth2/authorization/google`;
 
     // Preserve return URL if exists
     const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');

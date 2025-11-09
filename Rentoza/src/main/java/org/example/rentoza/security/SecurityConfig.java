@@ -96,7 +96,30 @@ public class SecurityConfig {
                                 .maxAgeInSeconds(31536000)) // 1 year
                         .contentTypeOptions(Customizer.withDefaults()) // X-Content-Type-Options: nosniff
                 )
-                .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
+                // SESSION MANAGEMENT: STATELESS for token-based authentication
+                //
+                // CRITICAL: This enforces a stateless, JWT-first authentication model
+                //
+                // Why STATELESS:
+                // - All API endpoints use JWT Bearer tokens (no server-side sessions)
+                // - OAuth2 login is only used for initial user provisioning
+                // - After OAuth2 success, frontend receives JWT and uses it exclusively
+                // - JwtAuthFilter ALWAYS replaces any OAuth2 session auth with JWT auth
+                // - Prevents session fixation attacks and reduces server memory overhead
+                //
+                // OAuth2 Flow with STATELESS:
+                // 1. User clicks "Login with Google" -> OAuth2 authorization flow starts
+                // 2. OAuth2 may use minimal transient state during OIDC handshake
+                // 3. OAuth2AuthenticationSuccessHandler provisions user and generates JWT
+                // 4. Frontend receives JWT in redirect URL parameter
+                // 5. All subsequent API calls use JWT in Authorization header
+                // 6. No persistent session is maintained after OAuth2 redirect
+                //
+                // Defense in Depth:
+                // - Even if OAuth2 creates temporary session, JwtAuthFilter replaces it
+                // - FavoriteController has fallback to handle DefaultOidcUser gracefully
+                // - JWT validation happens on every request (stateless verification)
+                .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 // Configure OAuth2 login
                 .oauth2Login(oauth2 -> oauth2
                         .userInfoEndpoint(userInfo -> userInfo

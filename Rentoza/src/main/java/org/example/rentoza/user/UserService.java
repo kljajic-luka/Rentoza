@@ -198,6 +198,24 @@ public class UserService {
             }
         }
 
+        // ✅ LAST NAME - allow change only for Google placeholder users
+        if (dto.getLastName() != null) {
+            String lastName = dto.getLastName().trim();
+            if (lastName.isBlank() || lastName.length() < 3 || lastName.length() > 50) {
+                throw new BadRequestException("Last name must be between 3 and 50 characters");
+            }
+            if (!User.GOOGLE_PLACEHOLDER_LAST_NAME.equals(user.getLastName())) {
+                throw new BadRequestException("Changing last name requires identity verification");
+            }
+            if (lastName.equals(User.GOOGLE_PLACEHOLDER_LAST_NAME)) {
+                throw new BadRequestException("Please provide your actual last name");
+            }
+            if (!lastName.equals(user.getLastName())) {
+                user.setLastName(lastName);
+                changed = true;
+            }
+        }
+
         if (!changed) {
             return user; // No changes, return existing user
         }

@@ -8,6 +8,7 @@ import { finalize, tap } from 'rxjs';
 import { AuthService } from '@core/auth/auth.service';
 import { RedirectService } from '@core/services/redirect.service';
 import { RegisterRequest } from '@core/models/auth.model';
+import { environment } from '@environments/environment';
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -97,5 +98,25 @@ export class RegisterComponent {
           this.toastr.error('Greška prilikom registracije. Pokušajte ponovo.');
         },
       });
+  }
+
+  /**
+   * Initiate Google OAuth2 registration flow
+   * Redirects user to backend OAuth2 registration endpoint
+   */
+  registerWithGoogle(): void {
+    // Construct the Google OAuth2 registration URL
+    // This endpoint sets REGISTER mode in session before redirecting to OAuth2
+    const googleRegisterUrl = `${environment.baseApiUrl}/auth/google/register`;
+
+    // Preserve role if registering as owner
+    if (this.isOwnerRegistration) {
+      // Store role in session storage to apply after OAuth2 callback
+      sessionStorage.setItem('oauth2_register_role', 'OWNER');
+    }
+
+    // Redirect to backend Google registration endpoint
+    // Backend will set mode=REGISTER in session, then redirect to Google
+    window.location.href = googleRegisterUrl;
   }
 }

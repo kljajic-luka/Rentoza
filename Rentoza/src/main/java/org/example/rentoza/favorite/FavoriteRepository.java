@@ -18,11 +18,6 @@ import java.util.Optional;
 public interface FavoriteRepository extends JpaRepository<Favorite, Long> {
 
     /**
-     * Check if a specific car is favorited by a user
-     */
-    boolean existsByUserAndCar(User user, Car car);
-
-    /**
      * Check if a specific car is favorited by user ID and car ID
      */
     @Query("SELECT CASE WHEN COUNT(f) > 0 THEN true ELSE false END " +
@@ -45,7 +40,6 @@ public interface FavoriteRepository extends JpaRepository<Favorite, Long> {
      */
     @Query("SELECT f FROM Favorite f " +
            "JOIN FETCH f.car c " +
-           "LEFT JOIN FETCH c.owner " +
            "WHERE f.user.id = :userId " +
            "ORDER BY f.createdAt DESC")
     List<Favorite> findAllByUserIdWithCarDetails(@Param("userId") Long userId);
@@ -65,7 +59,8 @@ public interface FavoriteRepository extends JpaRepository<Favorite, Long> {
     /**
      * Count favorites for a user
      */
-    long countByUserId(Long userId);
+    @Query("SELECT COUNT(f) FROM Favorite f WHERE f.user.id = :userId")
+    long countByUserId(@Param("userId") Long userId);
 
     /**
      * Delete a favorite by user and car

@@ -3,6 +3,8 @@ package org.example.rentoza.security;
 import org.example.rentoza.auth.oauth2.CustomOAuth2UserService;
 import org.example.rentoza.auth.oauth2.OAuth2AuthenticationSuccessHandler;
 import org.example.rentoza.config.AppProperties;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -12,6 +14,8 @@ import org.springframework.security.config.annotation.authentication.configurati
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.HeadersConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.oauth2.client.registration.ClientRegistration;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
@@ -22,22 +26,27 @@ import java.util.List;
 @Configuration
 public class SecurityConfig {
 
+    private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
+
     private final JwtAuthFilter jwtAuthFilter;
     private final ServiceAuthenticationFilter serviceAuthenticationFilter;
     private final AppProperties appProperties;
     private final CustomOAuth2UserService customOAuth2UserService;
     private final OAuth2AuthenticationSuccessHandler oauth2SuccessHandler;
+    private final ClientRegistrationRepository clientRegistrationRepository;
 
     public SecurityConfig(JwtAuthFilter jwtAuthFilter,
                           ServiceAuthenticationFilter serviceAuthenticationFilter,
                           AppProperties appProperties,
                           CustomOAuth2UserService customOAuth2UserService,
-                          OAuth2AuthenticationSuccessHandler oauth2SuccessHandler) {
+                          OAuth2AuthenticationSuccessHandler oauth2SuccessHandler,
+                          ClientRegistrationRepository clientRegistrationRepository) {
         this.jwtAuthFilter = jwtAuthFilter;
         this.serviceAuthenticationFilter = serviceAuthenticationFilter;
         this.appProperties = appProperties;
         this.customOAuth2UserService = customOAuth2UserService;
         this.oauth2SuccessHandler = oauth2SuccessHandler;
+        this.clientRegistrationRepository = clientRegistrationRepository;
     }
 
     @Bean
@@ -87,7 +96,7 @@ public class SecurityConfig {
                                 .maxAgeInSeconds(31536000)) // 1 year
                         .contentTypeOptions(Customizer.withDefaults()) // X-Content-Type-Options: nosniff
                 )
-                .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
                 // Configure OAuth2 login
                 .oauth2Login(oauth2 -> oauth2
                         .userInfoEndpoint(userInfo -> userInfo
@@ -99,7 +108,9 @@ public class SecurityConfig {
                 .addFilterBefore(serviceAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
-        return http.build();
+        SecurityFilterChain chain = http.build();
+        logOAuth2Configuration();
+        return chain;
     }
 
     @Bean
@@ -124,16 +135,36 @@ public class SecurityConfig {
      * Build Content Security Policy directive dynamically based on allowed origins
      */
     private String buildCspPolicy() {
+        // Split comma-separated origins safely
         String allowedOrigins = appProperties.getCors().getAllowedOrigins();
+        String[] origins = allowedOrigins.split(",");
+
+        // Join with spaces for CSP syntax
+        String connectSrc = String.join(" ", origins);
+
         return "default-src 'self'; " +
-               "img-src 'self' data: blob: https://images.unsplash.com; " +
-               "script-src 'self'; " +
-               "style-src 'self' 'unsafe-inline'; " +
-               "connect-src 'self' " + allowedOrigins + ";";
+                "img-src 'self' data: blob: https://images.unsplash.com; " +
+                "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com https://apis.google.com; " +
+                "style-src 'self' 'unsafe-inline'; " +
+                "connect-src 'self' " + connectSrc + ";";
     }
 
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration cfg) throws Exception {
         return cfg.getAuthenticationManager();
+    }
+
+    private void logOAuth2Configuration() {
+        if (clientRegistrationRepository == null) {
+            log.warn("⚠️ No OAuth2 client registrations available.");
+            return;
+        }
+
+        ClientRegistration google = clientRegistrationRepository.findByRegistrationId("google");
+        if (google != null) {
+            log.info("✅ OAuth2 login enabled for provider: {}", google.getRegistrationId());
+        } else {
+            log.warn("⚠️ Google OAuth2 client registration not found. OAuth2 login disabled.");
+        }
     }
 }

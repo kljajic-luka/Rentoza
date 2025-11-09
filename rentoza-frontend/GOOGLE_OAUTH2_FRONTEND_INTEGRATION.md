@@ -2,7 +2,15 @@
 
 ## Overview
 
-This document describes the Angular frontend integration for Google OAuth2 authentication in the Rentoza application. The implementation allows users to sign in with their Google accounts alongside the existing email/password authentication.
+This document describes the Angular frontend integration for Google OAuth2 authentication in the Rentoza application. The implementation allows users to both **sign in** and **register** with their Google accounts alongside the existing email/password authentication.
+
+**Key Features**:
+- **Login with Google**: Existing users can sign in using their Google account
+- **Register with Google**: New users can create an account using their Google account
+- **Dual-mode Backend**: Backend distinguishes between login and registration flows
+- **Consistent UX**: Both login and registration pages have identical Google button styling
+- **Same Callback**: Both flows use the same AuthCallbackComponent for token processing
+- **Error Handling**: Registration rejects existing users, login allows them
 
 ## What Was Implemented
 
@@ -59,7 +67,60 @@ setAccessToken(token: string): void
 - Added hover and active states for better UX
 - Made button responsive and accessible
 
-### 4. Routing Updates
+### 4. Register Component Updates
+
+**Location**: `src/app/features/auth/pages/register/`
+
+**Changes Made**:
+
+**HTML** (`register.component.html`):
+- Added "OR" divider between email/password form and Google button (after line 106)
+- Added Google Sign-Up button with official Google branding (SVG logo)
+- Button text: "Registruj se sa Google nalogom"
+- Same styling as login page for consistency
+
+**TypeScript** (`register.component.ts`):
+- Added `environment` import from `@environments/environment`
+- Added `registerWithGoogle()` method
+- Constructs backend OAuth2 registration URL: `${baseApiUrl}/auth/google/register`
+- Preserves role if registering as owner (stores in session storage)
+- Redirects user to backend registration endpoint (sets REGISTER mode in session)
+
+**Code Example**:
+```typescript
+/**
+ * Initiate Google OAuth2 registration flow
+ * Redirects user to backend OAuth2 registration endpoint
+ */
+registerWithGoogle(): void {
+  // Construct the Google OAuth2 registration URL
+  // This endpoint sets REGISTER mode in session before redirecting to OAuth2
+  const googleRegisterUrl = `${environment.baseApiUrl}/auth/google/register`;
+
+  // Preserve role if registering as owner
+  if (this.isOwnerRegistration) {
+    // Store role in session storage to apply after OAuth2 callback
+    sessionStorage.setItem('oauth2_register_role', 'OWNER');
+  }
+
+  // Redirect to backend Google registration endpoint
+  // Backend will set mode=REGISTER in session, then redirect to Google
+  window.location.href = googleRegisterUrl;
+}
+```
+
+**SCSS** (`register.component.scss`):
+- Added `.auth-divider` styling (identical to login page)
+- Added `.google-signin-btn` styling (identical to login page)
+- Ensures consistent Google Material Design styling across login and registration
+
+**Key Difference from Login Flow**:
+- Uses `/api/auth/google/register` endpoint instead of `/oauth2/authorization/google`
+- Backend sets REGISTER mode in session before OAuth2 redirect
+- Backend rejects existing Google users during registration (throws `user_already_exists` error)
+- Login flow allows existing Google users (updates their profile instead)
+
+### 5. Routing Updates
 
 **Location**: `src/app/app.routes.ts`
 
@@ -77,7 +138,7 @@ setAccessToken(token: string): void
 
 **Purpose**: Public route (no auth guard) to receive OAuth2 callback from backend.
 
-### 5. Bug Fixes (Pre-existing Issues)
+### 6. Bug Fixes (Pre-existing Issues)
 
 Fixed two import errors in `notification.service.ts`:
 - Changed `@env/environment` to `@environments/environment`
@@ -85,7 +146,9 @@ Fixed two import errors in `notification.service.ts`:
 
 These were blocking Angular compilation.
 
-## OAuth2 Flow Diagram
+## OAuth2 Flow Diagrams
+
+### Login Flow (Existing Users)
 
 ```
 User clicks "Prijavi se sa Google nalogom" button
@@ -99,7 +162,8 @@ User approves access in Google
 Google redirects to: http://localhost:8080/login/oauth2/code/google?code=...
     ↓
 Backend processes OAuth2 callback:
-  - CustomOAuth2UserService validates user
+  - CustomOAuth2UserService validates user (LOGIN mode - default)
+  - Creates new user OR updates existing Google user profile
   - OAuth2AuthenticationSuccessHandler generates JWT + refresh token
   - Sets refresh token cookie
     ↓
@@ -116,16 +180,70 @@ Angular app redirects to appropriate page based on user role
 User is now authenticated (same state as email/password login)
 ```
 
+### Registration Flow (New Users Only)
+
+```
+User clicks "Registruj se sa Google nalogom" button
+    ↓
+Frontend redirects to: http://localhost:8080/api/auth/google/register
+    ↓
+Backend sets REGISTER mode in HTTP session
+    ↓
+Backend redirects to: http://localhost:8080/oauth2/authorization/google
+    ↓
+Backend redirects to Google authorization page
+    ↓
+User approves access in Google
+    ↓
+Google redirects to: http://localhost:8080/login/oauth2/code/google?code=...
+    ↓
+Backend processes OAuth2 callback:
+  - CustomOAuth2UserService retrieves REGISTER mode from session
+  - Validates user does NOT already exist with GOOGLE provider
+  - Creates new user with GOOGLE provider
+  - OAuth2AuthenticationSuccessHandler generates JWT + refresh token
+  - Sets refresh token cookie
+    ↓
+Backend redirects to: http://localhost:4200/auth/callback?token=JWT_TOKEN
+    ↓
+AuthCallbackComponent:
+  - Extracts token from query params
+  - Calls authService.setAccessToken(token)
+  - Calls authService.refreshUserProfile()
+  - Loads user data
+    ↓
+Angular app redirects to appropriate page based on user role
+    ↓
+User is now authenticated (same state as email/password registration)
+```
+
+### Key Differences: Login vs Registration
+
+| Aspect | Login Flow | Registration Flow |
+|--------|-----------|------------------|
+| **Frontend Endpoint** | `/oauth2/authorization/google` | `/api/auth/google/register` |
+| **Backend Mode** | LOGIN (default) | REGISTER (set in session) |
+| **New Google User** | ✅ Creates user | ✅ Creates user |
+| **Existing Google User** | ✅ Updates profile | ❌ Throws `user_already_exists` error |
+| **Existing Local User** | ❌ Throws `email_already_registered` error | ❌ Throws `email_already_registered` error |
+| **Token Issuance** | Identical JWT + refresh token | Identical JWT + refresh token |
+| **Callback Handling** | Same AuthCallbackComponent | Same AuthCallbackComponent |
+
 ## Integration Points with Backend
 
 ### Backend Endpoints Used
 
-1. **OAuth2 Authorization Endpoint**
+1. **OAuth2 Authorization Endpoint (Login)**
    - URL: `/oauth2/authorization/google`
    - Method: GET (redirect)
-   - Purpose: Initiates Google OAuth2 flow
+   - Purpose: Initiates Google OAuth2 flow in LOGIN mode (default)
 
-2. **User Profile Endpoint**
+2. **OAuth2 Registration Endpoint**
+   - URL: `/api/auth/google/register`
+   - Method: GET (redirect)
+   - Purpose: Sets REGISTER mode in session, then redirects to OAuth2 authorization endpoint
+
+3. **User Profile Endpoint**
    - URL: `/api/users/profile`
    - Method: GET
    - Headers: `Authorization: Bearer {token}`
@@ -229,8 +347,48 @@ oauth2.redirect-uri=http://localhost:4200/auth/callback
 4. Complete Google authentication
 5. You should be redirected to `/favorites` (the original protected page)
 
+#### Scenario 7: Google Registration (New User)
+
+1. Navigate to `http://localhost:4200/auth/register`
+2. Click "Registruj se sa Google nalogom" button
+3. You should be redirected to Google's authorization page
+4. Select a Google account that has NOT been registered before
+5. Approve permissions
+6. You should be redirected to `http://localhost:4200/auth/callback?token=...`
+7. AuthCallbackComponent should process the token
+8. You should be redirected to the home page or dashboard
+9. Check backend database:
+   ```sql
+   SELECT id, email, auth_provider, google_id, role FROM users WHERE email = 'new-user@gmail.com';
+   ```
+   - `auth_provider` should be 'GOOGLE'
+   - `role` should be 'USER' (or 'OWNER' if owner registration)
+
+#### Scenario 8: Google Registration (Existing Google User - Error)
+
+1. First, complete a Google login or registration with a Google account
+2. Log out from the application
+3. Navigate to `http://localhost:4200/auth/register`
+4. Click "Registruj se sa Google nalogom" button
+5. Sign in with the SAME Google account
+6. Backend should reject with `user_already_exists` error
+7. You should be redirected to `/auth/callback?error=user_already_exists`
+8. Error message should display: "An account with this email already exists. Please log in instead."
+9. User should be redirected to login page
+
+#### Scenario 9: Google Registration (Owner Role)
+
+1. Navigate to `http://localhost:4200/auth/register?role=owner` (owner registration page)
+2. Click "Registruj se sa Google nalogom" button
+3. Complete Google authentication with a new account
+4. After successful registration, check:
+   - Session storage should have stored `oauth2_register_role: 'OWNER'`
+   - User should be created with `role = 'OWNER'` in database (if backend implements role handling)
+   - User should be redirected to owner dashboard
+
 ### Manual Testing Checklist
 
+**Login Features**:
 - [ ] Google Sign-In button appears on login page
 - [ ] Google button has correct styling (Google logo + text)
 - [ ] Google button is disabled while form is submitting
@@ -246,6 +404,19 @@ oauth2.redirect-uri=http://localhost:4200/auth/callback
 - [ ] Error scenarios show appropriate messages
 - [ ] CORS is configured correctly (no CORS errors in console)
 - [ ] No console errors during OAuth2 flow
+
+**Registration Features**:
+- [ ] Google Sign-Up button appears on registration page
+- [ ] Google button has identical styling to login page
+- [ ] Button text reads "Registruj se sa Google nalogom"
+- [ ] Registration endpoint (`/api/auth/google/register`) works
+- [ ] New Google users can successfully register
+- [ ] Existing Google users receive "user_already_exists" error
+- [ ] Existing local users receive "email_already_registered" error
+- [ ] Owner registration preserves role in session storage
+- [ ] Registration flow uses same callback component as login
+- [ ] Token issuance identical for both login and registration
+- [ ] No duplicate accounts created when clicking register multiple times
 
 ### Browser DevTools Verification
 
@@ -357,6 +528,39 @@ oauth2.redirect-uri=http://localhost:4200/auth/callback
 3. Check backend logs for authentication errors
 4. Ensure JwtAuthFilter is working
 
+### Issue: "User already exists" Error During Registration
+
+**Cause**: User clicked "Register with Google" but already has a Google account in the system
+
+**Solution**:
+- This is expected behavior (security feature)
+- User should use "Login with Google" instead
+- Error message guides user to login page
+- Check backend logs to confirm REGISTER mode was set correctly
+
+### Issue: Registration Button Not Working
+
+**Cause**: Frontend not redirecting to `/api/auth/google/register` endpoint
+
+**Solution**:
+1. Check browser DevTools → Network tab
+2. Verify redirect to `http://localhost:8080/api/auth/google/register`
+3. Ensure `environment.baseApiUrl` is correct in Angular environment config
+4. Check backend logs to see if registration endpoint was hit
+5. Verify backend SecurityConfig permits `/api/auth/google/**` endpoints
+
+### Issue: Registration Mode Not Preserved
+
+**Cause**: Session attribute not being set or cleared prematurely
+
+**Solution**:
+1. Check backend logs for "Processing OAuth2 user in REGISTER mode" message
+2. If mode defaults to LOGIN, verify:
+   - `GoogleAuthController.initiateGoogleRegistration()` sets session attribute
+   - Session cookie is being sent with requests (check CORS credentials)
+   - `CustomOAuth2UserService.getOAuth2Mode()` retrieves attribute before clearing
+3. Check for session timeout issues (should be quick OAuth2 flow)
+
 ## Production Deployment
 
 ### Frontend Changes
@@ -409,26 +613,43 @@ oauth2.redirect-uri=http://localhost:4200/auth/callback
 3. `src/app/features/auth/pages/login/login.component.ts` - Added `signInWithGoogle()` method
 4. `src/app/features/auth/pages/login/login.component.html` - Added Google button and divider
 5. `src/app/features/auth/pages/login/login.component.scss` - Added Google button styles
-6. `src/app/core/services/notification.service.ts` - Fixed import paths (bug fix)
+6. `src/app/features/auth/pages/register/register.component.ts` - Added `registerWithGoogle()` method
+7. `src/app/features/auth/pages/register/register.component.html` - Added Google button and divider
+8. `src/app/features/auth/pages/register/register.component.scss` - Added Google button styles
+9. `src/app/core/services/notification.service.ts` - Fixed import paths (bug fix)
 
 ## Verification Checklist
 
 Before marking this integration as complete, verify:
 
+**Implementation**:
 - [x] All TypeScript files compile without errors
 - [x] AuthCallbackComponent created with proper error handling
 - [x] AuthService has `setAccessToken()` method
 - [x] Login component has Google Sign-In button
-- [x] Google button styled according to brand guidelines
+- [x] Register component has Google Sign-Up button
+- [x] Google buttons styled according to brand guidelines (both pages)
 - [x] Route `/auth/callback` added to routing
 - [x] Environment configuration verified
 - [x] Pre-existing bugs fixed (notification service imports)
+
+**Backend Integration**:
+- [x] Backend Google OAuth2 registration endpoints created
+- [x] OAuth2Mode enum implemented
+- [x] CustomOAuth2UserService supports both LOGIN and REGISTER modes
 - [ ] Backend running with Google OAuth2 configured
 - [ ] Manual testing completed (all scenarios above)
 - [ ] CORS working (no errors in console)
 - [ ] Refresh token cookie set correctly
+
+**Functional Testing**:
 - [ ] User profile loads after Google login
+- [ ] User profile loads after Google registration
 - [ ] Role-based redirect working
+- [ ] Existing Google user can login but cannot re-register
+- [ ] New Google user can both login and register
+- [ ] Local user cannot use Google with same email
+- [ ] Owner registration preserves role correctly
 
 ## Next Steps
 
@@ -458,7 +679,17 @@ After successful manual testing:
 ## Support
 
 For issues or questions:
-1. Check backend guide: `Rentoza/OAUTH2_INTEGRATION_GUIDE.md`
-2. Review backend logs for OAuth2 errors
+1. Check backend guides:
+   - Login: `Rentoza/OAUTH2_INTEGRATION_GUIDE.md`
+   - Registration: `Rentoza/GOOGLE_OAUTH2_REGISTRATION.md`
+2. Review backend logs for OAuth2 errors (look for mode indicators)
 3. Check browser console for frontend errors
 4. Verify Google Console configuration
+5. Test with both login and registration flows to isolate issues
+
+## Related Documentation
+
+- **Backend OAuth2 Login Guide**: [Rentoza/OAUTH2_INTEGRATION_GUIDE.md](../../Rentoza/OAUTH2_INTEGRATION_GUIDE.md)
+- **Backend OAuth2 Registration Guide**: [Rentoza/GOOGLE_OAUTH2_REGISTRATION.md](../../Rentoza/GOOGLE_OAUTH2_REGISTRATION.md)
+- **Google Cloud Console**: [OAuth 2.0 Setup](https://console.cloud.google.com/apis/credentials)
+- **Spring Security OAuth2 Docs**: Use context7 for latest Spring Security documentation

@@ -125,6 +125,29 @@
                   </mat-error>
                 </mat-form-field>
 
+                <mat-form-field
+                  *ngIf="isGooglePlaceholder()"
+                  appearance="outline"
+                  class="edit-form__field"
+                >
+                  <mat-label>Novo prezime</mat-label>
+                  <input
+                    matInput
+                    type="text"
+                    formControlName="lastName"
+                    placeholder="Unesite prezime"
+                    maxlength="50"
+                  />
+                  <mat-icon matPrefix>person</mat-icon>
+                  <mat-hint>Minimalno 3 karaktera</mat-hint>
+                  <mat-error *ngIf="editForm.get('lastName')?.hasError('minlength')">
+                    Prezime mora imati najmanje 3 karaktera
+                  </mat-error>
+                  <mat-error *ngIf="editForm.get('lastName')?.hasError('maxlength')">
+                    Prezime ne može biti duže od 50 karaktera
+                  </mat-error>
+                </mat-form-field>
+
                 <mat-form-field appearance="outline" class="edit-form__field">
                   <mat-label>URL profilne slike</mat-label>
                   <input

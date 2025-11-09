@@ -1,5 +1,6 @@
 package org.example.rentoza.favorite;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 import org.example.rentoza.car.Car;
@@ -49,6 +50,24 @@ public class Favorite {
     @CreationTimestamp
     @Column(name = "created_at", updatable = false, nullable = false)
     private Instant createdAt;
+
+    /**
+     * Helper method to get user ID without triggering lazy load
+     * Uses Hibernate's internal identifier access
+     */
+    @Transient
+    public Long getUserId() {
+        return user != null ? user.getId() : null;
+    }
+
+    /**
+     * Helper method to get car ID without triggering lazy load
+     * Uses Hibernate's internal identifier access
+     */
+    @Transient
+    public Long getCarId() {
+        return car != null ? car.getId() : null;
+    }
 
     @Override
     public boolean equals(Object o) {

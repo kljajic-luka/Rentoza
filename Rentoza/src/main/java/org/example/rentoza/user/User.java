@@ -31,6 +31,8 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class User {
+
+    public static final String GOOGLE_PLACEHOLDER_LAST_NAME = "GooglePlaceholder";
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;

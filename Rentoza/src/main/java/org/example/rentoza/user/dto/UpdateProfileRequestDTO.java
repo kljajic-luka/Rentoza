@@ -42,6 +42,12 @@ public class UpdateProfileRequestDTO {
     private String bio;
 
     /**
+     * Last name can only be changed for Google-provisioned placeholder users.
+     */
+    @Size(min = 3, max = 50, message = "Last name must be between 3 and 50 characters")
+    private String lastName;
+
+    /**
      * Future: notification preferences as JSON or boolean flags
      * Example: emailNotifications, smsNotifications, pushNotifications
      */

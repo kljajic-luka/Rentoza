@@ -78,6 +78,69 @@
   }
 }
 
+.auth-divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  margin: 1.5rem 0;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  font-weight: 500;
+
+  &::before,
+  &::after {
+    content: '';
+    flex: 1;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+  }
+
+  span {
+    padding: 0 1rem;
+  }
+}
+
+.google-signin-btn {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 48px;
+  padding: 0.75rem 1.5rem;
+  border: 1px solid rgba(0, 0, 0, 0.12) !important;
+  border-radius: 999px !important;
+  font-weight: 500;
+  font-size: 0.9375rem;
+  background: white !important;
+  color: rgba(0, 0, 0, 0.87) !important;
+  transition: all 0.2s ease;
+
+  &:hover:not([disabled]) {
+    background: #f8f9fa !important;
+    border-color: rgba(0, 0, 0, 0.24) !important;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+
+  &:active:not([disabled]) {
+    background: #f1f3f4 !important;
+  }
+
+  &[disabled] {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .google-icon {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+  }
+
+  span {
+    line-height: 1;
+  }
+}
+
 mat-card-actions {
   display: flex;
   justify-content: space-between;

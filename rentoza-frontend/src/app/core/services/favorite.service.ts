@@ -3,6 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Observable, tap, catchError, of, BehaviorSubject, throwError } from 'rxjs';
 import { environment } from '@environments/environment';
 import { Favorite, FavoriteToggleResponse } from '@core/models/favorite.model';
+import { AuthService } from '@core/auth/auth.service';
 
 /**
  * Service for managing user favorites with optimistic UI updates
@@ -12,6 +13,7 @@ import { Favorite, FavoriteToggleResponse } from '@core/models/favorite.model';
 })
 export class FavoriteService {
   private readonly http = inject(HttpClient);
+  private readonly authService = inject(AuthService);
   private readonly baseUrl = `${environment.baseApiUrl}/favorites`;
 
   // Reactive state for favorited car IDs
@@ -25,12 +27,21 @@ export class FavoriteService {
   public favoriteCount = signal<number>(0);
 
   /**
+   * Get HTTP headers with Authorization token if available
+   */
+  private getAuthHeaders(): { [key: string]: string } {
+    const token = this.authService.getAccessToken();
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }
+
+  /**
    * Load favorited car IDs for the authenticated user
    * Call this after login
    */
   loadFavoritedCarIds(): Observable<number[]> {
     return this.http
       .get<number[]>(`${this.baseUrl}/car-ids`, {
+        headers: this.getAuthHeaders(),
         withCredentials: true,
       })
       .pipe(
@@ -49,7 +60,8 @@ export class FavoriteService {
    */
   getFavorites(): Observable<Favorite[]> {
     return this.http.get<Favorite[]>(this.baseUrl, {
-      withCredentials: true
+      headers: this.getAuthHeaders(),
+      withCredentials: true,
     });
   }
 
@@ -69,6 +81,7 @@ export class FavoriteService {
         `${this.baseUrl}/${carId}`,
         {},
         {
+          headers: this.getAuthHeaders(),
           withCredentials: true,
         }
       )
@@ -93,6 +106,7 @@ export class FavoriteService {
 
     return this.http
       .delete<void>(`${this.baseUrl}/${carId}`, {
+        headers: this.getAuthHeaders(),
         withCredentials: true,
       })
       .pipe(
@@ -124,7 +138,8 @@ export class FavoriteService {
         `${this.baseUrl}/${carId}/toggle`,
         {},
         {
-          withCredentials: true, // ✅ ensures the backend receives the auth cookie or JWT
+          headers: this.getAuthHeaders(),
+          withCredentials: true,
         }
       )
       .pipe(
@@ -157,7 +172,8 @@ export class FavoriteService {
    */
   checkFavorite(carId: number): Observable<{ isFavorited: boolean }> {
     return this.http.get<{ isFavorited: boolean }>(`${this.baseUrl}/${carId}/check`, {
-      withCredentials: true
+      headers: this.getAuthHeaders(),
+      withCredentials: true,
     });
   }
 
@@ -166,7 +182,8 @@ export class FavoriteService {
    */
   getCarFavoriteCount(carId: number): Observable<{ count: number }> {
     return this.http.get<{ count: number }>(`${this.baseUrl}/${carId}/count`, {
-      withCredentials: true
+      headers: this.getAuthHeaders(),
+      withCredentials: true,
     });
   }
 

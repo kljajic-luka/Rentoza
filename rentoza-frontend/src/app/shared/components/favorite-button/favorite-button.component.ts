@@ -124,9 +124,22 @@ export class FavoriteButtonComponent {
         response?.message ??
         (this.isFavorited() ? 'Dodato u favorite' : 'Uklonjeno iz favorita');
       this.toastr.success(message);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error toggling favorite:', error);
-      this.toastr.error('Greška prilikom ažuriranja favorita');
+      const status = error?.status ?? error?.statusCode;
+      if (status === 401) {
+        this.toastr.warning('Sesija je istekla. Prijavite se ponovo da biste sačuvali favorite.');
+        void this.router.navigate(['/auth/login'], {
+          queryParams: { returnUrl: this.router.url },
+        });
+      } else if (status >= 500) {
+        this.toastr.error('Server trenutno nije dostupan. Pokušajte ponovo.');
+      } else {
+        this.toastr.error('Greška prilikom ažuriranja favorita');
+      }
+      this.favoriteService
+        .loadFavoritedCarIds()
+        .subscribe({ error: (err) => console.error('Failed to refresh favorites after error', err) });
     } finally {
       this.isLoading.set(false);
       setTimeout(() => this.isAnimating.set(false), 300);

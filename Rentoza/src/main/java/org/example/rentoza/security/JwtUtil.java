@@ -3,16 +3,21 @@ package org.example.rentoza.security;
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.security.Key;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Function;
 
 @Component
 public class JwtUtil {
+
+    private static final Logger log = LoggerFactory.getLogger(JwtUtil.class);
 
     private final Key key;
     private final long expirationMs;
@@ -42,8 +47,20 @@ public class JwtUtil {
 
     // Enhanced method with userId included
     public String generateToken(String email, String role, Long userId) {
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("role", role);
+
+        String userIdClaim;
+        if (userId != null) {
+            userIdClaim = userId.toString();
+        } else {
+            userIdClaim = "oidc-temp-" + email;
+            log.debug("Generating JWT for OAuth2 transient user: {}", email);
+        }
+        claims.put("userId", userIdClaim);
+
         return Jwts.builder()
-                .setClaims(Map.of("role", role, "userId", userId.toString()))
+                .setClaims(claims)
                 .setSubject(email)
                 .setIssuedAt(new Date())
                 .setExpiration(new Date(System.currentTimeMillis() + expirationMs))

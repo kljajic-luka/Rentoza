@@ -1,6 +1,8 @@
 package org.example.rentoza.auth.oauth2;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
 import org.example.rentoza.user.User;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -9,6 +11,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -20,9 +23,11 @@ import java.util.Map;
 @RequestMapping("/api/auth/google")
 public class GoogleAuthController {
 
+    public static final String OAUTH2_MODE_SESSION_KEY = "oauth2_mode";
+
     /**
-     * Get the Google OAuth2 authorization URL.
-     * Frontend can redirect users to this URL to initiate the OAuth2 flow.
+     * Get the Google OAuth2 authorization URL for login.
+     * Frontend can redirect users to this URL to initiate the OAuth2 login flow.
      *
      * @return JSON with the Google login URL
      */
@@ -38,8 +43,61 @@ public class GoogleAuthController {
         Map<String, String> response = new HashMap<>();
         response.put("url", googleAuthUrl);
         response.put("provider", "google");
+        response.put("mode", "login");
 
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Get the Google OAuth2 authorization URL for registration.
+     * Frontend can redirect users to this URL to initiate the OAuth2 registration flow.
+     *
+     * @return JSON with the Google registration URL
+     */
+    @GetMapping("/register-url")
+    public ResponseEntity<Map<String, String>> getGoogleRegisterUrl(HttpServletRequest request) {
+        String baseUrl = ServletUriComponentsBuilder.fromRequestUri(request)
+                .replacePath(null)
+                .build()
+                .toUriString();
+
+        String googleRegisterUrl = baseUrl + "/api/auth/google/register";
+
+        Map<String, String> response = new HashMap<>();
+        response.put("url", googleRegisterUrl);
+        response.put("provider", "google");
+        response.put("mode", "register");
+
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Initiate Google OAuth2 registration flow.
+     * Sets REGISTER mode in session and redirects to OAuth2 authorization endpoint.
+     *
+     * This endpoint is called by the frontend when user clicks "Register with Google".
+     * It stores the registration intent in the session, then redirects to the standard
+     * OAuth2 authorization flow.
+     *
+     * @param request HTTP request
+     * @param response HTTP response for redirect
+     * @throws IOException if redirect fails
+     */
+    @GetMapping("/register")
+    public void initiateGoogleRegistration(HttpServletRequest request, HttpServletResponse response)
+            throws IOException {
+        // Store registration mode in session
+        HttpSession session = request.getSession(true);
+        session.setAttribute(OAUTH2_MODE_SESSION_KEY, OAuth2Mode.REGISTER);
+
+        // Redirect to standard OAuth2 authorization endpoint
+        String baseUrl = ServletUriComponentsBuilder.fromRequestUri(request)
+                .replacePath(null)
+                .build()
+                .toUriString();
+
+        String oauth2AuthUrl = baseUrl + "/oauth2/authorization/google";
+        response.sendRedirect(oauth2AuthUrl);
     }
 
     /**

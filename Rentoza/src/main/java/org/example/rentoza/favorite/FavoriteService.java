@@ -6,6 +6,7 @@ import org.example.rentoza.car.Car;
 import org.example.rentoza.car.CarRepository;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
+import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,30 +31,35 @@ public class FavoriteService {
     public FavoriteDTO addFavorite(Long userId, Long carId) {
         log.debug("Adding car {} to favorites for user {}", carId, userId);
 
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+        try {
+            User user = userRepository.findById(userId)
+                    .orElseThrow(() -> new FavoriteNotFoundException("User not found: " + userId));
+            log.debug("Favorites service addFavorite for userId={} email={}", user.getId(), user.getEmail());
 
-        Car car = carRepository.findById(carId)
-                .orElseThrow(() -> new IllegalArgumentException("Car not found: " + carId));
+            Car car = carRepository.findById(carId)
+                    .orElseThrow(() -> new FavoriteNotFoundException("Car not found: " + carId));
 
-        // Check if already favorited (idempotent operation)
-        if (favoriteRepository.existsByUserAndCar(user, car)) {
-            log.debug("Car {} already favorited by user {}", carId, userId);
-            Favorite existing = favoriteRepository.findByUserAndCar(user, car)
-                    .orElseThrow(() -> new IllegalStateException("Favorite existence check failed"));
-            return toDTO(existing);
+            // Check if already favorited (idempotent operation)
+            if (favoriteRepository.existsByUserIdAndCarId(userId, carId)) {
+                log.debug("Car {} already favorited by user {}", carId, userId);
+                Favorite existing = favoriteRepository.findByUserIdAndCarId(userId, carId)
+                        .orElseThrow(() -> new FavoriteOperationException("Favorite existence check failed"));
+                return toDTO(existing);
+            }
+
+            // Create new favorite
+            Favorite favorite = Favorite.builder()
+                    .user(user)
+                    .car(car)
+                    .build();
+
+            Favorite saved = favoriteRepository.save(favorite);
+            log.info("User {} favorited car {}", userId, carId);
+
+            return toDTO(saved);
+        } catch (DataAccessException dae) {
+            throw new FavoriteOperationException("Unable to add favorite for user " + userId, dae);
         }
-
-        // Create new favorite
-        Favorite favorite = Favorite.builder()
-                .user(user)
-                .car(car)
-                .build();
-
-        Favorite saved = favoriteRepository.save(favorite);
-        log.info("User {} favorited car {}", userId, carId);
-
-        return toDTO(saved);
     }
 
     /**
@@ -61,10 +67,15 @@ public class FavoriteService {
      */
     @Transactional
     public void removeFavorite(Long userId, Long carId) {
+        logUserContext("Removing favorite", userId);
         log.debug("Removing car {} from favorites for user {}", carId, userId);
 
-        favoriteRepository.deleteByUserIdAndCarId(userId, carId);
-        log.info("User {} unfavorited car {}", userId, carId);
+        try {
+            favoriteRepository.deleteByUserIdAndCarId(userId, carId);
+            log.info("User {} unfavorited car {}", userId, carId);
+        } catch (DataAccessException dae) {
+            throw new FavoriteOperationException("Unable to remove favorite for user " + userId, dae);
+        }
     }
 
     /**
@@ -72,16 +83,21 @@ public class FavoriteService {
      */
     @Transactional
     public FavoriteToggleResponse toggleFavorite(Long userId, Long carId) {
+        logUserContext("Toggling favorite", userId);
         log.debug("Toggling favorite for car {} and user {}", carId, userId);
 
-        boolean exists = favoriteRepository.existsByUserIdAndCarId(userId, carId);
+        try {
+            boolean exists = favoriteRepository.existsByUserIdAndCarId(userId, carId);
 
-        if (exists) {
-            removeFavorite(userId, carId);
-            return new FavoriteToggleResponse(false, "Favorit uklonjen");
-        } else {
-            FavoriteDTO favorite = addFavorite(userId, carId);
-            return new FavoriteToggleResponse(true, "Dodato u favorite");
+            if (exists) {
+                removeFavorite(userId, carId);
+                return new FavoriteToggleResponse(false, "Favorit uklonjen");
+            } else {
+                FavoriteDTO favorite = addFavorite(userId, carId);
+                return new FavoriteToggleResponse(true, "Dodato u favorite");
+            }
+        } catch (DataAccessException dae) {
+            throw new FavoriteOperationException("Unable to toggle favorite for user " + userId, dae);
         }
     }
 
@@ -90,7 +106,12 @@ public class FavoriteService {
      */
     @Transactional(readOnly = true)
     public boolean isFavorited(Long userId, Long carId) {
-        return favoriteRepository.existsByUserIdAndCarId(userId, carId);
+        logUserContext("Checking favorite status", userId);
+        try {
+            return favoriteRepository.existsByUserIdAndCarId(userId, carId);
+        } catch (DataAccessException dae) {
+            throw new FavoriteOperationException("Unable to check favorite for user " + userId, dae);
+        }
     }
 
     /**
@@ -98,13 +119,20 @@ public class FavoriteService {
      */
     @Transactional(readOnly = true)
     public List<FavoriteDTO> getUserFavorites(Long userId) {
+        logUserContext("Fetching favorites list", userId);
         log.debug("Fetching all favorites for user {}", userId);
 
-        List<Favorite> favorites = favoriteRepository.findAllByUserIdWithCarDetails(userId);
-
-        return favorites.stream()
-                .map(this::toDTO)
-                .toList();
+        try {
+            List<Favorite> favorites = favoriteRepository.findAllByUserIdWithCarDetails(userId);
+            if (favorites == null || favorites.isEmpty()) {
+                return List.of();
+            }
+            return favorites.stream()
+                    .map(this::toDTO)
+                    .toList();
+        } catch (DataAccessException dae) {
+            throw new FavoriteOperationException("Unable to fetch favorites for user " + userId, dae);
+        }
     }
 
     /**
@@ -112,7 +140,13 @@ public class FavoriteService {
      */
     @Transactional(readOnly = true)
     public List<Long> getFavoritedCarIds(Long userId) {
-        return favoriteRepository.findFavoritedCarIdsByUserId(userId);
+        logUserContext("Fetching favorited car IDs", userId);
+        try {
+            List<Long> ids = favoriteRepository.findFavoritedCarIdsByUserId(userId);
+            return ids == null ? List.of() : ids;
+        } catch (DataAccessException dae) {
+            throw new FavoriteOperationException("Unable to fetch favorite car ids for user " + userId, dae);
+        }
     }
 
     /**
@@ -120,7 +154,11 @@ public class FavoriteService {
      */
     @Transactional(readOnly = true)
     public long getFavoriteCount(Long carId) {
-        return favoriteRepository.countByCarId(carId);
+        try {
+            return favoriteRepository.countByCarId(carId);
+        } catch (DataAccessException dae) {
+            throw new FavoriteOperationException("Unable to count favorites for car " + carId, dae);
+        }
     }
 
     /**
@@ -128,7 +166,12 @@ public class FavoriteService {
      */
     @Transactional(readOnly = true)
     public long getUserFavoriteCount(Long userId) {
-        return favoriteRepository.countByUserId(userId);
+        logUserContext("Counting user favorites", userId);
+        try {
+            return favoriteRepository.countByUserId(userId);
+        } catch (DataAccessException dae) {
+            throw new FavoriteOperationException("Unable to count favorites for user " + userId, dae);
+        }
     }
 
     /**
@@ -136,8 +179,13 @@ public class FavoriteService {
      */
     @Transactional
     public void removeAllUserFavorites(Long userId) {
-        log.info("Removing all favorites for user {}", userId);
-        favoriteRepository.deleteAllByUserId(userId);
+        try {
+            logUserContext("Removing all favorites for user", userId);
+            log.info("Removing all favorites for user {}", userId);
+            favoriteRepository.deleteAllByUserId(userId);
+        } catch (DataAccessException dae) {
+            throw new FavoriteOperationException("Unable to remove favorites for user " + userId, dae);
+        }
     }
 
     /**
@@ -145,25 +193,34 @@ public class FavoriteService {
      */
     @Transactional
     public void removeAllCarFavorites(Long carId) {
-        log.info("Removing all favorites for car {}", carId);
-        favoriteRepository.deleteAllByCarId(carId);
+        try {
+            log.info("Removing all favorites for car {}", carId);
+            favoriteRepository.deleteAllByCarId(carId);
+        } catch (DataAccessException dae) {
+            throw new FavoriteOperationException("Unable to remove favorites for car " + carId, dae);
+        }
     }
 
     /**
      * Convert Favorite entity to DTO
      */
     private FavoriteDTO toDTO(Favorite favorite) {
+        Car car = favorite.getCar();
+        if (car == null) {
+            log.warn("Favorite {} references a missing car. Skipping car details.", favorite.getId());
+        }
+
         return FavoriteDTO.builder()
                 .id(favorite.getId())
-                .userId(favorite.getUser().getId())
-                .carId(favorite.getCar().getId())
-                .carBrand(favorite.getCar().getBrand())
-                .carModel(favorite.getCar().getModel())
-                .carYear(favorite.getCar().getYear())
-                .carPricePerDay(favorite.getCar().getPricePerDay())
-                .carLocation(favorite.getCar().getLocation())
-                .carImageUrl(favorite.getCar().getImageUrl())
-                .carAvailable(favorite.getCar().isAvailable())
+                .userId(favorite.getUserId())
+                .carId(car != null ? car.getId() : favorite.getCarId())
+                .carBrand(car != null ? car.getBrand() : null)
+                .carModel(car != null ? car.getModel() : null)
+                .carYear(car != null ? car.getYear() : null)
+                .carPricePerDay(car != null ? car.getPricePerDay() : null)
+                .carLocation(car != null ? car.getLocation() : null)
+                .carImageUrl(car != null ? car.getImageUrl() : null)
+                .carAvailable(car != null ? car.isAvailable() : null)
                 .createdAt(favorite.getCreatedAt())
                 .build();
     }
@@ -175,4 +232,12 @@ public class FavoriteService {
             boolean isFavorited,
             String message
     ) {}
+
+    private void logUserContext(String action, Long userId) {
+        String email = "unknown";
+        if (userId != null) {
+            email = userRepository.findById(userId).map(User::getEmail).orElse("unknown");
+        }
+        log.debug("{} | userId={} email={}", action, userId, email);
+    }
 }

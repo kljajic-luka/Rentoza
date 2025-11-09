@@ -58,4 +58,5 @@ export interface UpdateProfileRequest {
   phone?: string;
   avatarUrl?: string;
   bio?: string;
+  lastName?: string;
 }

@@ -37,8 +37,8 @@ export class UserService {
 
   /**
    * Update user profile with secure partial update.
-   * Only allows updating safe fields: phone, avatarUrl, bio.
-   * Sensitive fields (name, email, role) are rejected by backend.
+   * Only allows updating safe fields: phone, avatarUrl, bio, and (conditionally) lastName.
+   * Sensitive fields (name, email, role) are rejected by backend unless backend explicitly allows.
    */
   updateMyProfile(request: UpdateProfileRequest): Observable<UserProfileDetails> {
     return this.http.patch<UserProfileDetails>(`${this.baseUrl}/me`, request).pipe(

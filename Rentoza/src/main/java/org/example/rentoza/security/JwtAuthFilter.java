@@ -17,6 +17,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.List;
 
 /**
  * JWT authentication filter that validates Bearer tokens on each request.
@@ -29,6 +30,11 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
     private final UserDetailsService userDetailsService;
+    private static final List<String> OAUTH2_ENDPOINT_PREFIXES = List.of(
+            "/login/oauth2",
+            "/oauth2",
+            "/login"
+    );
 
     public JwtAuthFilter(JwtUtil jwtUtil, UserDetailsService userDetailsService) {
         this.jwtUtil = jwtUtil;
@@ -47,7 +53,9 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 String token = header.substring(7);
                 String email = jwtUtil.getEmailFromToken(token);
 
-                if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+                if (email != null) {
+                    // CRITICAL FIX: Always replace existing authentication when valid JWT is present
+                    // This ensures JWT takes precedence over OAuth2 session authentication
                     UserDetails userDetails = userDetailsService.loadUserByUsername(email);
                     if (jwtUtil.validateToken(token)) {
                         UsernamePasswordAuthenticationToken auth =
@@ -58,7 +66,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                                 );
                         auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                         SecurityContextHolder.getContext().setAuthentication(auth);
-                        log.debug("Authenticated user: {}", email);
+                        log.debug("JWT authentication set for user: {}", email);
                     }
                 }
             }
@@ -76,5 +84,11 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        return OAUTH2_ENDPOINT_PREFIXES.stream().anyMatch(path::startsWith);
     }
 }

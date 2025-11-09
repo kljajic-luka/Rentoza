@@ -6,6 +6,7 @@ import { finalize } from 'rxjs';
 
 import { AuthService } from '@core/auth/auth.service';
 import { RedirectService } from '@core/services/redirect.service';
+import { FavoriteService } from '@core/services/favorite.service';
 import { MatCardModule } from '@angular/material/card';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatIconModule } from '@angular/material/icon';
@@ -39,6 +40,7 @@ export class AuthCallbackComponent implements OnInit {
   private readonly authService = inject(AuthService);
   private readonly redirectService = inject(RedirectService);
   private readonly toastr = inject(ToastrService);
+  private readonly favoriteService = inject(FavoriteService);
 
   protected readonly isProcessing = signal(true);
   protected readonly errorMessage = signal<string | null>(null);
@@ -101,6 +103,10 @@ export class AuthCallbackComponent implements OnInit {
       .subscribe({
         next: (user) => {
           this.toastr.success('Uspešno ste se prijavili putem Google naloga!');
+          this.favoriteService.loadFavoritedCarIds().subscribe({
+            error: (err) =>
+              console.warn('Failed to preload favorites after OAuth login', err),
+          });
 
           // Check if there's a return URL, otherwise use role-based redirection
           const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');

@@ -14,6 +14,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.Collections;
+import java.util.List;
 
 /**
  * Filter to authenticate internal service-to-service requests.
@@ -26,6 +27,11 @@ public class ServiceAuthenticationFilter extends OncePerRequestFilter {
 
     private static final String INTERNAL_SERVICE_TOKEN_HEADER = "X-Internal-Service-Token";
     private static final String INTERNAL_SERVICE_AUTHORITY = "INTERNAL_SERVICE";
+    private static final List<String> OAUTH2_ENDPOINT_PREFIXES = List.of(
+            "/login/oauth2",
+            "/oauth2",
+            "/login"
+    );
 
     private final InternalServiceJwtUtil internalServiceJwtUtil;
 
@@ -72,5 +78,11 @@ public class ServiceAuthenticationFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        return OAUTH2_ENDPOINT_PREFIXES.stream().anyMatch(path::startsWith);
     }
 }

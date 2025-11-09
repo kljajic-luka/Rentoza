@@ -10,6 +10,7 @@ import { finalize } from 'rxjs';
 
 import { UserBooking } from '@core/models/booking.model';
 import { BookingService } from '@core/services/booking.service';
+import { isBookingCompleted } from '@core/utils/booking.utils';
 
 type BookingCategory = 'upcoming' | 'ongoing' | 'past';
 
@@ -50,12 +51,14 @@ export class BookingHistoryComponent {
         const startDate = new Date(booking.startDate);
         const endDate = new Date(booking.endDate);
 
-        if (now < startDate) {
-          acc.upcoming.push(booking);
-        } else if (now >= startDate && now <= endDate) {
-          acc.ongoing.push(booking);
-        } else {
+        // Use unified completion check to determine if booking is completed
+        if (isBookingCompleted(booking)) {
           acc.past.push(booking);
+        } else if (now < startDate) {
+          acc.upcoming.push(booking);
+        } else {
+          // Ongoing: start date has passed but booking not yet completed
+          acc.ongoing.push(booking);
         }
 
         return acc;

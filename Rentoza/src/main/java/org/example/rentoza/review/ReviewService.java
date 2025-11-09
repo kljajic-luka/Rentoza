@@ -4,6 +4,7 @@ import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingRepository;
+import org.example.rentoza.booking.BookingService;
 import org.example.rentoza.booking.BookingStatus;
 import org.example.rentoza.car.Car;
 import org.example.rentoza.car.CarRepository;
@@ -32,19 +33,22 @@ public class ReviewService {
     private final BookingRepository bookingRepo;
     private final UserRepository userRepo;
     private final NotificationService notificationService;
+    private final BookingService bookingService;
 
     public ReviewService(
             ReviewRepository repo,
             CarRepository carRepo,
             BookingRepository bookingRepo,
             UserRepository userRepo,
-            NotificationService notificationService
+            NotificationService notificationService,
+            BookingService bookingService
     ) {
         this.repo = repo;
         this.carRepo = carRepo;
         this.bookingRepo = bookingRepo;
         this.userRepo = userRepo;
         this.notificationService = notificationService;
+        this.bookingService = bookingService;
     }
 
     @Transactional
@@ -80,20 +84,22 @@ public class ReviewService {
             throw new RuntimeException("You have already reviewed this car.");
         }
 
+        // Find any bookings for this car by this renter (ACTIVE or COMPLETED)
         var bookings = bookingRepo.findByCarIdAndRenterEmailIgnoreCaseAndStatusIn(
                 dto.getCarId(),
                 reviewer.getEmail(),
-                List.of(BookingStatus.COMPLETED)
+                List.of(BookingStatus.ACTIVE, BookingStatus.COMPLETED)
         );
 
         if (bookings.isEmpty()) {
             throw new RuntimeException("You can only review cars after completing a booking.");
         }
 
-        Booking booking = bookings.get(0);
-        if (booking.getEndDate() != null && booking.getEndDate().isAfter(LocalDate.now())) {
-            throw new RuntimeException("You can only review after your rental period has ended.");
-        }
+        // Find the first completed booking using unified completion check
+        Booking booking = bookings.stream()
+                .filter(bookingService::isBookingCompleted)
+                .findFirst()
+                .orElseThrow(() -> new RuntimeException("You can only review after your rental period has ended."));
 
         var review = buildReview(
                 reviewer,
@@ -119,12 +125,9 @@ public class ReviewService {
             throw new RuntimeException("You can only review renters for your own bookings.");
         }
 
-        if (booking.getStatus() != BookingStatus.COMPLETED) {
+        // Unified completion check
+        if (!bookingService.isBookingCompleted(booking)) {
             throw new RuntimeException("Reviews can be left only after the booking is completed.");
-        }
-
-        if (booking.getEndDate() != null && booking.getEndDate().isAfter(LocalDate.now())) {
-            throw new RuntimeException("You can only review after the rental period has ended.");
         }
 
         if (repo.existsByBookingAndDirection(booking, ReviewDirection.FROM_OWNER)) {
@@ -233,17 +236,15 @@ public class ReviewService {
             throw new RuntimeException("Unauthorized: You can only review your own bookings");
         }
 
-        // 4. Status check: Is the booking completed?
-        if (booking.getStatus() != BookingStatus.COMPLETED) {
-            throw new RuntimeException("Reviews can only be submitted for completed bookings");
+        // 4. Unified completion check: Is the booking completed?
+        // A booking is considered completed if:
+        // - Status is explicitly COMPLETED, OR
+        // - End date is in the past (ensures frontend/backend consistency)
+        if (!bookingService.isBookingCompleted(booking)) {
+            throw new RuntimeException("Možete recenzirati samo završene rezervacije");
         }
 
-        // 5. Date check: Has the rental period ended?
-        if (booking.getEndDate() != null && booking.getEndDate().isAfter(LocalDate.now())) {
-            throw new RuntimeException("You can only review after the rental period has ended");
-        }
-
-        // 6. Duplicate check: Has user already reviewed this booking?
+        // 5. Duplicate check: Has user already reviewed this booking?
         if (repo.existsByBookingAndDirection(booking, ReviewDirection.FROM_USER)) {
             throw new RuntimeException("You have already reviewed this booking");
         }
@@ -319,17 +320,15 @@ public class ReviewService {
             throw new RuntimeException("Unauthorized: You can only review bookings for your own cars");
         }
 
-        // 4. Status check: Is the booking completed?
-        if (booking.getStatus() != BookingStatus.COMPLETED) {
-            throw new RuntimeException("Reviews can only be submitted for completed bookings");
+        // 4. Unified completion check: Is the booking completed?
+        // A booking is considered completed if:
+        // - Status is explicitly COMPLETED, OR
+        // - End date is in the past (ensures frontend/backend consistency)
+        if (!bookingService.isBookingCompleted(booking)) {
+            throw new RuntimeException("Recenziju možete ostaviti samo za završene rezervacije koje nisu već ocenjene");
         }
 
-        // 5. Date check: Has the rental period ended?
-        if (booking.getEndDate() != null && booking.getEndDate().isAfter(LocalDate.now())) {
-            throw new RuntimeException("You can only review after the rental period has ended");
-        }
-
-        // 6. Duplicate check: Has owner already reviewed this booking?
+        // 5. Duplicate check: Has owner already reviewed this booking?
         if (repo.existsByBookingAndDirection(booking, ReviewDirection.FROM_OWNER)) {
             throw new RuntimeException("You have already reviewed this renter for this booking");
         }

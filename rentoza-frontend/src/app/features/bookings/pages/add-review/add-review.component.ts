@@ -16,6 +16,7 @@ import { ReviewService } from '@core/services/review.service';
 import { BookingService } from '@core/services/booking.service';
 import { UserBooking } from '@core/models/booking.model';
 import { RenterReviewRequest, REVIEW_CATEGORIES } from '@core/models/review.model';
+import { canReviewBooking } from '@core/utils/booking.utils';
 
 @Component({
   selector: 'app-add-review',
@@ -89,20 +90,14 @@ export class AddReviewComponent implements OnInit {
           return;
         }
 
-        // Check if booking is completed
-        if (foundBooking.status !== 'COMPLETED') {
-          this.snackBar.open('Možete recenzirati samo završene rezervacije.', 'Zatvori', {
-            duration: 5000,
-            panelClass: ['snackbar-error']
-          });
-          this.router.navigate(['/bookings']);
-          return;
-        }
+        // Use unified completion check to validate review eligibility
+        if (!canReviewBooking(foundBooking)) {
+          const message = foundBooking.hasReview
+            ? 'Već ste recenzirali ovu rezervaciju.'
+            : 'Možete recenzirati samo završene rezervacije.';
 
-        // Check if already reviewed
-        if (foundBooking.hasReview) {
-          this.snackBar.open('Već ste recenzirali ovu rezervaciju.', 'Zatvori', {
-            duration: 3000,
+          this.snackBar.open(message, 'Zatvori', {
+            duration: 5000,
             panelClass: ['snackbar-error']
           });
           this.router.navigate(['/bookings']);

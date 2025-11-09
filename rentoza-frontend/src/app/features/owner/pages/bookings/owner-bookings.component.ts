@@ -14,6 +14,7 @@ import { Booking } from '@core/models/booking.model';
 import { BookingService } from '@core/services/booking.service';
 import { AuthService } from '@core/auth/auth.service';
 import { OwnerReviewDialogComponent } from '@features/owner/dialogs/owner-review-dialog/owner-review-dialog.component';
+import { isBookingCompleted, canOwnerReviewRenter } from '@core/utils/booking.utils';
 
 @Component({
   selector: 'app-owner-bookings',
@@ -73,28 +74,26 @@ export class OwnerBookingsComponent implements OnInit {
                 return;
               }
 
-              // Group bookings by status
+              // Group bookings using unified completion logic
+              const now = new Date();
               const upcoming: Booking[] = [];
               const active: Booking[] = [];
               const completed: Booking[] = [];
 
               bookings.forEach((booking) => {
                 // Defensive check: ensure booking has required properties
-                if (!booking || !booking.status) {
+                if (!booking || !booking.status || !booking.endDate) {
                   console.warn('Invalid booking object:', booking);
                   return;
                 }
 
-                switch (booking.status) {
-                  case 'CONFIRMED':
-                    upcoming.push(booking);
-                    break;
-                  case 'ACTIVE':
-                    active.push(booking);
-                    break;
-                  case 'COMPLETED':
-                    completed.push(booking);
-                    break;
+                // Use unified completion check to categorize bookings
+                if (isBookingCompleted(booking)) {
+                  completed.push(booking);
+                } else if (booking.status === 'CONFIRMED') {
+                  upcoming.push(booking);
+                } else if (booking.status === 'ACTIVE') {
+                  active.push(booking);
                 }
               });
 
@@ -146,8 +145,8 @@ export class OwnerBookingsComponent implements OnInit {
   }
 
   protected canReviewRenter(booking: Booking): boolean {
-    // Can review if booking is completed and owner hasn't reviewed yet
-    return booking.status === 'COMPLETED' && !booking.hasOwnerReview;
+    // Use unified completion check to determine review eligibility
+    return canOwnerReviewRenter(booking);
   }
 
   protected reviewRenter(booking: Booking): void {

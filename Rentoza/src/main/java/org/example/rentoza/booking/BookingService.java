@@ -19,8 +19,10 @@ import org.example.rentoza.security.JwtUtil;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
 import org.hibernate.Hibernate;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
@@ -244,5 +246,52 @@ public class BookingService {
                     );
                 })
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Scheduled task to automatically mark overdue bookings as COMPLETED.
+     * Runs every hour to ensure database consistency.
+     *
+     * This maintains data integrity by ensuring bookings whose end date has passed
+     * are automatically marked as COMPLETED, keeping the database aligned with
+     * the unified completion logic used in review validation.
+     */
+    @Scheduled(cron = "0 0 * * * *") // Every hour at minute 0
+    @Transactional
+    public void autoCompleteOverdueBookings() {
+        LocalDate today = LocalDate.now();
+        List<Booking> overdueBookings = repo.findOverdueBookings(today);
+
+        if (!overdueBookings.isEmpty()) {
+            log.info("Auto-completing {} overdue bookings", overdueBookings.size());
+
+            for (Booking booking : overdueBookings) {
+                booking.setStatus(BookingStatus.COMPLETED);
+                log.debug("Auto-completed booking ID {} (end date: {})", booking.getId(), booking.getEndDate());
+            }
+
+            repo.saveAll(overdueBookings);
+            log.info("Successfully auto-completed {} bookings", overdueBookings.size());
+        }
+    }
+
+    /**
+     * Check if a booking is considered completed.
+     * A booking is completed if:
+     * 1. Status is explicitly set to COMPLETED, OR
+     * 2. The end date is in the past (regardless of status)
+     *
+     * This unified check ensures frontend and backend consistency for review eligibility.
+     *
+     * @param booking The booking to check
+     * @return true if the booking is completed
+     */
+    public boolean isBookingCompleted(Booking booking) {
+        if (booking == null) {
+            return false;
+        }
+
+        return booking.getStatus() == BookingStatus.COMPLETED
+            || (booking.getEndDate() != null && booking.getEndDate().isBefore(LocalDate.now()));
     }
 }

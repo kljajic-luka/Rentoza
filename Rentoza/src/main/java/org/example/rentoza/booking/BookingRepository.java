@@ -86,4 +86,13 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate
     );
+
+    /**
+     * Find all bookings that are overdue (end date in the past) but not yet marked as COMPLETED.
+     * Used by scheduled task to auto-complete bookings.
+     */
+    @Query("SELECT b FROM Booking b " +
+           "WHERE b.status = 'ACTIVE' " +
+           "AND b.endDate < :currentDate")
+    List<Booking> findOverdueBookings(@Param("currentDate") LocalDate currentDate);
 }

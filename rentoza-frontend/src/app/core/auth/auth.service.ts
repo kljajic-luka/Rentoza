@@ -40,8 +40,27 @@ export class AuthService {
 
   /**
    * Invoked during app bootstrap to silently restore a session using the refresh cookie.
+   * Also restores user from localStorage for immediate availability.
    */
   initializeSession(): Promise<void> {
+    // ✅ First, try to restore user from localStorage (immediate availability)
+    const storedToken = localStorage.getItem('access_token');
+    const storedUserJson = localStorage.getItem('current_user');
+
+    if (storedToken && storedUserJson) {
+      try {
+        const user: UserProfile = JSON.parse(storedUserJson);
+        this.accessTokenSubject.next(storedToken);
+        this.currentUserSubject.next(user);
+        console.log('✅ Restored full user from localStorage:', user);
+      } catch (error) {
+        console.warn('⚠️ Failed to parse stored user, clearing storage');
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('current_user');
+      }
+    }
+
+    // Then attempt to refresh the access token via refresh cookie
     return firstValueFrom(this.refreshAccessToken().pipe(catchError(() => of(null)))).then(
       () => void 0
     );
@@ -203,6 +222,10 @@ export class AuthService {
     this.accessTokenSubject.next(null);
     this.currentUserSubject.next(null);
 
+    // Clear localStorage
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('current_user');
+
     // Clear favorited cars on logout
     import('@core/services/favorite.service').then(({ FavoriteService }) => {
       const favoriteService = this.injector.get(FavoriteService);
@@ -211,46 +234,43 @@ export class AuthService {
   }
 
   private persistSession(response: AuthResponse): void {
-    this.accessTokenSubject.next(response.accessToken ?? null);
+    const { accessToken, user } = response;
 
-    if (!response.accessToken) {
+    if (!accessToken || !user) {
+      console.warn('⚠️ Invalid session data (missing token or user), skipping persist.');
       return;
     }
 
-    const decodedPayload = this.jwtHelper.decodeToken(response.accessToken) as Record<
-      string,
-      unknown
-    >;
-    const incomingUser = (response.user as UserProfile | undefined) ?? undefined;
-    const currentUser = this.currentUserSubject.value;
+    // Decode token to extract roles
+    const decodedPayload = this.jwtHelper.decodeToken(accessToken) as Record<string, unknown>;
     const rolesFromToken = this.extractRoles(decodedPayload);
-    const singleRole = (response.user as any)?.role ?? decodedPayload['role'];
+    const singleRole = (user as any)?.role ?? decodedPayload['role'];
     const effectiveRoles = rolesFromToken.length ? rolesFromToken : singleRole ? [singleRole] : [];
 
-    const mergedUser: UserProfile | null =
-      incomingUser ??
-      (currentUser
-        ? {
-            ...currentUser,
-            roles: effectiveRoles.length ? effectiveRoles : currentUser.roles,
-          }
-        : this.extractUserFromPayload(decodedPayload));
+    // ✅ Build complete user profile with all fields
+    const completeUser: UserProfile = {
+      ...user,
+      id: String(user.id), // Ensure id is string
+      roles: effectiveRoles.length ? effectiveRoles : user.roles ?? [],
+    };
 
-    if (mergedUser) {
-      if (!mergedUser.roles?.length && effectiveRoles.length) {
-        mergedUser.roles = effectiveRoles;
-      }
-      this.currentUserSubject.next({ ...mergedUser });
+    // ✅ Store token and complete user in localStorage for session persistence
+    localStorage.setItem('access_token', accessToken);
+    localStorage.setItem('current_user', JSON.stringify(completeUser));
 
-      // Load user's favorited cars after successful login/register
-      // Use dynamic import to avoid circular dependency
-      import('@core/services/favorite.service').then(({ FavoriteService }) => {
-        const favoriteService = this.injector.get(FavoriteService);
-        favoriteService.loadFavoritedCarIds().subscribe({
-          error: (err) => console.error('Failed to load favorited cars:', err)
-        });
+    // ✅ Update observables with complete data
+    this.accessTokenSubject.next(accessToken);
+    this.currentUserSubject.next(completeUser);
+
+    console.log('✅ Persisted full user session:', completeUser);
+
+    // Load user's favorited cars after successful login/register
+    import('@core/services/favorite.service').then(({ FavoriteService }) => {
+      const favoriteService = this.injector.get(FavoriteService);
+      favoriteService.loadFavoritedCarIds().subscribe({
+        error: (err) => console.error('Failed to load favorited cars:', err),
       });
-    }
+    });
   }
 
   private extractUserFromPayload(payload: Record<string, unknown>): UserProfile | null {
@@ -266,6 +286,8 @@ export class AuthService {
       email: typeof email === 'string' ? email : '',
       firstName: (payload['firstName'] as string) ?? '',
       lastName: (payload['lastName'] as string) ?? '',
+      age: typeof payload['age'] === 'number' ? payload['age'] : undefined,
+      phone: (payload['phone'] as string) ?? undefined,
       avatarUrl: (payload['avatarUrl'] as string) ?? undefined,
       roles,
     };

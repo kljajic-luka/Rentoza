@@ -59,6 +59,58 @@
 
       <mat-divider></mat-divider>
 
+      <!-- Pickup Time Section (Phase 2.2) -->
+      <section class="form-section">
+        <h3 class="section-title">
+          <mat-icon>schedule</mat-icon>
+          Vreme preuzimanja
+        </h3>
+
+        <mat-radio-group formControlName="pickupTimeWindow" class="pickup-time-options">
+          <mat-radio-button value="MORNING" class="pickup-time-option">
+            <div class="option-content">
+              <strong>Jutro</strong>
+              <span class="option-time">08:00 – 12:00</span>
+            </div>
+          </mat-radio-button>
+
+          <mat-radio-button value="AFTERNOON" class="pickup-time-option">
+            <div class="option-content">
+              <strong>Popodne</strong>
+              <span class="option-time">12:00 – 16:00</span>
+            </div>
+          </mat-radio-button>
+
+          <mat-radio-button value="EVENING" class="pickup-time-option">
+            <div class="option-content">
+              <strong>Veče</strong>
+              <span class="option-time">16:00 – 20:00</span>
+            </div>
+          </mat-radio-button>
+
+          <mat-radio-button value="EXACT" class="pickup-time-option">
+            <div class="option-content">
+              <strong>Tačno vreme</strong>
+              <span class="option-time">Odaberite specifično vreme</span>
+            </div>
+          </mat-radio-button>
+        </mat-radio-group>
+
+        @if (bookingForm.value.pickupTimeWindow === 'EXACT') {
+        <mat-form-field appearance="outline" class="exact-time-field">
+          <mat-label>Tačno vreme preuzimanja</mat-label>
+          <input matInput type="time" formControlName="pickupTime" />
+          <mat-icon matPrefix>access_time</mat-icon>
+          <mat-hint>Format: HH:mm (npr. 14:30)</mat-hint>
+          <mat-error *ngIf="bookingForm.controls.pickupTime.invalid">
+            Vreme je obavezno kada je odabrano tačno vreme
+          </mat-error>
+        </mat-form-field>
+        }
+      </section>
+
+      <mat-divider></mat-divider>
+
       <!-- Driver Details Section -->
       <section class="form-section">
         <h3 class="section-title">
@@ -69,45 +121,37 @@
         <div class="form-row">
           <mat-form-field appearance="outline" class="form-field">
             <mat-label>Ime</mat-label>
-            <input matInput formControlName="driverName" />
+            <input matInput formControlName="driverName" readonly />
             <mat-icon matPrefix>badge</mat-icon>
-            <mat-error *ngIf="bookingForm.controls.driverName.invalid"> Ime je obavezno </mat-error>
           </mat-form-field>
 
           <mat-form-field appearance="outline" class="form-field">
             <mat-label>Prezime</mat-label>
-            <input matInput formControlName="driverSurname" />
+            <input matInput formControlName="driverSurname" readonly />
             <mat-icon matPrefix>badge</mat-icon>
-            <mat-error *ngIf="bookingForm.controls.driverSurname.invalid">
-              Prezime je obavezno
-            </mat-error>
           </mat-form-field>
         </div>
 
         <div class="form-row">
           <mat-form-field appearance="outline" class="form-field">
             <mat-label>Starost</mat-label>
-            <input matInput type="number" formControlName="driverAge" />
+            <input matInput type="number" formControlName="driverAge" readonly />
             <mat-icon matPrefix>cake</mat-icon>
-            <mat-hint>Minimum 21 godina</mat-hint>
-            <mat-error *ngIf="bookingForm.controls.driverAge.hasError('required')">
-              Starost je obavezna
-            </mat-error>
-            <mat-error *ngIf="bookingForm.controls.driverAge.hasError('min')">
-              Morate imati najmanje 21 godinu
-            </mat-error>
           </mat-form-field>
 
           <mat-form-field appearance="outline" class="form-field">
             <mat-label>Telefon</mat-label>
-            <input matInput formControlName="driverPhone" />
+            <input matInput formControlName="driverPhone" readonly />
             <mat-icon matPrefix>phone</mat-icon>
-            <mat-hint>Format: 0631234567</mat-hint>
-            <mat-error *ngIf="bookingForm.controls.driverPhone.invalid">
-              Unesite ispravan broj telefona
-            </mat-error>
           </mat-form-field>
         </div>
+
+        <p class="driver-info-hint">
+          <mat-icon class="hint-icon">info</mat-icon>
+          <span
+            >Ovi podaci su preuzeti sa vašeg profila. Za izmenu, posetite stranicu profila.</span
+          >
+        </p>
       </section>
 
       <mat-divider></mat-divider>

@@ -102,6 +102,7 @@ public class AuthController {
                     user.getLastName(),
                     user.getEmail(),
                     user.getPhone(),
+                    user.getAge(),
                     user.getRole().name()
             );
 
@@ -154,6 +155,7 @@ public class AuthController {
                 user.getLastName(),
                 user.getEmail(),
                 user.getPhone(),
+                user.getAge(),
                 user.getRole().name()
         );
 

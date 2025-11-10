@@ -1,6 +1,8 @@
 import { Car } from './car.model';
 import { User } from './user.model';
 
+export type PickupTimeWindow = 'MORNING' | 'AFTERNOON' | 'EVENING' | 'EXACT';
+
 export interface Booking {
   id: string | number;
   car: {
@@ -20,6 +22,8 @@ export interface Booking {
   status: 'PENDING' | 'CONFIRMED' | 'ACTIVE' | 'CANCELLED' | 'COMPLETED';
   createdAt: string;
   hasOwnerReview?: boolean;
+  pickupTimeWindow?: PickupTimeWindow; // Phase 2.2
+  pickupTime?: string; // HH:mm format, only for EXACT
 }
 
 export interface BookingRequest {
@@ -28,6 +32,8 @@ export interface BookingRequest {
   endDate: string;
   insuranceType?: string; // BASIC, STANDARD, PREMIUM
   prepaidRefuel?: boolean;
+  pickupTimeWindow?: PickupTimeWindow; // Phase 2.2: MORNING | AFTERNOON | EVENING | EXACT
+  pickupTime?: string; // Phase 2.2: HH:mm format, required only if pickupTimeWindow === 'EXACT'
 }
 
 export interface UserBooking {
@@ -48,4 +54,6 @@ export interface UserBooking {
   reviewComment: string | null;
   insuranceType?: string; // BASIC, STANDARD, PREMIUM
   prepaidRefuel?: boolean;
+  pickupTimeWindow?: PickupTimeWindow; // Phase 2.2
+  pickupTime?: string; // Phase 2.2: HH:mm format
 }

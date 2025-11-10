@@ -79,6 +79,10 @@ public class BookingService {
         booking.setInsuranceType(dto.getInsuranceType() != null ? dto.getInsuranceType() : "BASIC");
         booking.setPrepaidRefuel(dto.isPrepaidRefuel());
 
+        // Phase 2.2: Set pickup time window and exact time (if applicable)
+        booking.setPickupTimeWindow(dto.getPickupTimeWindow() != null ? dto.getPickupTimeWindow() : "MORNING");
+        booking.setPickupTime(dto.getPickupTime()); // Nullable - only set when EXACT window selected
+
         // Calculate total price with insurance and refuel
         long days = ChronoUnit.DAYS.between(dto.getStartDate(), dto.getEndDate());
         double basePrice = days * car.getPricePerDay();
@@ -127,10 +131,13 @@ public class BookingService {
             String carInfo = car.getBrand() + " " + car.getModel();
             String insuranceInfo = savedBooking.getInsuranceType() != null ? savedBooking.getInsuranceType() : "Basic";
             String refuelInfo = savedBooking.isPrepaidRefuel() ? " with prepaid refuel" : "";
+            
+            // Phase 2.2: Format pickup time information
+            String pickupTimeInfo = formatPickupTimeInfo(savedBooking.getPickupTimeWindow(), savedBooking.getPickupTime());
 
             // Notify renter
-            String renterMessage = String.format("Vaša rezervacija za %s je potvrđena! (%s insurance%s)",
-                    carInfo, insuranceInfo, refuelInfo);
+            String renterMessage = String.format("Vaša rezervacija za %s je potvrđena! (%s insurance%s, Preuzimanje: %s)",
+                    carInfo, insuranceInfo, refuelInfo, pickupTimeInfo);
             notificationService.createNotification(CreateNotificationRequestDTO.builder()
                     .recipientId(renter.getId())
                     .type(NotificationType.BOOKING_CONFIRMED)
@@ -139,8 +146,8 @@ public class BookingService {
                     .build());
 
             // Notify owner
-            String ownerMessage = String.format("Nova rezervacija za %s od %s %s (%s insurance%s)",
-                    carInfo, renter.getFirstName(), renter.getLastName(), insuranceInfo, refuelInfo);
+            String ownerMessage = String.format("Nova rezervacija za %s od %s %s (%s insurance%s, Preuzimanje: %s)",
+                    carInfo, renter.getFirstName(), renter.getLastName(), insuranceInfo, refuelInfo, pickupTimeInfo);
             notificationService.createNotification(CreateNotificationRequestDTO.builder()
                     .recipientId(car.getOwner().getId())
                     .type(NotificationType.BOOKING_CONFIRMED)
@@ -325,5 +332,45 @@ public class BookingService {
 
         return booking.getStatus() == BookingStatus.COMPLETED
             || (booking.getEndDate() != null && booking.getEndDate().isBefore(LocalDate.now()));
+    }
+
+    /**
+     * Phase 2.2: Format pickup time window and exact time for notifications and display
+     * 
+     * @param pickupTimeWindow The pickup time window (MORNING, AFTERNOON, EVENING, EXACT)
+     * @param pickupTime The exact pickup time (only for EXACT window)
+     * @return Formatted pickup time string in Serbian
+     */
+    private String formatPickupTimeInfo(String pickupTimeWindow, java.time.LocalTime pickupTime) {
+        if (pickupTimeWindow == null) {
+            pickupTimeWindow = "MORNING";
+        }
+
+        return switch (pickupTimeWindow.toUpperCase()) {
+            case "MORNING" -> "Jutro (08:00 – 12:00)";
+            case "AFTERNOON" -> "Popodne (12:00 – 16:00)";
+            case "EVENING" -> "Veče (16:00 – 20:00)";
+            case "EXACT" -> pickupTime != null ? pickupTime.toString() : "Tačno vreme (nije navedeno)";
+            default -> "Jutro (08:00 – 12:00)";
+        };
+    }
+
+    /**
+     * Phase 2.3: Check if a booking can be made for the given date range
+     * Validates availability without persisting the booking (used for pre-submit validation)
+     * 
+     * @param dto The booking request containing car ID and date range
+     * @return true if dates are available, false if there's a conflict
+     */
+    public boolean checkAvailability(BookingRequestDTO dto) {
+        // Get all confirmed bookings for the car in the given date range
+        List<Booking> existingBookings = repo.findByCarIdAndDateRange(
+                dto.getCarId(),
+                dto.getStartDate(),
+                dto.getEndDate()
+        );
+
+        // If any overlapping bookings exist, dates are not available
+        return existingBookings.isEmpty();
     }
 }

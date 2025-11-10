@@ -95,4 +95,17 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
            "WHERE b.status = 'ACTIVE' " +
            "AND b.endDate < :currentDate")
     List<Booking> findOverdueBookings(@Param("currentDate") LocalDate currentDate);
+
+    /**
+     * Phase 2.3: Find all confirmed bookings for a car that overlap with the given date range.
+     * Used for real-time conflict detection before creating a booking.
+     */
+    @Query("SELECT b FROM Booking b WHERE b.car.id = :carId " +
+           "AND b.status IN ('ACTIVE', 'CONFIRMED') " +
+           "AND b.startDate <= :endDate AND b.endDate >= :startDate")
+    List<Booking> findByCarIdAndDateRange(
+            @Param("carId") Long carId,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate
+    );
 }

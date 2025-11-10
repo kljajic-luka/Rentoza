@@ -36,6 +36,19 @@ export class BookingService {
   }
 
   /**
+   * Phase 2.3: Validate booking availability before creating
+   * Checks if the selected dates are available without persisting the booking
+   *
+   * @param payload Booking request with car ID and date range
+   * @returns Observable with { available: boolean } or error response (409 on conflict)
+   */
+  validateBooking(payload: BookingRequest): Observable<{ available: boolean }> {
+    return this.http.post<{ available: boolean }>(`${this.baseUrl}/validate`, payload, {
+      withCredentials: true,
+    });
+  }
+
+  /**
    * Get all bookings for owner's cars
    */
   getOwnerBookings(ownerEmail: string): Observable<Booking[]> {

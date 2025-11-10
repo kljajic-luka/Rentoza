@@ -147,4 +147,31 @@ public class BookingController {
             return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
         }
     }
+
+    /**
+     * Phase 2.3: Validate booking availability without creating the booking
+     * Returns 409 Conflict if dates are not available, 200 OK if available
+     * 
+     * @param dto Booking request with car ID and date range
+     * @return 200 with {available: true} if dates are free, 409 with error if conflict
+     */
+    @PostMapping("/validate")
+    public ResponseEntity<?> validateBooking(@RequestBody BookingRequestDTO dto) {
+        try {
+            boolean available = service.checkAvailability(dto);
+            
+            if (!available) {
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                    "error", "Conflict",
+                    "message", "Selected dates are no longer available. Please choose different dates.",
+                    "available", false
+                ));
+            }
+            
+            return ResponseEntity.ok(Map.of("available", true));
+        } catch (RuntimeException e) {
+            log.error("Error validating booking availability", e);
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
 }

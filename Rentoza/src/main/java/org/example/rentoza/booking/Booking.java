@@ -6,6 +6,7 @@ import org.example.rentoza.car.Car;
 import org.example.rentoza.user.User;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 
 @Entity
 @Table(name = "bookings")
@@ -28,6 +29,13 @@ public class Booking {
 
     @Column(name = "prepaid_refuel")
     private boolean prepaidRefuel = false;
+
+    // Phase 2.2: Pickup time support
+    @Column(name = "pickup_time_window", length = 20)
+    private String pickupTimeWindow = "MORNING"; // MORNING, AFTERNOON, EVENING, EXACT
+
+    @Column(name = "pickup_time")
+    private LocalTime pickupTime; // Only used when pickupTimeWindow is EXACT
 
     @Enumerated(EnumType.STRING)
     private BookingStatus status = BookingStatus.ACTIVE;

@@ -54,3 +54,5 @@ build/
 *.pem
 *.key
 *.crt
+# Development notes
+Development-summarisation-files/

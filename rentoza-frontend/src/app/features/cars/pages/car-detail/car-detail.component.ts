@@ -98,6 +98,11 @@ export class CarDetailComponent {
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
 
+  // ========== Booking Constants (Phase 2.1) ==========
+  private readonly BUFFER_DAYS = 1;
+  private readonly MAX_RENTAL_DAYS = 30;
+  private readonly MAX_ADVANCE_BOOKING_DAYS = 365;
+
   private selectedCarId = '';
   readonly bookingsSubject = new BehaviorSubject<Booking[]>([]);
   readonly blockedDatesSubject = new BehaviorSubject<BlockedDate[]>([]);
@@ -172,7 +177,32 @@ export class CarDetailComponent {
     const normalizedEnd = this.normalizeDate(date);
     const normalizedStart = this.normalizeDate(start);
 
-    return normalizedEnd > normalizedStart && this.isDateRangeFree(normalizedStart, normalizedEnd);
+    // 1. Enforce minimum rental (1 day)
+    if (normalizedEnd <= this.addDays(normalizedStart, 0)) {
+      return false;
+    }
+
+    // 2. Enforce maximum rental duration (30 days)
+    if (normalizedEnd > this.addDays(normalizedStart, this.MAX_RENTAL_DAYS)) {
+      return false;
+    }
+
+    // 3. Enforce advance booking limit (≤ 12 months)
+    const maxAdvance = this.addDays(this.normalizeDate(new Date()), this.MAX_ADVANCE_BOOKING_DAYS);
+    if (normalizedEnd > maxAdvance) {
+      return false;
+    }
+
+    // 4. Compute next unavailable date AFTER start + 1 day (permissive UI filtering)
+    // This ensures we only block dates that come AFTER the selected start date
+    const nextBlocked = this.getNextUnavailableDate(this.addDays(normalizedStart, 1));
+
+    // 5. Permit all dates before the next blocked segment (exclusive)
+    if (nextBlocked && normalizedEnd >= nextBlocked) {
+      return false;
+    }
+
+    return true;
   };
 
   readonly bookingForm = this.fb.group({
@@ -206,16 +236,23 @@ export class CarDetailComponent {
         this.updateBookings(bookings);
         this.blockedDatesSubject.next(blockedDates);
       });
+
+    // Phase 2.1 Regression Fix: Reactive refresh - force end date re-evaluation when start date changes
+    this.bookingForm
+      .get('startDate')
+      ?.valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => {
+        this.bookingForm.get('endDate')?.updateValueAndValidity();
+      });
   }
 
   openBookingDialog(car: Car): void {
+    // Phase 2.1 Regression Fix: Pass data arrays only, dialog computes its own filters
     const dialogRef = this.dialog.open(BookingDialogComponent, {
       data: {
         car,
         bookings: this.bookingsSubject.value,
         blockedDates: this.blockedDatesSubject.value,
-        startDateFilter: this.startDateFilter,
-        endDateFilter: this.endDateFilter,
       },
       width: '700px',
       maxWidth: '90vw',
@@ -289,23 +326,78 @@ export class CarDetailComponent {
       return;
     }
 
+    // Phase 2.1 Regression Fix: Strengthen submit-time validation with defensive guard
     if (!this.isDateRangeFree(normalizedStart, normalizedEnd)) {
+      this.snackBar.open(
+        'Odabrani datumi nisu dostupni. Molimo izaberite druge datume.',
+        'Zatvori',
+        {
+          duration: 5000,
+          panelClass: ['snackbar-error'],
+        }
+      );
       this.bookingForm.controls.endDate.setValue(null);
-      this.toastr.warning('Odabrani datumi nisu dostupni. Molimo izaberite druge datume.');
     }
+  }
+
+  /**
+   * Find the next unavailable date AFTER a given date (including buffer days)
+   * Returns null if no blocked dates exist after the given date
+   *
+   * Phase 2.1 Regression Fix: Now filters out ranges that END before 'from' date,
+   * ensuring we only return truly future blocked segments.
+   *
+   * @param from Starting date to search from (typically start + 1 day)
+   * @returns The start of the next blocked range or null
+   */
+  private getNextUnavailableDate(from: Date): Date | null {
+    const ranges = [
+      ...this.bookingsSubject.value.map((b) => ({
+        start: this.addDays(this.normalizeDate(b.startDate), -this.BUFFER_DAYS),
+        end: this.addDays(this.normalizeDate(b.endDate), this.BUFFER_DAYS),
+      })),
+      ...this.blockedDatesSubject.value.map((b) => ({
+        start: this.addDays(this.normalizeDate(b.startDate), -this.BUFFER_DAYS),
+        end: this.addDays(this.normalizeDate(b.endDate), this.BUFFER_DAYS),
+      })),
+    ]
+      .filter((r) => r.end > from) // Ignore past ranges that end before 'from'
+      .sort((a, b) => a.start.getTime() - b.start.getTime());
+
+    return ranges.length > 0 ? ranges[0].start : null;
+  }
+
+  /**
+   * Calculate maximum rental end date based on car's max rental days or default
+   * @param startDate Booking start date
+   * @returns Maximum allowed end date
+   */
+  private getMaxRentalEndDate(startDate: Date): Date {
+    const car = this.vm$;
+    // Get maxRentalDays from car or use default
+    const maxDays = this.MAX_RENTAL_DAYS; // We'll enhance this to use car.maxRentalDays once we have it in context
+    return this.addDays(startDate, maxDays);
   }
 
   private isDateUnavailable(date: Date): boolean {
     const normalized = this.normalizeDate(date);
 
-    // Check if date is in any booking
+    // Check if date is in any booking (with buffer days)
     const isBooked = this.bookingsSubject.value.some((booking) =>
-      this.isDateWithinRange(normalized, booking.startDate, booking.endDate)
+      this.isDateWithinRange(
+        normalized,
+        this.addDays(this.normalizeDate(booking.startDate), -this.BUFFER_DAYS),
+        this.addDays(this.normalizeDate(booking.endDate), this.BUFFER_DAYS)
+      )
     );
 
-    // Check if date is in any blocked range
+    // Check if date is in any blocked range (with buffer days)
     const isBlocked = this.blockedDatesSubject.value.some((blocked) =>
-      this.isDateWithinRange(normalized, blocked.startDate, blocked.endDate)
+      this.isDateWithinRange(
+        normalized,
+        this.addDays(this.normalizeDate(blocked.startDate), -this.BUFFER_DAYS),
+        this.addDays(this.normalizeDate(blocked.endDate), this.BUFFER_DAYS)
+      )
     );
 
     return isBooked || isBlocked;
@@ -315,7 +407,7 @@ export class CarDetailComponent {
     return startA <= endB && startB <= endA;
   }
 
-  private isDateWithinRange(date: Date, start: string, end: string): boolean {
+  private isDateWithinRange(date: Date, start: string | Date, end: string | Date): boolean {
     const target = this.normalizeDate(date);
     const startDate = this.normalizeDate(start);
     const endDate = this.normalizeDate(end);
@@ -329,30 +421,24 @@ export class CarDetailComponent {
       candidate = today;
     }
 
-    // Combine bookings and blocked dates for checking
+    // Combine bookings and blocked dates for checking (including buffer days)
     const unavailableRanges = [
       ...this.bookingsSubject.value.map((b) => ({
-        startDate: b.startDate,
-        endDate: b.endDate,
+        startDate: this.addDays(this.normalizeDate(b.startDate), -this.BUFFER_DAYS),
+        endDate: this.addDays(this.normalizeDate(b.endDate), this.BUFFER_DAYS),
       })),
       ...this.blockedDatesSubject.value.map((b) => ({
-        startDate: b.startDate,
-        endDate: b.endDate,
+        startDate: this.addDays(this.normalizeDate(b.startDate), -this.BUFFER_DAYS),
+        endDate: this.addDays(this.normalizeDate(b.endDate), this.BUFFER_DAYS),
       })),
-    ].sort(
-      (a, b) =>
-        this.normalizeDate(a.startDate).getTime() - this.normalizeDate(b.startDate).getTime()
-    );
+    ].sort((a, b) => a.startDate.getTime() - b.startDate.getTime());
 
     let adjusted = true;
     while (adjusted) {
       adjusted = false;
       for (const range of unavailableRanges) {
-        const startDate = this.normalizeDate(range.startDate);
-        const endDate = this.normalizeDate(range.endDate);
-
-        if (candidate >= startDate && candidate <= endDate) {
-          candidate = this.addDays(endDate, 1);
+        if (candidate >= range.startDate && candidate <= range.endDate) {
+          candidate = this.addDays(range.endDate, 1);
           adjusted = true;
           break;
         }
@@ -363,23 +449,23 @@ export class CarDetailComponent {
   }
 
   private isDateRangeFree(start: Date, end: Date): boolean {
-    // Check if range overlaps with any booking
+    // Check if range overlaps with any booking (including buffer days)
     const hasBookingConflict = this.bookingsSubject.value.some((booking) =>
       this.rangesOverlap(
         start,
         end,
-        this.normalizeDate(booking.startDate),
-        this.normalizeDate(booking.endDate)
+        this.addDays(this.normalizeDate(booking.startDate), -this.BUFFER_DAYS),
+        this.addDays(this.normalizeDate(booking.endDate), this.BUFFER_DAYS)
       )
     );
 
-    // Check if range overlaps with any blocked date range
+    // Check if range overlaps with any blocked date range (including buffer days)
     const hasBlockedConflict = this.blockedDatesSubject.value.some((blocked) =>
       this.rangesOverlap(
         start,
         end,
-        this.normalizeDate(blocked.startDate),
-        this.normalizeDate(blocked.endDate)
+        this.addDays(this.normalizeDate(blocked.startDate), -this.BUFFER_DAYS),
+        this.addDays(this.normalizeDate(blocked.endDate), this.BUFFER_DAYS)
       )
     );
 
@@ -407,10 +493,18 @@ export class CarDetailComponent {
     this.endDateMin = this.addDays(startDate, 1);
   }
 
+  /**
+   * Normalize date to midnight local time, avoiding UTC timezone shifts
+   *
+   * Phase 2.1 Regression Fix: Uses local year/month/date to prevent
+   * ISO string parsing issues that cause unexpected timezone conversions
+   *
+   * @param value Date object or ISO string
+   * @returns Date normalized to 00:00:00 local time
+   */
   private normalizeDate(value: Date | string): Date {
-    const date = new Date(value);
-    date.setHours(0, 0, 0, 0);
-    return date;
+    const d = new Date(value);
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
   }
 
   private addDays(date: Date, days: number): Date {

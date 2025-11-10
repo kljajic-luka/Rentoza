@@ -34,6 +34,7 @@ public class UserController {
                     user.getLastName(),
                     user.getEmail(),
                     user.getPhone(),
+                    user.getAge(),
                     user.getRole().name()
             ));
         } catch (RuntimeException e) {
@@ -63,6 +64,7 @@ public class UserController {
                 user.getLastName(),
                 user.getEmail(),
                 user.getPhone(),
+                user.getAge(),
                 user.getRole().name()
         );
 
@@ -78,7 +80,7 @@ public class UserController {
             var user = service.getUserByEmail(email)
                     .orElseThrow(() -> new EntityNotFoundException("User not found"));
             return ResponseEntity.ok(new UserResponseDTO(
-                    user.getId(), user.getFirstName(), user.getLastName(), user.getEmail(), user.getPhone(), user.getRole().name()
+                    user.getId(), user.getFirstName(), user.getLastName(), user.getEmail(), user.getPhone(), user.getAge(), user.getRole().name()
             ));
         } catch (RuntimeException e) {
             return ResponseEntity.status(401).body(Map.of("error", e.getMessage()));
@@ -105,6 +107,7 @@ public class UserController {
                     updated.getLastName(),
                     updated.getEmail(),
                     updated.getPhone(),
+                    updated.getAge(),
                     updated.getRole().name()
             ));
 
@@ -180,6 +183,7 @@ public class UserController {
                     user.getLastName(),
                     user.getEmail(),
                     user.getPhone(),
+                    user.getAge(),
                     user.getRole().name()
             ));
         } catch (EntityNotFoundException e) {

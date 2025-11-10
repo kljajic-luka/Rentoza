@@ -121,17 +121,18 @@ public class JwtUtil {
             Jwts.parserBuilder().setSigningKey(key).build().parseClaimsJws(token);
             return true;
         } catch (ExpiredJwtException e) {
-            System.out.println("JWT expired: " + e.getMessage());
-        } catch (UnsupportedJwtException e) {
-            System.out.println("Unsupported JWT: " + e.getMessage());
-        } catch (MalformedJwtException e) {
-            System.out.println("Malformed JWT: " + e.getMessage());
-        } catch (SignatureException e) {
-            System.out.println("Invalid JWT signature: " + e.getMessage());
+            // Expected error - use debug level, don't expose details
+            log.debug("JWT expired: {}", e.getMessage());
+            return false;
+        } catch (UnsupportedJwtException | MalformedJwtException | SignatureException e) {
+            // Suspicious activity - log warning without exposing implementation details
+            log.warn("Invalid JWT token: {}", e.getClass().getSimpleName());
+            return false;
         } catch (IllegalArgumentException e) {
-            System.out.println("Empty or null token");
+            // Expected error for empty/null tokens
+            log.debug("Empty or null JWT token");
+            return false;
         }
-        return false;
     }
 
     // =====================================================

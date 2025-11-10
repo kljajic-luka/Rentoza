@@ -105,30 +105,14 @@ export class MyCarsComponent implements OnInit {
           cars.map((c) => (c.id === car.id ? { ...c, available: updatedCar.available } : c))
         );
         this.carService.clearSearchCache(); // Clear cache to ensure fresh results
-        const status = updatedCar.available ? 'aktivirano' : 'deaktivirano';
-        this.snackBar.open(`Vozilo ${status}`, 'Zatvori', { duration: 2000 });
+        const message = updatedCar.available
+          ? 'Vozilo je ponovo aktivirano i dostupno u pretrazi.'
+          : 'Vozilo je uspešno deaktivirano. Više nije vidljivo u pretrazi.';
+        this.snackBar.open(message, 'Zatvori', { duration: 3000 });
       },
       error: (error) => {
         console.error('Error toggling availability:', error);
         this.snackBar.open('Greška pri promeni statusa', 'Zatvori', { duration: 3000 });
-      },
-    });
-  }
-
-  protected deleteCar(car: Car): void {
-    if (!confirm(`Da li ste sigurni da želite da obrišete ${car.make} ${car.model}?`)) {
-      return;
-    }
-
-    this.carService.deleteCar(car.id).subscribe({
-      next: () => {
-        this.cars.update((cars) => cars.filter((c) => c.id !== car.id));
-        this.carService.clearSearchCache(); // Clear cache to ensure fresh results
-        this.snackBar.open('Vozilo obrisano', 'Zatvori', { duration: 2000 });
-      },
-      error: (error) => {
-        console.error('Error deleting car:', error);
-        this.snackBar.open('Greška pri brisanju vozila', 'Zatvori', { duration: 3000 });
       },
     });
   }

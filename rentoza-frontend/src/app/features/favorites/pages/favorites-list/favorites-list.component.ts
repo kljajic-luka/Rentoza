@@ -74,20 +74,30 @@ import { finalize } from 'rxjs';
                 </div>
                 @if (!favorite.carAvailable) {
                   <div class="unavailable-badge">
-                    <mat-icon>event_busy</mat-icon>
-                    <span>Trenutno nedostupno</span>
+                    <mat-icon>block</mat-icon>
+                    <span>Vozilo više nije dostupno za iznajmljivanje</span>
                   </div>
                 }
               </mat-card-content>
 
               <mat-card-actions>
-                <a
-                  mat-raised-button
-                  color="primary"
-                  [routerLink]="['/cars', favorite.carId]"
-                >
-                  Pogledaj detalje
-                </a>
+                @if (favorite.carAvailable) {
+                  <a
+                    mat-raised-button
+                    color="primary"
+                    [routerLink]="['/cars', favorite.carId]"
+                  >
+                    Pogledaj detalje
+                  </a>
+                } @else {
+                  <button
+                    mat-stroked-button
+                    disabled
+                    color="warn"
+                  >
+                    Nije dostupno
+                  </button>
+                }
               </mat-card-actions>
             </mat-card>
           }

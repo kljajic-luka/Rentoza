@@ -226,33 +226,23 @@ public class CarController {
         }
     }
 
-    // ✅ Delete car (owner only)
+    /**
+     * Delete car endpoint - DEPRECATED
+     * @deprecated This endpoint is deprecated. Use PATCH /{id}/availability instead to deactivate cars.
+     * This endpoint will be removed in a future release.
+     * @return HTTP 410 Gone
+     */
+    @Deprecated
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteCar(
             @PathVariable Long id,
             @RequestHeader(value = "Authorization", required = false) String authHeader
     ) {
-        try {
-            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-                return ResponseEntity.status(401).body(Map.of("error", "Missing or invalid token"));
-            }
-
-            String token = authHeader.substring(7);
-            String email = jwtUtil.getEmailFromToken(token);
-            String role = jwtUtil.getRoleFromToken(token);
-            if (!"OWNER".equalsIgnoreCase(role)) {
-                return ResponseEntity.status(403).body(Map.of("error", "Only owners can delete cars"));
-            }
-
-            User owner = userRepo.findByEmail(email)
-                    .orElseThrow(() -> new RuntimeException("User not found: " + email));
-
-            service.deleteCar(id, owner);
-            return ResponseEntity.ok(Map.of("message", "Car deleted successfully"));
-
-        } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
-        }
+        return ResponseEntity.status(410).body(Map.of(
+                "error", "Car deletion is no longer supported. Use PATCH /api/cars/{id}/availability to deactivate cars instead.",
+                "deprecatedSince", "2025-01-10",
+                "alternativeEndpoint", "PATCH /api/cars/" + id + "/availability"
+        ));
     }
 
     /**

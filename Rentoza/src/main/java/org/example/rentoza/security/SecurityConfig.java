@@ -19,6 +19,7 @@ import org.springframework.security.oauth2.client.registration.ClientRegistratio
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 import org.springframework.web.cors.*;
 import java.util.Arrays;
@@ -57,7 +58,17 @@ public class SecurityConfig {
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-                .csrf(csrf -> csrf.disable())
+                // CSRF PROTECTION: Enabled with exemptions for stateless JWT endpoints
+                // Cookie-based endpoints (OAuth2, refresh token) are protected against CSRF
+                // Stateless JWT API endpoints are exempt (JWTs in headers are not vulnerable to CSRF)
+                .csrf(csrf -> csrf
+                        .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+                        .ignoringRequestMatchers(
+                                "/api/auth/login",      // Stateless JWT login
+                                "/api/auth/register",   // Stateless JWT registration
+                                "/api/**"               // All stateless JWT API endpoints
+                        )
+                )
                 .authorizeHttpRequests(auth -> auth
                         // Public auth endpoints (local + OAuth2)
                         .requestMatchers(

@@ -5,6 +5,10 @@
         <p class="eyebrow">Ekskluzivna ponuda</p>
         <div style="display: flex; align-items: center; gap: 1rem;">
           <h1 style="margin: 0;">{{ vm.car.make }} {{ vm.car.model }}</h1>
+          <mat-chip *ngIf="!vm.car.available" color="warn" class="unavailable-chip">
+            <mat-icon>block</mat-icon>
+            Nedostupno
+          </mat-chip>
           <app-favorite-button *ngIf="!(isOwner$ | async)" [carId]="+vm.car.id"></app-favorite-button>
         </div>
         <p class="subtitle">{{ vm.car.year }} • {{ vm.car.location }}</p>
@@ -78,80 +82,98 @@
         </div>
       </mat-card>
 
-      <!-- Booking Card - Sticky on Desktop (hidden for owners) -->
-      <ng-container *ngIf="isAuthenticated$ | async as user; else guestBooking">
-        <mat-card *ngIf="!(isOwner$ | async)" class="car-detail__booking">
-          <mat-card-header>
-            <div class="booking__title">
-              <mat-card-title>Zahtev za rezervaciju</mat-card-title>
-              <mat-card-subtitle>
-                Izaberite datume putovanja, a domaćin će biti obavešten.
-              </mat-card-subtitle>
-            </div>
-          </mat-card-header>
+      <!-- Booking Card - Sticky on Desktop (hidden for owners and inactive cars) -->
+      <ng-container *ngIf="vm.car.available && !(isOwner$ | async); else inactiveNotice">
+        <ng-container *ngIf="isAuthenticated$ | async as user; else guestBooking">
+          <mat-card class="car-detail__booking">
+            <mat-card-header>
+              <div class="booking__title">
+                <mat-card-title>Zahtev za rezervaciju</mat-card-title>
+                <mat-card-subtitle>
+                  Izaberite datume putovanja, a domaćin će biti obavešten.
+                </mat-card-subtitle>
+              </div>
+            </mat-card-header>
 
-          <mat-card-content>
-            <form [formGroup]="bookingForm" (ngSubmit)="submitBooking()" class="booking-form">
-              <mat-form-field appearance="fill">
-                <mat-label>Datum početka</mat-label>
-                <input
-                  matInput
-                  [matDatepicker]="startPicker"
-                  formControlName="startDate"
-                  [min]="startDateMin"
-                  (dateChange)="handleStartDateChange($event.value)"
-                  [matDatepickerFilter]="startDateFilter"
-                />
-                <mat-datepicker-toggle matIconSuffix [for]="startPicker"></mat-datepicker-toggle>
-                <mat-datepicker #startPicker [dateClass]="dateClass"></mat-datepicker>
-                <mat-error *ngIf="bookingForm.controls.startDate.invalid">
-                  Datum početka je obavezan.
-                </mat-error>
-              </mat-form-field>
+            <mat-card-content>
+              <form [formGroup]="bookingForm" (ngSubmit)="submitBooking()" class="booking-form">
+                <mat-form-field appearance="fill">
+                  <mat-label>Datum početka</mat-label>
+                  <input
+                    matInput
+                    [matDatepicker]="startPicker"
+                    formControlName="startDate"
+                    [min]="startDateMin"
+                    (dateChange)="handleStartDateChange($event.value)"
+                    [matDatepickerFilter]="startDateFilter"
+                  />
+                  <mat-datepicker-toggle matIconSuffix [for]="startPicker"></mat-datepicker-toggle>
+                  <mat-datepicker #startPicker [dateClass]="dateClass"></mat-datepicker>
+                  <mat-error *ngIf="bookingForm.controls.startDate.invalid">
+                    Datum početka je obavezan.
+                  </mat-error>
+                </mat-form-field>
 
-              <mat-form-field appearance="fill">
-                <mat-label>Datum završetka</mat-label>
-                <input
-                  matInput
-                  [matDatepicker]="endPicker"
-                  formControlName="endDate"
-                  [min]="endDateMin"
-                  (dateChange)="handleEndDateChange($event.value)"
-                  [matDatepickerFilter]="endDateFilter"
-                />
-                <mat-datepicker-toggle matIconSuffix [for]="endPicker"></mat-datepicker-toggle>
-                <mat-datepicker #endPicker [dateClass]="dateClass"></mat-datepicker>
-                <mat-error *ngIf="bookingForm.controls.endDate.invalid">
-                  Datum završetka je obavezan.
-                </mat-error>
-              </mat-form-field>
+                <mat-form-field appearance="fill">
+                  <mat-label>Datum završetka</mat-label>
+                  <input
+                    matInput
+                    [matDatepicker]="endPicker"
+                    formControlName="endDate"
+                    [min]="endDateMin"
+                    (dateChange)="handleEndDateChange($event.value)"
+                    [matDatepickerFilter]="endDateFilter"
+                  />
+                  <mat-datepicker-toggle matIconSuffix [for]="endPicker"></mat-datepicker-toggle>
+                  <mat-datepicker #endPicker [dateClass]="dateClass"></mat-datepicker>
+                  <mat-error *ngIf="bookingForm.controls.endDate.invalid">
+                    Datum završetka je obavezan.
+                  </mat-error>
+                </mat-form-field>
 
-              <button mat-raised-button color="primary" type="submit" [disabled]="isSubmitting()">
-                <mat-progress-spinner
-                  *ngIf="isSubmitting()"
-                  mode="indeterminate"
-                  diameter="20"
-                ></mat-progress-spinner>
-                <span *ngIf="!isSubmitting()">Pošalji zahtev</span>
-              </button>
-            </form>
-          </mat-card-content>
-        </mat-card>
+                <button mat-raised-button color="primary" type="submit" [disabled]="isSubmitting()">
+                  <mat-progress-spinner
+                    *ngIf="isSubmitting()"
+                    mode="indeterminate"
+                    diameter="20"
+                  ></mat-progress-spinner>
+                  <span *ngIf="!isSubmitting()">Pošalji zahtev</span>
+                </button>
+              </form>
+            </mat-card-content>
+          </mat-card>
+        </ng-container>
+        <ng-template #guestBooking>
+          <mat-card class="car-detail__booking car-detail__booking--guest">
+            <mat-card-header>
+              <div class="booking__title">
+                <mat-card-title>Prijavite se da biste rezervisali</mat-card-title>
+                <mat-card-subtitle>
+                  Kreirajte nalog ili se prijavite da biste poslali zahtev za rezervaciju.
+                </mat-card-subtitle>
+              </div>
+            </mat-card-header>
+            <mat-card-content class="booking-guest__content">
+              <p>Potrebno je da budete prijavljeni kako biste napravili rezervaciju ovog vozila.</p>
+              <a mat-stroked-button color="primary" routerLink="/auth/login"> Prijavite se </a>
+            </mat-card-content>
+          </mat-card>
+        </ng-template>
       </ng-container>
-      <ng-template #guestBooking>
-        <mat-card *ngIf="!(isOwner$ | async)" class="car-detail__booking car-detail__booking--guest">
+
+      <ng-template #inactiveNotice>
+        <mat-card *ngIf="!(isOwner$ | async)" class="car-detail__booking car-detail__booking--inactive">
           <mat-card-header>
             <div class="booking__title">
-              <mat-card-title>Prijavite se da biste rezervisali</mat-card-title>
+              <mat-card-title>
+                <mat-icon>block</mat-icon>
+                Ovo vozilo trenutno nije dostupno
+              </mat-card-title>
               <mat-card-subtitle>
-                Kreirajte nalog ili se prijavite da biste poslali zahtev za rezervaciju.
+                Domaćin je privremeno deaktivirao vozilo. Pokušajte kasnije ili izaberite drugo.
               </mat-card-subtitle>
             </div>
           </mat-card-header>
-          <mat-card-content class="booking-guest__content">
-            <p>Potrebno je da budete prijavljeni kako biste napravili rezervaciju ovog vozila.</p>
-            <a mat-stroked-button color="primary" routerLink="/auth/login"> Prijavite se </a>
-          </mat-card-content>
         </mat-card>
       </ng-template>
     </div>
@@ -166,21 +188,22 @@
         </mat-card-header>
         <mat-card-content>
           <div class="specs-grid">
-            <div class="spec-item">
+            <!-- Basic Specs -->
+            <div class="spec-item" *ngIf="vm.car.seats">
               <mat-icon>event_seat</mat-icon>
               <div class="spec-content">
                 <span class="spec-label">Broj sedišta</span>
-                <span class="spec-value">{{ vm.car.seats || 'N/A' }}</span>
+                <span class="spec-value">{{ vm.car.seats }}</span>
               </div>
             </div>
-            <div class="spec-item">
+            <div class="spec-item" *ngIf="vm.car.transmissionType">
               <mat-icon>settings</mat-icon>
               <div class="spec-content">
                 <span class="spec-label">Menjač</span>
                 <span class="spec-value">{{ vm.car.transmissionType | translateEnum }}</span>
               </div>
             </div>
-            <div class="spec-item">
+            <div class="spec-item" *ngIf="vm.car.fuelType">
               <mat-icon>local_gas_station</mat-icon>
               <div class="spec-content">
                 <span class="spec-label">Gorivo</span>
@@ -192,6 +215,47 @@
               <div class="spec-content">
                 <span class="spec-label">Potrošnja</span>
                 <span class="spec-value">{{ vm.car.fuelConsumption }} L/100km</span>
+              </div>
+            </div>
+
+            <!-- Additional Specs -->
+            <div class="spec-item" *ngIf="vm.car.year">
+              <mat-icon>calendar_today</mat-icon>
+              <div class="spec-content">
+                <span class="spec-label">Godište</span>
+                <span class="spec-value">{{ vm.car.year }}</span>
+              </div>
+            </div>
+            <div class="spec-item" *ngIf="vm.car.cancellationPolicy">
+              <mat-icon>event_available</mat-icon>
+              <div class="spec-content">
+                <span class="spec-label">Politika otkazivanja</span>
+                <span class="spec-value">{{ vm.car.cancellationPolicy | translateEnum }}</span>
+              </div>
+            </div>
+            <div class="spec-item" *ngIf="vm.car.minRentalDays">
+              <mat-icon>schedule</mat-icon>
+              <div class="spec-content">
+                <span class="spec-label">Minimalno dana</span>
+                <span class="spec-value">{{ vm.car.minRentalDays }}</span>
+              </div>
+            </div>
+            <div class="spec-item" *ngIf="vm.car.maxRentalDays">
+              <mat-icon>date_range</mat-icon>
+              <div class="spec-content">
+                <span class="spec-label">Maksimalno dana</span>
+                <span class="spec-value">{{ vm.car.maxRentalDays }}</span>
+              </div>
+            </div>
+
+            <!-- Add-ons as chips (full-width item) -->
+            <div class="spec-item spec-item--full-width" *ngIf="vm.car.addOns && vm.car.addOns.length > 0">
+              <mat-icon>playlist_add_check</mat-icon>
+              <div class="spec-content spec-content--chips">
+                <span class="spec-label">Dodatna oprema</span>
+                <mat-chip-set class="spec-chips">
+                  <mat-chip *ngFor="let addon of vm.car.addOns">{{ addon }}</mat-chip>
+                </mat-chip-set>
               </div>
             </div>
           </div>

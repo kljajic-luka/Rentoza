@@ -60,6 +60,11 @@ public class BookingService {
         User renter = userRepo.findByEmail(renterEmail)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
+        // Validate age requirement
+        if (renter.getAge() == null || renter.getAge() < 21) {
+            throw new RuntimeException("Drivers must be at least 21 years old to rent a car.");
+        }
+
         Car car = carRepo.findById(dto.getCarId())
                 .orElseThrow(() -> new RuntimeException("Car not found"));
 
@@ -70,8 +75,29 @@ public class BookingService {
         booking.setEndDate(dto.getEndDate());
         booking.setStatus(BookingStatus.ACTIVE);
 
+        // Set insurance type and prepaid refuel
+        booking.setInsuranceType(dto.getInsuranceType() != null ? dto.getInsuranceType() : "BASIC");
+        booking.setPrepaidRefuel(dto.isPrepaidRefuel());
+
+        // Calculate total price with insurance and refuel
         long days = ChronoUnit.DAYS.between(dto.getStartDate(), dto.getEndDate());
-        booking.setTotalPrice(days * car.getPricePerDay());
+        double basePrice = days * car.getPricePerDay();
+
+        // Apply insurance multiplier
+        double insuranceMultiplier = switch (booking.getInsuranceType().toUpperCase()) {
+            case "STANDARD" -> 1.10;
+            case "PREMIUM" -> 1.20;
+            default -> 1.00;
+        };
+
+        // Calculate refuel cost if applicable
+        double refuelCost = 0.0;
+        if (booking.isPrepaidRefuel() && car.getFuelConsumption() != null) {
+            // Approximate: fuelConsumption * 6.5 (EUR/L) * 10 (assumed liters per rental)
+            refuelCost = car.getFuelConsumption() * 6.5 * 10;
+        }
+
+        booking.setTotalPrice(basePrice * insuranceMultiplier + refuelCost);
 
         Booking savedBooking = repo.save(booking);
 
@@ -99,20 +125,26 @@ public class BookingService {
         // Send booking confirmed notifications to both renter and owner
         try {
             String carInfo = car.getBrand() + " " + car.getModel();
+            String insuranceInfo = savedBooking.getInsuranceType() != null ? savedBooking.getInsuranceType() : "Basic";
+            String refuelInfo = savedBooking.isPrepaidRefuel() ? " with prepaid refuel" : "";
 
             // Notify renter
+            String renterMessage = String.format("Vaša rezervacija za %s je potvrđena! (%s insurance%s)",
+                    carInfo, insuranceInfo, refuelInfo);
             notificationService.createNotification(CreateNotificationRequestDTO.builder()
                     .recipientId(renter.getId())
                     .type(NotificationType.BOOKING_CONFIRMED)
-                    .message("Vaša rezervacija za " + carInfo + " je potvrđena!")
+                    .message(renterMessage)
                     .relatedEntityId("booking-" + savedBooking.getId())
                     .build());
 
             // Notify owner
+            String ownerMessage = String.format("Nova rezervacija za %s od %s %s (%s insurance%s)",
+                    carInfo, renter.getFirstName(), renter.getLastName(), insuranceInfo, refuelInfo);
             notificationService.createNotification(CreateNotificationRequestDTO.builder()
                     .recipientId(car.getOwner().getId())
                     .type(NotificationType.BOOKING_CONFIRMED)
-                    .message("Nova rezervacija za " + carInfo + " od " + renter.getFirstName() + " " + renter.getLastName())
+                    .message(ownerMessage)
                     .relatedEntityId("booking-" + savedBooking.getId())
                     .build());
 

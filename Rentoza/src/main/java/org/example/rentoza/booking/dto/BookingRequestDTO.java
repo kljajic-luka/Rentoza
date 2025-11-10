@@ -10,4 +10,6 @@ public class BookingRequestDTO {
     private Long carId;
     private LocalDate startDate;
     private LocalDate endDate;
+    private String insuranceType = "BASIC"; // BASIC, STANDARD, PREMIUM
+    private boolean prepaidRefuel = false;
 }

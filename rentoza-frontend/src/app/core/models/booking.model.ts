@@ -26,6 +26,8 @@ export interface BookingRequest {
   carId: string;
   startDate: string;
   endDate: string;
+  insuranceType?: string; // BASIC, STANDARD, PREMIUM
+  prepaidRefuel?: boolean;
 }
 
 export interface UserBooking {
@@ -44,4 +46,6 @@ export interface UserBooking {
   hasReview: boolean;
   reviewRating: number | null;
   reviewComment: string | null;
+  insuranceType?: string; // BASIC, STANDARD, PREMIUM
+  prepaidRefuel?: boolean;
 }

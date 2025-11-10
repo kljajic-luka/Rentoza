@@ -23,6 +23,12 @@ public class Booking {
     private LocalDate endDate;
     private Double totalPrice;
 
+    @Column(name = "insurance_type", length = 20)
+    private String insuranceType = "BASIC"; // BASIC, STANDARD, PREMIUM
+
+    @Column(name = "prepaid_refuel")
+    private boolean prepaidRefuel = false;
+
     @Enumerated(EnumType.STRING)
     private BookingStatus status = BookingStatus.ACTIVE;
 

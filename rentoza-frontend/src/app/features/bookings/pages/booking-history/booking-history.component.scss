@@ -230,6 +230,15 @@
         font-size: 0.95rem;
         font-weight: 600;
         color: var(--color-text-primary);
+
+        .check-icon {
+          font-size: 18px;
+          width: 18px;
+          height: 18px;
+          vertical-align: middle;
+          margin-right: 4px;
+          color: #4caf50;
+        }
       }
     }
   }

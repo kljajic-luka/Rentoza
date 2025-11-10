@@ -294,23 +294,40 @@
   }
 }
 
-.booking-form {
-  display: grid;
-  gap: 1.25rem;
+.booking-action {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  align-items: stretch;
+  text-align: center;
 
-  mat-form-field {
-    width: 100%;
+  .booking-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    min-height: 56px;
+    border-radius: 12px;
+    font-size: 1.05rem;
+    font-weight: 600;
+    transition: all 0.2s ease;
 
-    ::ng-deep .mdc-text-field {
-      border-radius: 16px;
+    mat-icon {
+      font-size: 24px;
+      width: 24px;
+      height: 24px;
+    }
+
+    &:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
     }
   }
 
-  button[mat-raised-button] {
-    justify-content: center;
-    gap: 0.6rem;
-    min-height: 48px;
-    border-radius: 999px;
+  .booking-hint {
+    margin: 0;
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
   }
 }
 

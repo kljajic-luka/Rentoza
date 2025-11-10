@@ -66,6 +66,21 @@
                     <span class="label">Cena po danu:</span>
                     <span class="value">{{ booking.carPricePerDay | currency: 'RSD':'symbol':'1.0-0' }}</span>
                   </div>
+                  @if (booking.insuranceType) {
+                    <div class="detail-row">
+                      <span class="label">Tip osiguranja:</span>
+                      <span class="value">{{ booking.insuranceType }}</span>
+                    </div>
+                  }
+                  @if (booking.prepaidRefuel) {
+                    <div class="detail-row">
+                      <span class="label">Prepaid gorivo:</span>
+                      <span class="value">
+                        <mat-icon class="check-icon">check_circle</mat-icon>
+                        Da
+                      </span>
+                    </div>
+                  }
                   <div class="detail-row total">
                     <span class="label">Ukupno:</span>
                     <span class="value">{{ booking.totalPrice | currency: 'RSD':'symbol':'1.0-0' }}</span>
@@ -125,6 +140,21 @@
                     <span class="label">Kraj:</span>
                     <span class="value">{{ booking.endDate | date: 'dd.MM.yyyy' }}</span>
                   </div>
+                  @if (booking.insuranceType) {
+                    <div class="detail-row">
+                      <span class="label">Tip osiguranja:</span>
+                      <span class="value">{{ booking.insuranceType }}</span>
+                    </div>
+                  }
+                  @if (booking.prepaidRefuel) {
+                    <div class="detail-row">
+                      <span class="label">Prepaid gorivo:</span>
+                      <span class="value">
+                        <mat-icon class="check-icon">check_circle</mat-icon>
+                        Da
+                      </span>
+                    </div>
+                  }
                   <div class="detail-row total">
                     <span class="label">Ukupno:</span>
                     <span class="value">{{ booking.totalPrice | currency: 'RSD':'symbol':'1.0-0' }}</span>
@@ -184,6 +214,21 @@
                     <span class="label">Kraj:</span>
                     <span class="value">{{ booking.endDate | date: 'dd.MM.yyyy' }}</span>
                   </div>
+                  @if (booking.insuranceType) {
+                    <div class="detail-row">
+                      <span class="label">Tip osiguranja:</span>
+                      <span class="value">{{ booking.insuranceType }}</span>
+                    </div>
+                  }
+                  @if (booking.prepaidRefuel) {
+                    <div class="detail-row">
+                      <span class="label">Prepaid gorivo:</span>
+                      <span class="value">
+                        <mat-icon class="check-icon">check_circle</mat-icon>
+                        Da
+                      </span>
+                    </div>
+                  }
                   <div class="detail-row total">
                     <span class="label">Ukupno:</span>
                     <span class="value">{{ booking.totalPrice | currency: 'RSD':'symbol':'1.0-0' }}</span>

@@ -55,6 +55,8 @@ import { Booking } from '@core/models/booking.model';
 import { BlockedDate } from '@core/models/blocked-date.model';
 import { FavoriteButtonComponent } from '@shared/components/favorite-button/favorite-button.component';
 import { TranslateEnumPipe, FeatureHelper } from '@shared/pipes/translate-enum.pipe';
+import { BookingDialogComponent } from '@features/cars/dialogs/booking-dialog/booking-dialog.component';
+import { MatSnackBar } from '@angular/material/snack-bar';
 
 @Component({
   selector: 'app-car-detail',
@@ -94,6 +96,7 @@ export class CarDetailComponent {
   private readonly authService = inject(AuthService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly dialog = inject(MatDialog);
+  private readonly snackBar = inject(MatSnackBar);
 
   private selectedCarId = '';
   readonly bookingsSubject = new BehaviorSubject<Booking[]>([]);
@@ -205,55 +208,33 @@ export class CarDetailComponent {
       });
   }
 
-  submitBooking(): void {
-    if (this.bookingForm.invalid || !this.selectedCarId) {
-      this.bookingForm.markAllAsTouched();
-      return;
-    }
+  openBookingDialog(car: Car): void {
+    const dialogRef = this.dialog.open(BookingDialogComponent, {
+      data: {
+        car,
+        bookings: this.bookingsSubject.value,
+        blockedDates: this.blockedDatesSubject.value,
+        startDateFilter: this.startDateFilter,
+        endDateFilter: this.endDateFilter,
+      },
+      width: '700px',
+      maxWidth: '90vw',
+      disableClose: false,
+    });
 
-    const startDate = this.bookingForm.controls.startDate.value;
-    const endDate = this.bookingForm.controls.endDate.value;
+    dialogRef.afterClosed().subscribe((result) => {
+      if (result === true) {
+        // Booking was successful
+        this.snackBar.open('Uspešno ste rezervisali vozilo!', 'Zatvori', {
+          duration: 4000,
+          horizontalPosition: 'center',
+          verticalPosition: 'top',
+        });
 
-    if (!startDate || !endDate) {
-      this.bookingForm.markAllAsTouched();
-      return;
-    }
-
-    if (!this.isDateRangeFree(this.normalizeDate(startDate), this.normalizeDate(endDate))) {
-      this.toastr.warning('Odabrani datumi nisu dostupni. Molimo izaberite druge datume.');
-      return;
-    }
-
-    this.isSubmitting.set(true);
-
-    const payload = {
-      carId: this.selectedCarId,
-      startDate: startDate.toISOString(),
-      endDate: endDate.toISOString(),
-    };
-
-    this.bookingService
-      .createBooking(payload)
-      .pipe(
-        tap(() => {
-          this.bookingForm.reset();
-          this.updateEndDateMin(this.startDateMin);
-        }),
-        finalize(() => this.isSubmitting.set(false))
-      )
-      .subscribe({
-        next: (booking) => {
-          this.toastr.success(
-            'Booking request submitted successfully! A new conversation has been created. Check your Messages.',
-            'Success',
-            { timeOut: 5000 }
-          );
-          this.refreshBookings();
-
-          // No automatic redirect - user can navigate to Messages manually
-          // The backend will create a conversation automatically via ChatServiceClient
-        },
-      });
+        // Refresh bookings to show the new blocked dates
+        this.refreshBookings();
+      }
+    });
   }
 
   trackReviewById(_index: number, review: Review): string {

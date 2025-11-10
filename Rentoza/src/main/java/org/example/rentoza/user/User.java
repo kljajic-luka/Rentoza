@@ -69,6 +69,11 @@ public class User {
     @Column(unique = true)
     private String phone;
 
+    @Min(value = 18, message = "Age must be at least 18")
+    @Max(value = 120, message = "Age must be less than 120")
+    @Column(name = "age")
+    private Integer age;
+
     @Column(length = 500)
     private String avatarUrl;
 

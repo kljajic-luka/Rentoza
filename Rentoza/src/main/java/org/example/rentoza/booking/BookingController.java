@@ -5,6 +5,8 @@ import org.example.rentoza.booking.dto.BookingResponseDTO;
 import org.example.rentoza.booking.dto.UserBookingResponseDTO;
 import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.security.JwtUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -15,6 +17,8 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/bookings")
 public class BookingController {
+
+    private static final Logger log = LoggerFactory.getLogger(BookingController.class);
 
     private final BookingService service;
     private final JwtUtil jwtUtil;
@@ -30,7 +34,8 @@ public class BookingController {
             List<UserBookingResponseDTO> bookings = service.getMyBookings(authHeader);
             return ResponseEntity.ok(bookings);
         } catch (RuntimeException e) {
-            return ResponseEntity.status(401).body(List.of());
+            log.error("Error fetching user bookings", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 

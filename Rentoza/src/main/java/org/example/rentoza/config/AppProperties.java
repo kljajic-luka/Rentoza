@@ -13,6 +13,7 @@ public class AppProperties {
 
     private final Cors cors = new Cors();
     private final Cookie cookie = new Cookie();
+    private final RateLimit rateLimit = new RateLimit();
 
     public Cors getCors() {
         return cors;
@@ -20,6 +21,10 @@ public class AppProperties {
 
     public Cookie getCookie() {
         return cookie;
+    }
+
+    public RateLimit getRateLimit() {
+        return rateLimit;
     }
 
     /**
@@ -90,6 +95,100 @@ public class AppProperties {
 
         public void setSameSite(String sameSite) {
             this.sameSite = sameSite;
+        }
+    }
+
+    /**
+     * Rate limiting configuration properties
+     */
+    public static class RateLimit {
+        /**
+         * Whether rate limiting is enabled globally
+         */
+        private boolean enabled = true;
+
+        /**
+         * Redis key prefix for rate limit counters
+         */
+        private String redisKeyPrefix = "rate_limit";
+
+        /**
+         * Default rate limit (requests per window)
+         */
+        private int defaultLimit = 100;
+
+        /**
+         * Default time window in seconds
+         */
+        private int defaultWindowSeconds = 60;
+
+        /**
+         * Endpoint-specific rate limits (map of path -> RateLimitConfig)
+         */
+        private java.util.Map<String, EndpointLimit> endpoints = new java.util.HashMap<>();
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getRedisKeyPrefix() {
+            return redisKeyPrefix;
+        }
+
+        public void setRedisKeyPrefix(String redisKeyPrefix) {
+            this.redisKeyPrefix = redisKeyPrefix;
+        }
+
+        public int getDefaultLimit() {
+            return defaultLimit;
+        }
+
+        public void setDefaultLimit(int defaultLimit) {
+            this.defaultLimit = defaultLimit;
+        }
+
+        public int getDefaultWindowSeconds() {
+            return defaultWindowSeconds;
+        }
+
+        public void setDefaultWindowSeconds(int defaultWindowSeconds) {
+            this.defaultWindowSeconds = defaultWindowSeconds;
+        }
+
+        public java.util.Map<String, EndpointLimit> getEndpoints() {
+            return endpoints;
+        }
+
+        public void setEndpoints(java.util.Map<String, EndpointLimit> endpoints) {
+            this.endpoints = endpoints;
+        }
+
+        /**
+         * Configuration for a specific endpoint's rate limit
+         */
+        public static class EndpointLimit {
+            private int limit;
+            private int windowSeconds;
+
+            public int getLimit() {
+                return limit;
+            }
+
+            public void setLimit(int limit) {
+                this.limit = limit;
+            }
+
+            public int getWindowSeconds() {
+                return windowSeconds;
+            }
+
+            public void setWindowSeconds(int windowSeconds) {
+                this.windowSeconds = windowSeconds;
+            }
         }
     }
 }

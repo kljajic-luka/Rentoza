@@ -4,12 +4,15 @@ import org.example.rentoza.auth.oauth2.CustomAuthorizationRequestResolver;
 import org.example.rentoza.auth.oauth2.CustomOAuth2UserService;
 import org.example.rentoza.auth.oauth2.OAuth2AuthenticationSuccessHandler;
 import org.example.rentoza.config.AppProperties;
+import org.example.rentoza.security.ratelimit.InMemoryRateLimitService;
+import org.example.rentoza.security.ratelimit.RateLimitingFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -30,8 +33,6 @@ public class SecurityConfig {
 
     private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
 
-    private final JwtAuthFilter jwtAuthFilter;
-    private final ServiceAuthenticationFilter serviceAuthenticationFilter;
     private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
     private final AppProperties appProperties;
     private final CustomOAuth2UserService customOAuth2UserService;
@@ -39,16 +40,12 @@ public class SecurityConfig {
     private final CustomAuthorizationRequestResolver customAuthorizationRequestResolver;
     private final ClientRegistrationRepository clientRegistrationRepository;
 
-    public SecurityConfig(JwtAuthFilter jwtAuthFilter,
-                          ServiceAuthenticationFilter serviceAuthenticationFilter,
-                          JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint,
+    public SecurityConfig(JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint,
                           AppProperties appProperties,
                           CustomOAuth2UserService customOAuth2UserService,
                           OAuth2AuthenticationSuccessHandler oauth2SuccessHandler,
                           CustomAuthorizationRequestResolver customAuthorizationRequestResolver,
                           ClientRegistrationRepository clientRegistrationRepository) {
-        this.jwtAuthFilter = jwtAuthFilter;
-        this.serviceAuthenticationFilter = serviceAuthenticationFilter;
         this.jwtAuthenticationEntryPoint = jwtAuthenticationEntryPoint;
         this.appProperties = appProperties;
         this.customOAuth2UserService = customOAuth2UserService;
@@ -57,8 +54,60 @@ public class SecurityConfig {
         this.clientRegistrationRepository = clientRegistrationRepository;
     }
 
+    /**
+     * Register RateLimitingFilter as a Spring-managed bean.
+     * 
+     * Purpose: Token bucket rate limiting before authentication
+     * Order: 1st in chain (fail-fast for abusive requests)
+     * 
+     * @param rateLimitService In-memory token bucket service (Redis-ready)
+     * @param appProperties Configuration for rate limits
+     * @param jwtUtil JWT parser for extracting user email from tokens
+     * @return Configured RateLimitingFilter instance
+     */
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    public RateLimitingFilter rateLimitingFilter(
+            InMemoryRateLimitService rateLimitService,
+            AppProperties appProperties,
+            JwtUtil jwtUtil) {
+        return new RateLimitingFilter(rateLimitService, appProperties, jwtUtil);
+    }
+
+    /**
+     * Register ServiceAuthenticationFilter as a Spring-managed bean.
+     * 
+     * Purpose: Authenticate internal microservice-to-microservice requests
+     * Order: 2nd in chain (after rate limiting, before JWT authentication)
+     * 
+     * @param internalServiceJwtUtil Internal service token validator
+     * @return Configured ServiceAuthenticationFilter instance
+     */
+    @Bean
+    public ServiceAuthenticationFilter serviceAuthenticationFilter(
+            InternalServiceJwtUtil internalServiceJwtUtil) {
+        return new ServiceAuthenticationFilter(internalServiceJwtUtil);
+    }
+
+    /**
+     * Register JwtAuthFilter as a Spring-managed bean.
+     * 
+     * Purpose: Authenticate external client JWT Bearer tokens
+     * Order: 3rd in chain (after internal service auth, before UsernamePasswordAuthenticationFilter)
+     * 
+     * @param jwtUtil JWT parser and validator
+     * @param userDetailsService Spring Security user details loader
+     * @return Configured JwtAuthFilter instance
+     */
+    @Bean
+    public JwtAuthFilter jwtAuthFilter(JwtUtil jwtUtil, UserDetailsService userDetailsService) {
+        return new JwtAuthFilter(jwtUtil, userDetailsService);
+    }
+
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http,
+                                           RateLimitingFilter rateLimitingFilter,
+                                           ServiceAuthenticationFilter serviceAuthenticationFilter,
+                                           JwtAuthFilter jwtAuthFilter) throws Exception {
         http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 // CSRF PROTECTION: Enabled with exemptions for stateless JWT endpoints
@@ -173,12 +222,28 @@ public class SecurityConfig {
                         )
                         .successHandler(oauth2SuccessHandler)
                 )
-                // Add ServiceAuthenticationFilter before JwtAuthFilter
+                // FILTER CHAIN ORDER (execution from top to bottom):
+                // 1. RateLimitingFilter (fail fast on rate limit exceeded)
+                // 2. ServiceAuthenticationFilter (internal service authentication)
+                // 3. JwtAuthFilter (JWT authentication for API requests)
+                // 4. UsernamePasswordAuthenticationFilter (Spring Security default)
+                //
+                // CRITICAL: Using bean instances (not class references) to avoid IllegalArgumentException
+                // "The Filter class X does not have a registered order"
+                //
+                // Correct ordering strategy:
+                // - All three custom filters anchored to UsernamePasswordAuthenticationFilter.class
+                // - Spring preserves declaration order when filters share the same anchor
+                // - ONLY use built-in Spring Security filters as anchors (e.g., UsernamePasswordAuthenticationFilter)
+                // - NEVER use custom filter classes as anchors (e.g., JwtAuthFilter.class)
+                .addFilterBefore(rateLimitingFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(serviceAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         SecurityFilterChain chain = http.build();
         logOAuth2Configuration();
+        logRateLimitConfiguration();
+        logSecurityChainInitialization();
         return chain;
     }
 
@@ -235,5 +300,44 @@ public class SecurityConfig {
         } else {
             log.warn("⚠️ Google OAuth2 client registration not found. OAuth2 login disabled.");
         }
+    }
+
+    private void logRateLimitConfiguration() {
+        if (appProperties.getRateLimit().isEnabled()) {
+            log.info("✅ Rate limiting enabled: default={} requests/{} seconds", 
+                    appProperties.getRateLimit().getDefaultLimit(),
+                    appProperties.getRateLimit().getDefaultWindowSeconds());
+            
+            if (!appProperties.getRateLimit().getEndpoints().isEmpty()) {
+                log.info("📊 Endpoint-specific rate limits configured: {} endpoints", 
+                        appProperties.getRateLimit().getEndpoints().size());
+            }
+        } else {
+            log.warn("⚠️ Rate limiting disabled globally");
+        }
+    }
+
+    /**
+     * Log security filter chain initialization for audit trail and diagnostics.
+     * 
+     * This provides visibility into the deterministic filter execution order,
+     * which is critical for:
+     * - Performance optimization (rate limiting before expensive JWT validation)
+     * - Security auditing (understanding authentication flow)
+     * - Debugging (verifying filter order matches security requirements)
+     * 
+     * Filter Chain Execution Order:
+     * 1. RateLimitingFilter → Fail-fast for abusive IPs/users (no authentication cost)
+     * 2. ServiceAuthenticationFilter → Authenticate internal microservice calls
+     * 3. JwtAuthFilter → Authenticate external client JWT Bearer tokens
+     * 4. UsernamePasswordAuthenticationFilter → Spring Security default (rarely used)
+     */
+    private void logSecurityChainInitialization() {
+        log.info("🔐 Security Filter Chain successfully initialized with custom filters in order:");
+        log.info("   1️⃣  RateLimitingFilter → Token bucket rate limiting (IP/user-based)");
+        log.info("   2️⃣  ServiceAuthenticationFilter → Internal microservice authentication");
+        log.info("   3️⃣  JwtAuthFilter → JWT Bearer token authentication");
+        log.info("   4️⃣  UsernamePasswordAuthenticationFilter → Spring Security default");
+        log.info("🛡️  Stateless authentication model: JWT-first with OAuth2 provisioning");
     }
 }

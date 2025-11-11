@@ -13,7 +13,6 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
-import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
@@ -22,8 +21,11 @@ import java.util.List;
 /**
  * JWT authentication filter that validates Bearer tokens on each request.
  * Applies to all endpoints except explicitly public ones defined in SecurityConfig.
+ * 
+ * Bean Registration:
+ * - Registered as @Bean in SecurityConfig (not @Component)
+ * - This prevents duplicate registration and enables proper filter chain ordering
  */
-@Component
 public class JwtAuthFilter extends OncePerRequestFilter {
 
     private static final Logger log = LoggerFactory.getLogger(JwtAuthFilter.class);
@@ -71,8 +73,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
                 // CRITICAL FIX: Always replace existing authentication when valid JWT is present
                 // This ensures JWT takes precedence over OAuth2 session authentication
-                // Required for OAuth2 + JWT hybrid: after OAuth2 login, the session may contain
-                // DefaultOidcUser, but subsequent API calls with JWT must use token-based auth
+                // Required for OAuth2 + JWT hybrid: after OAuth2 login, the session may conta                // DefaultOidcUser, but subsequent API calls with JWT must use token-based auth
                 UserDetails userDetails = userDetailsService.loadUserByUsername(email);
 
                 // SECURITY: Ensure loaded principal is JwtUserPrincipal (required for RLS)

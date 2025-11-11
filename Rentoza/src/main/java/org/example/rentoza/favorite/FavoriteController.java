@@ -7,6 +7,7 @@ import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -19,8 +20,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * REST Controller for managing user favorites
- * All endpoints require authentication
+ * REST Controller for managing user favorites with RLS enforcement.
+ * All endpoints require authentication and verify userId matches current user at service layer.
  */
 @RestController
 @RequestMapping("/api/favorites")
@@ -33,10 +34,11 @@ public class FavoriteController {
     private final UserRepository userRepository;
 
     /**
-     * Add a car to favorites
-     * POST /api/favorites/{carId}
+     * Add a car to favorites.
+     * RLS-ENFORCED: User can only add favorites to their own account (verified at service layer).
      */
     @PostMapping("/{carId}")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<FavoriteDTO> addFavorite(@PathVariable Long carId) {
         User user = getAuthenticatedUser();
         Long userId = user.getId();
@@ -47,10 +49,11 @@ public class FavoriteController {
     }
 
     /**
-     * Remove a car from favorites
-     * DELETE /api/favorites/{carId}
+     * Remove a car from favorites.
+     * RLS-ENFORCED: User can only remove favorites from their own account (verified at service layer).
      */
     @DeleteMapping("/{carId}")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Void> removeFavorite(@PathVariable Long carId) {
         User user = getAuthenticatedUser();
         Long userId = user.getId();
@@ -61,10 +64,11 @@ public class FavoriteController {
     }
 
     /**
-     * Toggle favorite status (add if not favorited, remove if favorited)
-     * PUT /api/favorites/{carId}/toggle
+     * Toggle favorite status (add if not favorited, remove if favorited).
+     * RLS-ENFORCED: User can only toggle favorites on their own account (verified at service layer).
      */
     @PutMapping("/{carId}/toggle")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<FavoriteService.FavoriteToggleResponse> toggleFavorite(@PathVariable Long carId) {
         User user = getAuthenticatedUser();
         Long userId = user.getId();
@@ -75,10 +79,11 @@ public class FavoriteController {
     }
 
     /**
-     * Get all favorites for the authenticated user
-     * GET /api/favorites
+     * Get all favorites for the authenticated user.
+     * RLS-ENFORCED: User can only view their own favorites (verified at service layer).
      */
     @GetMapping
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<FavoriteDTO>> getUserFavorites() {
         User user = getAuthenticatedUser();
         Long userId = user.getId();

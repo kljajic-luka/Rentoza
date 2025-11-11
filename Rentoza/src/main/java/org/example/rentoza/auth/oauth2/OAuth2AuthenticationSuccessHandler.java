@@ -122,13 +122,25 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
     }
 
     /**
-     * Create a standardized refresh token cookie with environment-based security settings
+     * Create a standardized refresh token cookie with environment-based security settings.
+     * 
+     * ✅ OAUTH2 PERSISTENCE FIX: Changed path from /api/auth/refresh to /
+     * This ensures the refresh cookie is sent on all requests, enabling:
+     * - Frontend verifySession() calls to /api/users/me
+     * - Token refresh across different API endpoints
+     * - Persistent authentication after page reload
+     * 
+     * Security remains intact:
+     * - HttpOnly: Prevents XSS attacks
+     * - Secure: HTTPS-only (production)
+     * - SameSite: CSRF protection
+     * - 14-day expiration
      */
     private ResponseCookie createRefreshTokenCookie(String token) {
         return ResponseCookie.from(REFRESH_COOKIE, token)
                 .httpOnly(true)
                 .secure(appProperties.getCookie().isSecure())
-                .path("/api/auth/refresh")
+                .path("/")  // ✅ Changed from /api/auth/refresh to / for broader scope
                 .domain(appProperties.getCookie().getDomain())
                 .sameSite(appProperties.getCookie().getSameSite())
                 .maxAge(Duration.ofDays(14))

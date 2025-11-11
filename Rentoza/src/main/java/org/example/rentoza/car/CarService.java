@@ -24,9 +24,11 @@ public class CarService {
     private static final Logger log = LoggerFactory.getLogger(CarService.class);
 
     private final CarRepository repo;
+    private final org.example.rentoza.security.CurrentUser currentUser;
 
-    public CarService(CarRepository repo) {
+    public CarService(CarRepository repo, org.example.rentoza.security.CurrentUser currentUser) {
         this.repo = repo;
+        this.currentUser = currentUser;
     }
 
     public Car addCar(CarRequestDTO dto, User owner) {
@@ -133,8 +135,25 @@ public class CarService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Get cars by owner email with ownership verification.
+     * RLS-ENFORCED: Returns cars only if requester is the owner or admin.
+     * Prevents Owner A from viewing Owner B's private inventory.
+     * 
+     * @param email Owner's email
+     * @return List of cars owned by the user
+     * @throws org.springframework.security.access.AccessDeniedException if requester is not the owner or admin
+     */
     @Transactional(readOnly = true)
     public List<CarResponseDTO> getCarsByOwner(String email) {
+        // RLS ENFORCEMENT: Verify requester is the owner or admin
+        String requesterEmail = currentUser.email();
+        if (!requesterEmail.equalsIgnoreCase(email) && !currentUser.isAdmin()) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Unauthorized to access cars for owner: " + email
+            );
+        }
+        
         return repo.findByOwnerEmailIgnoreCase(email)
                 .stream()
                 .map(this::mapToResponse)

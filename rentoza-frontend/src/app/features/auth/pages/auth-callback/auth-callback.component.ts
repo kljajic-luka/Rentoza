@@ -24,15 +24,10 @@ import { MatIconModule } from '@angular/material/icon';
 @Component({
   selector: 'app-auth-callback',
   standalone: true,
-  imports: [
-    CommonModule,
-    MatCardModule,
-    MatProgressSpinnerModule,
-    MatIconModule
-  ],
+  imports: [CommonModule, MatCardModule, MatProgressSpinnerModule, MatIconModule],
   templateUrl: './auth-callback.component.html',
   styleUrls: ['./auth-callback.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AuthCallbackComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
@@ -65,7 +60,7 @@ export class AuthCallbackComponent implements OnInit {
       // Redirect to login after 2 seconds
       setTimeout(() => {
         void this.router.navigate(['/auth/login'], {
-          queryParams: { error: 'google_auth_failed' }
+          queryParams: { error: 'google_auth_failed' },
         });
       }, 2000);
       return;
@@ -82,7 +77,7 @@ export class AuthCallbackComponent implements OnInit {
       // Redirect to login after 2 seconds
       setTimeout(() => {
         void this.router.navigate(['/auth/login'], {
-          queryParams: { error: 'no_token' }
+          queryParams: { error: 'no_token' },
         });
       }, 2000);
       return;
@@ -92,45 +87,96 @@ export class AuthCallbackComponent implements OnInit {
     this.processGoogleToken(token);
   }
 
-  private processGoogleToken(token: string): void {
-    // Inject token into AuthService (same as local login)
-    this.authService.setAccessToken(token);
+  private async processGoogleToken(token: string): Promise<void> {
+    try {
+      // ✅ STEP 1: Persist token to localStorage via AuthService
+      // This ensures the token survives page reloads
+      console.log('🔐 OAuth2: Persisting access token to localStorage');
+      this.authService.setAccessToken(token);
 
-    // Fetch user profile to populate auth state
-    this.authService
-      .refreshUserProfile()
-      .pipe(finalize(() => this.isProcessing.set(false)))
-      .subscribe({
-        next: (user) => {
-          this.toastr.success('Uspešno ste se prijavili putem Google naloga!');
-          this.favoriteService.loadFavoritedCarIds().subscribe({
-            error: (err) =>
-              console.warn('Failed to preload favorites after OAuth login', err),
-          });
+      // ✅ STEP 2: Verify session with backend /api/users/me
+      // This ensures frontend state synchronizes with backend RLS enforcement
+      console.log('🔄 OAuth2: Verifying session with backend /api/users/me');
+      const verifiedUser = await this.authService.verifySession();
 
-          // Check if there's a return URL, otherwise use role-based redirection
-          const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
-          if (returnUrl) {
-            void this.router.navigateByUrl(returnUrl);
-          } else {
-            this.redirectService.redirectAfterLogin(user);
-          }
-        },
-        error: (err) => {
-          console.error('Failed to fetch user profile after OAuth2 login:', err);
-          this.errorMessage.set('Neuspešno učitavanje korisničkog profila.');
+      if (!verifiedUser) {
+        throw new Error('Session verification failed - backend returned null');
+      }
 
-          this.toastr.error('Neuspešno učitavanje profila', 'Greška');
-
-          // Clear the session and redirect to login
-          this.authService.clearSession();
-
-          setTimeout(() => {
-            void this.router.navigate(['/auth/login'], {
-              queryParams: { error: 'profile_load_failed' }
-            });
-          }, 2000);
-        }
+      // ✅ STEP 3: Load user's favorited cars for immediate availability
+      console.log('❤️ OAuth2: Loading favorited cars');
+      this.favoriteService.loadFavoritedCarIds().subscribe({
+        error: (err) => console.warn('Failed to preload favorites after OAuth login', err),
       });
+
+      // ✅ STEP 4: Start token expiration watcher
+      console.log('⏰ OAuth2: Starting token expiration watcher');
+      this.authService.startTokenWatcher(60000);
+
+      // ✅ STEP 5: Show success notification
+      this.toastr.success('Uspešno ste se prijavili putem Google naloga!', 'Dobrodošli');
+
+      // ✅ STEP 6: Role-based redirection using backend-verified roles
+      const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
+
+      if (returnUrl) {
+        console.log(`🔀 OAuth2: Redirecting to return URL: ${returnUrl}`);
+        void this.router.navigateByUrl(returnUrl);
+      } else {
+        console.log(
+          `🔀 OAuth2: Redirecting based on verified role: ${verifiedUser.roles?.join(', ')}`
+        );
+        this.redirectToRoleBasedDashboard(verifiedUser.roles);
+      }
+
+      this.isProcessing.set(false);
+    } catch (err) {
+      console.error('❌ OAuth2: Session verification failed:', err);
+      this.errorMessage.set('Neuspešno učitavanje korisničkog profila.');
+      this.isProcessing.set(false);
+
+      this.toastr.error('Neuspešno učitavanje profila', 'Greška');
+
+      // Clear the session and redirect to login
+      this.authService.clearSession();
+
+      setTimeout(() => {
+        void this.router.navigate(['/auth/login'], {
+          queryParams: { error: 'profile_load_failed' },
+        });
+      }, 2000);
+    }
+  }
+
+  /**
+   * Redirects user to role-appropriate dashboard using backend-verified roles.
+   *
+   * ✅ OWNER → /owner/dashboard
+   * ✅ USER → /pocetna
+   * ✅ ADMIN → /admin (future-proofing)
+   *
+   * @param roles Backend-verified roles array from /api/users/me
+   */
+  private redirectToRoleBasedDashboard(roles: string[] | undefined): void {
+    if (!roles || roles.length === 0) {
+      console.warn('⚠️ No roles found - redirecting to /pocetna');
+      void this.router.navigate(['/pocetna']);
+      return;
+    }
+
+    // Priority: ADMIN > OWNER > USER
+    if (roles.includes('ADMIN')) {
+      console.log('👑 Redirecting ADMIN to /admin');
+      void this.router.navigate(['/admin']); // Future-proofing
+    } else if (roles.includes('OWNER')) {
+      console.log('🚗 Redirecting OWNER to /owner/dashboard');
+      void this.router.navigate(['/owner/dashboard']);
+    } else if (roles.includes('USER')) {
+      console.log('👤 Redirecting USER to /pocetna');
+      void this.router.navigate(['/pocetna']);
+    } else {
+      console.warn('⚠️ Unknown role - redirecting to /pocetna');
+      void this.router.navigate(['/pocetna']);
+    }
   }
 }

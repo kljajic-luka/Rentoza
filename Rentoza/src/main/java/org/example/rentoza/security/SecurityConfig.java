@@ -79,14 +79,18 @@ public class SecurityConfig {
                                 "/api/auth/register",
                                 "/api/auth/refresh",
                                 "/api/auth/logout",
-                                "/api/auth/google/**",
-                                "/api/cars/**",
-                                "/api/reviews/car/**"
+                                "/api/auth/google/**"
                         ).permitAll()
                         // OAuth2 endpoints - required for Google login flow
                         .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
+                        // Public static resources
                         .requestMatchers(HttpMethod.GET, "/uploads/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/bookings/car/**").permitAll()
+                        // RLS-TIGHTENED: Only GET /api/cars (marketplace) and /api/cars/{id} are public
+                        // All other car operations require authentication and ownership validation
+                        .requestMatchers(HttpMethod.GET, "/api/cars", "/api/cars/{id}").permitAll()
+                        // RLS-TIGHTENED: Only GET /api/reviews/car/** (public car reviews) are permitted
+                        // All other review operations require authentication
+                        .requestMatchers(HttpMethod.GET, "/api/reviews/car/**").permitAll()
                         // User endpoints - must come before catch-all rules
                         .requestMatchers("/api/users/me").authenticated()
                         .requestMatchers(HttpMethod.PATCH, "/api/users/me").authenticated()

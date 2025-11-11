@@ -16,19 +16,41 @@ import java.util.List;
  * Service for managing user favorites with transaction-safe operations
  */
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class FavoriteService {
 
     private final FavoriteRepository favoriteRepository;
     private final CarRepository carRepository;
     private final UserRepository userRepository;
+    private final org.example.rentoza.security.CurrentUser currentUser;
+
+    public FavoriteService(FavoriteRepository favoriteRepository, CarRepository carRepository, 
+                           UserRepository userRepository, org.example.rentoza.security.CurrentUser currentUser) {
+        this.favoriteRepository = favoriteRepository;
+        this.carRepository = carRepository;
+        this.userRepository = userRepository;
+        this.currentUser = currentUser;
+    }
 
     /**
-     * Add a car to user's favorites (idempotent - won't duplicate)
+     * Add a car to user's favorites (idempotent - won't duplicate).
+     * RLS-ENFORCED: User can only add favorites to their own account.
+     * 
+     * @param userId User ID
+     * @param carId Car ID to favorite
+     * @return Favorite DTO
+     * @throws org.springframework.security.access.AccessDeniedException if userId doesn't match current user
      */
     @Transactional
     public FavoriteDTO addFavorite(Long userId, Long carId) {
+        // RLS ENFORCEMENT: Verify userId matches current user
+        Long requesterId = currentUser.id();
+        if (!requesterId.equals(userId) && !currentUser.isAdmin()) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Unauthorized to add favorites for user: " + userId
+            );
+        }
+        
         log.debug("Adding car {} to favorites for user {}", carId, userId);
 
         try {
@@ -63,10 +85,23 @@ public class FavoriteService {
     }
 
     /**
-     * Remove a car from user's favorites (idempotent)
+     * Remove a car from user's favorites (idempotent).
+     * RLS-ENFORCED: User can only remove favorites from their own account.
+     * 
+     * @param userId User ID
+     * @param carId Car ID to unfavorite
+     * @throws org.springframework.security.access.AccessDeniedException if userId doesn't match current user
      */
     @Transactional
     public void removeFavorite(Long userId, Long carId) {
+        // RLS ENFORCEMENT: Verify userId matches current user
+        Long requesterId = currentUser.id();
+        if (!requesterId.equals(userId) && !currentUser.isAdmin()) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Unauthorized to remove favorites for user: " + userId
+            );
+        }
+        
         logUserContext("Removing favorite", userId);
         log.debug("Removing car {} from favorites for user {}", carId, userId);
 
@@ -79,10 +114,24 @@ public class FavoriteService {
     }
 
     /**
-     * Toggle favorite status (add if not present, remove if present)
+     * Toggle favorite status (add if not present, remove if present).
+     * RLS-ENFORCED: User can only toggle favorites on their own account.
+     * 
+     * @param userId User ID
+     * @param carId Car ID to toggle
+     * @return FavoriteToggleResponse indicating new state
+     * @throws org.springframework.security.access.AccessDeniedException if userId doesn't match current user
      */
     @Transactional
     public FavoriteToggleResponse toggleFavorite(Long userId, Long carId) {
+        // RLS ENFORCEMENT: Verify userId matches current user
+        Long requesterId = currentUser.id();
+        if (!requesterId.equals(userId) && !currentUser.isAdmin()) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Unauthorized to toggle favorites for user: " + userId
+            );
+        }
+        
         logUserContext("Toggling favorite", userId);
         log.debug("Toggling favorite for car {} and user {}", carId, userId);
 
@@ -115,10 +164,24 @@ public class FavoriteService {
     }
 
     /**
-     * Get all favorites for a user with car details
+     * Get all favorites for a user with car details.
+     * RLS-ENFORCED: Returns favorites only if requester is the user or admin.
+     * Prevents User A from viewing User B's favorites (privacy violation).
+     * 
+     * @param userId User ID
+     * @return List of user's favorites
+     * @throws org.springframework.security.access.AccessDeniedException if requester is not the user or admin
      */
     @Transactional(readOnly = true)
     public List<FavoriteDTO> getUserFavorites(Long userId) {
+        // RLS ENFORCEMENT: Verify requester is the user or admin
+        Long requesterId = currentUser.id();
+        if (!requesterId.equals(userId) && !currentUser.isAdmin()) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Unauthorized to access favorites for user: " + userId
+            );
+        }
+        
         logUserContext("Fetching favorites list", userId);
         log.debug("Fetching all favorites for user {}", userId);
 
@@ -136,10 +199,23 @@ public class FavoriteService {
     }
 
     /**
-     * Get list of favorited car IDs for a user (lightweight)
+     * Get list of favorited car IDs for a user (lightweight).
+     * RLS-ENFORCED: Returns IDs only if requester is the user or admin.
+     * 
+     * @param userId User ID
+     * @return List of favorited car IDs
+     * @throws org.springframework.security.access.AccessDeniedException if requester is not the user or admin
      */
     @Transactional(readOnly = true)
     public List<Long> getFavoritedCarIds(Long userId) {
+        // RLS ENFORCEMENT: Verify requester is the user or admin
+        Long requesterId = currentUser.id();
+        if (!requesterId.equals(userId) && !currentUser.isAdmin()) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Unauthorized to access favorite car IDs for user: " + userId
+            );
+        }
+        
         logUserContext("Fetching favorited car IDs", userId);
         try {
             List<Long> ids = favoriteRepository.findFavoritedCarIdsByUserId(userId);

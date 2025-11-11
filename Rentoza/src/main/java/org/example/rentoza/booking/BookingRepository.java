@@ -108,4 +108,55 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate
     );
+
+    // ========== RLS-ENFORCED QUERIES (Enterprise Security Enhancement) ==========
+
+    /**
+     * Find booking by ID with ownership constraint.
+     * Returns booking only if the user is the renter OR the car owner.
+     * Use this instead of findByIdWithRelations() to enforce RLS.
+     * 
+     * @param id Booking ID
+     * @param userId Authenticated user's ID
+     * @return Optional containing booking if user has access
+     */
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.car c " +
+           "JOIN FETCH b.renter r " +
+           "LEFT JOIN FETCH c.owner o " +
+           "WHERE b.id = :id " +
+           "AND (r.id = :userId OR o.id = :userId)")
+    java.util.Optional<Booking> findByIdForUser(@Param("id") Long id, @Param("userId") Long userId);
+
+    /**
+     * Find all bookings for a car with owner verification.
+     * Returns bookings only if the authenticated user is the car owner.
+     * Prevents horizontal privilege escalation (Owner A viewing Owner B's bookings).
+     * 
+     * @param carId Car ID
+     * @param ownerId Authenticated owner's user ID
+     * @return List of bookings for the car (empty if user is not the owner)
+     */
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.car c " +
+           "JOIN FETCH b.renter r " +
+           "WHERE c.id = :carId " +
+           "AND c.owner.id = :ownerId " +
+           "ORDER BY b.startDate DESC")
+    List<Booking> findByCarIdForOwner(@Param("carId") Long carId, @Param("ownerId") Long ownerId);
+
+    /**
+     * Find bookings for multiple cars with owner verification.
+     * Ensures all returned bookings belong to cars owned by the authenticated user.
+     * 
+     * @param carIds List of car IDs
+     * @param ownerId Authenticated owner's user ID
+     * @return List of bookings for cars owned by the user
+     */
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.car c " +
+           "JOIN FETCH b.renter r " +
+           "WHERE c.id IN :carIds " +
+           "AND c.owner.id = :ownerId")
+    List<Booking> findByCarIdInForOwner(@Param("carIds") List<Long> carIds, @Param("ownerId") Long ownerId);
 }

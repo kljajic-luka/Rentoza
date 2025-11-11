@@ -58,6 +58,9 @@ export class AuthService {
         const user: UserProfile = JSON.parse(storedUserJson);
         this.accessTokenSubject.next(storedToken);
         this.currentUserSubject.next(user);
+
+        // ✅ Verify session with backend to ensure token is still valid
+        await this.verifySession();
       } catch (error) {
         console.warn('⚠️ Failed to parse stored user, clearing storage');
         localStorage.removeItem('access_token');
@@ -71,28 +74,7 @@ export class AuthService {
       this.accessTokenSubject.next(storedToken);
 
       try {
-        const { UserService } = await import('@core/services/user.service');
-        const userService = this.injector.get(UserService);
-
-        const user = await firstValueFrom(
-          userService.getProfile().pipe(
-            tap((profile: UserProfile) => {
-              localStorage.setItem('current_user', JSON.stringify(profile));
-              this.currentUserSubject.next(profile);
-              console.log('✅ Restored user profile via /api/users/me:', profile);
-            }),
-            catchError((err) => {
-              console.warn('⚠️ Failed to restore user profile, clearing session', err);
-              this.clearSession();
-              return of(null);
-            })
-          )
-        );
-
-        // After restoring user, refresh the access token
-        if (user) {
-          await firstValueFrom(this.refreshAccessToken().pipe(catchError(() => of(null))));
-        }
+        await this.verifySession();
         return;
       } catch (error) {
         console.warn('⚠️ Error during user profile restoration', error);
@@ -103,6 +85,121 @@ export class AuthService {
 
     // Case 3: No token or token with user already loaded - just refresh
     await firstValueFrom(this.refreshAccessToken().pipe(catchError(() => of(null))));
+  }
+
+  /**
+   * Verifies active session by querying backend /api/users/me endpoint.
+   * This ensures frontend state never diverges from backend authorization reality.
+   *
+   * ✅ Backend-verified roles (not client-side token claims)
+   * ✅ Handles 401 (expired token) → triggers refresh or logout
+   * ✅ Handles 403 (insufficient permissions) → clears session
+   * ✅ Syncs currentUser$ with backend state
+   *
+   * Call this during:
+   * - App initialization (APP_INITIALIZER)
+   * - After token refresh
+   * - When frontend suspects state divergence
+   */
+  async verifySession(): Promise<UserProfile | null> {
+    const token = this.getAccessToken();
+
+    if (!token) {
+      console.log('🔒 No access token - skipping session verification');
+      return null;
+    }
+
+    try {
+      const backendUser = await firstValueFrom(
+        this.http
+          .get<any>(`${environment.baseApiUrl}/users/me`, {
+            withCredentials: true,
+          })
+          .pipe(
+            map((response) => {
+              // ✅ Backend returns: {id, email, firstName, lastName, roles: string[], authenticated: boolean}
+              if (!response.authenticated) {
+                throw new Error('Backend reports user not authenticated');
+              }
+
+              const verifiedUser: UserProfile = {
+                id: String(response.id),
+                email: response.email,
+                firstName: response.firstName,
+                lastName: response.lastName,
+                phone: response.phone || undefined,
+                age: response.age || undefined,
+                avatarUrl: response.avatarUrl || undefined,
+                roles: response.roles as UserRole[], // ✅ Backend-verified roles
+              };
+
+              return verifiedUser;
+            }),
+            tap((verifiedUser) => {
+              // ✅ Update frontend state with backend-verified data
+              localStorage.setItem('current_user', JSON.stringify(verifiedUser));
+              this.currentUserSubject.next(verifiedUser);
+              console.log('✅ Session verified with backend:', verifiedUser);
+            }),
+            catchError((error: HttpErrorResponse) => {
+              console.warn('⚠️ Session verification failed:', error.status);
+
+              if (error.status === 401) {
+                // Token expired - try to refresh
+                console.log('🔄 Token expired - attempting refresh');
+                return this.refreshAccessToken().pipe(
+                  switchMap(() => {
+                    // Retry verification after refresh
+                    return this.http
+                      .get<any>(`${environment.baseApiUrl}/users/me`, {
+                        withCredentials: true,
+                      })
+                      .pipe(
+                        map(
+                          (response) =>
+                            ({
+                              id: String(response.id),
+                              email: response.email,
+                              firstName: response.firstName,
+                              lastName: response.lastName,
+                              phone: response.phone,
+                              age: response.age,
+                              avatarUrl: response.avatarUrl,
+                              roles: response.roles,
+                            } as UserProfile)
+                        )
+                      );
+                  }),
+                  catchError(() => {
+                    // Refresh failed - clear session
+                    console.log('❌ Session refresh failed - clearing session');
+                    this.clearSession();
+                    this.sessionExpiredSubject.next();
+                    return of(null);
+                  })
+                );
+              }
+
+              if (error.status === 403) {
+                // Insufficient permissions - clear session
+                console.log('🚫 Insufficient permissions - clearing session');
+                this.clearSession();
+                return of(null);
+              }
+
+              // Other errors - clear session
+              this.clearSession();
+              return of(null);
+            })
+          )
+      );
+
+      return backendUser;
+    } catch (error) {
+      console.error('❌ Session verification error:', error);
+      this.clearSession();
+      return null;
+    }
   }
 
   login(payload: LoginRequest): Observable<UserProfile> {
@@ -169,9 +266,19 @@ export class AuthService {
   /**
    * Set access token directly (used for OAuth2 callback)
    * This allows Google OAuth2 to inject the JWT token received from backend
+   *
+   * ✅ Persists to localStorage for session restoration across page reloads
+   * ✅ Updates accessTokenSubject for immediate reactivity
+   * ✅ Does NOT update currentUserSubject - caller must verify session via /api/users/me
    */
   setAccessToken(token: string): void {
+    // ✅ Persist to localStorage for OAuth2 session restoration
+    localStorage.setItem('access_token', token);
+
+    // ✅ Update observable for immediate reactivity
     this.accessTokenSubject.next(token);
+
+    console.log('✅ Access token persisted (OAuth2 flow)');
   }
 
   isAuthenticated(): boolean {

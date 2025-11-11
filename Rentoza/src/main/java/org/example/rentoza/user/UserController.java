@@ -2,11 +2,15 @@ package org.example.rentoza.user;
 
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
+import org.example.rentoza.security.CurrentUser;
+import org.example.rentoza.security.JwtUserPrincipal;
 import org.example.rentoza.security.JwtUtil;
 import org.example.rentoza.user.dto.*;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -16,11 +20,13 @@ public class UserController {
     private final UserService service;
     private final ProfileService profileService;
     private final JwtUtil jwtUtil;
+    private final CurrentUser currentUser;
 
-    public UserController(UserService service, ProfileService profileService, JwtUtil jwtUtil) {
+    public UserController(UserService service, ProfileService profileService, JwtUtil jwtUtil, CurrentUser currentUser) {
         this.service = service;
         this.profileService = profileService;
         this.jwtUtil = jwtUtil;
+        this.currentUser = currentUser;
     }
 
     // ✅ REGISTER
@@ -73,17 +79,42 @@ public class UserController {
         return ResponseEntity.ok(response);
     }
 
+    /**
+     * GET /api/users/me - Backend-verified session endpoint for RLS synchronization
+     * Returns authenticated user's complete profile with backend-verified roles
+     * Used by frontend for session initialization and role verification
+     * 
+     * @return CurrentUserDTO with id, email, roles array, authenticated flag
+     */
     @GetMapping("/me")
-    public ResponseEntity<?> getMyProfile(@RequestHeader("Authorization") String authHeader) {
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> getMyProfile() {
         try {
-            String email = extractEmail(authHeader);
-            var user = service.getUserByEmail(email)
+            // Use CurrentUser to get backend-verified authentication context
+            JwtUserPrincipal principal = currentUser.getPrincipal()
+                    .orElseThrow(() -> new EntityNotFoundException("User not authenticated"));
+            
+            // Fetch complete user data from database
+            var user = service.getUserById(principal.id())
                     .orElseThrow(() -> new EntityNotFoundException("User not found"));
-            return ResponseEntity.ok(new UserResponseDTO(
-                    user.getId(), user.getFirstName(), user.getLastName(), user.getEmail(), user.getPhone(), user.getAge(), user.getRole().name()
+            
+            // Return complete user profile with roles array (not single role string)
+            return ResponseEntity.ok(Map.of(
+                    "id", user.getId(),
+                    "email", user.getEmail(),
+                    "firstName", user.getFirstName(),
+                    "lastName", user.getLastName(),
+                    "phone", user.getPhone() != null ? user.getPhone() : "",
+                    "age", user.getAge() != null ? user.getAge() : 0,
+                    "avatarUrl", user.getAvatarUrl() != null ? user.getAvatarUrl() : "",
+                    "roles", List.of(user.getRole().name()), // ✅ Roles as array
+                    "authenticated", true  // ✅ Backend verification flag
             ));
         } catch (RuntimeException e) {
-            return ResponseEntity.status(401).body(Map.of("error", e.getMessage()));
+            return ResponseEntity.status(401).body(Map.of(
+                    "error", e.getMessage(),
+                    "authenticated", false
+            ));
         }
     }
 

@@ -39,10 +39,11 @@ public class BookingService {
     private final JwtUtil jwtUtil;
     private final ChatServiceClient chatServiceClient;
     private final NotificationService notificationService;
+    private final org.example.rentoza.security.CurrentUser currentUser;
 
     public BookingService(BookingRepository repo, CarRepository carRepo, UserRepository userRepo,
                           ReviewRepository reviewRepo, JwtUtil jwtUtil, ChatServiceClient chatServiceClient,
-                          NotificationService notificationService) {
+                          NotificationService notificationService, org.example.rentoza.security.CurrentUser currentUser) {
         this.repo = repo;
         this.carRepo = carRepo;
         this.userRepo = userRepo;
@@ -50,6 +51,7 @@ public class BookingService {
         this.jwtUtil = jwtUtil;
         this.chatServiceClient = chatServiceClient;
         this.notificationService = notificationService;
+        this.currentUser = currentUser;
     }
 
     @Transactional
@@ -163,37 +165,121 @@ public class BookingService {
         return savedBooking;
     }
 
+    /**
+     * Get bookings by user email with ownership verification.
+     * RLS-ENFORCED: Returns bookings only if requester email matches or is admin.
+     * 
+     * @param email User's email
+     * @return List of bookings for the user
+     * @throws org.springframework.security.access.AccessDeniedException if requester is not the user or admin
+     */
     public List<Booking> getBookingsByUser(String email) {
+        // RLS ENFORCEMENT: Verify requester is the user or admin
+        String requesterEmail = currentUser.email();
+        if (!requesterEmail.equalsIgnoreCase(email) && !currentUser.isAdmin()) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Unauthorized to access bookings for user: " + email
+            );
+        }
+        
         return repo.findByRenterEmailIgnoreCase(email);
     }
 
     /**
-     * Get booking by ID with all related entities eagerly loaded to prevent lazy-loading issues
-     * Used for internal service-to-service communication
+     * Get booking by ID with ownership verification.
+     * RLS-ENFORCED: Returns booking only if user is the renter, car owner, or admin.
+     * 
+     * @param id Booking ID
+     * @return Booking entity with all related entities loaded
+     * @throws ResourceNotFoundException if booking not found or user lacks access
      */
     public Booking getBookingById(Long id) {
-        return repo.findByIdWithRelations(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Booking not found with id: " + id));
+        // RLS ENFORCEMENT: Use ownership-scoped query
+        Long userId = currentUser.id();
+        return repo.findByIdForUser(id, userId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Booking not found with id: " + id + " or user lacks access"
+                ));
     }
 
+    /**
+     * Get all booking IDs.
+     * ADMIN-ONLY: This method is for internal/admin use only.
+     * 
+     * @return List of all booking IDs
+     */
     public List<Long> getAllBookingIds() {
+        // RLS ENFORCEMENT: Admin-only operation
+        if (!currentUser.isAdmin()) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Unauthorized: Only admins can access all booking IDs"
+            );
+        }
+        
         return repo.findAll().stream()
                 .map(Booking::getId)
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Get all bookings for a specific car with owner verification.
+     * RLS-ENFORCED: Returns bookings only if requester is the car owner or admin.
+     * 
+     * @param carId Car ID
+     * @return List of bookings for the car
+     * @throws org.springframework.security.access.AccessDeniedException if requester is not the car owner or admin
+     */
     public List<BookingResponseDTO> getBookingsForCar(Long carId) {
-        var bookings = repo.findByCarId(carId);
+        // RLS ENFORCEMENT: Verify car ownership
+        Long ownerId = currentUser.id();
+        
+        // Use ownership-scoped query unless admin
+        List<Booking> bookings;
+        if (currentUser.isAdmin()) {
+            bookings = repo.findByCarId(carId);
+        } else {
+            bookings = repo.findByCarIdForOwner(carId, ownerId);
+            
+            // If no bookings found, verify car exists and belongs to user
+            if (bookings.isEmpty()) {
+                Car car = carRepo.findById(carId)
+                        .orElseThrow(() -> new ResourceNotFoundException("Car not found with id: " + carId));
+                
+                if (!car.getOwner().getId().equals(ownerId)) {
+                    throw new org.springframework.security.access.AccessDeniedException(
+                            "Unauthorized to access bookings for car " + carId + ": user is not the owner"
+                    );
+                }
+            }
+        }
 
         return bookings.stream()
                 .map(BookingResponseDTO::new)
                 .toList();
     }
 
+    /**
+     * Cancel booking with ownership verification.
+     * RLS-ENFORCED: Only the renter can cancel their booking.
+     * 
+     * @param id Booking ID
+     * @return Cancelled booking
+     * @throws RuntimeException if booking not found
+     * @throws org.springframework.security.access.AccessDeniedException if user is not the renter
+     */
     @Transactional
     public Booking cancelBooking(Long id) {
         var booking = repo.findById(id)
                 .orElseThrow(() -> new RuntimeException("Booking not found"));
+        
+        // RLS ENFORCEMENT: Only renter can cancel (owners can't unilaterally cancel confirmed bookings)
+        Long userId = currentUser.id();
+        if (!booking.getRenter().getId().equals(userId) && !currentUser.isAdmin()) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Unauthorized to cancel booking " + id + ": only the renter can cancel"
+            );
+        }
+        
         booking.setStatus(BookingStatus.CANCELLED);
 
         // Force initialize before leaving the transaction

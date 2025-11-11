@@ -9,11 +9,17 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
 
+/**
+ * REST controller for booking operations with RLS enforcement.
+ * All endpoints now protected with @PreAuthorize annotations for defense-in-depth.
+ * Service layer provides additional ownership validation.
+ */
 @RestController
 @RequestMapping("/api/bookings")
 public class BookingController {
@@ -28,7 +34,12 @@ public class BookingController {
         this.jwtUtil = jwtUtil;
     }
 
+    /**
+     * Get current user's bookings.
+     * RLS-ENFORCED: User can only see their own bookings.
+     */
     @GetMapping("/me")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<UserBookingResponseDTO>> getMyBookings(@RequestHeader("Authorization") String authHeader) {
         try {
             List<UserBookingResponseDTO> bookings = service.getMyBookings(authHeader);
@@ -39,7 +50,12 @@ public class BookingController {
         }
     }
 
+    /**
+     * Create a new booking.
+     * RLS-ENFORCED: Authenticated users can create bookings (renter extracted from JWT).
+     */
     @PostMapping
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<?> createBooking(@RequestBody BookingRequestDTO dto, @RequestHeader("Authorization") String authHeader) {
         try {
             Booking booking = service.createBooking(dto, authHeader);
@@ -49,7 +65,12 @@ public class BookingController {
         }
     }
 
+    /**
+     * Get bookings for a specific user by email.
+     * RLS-ENFORCED: User can only access their own bookings (verified at service layer).
+     */
     @GetMapping("/user/{email}")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<?> getUserBookings(
             @PathVariable String email,
             @RequestHeader(value = "Authorization", required = false) String authHeader
@@ -74,17 +95,24 @@ public class BookingController {
         }
     }
 
+    /**
+     * Get all bookings for a specific car.
+     * RLS-ENFORCED: Only car owner can view bookings (verified at service layer).
+     * SpEL expression ensures user has OWNER role and service validates actual ownership.
+     */
     @GetMapping("/car/{carId}")
+    @PreAuthorize("hasAnyRole('OWNER', 'ADMIN')")
     public ResponseEntity<List<BookingResponseDTO>> getBookingsForCar(@PathVariable Long carId) {
         return ResponseEntity.ok(service.getBookingsForCar(carId));
     }
 
     /**
-     * Get booking by ID - for internal service communication
-     * Accessible with INTERNAL_SERVICE authority
-     * Returns full booking details with eagerly loaded relationships
+     * Get booking by ID - with ownership verification.
+     * RLS-ENFORCED: Only renter, car owner, or admin can view booking.
+     * Uses BookingSecurityService for SpEL-based access control.
      */
     @GetMapping("/{id}")
+    @PreAuthorize("@bookingSecurity.canAccessBooking(#id, authentication.principal.id) or hasRole('ADMIN')")
     public ResponseEntity<?> getBookingById(@PathVariable Long id) {
         try {
             Booking booking = service.getBookingById(id);
@@ -119,7 +147,13 @@ public class BookingController {
         ));
     }
 
+    /**
+     * Cancel a booking.
+     * RLS-ENFORCED: Only the renter can cancel their booking (verified at service layer).
+     * SpEL expression ensures only booking modifier can access.
+     */
     @PutMapping("/cancel/{id}")
+    @PreAuthorize("@bookingSecurity.canModifyBooking(#id, authentication.principal.id) or hasRole('ADMIN')")
     public ResponseEntity<?> cancelBooking(
             @PathVariable Long id,
             @RequestHeader(value = "Authorization", required = false) String authHeader
@@ -149,13 +183,15 @@ public class BookingController {
     }
 
     /**
-     * Phase 2.3: Validate booking availability without creating the booking
-     * Returns 409 Conflict if dates are not available, 200 OK if available
+     * Phase 2.3: Validate booking availability without creating the booking.
+     * RLS-ENFORCED: Authenticated users can check availability.
+     * Returns 409 Conflict if dates are not available, 200 OK if available.
      * 
      * @param dto Booking request with car ID and date range
      * @return 200 with {available: true} if dates are free, 409 with error if conflict
      */
     @PostMapping("/validate")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<?> validateBooking(@RequestBody BookingRequestDTO dto) {
         try {
             boolean available = service.checkAvailability(dto);

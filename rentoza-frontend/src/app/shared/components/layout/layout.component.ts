@@ -131,7 +131,6 @@ export class LayoutComponent implements OnInit {
 
     // Handle session expiration gracefully
     this.authService.sessionExpired$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
-      console.log('🔔 Session expired - transitioning to guest UI');
       this.toastr.info('Vaša sesija je istekla. Prijavite se ponovo.', 'Sesija istekla', {
         timeOut: 5000,
         progressBar: true,

@@ -138,15 +138,32 @@ export class WebSocketService implements OnDestroy {
           this.handleConnectionError(error);
         };
 
-        // Handle token refresh
+        // ✅ Handle token refresh (reconnect with new token)
         this.authService.accessToken$
           .pipe(
-            filter(token => token !== this.authService.getAccessToken()),
+            filter((token) => token !== this.authService.getAccessToken()),
             takeUntil(this.destroy$)
           )
           .subscribe(() => {
             this.reconnectWithNewToken();
           });
+
+        // ✅ Handle session expiration (disconnect immediately on logout)
+        this.authService.currentUser$
+          .pipe(
+            filter((user) => user === null), // User logged out or session expired
+            takeUntil(this.destroy$)
+          )
+          .subscribe(() => {
+            console.log('🔌 User logged out - disconnecting WebSocket');
+            this.disconnect(true);
+          });
+
+        // ✅ Handle session expiration events
+        this.authService.sessionExpired$.pipe(takeUntil(this.destroy$)).subscribe(() => {
+          console.log('⏰ Session expired - disconnecting WebSocket');
+          this.disconnect(true);
+        });
 
         // Activate the connection
         this.stompClient.activate();

@@ -34,6 +34,7 @@ public class ReviewService {
     private final UserRepository userRepo;
     private final NotificationService notificationService;
     private final BookingService bookingService;
+    private final org.example.rentoza.security.CurrentUser currentUser;
 
     public ReviewService(
             ReviewRepository repo,
@@ -41,7 +42,8 @@ public class ReviewService {
             BookingRepository bookingRepo,
             UserRepository userRepo,
             NotificationService notificationService,
-            BookingService bookingService
+            BookingService bookingService,
+            org.example.rentoza.security.CurrentUser currentUser
     ) {
         this.repo = repo;
         this.carRepo = carRepo;
@@ -49,6 +51,7 @@ public class ReviewService {
         this.userRepo = userRepo;
         this.notificationService = notificationService;
         this.bookingService = bookingService;
+        this.currentUser = currentUser;
     }
 
     @Transactional
@@ -379,10 +382,23 @@ public class ReviewService {
     }
 
     /**
-     * Get reviews received by a user (reviews where they are the reviewee)
-     * Used for owner reviews page - shows reviews FROM renters
+     * Get reviews received by a user (reviews where they are the reviewee).
+     * RLS-ENFORCED: Returns reviews only if requester is the reviewee or admin.
+     * Used for owner reviews page - shows reviews FROM renters.
+     * 
+     * @param email Reviewee's email
+     * @return List of reviews received by the user
+     * @throws org.springframework.security.access.AccessDeniedException if requester is not the reviewee or admin
      */
     public List<ReviewResponseDTO> getReviewsReceivedByEmail(String email) {
+        // RLS ENFORCEMENT: Verify requester is the reviewee or admin
+        String requesterEmail = currentUser.email();
+        if (!requesterEmail.equalsIgnoreCase(email) && !currentUser.isAdmin()) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Unauthorized to access reviews for user: " + email
+            );
+        }
+        
         List<Review> reviews = userRepo.findByEmail(email)
                 .map(repo::findByReviewee)
                 .orElseGet(List::of);
@@ -393,10 +409,23 @@ public class ReviewService {
     }
 
     /**
-     * Get reviews given by owner (reviews where owner is the reviewer)
-     * Used for owner reviews page - shows reviews TO renters
+     * Get reviews given by owner (reviews where owner is the reviewer).
+     * RLS-ENFORCED: Returns reviews only if requester is the reviewer or admin.
+     * Used for owner reviews page - shows reviews TO renters.
+     * 
+     * @param email Reviewer's (owner's) email
+     * @return List of reviews given by the owner
+     * @throws org.springframework.security.access.AccessDeniedException if requester is not the reviewer or admin
      */
     public List<ReviewResponseDTO> getReviewsGivenByOwner(String email) {
+        // RLS ENFORCEMENT: Verify requester is the reviewer or admin
+        String requesterEmail = currentUser.email();
+        if (!requesterEmail.equalsIgnoreCase(email) && !currentUser.isAdmin()) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Unauthorized to access reviews given by: " + email
+            );
+        }
+        
         List<Review> reviews = userRepo.findByEmail(email)
                 .map(owner -> repo.findByReviewerAndDirection(owner, ReviewDirection.FROM_OWNER))
                 .orElseGet(List::of);

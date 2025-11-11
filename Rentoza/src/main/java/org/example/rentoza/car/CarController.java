@@ -10,6 +10,7 @@ import org.example.rentoza.user.UserRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Arrays;
@@ -31,7 +32,12 @@ public class CarController {
         this.userRepo = userRepo;
     }
 
+    /**
+     * Add a new car listing.
+     * RLS-ENFORCED: Only owners can add cars (owner extracted from JWT).
+     */
     @PostMapping("/add")
+    @PreAuthorize("hasRole('OWNER')")
     public ResponseEntity<?> addCar(
             @RequestBody CarRequestDTO dto,
             @RequestHeader(value = "Authorization", required = false) String authHeader
@@ -149,13 +155,21 @@ public class CarController {
         return ResponseEntity.ok(service.getCarsByLocation(location));
     }
 
-    // ✅ Get cars by owner email
+    /**
+     * Get cars by owner email.
+     * RLS-ENFORCED: Owner can only view their own cars (verified at service layer).
+     * SpEL expression ensures requester is the owner or admin.
+     */
     @GetMapping("/owner/{email}")
+    @PreAuthorize("hasAnyRole('OWNER', 'ADMIN') and (#email == authentication.principal.email or hasRole('ADMIN'))")
     public ResponseEntity<List<CarResponseDTO>> getByOwner(@PathVariable String email) {
         return ResponseEntity.ok(service.getCarsByOwner(email));
     }
 
-    // ✅ Get car by ID
+    /**
+     * Get car by ID.
+     * PUBLIC: Marketplace listing endpoint (no RLS needed).
+     */
     @GetMapping("/{id}")
     public ResponseEntity<?> getCarById(@PathVariable Long id) {
         try {
@@ -165,8 +179,12 @@ public class CarController {
         }
     }
 
-    // ✅ Update car (owner only)
+    /**
+     * Update car details.
+     * RLS-ENFORCED: Only car owner can update (verified at service layer).
+     */
     @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('OWNER', 'ADMIN')")
     public ResponseEntity<?> updateCar(
             @PathVariable Long id,
             @RequestBody CarRequestDTO dto,
@@ -195,8 +213,12 @@ public class CarController {
         }
     }
 
-    // ✅ Toggle car availability (owner only)
+    /**
+     * Toggle car availability.
+     * RLS-ENFORCED: Only car owner can toggle (verified at service layer).
+     */
     @PatchMapping("/{id}/availability")
+    @PreAuthorize("hasAnyRole('OWNER', 'ADMIN')")
     public ResponseEntity<?> toggleAvailability(
             @PathVariable Long id,
             @RequestBody Map<String, Boolean> request,

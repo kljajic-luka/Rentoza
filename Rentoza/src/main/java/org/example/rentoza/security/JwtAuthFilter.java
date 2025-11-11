@@ -75,20 +75,29 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 // DefaultOidcUser, but subsequent API calls with JWT must use token-based auth
                 UserDetails userDetails = userDetailsService.loadUserByUsername(email);
 
-                // SECURITY: Subject consistency check - verify JWT email matches loaded user
-                if (!email.equalsIgnoreCase(userDetails.getUsername())) {
-                    log.error("JWT subject mismatch: token email={}, loaded user={}, IP={}",
-                            email, userDetails.getUsername(), request.getRemoteAddr());
+                // SECURITY: Ensure loaded principal is JwtUserPrincipal (required for RLS)
+                if (!(userDetails instanceof JwtUserPrincipal jwtPrincipal)) {
+                    log.error("Invalid principal type: expected JwtUserPrincipal, got {}", 
+                            userDetails.getClass().getSimpleName());
                     filterChain.doFilter(request, response);
                     return;
                 }
 
-                // Set authentication in SecurityContext
+                // SECURITY: Subject consistency check - verify JWT email matches loaded user
+                if (!email.equalsIgnoreCase(jwtPrincipal.getUsername())) {
+                    log.error("JWT subject mismatch: token email={}, loaded user={}, IP={}",
+                            email, jwtPrincipal.getUsername(), request.getRemoteAddr());
+                    filterChain.doFilter(request, response);
+                    return;
+                }
+
+                // Set authentication in SecurityContext with JwtUserPrincipal
+                // This enables services to access userId via CurrentUser or @AuthenticationPrincipal
                 UsernamePasswordAuthenticationToken auth =
                         new UsernamePasswordAuthenticationToken(
-                                userDetails,
+                                jwtPrincipal,
                                 null,
-                                userDetails.getAuthorities()
+                                jwtPrincipal.getAuthorities()
                         );
                 auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                 SecurityContextHolder.getContext().setAuthentication(auth);

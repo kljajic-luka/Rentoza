@@ -93,4 +93,59 @@ public interface ReviewRepository extends JpaRepository<Review, Long> {
             ORDER BY r.createdAt DESC
             """)
     List<Review> findByReviewerAndDirection(@Param("user") User user, @Param("direction") ReviewDirection direction);
+
+    // ========== RLS-ENFORCED QUERIES (Enterprise Security Enhancement) ==========
+
+    /**
+     * Find reviews received by a user with ownership verification.
+     * Returns reviews only if the authenticated user is the reviewee OR an admin.
+     * Prevents User A from viewing User B's private review history.
+     * 
+     * @param revieweeEmail Reviewee's email
+     * @param requesterId Authenticated user's ID
+     * @param direction Review direction (FROM_USER or FROM_OWNER)
+     * @return List of reviews (empty if requester is not the reviewee)
+     */
+    @Query("""
+            SELECT r
+            FROM Review r
+            JOIN FETCH r.reviewer
+            JOIN FETCH r.reviewee
+            JOIN FETCH r.car
+            WHERE r.reviewee.email = :revieweeEmail
+              AND r.reviewee.id = :requesterId
+              AND r.direction = :direction
+            ORDER BY r.createdAt DESC
+            """)
+    List<Review> findByRevieweeEmailForUser(
+            @Param("revieweeEmail") String revieweeEmail,
+            @Param("requesterId") Long requesterId,
+            @Param("direction") ReviewDirection direction
+    );
+
+    /**
+     * Find reviews given by a user with ownership verification.
+     * Returns reviews only if the authenticated user is the reviewer OR an admin.
+     * 
+     * @param reviewerEmail Reviewer's email
+     * @param requesterId Authenticated user's ID
+     * @param direction Review direction (FROM_USER or FROM_OWNER)
+     * @return List of reviews given by the user (empty if requester is not the reviewer)
+     */
+    @Query("""
+            SELECT r
+            FROM Review r
+            JOIN FETCH r.reviewer
+            JOIN FETCH r.reviewee
+            JOIN FETCH r.car
+            WHERE r.reviewer.email = :reviewerEmail
+              AND r.reviewer.id = :requesterId
+              AND r.direction = :direction
+            ORDER BY r.createdAt DESC
+            """)
+    List<Review> findByReviewerEmailForUser(
+            @Param("reviewerEmail") String reviewerEmail,
+            @Param("requesterId") Long requesterId,
+            @Param("direction") ReviewDirection direction
+    );
 }

@@ -10,8 +10,8 @@ import { AuthService } from '@core/auth/auth.service';
  * These are typically public endpoints where 401/403 errors are expected for guest users.
  */
 const SILENT_ERROR_ENDPOINTS = [
-  '/bookings/car/',  // Guest users viewing car details shouldn't see auth errors
-  '/auth/refresh',   // Silent token refresh failures are handled by auth service
+  '/bookings/car/', // Guest users viewing car details shouldn't see auth errors
+  '/auth/refresh', // Silent token refresh failures are handled by auth service
 ];
 
 /**
@@ -33,10 +33,30 @@ export const errorResponseInterceptor: HttpInterceptorFn = (req, next) => {
         toastr.error(message, 'Greška');
       }
 
-      // Only logout on 401 if it's from an authenticated endpoint
-      // (not from public endpoints like viewing car details as guest)
+      // ✅ Handle 401 (Unauthorized) - token expired or invalid
       if (error.status === 401 && !isSilentEndpoint(req.url)) {
-        authService.logout();
+        console.log('🔒 401 Unauthorized - clearing session');
+        authService.clearSession();
+        // Don't show toast - token interceptor handles refresh
+      }
+
+      // ✅ Handle 403 (Forbidden) - insufficient permissions or RLS violation
+      if (error.status === 403 && !isSilentEndpoint(req.url)) {
+        console.log('🚫 403 Forbidden - RLS enforcement triggered');
+
+        // Show user-friendly message for permission denials
+        if (shouldShowToast) {
+          toastr.warning('Nemate dozvolu za pristup ovom resursu.', 'Zabranjen pristup', {
+            timeOut: 5000,
+          });
+        }
+
+        // Clear session if 403 indicates invalid authentication state
+        // (e.g., user role changed, account disabled)
+        if (req.url.includes('/users/me') || req.url.includes('/auth/')) {
+          console.log('🔒 403 on auth endpoint - clearing session');
+          authService.clearSession();
+        }
       }
 
       return throwError(() => error);
@@ -67,7 +87,7 @@ function shouldDisplayError(url: string, status: number): boolean {
  * Checks if a URL matches any silent endpoint pattern.
  */
 function isSilentEndpoint(url: string): boolean {
-  return SILENT_ERROR_ENDPOINTS.some(endpoint => url.includes(endpoint));
+  return SILENT_ERROR_ENDPOINTS.some((endpoint) => url.includes(endpoint));
 }
 
 /**

@@ -35,7 +35,11 @@ import { PerformanceMonitoringService } from '@core/services/performance-monitor
 import { environment } from '@environments/environment';
 
 function initializeAuth(authService: AuthService): () => Promise<void> {
-  return () => authService.initializeSession().catch(() => void 0);
+  return async () => {
+    await authService.initializeSession().catch(() => void 0);
+    // Start periodic token expiration watcher (checks every 60 seconds)
+    authService.startTokenWatcher(60000);
+  };
 }
 
 function initializePerformanceMonitoring(perfService: PerformanceMonitoringService): () => void {

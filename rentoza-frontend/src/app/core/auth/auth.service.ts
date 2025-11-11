@@ -4,6 +4,7 @@ import { JwtHelperService } from '@auth0/angular-jwt';
 import {
   BehaviorSubject,
   Observable,
+  Subject,
   catchError,
   finalize,
   filter,
@@ -28,10 +29,13 @@ export class AuthService {
   private readonly accessTokenSubject = new BehaviorSubject<string | null>(null);
   private readonly currentUserSubject = new BehaviorSubject<UserProfile | null>(null);
   private readonly refreshSubject = new BehaviorSubject<string | null>(null);
+  private readonly sessionExpiredSubject = new Subject<void>();
   private isRefreshing = false;
+  private tokenWatcherInterval: ReturnType<typeof setInterval> | null = null;
 
   readonly currentUser$ = this.currentUserSubject.asObservable();
   readonly accessToken$ = this.accessTokenSubject.asObservable();
+  readonly sessionExpired$ = this.sessionExpiredSubject.asObservable();
 
   constructor(
     private readonly http: HttpClient,
@@ -129,6 +133,7 @@ export class AuthService {
 
   logout(): void {
     this.clearSession();
+    // Don't emit sessionExpired$ on manual logout (only on token expiry)
 
     const context = new HttpContext().set(SKIP_AUTH, true);
     this.http
@@ -226,10 +231,13 @@ export class AuthService {
         catchError((error: HttpErrorResponse) => {
           this.refreshSubject.next(null);
           if (error.status === 401) {
+            console.log('🔒 Refresh token expired - session ended');
             this.clearSession();
+            this.sessionExpiredSubject.next(); // Emit session expired event
             return of(null);
           }
           this.clearSession();
+          this.sessionExpiredSubject.next(); // Emit session expired event on any refresh error
           return throwError(() => error);
         }),
         finalize(() => {
@@ -253,6 +261,41 @@ export class AuthService {
       );
   }
 
+  /**
+   * Start periodic token expiration watcher.
+   * Checks every intervalMs (default: 60 seconds) if the current token has expired.
+   * If expired, triggers session cleanup and emits sessionExpired$ event.
+   */
+  startTokenWatcher(intervalMs = 60000): void {
+    // Clear any existing watcher
+    if (this.tokenWatcherInterval) {
+      clearInterval(this.tokenWatcherInterval);
+    }
+
+    this.tokenWatcherInterval = setInterval(() => {
+      const token = this.getAccessToken();
+      if (token && this.jwtHelper.isTokenExpired(token)) {
+        console.log('⏰ Token expired - triggering session cleanup');
+        this.clearSession();
+        this.sessionExpiredSubject.next();
+      }
+    }, intervalMs);
+
+    console.log(`✅ Token watcher started (checking every ${intervalMs}ms)`);
+  }
+
+  /**
+   * Stop the token expiration watcher.
+   * Called during logout or when no longer needed.
+   */
+  stopTokenWatcher(): void {
+    if (this.tokenWatcherInterval) {
+      clearInterval(this.tokenWatcherInterval);
+      this.tokenWatcherInterval = null;
+      console.log('🛑 Token watcher stopped');
+    }
+  }
+
   clearSession(): void {
     this.accessTokenSubject.next(null);
     this.currentUserSubject.next(null);
@@ -260,6 +303,9 @@ export class AuthService {
     // Clear localStorage
     localStorage.removeItem('access_token');
     localStorage.removeItem('current_user');
+
+    // Stop token watcher when session is cleared
+    this.stopTokenWatcher();
 
     // Clear favorited cars on logout
     import('@core/services/favorite.service').then(({ FavoriteService }) => {

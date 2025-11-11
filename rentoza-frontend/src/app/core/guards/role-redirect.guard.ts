@@ -32,12 +32,24 @@ export class RoleRedirectGuard implements CanActivate {
   ): Observable<boolean | UrlTree> {
     return this.authService.currentUser$.pipe(
       map((user) => {
-        // If not authenticated, allow (will be handled by auth guard)
+        const currentPath = state.url;
+
+        // If not authenticated, redirect to home for protected routes
         if (!user) {
-          return true;
+          // Allow public routes (home, cars, auth pages)
+          if (
+            currentPath === '/' ||
+            currentPath === '/pocetna' ||
+            currentPath.startsWith('/vozila') ||
+            currentPath.startsWith('/cars') ||
+            currentPath.startsWith('/auth')
+          ) {
+            return true;
+          }
+          // Redirect to home for protected routes when not authenticated
+          return this.router.createUrlTree(['/pocetna']);
         }
 
-        const currentPath = state.url;
         const isOwner = user.roles?.includes('OWNER') ?? false;
         const isUser = user.roles?.includes('USER') ?? false;
 

@@ -21,6 +21,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { FlexLayoutModule } from '@ngbracket/ngx-layout';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { filter, map } from 'rxjs';
+import { ToastrService } from 'ngx-toastr';
 
 import { AuthService } from '@core/auth/auth.service';
 import { UserProfile } from '@core/models/user.model';
@@ -62,6 +63,7 @@ export class LayoutComponent implements OnInit {
 
   protected readonly authService = inject(AuthService);
   private readonly router = inject(Router);
+  private readonly toastr = inject(ToastrService);
   private readonly breakpointObserver = inject(BreakpointObserver);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -80,12 +82,27 @@ export class LayoutComponent implements OnInit {
   // Owner navigation links (OWNER role)
   protected readonly ownerLinks: NavLink[] = [
     { label: 'Dashboard', icon: 'dashboard', route: '/owner/dashboard', roles: ['OWNER', 'ADMIN'] },
-    { label: 'Moja vozila', icon: 'directions_car', route: '/owner/cars', roles: ['OWNER', 'ADMIN'] },
+    {
+      label: 'Moja vozila',
+      icon: 'directions_car',
+      route: '/owner/cars',
+      roles: ['OWNER', 'ADMIN'],
+    },
     { label: 'Rezervacije', icon: 'event', route: '/owner/bookings', roles: ['OWNER', 'ADMIN'] },
     { label: 'Poruke', icon: 'chat', route: '/messages', roles: ['OWNER', 'ADMIN'] },
-    { label: 'Zarada', icon: 'account_balance_wallet', route: '/owner/earnings', roles: ['OWNER', 'ADMIN'] },
+    {
+      label: 'Zarada',
+      icon: 'account_balance_wallet',
+      route: '/owner/earnings',
+      roles: ['OWNER', 'ADMIN'],
+    },
     { label: 'Recenzije', icon: 'rate_review', route: '/owner/reviews', roles: ['OWNER', 'ADMIN'] },
-    { label: 'Verifikacija', icon: 'verified', route: '/owner/verification', roles: ['OWNER', 'ADMIN'] },
+    {
+      label: 'Verifikacija',
+      icon: 'verified',
+      route: '/owner/verification',
+      roles: ['OWNER', 'ADMIN'],
+    },
     { label: 'Profil', icon: 'person', route: '/users/profile', roles: ['OWNER', 'ADMIN'] },
   ];
 
@@ -111,6 +128,16 @@ export class LayoutComponent implements OnInit {
         takeUntilDestroyed(this.destroyRef)
       )
       .subscribe(() => this.sidenav?.close());
+
+    // Handle session expiration gracefully
+    this.authService.sessionExpired$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+      console.log('🔔 Session expired - transitioning to guest UI');
+      this.toastr.info('Vaša sesija je istekla. Prijavite se ponovo.', 'Sesija istekla', {
+        timeOut: 5000,
+        progressBar: true,
+      });
+      void this.router.navigate(['/pocetna']);
+    });
   }
 
   /**

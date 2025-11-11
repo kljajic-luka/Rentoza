@@ -272,11 +272,15 @@
       [disabled]="bookingForm.invalid || isSubmitting() || rentalDays() === 0"
     >
       @if (isSubmitting()) {
-      <mat-spinner diameter="20"></mat-spinner>
-      <span>Slanje...</span>
+      <ng-container>
+        <mat-spinner diameter="20"></mat-spinner>
+        <span>Slanje...</span>
+      </ng-container>
       } @else {
-      <mat-icon>check_circle</mat-icon>
-      <span>Potvrdi rezervaciju</span>
+      <ng-container>
+        <mat-icon>check_circle</mat-icon>
+        <span>Potvrdi rezervaciju</span>
+      </ng-container>
       }
     </button>
   </mat-dialog-actions>

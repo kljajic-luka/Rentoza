@@ -98,16 +98,31 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             }
         } catch (ExpiredJwtException e) {
             log.debug("JWT token expired for request to {}: {}", requestUri, e.getMessage());
-            // Don't log as warning - expired tokens are expected behavior
-            // Frontend will automatically request refresh
+            // CRITICAL FIX: Return 401 immediately instead of continuing filter chain
+            // This prevents Spring Security from attempting OAuth2 redirect
+            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            response.setContentType("application/json");
+            response.setCharacterEncoding("UTF-8");
+            response.getWriter().write("{\"error\":\"Unauthorized\",\"message\":\"JWT token expired\"}");
+            return; // Stop filter chain here
         } catch (SignatureException e) {
             log.warn("Invalid JWT signature for request to {} from IP {}: {}",
                     requestUri, request.getRemoteAddr(), e.getMessage());
-            // This could indicate a security issue - potential token tampering
+            // Return 401 for invalid signatures (potential tampering)
+            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            response.setContentType("application/json");
+            response.setCharacterEncoding("UTF-8");
+            response.getWriter().write("{\"error\":\"Unauthorized\",\"message\":\"Invalid JWT signature\"}");
+            return; // Stop filter chain here
         } catch (Exception e) {
             log.error("JWT validation error for request to {} from IP {}: {}",
                     requestUri, request.getRemoteAddr(), e.getMessage());
-            // Unexpected errors should be logged for investigation
+            // Return 401 for any other JWT errors
+            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            response.setContentType("application/json");
+            response.setCharacterEncoding("UTF-8");
+            response.getWriter().write("{\"error\":\"Unauthorized\",\"message\":\"JWT validation failed\"}");
+            return; // Stop filter chain here
         }
 
         filterChain.doFilter(request, response);

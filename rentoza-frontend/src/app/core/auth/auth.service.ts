@@ -10,6 +10,7 @@ import {
   firstValueFrom,
   map,
   of,
+  switchMap,
   take,
   tap,
   throwError,
@@ -41,18 +42,18 @@ export class AuthService {
   /**
    * Invoked during app bootstrap to silently restore a session using the refresh cookie.
    * Also restores user from localStorage for immediate availability.
+   * If a valid token exists but no stored user is found, fetches user profile from /api/users/me.
    */
-  initializeSession(): Promise<void> {
-    // ✅ First, try to restore user from localStorage (immediate availability)
+  async initializeSession(): Promise<void> {
     const storedToken = localStorage.getItem('access_token');
     const storedUserJson = localStorage.getItem('current_user');
 
+    // Case 1: Both token and user exist in localStorage
     if (storedToken && storedUserJson) {
       try {
         const user: UserProfile = JSON.parse(storedUserJson);
         this.accessTokenSubject.next(storedToken);
         this.currentUserSubject.next(user);
-        console.log('✅ Restored full user from localStorage:', user);
       } catch (error) {
         console.warn('⚠️ Failed to parse stored user, clearing storage');
         localStorage.removeItem('access_token');
@@ -60,10 +61,44 @@ export class AuthService {
       }
     }
 
-    // Then attempt to refresh the access token via refresh cookie
-    return firstValueFrom(this.refreshAccessToken().pipe(catchError(() => of(null)))).then(
-      () => void 0
-    );
+    // Case 2: Token exists but user is missing - fetch from API
+    if (storedToken && !storedUserJson) {
+      console.log('🔄 Token found but no stored user - fetching from /api/users/me');
+      this.accessTokenSubject.next(storedToken);
+
+      try {
+        const { UserService } = await import('@core/services/user.service');
+        const userService = this.injector.get(UserService);
+
+        const user = await firstValueFrom(
+          userService.getProfile().pipe(
+            tap((profile: UserProfile) => {
+              localStorage.setItem('current_user', JSON.stringify(profile));
+              this.currentUserSubject.next(profile);
+              console.log('✅ Restored user profile via /api/users/me:', profile);
+            }),
+            catchError((err) => {
+              console.warn('⚠️ Failed to restore user profile, clearing session', err);
+              this.clearSession();
+              return of(null);
+            })
+          )
+        );
+
+        // After restoring user, refresh the access token
+        if (user) {
+          await firstValueFrom(this.refreshAccessToken().pipe(catchError(() => of(null))));
+        }
+        return;
+      } catch (error) {
+        console.warn('⚠️ Error during user profile restoration', error);
+        this.clearSession();
+        return;
+      }
+    }
+
+    // Case 3: No token or token with user already loaded - just refresh
+    await firstValueFrom(this.refreshAccessToken().pipe(catchError(() => of(null))));
   }
 
   login(payload: LoginRequest): Observable<UserProfile> {
@@ -237,7 +272,7 @@ export class AuthService {
     const { accessToken, user } = response;
 
     if (!accessToken || !user) {
-      console.warn('⚠️ Invalid session data (missing token or user), skipping persist.');
+      console.debug('ℹ️ Skipping persist — initialization phase or incomplete data.');
       return;
     }
 
@@ -261,8 +296,6 @@ export class AuthService {
     // ✅ Update observables with complete data
     this.accessTokenSubject.next(accessToken);
     this.currentUserSubject.next(completeUser);
-
-    console.log('✅ Persisted full user session:', completeUser);
 
     // Load user's favorited cars after successful login/register
     import('@core/services/favorite.service').then(({ FavoriteService }) => {

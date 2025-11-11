@@ -101,8 +101,6 @@ export class BookingDialogComponent implements OnInit {
   ngOnInit(): void {
     // Prefill driver details from current user and disable for read-only behavior
     this.authService.currentUser$.pipe(take(1)).subscribe((user) => {
-      console.log('🔍 Received user from authService:', user);
-
       if (user) {
         // 1️⃣ Patch user data first (before disabling)
         this.bookingForm.patchValue({
@@ -120,9 +118,6 @@ export class BookingDialogComponent implements OnInit {
 
         // 3️⃣ Force view refresh so Angular Material updates the input displays
         this.cdr.detectChanges();
-
-        // Debug: Verify data is patched correctly
-        console.log('✅ Patched driver info:', this.bookingForm.getRawValue());
       } else {
         console.warn('⚠️ currentUser$ emitted null or incomplete user');
       }

@@ -32,6 +32,7 @@ public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
     private final ServiceAuthenticationFilter serviceAuthenticationFilter;
+    private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
     private final AppProperties appProperties;
     private final CustomOAuth2UserService customOAuth2UserService;
     private final OAuth2AuthenticationSuccessHandler oauth2SuccessHandler;
@@ -40,6 +41,7 @@ public class SecurityConfig {
 
     public SecurityConfig(JwtAuthFilter jwtAuthFilter,
                           ServiceAuthenticationFilter serviceAuthenticationFilter,
+                          JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint,
                           AppProperties appProperties,
                           CustomOAuth2UserService customOAuth2UserService,
                           OAuth2AuthenticationSuccessHandler oauth2SuccessHandler,
@@ -47,6 +49,7 @@ public class SecurityConfig {
                           ClientRegistrationRepository clientRegistrationRepository) {
         this.jwtAuthFilter = jwtAuthFilter;
         this.serviceAuthenticationFilter = serviceAuthenticationFilter;
+        this.jwtAuthenticationEntryPoint = jwtAuthenticationEntryPoint;
         this.appProperties = appProperties;
         this.customOAuth2UserService = customOAuth2UserService;
         this.oauth2SuccessHandler = oauth2SuccessHandler;
@@ -111,6 +114,24 @@ public class SecurityConfig {
                                 .maxAgeInSeconds(31536000)) // 1 year
                         .contentTypeOptions(Customizer.withDefaults()) // X-Content-Type-Options: nosniff
                 )
+                // EXCEPTION HANDLING: Return JSON 401 instead of OAuth2 redirects
+                //
+                // CRITICAL: This prevents Spring Security from redirecting to Google OAuth2 when JWT fails
+                //
+                // Default Behavior (without this):
+                // - When JWT is expired/invalid, Spring's default OAuth2 entry point redirects to:
+                //   https://accounts.google.com/o/oauth2/v2/auth?...
+                // - Browser blocks cross-origin redirect -> CORS error
+                // - Frontend can't handle 401 properly -> token refresh fails
+                //
+                // With JwtAuthenticationEntryPoint:
+                // - Returns clean JSON response: {"error":"Unauthorized","message":"JWT expired or invalid"}
+                // - Frontend sees 401 status code -> triggers silent token refresh
+                // - OAuth2 login flow remains intact for /oauth2/** endpoints
+                //
+                // Scope: This entry point applies to ALL authenticated endpoints
+                // OAuth2 endpoints (/oauth2/**, /login/oauth2/**) bypass JWT filter entirely (see shouldNotFilter)
+                .exceptionHandling(ex -> ex.authenticationEntryPoint(jwtAuthenticationEntryPoint))
                 // SESSION MANAGEMENT: STATELESS for token-based authentication
                 //
                 // CRITICAL: This enforces a stateless, JWT-first authentication model

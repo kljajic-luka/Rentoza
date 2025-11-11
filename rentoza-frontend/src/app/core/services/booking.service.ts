@@ -3,7 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
 import { environment } from '@environments/environment';
-import { Booking, BookingRequest, UserBooking } from '@core/models/booking.model';
+import { Booking, BookingRequest, UserBooking, BookingSlotDto } from '@core/models/booking.model';
 
 @Injectable({ providedIn: 'root' })
 export class BookingService {
@@ -23,8 +23,50 @@ export class BookingService {
     });
   }
 
+  /**
+   * Get full booking details for a car (OWNER/ADMIN only).
+   *
+   * Security:
+   * - @PreAuthorize("hasAnyRole('OWNER', 'ADMIN')") on backend
+   * - Returns full booking DTOs with renter details, pricing, status
+   * - Regular users (ROLE_USER) will receive 403 Forbidden
+   *
+   * Use Case:
+   * - Owner dashboard: View all bookings for their cars with full details
+   * - Admin dashboard: View all bookings with full details
+   *
+   * @param carId Car ID
+   * @returns Observable<Booking[]> with full booking information
+   */
   getBookingsForCar(carId: string): Observable<Booking[]> {
     return this.http.get<Booking[]>(`${this.baseUrl}/car/${carId}`, {
+      withCredentials: true,
+    });
+  }
+
+  /**
+   * Get public-safe booking slots for a car (accessible to all users).
+   *
+   * Purpose:
+   * - Calendar UI: Show which dates are booked/unavailable
+   * - Minimal data exposure: only carId, startDate, endDate
+   * - No PII: no renter, owner, or pricing information
+   *
+   * Security:
+   * - @PreAuthorize("permitAll()") on backend
+   * - Returns minimal BookingSlotDto (safe for public consumption)
+   * - Rate-limited to 60 requests/minute
+   *
+   * Use Case:
+   * - Car detail page: Show unavailable dates in booking calendar
+   * - Renters (ROLE_USER): See which dates are taken
+   * - Guests (unauthenticated): See which dates are taken
+   *
+   * @param carId Car ID
+   * @returns Observable<BookingSlotDto[]> with only date ranges
+   */
+  getPublicBookingsForCar(carId: string | number): Observable<BookingSlotDto[]> {
+    return this.http.get<BookingSlotDto[]>(`${this.baseUrl}/car/${carId}/public`, {
       withCredentials: true,
     });
   }

@@ -212,19 +212,24 @@ export class CarDetailComponent {
 
   constructor() {
     // Load both bookings and blocked dates for availability checking
+    // PUBLIC ENDPOINT FIX: Use getPublicBookingsForCar instead of getBookingsForCar
+    // - getBookingsForCar: OWNER/ADMIN only (returns full booking DTOs)
+    // - getPublicBookingsForCar: accessible to all users (returns minimal date ranges)
     this.carId$
       .pipe(
         switchMap((id) =>
           combineLatest({
-            bookings: this.bookingService.getBookingsForCar(id).pipe(
-              catchError(() => {
-                // Guest users can't access bookings - that's fine, just use empty array
+            bookings: this.bookingService.getPublicBookingsForCar(id).pipe(
+              catchError((error) => {
+                // Log for debugging but don't fail - calendar can work with just blocked dates
+                console.warn('Failed to load public booking slots:', error);
                 return of([]);
               })
             ),
             blockedDates: this.availabilityService.getBlockedDatesForCar(+id).pipe(
-              catchError(() => {
-                // If blocked dates fail to load, use empty array
+              catchError((error) => {
+                // Log for debugging but don't fail
+                console.warn('Failed to load blocked dates:', error);
                 return of([]);
               })
             ),
@@ -472,8 +477,16 @@ export class CarDetailComponent {
     return !hasBookingConflict && !hasBlockedConflict;
   }
 
-  private updateBookings(bookings: Booking[]): void {
-    this.bookingsSubject.next(bookings);
+  /**
+   * Update bookings for calendar availability.
+   * Accepts both Booking[] (full DTOs) and BookingSlotDto[] (minimal public DTOs).
+   * Calendar only needs startDate and endDate, so both work.
+   */
+  private updateBookings(
+    bookings: Booking[] | import('@core/models/booking.model').BookingSlotDto[]
+  ): void {
+    // Cast to Booking[] for type safety - calendar only uses startDate/endDate which both types have
+    this.bookingsSubject.next(bookings as any);
     this.startDateMin = this.getNextAvailableDate(new Date());
     this.endDateMin = this.addDays(this.startDateMin, 1);
   }
@@ -483,8 +496,9 @@ export class CarDetailComponent {
       return;
     }
 
+    // Use public endpoint for refresh as well
     this.bookingService
-      .getBookingsForCar(this.selectedCarId)
+      .getPublicBookingsForCar(this.selectedCarId)
       .pipe(take(1))
       .subscribe((bookings) => this.updateBookings(bookings));
   }

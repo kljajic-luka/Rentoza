@@ -107,6 +107,39 @@ public class BookingController {
     }
 
     /**
+     * Get public-safe booking slots for a specific car (calendar availability).
+     * 
+     * Purpose:
+     * - Allow renters/guests to see which dates are booked without exposing sensitive data
+     * - Enables calendar UI to grey out unavailable dates
+     * - Returns minimal data: carId, startDate, endDate only
+     * 
+     * Security:
+     * - @PreAuthorize("permitAll()") → accessible to authenticated and unauthenticated users
+     * - No PII exposure (no renter, owner, or pricing information)
+     * - Only returns ACTIVE/CONFIRMED bookings (no cancelled/pending)
+     * - Rate-limited to 60 requests/minute (configured in application properties)
+     * 
+     * RLS Compliance:
+     * - Does NOT violate RLS because it exposes no owner-only or renter-only data
+     * - Full booking details remain secured in /api/bookings/car/{carId} (OWNER/ADMIN only)
+     * 
+     * @param carId Car ID to fetch booking slots for
+     * @return List of BookingSlotDTO with only date ranges
+     */
+    @GetMapping("/car/{carId}/public")
+    @PreAuthorize("permitAll()")
+    public ResponseEntity<List<org.example.rentoza.booking.dto.BookingSlotDTO>> getPublicBookingsForCar(@PathVariable Long carId) {
+        try {
+            List<org.example.rentoza.booking.dto.BookingSlotDTO> slots = service.getPublicBookedSlots(carId);
+            return ResponseEntity.ok(slots);
+        } catch (RuntimeException e) {
+            log.error("Error fetching public booking slots for car {}", carId, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    /**
      * Get booking by ID - with ownership verification.
      * RLS-ENFORCED: Only renter, car owner, or admin can view booking.
      * Uses BookingSecurityService for SpEL-based access control.

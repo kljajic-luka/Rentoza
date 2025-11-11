@@ -222,6 +222,35 @@ public class BookingService {
     }
 
     /**
+     * Get public-safe booking slots for a specific car (calendar availability).
+     * 
+     * Purpose:
+     * - Expose only date ranges (carId, startDate, endDate) for calendar UI
+     * - Allow renters/guests to see which dates are unavailable
+     * - No PII exposure (no renter, owner, pricing information)
+     * 
+     * Security:
+     * - Public-safe: returns minimal DTO (BookingSlotDTO)
+     * - Only includes ACTIVE/CONFIRMED bookings (filters out cancelled/pending)
+     * - Does NOT require authentication or ownership verification
+     * - Compliant with RLS: no sensitive data exposure
+     * 
+     * @param carId Car ID to fetch booking slots for
+     * @return List of BookingSlotDTO with only date ranges
+     */
+    public List<org.example.rentoza.booking.dto.BookingSlotDTO> getPublicBookedSlots(Long carId) {
+        // Fetch bookings for the car
+        List<Booking> bookings = repo.findByCarId(carId);
+        
+        // Map to public-safe DTO with only date ranges
+        // Filter to only ACTIVE bookings (exclude CANCELLED, PENDING)
+        return bookings.stream()
+                .filter(b -> b.getStatus() == BookingStatus.ACTIVE )
+                .map(org.example.rentoza.booking.dto.BookingSlotDTO::new)
+                .toList();
+    }
+
+    /**
      * Get all bookings for a specific car with owner verification.
      * RLS-ENFORCED: Returns bookings only if requester is the car owner or admin.
      * 

@@ -57,3 +57,21 @@ export interface UserBooking {
   pickupTimeWindow?: PickupTimeWindow; // Phase 2.2
   pickupTime?: string; // Phase 2.2: HH:mm format
 }
+
+/**
+ * Public-safe DTO for calendar availability display.
+ *
+ * Purpose:
+ * - Minimal booking information for calendar UI (shows which dates are booked)
+ * - No PII exposure (no renter, owner, or pricing information)
+ * - Used by renters/guests to see unavailable dates
+ *
+ * Backend Endpoint:
+ * - GET /api/bookings/car/{carId}/public
+ * - @PreAuthorize("permitAll()") - accessible to all users
+ */
+export interface BookingSlotDto {
+  carId: number;
+  startDate: string; // ISO date string
+  endDate: string; // ISO date string
+}

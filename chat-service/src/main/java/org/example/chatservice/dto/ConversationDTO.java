@@ -30,9 +30,10 @@ public class ConversationDTO {
     private String carBrand;
     private String carModel;
     private Integer carYear;
+    private String carImageUrl;
     private String renterName;
     private String ownerName;
     private String startDate;
     private String endDate;
-    private String tripStatus; // "Current", "Future", or "Past"
+    private String tripStatus; // "FUTURE", "CURRENT", "PAST", "UNAVAILABLE"
 }

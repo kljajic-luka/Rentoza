@@ -36,6 +36,7 @@ public class ChatService {
     private final MessageRepository messageRepository;
     private final SimpMessagingTemplate messagingTemplate;
     private final BackendApiClient backendApiClient;
+    private final ConversationEnrichmentService enrichmentService;
 
     @Transactional
     public ConversationDTO createConversation(CreateConversationRequest request) {
@@ -95,8 +96,8 @@ public class ChatService {
         dto.setMessages(messages);
         dto.setUnreadCount(messageRepository.countUnreadMessages(conversation.getId(), userId));
 
-        // Enrich with backend data
-        return enrichDtoWithBackendData(dto);
+        // Enrich with backend data (pass userId for RLS validation)
+        return enrichDtoWithBackendData(dto, userId);
     }
 
     @Transactional
@@ -190,71 +191,87 @@ public class ChatService {
                 .map(conv -> {
                     ConversationDTO dto = toDTO(conv, userId);
                     dto.setUnreadCount(messageRepository.countUnreadMessages(conv.getId(), userId));
-                    return enrichDtoWithBackendData(dto);
+                    return enrichDtoWithBackendData(dto, userId);
                 })
                 .collect(Collectors.toList());
     }
 
     /**
-     * Enrich conversation DTO with booking and user details from main backend
+     * Enrich conversation DTO with booking and user details from main backend.
+     * Uses new ConversationEnrichmentService with caching and resilience patterns.
+     * 
+     * Security: actAsUserId is the authenticated user making the request
+     * RLS: Main API validates that actAsUserId is a participant (renter or owner)
+     * 
+     * @param dto ConversationDTO to enrich
+     * @param userId Authenticated user ID (for RLS validation on Main API)
      */
-    private ConversationDTO enrichDtoWithBackendData(ConversationDTO dto) {
-        try {
-            log.debug("🔄 Starting enrichment for conversation {} (booking: {})", dto.getId(), dto.getBookingId());
-            
-            // Fetch booking and user details in parallel
-            Mono<BookingDetailsDTO> bookingDetailsMono = backendApiClient.getBookingDetails(dto.getBookingId())
-                    .doOnSuccess(b -> log.debug("✅ Received booking details for {}", dto.getBookingId()))
-                    .doOnError(e -> log.error("❌ Failed to get booking details: {}", e.getMessage()));
-            
-            Mono<UserDetailsDTO> renterDetailsMono = backendApiClient.getUserDetails(dto.getRenterId())
-                    .doOnSuccess(r -> log.debug("✅ Received renter details for {}", dto.getRenterId()))
-                    .doOnError(e -> log.error("❌ Failed to get renter details: {}", e.getMessage()));
-            
-            Mono<UserDetailsDTO> ownerDetailsMono = backendApiClient.getUserDetails(dto.getOwnerId())
-                    .doOnSuccess(o -> log.debug("✅ Received owner details for {}", dto.getOwnerId()))
-                    .doOnError(e -> log.error("❌ Failed to get owner details: {}", e.getMessage()));
+    private ConversationDTO enrichDtoWithBackendData(ConversationDTO dto, String userId) {
+        long startTime = System.currentTimeMillis();
 
-            return Mono.zip(bookingDetailsMono, renterDetailsMono, ownerDetailsMono)
+        try {
+            log.debug("[Enrichment] Starting for conversation={}, bookingId={}", dto.getId(), dto.getBookingId());
+
+            // CRITICAL: Use authenticated userId (current user) as actAsUserId for RLS validation
+            // The authenticated user must be either the renter OR owner of the conversation/booking
+            // Main API will validate: actAsUserId == booking.renterId OR actAsUserId == booking.ownerId
+            String actAsUserId = userId;
+
+            // Fetch booking conversation view and user details in parallel
+            Mono<org.example.chatservice.dto.client.BookingConversationDTO> bookingConversationMono =
+                    enrichmentService.enrichConversation(dto.getBookingId(), actAsUserId);
+
+            Mono<UserDetailsDTO> renterDetailsMono = backendApiClient.getUserDetails(dto.getRenterId());
+
+            Mono<UserDetailsDTO> ownerDetailsMono = backendApiClient.getUserDetails(dto.getOwnerId());
+
+            // FIX: Assign the result of the synchronous block operation to a variable
+            ConversationDTO enrichedDto = Mono.zip(bookingConversationMono, renterDetailsMono, ownerDetailsMono)
                     .map(tuple -> {
-                        BookingDetailsDTO booking = tuple.getT1();
+                        org.example.chatservice.dto.client.BookingConversationDTO bookingConv = tuple.getT1();
                         UserDetailsDTO renter = tuple.getT2();
                         UserDetailsDTO owner = tuple.getT3();
 
-                        // Check if booking is a fallback (not found in backend)
-                        boolean isBookingFallback = booking != null && booking.isFallback();
+                        // Check if booking enrichment is a fallback (UNAVAILABLE status)
+                        boolean isBookingFallback = bookingConv != null &&
+                                "UNAVAILABLE".equalsIgnoreCase(bookingConv.getTripStatus());
 
-                        // Enrich with booking and car details (with fallbacks)
-                        if (booking != null && !isBookingFallback) {
-                            if (booking.getCar() != null) {
-                                dto.setCarBrand(booking.getCar().getBrand() != null 
-                                        ? booking.getCar().getBrand() : "Unknown");
-                                dto.setCarModel(booking.getCar().getModel() != null 
-                                        ? booking.getCar().getModel() : "Unknown");
-                                dto.setCarYear(booking.getCar().getYear() != null 
-                                        ? booking.getCar().getYear() : 0);
+                        // Enrich with booking conversation data (from new secure endpoint)
+                        if (bookingConv != null && !isBookingFallback) {
+                            // Set car details from BookingConversationDTO
+                            dto.setCarBrand(bookingConv.getCarBrand() != null
+                                    ? bookingConv.getCarBrand() : "Unknown");
+                            dto.setCarModel(bookingConv.getCarModel() != null
+                                    ? bookingConv.getCarModel() : "Unknown");
+                            dto.setCarYear(bookingConv.getCarYear() != null
+                                    ? bookingConv.getCarYear() : 0);
+                            dto.setCarImageUrl(bookingConv.getCarImageUrl()); // Nullable
+
+                            // Set trip dates
+                            if (bookingConv.getStartDate() != null) {
+                                dto.setStartDate(bookingConv.getStartDate().toString());
                             }
-                            
-                            if (booking.getStartDate() != null) {
-                                dto.setStartDate(booking.getStartDate().toString());
+                            if (bookingConv.getEndDate() != null) {
+                                dto.setEndDate(bookingConv.getEndDate().toString());
                             }
-                            
-                            if (booking.getEndDate() != null) {
-                                dto.setEndDate(booking.getEndDate().toString());
-                            }
-                            
-                            // Calculate trip status
-                            String tripStatus = calculateTripStatus(booking.getStartDate(), booking.getEndDate());
-                            dto.setTripStatus(tripStatus != null ? tripStatus : "Unknown");
+
+                            // Use computed trip status from BookingConversationDTO
+                            dto.setTripStatus(bookingConv.getTripStatus() != null
+                                    ? bookingConv.getTripStatus() : "Unknown");
+
+                            // Update messaging allowed from BookingConversationDTO
+                            dto.setMessagingAllowed(bookingConv.isMessagingAllowed());
                         } else {
                             // Booking not found or is fallback - mark as unavailable
                             dto.setCarBrand("Unknown");
                             dto.setCarModel("Unknown");
                             dto.setCarYear(0);
-                            dto.setTripStatus("Unavailable");
-                            
+                            dto.setCarImageUrl(null);
+                            dto.setTripStatus("UNAVAILABLE");
+                            dto.setMessagingAllowed(false);
+
                             if (isBookingFallback) {
-                                log.warn("⚠️ Enrichment fallback used for bookingId={} (not found on main backend)", 
+                                log.warn("⚠️ Enrichment fallback used for bookingId={} (not found or access denied)",
                                         dto.getBookingId());
                             }
                         }
@@ -274,32 +291,35 @@ public class ChatService {
                             dto.setOwnerName("Owner");
                         }
 
-                        // Log enrichment result based on whether fallback was used
+                        // Log enrichment result
+                        long latency = System.currentTimeMillis() - startTime;
                         if (isBookingFallback) {
-                            log.info("⚠️ Enriched conversation [bookingId={}] with FALLBACK: {} ↔ {}, trip: {}", 
-                                    dto.getBookingId(),
-                                    dto.getRenterName(),
-                                    dto.getOwnerName(),
-                                    dto.getTripStatus());
+                            log.warn("Enriched conversation with fallback: conversationId={}, bookingId={}, latency={}ms",
+                                    dto.getId(), dto.getBookingId(), latency);
                         } else {
-                            log.info("✅ Enriched conversation [bookingId={}]: {} ↔ {}, trip: {} trip with {} {} {}", 
+                            log.info("Enriched conversation: conversationId={}, bookingId={}, tripStatus={}, car={} {} {}, latency={}ms",
+                                    dto.getId(),
                                     dto.getBookingId(),
-                                    dto.getRenterName(),
-                                    dto.getOwnerName(),
                                     dto.getTripStatus(),
                                     dto.getCarYear() > 0 ? dto.getCarYear() : "",
                                     dto.getCarBrand(),
-                                    dto.getCarModel());
+                                    dto.getCarModel(),
+                                    latency);
                         }
 
+                        // The map returns the updated DTO object
                         return dto;
                     })
-                    .doOnError(e -> log.warn("⚠️ Partial enrichment failure for conversation {}: {}", 
-                            dto.getId(), e.getMessage()))
                     .onErrorReturn(dto) // Return DTO with safe defaults on error
-                    .block(); // Block to get the result synchronously
+                    .block(); // Blocks execution and returns the result
+
+            return enrichedDto; // Return the enriched result
+
         } catch (Exception e) {
-            log.error("❌ Error enriching conversation {}: {}", dto.getId(), e.getMessage(), e);
+            long latency = System.currentTimeMillis() - startTime;
+            log.error("Error enriching conversation {} (latency={}ms): {}",
+                    dto.getId(), latency, e.getMessage(), e);
+
             // Ensure safe defaults are set even on exception
             if (dto.getRenterName() == null) dto.setRenterName("Renter");
             if (dto.getOwnerName() == null) dto.setOwnerName("Owner");
@@ -307,6 +327,8 @@ public class ChatService {
             if (dto.getCarModel() == null) dto.setCarModel("Unknown");
             if (dto.getCarYear() == null) dto.setCarYear(0);
             if (dto.getTripStatus() == null) dto.setTripStatus("Unknown");
+            dto.setMessagingAllowed(false); // Safe default on error
+
             return dto;
         }
     }

@@ -159,4 +159,23 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
            "WHERE c.id IN :carIds " +
            "AND c.owner.id = :ownerId")
     List<Booking> findByCarIdInForOwner(@Param("carIds") List<Long> carIds, @Param("ownerId") Long ownerId);
+
+    /**
+     * Find booking by ID for conversation view with eager loading.
+     * Optimized for BookingConversationDTO construction:
+     * - Eagerly loads Car (brand, model, year, imageUrl, imageUrls)
+     * - Eagerly loads Renter (for RLS check)
+     * - Eagerly loads Owner (for RLS check)
+     * 
+     * Note: Car.imageUrls is @ElementCollection(fetch = EAGER) so automatically loaded.
+     * 
+     * @param id Booking ID
+     * @return Optional containing booking with all conversation-view dependencies
+     */
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.car c " +
+           "JOIN FETCH b.renter r " +
+           "LEFT JOIN FETCH c.owner o " +
+           "WHERE b.id = :id")
+    java.util.Optional<Booking> findByIdForConversationView(@Param("id") Long id);
 }

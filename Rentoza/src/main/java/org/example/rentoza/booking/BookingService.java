@@ -251,6 +251,67 @@ public class BookingService {
     }
 
     /**
+     * Get conversation-safe booking summary for chat enrichment.
+     * 
+     * Purpose:
+     * - Enable chat microservice to enrich conversations with booking context
+     * - Show "Future trip with 2020 BMW X5" in chat UI without exposing PII
+     * - Support service-to-service trust with user assertion
+     * 
+     * Security (RLS-ENFORCED):
+     * - Verifies actAsUserId matches booking participant (renterId or ownerId)
+     * - Throws AccessDeniedException if user not authorized
+     * - No PII exposure: Returns BookingConversationDTO (no renter/owner names, emails, pricing)
+     * - Audit logging: Logs service-to-service calls with actAsUserId
+     * 
+     * Access Patterns:
+     * - Direct JWT: User requests their own booking (actAsUserId = authenticated user ID)
+     * - Service-to-service: Chat service asserts user context (X-Act-As-User-Id header)
+     * 
+     * Computed Fields:
+     * - tripStatus: FUTURE (before start), CURRENT (during trip), PAST (after end)
+     * - messagingAllowed: true for PENDING/ACTIVE/CONFIRMED, false for CANCELLED/COMPLETED
+     * 
+     * @param bookingId Booking ID
+     * @param actAsUserId User ID asserting access (must be renter or owner)
+     * @return BookingConversationDTO with conversation-safe booking summary
+     * @throws ResourceNotFoundException if booking not found
+     * @throws org.springframework.security.access.AccessDeniedException if actAsUserId not a participant
+     */
+    public org.example.rentoza.booking.dto.BookingConversationDTO getConversationView(Long bookingId, Long actAsUserId) {
+        // Fetch booking with eager loading of car, images, and participants
+        Booking booking = repo.findByIdForConversationView(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Booking not found with id: " + bookingId
+                ));
+        
+        // RLS ENFORCEMENT: Verify actAsUserId is a participant (renter or owner)
+        Long renterId = booking.getRenter().getId();
+        Long ownerId = booking.getCar().getOwner().getId();
+        
+        boolean isRenter = actAsUserId.equals(renterId);
+        boolean isOwner = actAsUserId.equals(ownerId);
+        
+        log.debug("[RLS] Validating conversation view access: bookingId={}, actAsUserId={}, isRenter={}, isOwner={}", 
+                bookingId, actAsUserId, isRenter, isOwner);
+        
+        if (!isRenter && !isOwner) {
+            log.warn("Unauthorized conversation view access: bookingId={}, actAsUserId={}", bookingId, actAsUserId);
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "User " + actAsUserId + " is not authorized to view booking " + bookingId + 
+                    " (not a participant)"
+            );
+        }
+        
+        // Audit log for successful access
+        String role = isRenter ? "RENTER" : "OWNER";
+        log.info("Conversation view granted: bookingId={}, role={}", bookingId, role);
+        
+        // Return conversation-safe DTO (NO PII)
+        return new org.example.rentoza.booking.dto.BookingConversationDTO(booking);
+    }
+
+    /**
      * Get all bookings for a specific car with owner verification.
      * RLS-ENFORCED: Returns bookings only if requester is the car owner or admin.
      * 

@@ -150,6 +150,10 @@ public class SecurityConfig {
                         .requestMatchers("/api/bookings/user/**").authenticated()
                         .requestMatchers(HttpMethod.PUT, "/api/bookings/cancel/**").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/bookings").authenticated()
+                        // Conversation view endpoint - accessible to authenticated users AND internal service
+                        // @PreAuthorize in controller enforces RLS + service-to-service validation
+                        .requestMatchers(HttpMethod.GET, "/api/bookings/*/conversation-view")
+                            .hasAnyAuthority("ROLE_USER", "ROLE_OWNER", "ROLE_ADMIN", "INTERNAL_SERVICE")
                         // Internal service endpoints - only specific endpoints require INTERNAL_SERVICE authority
                         .requestMatchers(HttpMethod.GET, "/api/users/profile/*").hasAuthority("INTERNAL_SERVICE")
                         .requestMatchers(HttpMethod.GET, "/api/bookings/*").hasAuthority("INTERNAL_SERVICE")

@@ -168,6 +168,101 @@ public class BookingController {
     }
 
     /**
+     * Get conversation-safe booking summary for chat enrichment.
+     * 
+     * Purpose:
+     * - Enable chat microservice to enrich conversations with booking context
+     * - Show "Future trip with 2020 BMW X5" in chat UI
+     * - Support service-to-service trust with user assertion
+     * 
+     * Security:
+     * - RLS-ENFORCED: Only renter, car owner, or INTERNAL_SERVICE with X-Act-As-User-Id
+     * - User assertion: X-Act-As-User-Id must match booking participant (renterId or ownerId)
+     * - No PII exposure: Returns BookingConversationDTO (no renter/owner names, emails, pricing)
+     * - Rate-limited: 120 req/min (IP) + 300 req/min (INTERNAL_SERVICE)
+     * 
+     * Access Patterns:
+     * - Direct JWT: Authenticated user requests their own booking context
+     * - Service-to-service: Chat service calls with X-Internal-Service-Token + X-Act-As-User-Id
+     * 
+     * @param id Booking ID
+     * @param actAsUserIdHeader X-Act-As-User-Id header (required for INTERNAL_SERVICE, ignored for direct JWT)
+     * @return BookingConversationDTO with conversation-safe booking summary
+     */
+    @GetMapping("/{id}/conversation-view")
+    @PreAuthorize("hasAuthority('INTERNAL_SERVICE') or @bookingSecurity.canAccessBooking(#id, authentication?.principal?.id)")
+    public ResponseEntity<?> getConversationView(
+            @PathVariable Long id,
+            @RequestHeader(value = "X-Act-As-User-Id", required = false) String actAsUserIdHeader
+    ) {
+        log.debug("[ConversationView] Request for bookingId={}", id);
+        
+        try {
+            // Determine user ID based on authentication type
+            Long actAsUserId;
+            
+            // Check if request is from INTERNAL_SERVICE
+            boolean isInternalService = org.springframework.security.core.context.SecurityContextHolder
+                    .getContext()
+                    .getAuthentication()
+                    .getAuthorities()
+                    .stream()
+                    .anyMatch(auth -> "INTERNAL_SERVICE".equals(auth.getAuthority()));
+            
+            if (isInternalService) {
+                // INTERNAL_SERVICE must provide X-Act-As-User-Id header
+                if (actAsUserIdHeader == null || actAsUserIdHeader.isBlank()) {
+                    log.warn("INTERNAL_SERVICE request missing X-Act-As-User-Id header for booking {}", id);
+                    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                            .body(Map.of("error", "X-Act-As-User-Id header required for service-to-service calls"));
+                }
+                
+                try {
+                    actAsUserId = Long.parseLong(actAsUserIdHeader);
+                    log.debug("[ConversationView] INTERNAL_SERVICE request: bookingId={}, actAsUserId={}", id, actAsUserId);
+                } catch (NumberFormatException e) {
+                    log.warn("Invalid X-Act-As-User-Id header for booking {}", id);
+                    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                            .body(Map.of("error", "X-Act-As-User-Id must be a valid user ID"));
+                }
+            } else {
+                // Direct JWT: Use authenticated user's ID (ignore X-Act-As-User-Id header)
+                actAsUserId = org.springframework.security.core.context.SecurityContextHolder
+                        .getContext()
+                        .getAuthentication()
+                        .getPrincipal() instanceof org.example.rentoza.security.JwtUserPrincipal principal
+                        ? principal.id()
+                        : null;
+                
+                if (actAsUserId == null) {
+                    log.warn("Direct JWT request missing principal for booking {}", id);
+                    return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                            .body(Map.of("error", "Authentication required"));
+                }
+                
+                log.debug("[ConversationView] Direct JWT request: bookingId={}, userId={}", id, actAsUserId);
+            }
+            
+            // Call service method with actAsUserId for RLS enforcement
+            org.example.rentoza.booking.dto.BookingConversationDTO dto = service.getConversationView(id, actAsUserId);
+            return ResponseEntity.ok(dto);
+            
+        } catch (ResourceNotFoundException e) {
+            log.warn("Booking not found: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("error", "Booking not found", "message", e.getMessage()));
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            log.warn("Access denied for booking {}: {}", id, e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", "Access denied", "message", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Unexpected error in conversation-view for booking {}", id, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Internal server error"));
+        }
+    }
+
+    /**
      * Debug endpoint - list all booking IDs (for development/testing)
      * Accessible with INTERNAL_SERVICE authority
      */

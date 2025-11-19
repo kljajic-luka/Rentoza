@@ -38,10 +38,10 @@ export const errorResponseInterceptor: HttpInterceptorFn = (req, next) => {
         // CRITICAL FIX: Only clear session if critical auth endpoints fail
         // This prevents auto-logout when a single business endpoint fails (e.g. /bookings/pending)
         if (req.url.includes('/users/me') || req.url.includes('/auth/')) {
-            console.log('🔒 401 Unauthorized on critical endpoint - clearing session');
-            authService.clearSession();
+          console.log('🔒 401 Unauthorized on critical endpoint - clearing session');
+          authService.clearSession();
         } else {
-            console.warn('🔒 401 Unauthorized on business endpoint - preserving session state');
+          console.warn('🔒 401 Unauthorized on business endpoint - preserving session state');
         }
         // Don't show toast - token interceptor handles refresh
       }

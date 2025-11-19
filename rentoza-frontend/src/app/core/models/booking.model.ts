@@ -3,7 +3,13 @@ import { User } from './user.model';
 
 export type PickupTimeWindow = 'MORNING' | 'AFTERNOON' | 'EVENING' | 'EXACT';
 
-export type BookingStatus = 'PENDING_APPROVAL' | 'ACTIVE' | 'DECLINED' | 'EXPIRED' | 'CANCELLED' | 'COMPLETED';
+export type BookingStatus =
+  | 'PENDING_APPROVAL'
+  | 'ACTIVE'
+  | 'DECLINED'
+  | 'EXPIRED'
+  | 'CANCELLED'
+  | 'COMPLETED';
 
 export interface Booking {
   id: string | number;

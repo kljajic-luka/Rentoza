@@ -15,18 +15,18 @@ import { DeclineReasonDialogComponent } from '../../dialogs/decline-reason-dialo
 
 /**
  * Pending Requests Component - Host Approval Workflow (Phase 3)
- * 
+ *
  * Purpose:
  * - Display pending booking approval requests for owner's cars
  * - Allow owner to approve or decline requests
  * - Show countdown timer for decision deadline
  * - Real-time status updates after approval/decline
- * 
+ *
  * Security:
  * - Backend enforces RLS: Only returns bookings for authenticated owner's cars
  * - Approve/decline endpoints require ROLE_OWNER or ROLE_ADMIN
  * - @PreAuthorize + @bookingSecurity.canDecide() enforcement
- * 
+ *
  * UX:
  * - Approve button: Green, primary action
  * - Decline button: Red, with reason dialog
@@ -73,14 +73,10 @@ export class PendingRequestsComponent implements OnInit {
       },
       error: (error) => {
         console.error('Error loading pending requests:', error);
-        this.snackBar.open(
-          'Greška pri učitavanju zahteva. Pokušajte ponovo.',
-          'Zatvori',
-          {
-            duration: 5000,
-            panelClass: ['snackbar-error'],
-          }
-        );
+        this.snackBar.open('Greška pri učitavanju zahteva. Pokušajte ponovo.', 'Zatvori', {
+          duration: 5000,
+          panelClass: ['snackbar-error'],
+        });
         this.isLoading.set(false);
       },
     });
@@ -104,9 +100,7 @@ export class PendingRequestsComponent implements OnInit {
         );
 
         // Remove from pending list
-        this.pendingBookings.update((bookings) =>
-          bookings.filter((b) => b.id !== booking.id)
-        );
+        this.pendingBookings.update((bookings) => bookings.filter((b) => b.id !== booking.id));
 
         // Remove from processing set
         this.processingIds.update((ids) => {
@@ -124,7 +118,9 @@ export class PendingRequestsComponent implements OnInit {
         } else if (error.status === 404) {
           errorMessage = 'Rezervacija nije pronađena.';
         } else if (error.status === 409) {
-          errorMessage = error.error?.error || 'Konflikt: Datumi su već zauzeti ili rezervacija je već obrađena.';
+          errorMessage =
+            error.error?.error ||
+            'Konflikt: Datumi su već zauzeti ili rezervacija je već obrađena.';
         }
 
         this.snackBar.open(errorMessage, 'Zatvori', {
@@ -173,9 +169,7 @@ export class PendingRequestsComponent implements OnInit {
             );
 
             // Remove from pending list
-            this.pendingBookings.update((bookings) =>
-              bookings.filter((b) => b.id !== booking.id)
-            );
+            this.pendingBookings.update((bookings) => bookings.filter((b) => b.id !== booking.id));
 
             this.processingIds.update((ids) => {
               const newIds = new Set(ids);

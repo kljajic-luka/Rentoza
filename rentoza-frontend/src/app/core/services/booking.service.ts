@@ -124,9 +124,13 @@ export class BookingService {
    * @returns Observable<Booking> with updated status ACTIVE
    */
   approveBooking(id: number): Observable<Booking> {
-    return this.http.put<Booking>(`${this.baseUrl}/${id}/approve`, {}, {
-      withCredentials: true,
-    });
+    return this.http.put<Booking>(
+      `${this.baseUrl}/${id}/approve`,
+      {},
+      {
+        withCredentials: true,
+      }
+    );
   }
 
   /**
@@ -153,13 +157,17 @@ export class BookingService {
    * @returns Observable<Booking> with updated status DECLINED
    */
   declineBooking(id: number, reason?: string): Observable<Booking> {
-    const url = reason 
+    const url = reason
       ? `${this.baseUrl}/${id}/decline?reason=${encodeURIComponent(reason)}`
       : `${this.baseUrl}/${id}/decline`;
-    
-    return this.http.put<Booking>(url, {}, {
-      withCredentials: true,
-    });
+
+    return this.http.put<Booking>(
+      url,
+      {},
+      {
+        withCredentials: true,
+      }
+    );
   }
 
   /**

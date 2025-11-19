@@ -4,111 +4,120 @@
       <mat-icon>pending_actions</mat-icon>
       Zahtevi za rezervaciju
     </h2>
-    <button mat-icon-button (click)="refreshList()" [disabled]="isLoading()" matTooltip="Osveži listu">
+    <button
+      mat-icon-button
+      (click)="refreshList()"
+      [disabled]="isLoading()"
+      matTooltip="Osveži listu"
+    >
       <mat-icon>refresh</mat-icon>
     </button>
   </div>
 
   @if (isLoading()) {
-    <div class="loading-container">
-      <mat-spinner diameter="50"></mat-spinner>
-      <p>Učitavanje zahteva...</p>
-    </div>
+  <div class="loading-container">
+    <mat-spinner diameter="50"></mat-spinner>
+    <p>Učitavanje zahteva...</p>
+  </div>
   } @else if (pendingBookings().length === 0) {
-    <div class="empty-state">
-      <mat-icon>check_circle_outline</mat-icon>
-      <h3>Nema novih zahteva</h3>
-      <p>Trenutno nemate zahteve za odobrenje rezervacija.</p>
-    </div>
+  <div class="empty-state">
+    <mat-icon>check_circle_outline</mat-icon>
+    <h3>Nema novih zahteva</h3>
+    <p>Trenutno nemate zahteve za odobrenje rezervacija.</p>
+  </div>
   } @else {
-    <div class="requests-grid">
-      @for (booking of pendingBookings(); track booking.id) {
-        <mat-card class="request-card">
-          <mat-card-header>
-            <div class="car-info">
-              @if (booking.car.imageUrl) {
-                <img [src]="booking.car.imageUrl" [alt]="booking.car.make + ' ' + booking.car.model" class="car-image">
-              }
-              <div>
-                <mat-card-title>{{ booking.car.make }} {{ booking.car.model }}</mat-card-title>
-                <mat-card-subtitle>
-                  Zahtev od: {{ booking.renter.firstName }} {{ booking.renter.lastName }}
-                </mat-card-subtitle>
-              </div>
+  <div class="requests-grid">
+    @for (booking of pendingBookings(); track booking.id) {
+    <mat-card class="request-card">
+      <mat-card-header>
+        <div class="car-info">
+          @if (booking.car.imageUrl) {
+          <img
+            [src]="booking.car.imageUrl"
+            [alt]="booking.car.make + ' ' + booking.car.model"
+            class="car-image"
+          />
+          }
+          <div>
+            <mat-card-title>{{ booking.car.make }} {{ booking.car.model }}</mat-card-title>
+            <mat-card-subtitle>
+              Zahtev od: {{ booking.renter.firstName }} {{ booking.renter.lastName }}
+            </mat-card-subtitle>
+          </div>
+        </div>
+        <mat-chip
+          class="deadline-chip"
+          [ngClass]="getDeadlineClass(booking.decisionDeadlineAt)"
+          matTooltip="Vreme do isteka zahteva"
+        >
+          <mat-icon>schedule</mat-icon>
+          {{ getDeadlineTimeLeft(booking.decisionDeadlineAt) }}
+        </mat-chip>
+      </mat-card-header>
+
+      <mat-card-content>
+        <div class="booking-details">
+          <div class="detail-item">
+            <mat-icon>calendar_today</mat-icon>
+            <div>
+              <span class="label">Period:</span>
+              <span class="value"
+                >{{ formatDate(booking.startDate) }} - {{ formatDate(booking.endDate) }}</span
+              >
             </div>
-            <mat-chip 
-              class="deadline-chip" 
-              [ngClass]="getDeadlineClass(booking.decisionDeadlineAt)"
-              matTooltip="Vreme do isteka zahteva"
-            >
-              <mat-icon>schedule</mat-icon>
-              {{ getDeadlineTimeLeft(booking.decisionDeadlineAt) }}
-            </mat-chip>
-          </mat-card-header>
+          </div>
 
-          <mat-card-content>
-            <div class="booking-details">
-              <div class="detail-item">
-                <mat-icon>calendar_today</mat-icon>
-                <div>
-                  <span class="label">Period:</span>
-                  <span class="value">{{ formatDate(booking.startDate) }} - {{ formatDate(booking.endDate) }}</span>
-                </div>
-              </div>
-
-              <div class="detail-item">
-                <mat-icon>attach_money</mat-icon>
-                <div>
-                  <span class="label">Ukupna cena:</span>
-                  <span class="value">{{ booking.totalPrice | currency:'RSD':'symbol':'1.0-0' }}</span>
-                </div>
-              </div>
-
-              @if (booking.pickupTimeWindow) {
-                <div class="detail-item">
-                  <mat-icon>access_time</mat-icon>
-                  <div>
-                    <span class="label">Preuzimanje:</span>
-                    <span class="value">
-                      @switch (booking.pickupTimeWindow) {
-                        @case ('MORNING') { Ujutro (08:00 - 12:00) }
-                        @case ('AFTERNOON') { Popodne (12:00 - 17:00) }
-                        @case ('EVENING') { Uveče (17:00 - 21:00) }
-                        @case ('EXACT') { {{ booking.pickupTime }} }
-                      }
-                    </span>
-                  </div>
-                </div>
-              }
+          <div class="detail-item">
+            <mat-icon>attach_money</mat-icon>
+            <div>
+              <span class="label">Ukupna cena:</span>
+              <span class="value">{{
+                booking.totalPrice | currency : 'RSD' : 'symbol' : '1.0-0'
+              }}</span>
             </div>
-          </mat-card-content>
+          </div>
 
-          <mat-card-actions align="end">
-            <button 
-              mat-stroked-button 
-              color="warn"
-              (click)="declineBooking(booking)"
-              [disabled]="isProcessing(booking.id)"
-            >
-              <mat-icon>cancel</mat-icon>
-              Odbij
-            </button>
-            <button 
-              mat-raised-button 
-              color="primary"
-              (click)="approveBooking(booking)"
-              [disabled]="isProcessing(booking.id)"
-            >
-              @if (isProcessing(booking.id)) {
-                <mat-spinner diameter="20"></mat-spinner>
-              } @else {
-                <mat-icon>check_circle</mat-icon>
-              }
-              Odobri
-            </button>
-          </mat-card-actions>
-        </mat-card>
-      }
-    </div>
+          @if (booking.pickupTimeWindow) {
+          <div class="detail-item">
+            <mat-icon>access_time</mat-icon>
+            <div>
+              <span class="label">Preuzimanje:</span>
+              <span class="value">
+                @switch (booking.pickupTimeWindow) { @case ('MORNING') { Ujutro (08:00 - 12:00) }
+                @case ('AFTERNOON') { Popodne (12:00 - 17:00) } @case ('EVENING') { Uveče (17:00 -
+                21:00) } @case ('EXACT') { {{ booking.pickupTime }} } }
+              </span>
+            </div>
+          </div>
+          }
+        </div>
+      </mat-card-content>
+
+      <mat-card-actions align="end">
+        <button
+          mat-stroked-button
+          color="warn"
+          (click)="declineBooking(booking)"
+          [disabled]="isProcessing(booking.id)"
+        >
+          <mat-icon>cancel</mat-icon>
+          Odbij
+        </button>
+        <button
+          mat-raised-button
+          color="primary"
+          (click)="approveBooking(booking)"
+          [disabled]="isProcessing(booking.id)"
+        >
+          @if (isProcessing(booking.id)) {
+          <mat-spinner diameter="20"></mat-spinner>
+          } @else {
+          <mat-icon>check_circle</mat-icon>
+          } Odobri
+        </button>
+      </mat-card-actions>
+    </mat-card>
+    }
+  </div>
   }
 </div>

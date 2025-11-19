@@ -12,24 +12,24 @@
     <form [formGroup]="declineForm" class="decline-form">
       <mat-radio-group formControlName="reasonType" class="reason-options">
         @for (reason of predefinedReasons; track reason.value) {
-          <mat-radio-button [value]="reason.value">
-            {{ reason.label }}
-          </mat-radio-button>
+        <mat-radio-button [value]="reason.value">
+          {{ reason.label }}
+        </mat-radio-button>
         }
       </mat-radio-group>
 
       @if (isCustomReasonRequired()) {
-        <mat-form-field appearance="outline" class="custom-reason-field">
-          <mat-label>Unesite razlog</mat-label>
-          <textarea
-            matInput
-            formControlName="customReason"
-            rows="4"
-            placeholder="Opišite razlog odbijanja..."
-            required
-          ></textarea>
-          <mat-error>Razlog je obavezan</mat-error>
-        </mat-form-field>
+      <mat-form-field appearance="outline" class="custom-reason-field">
+        <mat-label>Unesite razlog</mat-label>
+        <textarea
+          matInput
+          formControlName="customReason"
+          rows="4"
+          placeholder="Opišite razlog odbijanja..."
+          required
+        ></textarea>
+        <mat-error>Razlog je obavezan</mat-error>
+      </mat-form-field>
       }
     </form>
 

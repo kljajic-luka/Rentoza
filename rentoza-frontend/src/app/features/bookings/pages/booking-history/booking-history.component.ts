@@ -32,11 +32,11 @@ interface CategorizedBookings {
     MatButtonModule,
     MatIconModule,
     MatChipsModule,
-    MatTooltipModule
+    MatTooltipModule,
   ],
   templateUrl: './booking-history.component.html',
   styleUrls: ['./booking-history.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class BookingHistoryComponent {
   private readonly bookingService = inject(BookingService);
@@ -136,7 +136,7 @@ export class BookingHistoryComponent {
 
   /**
    * Get human-readable status label for booking.
-   * 
+   *
    * Phase 3: Added support for new approval workflow statuses:
    * - PENDING_APPROVAL: "Čeka odobrenje"
    * - DECLINED: "Odbijeno"
@@ -163,7 +163,7 @@ export class BookingHistoryComponent {
 
   /**
    * Get CSS class for status badge styling.
-   * 
+   *
    * Phase 3: Added styling classes for new statuses:
    * - pending-approval: Yellow/orange (awaiting action)
    * - declined: Red (rejected)
@@ -190,7 +190,7 @@ export class BookingHistoryComponent {
 
   /**
    * Get tooltip description for status badge.
-   * 
+   *
    * Phase 3: Added tooltips explaining each status:
    * - PENDING_APPROVAL: Explains host must approve within deadline
    * - DECLINED: Shows decline reason if available
@@ -219,7 +219,7 @@ export class BookingHistoryComponent {
 
   /**
    * Check if booking status should show additional info icon.
-   * 
+   *
    * Phase 3: Show info icon for PENDING_APPROVAL, DECLINED, EXPIRED
    * to indicate user should check tooltip for details.
    */

@@ -16,12 +16,12 @@ export interface DeclineReasonDialogData {
 
 /**
  * Decline Reason Dialog - Host Approval Workflow (Phase 3)
- * 
+ *
  * Purpose:
  * - Collect decline reason from owner when rejecting booking request
  * - Show reason to guest in notification and booking history
  * - Support predefined reasons + custom reason
- * 
+ *
  * UX:
  * - Radio buttons for common reasons
  * - Text area for custom reason

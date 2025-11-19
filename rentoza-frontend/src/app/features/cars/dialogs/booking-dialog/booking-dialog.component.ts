@@ -389,11 +389,11 @@ export class BookingDialogComponent implements OnInit {
   /**
    * Phase 2.3: Create booking after validation passes
    * Phase 3: Updated for host approval workflow
-   * 
+   *
    * Behavior depends on backend feature flag (app.booking.host-approval.enabled):
    * - If enabled: Status = PENDING_APPROVAL, awaiting host decision
    * - If disabled: Status = ACTIVE, instant confirmation (legacy)
-   * 
+   *
    * Success message updated to reflect approval workflow.
    */
   private createBookingConfirmed(payload: any): void {
@@ -411,14 +411,10 @@ export class BookingDialogComponent implements OnInit {
           );
         } else {
           // Legacy instant booking (ACTIVE)
-          this.snackBar.open(
-            'Vaša rezervacija je uspešno potvrđena!',
-            'Zatvori',
-            {
-              duration: 4000,
-              panelClass: ['snackbar-success'],
-            }
-          );
+          this.snackBar.open('Vaša rezervacija je uspešno potvrđena!', 'Zatvori', {
+            duration: 4000,
+            panelClass: ['snackbar-success'],
+          });
         }
         this.dialogRef.close(true);
       },

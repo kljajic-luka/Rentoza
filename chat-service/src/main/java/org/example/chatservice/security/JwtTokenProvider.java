@@ -52,7 +52,7 @@ public class JwtTokenProvider {
         return Jwts.parser()
                 .verifyWith(key)
                 .build()
-                .parseSignedClaims(token)
+                .parseSignedClaims(token.trim())
                 .getPayload();
     }
 

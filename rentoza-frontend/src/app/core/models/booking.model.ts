@@ -15,8 +15,9 @@ export interface Booking {
   id: string | number;
   car: {
     id: string | number;
-    make: string;
+    brand: string; // Changed from make to brand to match backend DTO
     model: string;
+    year?: number; // Added year
     imageUrl?: string;
   };
   renter: {

@@ -82,16 +82,42 @@ export class ConversationEnrichmentService {
       return of(this.bookingCache.get(bookingId)!);
     }
 
-    // Fetch from API
-    return this.bookingService.getMyBookings().pipe(
-      map((bookings: UserBooking[]) => {
-        const booking = bookings.find((b: UserBooking) => String(b.id) === bookingId);
-        if (booking) {
-          this.bookingCache.set(bookingId, booking);
-        }
-        return booking || null;
+    // Fetch from API using getBookingById which works for both Renter and Owner
+    return this.bookingService.getBookingById(bookingId).pipe(
+      map((booking: any) => {
+        if (!booking) return null;
+        
+        // Map Booking to UserBooking structure expected by cache/enrichment
+        // Note: Booking model has nested car/renter, UserBooking is flat
+        const userBooking: UserBooking = {
+          id: Number(booking.id),
+          carId: Number(booking.car?.id),
+          carBrand: booking.car?.brand || booking.car?.make || 'Unknown',
+          carModel: booking.car?.model || 'Unknown',
+          carYear: booking.car?.year || 0,
+          carImageUrl: booking.car?.imageUrl || null,
+          carLocation: '', // Not available in standard Booking DTO
+          carPricePerDay: 0, // Not available in standard Booking DTO
+          startDate: booking.startDate,
+          endDate: booking.endDate,
+          totalPrice: booking.totalPrice,
+          status: booking.status,
+          hasReview: false,
+          reviewRating: null,
+          reviewComment: null,
+          insuranceType: 'BASIC', // Default
+          prepaidRefuel: false,
+          pickupTimeWindow: booking.pickupTimeWindow,
+          pickupTime: booking.pickupTime
+        };
+
+        this.bookingCache.set(bookingId, userBooking);
+        return userBooking;
       }),
-      catchError(() => of(null))
+      catchError((err) => {
+        console.error(`[Enrichment] Failed to fetch booking ${bookingId}`, err);
+        return of(null);
+      })
     );
   }
 

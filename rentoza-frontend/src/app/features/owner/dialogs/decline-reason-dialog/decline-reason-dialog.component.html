@@ -18,36 +18,36 @@
 
     <form [formGroup]="declineForm" class="decline-form">
       <label id="reason-label" class="reason-label">Izaberite razlog:</label>
-      
-      <mat-radio-group 
-        formControlName="reasonType" 
-        class="reason-radio-group" 
-        aria-labelledby="reason-label">
-        
+
+      <mat-radio-group
+        formControlName="reasonType"
+        class="reason-radio-group"
+        aria-labelledby="reason-label"
+      >
         @for (reason of predefinedReasons; track reason.value) {
-          <mat-radio-button [value]="reason.value" class="reason-radio-button">
-            {{ reason.label }}
-          </mat-radio-button>
+        <mat-radio-button [value]="reason.value" class="reason-radio-button">
+          {{ reason.label }}
+        </mat-radio-button>
         }
       </mat-radio-group>
 
       @if (isCustomReasonRequired()) {
-        <mat-form-field appearance="outline" class="custom-reason-field">
-          <mat-label>Dodatno objašnjenje</mat-label>
-          <textarea
-            matInput
-            formControlName="customReason"
-            rows="4"
-            placeholder="Npr. vozilo je već rezervisano van sistema..."
-            required
-            maxlength="500"
-            #reasonInput
-          ></textarea>
-          <mat-hint align="end">{{reasonInput.value.length}} / 500</mat-hint>
-          @if (declineForm.get('customReason')?.hasError('required')) {
-            <mat-error>Molimo unesite razlog odbijanja.</mat-error>
-          }
-        </mat-form-field>
+      <mat-form-field appearance="outline" class="custom-reason-field">
+        <mat-label>Dodatno objašnjenje</mat-label>
+        <textarea
+          matInput
+          formControlName="customReason"
+          rows="4"
+          placeholder="Npr. vozilo je već rezervisano van sistema..."
+          required
+          maxlength="500"
+          #reasonInput
+        ></textarea>
+        <mat-hint align="end">{{ reasonInput.value.length }} / 500</mat-hint>
+        @if (declineForm.get('customReason')?.hasError('required')) {
+        <mat-error>Molimo unesite razlog odbijanja.</mat-error>
+        }
+      </mat-form-field>
       }
     </form>
   </mat-dialog-content>
@@ -58,7 +58,9 @@
       mat-flat-button
       color="warn"
       (click)="submit()"
-      [disabled]="declineForm.invalid || (isCustomReasonRequired() && !declineForm.value.customReason?.trim())"
+      [disabled]="
+        declineForm.invalid || (isCustomReasonRequired() && !declineForm.value.customReason?.trim())
+      "
     >
       Odbij rezervaciju
     </button>

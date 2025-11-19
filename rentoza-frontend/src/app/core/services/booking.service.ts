@@ -24,6 +24,19 @@ export class BookingService {
   }
 
   /**
+   * Get booking by ID (accessible to Renter and Owner).
+   * 
+   * Security:
+   * - @PreAuthorize("@bookingSecurity.canAccessBooking(#id, authentication.principal.id) or hasRole('ADMIN')")
+   * - Returns full booking details
+   */
+  getBookingById(id: string | number): Observable<Booking> {
+    return this.http.get<Booking>(`${this.baseUrl}/${id}`, {
+      withCredentials: true,
+    });
+  }
+
+  /**
    * Get full booking details for a car (OWNER/ADMIN only).
    *
    * Security:

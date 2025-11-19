@@ -44,6 +44,12 @@ public class ChatServiceClient {
     public ConversationResponse createConversation(String bookingId, String renterId, String ownerId, String jwtToken) {
         CreateConversationRequest request = new CreateConversationRequest(bookingId, renterId, ownerId);
         
+        // Ensure token is clean and doesn't have double Bearer prefix
+        String cleanToken = jwtToken != null ? jwtToken.trim() : "";
+        if (cleanToken.toLowerCase().startsWith("bearer ")) {
+            cleanToken = cleanToken.substring(7).trim();
+        }
+
         int attempt = 0;
         Exception lastException = null;
 
@@ -54,7 +60,8 @@ public class ChatServiceClient {
                 
                 HttpHeaders headers = new HttpHeaders();
                 headers.setContentType(MediaType.APPLICATION_JSON);
-                headers.setBearerAuth(jwtToken);
+                // setBearerAuth adds the "Bearer " prefix automatically
+                headers.setBearerAuth(cleanToken);
                 
                 HttpEntity<CreateConversationRequest> entity = new HttpEntity<>(request, headers);
                 

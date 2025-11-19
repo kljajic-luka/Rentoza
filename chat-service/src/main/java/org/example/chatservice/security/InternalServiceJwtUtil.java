@@ -68,15 +68,18 @@ public class InternalServiceJwtUtil {
      */
     public boolean validateServiceToken(String token) {
         try {
-            if (token == null || token.isEmpty()) {
+            if (token == null || token.trim().isEmpty()) {
                 logger.warn("❌ Token validation failed: Token is null or empty");
                 return false;
             }
+            
+            // Ensure token is trimmed
+            String cleanToken = token.trim();
 
             Claims claims = Jwts.parser()
                     .verifyWith(key)
                     .build()
-                    .parseSignedClaims(token)
+                    .parseSignedClaims(cleanToken)
                     .getPayload();
 
             // Verify this is an internal service token
@@ -114,10 +117,12 @@ public class InternalServiceJwtUtil {
      */
     public String getServiceNameFromToken(String token) {
         try {
+            if (token == null) return null;
+            
             Claims claims = Jwts.parser()
                     .verifyWith(key)
                     .build()
-                    .parseSignedClaims(token)
+                    .parseSignedClaims(token.trim())
                     .getPayload();
 
             return claims.get("service", String.class);

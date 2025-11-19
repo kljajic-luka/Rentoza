@@ -314,13 +314,14 @@ public class BookingApprovalService {
     private void createChatConversation(Booking booking) {
         try {
             // Generate internal service token for chat service communication
-            String internalToken = internalServiceJwtUtil.generateServiceToken("chat-service");
+            String internalToken = internalServiceJwtUtil.generateServiceToken("chat-service").trim();
 
+            // Pass raw token - ChatServiceClient handles the Bearer prefix
             chatServiceClient.createConversationAsync(
                     booking.getId().toString(),
                     booking.getRenter().getId().toString(),
                     booking.getCar().getOwner().getId().toString(),
-                    "Bearer " + internalToken
+                    internalToken
             );
 
             log.debug("[ApprovalService] Triggered chat conversation creation for bookingId={}", booking.getId());

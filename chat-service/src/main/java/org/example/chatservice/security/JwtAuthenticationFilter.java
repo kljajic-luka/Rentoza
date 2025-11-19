@@ -20,6 +20,7 @@ import java.util.ArrayList;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenProvider jwtTokenProvider;
+    private final InternalServiceJwtUtil internalServiceJwtUtil;
 
     @Override
     protected void doFilterInternal(
@@ -36,11 +37,22 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         try {
-            final String jwt = authHeader.substring(7);
-            final String userId = jwtTokenProvider.extractUserId(jwt);
+            // Robust extraction: trim whitespace to prevent "Compact JWT strings may not contain whitespace" errors
+            final String jwt = authHeader.substring(7).trim();
+            
+            // Log token details for debugging (NEVER log the full token)
+            if (logger.isDebugEnabled()) {
+                logger.debug("Processing JWT token: length=" + jwt.length() + ", startsWith=" + 
+                        (jwt.length() > 5 ? jwt.substring(0, 5) + "..." : "too_short"));
+            }
+            
+            // Try to authenticate as a user first
+            // We check validateToken() first because it handles exceptions (like SignatureException) gracefully by returning false.
+            // If we called extractUserId() directly on an Internal Service Token, it would throw SignatureException and skip the service check.
+            if (jwtTokenProvider.validateToken(jwt)) {
+                String userId = jwtTokenProvider.extractUserId(jwt);
 
-            if (userId != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                if (jwtTokenProvider.validateToken(jwt)) {
+                if (userId != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                     UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
                             userId,
                             null,
@@ -49,9 +61,25 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                     SecurityContextHolder.getContext().setAuthentication(authToken);
                 }
+            } else {
+                // If user validation failed (e.g. signature mismatch), try to authenticate as an internal service
+                if (internalServiceJwtUtil.validateServiceToken(jwt)) {
+                    String serviceName = internalServiceJwtUtil.getServiceNameFromToken(jwt);
+                    if (serviceName != null) {
+                        // Create a special authentication for internal services
+                        // We use the service name as the principal
+                        UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+                                serviceName,
+                                null,
+                                java.util.Collections.singletonList(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_INTERNAL_SERVICE"))
+                        );
+                        authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                        SecurityContextHolder.getContext().setAuthentication(authToken);
+                    }
+                }
             }
         } catch (Exception e) {
-            logger.error("Cannot set user authentication: {}", e);
+            logger.error("Cannot set user authentication: " + e.getMessage(), e);
         }
 
         filterChain.doFilter(request, response);

@@ -150,7 +150,7 @@ export class PendingRequestsComponent implements OnInit {
     const dialogRef = this.dialog.open(DeclineReasonDialogComponent, {
       width: '500px',
       data: { booking },
-      disableClose: false // Allow ESC/backdrop to close (treated as cancel)
+      disableClose: false, // Allow ESC/backdrop to close (treated as cancel)
     });
 
     dialogRef.afterClosed().subscribe((result: { reason: string } | null | undefined) => {
@@ -161,7 +161,7 @@ export class PendingRequestsComponent implements OnInit {
       // - empty reason (shouldn't happen due to dialog validation, but safe to check)
       if (result && result.reason) {
         const reason = result.reason;
-        
+
         // User confirmed decline with reason
         this.processingIds.update((ids) => new Set(ids).add(bookingId));
 

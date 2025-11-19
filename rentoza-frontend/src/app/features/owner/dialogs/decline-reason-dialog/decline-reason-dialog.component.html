@@ -1,52 +1,65 @@
-<div class="decline-dialog">
-  <h2 mat-dialog-title>
-    <mat-icon>cancel</mat-icon>
-    Odbij zahtev za rezervaciju
+<div class="decline-dialog-container">
+  <h2 mat-dialog-title class="dialog-title">
+    <mat-icon color="warn" class="title-icon">report_problem</mat-icon>
+    Razlog odbijanja rezervacije
   </h2>
 
-  <mat-dialog-content>
-    <p class="dialog-description">
-      Molimo izaberite razlog odbijanja. Gost će biti obavešten o Vašoj odluci.
+  <mat-dialog-content class="dialog-content">
+    <p class="dialog-subtitle">
+      Ovaj razlog će biti prikazan gostu kako bi razumeo zašto je zahtev odbijen.
     </p>
 
+    <div class="car-summary">
+      <mat-icon class="car-icon">directions_car</mat-icon>
+      <span class="car-text">
+        Zahtev za: <strong>{{ data.booking.car.make }} {{ data.booking.car.model }}</strong>
+      </span>
+    </div>
+
     <form [formGroup]="declineForm" class="decline-form">
-      <mat-radio-group formControlName="reasonType" class="reason-options">
+      <label id="reason-label" class="reason-label">Izaberite razlog:</label>
+      
+      <mat-radio-group 
+        formControlName="reasonType" 
+        class="reason-radio-group" 
+        aria-labelledby="reason-label">
+        
         @for (reason of predefinedReasons; track reason.value) {
-        <mat-radio-button [value]="reason.value">
-          {{ reason.label }}
-        </mat-radio-button>
+          <mat-radio-button [value]="reason.value" class="reason-radio-button">
+            {{ reason.label }}
+          </mat-radio-button>
         }
       </mat-radio-group>
 
       @if (isCustomReasonRequired()) {
-      <mat-form-field appearance="outline" class="custom-reason-field">
-        <mat-label>Unesite razlog</mat-label>
-        <textarea
-          matInput
-          formControlName="customReason"
-          rows="4"
-          placeholder="Opišite razlog odbijanja..."
-          required
-        ></textarea>
-        <mat-error>Razlog je obavezan</mat-error>
-      </mat-form-field>
+        <mat-form-field appearance="outline" class="custom-reason-field">
+          <mat-label>Dodatno objašnjenje</mat-label>
+          <textarea
+            matInput
+            formControlName="customReason"
+            rows="4"
+            placeholder="Npr. vozilo je već rezervisano van sistema..."
+            required
+            maxlength="500"
+            #reasonInput
+          ></textarea>
+          <mat-hint align="end">{{reasonInput.value.length}} / 500</mat-hint>
+          @if (declineForm.get('customReason')?.hasError('required')) {
+            <mat-error>Molimo unesite razlog odbijanja.</mat-error>
+          }
+        </mat-form-field>
       }
     </form>
-
-    <div class="car-info">
-      <strong>Vozilo:</strong> {{ data.booking.car.make }} {{ data.booking.car.model }}
-    </div>
   </mat-dialog-content>
 
-  <mat-dialog-actions align="end">
-    <button mat-button (click)="cancel()">Otkaži</button>
+  <mat-dialog-actions align="end" class="dialog-actions">
+    <button mat-stroked-button (click)="cancel()">Odustani</button>
     <button
-      mat-raised-button
+      mat-flat-button
       color="warn"
       (click)="submit()"
-      [disabled]="isCustomReasonRequired() && !declineForm.value.customReason?.trim()"
+      [disabled]="declineForm.invalid || (isCustomReasonRequired() && !declineForm.value.customReason?.trim())"
     >
-      <mat-icon>cancel</mat-icon>
       Odbij rezervaciju
     </button>
   </mat-dialog-actions>

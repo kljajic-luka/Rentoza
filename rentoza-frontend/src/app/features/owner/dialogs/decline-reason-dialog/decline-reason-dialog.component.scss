@@ -1,81 +1,116 @@
-.decline-dialog {
-  min-width: 500px;
+.decline-dialog-container {
+  display: flex;
+  flex-direction: column;
+  max-height: 90vh; /* Prevent overflow on small screens */
+  
+  /* Ensure consistent width */
+  min-width: 400px;
+  max-width: 600px;
+  width: 100%;
 
   @media (max-width: 600px) {
     min-width: auto;
+    width: 100%;
+  }
+}
+
+.dialog-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  padding: 24px 24px 0; /* Material standard padding */
+  
+  .title-icon {
+    /* Icon color is handled by color="warn" in HTML, or inherits */
+    font-size: 24px;
+    width: 24px;
+    height: 24px;
+  }
+}
+
+.dialog-content {
+  padding: 0 24px 20px; /* Material standard padding */
+  display: flex;
+  flex-direction: column;
+  
+  /* Scrollable content if needed */
+  overflow-y: auto; 
+}
+
+.dialog-subtitle {
+  margin: 16px 0 24px;
+  /* Use opacity for theme-agnostic dimming instead of hardcoded gray */
+  opacity: 0.7; 
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.car-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  margin-bottom: 24px;
+  border-radius: 8px;
+  
+  /* Theme-agnostic background: slightly visible on both light/dark */
+  background-color: rgba(128, 128, 128, 0.08); 
+  
+  .car-icon {
+    opacity: 0.6;
   }
 
-  h2 {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin: 0;
-    color: #c62828;
-
-    mat-icon {
-      font-size: 28px;
-      width: 28px;
-      height: 28px;
-    }
-  }
-
-  mat-dialog-content {
-    padding: 20px 0;
-
-    .dialog-description {
-      margin-bottom: 24px;
-      color: rgba(0, 0, 0, 0.6);
-      font-size: 14px;
-      line-height: 1.5;
-    }
-
-    .decline-form {
-      .reason-options {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-        margin-bottom: 20px;
-
-        mat-radio-button {
-          font-size: 14px;
-
-          ::ng-deep .mdc-label {
-            padding-left: 8px;
-          }
-        }
-      }
-
-      .custom-reason-field {
-        width: 100%;
-        margin-top: 16px;
-
-        textarea {
-          font-family: inherit;
-        }
-      }
-    }
-
-    .car-info {
-      padding: 12px 16px;
-      background-color: #f5f5f5;
-      border-radius: 8px;
-      margin-top: 20px;
-      font-size: 14px;
-
-      strong {
-        color: rgba(0, 0, 0, 0.87);
-      }
-    }
-  }
-
-  mat-dialog-actions {
-    padding: 16px 0 0;
-    gap: 12px;
-
-    button {
-      mat-icon {
-        margin-right: 4px;
-      }
+  .car-text {
+    font-size: 14px;
+    
+    strong {
+      font-weight: 600;
     }
   }
 }
+
+.decline-form {
+  display: flex;
+  flex-direction: column;
+}
+
+.reason-label {
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 12px;
+  opacity: 0.9;
+}
+
+.reason-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.reason-radio-button {
+  /* Ensure touch targets are good */
+  padding: 4px 0;
+}
+
+.custom-reason-field {
+  width: 100%;
+  margin-top: 8px;
+  
+  textarea {
+    resize: vertical; /* Allow vertical resize only */
+    min-height: 80px;
+  }
+}
+
+.dialog-actions {
+  padding: 16px 24px 24px; /* Material standard padding */
+  margin: 0;
+  
+  button {
+    /* Ensure buttons don't touch on very small screens */
+    margin-left: 8px; 
+  }
+}
+

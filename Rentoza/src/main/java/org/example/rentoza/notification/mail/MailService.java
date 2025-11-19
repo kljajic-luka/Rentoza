@@ -168,6 +168,11 @@ public class MailService {
     private String getTemplateForType(NotificationType type) {
         return switch (type) {
             case BOOKING_CONFIRMED -> "emails/booking-confirmed";
+            case BOOKING_APPROVED -> "emails/booking-approved";
+            case BOOKING_REQUEST_SENT -> "emails/booking-request-sent";
+            case BOOKING_REQUEST_RECEIVED -> "emails/booking-request-received";
+            case BOOKING_DECLINED -> "emails/booking-declined";
+            case BOOKING_EXPIRED -> "emails/booking-expired";
             case BOOKING_CANCELLED -> "emails/booking-cancelled";
             case REVIEW_RECEIVED -> "emails/review-received";
             case NEW_MESSAGE -> "emails/new-message";
@@ -182,7 +187,9 @@ public class MailService {
         Map<String, Object> variables = new HashMap<>();
 
         switch (type) {
-            case BOOKING_CONFIRMED, BOOKING_CANCELLED -> {
+            case BOOKING_CONFIRMED, BOOKING_CANCELLED, BOOKING_APPROVED, 
+                 BOOKING_REQUEST_SENT, BOOKING_REQUEST_RECEIVED, 
+                 BOOKING_DECLINED, BOOKING_EXPIRED -> {
                 variables.put("bookingId", relatedEntityId);
                 variables.put("bookingUrl", buildBookingUrl(relatedEntityId));
             }

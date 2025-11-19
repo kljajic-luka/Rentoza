@@ -50,7 +50,7 @@ export class DeclineReasonDialogComponent {
 
   protected readonly declineForm = this.fb.nonNullable.group({
     reasonType: ['dates_conflict', Validators.required],
-    customReason: [''],
+    customReason: ['', [Validators.maxLength(500)]],
   });
 
   protected readonly predefinedReasons = [
@@ -85,7 +85,8 @@ export class DeclineReasonDialogComponent {
       reason = selectedReason?.label || 'Rezervacija je odbijena';
     }
 
-    this.dialogRef.close(reason);
+    // Return object to ensure type safety and distinguish from null/undefined
+    this.dialogRef.close({ reason });
   }
 
   protected cancel(): void {

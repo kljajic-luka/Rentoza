@@ -86,7 +86,7 @@ export class ConversationEnrichmentService {
     return this.bookingService.getBookingById(bookingId).pipe(
       map((booking: any) => {
         if (!booking) return null;
-        
+
         // Map Booking to UserBooking structure expected by cache/enrichment
         // Note: Booking model has nested car/renter, UserBooking is flat
         const userBooking: UserBooking = {
@@ -108,7 +108,7 @@ export class ConversationEnrichmentService {
           insuranceType: 'BASIC', // Default
           prepaidRefuel: false,
           pickupTimeWindow: booking.pickupTimeWindow,
-          pickupTime: booking.pickupTime
+          pickupTime: booking.pickupTime,
         };
 
         this.bookingCache.set(bookingId, userBooking);

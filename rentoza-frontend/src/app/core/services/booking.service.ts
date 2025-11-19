@@ -25,7 +25,7 @@ export class BookingService {
 
   /**
    * Get booking by ID (accessible to Renter and Owner).
-   * 
+   *
    * Security:
    * - @PreAuthorize("@bookingSecurity.canAccessBooking(#id, authentication.principal.id) or hasRole('ADMIN')")
    * - Returns full booking details

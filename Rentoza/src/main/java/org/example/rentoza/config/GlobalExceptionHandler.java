@@ -20,6 +20,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, String>> handleGeneralError(Exception ex) {
+        log.error("Unhandled exception occurred", ex); // Log full stack trace
         Map<String, String> body = new HashMap<>();
         body.put("error", "Server error");
         body.put("message", ex.getMessage());

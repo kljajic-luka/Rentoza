@@ -28,10 +28,12 @@ public class BookingController {
 
     private final BookingService service;
     private final JwtUtil jwtUtil;
+    private final BookingApprovalService approvalService;
 
-    public BookingController(BookingService service, JwtUtil jwtUtil) {
+    public BookingController(BookingService service, JwtUtil jwtUtil, BookingApprovalService approvalService) {
         this.service = service;
         this.jwtUtil = jwtUtil;
+        this.approvalService = approvalService;
     }
 
     /**
@@ -337,5 +339,140 @@ public class BookingController {
             log.error("Error validating booking availability", e);
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
+    }
+
+    // ========== HOST APPROVAL WORKFLOW ENDPOINTS ==========
+
+    /**
+     * Approve a pending booking request.
+     * RLS-ENFORCED: Only car owner can approve bookings for their cars.
+     * Transitions booking from PENDING_APPROVAL to ACTIVE.
+     * 
+     * @param id Booking ID to approve
+     * @return Approved booking response
+     */
+    @PutMapping("/{id}/approve")
+    @PreAuthorize("hasAnyRole('OWNER', 'ADMIN') and @bookingSecurity.canDecide(#id, authentication?.principal?.id)")
+    public ResponseEntity<?> approveBooking(@PathVariable Long id) {
+        try {
+            Long ownerId = getAuthenticatedUserId();
+            log.info("[BookingController] Received approve request for bookingId={} from ownerId={}", id, ownerId);
+
+            BookingResponseDTO approvedBooking = approvalService.approveBooking(id, ownerId);
+            return ResponseEntity.ok(approvedBooking);
+
+        } catch (org.example.rentoza.exception.ResourceNotFoundException e) {
+            log.warn("Booking not found for approval: id={}", id);
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("error", "Booking not found"));
+
+        } catch (IllegalStateException e) {
+            log.warn("Invalid state for approval: bookingId={}, error={}", id, e.getMessage());
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(Map.of("error", e.getMessage()));
+
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            log.warn("Unauthorized approval attempt: bookingId={}", id);
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", "You are not authorized to approve this booking"));
+
+        } catch (org.example.rentoza.exception.BookingConflictException e) {
+            log.warn("Booking conflict during approval: bookingId={}, error={}", id, e.getMessage());
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(Map.of("error", e.getMessage()));
+
+        } catch (Exception e) {
+            log.error("Unexpected error approving booking {}", id, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "An unexpected error occurred"));
+        }
+    }
+
+    /**
+     * Decline a pending booking request with optional reason.
+     * RLS-ENFORCED: Only car owner can decline bookings for their cars.
+     * Transitions booking from PENDING_APPROVAL to DECLINED.
+     * 
+     * @param id Booking ID to decline
+     * @param reason Optional decline reason
+     * @return Declined booking response
+     */
+    @PutMapping("/{id}/decline")
+    @PreAuthorize("hasAnyRole('OWNER', 'ADMIN') and @bookingSecurity.canDecide(#id, authentication?.principal?.id)")
+    public ResponseEntity<?> declineBooking(
+            @PathVariable Long id,
+            @RequestParam(required = false) String reason
+    ) {
+        try {
+            Long ownerId = getAuthenticatedUserId();
+            log.info("[BookingController] Received decline request for bookingId={} from ownerId={}", id, ownerId);
+
+            BookingResponseDTO declinedBooking = approvalService.declineBooking(id, ownerId, reason);
+            return ResponseEntity.ok(declinedBooking);
+
+        } catch (org.example.rentoza.exception.ResourceNotFoundException e) {
+            log.warn("Booking not found for decline: id={}", id);
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("error", "Booking not found"));
+
+        } catch (IllegalStateException e) {
+            log.warn("Invalid state for decline: bookingId={}, error={}", id, e.getMessage());
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(Map.of("error", e.getMessage()));
+
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            log.warn("Unauthorized decline attempt: bookingId={}", id);
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", "You are not authorized to decline this booking"));
+
+        } catch (Exception e) {
+            log.error("Unexpected error declining booking {}", id, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "An unexpected error occurred"));
+        }
+    }
+
+    /**
+     * Get all pending approval requests for the authenticated owner's cars.
+     * RLS-ENFORCED: Only returns bookings for cars owned by the authenticated user.
+     * 
+     * @return List of pending booking requests
+     */
+    @GetMapping("/pending")
+    @PreAuthorize("hasAnyRole('OWNER', 'ADMIN')")
+    public ResponseEntity<?> getPendingRequests() {
+        try {
+            Long ownerId = getAuthenticatedUserId();
+
+            List<Booking> pendingBookings = approvalService.getPendingRequests(ownerId);
+            List<BookingResponseDTO> response = pendingBookings.stream()
+                    .map(BookingResponseDTO::new)
+                    .toList();
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("Error fetching pending requests", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to fetch pending requests"));
+        }
+    }
+
+    /**
+     * Helper to safely extract user ID from security context.
+     * Handles JwtUserPrincipal correctly.
+     */
+    private Long getAuthenticatedUserId() {
+        Object principal = org.springframework.security.core.context.SecurityContextHolder
+                .getContext().getAuthentication().getPrincipal();
+        
+        if (principal instanceof org.example.rentoza.security.JwtUserPrincipal jwtPrincipal) {
+            return jwtPrincipal.id();
+        }
+        
+        // Fallback or error if principal is not what we expect
+        // This prevents ClassCastException or NumberFormatException
+        log.error("Unexpected principal type: {}", principal.getClass().getName());
+        throw new IllegalStateException("Unable to determine authenticated user ID");
     }
 }

@@ -6,6 +6,7 @@ import org.example.rentoza.car.Car;
 import org.example.rentoza.user.User;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 
 @Entity
@@ -19,6 +20,9 @@ public class Booking {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Version
+    private Long version; // Optimistic locking for concurrent approval/decline
 
     private LocalDate startDate;
     private LocalDate endDate;
@@ -38,7 +42,7 @@ public class Booking {
     private LocalTime pickupTime; // Only used when pickupTimeWindow is EXACT
 
     @Enumerated(EnumType.STRING)
-    private BookingStatus status = BookingStatus.ACTIVE;
+    private BookingStatus status = BookingStatus.PENDING_APPROVAL;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "car_id")
@@ -47,4 +51,32 @@ public class Booking {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "renter_id")
     private User renter;
+
+    // Host approval/decline tracking
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "approved_by")
+    private User approvedBy;
+
+    @Column(name = "approved_at")
+    private LocalDateTime approvedAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "declined_by")
+    private User declinedBy;
+
+    @Column(name = "declined_at")
+    private LocalDateTime declinedAt;
+
+    @Column(name = "decline_reason", length = 500)
+    private String declineReason;
+
+    @Column(name = "decision_deadline_at")
+    private LocalDateTime decisionDeadlineAt;
+
+    // Payment simulation placeholders
+    @Column(name = "payment_verification_ref", length = 100)
+    private String paymentVerificationRef;
+
+    @Column(name = "payment_status", length = 20)
+    private String paymentStatus = "PENDING"; // PENDING, AUTHORIZED, RELEASED
 }

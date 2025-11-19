@@ -12,6 +12,7 @@ import { filter, take, tap } from 'rxjs';
 
 import { AuthService } from '@core/auth/auth.service';
 import { environment } from '@environments/environment';
+import { PendingRequestsComponent } from '../../components/pending-requests/pending-requests.component';
 
 @Component({
   selector: 'app-owner-dashboard',
@@ -25,6 +26,7 @@ import { environment } from '@environments/environment';
     MatProgressSpinnerModule,
     MatDividerModule,
     MatSnackBarModule,
+    PendingRequestsComponent,
   ],
   templateUrl: './owner-dashboard.component.html',
   styleUrls: ['./owner-dashboard.component.scss'],

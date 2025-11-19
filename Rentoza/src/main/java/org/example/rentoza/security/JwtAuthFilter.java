@@ -52,10 +52,9 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         String requestUri = request.getRequestURI();
 
         try {
-            String header = request.getHeader("Authorization");
-            if (header != null && header.startsWith("Bearer ")) {
-                String token = header.substring(7);
-
+            String token = extractToken(request);
+            
+            if (token != null) {
                 // SECURITY: Validate token BEFORE loading UserDetails to prevent unnecessary DB queries
                 // with invalid/expired tokens
                 if (!jwtUtil.validateToken(token)) {
@@ -136,6 +135,29 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    /**
+     * Extract JWT token from Authorization header or access_token cookie.
+     * Prioritizes header if present.
+     */
+    private String extractToken(HttpServletRequest request) {
+        // 1. Check Authorization header
+        String bearerToken = request.getHeader("Authorization");
+        if (bearerToken != null && bearerToken.startsWith("Bearer ")) {
+            return bearerToken.substring(7);
+        }
+
+        // 2. Check access_token cookie
+        if (request.getCookies() != null) {
+            for (jakarta.servlet.http.Cookie cookie : request.getCookies()) {
+                if ("access_token".equals(cookie.getName())) {
+                    return cookie.getValue();
+                }
+            }
+        }
+
+        return null;
     }
 
     @Override

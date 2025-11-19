@@ -388,19 +388,38 @@ export class BookingDialogComponent implements OnInit {
 
   /**
    * Phase 2.3: Create booking after validation passes
-   * Separated from submitBooking() to enable pre-submit validation flow
+   * Phase 3: Updated for host approval workflow
+   * 
+   * Behavior depends on backend feature flag (app.booking.host-approval.enabled):
+   * - If enabled: Status = PENDING_APPROVAL, awaiting host decision
+   * - If disabled: Status = ACTIVE, instant confirmation (legacy)
+   * 
+   * Success message updated to reflect approval workflow.
    */
   private createBookingConfirmed(payload: any): void {
     this.bookingService.createBooking(payload).subscribe({
-      next: () => {
-        this.snackBar.open(
-          'Vaš zahtev za rezervaciju je uspešno poslat! Domaćin će biti obavešten.',
-          'Zatvori',
-          {
-            duration: 4000,
-            panelClass: ['snackbar-success'],
-          }
-        );
+      next: (booking) => {
+        // Phase 3: Check if booking requires approval or is instant
+        if (booking.status === 'PENDING_APPROVAL') {
+          this.snackBar.open(
+            'Vaš zahtev za rezervaciju je poslat! Čekamo odobrenje domaćina.',
+            'Zatvori',
+            {
+              duration: 5000,
+              panelClass: ['snackbar-info'],
+            }
+          );
+        } else {
+          // Legacy instant booking (ACTIVE)
+          this.snackBar.open(
+            'Vaša rezervacija je uspešno potvrđena!',
+            'Zatvori',
+            {
+              duration: 4000,
+              panelClass: ['snackbar-success'],
+            }
+          );
+        }
         this.dialogRef.close(true);
       },
       error: (error) => {

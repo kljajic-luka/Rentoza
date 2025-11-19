@@ -178,4 +178,70 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
            "LEFT JOIN FETCH c.owner o " +
            "WHERE b.id = :id")
     java.util.Optional<Booking> findByIdForConversationView(@Param("id") Long id);
+
+    // ========== HOST APPROVAL WORKFLOW QUERIES ==========
+
+    /**
+     * Find all pending approval requests for an owner's cars.
+     * Returns bookings with status PENDING_APPROVAL for all cars owned by the user.
+     * Eagerly loads car, renter, and owner to prevent lazy-loading issues.
+     * 
+     * @param ownerId Authenticated owner's user ID
+     * @return List of pending approval requests sorted by creation date (newest first)
+     */
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.car c " +
+           "JOIN FETCH b.renter r " +
+           "JOIN FETCH c.owner o " +
+           "WHERE b.status = 'PENDING_APPROVAL' " +
+           "AND c.owner.id = :ownerId " +
+           "ORDER BY b.id DESC")
+    List<Booking> findPendingBookingsForOwner(@Param("ownerId") Long ownerId);
+
+    /**
+     * Find all pending bookings created before a specific threshold.
+     * Used by scheduler to auto-expire requests that haven't been approved/declined in time.
+     * 
+     * @param threshold Timestamp before which pending bookings are considered expired
+     * @return List of expired pending bookings
+     */
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.car c " +
+           "JOIN FETCH b.renter r " +
+           "WHERE b.status = 'PENDING_APPROVAL' " +
+           "AND b.decisionDeadlineAt < :threshold")
+    List<Booking> findPendingBookingsBefore(@Param("threshold") java.time.LocalDateTime threshold);
+
+    /**
+     * Check for conflicting bookings excluding PENDING_APPROVAL and DECLINED.
+     * Used for availability checks during approval to prevent race conditions.
+     * Only considers ACTIVE and COMPLETED bookings as blocking.
+     * 
+     * @param carId Car ID
+     * @param startDate Booking start date
+     * @param endDate Booking end date
+     * @return true if there are conflicting bookings
+     */
+    @Query("SELECT COUNT(b) > 0 FROM Booking b WHERE b.car.id = :carId " +
+           "AND b.status IN ('ACTIVE', 'COMPLETED') " +
+           "AND b.startDate <= :endDate AND b.endDate >= :startDate")
+    boolean existsConflictingBookings(
+            @Param("carId") Long carId,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate
+    );
+
+    /**
+     * Find bookings for public calendar view (excludes pending/declined).
+     * Returns only ACTIVE and COMPLETED bookings to show unavailable dates.
+     * PENDING_APPROVAL bookings are not shown to prevent blocking dates speculatively.
+     * 
+     * @param carId Car ID
+     * @return List of confirmed bookings for calendar display
+     */
+    @Query("SELECT b FROM Booking b " +
+           "WHERE b.car.id = :carId " +
+           "AND b.status IN ('ACTIVE', 'COMPLETED') " +
+           "ORDER BY b.startDate ASC")
+    List<Booking> findPublicBookingsForCar(@Param("carId") Long carId);
 }

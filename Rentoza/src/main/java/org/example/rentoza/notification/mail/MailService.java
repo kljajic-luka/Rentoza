@@ -171,6 +171,7 @@ public class MailService {
             case BOOKING_CANCELLED -> "emails/booking-cancelled";
             case REVIEW_RECEIVED -> "emails/review-received";
             case NEW_MESSAGE -> "emails/new-message";
+            default -> null;
         };
     }
 

@@ -98,4 +98,88 @@ export class BookingService {
       withCredentials: true,
     });
   }
+
+  // ========== HOST APPROVAL WORKFLOW (PHASE 3) ==========
+
+  /**
+   * Approve a pending booking request (OWNER/ADMIN only).
+   *
+   * Security:
+   * - @PreAuthorize("hasAnyRole('OWNER', 'ADMIN') and @bookingSecurity.canDecide(...)") on backend
+   * - Only car owner or admin can approve
+   * - RLS enforced at service layer
+   *
+   * State Transition:
+   * - PENDING_APPROVAL → ACTIVE
+   * - Creates chat conversation
+   * - Sends approval notification to guest
+   * - Authorizes payment hold (simulated)
+   *
+   * Error Responses:
+   * - 403 Forbidden: Not the car owner
+   * - 404 Not Found: Booking doesn't exist
+   * - 409 Conflict: Invalid state or date conflict
+   *
+   * @param id Booking ID
+   * @returns Observable<Booking> with updated status ACTIVE
+   */
+  approveBooking(id: number): Observable<Booking> {
+    return this.http.put<Booking>(`${this.baseUrl}/${id}/approve`, {}, {
+      withCredentials: true,
+    });
+  }
+
+  /**
+   * Decline a pending booking request (OWNER/ADMIN only).
+   *
+   * Security:
+   * - @PreAuthorize("hasAnyRole('OWNER', 'ADMIN') and @bookingSecurity.canDecide(...)") on backend
+   * - Only car owner or admin can decline
+   * - RLS enforced at service layer
+   *
+   * State Transition:
+   * - PENDING_APPROVAL → DECLINED
+   * - Sends decline notification to guest with reason
+   * - Releases payment hold (simulated)
+   * - No chat conversation created
+   *
+   * Error Responses:
+   * - 403 Forbidden: Not the car owner
+   * - 404 Not Found: Booking doesn't exist
+   * - 409 Conflict: Invalid state (already approved/declined/expired)
+   *
+   * @param id Booking ID
+   * @param reason Optional decline reason (shown to guest)
+   * @returns Observable<Booking> with updated status DECLINED
+   */
+  declineBooking(id: number, reason?: string): Observable<Booking> {
+    const url = reason 
+      ? `${this.baseUrl}/${id}/decline?reason=${encodeURIComponent(reason)}`
+      : `${this.baseUrl}/${id}/decline`;
+    
+    return this.http.put<Booking>(url, {}, {
+      withCredentials: true,
+    });
+  }
+
+  /**
+   * Get all pending booking approval requests for the authenticated owner's cars.
+   *
+   * Security:
+   * - @PreAuthorize("hasAnyRole('OWNER', 'ADMIN')") on backend
+   * - Returns only bookings for cars owned by the authenticated user
+   * - RLS enforced: Repository filters by car.owner.id
+   *
+   * Use Case:
+   * - Owner dashboard: Display pending requests queue
+   * - Shows only PENDING_APPROVAL status bookings
+   * - Sorted by decision deadline (oldest first)
+   *
+   * @returns Observable<Booking[]> with pending requests for owner's cars
+   */
+  getPendingOwnerBookings(): Observable<Booking[]> {
+    return this.http.get<Booking[]>(`${this.baseUrl}/pending`, {
+      withCredentials: true,
+    });
+  }
 }

@@ -44,8 +44,20 @@
 
               <mat-card-content class="booking-card__content">
                 <div class="booking-card__header">
-                  <h3>{{ booking.carBrand }} {{ booking.carModel }}</h3>
-                  <p class="year-location">{{ booking.carYear }} • {{ booking.carLocation }}</p>
+                  <div>
+                    <h3>{{ booking.carBrand }} {{ booking.carModel }}</h3>
+                    <p class="year-location">{{ booking.carYear }} • {{ booking.carLocation }}</p>
+                  </div>
+                  <!-- Phase 3: Status Badge -->
+                  <mat-chip 
+                    [class]="getStatusClass(booking.status)"
+                    [matTooltip]="getStatusTooltip(booking)"
+                  >
+                    {{ getStatusLabel(booking.status) }}
+                    @if (shouldShowInfoIcon(booking.status)) {
+                      <mat-icon>info</mat-icon>
+                    }
+                  </mat-chip>
                 </div>
 
                 <div class="booking-card__timer upcoming">
@@ -122,8 +134,20 @@
 
               <mat-card-content class="booking-card__content">
                 <div class="booking-card__header">
-                  <h3>{{ booking.carBrand }} {{ booking.carModel }}</h3>
-                  <p class="year-location">{{ booking.carYear }} • {{ booking.carLocation }}</p>
+                  <div>
+                    <h3>{{ booking.carBrand }} {{ booking.carModel }}</h3>
+                    <p class="year-location">{{ booking.carYear }} • {{ booking.carLocation }}</p>
+                  </div>
+                  <!-- Phase 3: Status Badge -->
+                  <mat-chip 
+                    [class]="getStatusClass(booking.status)"
+                    [matTooltip]="getStatusTooltip(booking)"
+                  >
+                    {{ getStatusLabel(booking.status) }}
+                    @if (shouldShowInfoIcon(booking.status)) {
+                      <mat-icon>info</mat-icon>
+                    }
+                  </mat-chip>
                 </div>
 
                 <div class="booking-card__timer ongoing">
@@ -196,8 +220,20 @@
 
               <mat-card-content class="booking-card__content">
                 <div class="booking-card__header">
-                  <h3>{{ booking.carBrand }} {{ booking.carModel }}</h3>
-                  <p class="year-location">{{ booking.carYear }} • {{ booking.carLocation }}</p>
+                  <div>
+                    <h3>{{ booking.carBrand }} {{ booking.carModel }}</h3>
+                    <p class="year-location">{{ booking.carYear }} • {{ booking.carLocation }}</p>
+                  </div>
+                  <!-- Phase 3: Status Badge -->
+                  <mat-chip 
+                    [class]="getStatusClass(booking.status)"
+                    [matTooltip]="getStatusTooltip(booking)"
+                  >
+                    {{ getStatusLabel(booking.status) }}
+                    @if (shouldShowInfoIcon(booking.status)) {
+                      <mat-icon>info</mat-icon>
+                    }
+                  </mat-chip>
                 </div>
 
                 <div class="booking-card__timer past">

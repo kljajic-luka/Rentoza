@@ -15,6 +15,7 @@ import org.example.rentoza.user.dto.UserRegisterDTO;
 import org.example.rentoza.user.dto.UserResponseDTO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -33,6 +34,7 @@ public class AuthController {
 
     private static final Logger log = LoggerFactory.getLogger(AuthController.class);
     private static final String REFRESH_COOKIE = "rentoza_refresh";
+    private static final String ACCESS_COOKIE = "access_token";
 
     private final UserService userService;
     private final UserRepository userRepo;
@@ -40,6 +42,9 @@ public class AuthController {
     private final JwtUtil jwtUtil;
     private final RefreshTokenServiceEnhanced refreshTokenService;
     private final AppProperties appProperties;
+    
+    @Value("${jwt.expiration}")
+    private long jwtExpirationMs;
 
     public AuthController(UserService userService,
                           UserRepository userRepo,
@@ -70,6 +75,20 @@ public class AuthController {
     }
 
     /**
+     * Create a standardized access token cookie
+     */
+    private ResponseCookie createAccessTokenCookie(String token) {
+        return ResponseCookie.from(ACCESS_COOKIE, token)
+                .httpOnly(true)
+                .secure(appProperties.getCookie().isSecure())
+                .path("/")
+                .domain(appProperties.getCookie().getDomain())
+                .sameSite(appProperties.getCookie().getSameSite())
+                .maxAge(Duration.ofMillis(jwtExpirationMs))
+                .build();
+    }
+
+    /**
      * Create a cookie to clear the refresh token
      */
     private ResponseCookie clearRefreshTokenCookie() {
@@ -77,6 +96,20 @@ public class AuthController {
                 .httpOnly(true)
                 .secure(appProperties.getCookie().isSecure())
                 .path("/api/auth/refresh")
+                .domain(appProperties.getCookie().getDomain())
+                .sameSite(appProperties.getCookie().getSameSite())
+                .maxAge(0)
+                .build();
+    }
+
+    /**
+     * Create a cookie to clear the access token
+     */
+    private ResponseCookie clearAccessTokenCookie() {
+        return ResponseCookie.from(ACCESS_COOKIE, "")
+                .httpOnly(true)
+                .secure(appProperties.getCookie().isSecure())
+                .path("/")
                 .domain(appProperties.getCookie().getDomain())
                 .sameSite(appProperties.getCookie().getSameSite())
                 .maxAge(0)
@@ -95,6 +128,7 @@ public class AuthController {
             String refreshRaw = refreshTokenService.issue(user.getEmail(), ipAddress, userAgent);
 
             ResponseCookie cookie = createRefreshTokenCookie(refreshRaw);
+            ResponseCookie accessCookie = createAccessTokenCookie(accessToken);
 
             UserResponseDTO userResponse = new UserResponseDTO(
                     user.getId(),
@@ -111,6 +145,7 @@ public class AuthController {
             AuthResponseDTO response = new AuthResponseDTO(accessToken, null, userResponse);
             return ResponseEntity.ok()
                     .header("Set-Cookie", cookie.toString())
+                    .header("Set-Cookie", accessCookie.toString())
                     .body(response);
 
         } catch (RuntimeException e) {
@@ -147,7 +182,10 @@ public class AuthController {
         String refreshRaw = refreshTokenService.issue(user.getEmail(), ipAddress, userAgent);
 
         ResponseCookie cookie = createRefreshTokenCookie(refreshRaw);
+        ResponseCookie accessCookie = createAccessTokenCookie(accessToken);
+        
         res.addHeader("Set-Cookie", cookie.toString());
+        res.addHeader("Set-Cookie", accessCookie.toString());
 
         UserResponseDTO userResponse = new UserResponseDTO(
                 user.getId(),
@@ -196,7 +234,10 @@ public class AuthController {
             var accessToken = jwtUtil.generateToken(result.email(), role, user.getId());
 
             ResponseCookie cookie = createRefreshTokenCookie(result.newToken());
+            ResponseCookie accessCookie = createAccessTokenCookie(accessToken);
+            
             res.addHeader("Set-Cookie", cookie.toString());
+            res.addHeader("Set-Cookie", accessCookie.toString());
 
             log.debug("Token refreshed successfully: email={}", result.email());
             return ResponseEntity.ok(Map.of("accessToken", accessToken));
@@ -244,7 +285,10 @@ public class AuthController {
 
         // Always clear the cookie regardless of validation status
         ResponseCookie cleared = clearRefreshTokenCookie();
+        ResponseCookie clearedAccess = clearAccessTokenCookie();
+        
         res.addHeader("Set-Cookie", cleared.toString());
+        res.addHeader("Set-Cookie", clearedAccess.toString());
 
         return ResponseEntity.ok(Map.of("status", "logged_out"));
     }

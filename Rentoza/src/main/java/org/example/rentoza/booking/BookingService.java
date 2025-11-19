@@ -41,6 +41,15 @@ public class BookingService {
     private final NotificationService notificationService;
     private final org.example.rentoza.security.CurrentUser currentUser;
 
+    @org.springframework.beans.factory.annotation.Value("${app.booking.host-approval.enabled:false}")
+    private boolean approvalEnabled;
+
+    @org.springframework.beans.factory.annotation.Value("${app.booking.host-approval.beta-users:}")
+    private java.util.List<Long> betaUsers;
+
+    @org.springframework.beans.factory.annotation.Value("${app.booking.host-approval.expiry-hours:48}")
+    private int expiryHours;
+
     public BookingService(BookingRepository repo, CarRepository carRepo, UserRepository userRepo,
                           ReviewRepository reviewRepo, JwtUtil jwtUtil, ChatServiceClient chatServiceClient,
                           NotificationService notificationService, org.example.rentoza.security.CurrentUser currentUser) {
@@ -75,7 +84,23 @@ public class BookingService {
         booking.setRenter(renter);
         booking.setStartDate(dto.getStartDate());
         booking.setEndDate(dto.getEndDate());
-        booking.setStatus(BookingStatus.ACTIVE);
+
+        // Determine initial status based on feature flag
+        BookingStatus initialStatus;
+        if (approvalEnabled || (betaUsers != null && betaUsers.contains(renter.getId()))) {
+            initialStatus = BookingStatus.PENDING_APPROVAL;
+            // Set decision deadline for auto-expiry
+            booking.setDecisionDeadlineAt(java.time.LocalDateTime.now().plusHours(expiryHours));
+            log.debug("Booking created with PENDING_APPROVAL status (approvalEnabled={}, isBetaUser={})",
+                    approvalEnabled, betaUsers != null && betaUsers.contains(renter.getId()));
+        } else {
+            initialStatus = BookingStatus.ACTIVE;
+            // Backfill approval metadata for instant bookings
+            booking.setApprovedAt(java.time.LocalDateTime.now());
+            booking.setPaymentStatus("AUTHORIZED");
+            log.debug("Booking created with ACTIVE status (instant booking - legacy mode)");
+        }
+        booking.setStatus(initialStatus);
 
         // Set insurance type and prepaid refuel
         booking.setInsuranceType(dto.getInsuranceType() != null ? dto.getInsuranceType() : "BASIC");
@@ -111,55 +136,18 @@ public class BookingService {
         Hibernate.initialize(savedBooking.getCar());
         Hibernate.initialize(savedBooking.getCar().getOwner());
 
-        // Create conversation in chat microservice asynchronously
-        try {
-            log.info("Creating conversation for booking {} between renter {} and owner {}",
-                    savedBooking.getId(), renter.getId(), car.getOwner().getId());
-
-            chatServiceClient.createConversationAsync(
-                    savedBooking.getId().toString(),
-                    renter.getId().toString(),
-                    car.getOwner().getId().toString(),
-                    token
-            );
-        } catch (Exception e) {
-            // Log error but don't fail the booking
-            log.error("Failed to initiate conversation creation for booking {}: {}",
-                    savedBooking.getId(), e.getMessage());
-        }
-
-        // Send booking confirmed notifications to both renter and owner
-        try {
-            String carInfo = car.getBrand() + " " + car.getModel();
-            String insuranceInfo = savedBooking.getInsuranceType() != null ? savedBooking.getInsuranceType() : "Basic";
-            String refuelInfo = savedBooking.isPrepaidRefuel() ? " with prepaid refuel" : "";
-            
-            // Phase 2.2: Format pickup time information
-            String pickupTimeInfo = formatPickupTimeInfo(savedBooking.getPickupTimeWindow(), savedBooking.getPickupTime());
-
-            // Notify renter
-            String renterMessage = String.format("Vaša rezervacija za %s je potvrđena! (%s insurance%s, Preuzimanje: %s)",
-                    carInfo, insuranceInfo, refuelInfo, pickupTimeInfo);
-            notificationService.createNotification(CreateNotificationRequestDTO.builder()
-                    .recipientId(renter.getId())
-                    .type(NotificationType.BOOKING_CONFIRMED)
-                    .message(renterMessage)
-                    .relatedEntityId("booking-" + savedBooking.getId())
-                    .build());
-
-            // Notify owner
-            String ownerMessage = String.format("Nova rezervacija za %s od %s %s (%s insurance%s, Preuzimanje: %s)",
-                    carInfo, renter.getFirstName(), renter.getLastName(), insuranceInfo, refuelInfo, pickupTimeInfo);
-            notificationService.createNotification(CreateNotificationRequestDTO.builder()
-                    .recipientId(car.getOwner().getId())
-                    .type(NotificationType.BOOKING_CONFIRMED)
-                    .message(ownerMessage)
-                    .relatedEntityId("booking-" + savedBooking.getId())
-                    .build());
-
-            log.info("Booking confirmed notifications sent for booking {}", savedBooking.getId());
-        } catch (Exception e) {
-            log.error("Failed to send booking confirmed notifications: {}", e.getMessage(), e);
+        // Handle post-creation logic based on booking status
+        if (savedBooking.getStatus() == BookingStatus.PENDING_APPROVAL) {
+            // Approval workflow: Send request notifications, DO NOT create chat
+            sendPendingApprovalNotifications(savedBooking, renter, car);
+            log.info("Booking request submitted: bookingId={}, renterId={}, carId={}, decisionDeadline={}",
+                    savedBooking.getId(), renter.getId(), car.getId(), savedBooking.getDecisionDeadlineAt());
+        } else {
+            // Legacy instant booking: Create chat and send confirmed notifications
+            createChatConversationForInstantBooking(savedBooking, renter, car, token);
+            sendInstantBookingNotifications(savedBooking, renter, car);
+            log.info("Instant booking created: bookingId={}, renterId={}, carId={}",
+                    savedBooking.getId(), renter.getId(), car.getId());
         }
 
         return savedBooking;
@@ -548,5 +536,107 @@ public class BookingService {
 
         // If any overlapping bookings exist, dates are not available
         return existingBookings.isEmpty();
+    }
+
+    // ========== HOST APPROVAL WORKFLOW HELPER METHODS ==========
+
+    /**
+     * Send notifications for pending approval workflow.
+     * Notifies both guest (request sent) and host (request received).
+     */
+    private void sendPendingApprovalNotifications(Booking booking, User renter, Car car) {
+        try {
+            String carInfo = car.getBrand() + " " + car.getModel();
+            String insuranceInfo = booking.getInsuranceType() != null ? booking.getInsuranceType() : "Basic";
+            String refuelInfo = booking.isPrepaidRefuel() ? " sa plaćenim gorivom" : "";
+            String pickupTimeInfo = formatPickupTimeInfo(booking.getPickupTimeWindow(), booking.getPickupTime());
+
+            // Notify renter: request sent
+            String renterMessage = String.format(
+                    "Vaš zahtev za rezervaciju %s je poslat! Čeka se odobrenje vlasnika. (%s insurance%s, Preuzimanje: %s)",
+                    carInfo, insuranceInfo, refuelInfo, pickupTimeInfo);
+            notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                    .recipientId(renter.getId())
+                    .type(NotificationType.BOOKING_REQUEST_SENT)
+                    .message(renterMessage)
+                    .relatedEntityId("booking-" + booking.getId())
+                    .build());
+
+            // Notify owner: request received
+            String ownerMessage = String.format(
+                    "Novi zahtev za rezervaciju %s od %s %s! (%s insurance%s, Preuzimanje: %s)",
+                    carInfo, renter.getFirstName(), renter.getLastName(), insuranceInfo, refuelInfo, pickupTimeInfo);
+            notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                    .recipientId(car.getOwner().getId())
+                    .type(NotificationType.BOOKING_REQUEST_RECEIVED)
+                    .message(ownerMessage)
+                    .relatedEntityId("booking-" + booking.getId())
+                    .build());
+
+            log.debug("Pending approval notifications sent for booking {}", booking.getId());
+        } catch (Exception e) {
+            log.error("Failed to send pending approval notifications for booking {}: {}",
+                    booking.getId(), e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Send notifications for instant booking (legacy workflow).
+     * Notifies both renter and owner that booking is confirmed.
+     */
+    private void sendInstantBookingNotifications(Booking booking, User renter, Car car) {
+        try {
+            String carInfo = car.getBrand() + " " + car.getModel();
+            String insuranceInfo = booking.getInsuranceType() != null ? booking.getInsuranceType() : "Basic";
+            String refuelInfo = booking.isPrepaidRefuel() ? " with prepaid refuel" : "";
+            String pickupTimeInfo = formatPickupTimeInfo(booking.getPickupTimeWindow(), booking.getPickupTime());
+
+            // Notify renter: confirmed
+            String renterMessage = String.format("Vaša rezervacija za %s je potvrđena! (%s insurance%s, Preuzimanje: %s)",
+                    carInfo, insuranceInfo, refuelInfo, pickupTimeInfo);
+            notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                    .recipientId(renter.getId())
+                    .type(NotificationType.BOOKING_CONFIRMED)
+                    .message(renterMessage)
+                    .relatedEntityId("booking-" + booking.getId())
+                    .build());
+
+            // Notify owner: confirmed
+            String ownerMessage = String.format("Nova rezervacija za %s od %s %s (%s insurance%s, Preuzimanje: %s)",
+                    carInfo, renter.getFirstName(), renter.getLastName(), insuranceInfo, refuelInfo, pickupTimeInfo);
+            notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                    .recipientId(car.getOwner().getId())
+                    .type(NotificationType.BOOKING_CONFIRMED)
+                    .message(ownerMessage)
+                    .relatedEntityId("booking-" + booking.getId())
+                    .build());
+
+            log.debug("Instant booking notifications sent for booking {}", booking.getId());
+        } catch (Exception e) {
+            log.error("Failed to send instant booking notifications for booking {}: {}",
+                    booking.getId(), e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Create chat conversation for instant booking (legacy workflow).
+     * Conversation is created immediately for ACTIVE bookings.
+     */
+    private void createChatConversationForInstantBooking(Booking booking, User renter, Car car, String token) {
+        try {
+            log.debug("Creating conversation for instant booking {} between renter {} and owner {}",
+                    booking.getId(), renter.getId(), car.getOwner().getId());
+
+            chatServiceClient.createConversationAsync(
+                    booking.getId().toString(),
+                    renter.getId().toString(),
+                    car.getOwner().getId().toString(),
+                    token
+            );
+        } catch (Exception e) {
+            // Log error but don't fail the booking
+            log.error("Failed to initiate conversation creation for instant booking {}: {}",
+                    booking.getId(), e.getMessage());
+        }
     }
 }

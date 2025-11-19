@@ -3,6 +3,8 @@ import { User } from './user.model';
 
 export type PickupTimeWindow = 'MORNING' | 'AFTERNOON' | 'EVENING' | 'EXACT';
 
+export type BookingStatus = 'PENDING_APPROVAL' | 'ACTIVE' | 'DECLINED' | 'EXPIRED' | 'CANCELLED' | 'COMPLETED';
+
 export interface Booking {
   id: string | number;
   car: {
@@ -19,11 +21,19 @@ export interface Booking {
   startDate: string;
   endDate: string;
   totalPrice: number;
-  status: 'PENDING' | 'CONFIRMED' | 'ACTIVE' | 'CANCELLED' | 'COMPLETED';
+  status: BookingStatus;
   createdAt: string;
   hasOwnerReview?: boolean;
   pickupTimeWindow?: PickupTimeWindow; // Phase 2.2
   pickupTime?: string; // HH:mm format, only for EXACT
+  // Host Approval Fields (Phase 3)
+  approvedBy?: number;
+  approvedAt?: string;
+  declinedBy?: number;
+  declinedAt?: string;
+  declineReason?: string;
+  decisionDeadlineAt?: string;
+  version?: number; // Optimistic locking version
 }
 
 export interface BookingRequest {

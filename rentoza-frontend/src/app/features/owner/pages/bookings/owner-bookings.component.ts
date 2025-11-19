@@ -28,10 +28,10 @@ import { isBookingCompleted, canOwnerReviewRenter } from '@core/utils/booking.ut
     MatChipsModule,
     MatProgressSpinnerModule,
     MatSnackBarModule,
-    MatDialogModule
+    MatDialogModule,
   ],
   templateUrl: './owner-bookings.component.html',
-  styleUrls: ['./owner-bookings.component.scss']
+  styleUrls: ['./owner-bookings.component.scss'],
 })
 export class OwnerBookingsComponent implements OnInit {
   private readonly snackBar = inject(MatSnackBar);
@@ -90,7 +90,7 @@ export class OwnerBookingsComponent implements OnInit {
                 // Use unified completion check to categorize bookings
                 if (isBookingCompleted(booking)) {
                   completed.push(booking);
-                } else if (booking.status === 'CONFIRMED') {
+                } else if (booking.status === 'PENDING_APPROVAL') {
                   upcoming.push(booking);
                 } else if (booking.status === 'ACTIVE') {
                   active.push(booking);
@@ -104,7 +104,9 @@ export class OwnerBookingsComponent implements OnInit {
             },
             error: (error) => {
               console.error('Error loading owner bookings:', error);
-              this.snackBar.open('Greška pri učitavanju rezervacija', 'Zatvori', { duration: 3000 });
+              this.snackBar.open('Greška pri učitavanju rezervacija', 'Zatvori', {
+                duration: 3000,
+              });
               this.isLoading.set(false);
             },
           });
@@ -155,7 +157,7 @@ export class OwnerBookingsComponent implements OnInit {
       maxWidth: '95vw',
       maxHeight: '90vh',
       data: { booking },
-      disableClose: false
+      disableClose: false,
     });
 
     dialogRef.afterClosed().subscribe((success: boolean) => {

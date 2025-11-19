@@ -6,6 +6,8 @@ import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingRepository;
 import org.springframework.stereotype.Component;
 
+import org.springframework.transaction.annotation.Transactional;
+
 /**
  * Security service for SpEL-based authorization expressions in @PreAuthorize/@PostAuthorize.
  * Enables declarative access control with custom business logic checks.
@@ -28,6 +30,7 @@ import org.springframework.stereotype.Component;
 @Component("bookingSecurity")
 @RequiredArgsConstructor
 @Slf4j
+@Transactional(readOnly = true)
 public class BookingSecurityService {
 
     private final BookingRepository bookingRepository;
@@ -51,8 +54,8 @@ public class BookingSecurityService {
             return true;
         }
 
-        // Find booking (return false if not found instead of throwing exception)
-        Booking booking = bookingRepository.findById(bookingId).orElse(null);
+        // Find booking with relations to prevent LazyInitializationException
+        Booking booking = bookingRepository.findByIdWithRelations(bookingId).orElse(null);
         if (booking == null) {
             log.warn("Booking {} not found for access check", bookingId);
             return false;
@@ -85,7 +88,8 @@ public class BookingSecurityService {
             return true;
         }
 
-        Booking booking = bookingRepository.findById(bookingId).orElse(null);
+        // Use findByIdWithRelations to ensure renter is loaded
+        Booking booking = bookingRepository.findByIdWithRelations(bookingId).orElse(null);
         if (booking == null) {
             return false;
         }
@@ -110,5 +114,49 @@ public class BookingSecurityService {
         // This will be checked at service layer using repository queries
         // This method is a placeholder for potential controller-level @PreAuthorize
         return true; // Actual check done in service layer with findByCarIdForOwner
+    }
+
+    // ========== HOST APPROVAL WORKFLOW SECURITY METHODS ==========
+
+    /**
+     * Checks if the user is the owner of the car associated with the booking.
+     * Used for approval/decline authorization.
+     * 
+     * @param bookingId Booking ID
+     * @param userId Authenticated user's ID
+     * @return true if user is the car owner or admin
+     */
+    public boolean isOwner(Long bookingId, Long userId) {
+        // Admin bypass
+        if (currentUser.isAdmin()) {
+            log.debug("Admin bypass for isOwner check on booking {}", bookingId);
+            return true;
+        }
+
+        // Use findByIdWithRelations to ensure car and owner are loaded
+        Booking booking = bookingRepository.findByIdWithRelations(bookingId).orElse(null);
+        if (booking == null) {
+            log.warn("Booking {} not found for isOwner check", bookingId);
+            return false;
+        }
+
+        boolean isOwner = booking.getCar().getOwner().getId().equals(userId);
+        
+        log.debug("isOwner check for booking {}: userId={}, carOwnerId={}, isOwner={}",
+                bookingId, userId, booking.getCar().getOwner().getId(), isOwner);
+
+        return isOwner;
+    }
+
+    /**
+     * Alias for isOwner - used for approve/decline operations.
+     * Checks if the user can make approval decisions on the booking.
+     * 
+     * @param bookingId Booking ID
+     * @param userId Authenticated user's ID
+     * @return true if user can approve/decline (is car owner or admin)
+     */
+    public boolean canDecide(Long bookingId, Long userId) {
+        return isOwner(bookingId, userId);
     }
 }

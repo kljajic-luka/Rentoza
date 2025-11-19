@@ -147,6 +147,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PATCH, "/api/users/profile").authenticated()
                         // Bookings user endpoints - must come before internal service rules
                         .requestMatchers("/api/bookings/me").authenticated()
+                        .requestMatchers("/api/bookings/pending").hasAnyRole("OWNER", "ADMIN")
                         .requestMatchers("/api/bookings/user/**").authenticated()
                         .requestMatchers(HttpMethod.PUT, "/api/bookings/cancel/**").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/bookings").authenticated()

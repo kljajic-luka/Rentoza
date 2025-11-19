@@ -72,7 +72,7 @@ public record BookingConversationDTO(
     LocalDate endDate,
     
     /**
-     * Booking status: ACTIVE, CANCELLED, COMPLETED (canonical enum values)
+     * Booking status: PENDING_APPROVAL, ACTIVE, DECLINED, EXPIRED, CANCELLED, COMPLETED (canonical enum values)
      */
     String bookingStatus,
     
@@ -167,13 +167,26 @@ public record BookingConversationDTO(
     
     /**
      * Compute whether messaging is allowed based on booking status.
-     * Messaging enabled for: PENDING, ACTIVE, CONFIRMED
-     * Messaging disabled for: CANCELLED, COMPLETED
+     * 
+     * Messaging enabled for:
+     * - ACTIVE: Booking approved, trip is active
+     * 
+     * Messaging disabled for:
+     * - PENDING_APPROVAL: Awaiting host approval (no chat until approved)
+     * - DECLINED: Host declined request (no need for chat)
+     * - EXPIRED: Request timed out (no need for chat)
+     * - CANCELLED: User/host cancelled (chat closed)
+     * - COMPLETED: Trip finished (chat closed)
+     * 
+     * Rationale:
+     * - PENDING_APPROVAL: No chat conversation exists yet (created on approval)
+     * - DECLINED/EXPIRED: Request rejected, no trip happening
+     * - CANCELLED/COMPLETED: Trip lifecycle ended
      */
     private static boolean computeMessagingAllowed(org.example.rentoza.booking.BookingStatus status) {
         return switch (status) {
             case ACTIVE -> true;
-            case CANCELLED, COMPLETED -> false;
+            case PENDING_APPROVAL, DECLINED, EXPIRED, CANCELLED, COMPLETED -> false;
         };
     }
 }

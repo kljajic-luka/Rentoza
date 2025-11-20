@@ -458,7 +458,7 @@ export class MessagesComponent implements OnInit, OnDestroy, AfterViewChecked {
   get statusMessage(): string {
     const conv = this.selectedConversation();
     if (!conv) return '';
-    
+
     const displayInfo = ChatUiHelper.getDisplayInfo(conv, this.currentUserId());
     return displayInfo.subtitle;
   }

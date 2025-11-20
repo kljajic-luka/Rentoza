@@ -129,7 +129,9 @@ export class ChatUiHelper {
   /**
    * Helper to determine trip status (current, future, past)
    */
-  private static getTripStatus(conv: ConversationDTO): 'current' | 'future' | 'past' | 'unknown' | 'unavailable' {
+  private static getTripStatus(
+    conv: ConversationDTO
+  ): 'current' | 'future' | 'past' | 'unknown' | 'unavailable' {
     if (conv.tripStatus) {
       const status = conv.tripStatus.toLowerCase();
       if (['current', 'future', 'past', 'unavailable'].includes(status)) {

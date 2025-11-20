@@ -5,11 +5,11 @@
   <!-- Sidebar with conversation list -->
   <mat-sidenav mode="side" opened class="conversations-sidebar">
     <div class="sidebar-header">
-      <h2>Messages</h2>
-      <mat-icon *ngIf="wsConnected()" class="ws-status connected" matTooltip="Connected"
+      <h2>Poruke</h2>
+      <mat-icon *ngIf="wsConnected()" class="ws-status connected" matTooltip="Povezano"
         >fiber_manual_record</mat-icon
       >
-      <mat-icon *ngIf="!wsConnected()" class="ws-status disconnected" matTooltip="Disconnected"
+      <mat-icon *ngIf="!wsConnected()" class="ws-status disconnected" matTooltip="Nije povezano"
         >fiber_manual_record</mat-icon
       >
     </div>
@@ -17,14 +17,14 @@
     <!-- Loading state -->
     <div *ngIf="isLoading()" class="loading-container">
       <mat-spinner diameter="40"></mat-spinner>
-      <p>Loading conversations...</p>
+      <p>Učitavanje razgovora...</p>
     </div>
 
     <!-- Empty state -->
     <div *ngIf="!isLoading() && !hasConversations" class="empty-state">
       <mat-icon>chat_bubble_outline</mat-icon>
-      <p>No conversations yet</p>
-      <small>Start a conversation by booking a car</small>
+      <p>Nemate aktivnih razgovora</p>
+      <small>Rezervišite automobil da biste započeli razgovor.</small>
     </div>
 
     <!-- Conversation list -->
@@ -69,8 +69,8 @@
     <!-- No conversation selected -->
     <div *ngIf="!selectedConversation()" class="no-selection">
       <mat-icon>chat</mat-icon>
-      <h2>Select a conversation</h2>
-      <p>Choose a conversation from the sidebar to start messaging</p>
+      <h2>Izaberite razgovor</h2>
+      <p>Izaberite konverzaciju sa leve strane da biste videli poruke.</p>
     </div>
 
     <!-- Chat window -->
@@ -85,7 +85,7 @@
             </span>
           </div>
           <span class="status-badge" [class]="'badge-' + getTripStatus(selectedConversation()!)">
-            {{ getTripStatus(selectedConversation()!) | titlecase }}
+            {{ getStatusLabel(selectedConversation()!) }}
           </span>
         </div>
         <p class="status-message" *ngIf="statusMessage">{{ statusMessage }}</p>
@@ -125,8 +125,8 @@
           <!-- Empty messages state -->
           <div *ngIf="messages().length === 0" class="empty-messages">
             <mat-icon>chat_bubble_outline</mat-icon>
-            <p>No messages yet</p>
-            <small>Start the conversation</small>
+            <p>Još nema poruka</p>
+            <small>{{ getEmptyStateText(selectedConversation()!) }}</small>
           </div>
         </div>
       </div>
@@ -138,7 +138,7 @@
             <mat-form-field appearance="outline" class="message-input">
               <input
                 matInput
-                placeholder="Type a message..."
+                placeholder="Napišite poruku..."
                 [(ngModel)]="messageContent"
                 [disabled]="!isMessagingAllowed || isSendingMessage()"
                 (keydown.enter)="sendMessage()"
@@ -160,7 +160,7 @@
 
           <div *ngIf="!isMessagingAllowed" class="messaging-disabled">
             <mat-icon>lock</mat-icon>
-            <span>Messaging is not allowed for this conversation</span>
+            <span>Slanje poruka nije dozvoljeno za ovu konverzaciju.</span>
           </div>
         </mat-card>
       </div>

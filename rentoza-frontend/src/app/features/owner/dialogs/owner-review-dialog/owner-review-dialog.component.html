@@ -13,11 +13,12 @@
           <h3 class="renter-summary__name">{{ renterName }}</h3>
           <p class="renter-summary__car">
             <mat-icon>directions_car</mat-icon>
-            {{ booking.car.make }} {{ booking.car.model }}
+            {{ booking.car.model }} {{ booking.car.model }}
           </p>
           <p class="renter-summary__dates">
             <mat-icon>event</mat-icon>
-            {{ booking.startDate | date: 'dd.MM.yyyy' }} - {{ booking.endDate | date: 'dd.MM.yyyy' }}
+            {{ booking.startDate | date : 'dd.MM.yyyy' }} -
+            {{ booking.endDate | date : 'dd.MM.yyyy' }}
           </p>
         </div>
       </div>

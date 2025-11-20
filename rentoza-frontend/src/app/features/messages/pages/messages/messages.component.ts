@@ -30,6 +30,7 @@ import { ChatService } from '@core/services/chat.service';
 import { AuthService } from '@core/auth/auth.service';
 import { ThemeService } from '@core/services/theme.service';
 import { ConversationDTO, MessageDTO, MessageStatusUpdate } from '@core/models/chat.model';
+import { ChatUiHelper } from '@core/helpers/chat-ui.helper';
 
 @Component({
   selector: 'app-messages',
@@ -298,11 +299,11 @@ export class MessagesComponent implements OnInit, OnDestroy, AfterViewChecked {
   }
 
   formatTime(timestamp: string | undefined): string {
-    if (!timestamp) return 'Recently';
+    if (!timestamp) return 'Nedavno';
 
     try {
       const date = new Date(timestamp);
-      if (isNaN(date.getTime())) return 'Recently';
+      if (isNaN(date.getTime())) return 'Nedavno';
 
       const now = new Date();
       const diffMs = now.getTime() - date.getTime();
@@ -310,14 +311,14 @@ export class MessagesComponent implements OnInit, OnDestroy, AfterViewChecked {
       const diffHours = Math.floor(diffMs / 3600000);
       const diffDays = Math.floor(diffMs / 86400000);
 
-      if (diffMins < 1) return 'Just now';
-      if (diffMins < 60) return `${diffMins}m ago`;
-      if (diffHours < 24) return `${diffHours}h ago`;
-      if (diffDays < 7) return `${diffDays}d ago`;
+      if (diffMins < 1) return 'Upravo sada';
+      if (diffMins < 60) return `pre ${diffMins} min`;
+      if (diffHours < 24) return `pre ${diffHours} h`;
+      if (diffDays < 7) return `pre ${diffDays} d`;
 
-      return date.toLocaleDateString();
+      return date.toLocaleDateString('sr-RS');
     } catch (e) {
-      return 'Recently';
+      return 'Nedavno';
     }
   }
 
@@ -328,7 +329,7 @@ export class MessagesComponent implements OnInit, OnDestroy, AfterViewChecked {
       const date = new Date(timestamp);
       if (isNaN(date.getTime())) return '';
 
-      return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      return date.toLocaleTimeString('sr-RS', { hour: '2-digit', minute: '2-digit' });
     } catch (e) {
       return '';
     }
@@ -348,7 +349,7 @@ export class MessagesComponent implements OnInit, OnDestroy, AfterViewChecked {
     }
 
     // Fallback to generic name
-    return isOwner ? 'Renter' : 'Owner';
+    return isOwner ? 'Vozač' : 'Vlasnik';
   }
 
   /**
@@ -400,28 +401,8 @@ export class MessagesComponent implements OnInit, OnDestroy, AfterViewChecked {
    * Get formatted conversation subtitle with trip context
    */
   getConversationSubtitle(conv: ConversationDTO): string {
-    // Handle unavailable trip data
-    if (conv.tripStatus === 'Unavailable') {
-      return 'Trip information unavailable';
-    }
-
-    const tripStatus = this.getTripStatus(conv);
-    const carInfo = this.getCarInfo(conv);
-
-    switch (tripStatus) {
-      case 'current':
-        return `Current trip${carInfo ? ' with ' + carInfo : ''}`;
-      case 'future':
-        return `Future trip${carInfo ? ' with ' + carInfo : ''}`;
-      case 'past':
-        return `Past trip${carInfo ? ' with ' + carInfo : ''}`;
-      default:
-        return conv.status === 'ACTIVE'
-          ? 'Active'
-          : conv.status === 'PENDING'
-          ? 'Pending'
-          : 'Closed';
-    }
+    const displayInfo = ChatUiHelper.getDisplayInfo(conv, this.currentUserId());
+    return displayInfo.title;
   }
 
   /**
@@ -446,18 +427,24 @@ export class MessagesComponent implements OnInit, OnDestroy, AfterViewChecked {
    * Get status badge color based on trip status
    */
   getStatusBadgeColor(conv: ConversationDTO): string {
-    const tripStatus = this.getTripStatus(conv);
+    const displayInfo = ChatUiHelper.getDisplayInfo(conv, this.currentUserId());
+    return displayInfo.statusColor;
+  }
 
-    switch (tripStatus) {
-      case 'current':
-        return 'accent'; // Green for current trips
-      case 'future':
-        return 'primary'; // Blue for future trips
-      case 'past':
-        return 'warn'; // Orange for past trips
-      default:
-        return conv.status === 'ACTIVE' ? 'accent' : '';
-    }
+  /**
+   * Get empty state text for conversation
+   */
+  getEmptyStateText(conv: ConversationDTO): string {
+    const displayInfo = ChatUiHelper.getDisplayInfo(conv, this.currentUserId());
+    return displayInfo.emptyStateText;
+  }
+
+  /**
+   * Get status label for conversation
+   */
+  getStatusLabel(conv: ConversationDTO): string {
+    const displayInfo = ChatUiHelper.getDisplayInfo(conv, this.currentUserId());
+    return displayInfo.statusLabel;
   }
 
   get hasConversations(): boolean {
@@ -469,19 +456,11 @@ export class MessagesComponent implements OnInit, OnDestroy, AfterViewChecked {
   }
 
   get statusMessage(): string {
-    const status = this.selectedConversation()?.status;
-    if (!status) return '';
-
-    switch (status) {
-      case 'PENDING':
-        return 'Booking request sent. You can message the owner.';
-      case 'ACTIVE':
-        return 'Conversation is active';
-      case 'CLOSED':
-        return 'Trip completed – chat is read-only';
-      default:
-        return '';
-    }
+    const conv = this.selectedConversation();
+    if (!conv) return '';
+    
+    const displayInfo = ChatUiHelper.getDisplayInfo(conv, this.currentUserId());
+    return displayInfo.subtitle;
   }
 
   /**
@@ -546,17 +525,17 @@ export class MessagesComponent implements OnInit, OnDestroy, AfterViewChecked {
     }
 
     if (message.readAt || (message.readBy && message.readBy.length > 1)) {
-      return 'Read';
+      return 'Pročitano';
     }
 
     if (message.deliveredAt) {
-      return 'Delivered';
+      return 'Isporučeno';
     }
 
     if (message.sentAt || message.timestamp) {
-      return 'Sent';
+      return 'Poslato';
     }
 
-    return 'Sending...';
+    return 'Šalje se...';
   }
 }

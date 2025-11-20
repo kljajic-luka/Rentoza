@@ -18,6 +18,7 @@ import { MatBadgeModule } from '@angular/material/badge';
 import { ChatService } from '@core/services/chat.service';
 import { AuthService } from '@core/auth/auth.service';
 import { ConversationDTO, MessageDTO } from '@core/models/chat.model';
+import { ChatUiHelper } from '@core/helpers/chat-ui.helper';
 import { Subject, takeUntil } from 'rxjs';
 
 @Component({
@@ -155,19 +156,14 @@ export class ChatPanelComponent implements OnInit, OnDestroy {
     return !this.conversation()?.messagingAllowed;
   }
 
-  get statusMessage(): string {
-    const status = this.conversation()?.status;
-    if (!status) return 'Loading...';
+  get displayInfo() {
+    const conv = this.conversation();
+    if (!conv) return null;
+    return ChatUiHelper.getDisplayInfo(conv, this.currentUserId());
+  }
 
-    switch (status) {
-      case 'PENDING':
-        return 'Booking request sent. You can now message the owner.';
-      case 'ACTIVE':
-        return 'Chat active';
-      case 'CLOSED':
-        return 'Trip completed – chat locked.';
-      default:
-        return '';
-    }
+  get statusMessage(): string {
+    const info = this.displayInfo;
+    return info ? info.subtitle : '';
   }
 }

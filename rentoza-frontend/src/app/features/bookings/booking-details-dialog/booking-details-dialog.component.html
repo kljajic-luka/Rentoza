@@ -1,0 +1,153 @@
+<div class="dialog-container booking-details-dialog">
+  <!-- Header -->
+  <div class="dialog-header">
+    <h2 mat-dialog-title>Detalji rezervacije</h2>
+    <button mat-icon-button (click)="close()">
+      <mat-icon>close</mat-icon>
+    </button>
+  </div>
+
+  <mat-dialog-content>
+    <!-- Loading State -->
+    <div *ngIf="isLoading()" class="loading-container">
+      <mat-spinner diameter="40"></mat-spinner>
+      <p>Učitavanje detalja...</p>
+    </div>
+
+    <!-- Error State -->
+    <div *ngIf="error()" class="error-container">
+      <mat-icon color="warn">error_outline</mat-icon>
+      <p>{{ error() }}</p>
+      <button mat-button color="primary" (click)="loadBookingDetails()">Pokušaj ponovo</button>
+    </div>
+
+    <!-- Content -->
+    <div *ngIf="booking() as b" class="details-content">
+      <!-- Hero Section: Car -->
+      <div class="hero-section">
+        <img
+          [src]="b.primaryImageUrl || 'assets/images/car-placeholder.jpg'"
+          alt="Car"
+          class="car-image"
+        />
+        <div class="car-info-overlay">
+          <h3>{{ b.brand }} {{ b.model }} {{ b.year }}</h3>
+          <p class="location"><mat-icon>location_on</mat-icon> {{ b.location }}</p>
+
+          <!-- License Plate (Protected) -->
+          <div *ngIf="b.licensePlate" class="license-plate-badge">
+            <span class="plate-number">{{ b.licensePlate }}</span>
+            <span class="plate-label">Registracija</span>
+          </div>
+        </div>
+        <div class="status-badge" [class]="getStatusColor(b.status)">
+          {{ getStatusLabel(b.status) }}
+        </div>
+      </div>
+
+      <!-- Trip Overview -->
+      <div class="section-card">
+        <h3>Pregled putovanja</h3>
+        <div class="info-grid">
+          <div class="info-item">
+            <span class="label">Početak</span>
+            <span class="value">{{ formatDate(b.startDate) }}</span>
+          </div>
+          <div class="info-item">
+            <span class="label">Kraj</span>
+            <span class="value">{{ formatDate(b.endDate) }}</span>
+          </div>
+          <div class="info-item">
+            <span class="label">Trajanje</span>
+            <span class="value">{{ getDuration(b.startDate, b.endDate) }} dana</span>
+          </div>
+          <div class="info-item">
+            <span class="label">Preuzimanje</span>
+            <span class="value">
+              {{
+                b.pickupTimeWindow === 'EXACT'
+                  ? b.pickupTime
+                  : b.pickupTimeWindow === 'MORNING'
+                  ? 'Jutro (08-12h)'
+                  : b.pickupTimeWindow === 'AFTERNOON'
+                  ? 'Popodne (12-16h)'
+                  : b.pickupTimeWindow === 'EVENING'
+                  ? 'Veče (16-20h)'
+                  : 'Po dogovoru'
+              }}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Cost & Protection -->
+      <div class="section-card">
+        <h3>Troškovi i zaštita</h3>
+        <div class="info-row">
+          <span class="label">Ukupna cena</span>
+          <span class="value price">€{{ b.totalPrice }}</span>
+        </div>
+        <div class="info-row">
+          <span class="label">Osiguranje</span>
+          <span class="value">{{ b.insuranceType || 'Basic' }}</span>
+        </div>
+        <div class="info-row">
+          <span class="label">Gorivo unapred</span>
+          <span class="value">{{ b.prepaidRefuel ? 'Da' : 'Ne' }}</span>
+        </div>
+        <div class="info-row">
+          <span class="label">Otkazivanje</span>
+          <span class="value">{{ b.cancellationPolicy }}</span>
+        </div>
+      </div>
+
+      <!-- Host Info -->
+      <div class="section-card host-card">
+        <h3>Domaćin</h3>
+        <div class="host-profile">
+          <img
+            [src]="b.hostAvatarUrl || 'assets/images/default-avatar.png'"
+            alt="Host"
+            class="host-avatar"
+          />
+          <div class="host-details">
+            <h4>{{ b.hostName }}</h4>
+            <p class="host-stats">
+              <mat-icon class="star">star</mat-icon> {{ b.hostRating | number : '1.1-1' }} •
+              {{ b.hostTotalTrips }} putovanja
+            </p>
+            <p class="joined-date">Član od {{ formatDate(b.hostJoinedDate) }}</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Car Specs (Collapsible or Grid) -->
+      <div class="section-card">
+        <h3>Specifikacije vozila</h3>
+        <div class="specs-grid">
+          <div class="spec-item" *ngIf="b.seats">
+            <mat-icon>event_seat</mat-icon> {{ b.seats }} sedišta
+          </div>
+          <div class="spec-item" *ngIf="b.fuelType">
+            <mat-icon>local_gas_station</mat-icon> {{ b.fuelType }}
+          </div>
+          <div class="spec-item" *ngIf="b.transmissionType">
+            <mat-icon>settings</mat-icon> {{ b.transmissionType }}
+          </div>
+          <div class="spec-item" *ngIf="b.fuelConsumption">
+            <mat-icon>speed</mat-icon> {{ b.fuelConsumption }} L/100km
+          </div>
+        </div>
+      </div>
+    </div>
+  </mat-dialog-content>
+
+  <mat-dialog-actions align="end" *ngIf="booking()">
+    <button mat-stroked-button (click)="openRules()"><mat-icon>gavel</mat-icon> Pravila</button>
+    <button mat-stroked-button (click)="openPhotos()">
+      <mat-icon>photo_library</mat-icon> Slike
+    </button>
+    <button mat-stroked-button (click)="openReceipt()"><mat-icon>receipt</mat-icon> Račun</button>
+    <button mat-flat-button color="primary" (click)="close()">Zatvori</button>
+  </mat-dialog-actions>
+</div>

@@ -51,6 +51,18 @@
           </mat-form-field>
 
           <mat-form-field appearance="outline" class="form-field">
+            <mat-label>Registarska oznaka</mat-label>
+            <input matInput formControlName="licensePlate" required placeholder="BG-123-AB" />
+            <mat-icon matPrefix>badge</mat-icon>
+            <ng-container *ngIf="basicInfoForm.controls.licensePlate.hasError('required')">
+              <mat-error>Registarska oznaka je obavezna</mat-error>
+            </ng-container>
+            <ng-container *ngIf="basicInfoForm.controls.licensePlate.hasError('pattern')">
+              <mat-error>Format: BG-123-AB</mat-error>
+            </ng-container>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="form-field">
             <mat-label>Lokacija</mat-label>
             <input matInput formControlName="location" required />
             <mat-icon matPrefix>location_on</mat-icon>
@@ -212,9 +224,7 @@
           </div>
         </div>
 
-        <p class="selected-count">
-          Izabrano: {{ selectedFeatures().length }} karakteristika
-        </p>
+        <p class="selected-count">Izabrano: {{ selectedFeatures().length }} karakteristika</p>
 
         <div class="step-actions">
           <button mat-button matStepperPrevious><mat-icon>arrow_back</mat-icon> Nazad</button>

@@ -459,6 +459,16 @@ public class BookingController {
     }
 
     /**
+     * Get detailed booking information.
+     * RLS-ENFORCED: Service layer checks if user is renter/owner/admin.
+     */
+    @GetMapping("/{id}/details")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<org.example.rentoza.booking.dto.BookingDetailsDTO> getBookingDetails(@PathVariable Long id) {
+        return ResponseEntity.ok(service.getBookingDetails(id));
+    }
+
+    /**
      * Helper to safely extract user ID from security context.
      * Handles JwtUserPrincipal correctly.
      */

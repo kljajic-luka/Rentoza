@@ -55,6 +55,11 @@ public class CarService {
         car.setOwner(owner);
         car.setAvailable(true);
 
+        // Map optional license plate
+        if (dto.getLicensePlate() != null && !dto.getLicensePlate().isBlank()) {
+            car.setLicensePlate(dto.getLicensePlate().trim());
+        }
+
         // Map optional description
         if (dto.getDescription() != null && !dto.getDescription().isBlank()) {
             car.setDescription(dto.getDescription().trim());
@@ -193,6 +198,9 @@ public class CarService {
         }
         if (dto.getLocation() != null && !dto.getLocation().isBlank()) {
             car.setLocation(dto.getLocation().trim().toLowerCase());
+        }
+        if (dto.getLicensePlate() != null && !dto.getLicensePlate().isBlank()) {
+            car.setLicensePlate(dto.getLicensePlate().trim());
         }
         if (dto.getDescription() != null) {
             car.setDescription(dto.getDescription());

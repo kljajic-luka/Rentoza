@@ -7,11 +7,13 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatDialog } from '@angular/material/dialog';
 import { finalize } from 'rxjs';
 
 import { UserBooking } from '@core/models/booking.model';
 import { BookingService } from '@core/services/booking.service';
 import { isBookingCompleted } from '@core/utils/booking.utils';
+import { BookingDetailsDialogComponent } from '../../booking-details-dialog/booking-details-dialog.component';
 
 type BookingCategory = 'upcoming' | 'ongoing' | 'past';
 
@@ -40,6 +42,7 @@ interface CategorizedBookings {
 })
 export class BookingHistoryComponent {
   private readonly bookingService = inject(BookingService);
+  private readonly dialog = inject(MatDialog);
 
   protected readonly isLoading = signal(true);
   protected readonly bookings = signal<UserBooking[]>([]);
@@ -225,5 +228,15 @@ export class BookingHistoryComponent {
    */
   protected shouldShowInfoIcon(status: string): boolean {
     return ['PENDING_APPROVAL', 'DECLINED', 'EXPIRED'].includes(status);
+  }
+
+  openDetails(id: number): void {
+    this.dialog.open(BookingDetailsDialogComponent, {
+      data: { bookingId: id },
+      width: '600px',
+      maxWidth: '95vw',
+      maxHeight: '90vh',
+      panelClass: 'booking-details-dialog-panel',
+    });
   }
 }

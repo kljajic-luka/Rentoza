@@ -67,6 +67,9 @@ public class Car {
 
     // ========== NEW PRODUCTION-READY FIELDS ==========
 
+    @Column(name = "license_plate", length = 20, columnDefinition = "VARCHAR(20) COLLATE utf8mb4_unicode_ci")
+    private String licensePlate;
+
     @Column(length = 1000, columnDefinition = "VARCHAR(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
     private String description;
 

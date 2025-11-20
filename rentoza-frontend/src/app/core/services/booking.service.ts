@@ -203,4 +203,19 @@ export class BookingService {
       withCredentials: true,
     });
   }
+
+  /**
+   * Get detailed booking information for the renter (or owner/admin).
+   * Includes rich data about the trip, car, and host.
+   */
+  getBookingDetails(
+    id: number | string
+  ): Observable<import('../models/booking-details.model').BookingDetails> {
+    return this.http.get<import('../models/booking-details.model').BookingDetails>(
+      `${this.baseUrl}/${id}/details`,
+      {
+        withCredentials: true,
+      }
+    );
+  }
 }

@@ -19,6 +19,7 @@ public class CarRequestDTO {
     private String ownerEmail;
 
     // New production-ready fields
+    private String licensePlate;
     private String description;
     private Integer seats;
     private FuelType fuelType;

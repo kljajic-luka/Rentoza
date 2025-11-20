@@ -4,19 +4,19 @@ import { Review } from './review.model';
  * Fuel type enumeration
  */
 export enum FuelType {
-  BENZIN = 'BENZIN',           // Gasoline/Petrol
-  DIZEL = 'DIZEL',             // Diesel
-  ELEKTRIČNI = 'ELEKTRIČNI',   // Electric
-  HIBRID = 'HIBRID',           // Hybrid
-  PLUG_IN_HIBRID = 'PLUG_IN_HIBRID' // Plug-in Hybrid
+  BENZIN = 'BENZIN', // Gasoline/Petrol
+  DIZEL = 'DIZEL', // Diesel
+  ELEKTRIČNI = 'ELEKTRIČNI', // Electric
+  HIBRID = 'HIBRID', // Hybrid
+  PLUG_IN_HIBRID = 'PLUG_IN_HIBRID', // Plug-in Hybrid
 }
 
 /**
  * Transmission type enumeration
  */
 export enum TransmissionType {
-  MANUAL = 'MANUAL',           // Manual
-  AUTOMATIC = 'AUTOMATIC'      // Automatic
+  MANUAL = 'MANUAL', // Manual
+  AUTOMATIC = 'AUTOMATIC', // Automatic
 }
 
 /**
@@ -58,7 +58,7 @@ export enum Feature {
   TOW_HITCH = 'TOW_HITCH',
   ALLOY_WHEELS = 'ALLOY_WHEELS',
   LED_LIGHTS = 'LED_LIGHTS',
-  FOG_LIGHTS = 'FOG_LIGHTS'
+  FOG_LIGHTS = 'FOG_LIGHTS',
 }
 
 /**
@@ -68,7 +68,7 @@ export enum CancellationPolicy {
   FLEXIBLE = 'FLEXIBLE',
   MODERATE = 'MODERATE',
   STRICT = 'STRICT',
-  NON_REFUNDABLE = 'NON_REFUNDABLE'
+  NON_REFUNDABLE = 'NON_REFUNDABLE',
 }
 
 /**
@@ -76,9 +76,10 @@ export enum CancellationPolicy {
  */
 export interface Car {
   id: string;
-  make: string;  // Note: backend uses 'brand', mapped to 'make' in frontend
+  make: string; // Note: backend uses 'brand', mapped to 'make' in frontend
   model: string;
   year: number;
+  licensePlate?: string; // Added licensePlate
   pricePerDay: number;
   location: string;
   description?: string;
@@ -90,7 +91,7 @@ export interface Car {
   // New production-ready fields
   seats?: number;
   fuelType?: FuelType;
-  fuelConsumption?: number;  // liters per 100km
+  fuelConsumption?: number; // liters per 100km
   transmissionType?: TransmissionType;
   features?: Feature[];
   addOns?: string[];
@@ -118,5 +119,5 @@ export const CAR_RENTAL_RULES = [
   'Bez vožnje van puta',
   'Održavajte vozilo čistim',
   'Prijavite eventualne štete',
-  'Vratite na vreme'
+  'Vratite na vreme',
 ] as const;

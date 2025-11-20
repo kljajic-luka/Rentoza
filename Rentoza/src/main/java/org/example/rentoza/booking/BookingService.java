@@ -1,6 +1,6 @@
 package org.example.rentoza.booking;
 
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.booking.dto.BookingRequestDTO;
 import org.example.rentoza.booking.dto.BookingResponseDTO;
@@ -638,5 +638,89 @@ public class BookingService {
             log.error("Failed to initiate conversation creation for instant booking {}: {}",
                     booking.getId(), e.getMessage());
         }
+    }
+
+    /**
+     * Get detailed booking information for the renter (or owner/admin).
+     * Includes rich data about the trip, car, and host.
+     * 
+     * Security:
+     * - RLS-ENFORCED: Only renter, owner, or admin can access.
+     * - License Plate Visibility: Only exposed if booking is ACTIVE.
+     * 
+     * @param id Booking ID
+     * @return BookingDetailsDTO
+     */
+    @Transactional(readOnly = true)
+    public org.example.rentoza.booking.dto.BookingDetailsDTO getBookingDetails(Long id) {
+        // 1. Fetch booking with relations
+        Booking booking = repo.findByIdWithRelations(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking not found: " + id));
+
+        // 2. Security Check
+        Long currentUserId = currentUser.id();
+        boolean isRenter = booking.getRenter().getId().equals(currentUserId);
+        boolean isOwner = booking.getCar().getOwner().getId().equals(currentUserId);
+        boolean isAdmin = currentUser.isAdmin();
+
+        if (!isRenter && !isOwner && !isAdmin) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Unauthorized to view details for booking " + id
+            );
+        }
+
+        // 3. Fetch Host Stats
+        User host = booking.getCar().getOwner();
+        Double hostRating = reviewRepo.findAverageRatingForRevieweeAndDirection(
+                host.getId(), 
+                ReviewDirection.FROM_USER // Renter reviewing Owner
+        );
+        long hostTotalTrips = repo.countByOwnerIdAndStatus(host.getId(), BookingStatus.COMPLETED);
+
+        // 4. Map to DTO
+        Car car = booking.getCar();
+        
+        // License Plate Visibility Rule
+        // Exposed if: (Status is ACTIVE) AND (User is Renter OR Owner OR Admin)
+        // Note: Owner/Admin always see it in other views, but for this specific DTO logic:
+        boolean showLicensePlate = (booking.getStatus() == BookingStatus.ACTIVE) || isOwner || isAdmin;
+        String licensePlate = showLicensePlate ? car.getLicensePlate() : null;
+
+        return org.example.rentoza.booking.dto.BookingDetailsDTO.builder()
+                // Trip
+                .id(booking.getId())
+                .status(booking.getStatus())
+                .startDate(booking.getStartDate())
+                .endDate(booking.getEndDate())
+                .pickupTime(booking.getPickupTime())
+                .pickupTimeWindow(booking.getPickupTimeWindow())
+                .totalPrice(booking.getTotalPrice())
+                .insuranceType(booking.getInsuranceType())
+                .prepaidRefuel(booking.isPrepaidRefuel())
+                .cancellationPolicy(car.getCancellationPolicy() != null ? car.getCancellationPolicy().name() : "FLEXIBLE")
+                
+                // Car
+                .carId(car.getId())
+                .brand(car.getBrand())
+                .model(car.getModel())
+                .year(car.getYear())
+                .licensePlate(licensePlate)
+                .location(car.getLocation())
+                .primaryImageUrl(car.getImageUrl())
+                .seats(car.getSeats())
+                .fuelType(car.getFuelType() != null ? car.getFuelType().name() : null)
+                .fuelConsumption(car.getFuelConsumption())
+                .transmissionType(car.getTransmissionType() != null ? car.getTransmissionType().name() : null)
+                .minRentalDays(car.getMinRentalDays())
+                .maxRentalDays(car.getMaxRentalDays())
+
+                // Host
+                .hostId(host.getId())
+                .hostName(host.getFirstName() + " " + host.getLastName())
+                .hostRating(hostRating != null ? hostRating : 0.0)
+                .hostTotalTrips((int) hostTotalTrips)
+                .hostJoinedDate(host.getCreatedAt().toString()) // ISO format
+                .hostAvatarUrl(host.getAvatarUrl())
+                .build();
     }
 }

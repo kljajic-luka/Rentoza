@@ -104,9 +104,13 @@
         </mat-card-content>
 
         <mat-card-actions>
-          <a mat-raised-button color="primary" [routerLink]="['/cars', booking.carId]">
-            <mat-icon>info</mat-icon>
-            Detalji vozila
+          <button mat-raised-button color="primary" (click)="openDetails(booking.id)">
+            <mat-icon>receipt_long</mat-icon>
+            Detalji rezervacije
+          </button>
+          <a mat-button [routerLink]="['/cars', booking.carId]">
+            <mat-icon>directions_car</mat-icon>
+            Vozilo
           </a>
         </mat-card-actions>
       </mat-card>
@@ -191,9 +195,13 @@
         </mat-card-content>
 
         <mat-card-actions>
-          <a mat-raised-button color="primary" [routerLink]="['/cars', booking.carId]">
-            <mat-icon>info</mat-icon>
-            Detalji vozila
+          <button mat-raised-button color="primary" (click)="openDetails(booking.id)">
+            <mat-icon>receipt_long</mat-icon>
+            Detalji rezervacije
+          </button>
+          <a mat-button [routerLink]="['/cars', booking.carId]">
+            <mat-icon>directions_car</mat-icon>
+            Vozilo
           </a>
         </mat-card-actions>
       </mat-card>
@@ -300,9 +308,13 @@
         </mat-card-content>
 
         <mat-card-actions>
-          <a mat-button color="primary" [routerLink]="['/cars', booking.carId]">
-            <mat-icon>info</mat-icon>
-            Detalji vozila
+          <button mat-stroked-button color="primary" (click)="openDetails(booking.id)">
+            <mat-icon>receipt_long</mat-icon>
+            Detalji rezervacije
+          </button>
+          <a mat-button [routerLink]="['/cars', booking.carId]">
+            <mat-icon>directions_car</mat-icon>
+            Vozilo
           </a>
         </mat-card-actions>
       </mat-card>

@@ -142,6 +142,7 @@ export class AddCarWizardComponent implements OnInit {
       new Date().getFullYear(),
       [Validators.required, Validators.min(1950), Validators.max(2050)],
     ],
+    licensePlate: ['', [Validators.required, Validators.pattern('^[A-Z]{2}-[0-9]{3,4}-[A-Z]{2}$')]],
     location: ['', [Validators.required, Validators.minLength(2)]],
     pricePerDay: [0, [Validators.required, Validators.min(10)]],
     description: ['', [Validators.maxLength(1000)]],
@@ -249,6 +250,7 @@ export class AddCarWizardComponent implements OnInit {
       make: this.basicInfoForm.value.brand!, // Frontend 'make' = backend 'brand'
       model: this.basicInfoForm.value.model!,
       year: this.basicInfoForm.value.year!,
+      licensePlate: this.basicInfoForm.value.licensePlate!,
       location: this.basicInfoForm.value.location!,
       pricePerDay: this.basicInfoForm.value.pricePerDay!,
       description: this.basicInfoForm.value.description,

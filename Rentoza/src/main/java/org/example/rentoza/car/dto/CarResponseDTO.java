@@ -24,6 +24,7 @@ public class CarResponseDTO {
     private String ownerEmail;
 
     // New production-ready fields
+    private String licensePlate;
     private String description;
     private Integer seats;
     private FuelType fuelType;
@@ -47,6 +48,8 @@ public class CarResponseDTO {
         this.available = car.isAvailable();
 
         // New fields
+        // License plate is NOT exposed in public DTO for security
+        // this.licensePlate = car.getLicensePlate(); 
         this.description = car.getDescription();
         this.seats = car.getSeats();
         this.fuelType = car.getFuelType();

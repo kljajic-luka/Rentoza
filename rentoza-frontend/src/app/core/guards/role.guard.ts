@@ -41,8 +41,10 @@ export class RoleGuard implements CanActivate {
       map((user) => {
         // Not authenticated - redirect to home
         if (!user) {
-          console.log('🔒 RoleGuard: User not authenticated - redirecting to /pocetna');
-          return this.router.createUrlTree(['/pocetna']);
+          console.log('🔒 RoleGuard: User not authenticated - redirecting to login with returnUrl');
+          return this.router.createUrlTree(['/auth/login'], {
+            queryParams: { returnUrl: state.url }
+          });
         }
 
         // No role requirements - allow access

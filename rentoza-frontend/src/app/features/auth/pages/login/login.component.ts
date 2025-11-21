@@ -65,7 +65,7 @@ export class LoginComponent {
           this.toastr.success('Uspešno ste se prijavili!');
 
           // Check if there's a return URL, otherwise use role-based redirection
-          const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
+          const returnUrl = this.getReturnUrl();
           if (returnUrl) {
             void this.router.navigateByUrl(returnUrl);
           } else {
@@ -93,7 +93,7 @@ export class LoginComponent {
     const googleAuthUrl = `${baseUrl}/oauth2/authorization/google`;
 
     // Preserve return URL if exists
-    const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
+    const returnUrl = this.getReturnUrl();
     if (returnUrl) {
       // Store return URL in session storage to retrieve after OAuth2 callback
       sessionStorage.setItem('oauth2_return_url', returnUrl);
@@ -102,5 +102,18 @@ export class LoginComponent {
     // Redirect to backend OAuth2 endpoint
     // Backend will redirect to Google, then back to /auth/callback with token
     window.location.href = googleAuthUrl;
+  }
+  private getReturnUrl(): string | null {
+    const qp = this.route.snapshot.queryParamMap;
+    const raw = qp.get('returnUrl') || qp.get('redirectUrl');
+    if (!raw) return null;
+
+    // Allow only internal routes starting with "/" and disallow protocol-based redirects
+    const trimmed = raw.trim();
+    if (!trimmed.startsWith('/')) return null;
+    if (trimmed.startsWith('//')) return null;
+    if (/^https?:\/\//i.test(trimmed)) return null;
+
+    return trimmed;
   }
 }

@@ -137,6 +137,7 @@ export class CarDetailComponent {
   readonly isOwner$ = this.authService.currentUser$.pipe(
     map((user) => user?.roles?.includes('OWNER') ?? false)
   );
+  readonly loginQueryParams = computed(() => ({ returnUrl: this.router.url }));
 
   // Car rental rules and feature helper
   protected readonly rentalRules = CAR_RENTAL_RULES;

@@ -194,7 +194,7 @@
 .car-earning-item {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   padding: 1rem;
   background: var(--color-surface-elevated);
   border-radius: 12px;
@@ -207,8 +207,9 @@
 
 .car-info {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 1rem;
+  flex: 1;
 }
 
 .car-icon {
@@ -229,6 +230,8 @@
 }
 
 .car-details {
+  flex: 1;
+
   h4 {
     font-size: 1rem;
     font-weight: 600;
@@ -236,10 +239,46 @@
     margin: 0 0 0.25rem 0;
   }
 
-  p {
+  > p {
     font-size: 0.875rem;
     color: var(--color-text-muted);
-    margin: 0;
+    margin: 0 0 0.75rem 0;
+  }
+}
+
+.booking-details-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.booking-detail-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  background: var(--color-surface);
+  border-radius: 8px;
+  font-size: 0.875rem;
+
+  .booking-icon {
+    font-size: 1rem;
+    width: 1rem;
+    height: 1rem;
+    color: var(--color-text-muted);
+  }
+
+  .booking-info {
+    flex: 1;
+    color: var(--color-text-secondary);
+  }
+
+  .booking-price {
+    font-weight: 600;
+    color: #10b981;
   }
 }
 

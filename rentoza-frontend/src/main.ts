@@ -32,6 +32,7 @@ import { errorResponseInterceptor } from '@core/interceptors/error.interceptor';
 import { httpCacheInterceptor } from '@core/interceptors/http-cache.interceptor';
 import { AuthService } from '@core/auth/auth.service';
 import { PerformanceMonitoringService } from '@core/services/performance-monitoring.service';
+import { OverlayThemeService } from '@core/services/overlay-theme.service';
 import { environment } from '@environments/environment';
 
 function initializeAuth(authService: AuthService): () => Promise<void> {
@@ -50,6 +51,13 @@ function initializePerformanceMonitoring(perfService: PerformanceMonitoringServi
   };
 }
 
+function initializeOverlayTheme(overlayThemeService: OverlayThemeService): () => void {
+  return () => {
+    // Service instantiation is sufficient - effect() in constructor will handle theme sync
+    void overlayThemeService;
+  };
+}
+
 bootstrapApplication(App, {
   providers: [
     provideZoneChangeDetection({ eventCoalescing: true }),
@@ -64,6 +72,12 @@ bootstrapApplication(App, {
       provide: APP_INITIALIZER,
       useFactory: initializePerformanceMonitoring,
       deps: [PerformanceMonitoringService],
+      multi: true,
+    },
+    {
+      provide: APP_INITIALIZER,
+      useFactory: initializeOverlayTheme,
+      deps: [OverlayThemeService],
       multi: true,
     },
     importProvidersFrom(

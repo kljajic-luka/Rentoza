@@ -74,25 +74,44 @@ export class OwnerBookingsComponent implements OnInit {
                 return;
               }
 
-              // Group bookings using unified completion logic
-              const now = new Date();
+              // Group bookings by date-based logic
+              const today = new Date();
+              today.setHours(0, 0, 0, 0); // Normalize to midnight for accurate comparison
+
               const upcoming: Booking[] = [];
               const active: Booking[] = [];
               const completed: Booking[] = [];
 
               bookings.forEach((booking) => {
                 // Defensive check: ensure booking has required properties
-                if (!booking || !booking.status || !booking.endDate) {
+                if (!booking || !booking.status || !booking.startDate || !booking.endDate) {
                   console.warn('Invalid booking object:', booking);
                   return;
                 }
 
-                // Use unified completion check to categorize bookings
-                if (isBookingCompleted(booking)) {
+                // Parse and normalize dates
+                const startDate = new Date(booking.startDate);
+                const endDate = new Date(booking.endDate);
+                startDate.setHours(0, 0, 0, 0);
+                endDate.setHours(0, 0, 0, 0);
+
+                // Categorize based on dates AND status
+                // 1. Completed: End date has passed OR status indicates completion
+                if (
+                  endDate < today ||
+                  booking.status === 'COMPLETED' ||
+                  booking.status === 'CANCELLED' ||
+                  booking.status === 'DECLINED' ||
+                  booking.status === 'EXPIRED'
+                ) {
                   completed.push(booking);
-                } else if (booking.status === 'PENDING_APPROVAL') {
+                }
+                // 2. Upcoming: Start date is in the future OR pending approval
+                else if (startDate > today || booking.status === 'PENDING_APPROVAL') {
                   upcoming.push(booking);
-                } else if (booking.status === 'ACTIVE') {
+                }
+                // 3. Active: Current date is within booking period (startDate <= today <= endDate)
+                else if (startDate <= today && endDate >= today) {
                   active.push(booking);
                 }
               });

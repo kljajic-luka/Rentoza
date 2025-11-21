@@ -27,6 +27,7 @@ import { AuthService } from '@core/auth/auth.service';
 import { UserProfile } from '@core/models/user.model';
 import { UserRole } from '@core/models/user-role.type';
 import { ThemeToggleComponent } from '../theme-toggle/theme-toggle.component';
+import { ThemeService } from '@core/services/theme.service';
 
 interface NavLink {
   label: string;
@@ -62,6 +63,7 @@ export class LayoutComponent implements OnInit {
   @ViewChild(MatSidenav) sidenav?: MatSidenav;
 
   protected readonly authService = inject(AuthService);
+  protected readonly themeService = inject(ThemeService);
   private readonly router = inject(Router);
   private readonly toastr = inject(ToastrService);
   private readonly breakpointObserver = inject(BreakpointObserver);

@@ -43,18 +43,8 @@
           </div>
           <div class="stat-content">
             <p class="stat-label">Ovaj mesec</p>
-            <h2 class="stat-value">{{ earningsData().thisMonth | currency:'RSD':'symbol':'1.0-0' }}</h2>
-            @if (isPositiveChange()) {
-              <p class="stat-change positive">
-                <mat-icon>trending_up</mat-icon>
-                +{{ getPercentageChange() | number:'1.0-1' }}% od prošlog meseca
-              </p>
-            } @else {
-              <p class="stat-change negative">
-                <mat-icon>trending_down</mat-icon>
-                {{ getPercentageChange() | number:'1.0-1' }}% od prošlog meseca
-              </p>
-            }
+            <h2 class="stat-value">{{ earningsData().monthlyEarnings | currency:'RSD':'symbol':'1.0-0' }}</h2>
+            <p class="stat-subtitle">Mesečna zarada</p>
           </div>
         </mat-card>
 
@@ -63,9 +53,9 @@
             <mat-icon>show_chart</mat-icon>
           </div>
           <div class="stat-content">
-            <p class="stat-label">Prosek po rezervaciji</p>
-            <h2 class="stat-value">{{ earningsData().averagePerBooking | currency:'RSD':'symbol':'1.0-0' }}</h2>
-            <p class="stat-subtitle">Prosečna zarada</p>
+            <p class="stat-label">Ova godina</p>
+            <h2 class="stat-value">{{ earningsData().yearlyEarnings | currency:'RSD':'symbol':'1.0-0' }}</h2>
+            <p class="stat-subtitle">Godišnja zarada</p>
           </div>
         </mat-card>
       </div>
@@ -94,8 +84,23 @@
                       <mat-icon>directions_car</mat-icon>
                     </div>
                     <div class="car-details">
-                      <h4>{{ car.brand }} {{ car.model }}</h4>
-                      <p>{{ car.bookingsCount }} rezervacija</p>
+                      <h4>{{ car.carBrand }} {{ car.carModel }}</h4>
+                      <p>{{ car.bookingCount }} rezervacija</p>
+
+                      @if (car.bookingDetails && car.bookingDetails.length > 0) {
+                        <div class="booking-details-list">
+                          @for (booking of car.bookingDetails; track booking.bookingId) {
+                            <div class="booking-detail-item">
+                              <mat-icon class="booking-icon">event</mat-icon>
+                              <span class="booking-info">
+                                {{ car.carBrand }} {{ car.carModel }} •
+                                {{ booking.startDate | date:'dd.MM.yyyy' }} - {{ booking.endDate | date:'dd.MM.yyyy' }}
+                              </span>
+                              <span class="booking-price">{{ booking.totalPrice | currency:'RSD':'symbol':'1.0-0' }}</span>
+                            </div>
+                          }
+                        </div>
+                      }
                     </div>
                   </div>
                   <div class="car-amount">

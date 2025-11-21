@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -31,5 +32,18 @@ public class OwnerEarningsDTO {
         private String carModel;
         private Double earnings;
         private Integer bookingCount;
+        private List<BookingDetailDTO> bookingDetails; // Added: individual booking details
+    }
+
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class BookingDetailDTO {
+        private Long bookingId;
+        private LocalDate startDate;
+        private LocalDate endDate;
+        private Double totalPrice;
+        private String status;
     }
 }

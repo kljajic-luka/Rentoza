@@ -39,7 +39,6 @@
           formControlName="customReason"
           rows="4"
           placeholder="Npr. vozilo je već rezervisano van sistema..."
-          required
           maxlength="500"
           #reasonInput
         ></textarea>
@@ -58,9 +57,7 @@
       mat-flat-button
       color="warn"
       (click)="submit()"
-      [disabled]="
-        declineForm.invalid || (isCustomReasonRequired() && !declineForm.value.customReason?.trim())
-      "
+      [disabled]="declineForm.invalid"
     >
       Odbij rezervaciju
     </button>

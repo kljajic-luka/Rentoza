@@ -61,20 +61,37 @@ export class DeclineReasonDialogComponent {
     { value: 'other', label: 'Drugi razlog (unesite dole)' },
   ];
 
-  constructor(@Inject(MAT_DIALOG_DATA) public data: DeclineReasonDialogData) {}
+  constructor(@Inject(MAT_DIALOG_DATA) public data: DeclineReasonDialogData) {
+    // Reactive validation: Add/remove required validator based on reasonType selection
+    this.declineForm.get('reasonType')?.valueChanges.subscribe((reasonType) => {
+      const customReasonControl = this.declineForm.get('customReason');
+
+      if (reasonType === 'other') {
+        // Add required validator when "Other" is selected
+        customReasonControl?.setValidators([Validators.required, Validators.maxLength(500)]);
+      } else {
+        // Remove required validator and clear value when switching away from "Other"
+        customReasonControl?.setValidators([Validators.maxLength(500)]);
+        customReasonControl?.setValue('');
+      }
+
+      // Update validation state
+      customReasonControl?.updateValueAndValidity();
+    });
+  }
 
   protected isCustomReasonRequired(): boolean {
     return this.declineForm.value.reasonType === 'other';
   }
 
   protected submit(): void {
-    const reasonType = this.declineForm.value.reasonType;
-    const customReason = this.declineForm.value.customReason?.trim();
-
-    // Validate custom reason if "other" is selected
-    if (reasonType === 'other' && !customReason) {
+    // Form validation is handled reactively, so if we reach here, form is valid
+    if (this.declineForm.invalid) {
       return;
     }
+
+    const reasonType = this.declineForm.value.reasonType;
+    const customReason = this.declineForm.value.customReason?.trim();
 
     // Get human-readable reason
     let reason: string;

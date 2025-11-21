@@ -65,16 +65,15 @@
   border-radius: 4px;
   color: rgba(0, 0, 0, 0.87);
 
-  // Dark mode
-  @media (prefers-color-scheme: dark) {
-    background: rgba(255, 255, 255, 0.08);
-    color: rgba(255, 255, 255, 0.87);
-  }
-
   mat-icon {
     color: inherit;
     opacity: 0.7;
   }
+}
+
+:host-context(.theme-dark) .rental-info {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.87);
 }
 
 // Driver Info Hint - Theme-aware
@@ -90,13 +89,6 @@
   font-size: 0.875rem;
   color: rgba(0, 0, 0, 0.7);
 
-  // Dark mode
-  @media (prefers-color-scheme: dark) {
-    background: rgba(33, 150, 243, 0.12);
-    border-left-color: rgba(33, 150, 243, 0.8);
-    color: rgba(255, 255, 255, 0.7);
-  }
-
   .hint-icon {
     color: rgba(33, 150, 243, 0.8);
     font-size: 1.25rem;
@@ -108,6 +100,12 @@
   span {
     line-height: 1.4;
   }
+}
+
+:host-context(.theme-dark) .driver-info-hint {
+  background: rgba(33, 150, 243, 0.12);
+  border-left-color: rgba(33, 150, 243, 0.8);
+  color: rgba(255, 255, 255, 0.7);
 }
 
 // Insurance Options - Theme-aware
@@ -123,18 +121,9 @@
   padding: 1rem;
   transition: all 0.2s;
 
-  // Dark mode
-  @media (prefers-color-scheme: dark) {
-    border-color: rgba(255, 255, 255, 0.12);
-  }
-
   &.mat-mdc-radio-checked {
     border-color: var(--mat-primary);
     background: rgba(var(--mat-primary-rgb), 0.05);
-
-    @media (prefers-color-scheme: dark) {
-      background: rgba(var(--mat-primary-rgb), 0.12);
-    }
   }
 
   .option-content {
@@ -166,10 +155,18 @@
     margin: 0;
     font-size: 0.875rem;
     color: rgba(0, 0, 0, 0.6);
+  }
+}
 
-    @media (prefers-color-scheme: dark) {
-      color: rgba(255, 255, 255, 0.6);
-    }
+:host-context(.theme-dark) .insurance-option {
+  border-color: rgba(255, 255, 255, 0.12);
+
+  &.mat-mdc-radio-checked {
+    background: rgba(var(--mat-primary-rgb), 0.12);
+  }
+
+  .option-description {
+    color: rgba(255, 255, 255, 0.6);
   }
 }
 
@@ -186,17 +183,9 @@
   padding: 1rem;
   transition: all 0.2s;
 
-  @media (prefers-color-scheme: dark) {
-    border-color: rgba(255, 255, 255, 0.12);
-  }
-
   &.mat-mdc-radio-checked {
     border-color: var(--mat-primary);
     background: rgba(var(--mat-primary-rgb), 0.05);
-
-    @media (prefers-color-scheme: dark) {
-      background: rgba(var(--mat-primary-rgb), 0.12);
-    }
   }
 
   .option-content {
@@ -209,10 +198,18 @@
   .option-time {
     font-size: 0.875rem;
     color: rgba(0, 0, 0, 0.6);
+  }
+}
 
-    @media (prefers-color-scheme: dark) {
-      color: rgba(255, 255, 255, 0.6);
-    }
+:host-context(.theme-dark) .pickup-time-option {
+  border-color: rgba(255, 255, 255, 0.12);
+
+  &.mat-mdc-radio-checked {
+    background: rgba(var(--mat-primary-rgb), 0.12);
+  }
+
+  .option-time {
+    color: rgba(255, 255, 255, 0.6);
   }
 }
 
@@ -228,10 +225,6 @@
   padding: 1rem;
   width: 100%;
 
-  @media (prefers-color-scheme: dark) {
-    border-color: rgba(255, 255, 255, 0.12);
-  }
-
   .addon-content {
     margin-left: 0.5rem;
   }
@@ -240,15 +233,19 @@
     margin: 0.25rem 0 0 0;
     font-size: 0.875rem;
     color: rgba(0, 0, 0, 0.6);
-
-    @media (prefers-color-scheme: dark) {
-      color: rgba(255, 255, 255, 0.6);
-    }
   }
 
   .addon-cost {
     font-weight: 500;
     color: var(--mat-primary);
+  }
+}
+
+:host-context(.theme-dark) .addon-checkbox {
+  border-color: rgba(255, 255, 255, 0.12);
+
+  .addon-description {
+    color: rgba(255, 255, 255, 0.6);
   }
 }
 
@@ -258,11 +255,11 @@
   padding: 1rem;
   border-radius: 8px;
   border: 1px solid rgba(0, 0, 0, 0.08);
+}
 
-  @media (prefers-color-scheme: dark) {
-    background: rgba(255, 255, 255, 0.05);
-    border-color: rgba(255, 255, 255, 0.08);
-  }
+:host-context(.theme-dark) .summary-section {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.08);
 }
 
 .price-breakdown {
@@ -278,19 +275,19 @@
   font-size: 0.95rem;
   color: rgba(0, 0, 0, 0.87);
 
-  @media (prefers-color-scheme: dark) {
-    color: rgba(255, 255, 255, 0.87);
-  }
-
   &.price-total {
     font-size: 1.25rem;
     padding-top: 0.5rem;
     color: rgba(0, 0, 0, 0.95);
     font-weight: 600;
+  }
+}
 
-    @media (prefers-color-scheme: dark) {
-      color: rgba(255, 255, 255, 0.95);
-    }
+:host-context(.theme-dark) .price-line {
+  color: rgba(255, 255, 255, 0.87);
+
+  &.price-total {
+    color: rgba(255, 255, 255, 0.95);
   }
 }
 
@@ -300,8 +297,8 @@
   text-align: center;
   color: rgba(0, 0, 0, 0.4);
   font-style: italic;
+}
 
-  @media (prefers-color-scheme: dark) {
-    color: rgba(255, 255, 255, 0.4);
-  }
+:host-context(.theme-dark) .no-price-message {
+  color: rgba(255, 255, 255, 0.4);
 }

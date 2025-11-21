@@ -13,18 +13,29 @@ import { filter, take } from 'rxjs';
 import { AuthService } from '@core/auth/auth.service';
 import { environment } from '@environments/environment';
 
+interface BookingDetail {
+  bookingId: number;
+  startDate: string;
+  endDate: string;
+  totalPrice: number;
+  status: string;
+}
+
+interface CarEarning {
+  carId: number;
+  carBrand: string;
+  carModel: string;
+  earnings: number;
+  bookingCount: number;
+  bookingDetails: BookingDetail[];
+}
+
 interface EarningsData {
   totalEarnings: number;
-  thisMonth: number;
-  lastMonth: number;
-  averagePerBooking: number;
-  carEarnings: Array<{
-    carId: string;
-    brand: string;
-    model: string;
-    earnings: number;
-    bookingsCount: number;
-  }>;
+  monthlyEarnings: number;
+  yearlyEarnings: number;
+  totalBookings: number;
+  carEarnings: CarEarning[];
 }
 
 @Component({
@@ -52,9 +63,9 @@ export class EarningsComponent implements OnInit {
   protected readonly isLoading = signal(false);
   protected readonly earningsData = signal<EarningsData>({
     totalEarnings: 0,
-    thisMonth: 0,
-    lastMonth: 0,
-    averagePerBooking: 0,
+    monthlyEarnings: 0,
+    yearlyEarnings: 0,
+    totalBookings: 0,
     carEarnings: [],
   });
 
@@ -77,13 +88,7 @@ export class EarningsComponent implements OnInit {
           const email = user.email || user.id;
           this.http.get<EarningsData>(`${this.baseUrl}/earnings/${email}`).subscribe({
             next: (data) => {
-              this.earningsData.set({
-                totalEarnings: data.totalEarnings ?? 0,
-                thisMonth: data.thisMonth ?? 0,
-                lastMonth: data.lastMonth ?? 0,
-                averagePerBooking: data.averagePerBooking ?? 0,
-                carEarnings: data.carEarnings ?? [],
-              });
+              this.earningsData.set(data);
               this.isLoading.set(false);
             },
             error: (error) => {
@@ -98,15 +103,5 @@ export class EarningsComponent implements OnInit {
           this.isLoading.set(false);
         },
       });
-  }
-
-  protected getPercentageChange(): number {
-    const data = this.earningsData();
-    if (data.lastMonth === 0) return 0;
-    return ((data.thisMonth - data.lastMonth) / data.lastMonth) * 100;
-  }
-
-  protected isPositiveChange(): boolean {
-    return this.getPercentageChange() >= 0;
   }
 }

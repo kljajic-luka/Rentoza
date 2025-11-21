@@ -43,7 +43,7 @@
       <div class="sidenav-footer">
         <div class="theme-toggle-row">
           <app-theme-toggle />
-          <span>Tamna tema</span>
+          <span>{{ themeService.theme() === 'light' ? 'Tamna tema' : 'Svetla tema' }}</span>
         </div>
 
         <ng-container *ngIf="isAuthenticated$ | async; else guestFooter">

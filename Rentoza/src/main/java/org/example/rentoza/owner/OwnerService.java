@@ -132,7 +132,17 @@ public class OwnerService {
         double yearlyEarnings = 0.0;
         int totalBookings = 0;
 
-        Map<Long, OwnerEarningsDTO.CarEarningDTO> carEarningsMap = new HashMap<>();
+        // Use a helper class to accumulate both aggregated data and individual booking details
+        class CarEarningAccumulator {
+            Long carId;
+            String carBrand;
+            String carModel;
+            double totalEarnings = 0.0;
+            int bookingCount = 0;
+            List<OwnerEarningsDTO.BookingDetailDTO> bookingDetails = new ArrayList<>();
+        }
+
+        Map<Long, CarEarningAccumulator> carEarningsMap = new HashMap<>();
 
         for (Booking booking : allBookings) {
             if (booking.getStatus() == BookingStatus.COMPLETED || booking.getStatus() == BookingStatus.ACTIVE) {
@@ -149,32 +159,43 @@ public class OwnerService {
                     yearlyEarnings += price;
                 }
 
-                // Update per-car earnings
-                OwnerEarningsDTO.CarEarningDTO carEarning = carEarningsMap.get(car.getId());
-                if (carEarning == null) {
-                    carEarningsMap.put(car.getId(), new OwnerEarningsDTO.CarEarningDTO(
-                            car.getId(),
-                            car.getBrand(),
-                            car.getModel(),
-                            price,
-                            1
-                    ));
-                } else {
-                    // Update existing entry
-                    carEarningsMap.put(car.getId(), new OwnerEarningsDTO.CarEarningDTO(
-                            car.getId(),
-                            car.getBrand(),
-                            car.getModel(),
-                            carEarning.getEarnings() + price,
-                            carEarning.getBookingCount() + 1
-                    ));
+                // Update per-car earnings with individual booking details
+                CarEarningAccumulator accumulator = carEarningsMap.get(car.getId());
+                if (accumulator == null) {
+                    accumulator = new CarEarningAccumulator();
+                    accumulator.carId = car.getId();
+                    accumulator.carBrand = car.getBrand();
+                    accumulator.carModel = car.getModel();
+                    carEarningsMap.put(car.getId(), accumulator);
                 }
+
+                // Add to aggregated data
+                accumulator.totalEarnings += price;
+                accumulator.bookingCount++;
+
+                // Add individual booking detail
+                accumulator.bookingDetails.add(new OwnerEarningsDTO.BookingDetailDTO(
+                        booking.getId(),
+                        booking.getStartDate(),
+                        booking.getEndDate(),
+                        booking.getTotalPrice(),
+                        booking.getStatus().toString()
+                ));
             }
         }
 
-        List<OwnerEarningsDTO.CarEarningDTO> carEarningsList = new ArrayList<>(carEarningsMap.values());
-        // Sort by earnings (highest first)
-        carEarningsList.sort((c1, c2) -> Double.compare(c2.getEarnings(), c1.getEarnings()));
+        // Convert accumulators to DTOs
+        List<OwnerEarningsDTO.CarEarningDTO> carEarningsList = carEarningsMap.values().stream()
+                .map(acc -> new OwnerEarningsDTO.CarEarningDTO(
+                        acc.carId,
+                        acc.carBrand,
+                        acc.carModel,
+                        acc.totalEarnings,
+                        acc.bookingCount,
+                        acc.bookingDetails
+                ))
+                .sorted((c1, c2) -> Double.compare(c2.getEarnings(), c1.getEarnings()))
+                .toList();
 
         return new OwnerEarningsDTO(totalEarnings, monthlyEarnings, yearlyEarnings, totalBookings, carEarningsList);
     }

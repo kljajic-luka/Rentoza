@@ -253,8 +253,8 @@ mat-dialog-actions {
   gap: 8px;
 }
 
-// Dark mode support
-:host-context(.dark-theme) .booking-details-dialog {
+// Dark mode support - synced with global .theme-dark class
+:host-context(.theme-dark) .booking-details-dialog {
   /* FIX ALL MATERIAL TYPOGRAPHY IN DARK MODE */
   --mdc-typography-body1-color: #ffffff;
   --mdc-typography-body2-color: #ffffff;
@@ -304,6 +304,22 @@ mat-dialog-actions {
 
   .info-row .value.price {
     color: #69f0ae !important;
+  }
+
+  /* License plate - invert colors for dark mode */
+  .license-plate-badge {
+    background: rgba(30, 30, 30, 0.95) !important;
+    border-color: rgba(255, 255, 255, 0.3) !important;
+
+    .plate-number {
+      color: #ffffff !important;
+    }
+
+    .plate-label {
+      background: rgba(50, 50, 50, 0.9) !important;
+      color: rgba(255, 255, 255, 0.7) !important;
+      border-left-color: rgba(255, 255, 255, 0.2) !important;
+    }
   }
 
   mat-dialog-actions {

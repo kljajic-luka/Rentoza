@@ -103,32 +103,36 @@ export class BookingHistoryComponent {
 
   private getTimeUntil(futureDate: Date, now: Date): string {
     const diffMs = futureDate.getTime() - now.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const totalMinutes = Math.max(0, Math.floor(diffMs / (1000 * 60)));
+    const days = Math.floor(totalMinutes / (60 * 24));
+    const hours = Math.floor((totalMinutes - days * 24 * 60) / 60);
+    const minutes = totalMinutes - days * 24 * 60 - hours * 60;
 
-    if (diffDays > 0) {
-      return `${diffDays} ${diffDays === 1 ? 'dan' : 'dana'}`;
-    } else if (diffHours > 0) {
-      return `${diffHours} ${diffHours === 1 ? 'sat' : 'sati'}`;
-    } else {
-      const diffMinutes = Math.floor(diffMs / (1000 * 60));
-      return `${diffMinutes} ${diffMinutes === 1 ? 'minut' : 'minuta'}`;
+    if (days > 0) {
+      return `${days} ${days === 1 ? 'dan' : 'dana'}`;
     }
+    if (hours > 0) {
+      const minutesPart = minutes > 0 ? ` i ${minutes} ${minutes === 1 ? 'minut' : 'minuta'}` : '';
+      return `${hours} ${hours === 1 ? 'sat' : 'sati'}${minutesPart}`;
+    }
+    return `${minutes} ${minutes === 1 ? 'minut' : 'minuta'}`;
   }
 
   private getTimeSince(pastDate: Date, now: Date): string {
     const diffMs = now.getTime() - pastDate.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const totalMinutes = Math.max(0, Math.floor(diffMs / (1000 * 60)));
+    const days = Math.floor(totalMinutes / (60 * 24));
+    const hours = Math.floor((totalMinutes - days * 24 * 60) / 60);
+    const minutes = totalMinutes - days * 24 * 60 - hours * 60;
 
-    if (diffDays > 0) {
-      return `${diffDays} ${diffDays === 1 ? 'dan' : 'dana'}`;
-    } else if (diffHours > 0) {
-      return `${diffHours} ${diffHours === 1 ? 'sat' : 'sati'}`;
-    } else {
-      const diffMinutes = Math.floor(diffMs / (1000 * 60));
-      return `${diffMinutes} ${diffMinutes === 1 ? 'minut' : 'minuta'}`;
+    if (days > 0) {
+      return `${days} ${days === 1 ? 'dan' : 'dana'}`;
     }
+    if (hours > 0) {
+      const minutesPart = minutes > 0 ? ` i ${minutes} ${minutes === 1 ? 'minut' : 'minuta'}` : '';
+      return `${hours} ${hours === 1 ? 'sat' : 'sati'}${minutesPart}`;
+    }
+    return `${minutes} ${minutes === 1 ? 'minut' : 'minuta'}`;
   }
 
   protected trackByBookingId(_index: number, booking: UserBooking): number {

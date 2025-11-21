@@ -96,15 +96,6 @@ interface CarFiltersDialogData {
             </mat-slider>
           </div>
 
-          <!-- Location -->
-          <div class="filter-item">
-            <mat-form-field appearance="outline" subscriptSizing="dynamic">
-              <mat-label>Lokacija</mat-label>
-              <mat-icon matPrefix>place</mat-icon>
-              <input matInput formControlName="location" placeholder="Beograd, Novi Sad..." />
-            </mat-form-field>
-          </div>
-
           <!-- Make -->
           <div class="filter-item">
             <mat-form-field appearance="outline" subscriptSizing="dynamic">
@@ -182,7 +173,7 @@ interface CarFiltersDialogData {
       </mat-dialog-content>
 
       <mat-dialog-actions>
-        <button mat-button class="reset-btn" (click)="reset()">Obriši sve</button>
+        <button mat-button class="reset-btn" (click)="resetFiltersOnly()">Obriši sve</button>
         <button mat-flat-button color="primary" class="show-results-btn" (click)="apply()">
           Prikaži {{ data.totalResults }} rezultata
         </button>
@@ -409,7 +400,6 @@ export class CarFiltersDialogComponent implements OnInit {
       model: [this.data.value.model],
       minYear: [this.data.value.minYear],
       maxYear: [this.data.value.maxYear],
-      location: [this.data.value.location],
       minSeats: [this.data.value.minSeats],
       transmission: [this.data.value.transmission],
       // Ensure features is a new array to prevent reference issues.
@@ -430,18 +420,29 @@ export class CarFiltersDialogComponent implements OnInit {
     this.dialogRef.close({ action: 'apply', value: this.dialogForm.value });
   }
 
-  /**
-   * Requests a global reset by closing the dialog with the reset action.
-   * The parent handles the actual filter clearing to keep the flow centralized.
-   */
-  reset(): void {
-    // Close the dialog and notify the parent that a reset occurred.
-    // The parent is now responsible for its own state update and API call.
-    this.dialogRef.close({ action: 'reset' });
+  resetFiltersOnly(): void {
+    const defaults = this.getDefaultFilterValues();
+    this.dialogForm.reset(defaults, { emitEvent: false });
+    this.dialogRef.close({ action: 'filtersReset', value: defaults });
   }
 
   close(): void {
     // On cancel (e.g., 'X' button), return nothing or a 'cancel' action.
     this.dialogRef.close();
+  }
+
+  private getDefaultFilterValues(): any {
+    return {
+      minPrice: this.data.minPriceLimit,
+      maxPrice: this.data.maxPriceLimit,
+      make: null,
+      model: null,
+      minYear: this.data.minYearLimit,
+      maxYear: this.data.maxYearLimit,
+      minSeats: this.data.minSeatsLimit,
+      transmission: null,
+      features: [],
+      sort: this.data.sortOptions[0]?.value ?? null,
+    };
   }
 }

@@ -76,7 +76,8 @@ export enum CancellationPolicy {
  */
 export interface Car {
   id: string;
-  make: string; // Note: backend uses 'brand', mapped to 'make' in frontend
+  make: string; // canonical brand field used across frontend
+  brand?: string; // retained from backend for compatibility/fallback
   model: string;
   year: number;
   licensePlate?: string; // Added licensePlate

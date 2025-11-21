@@ -37,7 +37,6 @@ type CarFiltersFormValue = {
   model: string | null;
   minYear: number;
   maxYear: number;
-  location: string | null;
   minSeats: number;
   transmission: TransmissionType | null;
   features: Feature[];
@@ -105,17 +104,53 @@ export class CarFiltersComponent implements OnInit, OnDestroy {
 
   // Available makes and models (in production, these should come from backend)
   readonly availableMakes = [
+    'Alfa Romeo',
+    'Aston Martin',
     'Audi',
+    'Bentley',
     'BMW',
+    'Bugatti',
+    'Cadillac',
+    'Chevrolet',
+    'Chrysler',
+    'Citroën',
+    'Cupra',
+    'Dacia',
+    'Dodge',
+    'Ferrari',
+    'Fiat',
     'Ford',
+    'GMC',
     'Honda',
+    'Hummer',
     'Hyundai',
+    'Infiniti',
+    'Jaguar',
+    'Jeep',
+    'Kia',
+    'Lada',
+    'Lamborghini',
+    'Land Rover',
+    'Lexus',
+    'Lincoln',
+    'Lotus',
+    'Maserati',
+    'Mazda',
+    'McLaren',
     'Mercedes-Benz',
+    'Mini',
+    'Mitsubishi',
     'Nissan',
     'Opel',
     'Peugeot',
+    'Porsche',
     'Renault',
+    'Rolls-Royce',
+    'Seat',
     'Škoda',
+    'Smart',
+    'Subaru',
+    'Suzuki',
     'Tesla',
     'Toyota',
     'Volkswagen',
@@ -192,9 +227,6 @@ export class CarFiltersComponent implements OnInit, OnDestroy {
       minYear: [this.initialCriteria?.minYear ?? this.initialDefaults.minYear],
       maxYear: [this.initialCriteria?.maxYear ?? this.initialDefaults.maxYear],
 
-      // Location
-      location: [this.initialCriteria?.location ?? this.initialDefaults.location],
-
       // Seats
       minSeats: [this.initialCriteria?.minSeats ?? this.initialDefaults.minSeats],
 
@@ -236,7 +268,6 @@ export class CarFiltersComponent implements OnInit, OnDestroy {
     // Text fields: omit if empty or null
     if (formValue.make) criteria.make = formValue.make;
     if (formValue.model) criteria.model = formValue.model;
-    if (formValue.location) criteria.location = formValue.location;
 
     // Seats: omit if equals default
     if (formValue.minSeats !== this.initialDefaults.minSeats) {
@@ -293,7 +324,6 @@ export class CarFiltersComponent implements OnInit, OnDestroy {
       model: null,
       minYear: this.minYearLimit,
       maxYear: this.maxYearLimit,
-      location: null,
       minSeats: this.minSeatsLimit,
       transmission: null,
       features: [], // Always default to a fresh, empty array.
@@ -355,7 +385,6 @@ export class CarFiltersComponent implements OnInit, OnDestroy {
     if (v.model) count++;
     if (v.minYear !== this.minYearLimit) count++;
     if (v.maxYear !== this.maxYearLimit) count++;
-    if (v.location) count++;
     if (v.minSeats !== this.minSeatsLimit) count++;
     if (v.transmission) count++;
 
@@ -417,9 +446,8 @@ export class CarFiltersComponent implements OnInit, OnDestroy {
               emitEvent: false,
             });
           this.emitFilters(); // Emit once after all changes are applied.
-        } else if (result.action === 'reset') {
-          // The dialog is asking the parent to reset itself.
-          // The `true` argument tells resetFilters to emit the reset event.
+        } else if (result.action === 'filtersReset') {
+          // Filters-only reset
           this.resetFilters(true);
         }
 

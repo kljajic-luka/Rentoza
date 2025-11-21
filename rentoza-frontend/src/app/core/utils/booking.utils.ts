@@ -24,6 +24,8 @@ export function isBookingCompleted(booking: { status: string; endDate: string | 
 
   const now = new Date();
   const endDate = new Date(booking.endDate);
+  // Treat booking as completed only after the END of the end date (23:59:59.999)
+  endDate.setHours(23, 59, 59, 999);
 
   return booking.status === 'COMPLETED' || endDate < now;
 }

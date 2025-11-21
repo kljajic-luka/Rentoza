@@ -8,6 +8,132 @@
     </div>
   </header>
 
+  <div class="search-bar-wrapper">
+    <div class="search-bar">
+      <div class="search-segment search-segment--location">
+        <mat-form-field appearance="outline" class="search-field">
+          <mat-label>Gde</mat-label>
+          <mat-icon matPrefix>location_on</mat-icon>
+          <input
+            matInput
+            placeholder="Grad, aerodrom, adresa ili hotel"
+            [matAutocomplete]="cityAuto"
+            autocomplete="off"
+            [(ngModel)]="searchLocation"
+            (blur)="validateField('location')"
+            (keyup.enter)="searchAvailability()"
+          />
+          <mat-autocomplete #cityAuto="matAutocomplete" (optionSelected)="onCitySelected($event.option.value)">
+            <mat-option *ngFor="let city of filteredCities" [value]="city">
+              {{ city }}
+            </mat-option>
+          </mat-autocomplete>
+        </mat-form-field>
+        <span class="validation-hint" *ngIf="locationError">{{ locationError }}</span>
+      </div>
+
+      <div class="search-segment">
+        <mat-form-field appearance="outline" class="search-field">
+          <mat-label>Početak</mat-label>
+          <mat-icon matPrefix>event</mat-icon>
+          <input
+            matInput
+            [matDatepicker]="startPicker"
+            [min]="today"
+            placeholder="Dodajte datum"
+            readonly
+            (keydown)="$event.preventDefault()"
+            [(ngModel)]="searchStartDate"
+            (dateChange)="onStartDateChange($event, endPicker)"
+          />
+          <mat-datepicker-toggle matSuffix [for]="startPicker"></mat-datepicker-toggle>
+          <mat-datepicker #startPicker startView="month"></mat-datepicker>
+        </mat-form-field>
+        <span class="validation-hint" *ngIf="startDateError">{{ startDateError }}</span>
+      </div>
+
+      <div class="search-segment">
+        <mat-form-field appearance="outline" class="search-field">
+          <mat-label>Početno vreme</mat-label>
+          <mat-select
+            [(ngModel)]="searchStartTime"
+            placeholder="Dodajte vreme"
+            [disabled]="!datesSelected"
+            (selectionChange)="startTimeError = ''"
+          >
+            <mat-option *ngFor="let time of timeOptions" [value]="time">{{ time }}</mat-option>
+          </mat-select>
+          <mat-icon matPrefix>schedule</mat-icon>
+        </mat-form-field>
+        <span class="validation-hint" *ngIf="startTimeError">{{ startTimeError }}</span>
+      </div>
+
+      <div class="search-segment">
+        <mat-form-field appearance="outline" class="search-field">
+          <mat-label>Kraj</mat-label>
+          <mat-icon matPrefix>event</mat-icon>
+          <input
+            matInput
+            [matDatepicker]="endPicker"
+            [min]="searchStartDate || today"
+            placeholder="Dodajte datum"
+            readonly
+            (keydown)="$event.preventDefault()"
+            [(ngModel)]="searchEndDate"
+            (dateChange)="onEndDateChange($event)"
+          />
+          <mat-datepicker-toggle matSuffix [for]="endPicker"></mat-datepicker-toggle>
+          <mat-datepicker #endPicker startView="month"></mat-datepicker>
+        </mat-form-field>
+        <span class="validation-hint" *ngIf="endDateError">{{ endDateError }}</span>
+        <span class="validation-hint" *ngIf="dateRangeError && !endDateError">{{ dateRangeError }}</span>
+      </div>
+
+      <div class="search-segment">
+        <mat-form-field appearance="outline" class="search-field">
+          <mat-label>Krajnje vreme</mat-label>
+          <mat-select
+            [(ngModel)]="searchEndTime"
+            placeholder="Dodajte vreme"
+            [disabled]="!datesSelected"
+            (selectionChange)="endTimeError = ''"
+          >
+            <mat-option *ngFor="let time of timeOptions" [value]="time">{{ time }}</mat-option>
+          </mat-select>
+          <mat-icon matPrefix>schedule</mat-icon>
+        </mat-form-field>
+        <span class="validation-hint" *ngIf="endTimeError">{{ endTimeError }}</span>
+      </div>
+
+      <div class="search-segment search-segment--cta">
+        <div class="search-actions">
+          <button
+            type="button"
+            mat-icon-button
+            color="primary"
+            class="search-cta"
+            (click)="searchAvailability()"
+            [disabled]="!datesSelected || !searchStartTime || !searchEndTime || !searchLocation"
+            aria-label="Pretraži dostupnost"
+          >
+            <mat-icon>search</mat-icon>
+          </button>
+          <button
+            *ngIf="hasActiveState"
+            type="button"
+            mat-stroked-button
+            color="primary"
+            class="reset-all-btn"
+            (click)="resetAll()"
+          >
+            <mat-icon>restart_alt</mat-icon>
+            Resetuj sve
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Filters Component (Now with Drawer) -->
   <ng-container *ngIf="searchResults$ | async as results">
     <app-car-filters

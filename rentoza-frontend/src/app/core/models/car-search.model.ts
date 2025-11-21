@@ -8,17 +8,13 @@ export interface CarSearchCriteria {
   minPrice?: number;
   maxPrice?: number;
 
-  // Vehicle type/brand filtering
-  vehicleType?: string;
+  // Brand filtering
   make?: string;
   model?: string;
 
   // Year filtering
   minYear?: number;
   maxYear?: number;
-
-  // Location filtering
-  location?: string;
 
   // Seats filtering
   minSeats?: number;

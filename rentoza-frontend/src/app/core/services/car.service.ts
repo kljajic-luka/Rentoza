@@ -52,10 +52,15 @@ export class CarService {
    * Backend uses 'brand', frontend uses 'make'
    */
   private mapBackendCarToFrontend(backendCar: any): Car {
-    const { brand, ...rest } = backendCar;
+    const { brand, make, model, ...rest } = backendCar;
+    // Handle swapped brand/model responses defensively: prefer brand, fallback to model
+    const resolvedBrand = brand || make || model || '';
+    const resolvedModel = model || brand || '';
     return {
       ...rest,
-      make: brand, // Map 'brand' to 'make'
+      make: resolvedBrand,
+      brand: resolvedBrand,
+      model: resolvedModel,
     } as Car;
   }
 
@@ -141,9 +146,6 @@ export class CarService {
     if (cleanedCriteria.maxPrice !== undefined) {
       params = params.set('maxPrice', cleanedCriteria.maxPrice.toString());
     }
-    if (cleanedCriteria.vehicleType) {
-      params = params.set('vehicleType', normalizeSearchString(cleanedCriteria.vehicleType));
-    }
     if (cleanedCriteria.make) {
       params = params.set('make', normalizeSearchString(cleanedCriteria.make));
     }
@@ -155,9 +157,6 @@ export class CarService {
     }
     if (cleanedCriteria.maxYear !== undefined) {
       params = params.set('maxYear', cleanedCriteria.maxYear.toString());
-    }
-    if (cleanedCriteria.location) {
-      params = params.set('location', normalizeSearchString(cleanedCriteria.location));
     }
     if (cleanedCriteria.minSeats !== undefined) {
       params = params.set('minSeats', cleanedCriteria.minSeats.toString());
@@ -221,9 +220,6 @@ export class CarService {
     if (criteria.maxPrice !== undefined && criteria.maxPrice !== null) {
       cleaned.maxPrice = criteria.maxPrice;
     }
-    if (criteria.vehicleType && criteria.vehicleType.trim()) {
-      cleaned.vehicleType = criteria.vehicleType.trim();
-    }
     if (criteria.make && criteria.make.trim()) {
       cleaned.make = criteria.make.trim();
     }
@@ -235,9 +231,6 @@ export class CarService {
     }
     if (criteria.maxYear !== undefined && criteria.maxYear !== null) {
       cleaned.maxYear = criteria.maxYear;
-    }
-    if (criteria.location && criteria.location.trim()) {
-      cleaned.location = criteria.location.trim();
     }
     if (criteria.minSeats !== undefined && criteria.minSeats !== null) {
       cleaned.minSeats = criteria.minSeats;

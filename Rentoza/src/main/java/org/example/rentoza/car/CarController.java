@@ -1,5 +1,6 @@
 package org.example.rentoza.car;
 
+import org.example.rentoza.car.dto.AvailabilitySearchRequestDTO;
 import org.example.rentoza.car.dto.CarRequestDTO;
 import org.example.rentoza.car.dto.CarResponseDTO;
 import org.example.rentoza.car.dto.CarSearchCriteria;
@@ -7,12 +8,17 @@ import org.example.rentoza.config.CachingConfig;
 import org.example.rentoza.security.JwtUtil;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -22,12 +28,16 @@ import java.util.stream.Collectors;
 @RequestMapping("/api/cars")
 public class CarController {
 
+    private static final Logger log = LoggerFactory.getLogger(CarController.class);
+
     private final CarService service;
+    private final AvailabilityService availabilityService;
     private final JwtUtil jwtUtil;
     private final UserRepository userRepo;
 
-    public CarController(CarService service, JwtUtil jwtUtil, UserRepository userRepo) {
+    public CarController(CarService service, AvailabilityService availabilityService, JwtUtil jwtUtil, UserRepository userRepo) {
         this.service = service;
+        this.availabilityService = availabilityService;
         this.jwtUtil = jwtUtil;
         this.userRepo = userRepo;
     }
@@ -146,6 +156,114 @@ public class CarController {
 
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Search cars by availability (location + date/time range).
+     *
+     * Purpose:
+     * - Time-aware availability search
+     * - Filters out cars with overlapping bookings
+     * - Supports pagination
+     *
+     * Example Request:
+     * GET /api/cars/availability-search
+     *   ?location=beograd
+     *   &startDate=2025-01-15&startTime=09:00
+     *   &endDate=2025-01-17&endTime=18:00
+     *   &page=0&size=20
+     *
+     * Security:
+     * - @PreAuthorize("permitAll()") - accessible to all users (anonymous + authenticated)
+     * - Returns public-safe CarResponseDTO (no license plates, no PII)
+     * - Rate-limited to 60 requests/minute (configured in application properties)
+     *
+     * Validation:
+     * - All date/time fields required
+     * - End must be after start
+     * - Start date cannot be in the past
+     * - Minimum rental duration: 1 hour
+     * - Maximum search range: 90 days
+     *
+     * @param location Location string (city/region, case-insensitive)
+     * @param startDate Rental start date (ISO 8601: YYYY-MM-DD)
+     * @param startTime Rental start time (ISO 8601: HH:mm)
+     * @param endDate Rental end date (ISO 8601: YYYY-MM-DD)
+     * @param endTime Rental end time (ISO 8601: HH:mm)
+     * @param page Page number (0-indexed, default: 0)
+     * @param size Page size (default: 20, max: 100)
+     * @param sort Sort order (optional, format: "field,direction")
+     * @return Paginated list of available cars
+     */
+    @GetMapping("/availability-search")
+    @PreAuthorize("permitAll()")
+    public ResponseEntity<?> searchAvailableCars(
+            @RequestParam String location,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.TIME) LocalTime startTime,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.TIME) LocalTime endTime,
+            @RequestParam(required = false, defaultValue = "0") Integer page,
+            @RequestParam(required = false, defaultValue = "20") Integer size,
+            @RequestParam(required = false) String sort
+    ) {
+        try {
+            log.info("[AvailabilitySearch] Request: location={}, startDate={}, startTime={}, endDate={}, endTime={}, page={}, size={}",
+                location, startDate, startTime, endDate, endTime, page, size);
+
+            // Build request DTO
+            AvailabilitySearchRequestDTO request = AvailabilitySearchRequestDTO.builder()
+                .location(location)
+                .startDate(startDate)
+                .startTime(startTime)
+                .endDate(endDate)
+                .endTime(endTime)
+                .page(page)
+                .size(size)
+                .sort(sort)
+                .build();
+
+            // Validate request
+            request.validate();
+
+            // Execute search
+            Page<Car> results = availabilityService.searchAvailableCars(request);
+
+            // Map to response DTOs (public-safe)
+            Page<CarResponseDTO> responseDTOs = results.map(CarResponseDTO::new);
+
+            // Return paginated response
+            Map<String, Object> response = Map.of(
+                "content", responseDTOs.getContent(),
+                "totalElements", responseDTOs.getTotalElements(),
+                "totalPages", responseDTOs.getTotalPages(),
+                "currentPage", responseDTOs.getNumber(),
+                "pageSize", responseDTOs.getSize(),
+                "hasNext", responseDTOs.hasNext(),
+                "hasPrevious", responseDTOs.hasPrevious()
+            );
+
+            log.info("[AvailabilitySearch] Success: {} results (page {}/{})",
+                responseDTOs.getNumberOfElements(),
+                responseDTOs.getNumber() + 1,
+                responseDTOs.getTotalPages()
+            );
+
+            return ResponseEntity.ok(response);
+
+        } catch (IllegalArgumentException e) {
+            log.warn("[AvailabilitySearch] Validation error: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of(
+                "error", "Invalid request",
+                "message", e.getMessage()
+            ));
+        } catch (Exception e) {
+            log.error("[AvailabilitySearch] Unexpected error", e);
+            return ResponseEntity.status(500).body(Map.of(
+                "error", "Internal server error",
+                "message", "An unexpected error occurred while searching for available cars"
+            ));
         }
     }
 

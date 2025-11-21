@@ -14,6 +14,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatIconModule } from '@angular/material/icon';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
+import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { FlexLayoutModule } from '@ngbracket/ngx-layout';
 import {
   BehaviorSubject,
@@ -25,6 +26,8 @@ import {
   switchMap,
   takeUntil,
   tap,
+  catchError,
+  of,
 } from 'rxjs';
 
 import { Car, Feature, TransmissionType } from '@core/models/car.model';
@@ -46,6 +49,7 @@ import { TranslateEnumPipe } from '@shared/pipes/translate-enum.pipe';
     MatIconModule,
     MatChipsModule,
     MatPaginatorModule,
+    MatSnackBarModule,
     FlexLayoutModule,
     FavoriteButtonComponent,
     CarFiltersComponent,
@@ -59,6 +63,7 @@ export class CarListComponent implements OnInit, OnDestroy {
   private readonly carService = inject(CarService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly snackBar = inject(MatSnackBar);
   private readonly destroy$ = new Subject<void>();
 
   // Reference to child filter component for direct method calls
@@ -70,22 +75,90 @@ export class CarListComponent implements OnInit, OnDestroy {
     size: 20,
   });
 
+  // Availability search state
+  readonly availabilityParams$ = new BehaviorSubject<{
+    location: string;
+    startDate: string;
+    startTime: string;
+    endDate: string;
+    endTime: string;
+    page: number;
+    size: number;
+  } | null>(null);
+
+  // Flag to track if we're in availability search mode
+  readonly isAvailabilityMode$ = new BehaviorSubject<boolean>(false);
+
   // Loading state for smooth spinner overlay
   readonly isLoading$ = new BehaviorSubject<boolean>(false);
 
   // REMOVED: resetForm$ - no longer broadcast reset commands to child
   // Parent will call child.resetFilters() directly via ViewChild reference
 
-  // Search results
-  readonly searchResults$: Observable<PagedResponse<Car>> = this.searchCriteria$.pipe(
+  // Search results - conditionally uses availability or standard search
+  readonly searchResults$: Observable<PagedResponse<Car>> = combineLatest([
+    this.isAvailabilityMode$,
+    this.availabilityParams$,
+    this.searchCriteria$
+  ]).pipe(
     debounceTime(100),
     distinctUntilChanged((prev, curr) => JSON.stringify(prev) === JSON.stringify(curr)),
-    tap(() => this.isLoading$.next(true)), // Start loading only when a real fetch will run
-    switchMap((criteria) => this.carService.searchCars(criteria)),
+    tap(() => this.isLoading$.next(true)),
+    switchMap(([isAvailability, availParams, criteria]) => {
+      if (isAvailability && availParams) {
+        // Availability search mode
+        return this.carService.searchAvailableCars(
+          availParams.location,
+          availParams.startDate,
+          availParams.startTime,
+          availParams.endDate,
+          availParams.endTime,
+          availParams.page,
+          availParams.size
+        );
+      } else {
+        // Standard search mode
+        return this.carService.searchCars(criteria);
+      }
+    }),
     tap((results) => {
       // Update URL with current filters (instant sync)
-      this.updateUrlParams(this.searchCriteria$.value);
-      this.isLoading$.next(false); // Stop loading
+      if (this.isAvailabilityMode$.value && this.availabilityParams$.value) {
+        this.updateUrlParamsForAvailability(this.availabilityParams$.value);
+      } else {
+        this.updateUrlParams(this.searchCriteria$.value);
+      }
+      this.isLoading$.next(false);
+    }),
+    catchError((error) => {
+      this.isLoading$.next(false);
+
+      // Determine error message based on HTTP status
+      let errorMessage = 'Došlo je do greške. Pokušajte ponovo.';
+
+      if (error.status === 400) {
+        errorMessage = 'Neispravan unos. Proverite datume i vreme.';
+      } else if (error.status === 500) {
+        errorMessage = 'Došlo je do greške na serveru. Pokušajte ponovo.';
+      }
+
+      // Show error message
+      this.snackBar.open(errorMessage, 'Zatvori', {
+        duration: 5000,
+        horizontalPosition: 'center',
+        verticalPosition: 'bottom',
+      });
+
+      // Return empty result set
+      return of({
+        content: [],
+        totalElements: 0,
+        totalPages: 0,
+        currentPage: 0,
+        pageSize: 20,
+        hasNext: false,
+        hasPrevious: false,
+      } as PagedResponse<Car>);
     })
   );
 
@@ -94,27 +167,73 @@ export class CarListComponent implements OnInit, OnDestroy {
     Array<{ label: string; value: string; key: keyof CarSearchCriteria }>
   >([]);
 
+  // Availability filter display
+  readonly availabilityFilterDisplay$ = new BehaviorSubject<{
+    location: string;
+    dateTimeRange: string;
+  } | null>(null);
+
   ngOnInit(): void {
     // Initialize filters from URL query params
     this.route.queryParamMap.pipe(takeUntil(this.destroy$)).subscribe((params) => {
-      const criteria: CarSearchCriteria = {
-        minPrice: params.get('minPrice') ? Number(params.get('minPrice')) : undefined,
-        maxPrice: params.get('maxPrice') ? Number(params.get('maxPrice')) : undefined,
-        make: params.get('make') || undefined,
-        model: params.get('model') || undefined,
-        minYear: params.get('minYear') ? Number(params.get('minYear')) : undefined,
-        maxYear: params.get('maxYear') ? Number(params.get('maxYear')) : undefined,
-        location: params.get('location') || undefined,
-        minSeats: params.get('minSeats') ? Number(params.get('minSeats')) : undefined,
-        transmission: (params.get('transmission') as TransmissionType) || undefined,
-        features: params.get('features')?.split(',').filter(Boolean) as Feature[] | undefined,
-        page: params.get('page') ? Number(params.get('page')) : 0,
-        size: params.get('size') ? Number(params.get('size')) : 20,
-        sort: params.get('sort') || undefined,
-      };
+      const isAvailabilitySearch = params.get('availabilitySearch') === 'true';
 
-      this.searchCriteria$.next(criteria);
-      this.updateActiveFilterChips(criteria);
+      if (isAvailabilitySearch) {
+        // AVAILABILITY SEARCH MODE
+        const location = params.get('location') || '';
+        const startDate = params.get('startDate') || '';
+        const startTime = params.get('startTime') || '09:00';
+        const endDate = params.get('endDate') || '';
+        const endTime = params.get('endTime') || '18:00';
+        const page = params.get('page') ? Number(params.get('page')) : 0;
+        const size = params.get('size') ? Number(params.get('size')) : 20;
+
+        // Update availability params
+        this.availabilityParams$.next({
+          location,
+          startDate,
+          startTime,
+          endDate,
+          endTime,
+          page,
+          size,
+        });
+
+        // Enable availability mode
+        this.isAvailabilityMode$.next(true);
+
+        // Update availability filter display
+        this.updateAvailabilityFilterDisplay(location, startDate, startTime, endDate, endTime);
+
+        // Clear standard filter chips in availability mode
+        this.activeFilterChips$.next([]);
+      } else {
+        // STANDARD SEARCH MODE
+        const criteria: CarSearchCriteria = {
+          minPrice: params.get('minPrice') ? Number(params.get('minPrice')) : undefined,
+          maxPrice: params.get('maxPrice') ? Number(params.get('maxPrice')) : undefined,
+          make: params.get('make') || undefined,
+          model: params.get('model') || undefined,
+          minYear: params.get('minYear') ? Number(params.get('minYear')) : undefined,
+          maxYear: params.get('maxYear') ? Number(params.get('maxYear')) : undefined,
+          location: params.get('location') || undefined,
+          minSeats: params.get('minSeats') ? Number(params.get('minSeats')) : undefined,
+          transmission: (params.get('transmission') as TransmissionType) || undefined,
+          features: params.get('features')?.split(',').filter(Boolean) as Feature[] | undefined,
+          page: params.get('page') ? Number(params.get('page')) : 0,
+          size: params.get('size') ? Number(params.get('size')) : 20,
+          sort: params.get('sort') || undefined,
+        };
+
+        // Disable availability mode
+        this.isAvailabilityMode$.next(false);
+        this.availabilityParams$.next(null);
+        this.availabilityFilterDisplay$.next(null);
+
+        // Update standard search criteria
+        this.searchCriteria$.next(criteria);
+        this.updateActiveFilterChips(criteria);
+      }
     });
   }
 
@@ -129,12 +248,22 @@ export class CarListComponent implements OnInit, OnDestroy {
   }
 
   onPageChange(event: PageEvent): void {
-    const currentCriteria = this.searchCriteria$.value;
-    this.searchCriteria$.next({
-      ...currentCriteria,
-      page: event.pageIndex,
-      size: event.pageSize,
-    });
+    if (this.isAvailabilityMode$.value && this.availabilityParams$.value) {
+      // Availability mode - update availability params
+      this.availabilityParams$.next({
+        ...this.availabilityParams$.value,
+        page: event.pageIndex,
+        size: event.pageSize,
+      });
+    } else {
+      // Standard mode - update criteria
+      const currentCriteria = this.searchCriteria$.value;
+      this.searchCriteria$.next({
+        ...currentCriteria,
+        page: event.pageIndex,
+        size: event.pageSize,
+      });
+    }
 
     // Scroll to top on page change
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -333,5 +462,76 @@ export class CarListComponent implements OnInit, OnDestroy {
 
   trackByCarId(_index: number, car: Car): string {
     return car.id;
+  }
+
+  /**
+   * Update availability filter display with formatted date/time range
+   */
+  private updateAvailabilityFilterDisplay(
+    location: string,
+    startDate: string,
+    startTime: string,
+    endDate: string,
+    endTime: string
+  ): void {
+    // Format dates to dd.MM.yyyy HH:mm
+    const formattedStart = this.formatDateTime(startDate, startTime);
+    const formattedEnd = this.formatDateTime(endDate, endTime);
+
+    this.availabilityFilterDisplay$.next({
+      location: location || 'Sve lokacije',
+      dateTimeRange: `${formattedStart} → ${formattedEnd}`,
+    });
+  }
+
+  /**
+   * Format date and time to user-friendly display format (dd.MM.yyyy HH:mm)
+   */
+  private formatDateTime(date: string, time: string): string {
+    if (!date || !time) return '';
+
+    try {
+      // Parse YYYY-MM-DD
+      const [year, month, day] = date.split('-');
+      return `${day}.${month}.${year} ${time}`;
+    } catch {
+      return `${date} ${time}`;
+    }
+  }
+
+  /**
+   * Update URL params for availability search mode
+   */
+  private updateUrlParamsForAvailability(params: {
+    location: string;
+    startDate: string;
+    startTime: string;
+    endDate: string;
+    endTime: string;
+    page: number;
+    size: number;
+  }): void {
+    const queryParams: any = {
+      availabilitySearch: 'true',
+      location: params.location,
+      startDate: params.startDate,
+      startTime: params.startTime,
+      endDate: params.endDate,
+      endTime: params.endTime,
+    };
+
+    // Only add page/size if non-default
+    if (params.page > 0) {
+      queryParams.page = params.page;
+    }
+    if (params.size !== 20) {
+      queryParams.size = params.size;
+    }
+
+    this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams,
+      replaceUrl: true,
+    });
   }
 }

@@ -30,6 +30,14 @@ public interface CarRepository extends JpaRepository<Car, Long>, JpaSpecificatio
     @EntityGraph(attributePaths = {"owner"})
     List<Car> findByLocationIgnoreCaseAndAvailableTrue(String location);
 
+    /**
+     * Availability search with eager loading of fields needed by CarResponseDTO
+     * to avoid LazyInitializationException outside the transaction.
+     */
+    @EntityGraph(attributePaths = {"owner", "features"})
+    @Query("SELECT DISTINCT c FROM Car c WHERE LOWER(c.location) = LOWER(:location) AND c.available = true")
+    List<Car> findAvailableWithDetailsByLocation(@Param("location") String location);
+
     // ========== RLS-ENFORCED QUERIES (Enterprise Security Enhancement) ==========
 
     /**

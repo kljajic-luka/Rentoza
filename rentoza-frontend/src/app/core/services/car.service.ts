@@ -66,6 +66,55 @@ export class CarService {
   }
 
   /**
+   * Search cars by availability (location + date/time range)
+   * Time-aware search that filters out cars with overlapping bookings
+   * @param location Location string (city/region)
+   * @param startDate Rental start date (YYYY-MM-DD)
+   * @param startTime Rental start time (HH:mm)
+   * @param endDate Rental end date (YYYY-MM-DD)
+   * @param endTime Rental end time (HH:mm)
+   * @param page Page number (0-indexed, default: 0)
+   * @param size Page size (default: 20)
+   * @param sort Sort order (optional)
+   * @returns Paginated response with available cars
+   */
+  searchAvailableCars(
+    location: string,
+    startDate: string,
+    startTime: string,
+    endDate: string,
+    endTime: string,
+    page: number = 0,
+    size: number = 20,
+    sort?: string
+  ): Observable<PagedResponse<Car>> {
+    let params = new HttpParams()
+      .set('location', location)
+      .set('startDate', startDate)
+      .set('startTime', startTime)
+      .set('endDate', endDate)
+      .set('endTime', endTime)
+      .set('page', page.toString())
+      .set('size', size.toString());
+
+    if (sort) {
+      params = params.set('sort', sort);
+    }
+
+    return this.http.get<any>(`${this.baseUrl}/availability-search`, { params }).pipe(
+      map((response) => ({
+        content: response.content.map((car: any) => this.mapBackendCarToFrontend(car)),
+        totalElements: response.totalElements,
+        totalPages: response.totalPages,
+        currentPage: response.currentPage,
+        pageSize: response.pageSize,
+        hasNext: response.hasNext,
+        hasPrevious: response.hasPrevious,
+      }))
+    );
+  }
+
+  /**
    * Search cars with filters, sorting, and pagination
    * Includes request deduplication and caching for performance
    * @param criteria Search criteria

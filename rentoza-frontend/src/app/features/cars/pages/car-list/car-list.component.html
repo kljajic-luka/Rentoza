@@ -28,7 +28,25 @@
       </div>
 
       <ng-container *ngIf="searchResults$ | async as results; else loading">
-        <!-- Active Filter Chips -->
+        <!-- Availability Filter Display (only shown in availability mode) -->
+        <div class="availability-filters" *ngIf="availabilityFilterDisplay$ | async as availFilter">
+          <div class="availability-filters__header">
+            <mat-icon>event_available</mat-icon>
+            <span class="label">Pretraga dostupnosti</span>
+          </div>
+          <div class="availability-filters__content">
+            <div class="filter-item">
+              <mat-icon>place</mat-icon>
+              <span><strong>Lokacija:</strong> {{ availFilter.location }}</span>
+            </div>
+            <div class="filter-item">
+              <mat-icon>schedule</mat-icon>
+              <span><strong>Period:</strong> {{ availFilter.dateTimeRange }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Standard Filter Chips (only shown in standard mode) -->
         <div class="filter-chips" *ngIf="(activeFilterChips$ | async)?.length">
           <div class="filter-chips__header">
             <span class="label">Aktivni filteri:</span>
@@ -123,12 +141,31 @@
         <!-- Empty State -->
         <ng-template #noResults>
           <div class="empty-state">
-            <mat-icon>search_off</mat-icon>
-            <h3>Nema rezultata</h3>
-            <p>Pokušajte da promenite filtere ili obrišite neke od postojećih.</p>
-            <button mat-flat-button color="primary" (click)="onClearAllFiltersClick()">
+            <mat-icon>{{ (isAvailabilityMode$ | async) ? 'event_busy' : 'search_off' }}</mat-icon>
+            <h3>{{ (isAvailabilityMode$ | async) ? 'Nema dostupnih automobila' : 'Nema rezultata' }}</h3>
+            <p>
+              {{
+                (isAvailabilityMode$ | async)
+                  ? 'Nema dostupnih automobila za ove datume. Pokušajte promeniti datume ili odabrati drugu lokaciju.'
+                  : 'Pokušajte da promenite filtere ili obrišete neke od postojećih.'
+              }}
+            </p>
+            <button
+              *ngIf="!(isAvailabilityMode$ | async)"
+              mat-flat-button
+              color="primary"
+              (click)="onClearAllFiltersClick()"
+            >
               Obriši sve filtere
             </button>
+            <a
+              *ngIf="isAvailabilityMode$ | async"
+              mat-flat-button
+              color="primary"
+              routerLink="/cars"
+            >
+              Prikaži sve automobile
+            </a>
           </div>
         </ng-template>
 

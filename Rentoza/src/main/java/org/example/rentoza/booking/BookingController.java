@@ -469,6 +469,28 @@ public class BookingController {
     }
 
     /**
+     * Get guest preview for a booking.
+     * RLS-ENFORCED: Only the car owner can view the guest preview.
+     * Returns a restricted DTO with no contact info.
+     * Response is not cached to protect PII.
+     * 
+     * @param id Booking ID
+     * @return GuestBookingPreviewDTO
+     */
+    @GetMapping("/{id}/guest-preview")
+    @PreAuthorize("@bookingSecurity.isOwner(#id, authentication.principal.id)")
+    public ResponseEntity<org.example.rentoza.dto.GuestBookingPreviewDTO> getGuestPreview(@PathVariable Long id) {
+        Long ownerId = getAuthenticatedUserId();
+        org.example.rentoza.dto.GuestBookingPreviewDTO preview = service.getGuestPreview(id, ownerId);
+        
+        return ResponseEntity.ok()
+                .cacheControl(org.springframework.http.CacheControl.noStore().mustRevalidate())
+                .header("Pragma", "no-cache")
+                .header("Expires", "0")
+                .body(preview);
+    }
+
+    /**
      * Helper to safely extract user ID from security context.
      * Handles JwtUserPrincipal correctly.
      */

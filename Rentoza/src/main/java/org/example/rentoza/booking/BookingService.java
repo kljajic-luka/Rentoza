@@ -723,4 +723,52 @@ public class BookingService {
                 .hostAvatarUrl(host.getAvatarUrl())
                 .build();
     }
+
+    /**
+     * Get guest preview for a booking.
+     * RLS-ENFORCED: Only the car owner can view the guest preview.
+     * 
+     * @param bookingId Booking ID
+     * @param requesterId ID of the user requesting the preview
+     * @return GuestBookingPreviewDTO with limited guest info
+     */
+    @Transactional(readOnly = true)
+    public org.example.rentoza.dto.GuestBookingPreviewDTO getGuestPreview(Long bookingId, Long requesterId) {
+        // 1. Fetch booking with relations
+        Booking booking = repo.findByIdWithRelations(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking not found: " + bookingId));
+
+        // 2. Verify ownership (RLS)
+        if (!booking.getCar().getOwner().getId().equals(requesterId) && !currentUser.isAdmin()) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Unauthorized: Only the car owner can view guest details for booking " + bookingId
+            );
+        }
+
+        // 3. Fetch guest stats
+        User renter = booking.getRenter();
+        Double averageRating = reviewRepo.findAverageRatingForRevieweeAndDirection(
+                renter.getId(), 
+                ReviewDirection.FROM_OWNER
+        );
+        
+        // Count completed trips as renter
+        long tripCount = repo.countByRenterIdAndStatus(renter.getId(), BookingStatus.COMPLETED);
+
+        // 4. Fetch recent reviews from hosts
+        org.springframework.data.domain.Pageable limit = org.springframework.data.domain.PageRequest.of(0, 5);
+        // We need a method in ReviewRepo to find by reviewee with pageable
+        // Since findByRevieweeIdAndDirectionOrderByCreatedAtDesc returns List, we can stream and limit, 
+        // or add a Pageable method. For now, let's use the existing list method and stream limit 
+        // to avoid changing repo interface if possible, but adding a method is better for performance.
+        // ReviewRepository has findByRevieweeIdAndDirectionOrderByCreatedAtDesc.
+        
+        List<Review> reviews = reviewRepo.findByRevieweeIdAndDirectionOrderByCreatedAtDesc(
+                renter.getId(), 
+                ReviewDirection.FROM_OWNER
+        ).stream().limit(5).collect(Collectors.toList());
+
+        // 5. Map to DTO
+        return org.example.rentoza.mapper.GuestBookingMapper.toDTO(booking, reviews, averageRating, (int) tripCount);
+    }
 }

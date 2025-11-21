@@ -1,0 +1,293 @@
+.dialog-container {
+  max-width: 500px;
+  width: 100%;
+  
+  .dialog-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 24px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+
+    h2 {
+      margin: 0;
+      font-size: 1.25rem;
+      font-weight: 500;
+    }
+  }
+}
+
+mat-dialog-content {
+  padding: 24px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.loading-state, .error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 0;
+  text-align: center;
+  gap: 16px;
+
+  p {
+    color: rgba(0, 0, 0, 0.6);
+    margin: 0;
+  }
+}
+
+.guest-profile {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.profile-header {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+
+  .avatar-container {
+    flex-shrink: 0;
+    
+    .avatar {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 1px solid rgba(0,0,0,0.1);
+    }
+  }
+
+  .profile-info {
+    flex: 1;
+
+    h3 {
+      margin: 0 0 4px 0;
+      font-size: 1.5rem;
+      font-weight: 500;
+    }
+
+    .join-date {
+      margin: 0 0 12px 0;
+      color: rgba(0, 0, 0, 0.6);
+      font-size: 0.875rem;
+    }
+
+    .badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+
+      .verified-badge {
+        font-size: 0.75rem;
+        height: 24px;
+        
+        mat-icon {
+          font-size: 16px;
+          width: 16px;
+          height: 16px;
+          margin-right: 4px;
+        }
+      }
+    }
+  }
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  padding: 16px;
+  background-color: rgba(0, 0, 0, 0.04);
+  border-radius: 8px;
+
+  .stat-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+
+    .stat-value {
+      font-size: 1.25rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+
+      &.status-approved { color: #2e7d32; }
+      &.status-pending { color: #ed6c02; }
+      &.status-rejected { color: #d32f2f; }
+
+      .star-icon {
+        font-size: 18px;
+        width: 18px;
+        height: 18px;
+        color: #fbc02d;
+      }
+    }
+
+    .stat-label {
+      font-size: 0.75rem;
+      color: rgba(0, 0, 0, 0.6);
+      margin-top: 4px;
+    }
+  }
+}
+
+.trip-details {
+  h4 {
+    margin: 0 0 16px 0;
+    font-size: 1rem;
+    font-weight: 500;
+  }
+
+  .detail-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+    color: rgba(0, 0, 0, 0.87);
+
+    mat-icon {
+      color: rgba(0, 0, 0, 0.54);
+    }
+  }
+
+  .message-box {
+    margin-top: 16px;
+    padding: 12px;
+    background-color: rgba(0, 0, 0, 0.02);
+    border-left: 3px solid #3f51b5;
+    border-radius: 4px;
+
+    .message-label {
+      font-size: 0.75rem;
+      color: rgba(0, 0, 0, 0.6);
+      margin: 0 0 4px 0;
+    }
+
+    .message-text {
+      margin: 0;
+      font-style: italic;
+      color: rgba(0, 0, 0, 0.87);
+    }
+  }
+}
+
+.reviews-section {
+  h4 {
+    margin: 0 0 16px 0;
+    font-size: 1rem;
+    font-weight: 500;
+  }
+
+  .reviews-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+
+    .review-item {
+      padding-bottom: 16px;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+
+      &:last-child {
+        border-bottom: none;
+        padding-bottom: 0;
+      }
+
+      .review-header {
+        margin-bottom: 4px;
+        
+        .stars {
+          display: flex;
+          
+          mat-icon {
+            font-size: 14px;
+            width: 14px;
+            height: 14px;
+            color: #e0e0e0;
+
+            &.filled {
+              color: #fbc02d;
+            }
+          }
+        }
+      }
+
+      .review-text {
+        margin: 0;
+        font-size: 0.875rem;
+        color: rgba(0, 0, 0, 0.87);
+        line-height: 1.4;
+      }
+    }
+  }
+}
+
+// Dark theme support
+:host-context(.theme-dark) {
+  .dialog-header {
+    border-bottom-color: rgba(255, 255, 255, 0.12);
+    h2 { color: #ffffff !important; }
+  }
+
+  .loading-state p, .error-state p {
+    color: rgba(255, 255, 255, 0.7);
+  }
+
+  .profile-info {
+    h3 { color: #ffffff !important; }
+    .join-date { color: rgba(255, 255, 255, 0.7); }
+  }
+
+  .stats-grid {
+    background-color: rgba(255, 255, 255, 0.05);
+    
+    .stat-item {
+      .stat-value { color: #ffffff; }
+      .stat-label { color: rgba(255, 255, 255, 0.7); }
+    }
+  }
+
+  .trip-details {
+    h4 { color: #ffffff !important; }
+    .detail-row {
+      color: rgba(255, 255, 255, 0.87);
+      mat-icon { color: rgba(255, 255, 255, 0.7); }
+    }
+
+    .message-box {
+      background-color: rgba(255, 255, 255, 0.05);
+      border-left-color: #7986cb;
+
+      .message-label { color: rgba(255, 255, 255, 0.7); }
+      .message-text { color: rgba(255, 255, 255, 0.87); }
+    }
+  }
+
+  .reviews-section {
+    h4 { color: #ffffff !important; }
+    .review-item {
+      border-bottom-color: rgba(255, 255, 255, 0.12);
+      .review-text { color: rgba(255, 255, 255, 0.87); }
+    }
+  }
+
+  /* DARK MODE FINAL PATCH — FORCE ALL MDC TEXT TO WHITE */
+  /* Shadow DOM overrides for MDC-based typography */
+  ::ng-deep .mdc-dialog__content,
+  ::ng-deep .mdc-dialog__title,
+  ::ng-deep .mat-dialog-title,
+  ::ng-deep .mat-dialog-content,
+  ::ng-deep .mdc-typography--headline6,
+  ::ng-deep .mdc-typography--body1,
+  ::ng-deep .mdc-typography--body2,
+  ::ng-deep .mdc-typography--subtitle1,
+  ::ng-deep .mdc-typography--subtitle2,
+  ::ng-deep .mat-icon {
+    color: #ffffff !important;
+  }
+}

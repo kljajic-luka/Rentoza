@@ -95,6 +95,15 @@
 
       <mat-card-actions align="end">
         <button
+          mat-button
+          color="accent"
+          (click)="openGuestPreview(booking)"
+          style="margin-right: auto"
+        >
+          <mat-icon>visibility</mat-icon>
+          Detalji o gostu
+        </button>
+        <button
           mat-stroked-button
           color="warn"
           (click)="declineBooking(booking)"

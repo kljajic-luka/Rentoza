@@ -4,6 +4,7 @@ import { Observable } from 'rxjs';
 
 import { environment } from '@environments/environment';
 import { Booking, BookingRequest, UserBooking, BookingSlotDto } from '@core/models/booking.model';
+import { GuestBookingPreview } from '@core/models/guest-preview.model';
 
 @Injectable({ providedIn: 'root' })
 export class BookingService {
@@ -217,5 +218,22 @@ export class BookingService {
         withCredentials: true,
       }
     );
+  }
+
+  /**
+   * Get guest preview for a booking (OWNER only).
+   *
+   * Security:
+   * - @PreAuthorize("@bookingSecurity.isOwner(#id, authentication.principal.id)") on backend
+   * - Returns restricted DTO with no contact info
+   * - No-store cache headers
+   *
+   * @param id Booking ID
+   * @returns Observable<GuestBookingPreview>
+   */
+  getGuestPreview(id: number | string): Observable<GuestBookingPreview> {
+    return this.http.get<GuestBookingPreview>(`${this.baseUrl}/${id}/guest-preview`, {
+      withCredentials: true,
+    });
   }
 }

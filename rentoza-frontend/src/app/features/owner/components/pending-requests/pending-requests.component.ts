@@ -12,6 +12,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { Booking } from '@core/models/booking.model';
 import { BookingService } from '@core/services/booking.service';
 import { DeclineReasonDialogComponent } from '../../dialogs/decline-reason-dialog/decline-reason-dialog.component';
+import { GuestBookingPreviewDialogComponent } from '@features/bookings/guest-booking-preview-dialog/guest-booking-preview-dialog.component';
 
 /**
  * Pending Requests Component - Host Approval Workflow (Phase 3)
@@ -262,5 +263,15 @@ export class PendingRequestsComponent implements OnInit {
 
   protected refreshList(): void {
     this.loadPendingRequests();
+  }
+
+  protected openGuestPreview(booking: Booking): void {
+    const bookingId = typeof booking.id === 'string' ? parseInt(booking.id, 10) : booking.id;
+
+    this.dialog.open(GuestBookingPreviewDialogComponent, {
+      width: '500px',
+      data: { bookingId },
+      autoFocus: false,
+    });
   }
 }

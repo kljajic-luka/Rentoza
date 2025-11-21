@@ -1,0 +1,123 @@
+<div class="dialog-container">
+  <div class="dialog-header">
+    <h2 mat-dialog-title>Detalji o gostu</h2>
+    <button mat-icon-button (click)="close()" aria-label="Close dialog">
+      <mat-icon>close</mat-icon>
+    </button>
+  </div>
+
+  <mat-dialog-content>
+    @if (isLoading()) {
+    <div class="loading-state">
+      <mat-spinner diameter="40"></mat-spinner>
+      <p>Učitavanje podataka...</p>
+    </div>
+    } @else if (error()) {
+    <div class="error-state">
+      <mat-icon color="warn">error_outline</mat-icon>
+      <p>{{ error() }}</p>
+      <button mat-stroked-button (click)="loadPreview()">Pokušaj ponovo</button>
+    </div>
+    } @else if (guestPreview(); as guest) {
+    <div class="guest-profile">
+      <div class="profile-header">
+        <div class="avatar-container">
+          <img
+            [src]="guest.profilePhotoUrl || 'assets/images/default-avatar.png'"
+            alt="Guest Avatar"
+            class="avatar"
+          />
+        </div>
+        <div class="profile-info">
+          <h3>{{ guest.firstName }} {{ guest.lastInitial }}</h3>
+          <p class="join-date">Član od {{ guest.joinDate }}</p>
+
+          <div class="badges">
+            @if (guest.identityVerified) {
+            <mat-chip class="verified-badge" matTooltip="Identitet verifikovan">
+              <mat-icon>verified_user</mat-icon> Identitet
+            </mat-chip>
+            } @if (guest.phoneVerified) {
+            <mat-chip class="verified-badge" matTooltip="Telefon verifikovan">
+              <mat-icon>phone_iphone</mat-icon> Telefon
+            </mat-chip>
+            } @if (guest.emailVerified) {
+            <mat-chip class="verified-badge" matTooltip="Email verifikovan">
+              <mat-icon>email</mat-icon> Email
+            </mat-chip>
+            }
+          </div>
+        </div>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-item">
+          <span class="stat-value"
+            >{{ guest.starRating | number : '1.1-1' }}
+            <mat-icon class="star-icon">star</mat-icon></span
+          >
+          <span class="stat-label">Ocena</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-value">{{ guest.tripCount }}</span>
+          <span class="stat-label">Putovanja</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-value status-{{ guest.drivingEligibilityStatus | lowercase }}">
+            {{
+              guest.drivingEligibilityStatus === 'APPROVED'
+                ? 'Odobren'
+                : guest.drivingEligibilityStatus
+            }}
+          </span>
+          <span class="stat-label">Vozački status</span>
+        </div>
+      </div>
+
+      <mat-divider></mat-divider>
+
+      <div class="trip-details">
+        <h4>Detalji putovanja</h4>
+        <div class="detail-row">
+          <mat-icon>calendar_today</mat-icon>
+          <span
+            >{{ formatDate(guest.requestedStartDateTime) }} -
+            {{ formatDate(guest.requestedEndDateTime) }}</span
+          >
+        </div>
+        <div class="detail-row">
+          <mat-icon>security</mat-icon>
+          <span>Zaštita: {{ guest.protectionPlan }}</span>
+        </div>
+        @if (guest.message) {
+        <div class="message-box">
+          <p class="message-label">Poruka od gosta:</p>
+          <p class="message-text">"{{ guest.message }}"</p>
+        </div>
+        }
+      </div>
+
+      @if (guest.hostReviews && guest.hostReviews.length > 0) {
+      <mat-divider></mat-divider>
+      <div class="reviews-section">
+        <h4>Recenzije drugih domaćina ({{ guest.hostReviews.length }})</h4>
+        <div class="reviews-list">
+          @for (review of guest.hostReviews; track $index) {
+          <div class="review-item">
+            <div class="review-header">
+              <div class="stars">
+                @for (star of [1,2,3,4,5]; track star) {
+                <mat-icon [class.filled]="star <= review.rating">star</mat-icon>
+                }
+              </div>
+            </div>
+            <p class="review-text">{{ review.comment }}</p>
+          </div>
+          }
+        </div>
+      </div>
+      }
+    </div>
+    }
+  </mat-dialog-content>
+</div>

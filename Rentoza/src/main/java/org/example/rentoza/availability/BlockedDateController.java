@@ -6,6 +6,7 @@ import org.example.rentoza.availability.dto.BlockDateRequestDTO;
 import org.example.rentoza.availability.dto.BlockedDateResponseDTO;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -29,12 +30,14 @@ public class BlockedDateController {
     /**
      * GET /api/availability/{carId}
      * Retrieve all blocked dates for a specific car.
-     * Accessible to both owners (for management) and renters (for availability checking).
+     * PUBLIC: Accessible to all users (including guests) for availability checking.
+     * No PII is exposed - only date ranges.
      *
      * @param carId The ID of the car
      * @return List of blocked date ranges
      */
     @GetMapping("/{carId}")
+    @PreAuthorize("permitAll()")
     public ResponseEntity<?> getBlockedDates(@PathVariable Long carId) {
         try {
             List<BlockedDateResponseDTO> blockedDates = blockedDateService.getBlockedDatesForCar(carId);

@@ -134,12 +134,31 @@ public class SecurityConfig {
                         .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
                         // Public static resources
                         .requestMatchers(HttpMethod.GET, "/uploads/**").permitAll()
-                        // RLS-TIGHTENED: Only GET /api/cars (marketplace) and /api/cars/{id} are public
-                        // All other car operations require authentication and ownership validation
-                        .requestMatchers(HttpMethod.GET, "/api/cars", "/api/cars/{id}").permitAll()
-                        // RLS-TIGHTENED: Only GET /api/reviews/car/** (public car reviews) are permitted
-                        // All other review operations require authentication
+
+                        // ============ PUBLIC CAR MARKETPLACE ============
+                        // Car browsing, search, and availability (guest-accessible)
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/cars",
+                                "/api/cars/search",
+                                "/api/cars/availability-search",
+                                "/api/cars/features",
+                                "/api/cars/makes"
+                        ).permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/cars/{id}").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/cars/location/**").permitAll()
+
+                        // ============ PUBLIC REVIEWS ============
                         .requestMatchers(HttpMethod.GET, "/api/reviews/car/**").permitAll()
+
+                        // ============ PUBLIC AVAILABILITY DATA ============
+                        // Calendar availability for booking UI (no PII exposure)
+                        // IMPORTANT: Must come BEFORE /api/bookings/* internal service rule
+                        .requestMatchers(HttpMethod.GET, "/api/bookings/car/*/public").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/availability/*").permitAll()
+
+                        // ============ PUBLIC OWNER PROFILES ============
+                        .requestMatchers(HttpMethod.GET, "/api/owners/*/public-profile").permitAll()
+
                         // User endpoints - must come before catch-all rules
                         .requestMatchers("/api/users/me").authenticated()
                         .requestMatchers(HttpMethod.PATCH, "/api/users/me").authenticated()

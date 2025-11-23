@@ -16,6 +16,7 @@ export interface GuestBookingPreview {
 
   starRating: number;
   tripCount: number;
+  badges: string[];
 
   hostReviews: ReviewPreview[];
 

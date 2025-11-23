@@ -23,7 +23,10 @@
             (blur)="validateField('location')"
             (keyup.enter)="searchAvailability()"
           />
-          <mat-autocomplete #cityAuto="matAutocomplete" (optionSelected)="onCitySelected($event.option.value)">
+          <mat-autocomplete
+            #cityAuto="matAutocomplete"
+            (optionSelected)="onCitySelected($event.option.value)"
+          >
             <mat-option *ngFor="let city of filteredCities" [value]="city">
               {{ city }}
             </mat-option>
@@ -86,7 +89,9 @@
           <mat-datepicker #endPicker startView="month"></mat-datepicker>
         </mat-form-field>
         <span class="validation-hint" *ngIf="endDateError">{{ endDateError }}</span>
-        <span class="validation-hint" *ngIf="dateRangeError && !endDateError">{{ dateRangeError }}</span>
+        <span class="validation-hint" *ngIf="dateRangeError && !endDateError">{{
+          dateRangeError
+        }}</span>
       </div>
 
       <div class="search-segment">
@@ -220,7 +225,7 @@
             <mat-card-content class="car-card__content">
               <div class="car-card__header">
                 <h3>{{ car.make }} {{ car.model }}</h3>
-                <span class="price">{{ car.pricePerDay | number : '1.0-0' }} RSD</span>
+                <span class="price">{{ car.pricePerDay | number : '1.0-0' }} RSD/dan</span>
               </div>
 
               <div class="car-card__meta">
@@ -268,7 +273,9 @@
         <ng-template #noResults>
           <div class="empty-state">
             <mat-icon>{{ (isAvailabilityMode$ | async) ? 'event_busy' : 'search_off' }}</mat-icon>
-            <h3>{{ (isAvailabilityMode$ | async) ? 'Nema dostupnih automobila' : 'Nema rezultata' }}</h3>
+            <h3>
+              {{ (isAvailabilityMode$ | async) ? 'Nema dostupnih automobila' : 'Nema rezultata' }}
+            </h3>
             <p>
               {{
                 (isAvailabilityMode$ | async)

@@ -26,6 +26,7 @@ public class GuestBookingPreviewDTO {
     
     private Double starRating;
     private int tripCount;
+    private List<String> badges;
     
     private List<ReviewPreviewDTO> hostReviews;
     

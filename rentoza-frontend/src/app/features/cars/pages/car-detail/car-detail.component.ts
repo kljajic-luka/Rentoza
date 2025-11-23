@@ -596,6 +596,15 @@ export class CarDetailComponent {
   }
 
   /**
+   * Navigate to owner's public profile
+   */
+  protected goToOwnerProfile(ownerId: number | undefined): void {
+    if (ownerId) {
+      this.router.navigate(['/owners', ownerId]);
+    }
+  }
+
+  /**
    * Handle keyboard navigation (left/right arrows)
    */
   @HostListener('window:keydown', ['$event'])

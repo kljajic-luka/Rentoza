@@ -7,7 +7,7 @@ export const routes: Routes = [
   {
     path: '',
     loadComponent: () =>
-      import('@features/home/pages/home/home.component').then((m) => m.HomeComponent)
+      import('@features/home/pages/home/home.component').then((m) => m.HomeComponent),
   },
   {
     path: 'auth',
@@ -15,36 +15,40 @@ export const routes: Routes = [
       {
         path: '',
         pathMatch: 'full',
-        redirectTo: 'login'
+        redirectTo: 'login',
       },
       {
         path: 'login',
         loadComponent: () =>
-          import('@features/auth/pages/login/login.component').then((m) => m.LoginComponent)
+          import('@features/auth/pages/login/login.component').then((m) => m.LoginComponent),
       },
       {
         path: 'register',
         loadComponent: () =>
-          import('@features/auth/pages/register/register.component').then((m) => m.RegisterComponent)
+          import('@features/auth/pages/register/register.component').then(
+            (m) => m.RegisterComponent
+          ),
       },
       {
         path: 'callback',
         loadComponent: () =>
-          import('@features/auth/pages/auth-callback/auth-callback.component').then((m) => m.AuthCallbackComponent)
-      }
-    ]
+          import('@features/auth/pages/auth-callback/auth-callback.component').then(
+            (m) => m.AuthCallbackComponent
+          ),
+      },
+    ],
   },
   {
     path: 'pocetna',
     canActivate: [RoleRedirectGuard],
     loadComponent: () =>
-      import('@features/home/pages/home/home.component').then((m) => m.HomeComponent)
+      import('@features/home/pages/home/home.component').then((m) => m.HomeComponent),
   },
   {
     path: 'vozila',
     canActivate: [RoleRedirectGuard],
     loadComponent: () =>
-      import('@features/cars/pages/car-list/car-list.component').then((m) => m.CarListComponent)
+      import('@features/cars/pages/car-list/car-list.component').then((m) => m.CarListComponent),
   },
   {
     path: 'cars',
@@ -53,16 +57,18 @@ export const routes: Routes = [
         path: '',
         canActivate: [RoleRedirectGuard],
         loadComponent: () =>
-          import('@features/cars/pages/car-list/car-list.component').then((m) => m.CarListComponent)
+          import('@features/cars/pages/car-list/car-list.component').then(
+            (m) => m.CarListComponent
+          ),
       },
       {
         path: ':id',
         loadComponent: () =>
           import('@features/cars/pages/car-detail/car-detail.component').then(
             (m) => m.CarDetailComponent
-          )
-      }
-    ]
+          ),
+      },
+    ],
   },
   {
     path: 'bookings',
@@ -74,7 +80,7 @@ export const routes: Routes = [
         loadComponent: () =>
           import('@features/bookings/pages/booking-history/booking-history.component').then(
             (m) => m.BookingHistoryComponent
-          )
+          ),
       },
       {
         path: ':id/review',
@@ -83,9 +89,9 @@ export const routes: Routes = [
         loadComponent: () =>
           import('@features/bookings/pages/add-review/add-review.component').then(
             (m) => m.AddReviewComponent
-          )
-      }
-    ]
+          ),
+      },
+    ],
   },
   {
     path: 'favorites',
@@ -94,14 +100,14 @@ export const routes: Routes = [
     loadComponent: () =>
       import('@features/favorites/pages/favorites-list/favorites-list.component').then(
         (m) => m.FavoritesListComponent
-      )
+      ),
   },
   {
     path: 'reviews',
     loadComponent: () =>
       import('@features/reviews/pages/review-list/review-list.component').then(
         (m) => m.ReviewListComponent
-      )
+      ),
   },
   {
     path: 'owner',
@@ -111,58 +117,56 @@ export const routes: Routes = [
       {
         path: '',
         pathMatch: 'full',
-        redirectTo: 'dashboard'
+        redirectTo: 'dashboard',
       },
       {
         path: 'dashboard',
         loadComponent: () =>
           import('@features/owner/pages/dashboard/owner-dashboard.component').then(
             (m) => m.OwnerDashboardComponent
-          )
+          ),
       },
       {
         path: 'cars',
         loadComponent: () =>
-          import('@features/owner/pages/my-cars/my-cars.component').then(
-            (m) => m.MyCarsComponent
-          )
+          import('@features/owner/pages/my-cars/my-cars.component').then((m) => m.MyCarsComponent),
       },
       {
         path: 'cars/new',
         loadComponent: () =>
           import('@features/owner/pages/add-car-wizard/add-car-wizard.component').then(
             (m) => m.AddCarWizardComponent
-          )
+          ),
       },
       {
         path: 'bookings',
         loadComponent: () =>
           import('@features/owner/pages/bookings/owner-bookings.component').then(
             (m) => m.OwnerBookingsComponent
-          )
+          ),
       },
       {
         path: 'earnings',
         loadComponent: () =>
           import('@features/owner/pages/earnings/earnings.component').then(
             (m) => m.EarningsComponent
-          )
+          ),
       },
       {
         path: 'reviews',
         loadComponent: () =>
           import('@features/owner/pages/reviews/owner-reviews.component').then(
             (m) => m.OwnerReviewsComponent
-          )
+          ),
       },
       {
         path: 'verification',
         loadComponent: () =>
           import('@features/owner/pages/verification/verification.component').then(
             (m) => m.VerificationComponent
-          )
-      }
-    ]
+          ),
+      },
+    ],
   },
   {
     path: 'users',
@@ -170,27 +174,36 @@ export const routes: Routes = [
       {
         path: '',
         pathMatch: 'full',
-        redirectTo: 'profile'
+        redirectTo: 'profile',
       },
       {
         path: 'profile',
         canActivate: [RoleGuard],
         data: { roles: ['USER', 'OWNER', 'ADMIN'] },
         loadComponent: () =>
-          import('@features/users/pages/profile/profile.component').then((m) => m.ProfileComponent)
-      }
-    ]
+          import('@features/users/pages/profile/profile.component').then((m) => m.ProfileComponent),
+      },
+    ],
   },
   {
     path: 'messages',
     canActivate: [RoleGuard, RoleRedirectGuard],
     data: { roles: ['USER', 'OWNER', 'ADMIN'] },
     loadComponent: () =>
-      import('@features/messages/pages/messages/messages.component').then((m) => m.MessagesComponent)
+      import('@features/messages/pages/messages/messages.component').then(
+        (m) => m.MessagesComponent
+      ),
+  },
+  {
+    path: 'owners/:id',
+    loadComponent: () =>
+      import('@features/owner/pages/owner-profile-page/owner-profile-page.component').then(
+        (m) => m.OwnerProfilePageComponent
+      ),
   },
   {
     path: '**',
     loadComponent: () =>
-      import('@shared/components/not-found/not-found.component').then((m) => m.NotFoundComponent)
-  }
+      import('@shared/components/not-found/not-found.component').then((m) => m.NotFoundComponent),
+  },
 ];

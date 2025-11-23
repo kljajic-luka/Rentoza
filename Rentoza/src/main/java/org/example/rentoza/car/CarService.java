@@ -1,8 +1,12 @@
 package org.example.rentoza.car;
 
+import org.example.rentoza.booking.BookingRepository;
+import org.example.rentoza.booking.BookingStatus;
 import org.example.rentoza.car.dto.CarRequestDTO;
 import org.example.rentoza.car.dto.CarResponseDTO;
 import org.example.rentoza.car.dto.CarSearchCriteria;
+import org.example.rentoza.review.ReviewDirection;
+import org.example.rentoza.review.ReviewRepository;
 import org.example.rentoza.user.User;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,10 +28,14 @@ public class CarService {
     private static final Logger log = LoggerFactory.getLogger(CarService.class);
 
     private final CarRepository repo;
+    private final BookingRepository bookingRepo;
+    private final ReviewRepository reviewRepo;
     private final org.example.rentoza.security.CurrentUser currentUser;
 
-    public CarService(CarRepository repo, org.example.rentoza.security.CurrentUser currentUser) {
+    public CarService(CarRepository repo, BookingRepository bookingRepo, ReviewRepository reviewRepo, org.example.rentoza.security.CurrentUser currentUser) {
         this.repo = repo;
+        this.bookingRepo = bookingRepo;
+        this.reviewRepo = reviewRepo;
         this.currentUser = currentUser;
     }
 
@@ -170,7 +178,24 @@ public class CarService {
         Car car = repo.findById(id)
                 .orElseThrow(() -> new RuntimeException("Car not found with ID: " + id));
 
-        return mapToResponse(car);
+        CarResponseDTO dto = mapToResponse(car);
+        
+        // Populate owner stats for detailed view
+        if (car.getOwner() != null) {
+            Long ownerId = car.getOwner().getId();
+            
+            // Fetch average rating
+            Double rating = reviewRepo.findAverageRatingForRevieweeAndDirection(
+                    ownerId, ReviewDirection.FROM_USER
+            );
+            dto.setOwnerRating(rating != null ? rating : 0.0);
+            
+            // Fetch trip count
+            long trips = bookingRepo.countByOwnerIdAndStatus(ownerId, BookingStatus.COMPLETED);
+            dto.setOwnerTripCount((int) trips);
+        }
+        
+        return dto;
     }
 
     @Transactional

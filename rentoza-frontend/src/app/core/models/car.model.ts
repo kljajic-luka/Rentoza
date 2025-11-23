@@ -101,9 +101,14 @@ export interface Car {
   maxRentalDays?: number;
   imageUrls?: string[];
 
-  // Owner information
-  ownerFullName?: string;
-  ownerEmail?: string;
+  // Owner information (Privacy Safe)
+  ownerId?: number;
+  ownerFirstName?: string;
+  ownerLastInitial?: string;
+  ownerAvatarUrl?: string;
+  ownerJoinDate?: string;
+  ownerRating?: number;
+  ownerTripCount?: number;
 }
 
 export interface CarSummary extends Car {

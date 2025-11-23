@@ -33,7 +33,11 @@
           <p class="join-date">Član od {{ guest.joinDate }}</p>
 
           <div class="badges">
-            @if (guest.identityVerified) {
+            @for (badge of guest.badges; track badge) {
+            <mat-chip class="special-badge" highlighted>
+              <mat-icon>military_tech</mat-icon> {{ badge }}
+            </mat-chip>
+            } @if (guest.identityVerified) {
             <mat-chip class="verified-badge" matTooltip="Identitet verifikovan">
               <mat-icon>verified_user</mat-icon> Identitet
             </mat-chip>

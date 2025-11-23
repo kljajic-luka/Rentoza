@@ -2,6 +2,7 @@ package org.example.rentoza.car;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.example.rentoza.availability.BlockedDateRepository;
 import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingRepository;
 import org.example.rentoza.booking.BookingTimeUtil;
@@ -49,6 +50,7 @@ public class AvailabilityService {
 
     private final CarRepository carRepository;
     private final BookingRepository bookingRepository;
+    private final BlockedDateRepository blockedDateRepository;
     private final BookingTimeUtil bookingTimeUtil;
 
     /**
@@ -122,6 +124,27 @@ public class AvailabilityService {
     }
 
     /**
+     * Find available cars for a specific owner within a time range.
+     *
+     * @param ownerId Owner's user ID
+     * @param start Requested start DateTime
+     * @param end Requested end DateTime
+     * @return List of available cars
+     */
+    @Transactional(readOnly = true)
+    public List<Car> getAvailableCarsForOwner(Long ownerId, LocalDateTime start, LocalDateTime end) {
+        log.debug("[AvailabilityService] Fetching available cars for ownerId={} between {} and {}", ownerId, start, end);
+
+        // 1. Fetch all active cars for the owner
+        List<Car> ownerCars = carRepository.findByOwnerIdAndAvailableTrue(ownerId);
+
+        // 2. Filter by availability (bookings + blocked dates)
+        return ownerCars.stream()
+                .filter(car -> isCarAvailableInTimeRange(car, start, end))
+                .toList();
+    }
+
+    /**
      * Check if a car is available in the requested time range.
      *
      * Algorithm:
@@ -148,7 +171,20 @@ public class AvailabilityService {
         LocalDateTime requestedStart,
         LocalDateTime requestedEnd
     ) {
-        // Fetch all confirmed bookings for this car
+        // 1. Check for Blocked Dates (Owner blocked time)
+        boolean hasBlockedDates = blockedDateRepository.existsOverlappingBlockedDates(
+                car.getId(),
+                requestedStart.toLocalDate(),
+                requestedEnd.toLocalDate()
+        );
+
+        if (hasBlockedDates) {
+            log.debug("[AvailabilityService] Car {} has blocked dates overlapping request {} - {}",
+                    car.getId(), requestedStart, requestedEnd);
+            return false;
+        }
+
+        // 2. Fetch all confirmed bookings for this car
         // Uses BookingRepository.findPublicBookingsForCar which returns ACTIVE + COMPLETED bookings only
         List<Booking> confirmedBookings = bookingRepository.findPublicBookingsForCar(car.getId());
 

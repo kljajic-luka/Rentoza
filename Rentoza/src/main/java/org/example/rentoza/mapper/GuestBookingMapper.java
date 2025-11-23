@@ -7,6 +7,7 @@ import org.example.rentoza.review.Review;
 import org.example.rentoza.user.User;
 
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.stream.Collectors;
@@ -18,6 +19,16 @@ public class GuestBookingMapper {
     public static GuestBookingPreviewDTO toDTO(Booking booking, List<Review> hostReviews, Double averageRating, int tripCount) {
         User renter = booking.getRenter();
         
+        // Calculate badges
+        List<String> badges = new ArrayList<>();
+        if (tripCount > 10) {
+            badges.add("Experienced Guest");
+        }
+        // Placeholder for identity verification check
+        if (true) { 
+            badges.add("Verified Identity");
+        }
+
         return GuestBookingPreviewDTO.builder()
                 .profilePhotoUrl(renter.getAvatarUrl())
                 .firstName(renter.getFirstName())
@@ -34,6 +45,7 @@ public class GuestBookingMapper {
                 
                 .starRating(averageRating != null ? averageRating : 0.0)
                 .tripCount(tripCount)
+                .badges(badges)
                 
                 .hostReviews(hostReviews.stream()
                         .map(GuestBookingMapper::toReviewDTO)

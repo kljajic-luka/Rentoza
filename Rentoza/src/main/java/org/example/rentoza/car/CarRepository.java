@@ -83,4 +83,11 @@ public interface CarRepository extends JpaRepository<Car, Long>, JpaSpecificatio
            "WHERE c.owner.email = :ownerEmail " +
            "AND c.owner.id = :requesterId")
     List<Car> findByOwnerEmailForOwner(@Param("ownerEmail") String ownerEmail, @Param("requesterId") Long requesterId);
+
+    /**
+     * Find public cars for a specific owner.
+     * Used for Owner Public Profile.
+     */
+    @EntityGraph(attributePaths = {"owner"})
+    List<Car> findByOwnerIdAndAvailableTrue(Long ownerId);
 }

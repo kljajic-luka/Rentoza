@@ -3,13 +3,16 @@
     <div class="car-detail__header">
       <div class="car-detail__intro">
         <p class="eyebrow">Ekskluzivna ponuda</p>
-        <div style="display: flex; align-items: center; gap: 1rem;">
-          <h1 style="margin: 0;">{{ vm.car.make }} {{ vm.car.model }}</h1>
+        <div style="display: flex; align-items: center; gap: 1rem">
+          <h1 style="margin: 0">{{ vm.car.make }} {{ vm.car.model }}</h1>
           <mat-chip *ngIf="!vm.car.available" color="warn" class="unavailable-chip">
             <mat-icon>block</mat-icon>
             Nedostupno
           </mat-chip>
-          <app-favorite-button *ngIf="!(isOwner$ | async)" [carId]="+vm.car.id"></app-favorite-button>
+          <app-favorite-button
+            *ngIf="!(isOwner$ | async)"
+            [carId]="+vm.car.id"
+          ></app-favorite-button>
         </div>
         <p class="subtitle">{{ vm.car.year }} • {{ vm.car.location }}</p>
       </div>
@@ -26,45 +29,48 @@
           class="gallery__media"
           (click)="openFullscreenViewer(vm.car)"
           (swipeleft)="nextImage(vm.car)"
-          (swiperight)="previousImage(vm.car)">
+          (swiperight)="previousImage(vm.car)"
+        >
           @if (getCurrentImage(vm.car); as currentImage) {
-            <img
-              [src]="currentImage"
-              [alt]="vm.car.make + ' ' + vm.car.model"
-              loading="lazy"
-              class="gallery__image"
-            />
+          <img
+            [src]="currentImage"
+            [alt]="vm.car.make + ' ' + vm.car.model"
+            loading="lazy"
+            class="gallery__image"
+          />
 
-            @if (getCarImages(vm.car).length > 1) {
-              <button
-                mat-icon-button
-                class="gallery__nav-button gallery__nav-button--left"
-                (click)="previousImage(vm.car, $event)"
-                aria-label="Previous image">
-                <mat-icon>chevron_left</mat-icon>
-              </button>
+          @if (getCarImages(vm.car).length > 1) {
+          <button
+            mat-icon-button
+            class="gallery__nav-button gallery__nav-button--left"
+            (click)="previousImage(vm.car, $event)"
+            aria-label="Previous image"
+          >
+            <mat-icon>chevron_left</mat-icon>
+          </button>
 
-              <button
-                mat-icon-button
-                class="gallery__nav-button gallery__nav-button--right"
-                (click)="nextImage(vm.car, $event)"
-                aria-label="Next image">
-                <mat-icon>chevron_right</mat-icon>
-              </button>
+          <button
+            mat-icon-button
+            class="gallery__nav-button gallery__nav-button--right"
+            (click)="nextImage(vm.car, $event)"
+            aria-label="Next image"
+          >
+            <mat-icon>chevron_right</mat-icon>
+          </button>
 
-              <div class="gallery__image-counter">
-                {{ currentImageIndex() + 1 }} / {{ getCarImages(vm.car).length }}
-              </div>
-            }
+          <div class="gallery__image-counter">
+            {{ currentImageIndex() + 1 }} / {{ getCarImages(vm.car).length }}
+          </div>
+          }
 
-            <div class="gallery__click-hint">
-              <mat-icon>fullscreen</mat-icon>
-              <span>Kliknite za prikaz</span>
-            </div>
+          <div class="gallery__click-hint">
+            <mat-icon>fullscreen</mat-icon>
+            <span>Kliknite za prikaz</span>
+          </div>
           } @else {
-            <div class="gallery__placeholder">
-              <mat-icon>directions_car</mat-icon>
-            </div>
+          <div class="gallery__placeholder">
+            <mat-icon>directions_car</mat-icon>
+          </div>
           }
         </div>
         <div class="gallery__details">
@@ -97,7 +103,12 @@
 
             <mat-card-content>
               <div class="booking-action">
-                <button mat-raised-button color="primary" (click)="openBookingDialog(vm.car)" class="booking-button">
+                <button
+                  mat-raised-button
+                  color="primary"
+                  (click)="openBookingDialog(vm.car)"
+                  class="booking-button"
+                >
                   <mat-icon>event_available</mat-icon>
                   <span>Rezerviši vozilo</span>
                 </button>
@@ -134,7 +145,10 @@
       </ng-container>
 
       <ng-template #inactiveNotice>
-        <mat-card *ngIf="!(isOwner$ | async)" class="car-detail__booking car-detail__booking--inactive">
+        <mat-card
+          *ngIf="!(isOwner$ | async)"
+          class="car-detail__booking car-detail__booking--inactive"
+        >
           <mat-card-header>
             <div class="booking__title">
               <mat-card-title>
@@ -152,7 +166,6 @@
 
     <!-- Full-width sections below -->
     <div class="car-detail__grid">
-
       <!-- Key Specifications Section -->
       <mat-card class="car-detail__specs">
         <mat-card-header>
@@ -221,7 +234,10 @@
             </div>
 
             <!-- Add-ons as chips (full-width item) -->
-            <div class="spec-item spec-item--full-width" *ngIf="vm.car.addOns && vm.car.addOns.length > 0">
+            <div
+              class="spec-item spec-item--full-width"
+              *ngIf="vm.car.addOns && vm.car.addOns.length > 0"
+            >
               <mat-icon>playlist_add_check</mat-icon>
               <div class="spec-content spec-content--chips">
                 <span class="spec-label">Dodatna oprema</span>
@@ -235,7 +251,10 @@
       </mat-card>
 
       <!-- Features Section -->
-      <mat-card class="car-detail__features" *ngIf="categorizeFeatures(vm.car.features) as categorized">
+      <mat-card
+        class="car-detail__features"
+        *ngIf="categorizeFeatures(vm.car.features) as categorized"
+      >
         <mat-card-header>
           <mat-card-title>Oprema i karakteristike</mat-card-title>
         </mat-card-header>
@@ -252,7 +271,9 @@
             </mat-chip-set>
           </div>
 
-          <mat-divider *ngIf="categorized.safety.length && categorized.connectivity.length"></mat-divider>
+          <mat-divider
+            *ngIf="categorized.safety.length && categorized.connectivity.length"
+          ></mat-divider>
 
           <div class="feature-category" *ngIf="categorized.connectivity.length">
             <h3 class="category-title">
@@ -266,7 +287,9 @@
             </mat-chip-set>
           </div>
 
-          <mat-divider *ngIf="categorized.connectivity.length && categorized.comfort.length"></mat-divider>
+          <mat-divider
+            *ngIf="categorized.connectivity.length && categorized.comfort.length"
+          ></mat-divider>
 
           <div class="feature-category" *ngIf="categorized.comfort.length">
             <h3 class="category-title">
@@ -280,7 +303,9 @@
             </mat-chip-set>
           </div>
 
-          <mat-divider *ngIf="categorized.comfort.length && categorized.additional.length"></mat-divider>
+          <mat-divider
+            *ngIf="categorized.comfort.length && categorized.additional.length"
+          ></mat-divider>
 
           <div class="feature-category" *ngIf="categorized.additional.length">
             <h3 class="category-title">
@@ -344,19 +369,53 @@
       </mat-card>
 
       <!-- Owner Information Section -->
-      <mat-card class="car-detail__owner" *ngIf="vm.car.ownerFullName || vm.car.ownerEmail">
+      <mat-card class="car-detail__owner" *ngIf="vm.car.ownerId">
         <mat-card-header>
           <mat-card-title>Informacije o vlasniku</mat-card-title>
         </mat-card-header>
         <mat-card-content>
-          <div class="owner-info">
+          <div
+            class="owner-info"
+            (click)="goToOwnerProfile(vm.car.ownerId)"
+            style="cursor: pointer"
+          >
             <div class="owner-avatar">
-              <mat-icon>person</mat-icon>
+              <img
+                *ngIf="vm.car.ownerAvatarUrl"
+                [src]="vm.car.ownerAvatarUrl"
+                alt="Owner Avatar"
+                style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%"
+              />
+              <mat-icon *ngIf="!vm.car.ownerAvatarUrl">person</mat-icon>
             </div>
             <div class="owner-details">
-              <p class="owner-name" *ngIf="vm.car.ownerFullName">{{ vm.car.ownerFullName }}</p>
-              <p class="owner-email" *ngIf="vm.car.ownerEmail">{{ vm.car.ownerEmail }}</p>
+              <p class="owner-name">{{ vm.car.ownerFirstName }} {{ vm.car.ownerLastInitial }}</p>
+              <p class="owner-meta" style="color: #717171; font-size: 14px; margin: 4px 0">
+                {{ vm.car.ownerJoinDate }}
+              </p>
+              <div
+                class="owner-stats"
+                style="display: flex; gap: 16px; font-size: 14px; color: #222"
+              >
+                <span *ngIf="vm.car.ownerRating">
+                  {{ vm.car.ownerRating | number : '1.1-1' }}
+                  <mat-icon
+                    style="
+                      font-size: 14px;
+                      width: 14px;
+                      height: 14px;
+                      vertical-align: middle;
+                      color: #ff385c;
+                    "
+                    >star</mat-icon
+                  >
+                </span>
+                <span *ngIf="vm.car.ownerTripCount !== undefined">
+                  {{ vm.car.ownerTripCount }} putovanja
+                </span>
+              </div>
             </div>
+            <mat-icon style="margin-left: auto; color: #717171">chevron_right</mat-icon>
           </div>
         </mat-card-content>
       </mat-card>

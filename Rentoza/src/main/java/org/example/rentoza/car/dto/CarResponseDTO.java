@@ -20,8 +20,15 @@ public class CarResponseDTO {
     private String location;
     private String imageUrl;
     private boolean available;
-    private String ownerFullName;
-    private String ownerEmail;
+    
+    // Owner Info (Privacy Safe)
+    private Long ownerId;
+    private String ownerFirstName;
+    private String ownerLastInitial;
+    private String ownerAvatarUrl;
+    private String ownerJoinDate;
+    private Double ownerRating;     // Populated in detailed view
+    private Integer ownerTripCount; // Populated in detailed view
 
     // New production-ready fields
     private String licensePlate;
@@ -63,15 +70,25 @@ public class CarResponseDTO {
         this.imageUrls = car.getImageUrls() != null ? List.copyOf(car.getImageUrls()) : List.of();
 
         if (car.getOwner() != null) {
-            String firstName = car.getOwner().getFirstName();
-            String lastName = car.getOwner().getLastName();
-            this.ownerFullName = (firstName != null ? firstName : "") +
-                    (lastName != null ? " " + lastName : "");
-            this.ownerEmail = car.getOwner().getEmail();
-        } else {
-            this.ownerFullName = null;
-            this.ownerEmail = null;
+            this.ownerId = car.getOwner().getId();
+            this.ownerFirstName = car.getOwner().getFirstName();
+            this.ownerLastInitial = formatLastInitial(car.getOwner().getLastName());
+            this.ownerAvatarUrl = car.getOwner().getAvatarUrl();
+            this.ownerJoinDate = formatJoinDate(car.getOwner().getCreatedAt());
         }
+    }
+
+    private String formatLastInitial(String lastName) {
+        if (lastName == null || lastName.isEmpty()) {
+            return "";
+        }
+        return lastName.charAt(0) + ".";
+    }
+
+    private String formatJoinDate(java.time.Instant createdAt) {
+        if (createdAt == null) return "";
+        return java.time.LocalDateTime.ofInstant(createdAt, java.time.ZoneId.systemDefault())
+                .format(java.time.format.DateTimeFormatter.ofPattern("MMM yyyy", java.util.Locale.ENGLISH));
     }
 
     /**

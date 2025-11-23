@@ -29,10 +29,11 @@ public class ServiceAuthenticationFilter extends OncePerRequestFilter {
 
     private static final String INTERNAL_SERVICE_TOKEN_HEADER = "X-Internal-Service-Token";
     private static final String INTERNAL_SERVICE_AUTHORITY = "INTERNAL_SERVICE";
-    private static final List<String> OAUTH2_ENDPOINT_PREFIXES = List.of(
+    private static final List<String> PUBLIC_ENDPOINT_PREFIXES = List.of(
             "/login/oauth2",
             "/oauth2",
-            "/login"
+            "/login",
+            "/uploads"
     );
 
     private final InternalServiceJwtUtil internalServiceJwtUtil;
@@ -85,6 +86,6 @@ public class ServiceAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
-        return OAUTH2_ENDPOINT_PREFIXES.stream().anyMatch(path::startsWith);
+        return PUBLIC_ENDPOINT_PREFIXES.stream().anyMatch(path::startsWith);
     }
 }

@@ -32,6 +32,8 @@ import {
 import { ProfileReview, UserProfileDetails, UpdateProfileRequest } from '@core/models/user.model';
 import { UserRole } from '@core/models/user-role.type';
 import { UserService } from '@core/services/user.service';
+import { AuthService } from '@core/auth/auth.service';
+import { ProfilePictureUploaderComponent } from '@shared/components/profile-picture-uploader/profile-picture-uploader.component';
 
 const optionalMinLengthValidator = (minLength: number) => {
   return (control: AbstractControl): ValidationErrors | null => {
@@ -62,6 +64,7 @@ const optionalMinLengthValidator = (minLength: number) => {
     MatDialogModule,
     MatSnackBarModule,
     FlexLayoutModule,
+    ProfilePictureUploaderComponent,
   ],
   templateUrl: './profile.component.html',
   styleUrls: ['./profile.component.scss'],
@@ -69,6 +72,7 @@ const optionalMinLengthValidator = (minLength: number) => {
 })
 export class ProfileComponent {
   private readonly userService = inject(UserService);
+  private readonly authService = inject(AuthService);
   private readonly fb = inject(FormBuilder);
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
@@ -81,10 +85,9 @@ export class ProfileComponent {
   protected readonly isSaving = signal(false);
   protected readonly isGooglePlaceholder = signal(false);
 
-  // Edit form
+  // Edit form (avatarUrl removed - now using ProfilePictureUploader component)
   protected readonly editForm = this.fb.group({
     phone: ['', [Validators.pattern(/^[0-9]{8,15}$/)]],
-    avatarUrl: ['', [Validators.maxLength(500)]],
     bio: ['', [Validators.maxLength(300)]],
     lastName: [{ value: '', disabled: true }, [optionalMinLengthValidator(3), Validators.maxLength(50)]],
   });
@@ -156,7 +159,6 @@ export class ProfileComponent {
 
     this.editForm.patchValue({
       phone: profile.phone ?? '',
-      avatarUrl: profile.avatarUrl ?? '',
       bio: profile.bio ?? '',
     });
 
@@ -196,7 +198,6 @@ export class ProfileComponent {
     this.isSaving.set(true);
     const request: UpdateProfileRequest = {
       phone: this.editForm.value.phone || undefined,
-      avatarUrl: this.editForm.value.avatarUrl || undefined,
       bio: this.editForm.value.bio || undefined,
     };
 
@@ -254,6 +255,51 @@ export class ProfileComponent {
         panelClass: ['snackbar-info'],
       }
     );
+  }
+
+  /**
+   * Handle successful avatar upload from ProfilePictureUploader component.
+   * Updates global user state and refreshes profile data.
+   */
+  protected onAvatarUploaded(newAvatarUrl: string): void {
+    // Update the global user state in AuthService
+    this.authService.updateCurrentUserAvatar(newAvatarUrl);
+
+    // Show success notification
+    this.snackBar.open('Profilna slika uspešno postavljena.', 'Zatvori', {
+      duration: 3000,
+      panelClass: ['snackbar-success'],
+    });
+
+    // Refresh profile to get updated data
+    this.refreshProfile$.next();
+  }
+
+  /**
+   * Handle avatar upload error from ProfilePictureUploader component.
+   */
+  protected onAvatarUploadError(errorMessage: string): void {
+    this.snackBar.open(errorMessage, 'Zatvori', {
+      duration: 5000,
+      panelClass: ['snackbar-error'],
+    });
+  }
+
+  /**
+   * Handle avatar deletion from ProfilePictureUploader component.
+   */
+  protected onAvatarDeleted(): void {
+    // Update the global user state in AuthService
+    this.authService.updateCurrentUserAvatar(null);
+
+    // Show success notification
+    this.snackBar.open('Profilna slika obrisana.', 'Zatvori', {
+      duration: 3000,
+      panelClass: ['snackbar-success'],
+    });
+
+    // Refresh profile to get updated data
+    this.refreshProfile$.next();
   }
 }
 

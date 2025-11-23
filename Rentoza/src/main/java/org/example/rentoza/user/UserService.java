@@ -138,6 +138,28 @@ public class UserService {
         return repo.findById(id);
     }
 
+    /**
+     * Update user's avatar URL after profile picture upload.
+     * Used by ProfilePictureController after successful image processing.
+     *
+     * @param userId    The user's ID
+     * @param avatarUrl The new avatar URL (can be null to remove)
+     * @throws EntityNotFoundException if user not found
+     */
+    @Transactional
+    public void updateAvatarUrl(Long userId, String avatarUrl) {
+        User user = repo.findById(userId)
+                .orElseThrow(() -> new EntityNotFoundException("User not found with ID: " + userId));
+
+        // Validate URL length if not null
+        if (avatarUrl != null && avatarUrl.length() > 500) {
+            throw new BadRequestException("Avatar URL exceeds maximum length of 500 characters");
+        }
+
+        user.setAvatarUrl(avatarUrl);
+        repo.saveAndFlush(user);
+    }
+
     public boolean passwordMatches(String raw, String encoded) {
         return encoder.matches(raw, encoded);
     }

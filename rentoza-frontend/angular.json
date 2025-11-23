@@ -84,7 +84,8 @@
               "buildTarget": "rentoza-frontend:build:production"
             },
             "development": {
-              "buildTarget": "rentoza-frontend:build:development"
+              "buildTarget": "rentoza-frontend:build:development",
+              "proxyConfig": "proxy.conf.json"
             }
           },
           "defaultConfiguration": "development"

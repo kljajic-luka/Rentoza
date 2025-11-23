@@ -2,9 +2,15 @@
   <section class="profile">
     <header class="profile__header">
       <div class="profile__identity">
-        <div class="profile__avatar">
-          <span>{{ profile.initials }}</span>
-        </div>
+        <!-- Profile Picture Uploader -->
+        <app-profile-picture-uploader
+          [currentAvatarUrl]="profile.avatarUrl"
+          [userInitials]="profile.initials"
+          [avatarSize]="80"
+          (uploaded)="onAvatarUploaded($event)"
+          (error)="onAvatarUploadError($event)"
+          (deleted)="onAvatarDeleted()"
+        ></app-profile-picture-uploader>
         <div class="profile__headline">
           <h1>{{ profile.firstName }} {{ profile.lastName }}</h1>
           <div class="profile__meta">
@@ -145,22 +151,6 @@
                   </mat-error>
                   <mat-error *ngIf="editForm.get('lastName')?.hasError('maxlength')">
                     Prezime ne može biti duže od 50 karaktera
-                  </mat-error>
-                </mat-form-field>
-
-                <mat-form-field appearance="outline" class="edit-form__field">
-                  <mat-label>URL profilne slike</mat-label>
-                  <input
-                    matInput
-                    type="url"
-                    formControlName="avatarUrl"
-                    placeholder="https://example.com/avatar.jpg"
-                    maxlength="500"
-                  />
-                  <mat-icon matPrefix>camera_alt</mat-icon>
-                  <mat-hint>URL vaše profilne slike (maksimum 500 karaktera)</mat-hint>
-                  <mat-error *ngIf="editForm.controls.avatarUrl.hasError('maxlength')">
-                    URL ne može biti duži od 500 karaktera
                   </mat-error>
                 </mat-form-field>
 

@@ -162,6 +162,9 @@ public class SecurityConfig {
                         // User endpoints - must come before catch-all rules
                         .requestMatchers("/api/users/me").authenticated()
                         .requestMatchers(HttpMethod.PATCH, "/api/users/me").authenticated()
+                        // Profile picture upload/delete endpoints
+                        .requestMatchers(HttpMethod.POST, "/api/users/me/profile-picture").authenticated()
+                        .requestMatchers(HttpMethod.DELETE, "/api/users/me/profile-picture").authenticated()
                         .requestMatchers("/api/users/profile", "/api/users/profile/details").authenticated()
                         .requestMatchers(HttpMethod.PATCH, "/api/users/profile").authenticated()
                         // Bookings user endpoints - must come before internal service rules

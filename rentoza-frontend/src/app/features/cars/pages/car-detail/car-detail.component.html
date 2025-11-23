@@ -390,32 +390,20 @@
             </div>
             <div class="owner-details">
               <p class="owner-name">{{ vm.car.ownerFirstName }} {{ vm.car.ownerLastInitial }}</p>
-              <p class="owner-meta" style="color: #717171; font-size: 14px; margin: 4px 0">
+              <p class="owner-meta">
                 {{ vm.car.ownerJoinDate }}
               </p>
-              <div
-                class="owner-stats"
-                style="display: flex; gap: 16px; font-size: 14px; color: #222"
-              >
+              <div class="owner-stats">
                 <span *ngIf="vm.car.ownerRating">
                   {{ vm.car.ownerRating | number : '1.1-1' }}
-                  <mat-icon
-                    style="
-                      font-size: 14px;
-                      width: 14px;
-                      height: 14px;
-                      vertical-align: middle;
-                      color: #ff385c;
-                    "
-                    >star</mat-icon
-                  >
+                  <mat-icon class="star-icon">star</mat-icon>
                 </span>
                 <span *ngIf="vm.car.ownerTripCount !== undefined">
                   {{ vm.car.ownerTripCount }} putovanja
                 </span>
               </div>
             </div>
-            <mat-icon style="margin-left: auto; color: #717171">chevron_right</mat-icon>
+            <mat-icon class="chevron-icon">chevron_right</mat-icon>
           </div>
         </mat-card-content>
       </mat-card>

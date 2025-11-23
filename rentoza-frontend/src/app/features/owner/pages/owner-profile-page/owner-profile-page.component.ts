@@ -7,11 +7,15 @@ import { MatCardModule } from '@angular/material/card';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import {
   OwnerPublicService,
   OwnerPublicProfile,
 } from '../../../../core/services/owner-public.service';
+import { AuthService } from '@core/auth/auth.service';
 import { AvailabilityFilterDialogComponent } from '../../dialogs/availability-filter-dialog/availability-filter-dialog.component';
+import { ProfilePictureUploaderComponent } from '@shared/components/profile-picture-uploader/profile-picture-uploader.component';
 
 @Component({
   selector: 'app-owner-profile-page',
@@ -25,6 +29,9 @@ import { AvailabilityFilterDialogComponent } from '../../dialogs/availability-fi
     MatProgressSpinnerModule,
     MatChipsModule,
     MatDialogModule,
+    MatSnackBarModule,
+    MatTooltipModule,
+    ProfilePictureUploaderComponent,
   ],
   templateUrl: './owner-profile-page.component.html',
   styleUrls: ['./owner-profile-page.component.scss'],
@@ -33,11 +40,16 @@ export class OwnerProfilePageComponent implements OnInit {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private ownerService = inject(OwnerPublicService);
+  private authService = inject(AuthService);
   private dialog = inject(MatDialog);
+  private snackBar = inject(MatSnackBar);
 
   profile = signal<OwnerPublicProfile | null>(null);
   loading = signal<boolean>(true);
   error = signal<string | null>(null);
+
+  /** Whether the current user is viewing their own profile */
+  isOwnProfile = signal<boolean>(false);
 
   ownerId: number | null = null;
   filterStart = signal<string | null>(null);
@@ -48,6 +60,12 @@ export class OwnerProfilePageComponent implements OnInit {
       const id = params.get('id');
       if (id) {
         this.ownerId = Number(id);
+
+        // Check if viewing own profile
+        const currentUser = this.authService.getCurrentUser();
+        if (currentUser && Number(currentUser.id) === this.ownerId) {
+          this.isOwnProfile.set(true);
+        }
 
         this.route.queryParams.subscribe((queryParams) => {
           const start = queryParams['start'];
@@ -103,5 +121,68 @@ export class OwnerProfilePageComponent implements OnInit {
       queryParams: { start: null, end: null },
       queryParamsHandling: 'merge',
     });
+  }
+
+  /**
+   * Handle successful avatar upload (only for own profile)
+   */
+  onAvatarUploaded(newAvatarUrl: string): void {
+    // Update global user state
+    this.authService.updateCurrentUserAvatar(newAvatarUrl);
+
+    // Update local profile display
+    const currentProfile = this.profile();
+    if (currentProfile) {
+      this.profile.set({
+        ...currentProfile,
+        avatarUrl: newAvatarUrl,
+      });
+    }
+
+    this.snackBar.open('Profilna slika uspešno postavljena.', 'Zatvori', {
+      duration: 3000,
+      panelClass: ['snackbar-success'],
+    });
+  }
+
+  /**
+   * Handle avatar upload error
+   */
+  onAvatarUploadError(errorMessage: string): void {
+    this.snackBar.open(errorMessage, 'Zatvori', {
+      duration: 5000,
+      panelClass: ['snackbar-error'],
+    });
+  }
+
+  /**
+   * Handle avatar deletion (only for own profile)
+   */
+  onAvatarDeleted(): void {
+    // Update global user state
+    this.authService.updateCurrentUserAvatar(null);
+
+    // Update local profile display - set to empty string to clear avatar
+    const currentProfile = this.profile();
+    if (currentProfile) {
+      this.profile.set({
+        ...currentProfile,
+        avatarUrl: '',
+      });
+    }
+
+    this.snackBar.open('Profilna slika obrisana.', 'Zatvori', {
+      duration: 3000,
+      panelClass: ['snackbar-success'],
+    });
+  }
+
+  /**
+   * Get owner initials for avatar fallback
+   */
+  getOwnerInitials(): string {
+    const profile = this.profile();
+    if (!profile) return '?';
+    return `${profile.firstName?.charAt(0) ?? ''}${profile.lastName?.charAt(0) ?? ''}`.toUpperCase() || '?';
   }
 }

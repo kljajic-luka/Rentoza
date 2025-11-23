@@ -1,0 +1,114 @@
+<div
+  class="profile-picture-uploader"
+  (dragover)="onDragOver($event)"
+  (drop)="onDrop($event)"
+  role="region"
+  aria-label="Postavljanje profilne slike"
+>
+  <!-- Current/Preview Avatar Display -->
+  <div class="avatar-display" [style.width.px]="avatarSize" [style.height.px]="avatarSize">
+    <ng-container *ngIf="displayAvatarUrl; else initialsTemplate">
+      <img
+        [src]="displayAvatarUrl"
+        [alt]="userInitials ? 'Avatar korisnika ' + userInitials : 'Profilna slika'"
+        class="avatar-image"
+        [class.preview]="previewUrl()"
+      />
+    </ng-container>
+
+    <ng-template #initialsTemplate>
+      <div class="avatar-initials">
+        <span>{{ userInitials || '?' }}</span>
+      </div>
+    </ng-template>
+
+    <!-- Upload overlay button (when not in preview mode) -->
+    <button
+      *ngIf="!selectedFile() && !isUploading()"
+      mat-mini-fab
+      color="primary"
+      class="upload-trigger-btn"
+      (click)="openFileDialog()"
+      [matTooltip]="hasAvatar ? 'Promeni sliku' : 'Dodaj sliku'"
+      aria-label="Izaberi profilnu sliku"
+    >
+      <mat-icon>{{ hasAvatar ? 'edit' : 'add_a_photo' }}</mat-icon>
+    </button>
+
+    <!-- Loading overlay -->
+    <div *ngIf="isUploading()" class="loading-overlay">
+      <mat-progress-spinner mode="indeterminate" diameter="40"></mat-progress-spinner>
+    </div>
+  </div>
+
+  <!-- Hidden file input -->
+  <input
+    #fileInput
+    type="file"
+    [accept]="acceptTypes"
+    (change)="onFileSelected($event)"
+    class="file-input-hidden"
+    aria-hidden="true"
+  />
+
+  <!-- Preview Actions Panel -->
+  <div *ngIf="selectedFile() && !isUploading()" class="preview-actions" role="group" aria-label="Opcije za sliku">
+    <p class="preview-label">Pregled nove slike</p>
+
+    <div class="action-buttons">
+      <button
+        mat-raised-button
+        color="primary"
+        (click)="uploadProfilePicture()"
+        [disabled]="isUploading()"
+        aria-label="Postavi sliku"
+      >
+        <mat-icon>cloud_upload</mat-icon>
+        Postavi
+      </button>
+
+      <button
+        mat-button
+        (click)="cancelSelection()"
+        [disabled]="isUploading()"
+        aria-label="Otkaži izbor"
+      >
+        Otkaži
+      </button>
+    </div>
+  </div>
+
+  <!-- Uploading State -->
+  <div *ngIf="isUploading()" class="uploading-state" role="status" aria-live="polite">
+    <p>Postavljanje slike...</p>
+  </div>
+
+  <!-- Error Message -->
+  <div
+    *ngIf="uploadError()"
+    class="error-message"
+    role="alert"
+    aria-live="assertive"
+  >
+    <mat-icon>error_outline</mat-icon>
+    <span>{{ uploadError() }}</span>
+  </div>
+
+  <!-- Help Text -->
+  <p *ngIf="!selectedFile() && !isUploading()" class="help-text">
+    JPEG, PNG ili WebP (max {{ maxSizeMB }}MB)
+  </p>
+
+  <!-- Delete Button (when avatar exists and not in preview/upload mode) -->
+  <button
+    *ngIf="currentAvatarUrl && !selectedFile() && !isUploading()"
+    mat-button
+    color="warn"
+    class="delete-btn"
+    (click)="deleteCurrentPicture()"
+    aria-label="Obriši profilnu sliku"
+  >
+    <mat-icon>delete</mat-icon>
+    Obriši sliku
+  </button>
+</div>

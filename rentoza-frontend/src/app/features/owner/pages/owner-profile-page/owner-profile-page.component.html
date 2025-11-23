@@ -2,11 +2,26 @@
   <!-- Header Section -->
   <div class="profile-header">
     <div class="avatar-section">
-      <img
-        [src]="owner.avatarUrl || 'assets/images/default-avatar.png'"
-        alt="{{ owner.firstName }}"
-        class="avatar"
-      />
+      <!-- Show editable uploader for own profile, static avatar for others -->
+      <ng-container *ngIf="isOwnProfile(); else staticAvatar">
+        <app-profile-picture-uploader
+          [currentAvatarUrl]="owner.avatarUrl"
+          [userInitials]="getOwnerInitials()"
+          [avatarSize]="150"
+          (uploaded)="onAvatarUploaded($event)"
+          (error)="onAvatarUploadError($event)"
+          (deleted)="onAvatarDeleted()"
+        ></app-profile-picture-uploader>
+      </ng-container>
+
+      <ng-template #staticAvatar>
+        <img
+          [src]="owner.avatarUrl || 'assets/images/default-avatar.png'"
+          alt="{{ owner.firstName }}"
+          class="avatar"
+        />
+      </ng-template>
+
       <div class="superhost-badge" *ngIf="owner.isSuperHost">
         <mat-icon>verified</mat-icon> Super Domaćin
       </div>

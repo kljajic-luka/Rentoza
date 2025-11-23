@@ -645,11 +645,37 @@
       color: var(--color-text-primary);
     }
 
+    .owner-meta {
+      margin: 4px 0;
+      font-size: 14px;
+      color: var(--color-text-muted);
+    }
+
+    .owner-stats {
+      display: flex;
+      gap: 16px;
+      font-size: 14px;
+      color: var(--color-text-primary);
+
+      .star-icon {
+        font-size: 14px;
+        width: 14px;
+        height: 14px;
+        vertical-align: middle;
+        color: #ff385c;
+      }
+    }
+
     .owner-email {
       margin: 0;
       font-size: 0.9rem;
       color: var(--color-text-muted);
     }
+  }
+
+  .chevron-icon {
+    margin-left: auto;
+    color: var(--color-text-muted);
   }
 }
 

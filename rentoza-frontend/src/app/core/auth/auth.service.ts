@@ -403,6 +403,35 @@ export class AuthService {
     }
   }
 
+  /**
+   * Update the current user's avatar URL in both memory and localStorage.
+   * Called after successful profile picture upload/delete.
+   *
+   * @param avatarUrl The new avatar URL (or null to remove)
+   */
+  updateCurrentUserAvatar(avatarUrl: string | null): void {
+    const currentUser = this.currentUserSubject.value;
+
+    if (!currentUser) {
+      console.warn('⚠️ Cannot update avatar: no current user');
+      return;
+    }
+
+    // Create updated user with new avatar URL
+    const updatedUser: UserProfile = {
+      ...currentUser,
+      avatarUrl: avatarUrl ?? undefined,
+    };
+
+    // Update observable
+    this.currentUserSubject.next(updatedUser);
+
+    // Update localStorage
+    localStorage.setItem('current_user', JSON.stringify(updatedUser));
+
+    console.log('✅ Avatar URL updated in user state:', avatarUrl);
+  }
+
   clearSession(): void {
     this.accessTokenSubject.next(null);
     this.currentUserSubject.next(null);

@@ -32,10 +32,11 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
     private final UserDetailsService userDetailsService;
-    private static final List<String> OAUTH2_ENDPOINT_PREFIXES = List.of(
+    private static final List<String> PUBLIC_ENDPOINT_PREFIXES = List.of(
             "/login/oauth2",
             "/oauth2",
-            "/login"
+            "/login",
+            "/uploads"
     );
 
     public JwtAuthFilter(JwtUtil jwtUtil, UserDetailsService userDetailsService) {
@@ -174,10 +175,10 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         // - /login (traditional form login - if enabled)
         //
         // All other authenticated endpoints (/api/**) SHOULD use JWT authentication
-        boolean shouldSkip = OAUTH2_ENDPOINT_PREFIXES.stream().anyMatch(path::startsWith);
+        boolean shouldSkip = PUBLIC_ENDPOINT_PREFIXES.stream().anyMatch(path::startsWith);
 
         if (shouldSkip) {
-            log.trace("Skipping JWT filter for OAuth2 endpoint: {}", path);
+            log.trace("Skipping JWT filter for public endpoint: {}", path);
         }
 
         return shouldSkip;

@@ -58,7 +58,7 @@ public class BookingController {
      */
     @PostMapping
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<?> createBooking(@RequestBody BookingRequestDTO dto, @RequestHeader("Authorization") String authHeader) {
+    public ResponseEntity<?> createBooking(@jakarta.validation.Valid @RequestBody BookingRequestDTO dto, @RequestHeader("Authorization") String authHeader) {
         try {
             Booking booking = service.createBooking(dto, authHeader);
             return ResponseEntity.ok(new BookingResponseDTO(booking));

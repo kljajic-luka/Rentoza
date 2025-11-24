@@ -387,9 +387,13 @@ export class CarService {
    */
   toggleAvailability(id: string, available: boolean): Observable<Car> {
     return this.http
-      .patch<any>(`${this.baseUrl}/${id}/availability`, { available }, {
-        withCredentials: true,
-      })
+      .patch<any>(
+        `${this.baseUrl}/${id}/availability`,
+        { available },
+        {
+          withCredentials: true,
+        }
+      )
       .pipe(map((car) => this.mapBackendCarToFrontend(car)));
   }
 }

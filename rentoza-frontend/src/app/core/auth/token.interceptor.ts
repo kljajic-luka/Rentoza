@@ -24,18 +24,13 @@ const enrichRequest = (
   const context = markRetried ? request.context.set(RETRIED_REQUEST, true) : request.context;
   let cloned = request.clone({
     withCredentials: true,
-    context
+    context,
   });
 
   const headersToApply: Record<string, string> = {};
 
   const shouldAttachAuthHeader =
-    !skipAuth &&
-    token &&
-    (
-      !environment.auth?.useCookies ||
-      isCrossOriginRequest(request.url)
-    );
+    !skipAuth && token && (!environment.auth?.useCookies || isCrossOriginRequest(request.url));
 
   if (shouldAttachAuthHeader) {
     headersToApply['Authorization'] = `Bearer ${token}`;
@@ -74,7 +69,11 @@ const shouldAttachXsrfHeader = (request: Parameters<HttpInterceptorFn>[0]): bool
     return false;
   }
 
-  if (request.method === 'GET' || request.method === 'HEAD' || request.headers.has(XSRF_HEADER_NAME)) {
+  if (
+    request.method === 'GET' ||
+    request.method === 'HEAD' ||
+    request.headers.has(XSRF_HEADER_NAME)
+  ) {
     return false;
   }
 

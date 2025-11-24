@@ -448,7 +448,11 @@ export class AuthService {
       const decodedPayload = this.jwtHelper.decodeToken(accessToken) as Record<string, unknown>;
       const rolesFromToken = this.extractRoles(decodedPayload);
       const singleRole = (user as any)?.role ?? decodedPayload['role'];
-      const effectiveRoles = rolesFromToken.length ? rolesFromToken : singleRole ? [singleRole] : [];
+      const effectiveRoles = rolesFromToken.length
+        ? rolesFromToken
+        : singleRole
+        ? [singleRole]
+        : [];
 
       const completeUser: UserProfile = {
         ...user,
@@ -498,8 +502,8 @@ export class AuthService {
     const normalizedRoles: UserRole[] = Array.isArray(response.roles)
       ? (response.roles as UserRole[])
       : typeof response.roles === 'string'
-        ? (response.roles.split(',') as UserRole[])
-        : [];
+      ? (response.roles.split(',') as UserRole[])
+      : [];
 
     return {
       id: String(response.id),

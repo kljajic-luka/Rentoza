@@ -27,10 +27,7 @@ describe('AuthService (cookie-mode session)', () => {
 
     TestBed.configureTestingModule({
       imports: [HttpClientTestingModule],
-      providers: [
-        AuthService,
-        { provide: JwtHelperService, useValue: jwtHelperMock },
-      ],
+      providers: [AuthService, { provide: JwtHelperService, useValue: jwtHelperMock }],
     });
 
     service = TestBed.inject(AuthService);

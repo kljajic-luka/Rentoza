@@ -1,6 +1,6 @@
 package org.example.rentoza.file;
 
-import org.example.rentoza.security.JwtUtil;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -13,26 +13,22 @@ import java.util.Map;
 public class FileController {
 
     private final FileStorageService fileStorageService;
-    private final JwtUtil jwtUtil;
-
-    public FileController(FileStorageService fileStorageService, JwtUtil jwtUtil) {
+    
+    public FileController(FileStorageService fileStorageService) {
         this.fileStorageService = fileStorageService;
-        this.jwtUtil = jwtUtil;
     }
 
     @PostMapping("/upload")
+    @org.springframework.security.access.prepost.PreAuthorize("isAuthenticated()")
     public ResponseEntity<?> uploadFile(
             @RequestParam("file") MultipartFile file,
-            @RequestHeader(value = "Authorization", required = false) String authHeader
+            @org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal
     ) {
         try {
-            // Verify authentication
-            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            // Verify authentication (handled by PreAuthorize, but double check if needed)
+            if (principal == null) {
                 return ResponseEntity.status(401).body(Map.of("error", "Authentication required"));
             }
-
-            String token = authHeader.substring(7);
-            String email = jwtUtil.getEmailFromToken(token);
 
             // Validate file is not empty
             if (file == null || file.isEmpty()) {

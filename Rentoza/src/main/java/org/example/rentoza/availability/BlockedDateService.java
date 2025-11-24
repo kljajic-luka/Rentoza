@@ -8,7 +8,7 @@ import org.example.rentoza.booking.BookingRepository;
 import org.example.rentoza.car.Car;
 import org.example.rentoza.car.CarRepository;
 import org.example.rentoza.exception.ResourceNotFoundException;
-import org.example.rentoza.security.JwtUtil;
+
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
 import org.springframework.stereotype.Service;
@@ -29,20 +29,18 @@ public class BlockedDateService {
     private final CarRepository carRepository;
     private final UserRepository userRepository;
     private final BookingRepository bookingRepository;
-    private final JwtUtil jwtUtil;
+
 
     public BlockedDateService(
             BlockedDateRepository blockedDateRepository,
             CarRepository carRepository,
             UserRepository userRepository,
-            BookingRepository bookingRepository,
-            JwtUtil jwtUtil
+            BookingRepository bookingRepository
     ) {
         this.blockedDateRepository = blockedDateRepository;
         this.carRepository = carRepository;
         this.userRepository = userRepository;
         this.bookingRepository = bookingRepository;
-        this.jwtUtil = jwtUtil;
     }
 
     /**
@@ -69,10 +67,7 @@ public class BlockedDateService {
      * - No overlap with other blocked ranges
      */
     @Transactional
-    public BlockedDateResponseDTO blockDateRange(BlockDateRequestDTO request, String authHeader) {
-        // Extract user from JWT
-        String token = authHeader.substring(7);
-        String ownerEmail = jwtUtil.getEmailFromToken(token);
+    public BlockedDateResponseDTO blockDateRange(BlockDateRequestDTO request, String ownerEmail) {
 
         User owner = userRepository.findByEmail(ownerEmail)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
@@ -133,10 +128,7 @@ public class BlockedDateService {
      * Only the car owner can unblock their own dates.
      */
     @Transactional
-    public void unblockDateRange(Long blockId, String authHeader) {
-        // Extract user from JWT
-        String token = authHeader.substring(7);
-        String ownerEmail = jwtUtil.getEmailFromToken(token);
+    public void unblockDateRange(Long blockId, String ownerEmail) {
 
         User owner = userRepository.findByEmail(ownerEmail)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));

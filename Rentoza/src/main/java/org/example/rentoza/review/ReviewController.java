@@ -5,7 +5,7 @@ import org.example.rentoza.review.dto.ReviewRequestDTO;
 import org.example.rentoza.review.dto.ReviewResponseDTO;
 import org.example.rentoza.review.dto.RenterReviewRequestDTO;
 import org.example.rentoza.review.dto.OwnerReviewRequestDTO;
-import org.example.rentoza.security.JwtUtil;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -17,28 +17,18 @@ import java.util.Map;
 public class ReviewController {
 
     private final ReviewService service;
-    private final JwtUtil jwtUtil;
-
-    public ReviewController(ReviewService service, JwtUtil jwtUtil) {
+    
+    public ReviewController(ReviewService service) {
         this.service = service;
-        this.jwtUtil = jwtUtil;
     }
 
     @PostMapping
     public ResponseEntity<?> addReview(
             @RequestBody @Valid ReviewRequestDTO dto,
-            @RequestHeader("Authorization") String authHeader
+            @org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal
     ) {
         try {
-            // ✅ Extract JWT token from header
-            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-                return ResponseEntity.status(401).body(Map.of("error", "Missing or invalid Authorization header"));
-            }
-
-            String token = authHeader.substring(7);
-            String reviewerEmail = jwtUtil.getEmailFromToken(token);
-
-            Review saved = service.addReview(dto, reviewerEmail);
+            Review saved = service.addReview(dto, principal.getUsername());
             return ResponseEntity.ok(saved);
 
         } catch (RuntimeException e) {
@@ -68,19 +58,11 @@ public class ReviewController {
     @PostMapping("/from-renter")
     public ResponseEntity<?> createRenterReview(
             @RequestBody @Valid RenterReviewRequestDTO dto,
-            @RequestHeader("Authorization") String authHeader
+            @org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal
     ) {
         try {
-            // Extract JWT token from header
-            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-                return ResponseEntity.status(401).body(Map.of("error", "Missing or invalid Authorization header"));
-            }
-
-            String token = authHeader.substring(7);
-            String renterEmail = jwtUtil.getEmailFromToken(token);
-
             // Create review with full security validation
-            Review saved = service.createRenterReview(dto, renterEmail);
+            Review saved = service.createRenterReview(dto, principal.getUsername());
 
             return ResponseEntity.ok(Map.of(
                     "id", saved.getId(),
@@ -109,19 +91,11 @@ public class ReviewController {
     @PostMapping("/from-owner")
     public ResponseEntity<?> createOwnerReview(
             @RequestBody @Valid OwnerReviewRequestDTO dto,
-            @RequestHeader("Authorization") String authHeader
+            @org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal
     ) {
         try {
-            // Extract JWT token from header
-            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-                return ResponseEntity.status(401).body(Map.of("error", "Missing or invalid Authorization header"));
-            }
-
-            String token = authHeader.substring(7);
-            String ownerEmail = jwtUtil.getEmailFromToken(token);
-
             // Create review with full security validation
-            Review saved = service.createOwnerReview(dto, ownerEmail);
+            Review saved = service.createOwnerReview(dto, principal.getUsername());
 
             return ResponseEntity.ok(Map.of(
                     "id", saved.getId(),
@@ -148,19 +122,12 @@ public class ReviewController {
      * Requires authentication to prevent anonymous scraping
      */
     @GetMapping("/received/{email}")
+    @org.springframework.security.access.prepost.PreAuthorize("isAuthenticated()")
     public ResponseEntity<?> getReceivedReviews(
             @PathVariable String email,
-            @RequestHeader(value = "Authorization", required = false) String authHeader
+            @org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal
     ) {
         try {
-            // Verify authentication to prevent anonymous access
-            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-                return ResponseEntity.status(401).body(Map.of("error", "Authentication required"));
-            }
-
-            String token = authHeader.substring(7);
-            jwtUtil.getEmailFromToken(token); // Validate token
-
             return ResponseEntity.ok(service.getReviewsReceivedByEmail(email));
         } catch (RuntimeException e) {
             return ResponseEntity.status(401).body(Map.of("error", "Invalid token"));
@@ -173,19 +140,12 @@ public class ReviewController {
      * Requires authentication to prevent anonymous scraping
      */
     @GetMapping("/from-owner/{email}")
+    @org.springframework.security.access.prepost.PreAuthorize("isAuthenticated()")
     public ResponseEntity<?> getReviewsFromOwner(
             @PathVariable String email,
-            @RequestHeader(value = "Authorization", required = false) String authHeader
+            @org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal
     ) {
         try {
-            // Verify authentication to prevent anonymous access
-            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-                return ResponseEntity.status(401).body(Map.of("error", "Authentication required"));
-            }
-
-            String token = authHeader.substring(7);
-            jwtUtil.getEmailFromToken(token); // Validate token
-
             return ResponseEntity.ok(service.getReviewsGivenByOwner(email));
         } catch (RuntimeException e) {
             return ResponseEntity.status(401).body(Map.of("error", "Invalid token"));

@@ -4,7 +4,7 @@ import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
 import org.example.rentoza.security.CurrentUser;
 import org.example.rentoza.security.JwtUserPrincipal;
-import org.example.rentoza.security.JwtUtil;
+
 import org.example.rentoza.user.dto.*;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -19,64 +19,12 @@ public class UserController {
 
     private final UserService service;
     private final ProfileService profileService;
-    private final JwtUtil jwtUtil;
     private final CurrentUser currentUser;
 
-    public UserController(UserService service, ProfileService profileService, JwtUtil jwtUtil, CurrentUser currentUser) {
+    public UserController(UserService service, ProfileService profileService, CurrentUser currentUser) {
         this.service = service;
         this.profileService = profileService;
-        this.jwtUtil = jwtUtil;
         this.currentUser = currentUser;
-    }
-
-    // ✅ REGISTER
-    @PostMapping("/register")
-    public ResponseEntity<?> register(@Valid @RequestBody UserRegisterDTO dto) {
-        try {
-            User user = service.register(dto);
-            return ResponseEntity.ok(new UserResponseDTO(
-                    user.getId(),
-                    user.getFirstName(),
-                    user.getLastName(),
-                    user.getEmail(),
-                    user.getPhone(),
-                    user.getAge(),
-                    user.getRole().name()
-            ));
-        } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
-        }
-    }
-
-    // ✅ LOGIN
-    @PostMapping("/login")
-    public ResponseEntity<?> login(@Valid @RequestBody UserLoginDTO dto) {
-        var userOpt = service.getUserByEmail(dto.getEmail());
-        if (userOpt.isEmpty()) {
-            return ResponseEntity.status(401).body(Map.of("error", "User not found"));
-        }
-
-        var user = userOpt.get();
-        if (!service.passwordMatches(dto.getPassword(), user.getPassword())) {
-            return ResponseEntity.status(401).body(Map.of("error", "Invalid credentials"));
-        }
-
-        String token = jwtUtil.generateToken(user.getEmail(), user.getRole().name());
-
-        // ✅ Build proper UserResponseDTO
-        UserResponseDTO userResponse = new UserResponseDTO(
-                user.getId(),
-                user.getFirstName(),
-                user.getLastName(),
-                user.getEmail(),
-                user.getPhone(),
-                user.getAge(),
-                user.getRole().name()
-        );
-
-        // ✅ Pass UserResponseDTO instead of String
-        AuthResponseDTO response = new AuthResponseDTO(token, null, userResponse);
-        return ResponseEntity.ok(response);
     }
 
     /**
@@ -120,17 +68,11 @@ public class UserController {
 
     @PatchMapping("/profile")
     public ResponseEntity<?> updateProfile(
-            @RequestHeader("Authorization") String authHeader,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal,
             @Valid @RequestBody UserProfileDTO dto
     ) {
         try {
-            String email = extractEmail(authHeader);
-
-            if (email == null) {
-                return ResponseEntity.status(401).body(Map.of("error", "Invalid token"));
-            }
-
-            User updated = service.updateProfile(email, dto);
+            User updated = service.updateProfile(principal.getUsername(), dto);
 
             return ResponseEntity.ok(new UserResponseDTO(
                     updated.getId(),
@@ -153,20 +95,18 @@ public class UserController {
     }
 
     @GetMapping("/profile")
-    public ResponseEntity<?> getProfileSummary(@RequestHeader("Authorization") String authHeader) {
+    public ResponseEntity<?> getProfileSummary(@org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal) {
         try {
-            String email = extractEmail(authHeader);
-            return ResponseEntity.ok(profileService.getProfileSummary(email));
+            return ResponseEntity.ok(profileService.getProfileSummary(principal.getUsername()));
         } catch (RuntimeException e) {
             return ResponseEntity.status(401).body(Map.of("error", e.getMessage()));
         }
     }
 
     @GetMapping("/profile/details")
-    public ResponseEntity<?> getProfileDetails(@RequestHeader("Authorization") String authHeader) {
+    public ResponseEntity<?> getProfileDetails(@org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal) {
         try {
-            String email = extractEmail(authHeader);
-            return ResponseEntity.ok(profileService.getProfileDetails(email));
+            return ResponseEntity.ok(profileService.getProfileDetails(principal.getUsername()));
         } catch (RuntimeException e) {
             return ResponseEntity.status(401).body(Map.of("error", e.getMessage()));
         }
@@ -179,15 +119,14 @@ public class UserController {
      */
     @PatchMapping("/me")
     public ResponseEntity<?> updateMyProfile(
-            @RequestHeader("Authorization") String authHeader,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal,
             @Valid @RequestBody UpdateProfileRequestDTO dto
     ) {
         try {
-            String email = extractEmail(authHeader);
-            User updated = service.updateProfileSecure(email, dto);
+            User updated = service.updateProfileSecure(principal.getUsername(), dto);
 
             // Return updated ProfileDetailsDTO to refresh frontend state
-            ProfileDetailsDTO details = profileService.getProfileDetails(email);
+            ProfileDetailsDTO details = profileService.getProfileDetails(principal.getUsername());
             return ResponseEntity.ok(details);
 
         } catch (UserService.BadRequestException e) {
@@ -222,11 +161,5 @@ public class UserController {
         }
     }
 
-    private String extractEmail(String authHeader) {
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            throw new RuntimeException("Missing or invalid token");
-        }
-        String token = authHeader.substring(7);
-        return jwtUtil.getEmailFromToken(token);
-    }
+
 }

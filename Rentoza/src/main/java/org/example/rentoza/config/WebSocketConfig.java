@@ -42,14 +42,17 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         config.setUserDestinationPrefix("/user");
     }
 
+    private final WebSocketAuthInterceptor authInterceptor;
+
     /**
      * Register STOMP endpoints for WebSocket connections.
-     * Endpoint: /ws with SockJS fallback support.
+     * Endpoint: /ws with SockJS fallback support and JWT authentication.
      */
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         registry.addEndpoint("/ws")
                 .setAllowedOrigins(allowedOrigins.split(","))
+                .addInterceptors(authInterceptor)
                 .withSockJS();
     }
 }

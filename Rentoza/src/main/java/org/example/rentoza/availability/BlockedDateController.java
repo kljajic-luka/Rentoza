@@ -66,12 +66,13 @@ public class BlockedDateController {
      * @return The created blocked date range
      */
     @PostMapping("/block")
+    @PreAuthorize("hasRole('OWNER')")
     public ResponseEntity<?> blockDateRange(
             @Valid @RequestBody BlockDateRequestDTO request,
-            @RequestHeader("Authorization") String authHeader
+            @org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal
     ) {
         try {
-            BlockedDateResponseDTO blockedDate = blockedDateService.blockDateRange(request, authHeader);
+            BlockedDateResponseDTO blockedDate = blockedDateService.blockDateRange(request, principal.getUsername());
             log.info("Successfully blocked dates for car {}: {} to {}",
                     request.getCarId(), request.getStartDate(), request.getEndDate());
             return ResponseEntity.status(HttpStatus.CREATED).body(blockedDate);
@@ -95,12 +96,13 @@ public class BlockedDateController {
      * @return 204 No Content on success
      */
     @DeleteMapping("/block/{blockId}")
+    @PreAuthorize("hasRole('OWNER')")
     public ResponseEntity<?> unblockDateRange(
             @PathVariable Long blockId,
-            @RequestHeader("Authorization") String authHeader
+            @org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal
     ) {
         try {
-            blockedDateService.unblockDateRange(blockId, authHeader);
+            blockedDateService.unblockDateRange(blockId, principal.getUsername());
             log.info("Successfully unblocked date range {}", blockId);
             return ResponseEntity.noContent().build();
         } catch (IllegalStateException e) {

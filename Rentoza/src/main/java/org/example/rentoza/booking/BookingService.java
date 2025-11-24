@@ -15,7 +15,7 @@ import org.example.rentoza.notification.dto.CreateNotificationRequestDTO;
 import org.example.rentoza.review.Review;
 import org.example.rentoza.review.ReviewDirection;
 import org.example.rentoza.review.ReviewRepository;
-import org.example.rentoza.security.JwtUtil;
+
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
 import org.hibernate.Hibernate;
@@ -36,7 +36,6 @@ public class BookingService {
     private final CarRepository carRepo;
     private final UserRepository userRepo;
     private final ReviewRepository reviewRepo;
-    private final JwtUtil jwtUtil;
     private final ChatServiceClient chatServiceClient;
     private final NotificationService notificationService;
     private final org.example.rentoza.security.CurrentUser currentUser;
@@ -51,22 +50,19 @@ public class BookingService {
     private int expiryHours;
 
     public BookingService(BookingRepository repo, CarRepository carRepo, UserRepository userRepo,
-                          ReviewRepository reviewRepo, JwtUtil jwtUtil, ChatServiceClient chatServiceClient,
+                          ReviewRepository reviewRepo, ChatServiceClient chatServiceClient,
                           NotificationService notificationService, org.example.rentoza.security.CurrentUser currentUser) {
         this.repo = repo;
         this.carRepo = carRepo;
         this.userRepo = userRepo;
         this.reviewRepo = reviewRepo;
-        this.jwtUtil = jwtUtil;
         this.chatServiceClient = chatServiceClient;
         this.notificationService = notificationService;
         this.currentUser = currentUser;
     }
 
     @Transactional
-    public Booking createBooking(BookingRequestDTO dto, String authHeader) {
-        String token = authHeader.substring(7);
-        String renterEmail = jwtUtil.getEmailFromToken(token);
+    public Booking createBooking(BookingRequestDTO dto, String renterEmail) {
 
         User renter = userRepo.findByEmail(renterEmail)
                 .orElseThrow(() -> new RuntimeException("User not found"));
@@ -144,7 +140,7 @@ public class BookingService {
                     savedBooking.getId(), renter.getId(), car.getId(), savedBooking.getDecisionDeadlineAt());
         } else {
             // Legacy instant booking: Create chat and send confirmed notifications
-            createChatConversationForInstantBooking(savedBooking, renter, car, token);
+            createChatConversationForInstantBooking(savedBooking, renter, car);
             sendInstantBookingNotifications(savedBooking, renter, car);
             log.info("Instant booking created: bookingId={}, renterId={}, carId={}",
                     savedBooking.getId(), renter.getId(), car.getId());
@@ -396,9 +392,7 @@ public class BookingService {
     }
 
     @Transactional
-    public List<UserBookingResponseDTO> getMyBookings(String authHeader) {
-        String token = authHeader.substring(7);
-        String userEmail = jwtUtil.getEmailFromToken(token);
+    public List<UserBookingResponseDTO> getMyBookings(String userEmail) {
 
         User user = userRepo.findByEmail(userEmail)
                 .orElseThrow(() -> new RuntimeException("User not found"));
@@ -622,10 +616,13 @@ public class BookingService {
      * Create chat conversation for instant booking (legacy workflow).
      * Conversation is created immediately for ACTIVE bookings.
      */
-    private void createChatConversationForInstantBooking(Booking booking, User renter, Car car, String token) {
+    private void createChatConversationForInstantBooking(Booking booking, User renter, Car car) {
         try {
             log.debug("Creating conversation for instant booking {} between renter {} and owner {}",
                     booking.getId(), renter.getId(), car.getOwner().getId());
+
+            // Retrieve token from SecurityContext (set by JwtAuthFilter)
+            String token = (String) org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getCredentials();
 
             chatServiceClient.createConversationAsync(
                     booking.getId().toString(),

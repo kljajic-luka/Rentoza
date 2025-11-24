@@ -7,7 +7,6 @@ import jakarta.validation.Valid;
 import org.example.rentoza.config.AppProperties;
 import org.example.rentoza.security.JwtUtil;
 import org.example.rentoza.user.User;
-import org.example.rentoza.user.UserRepository;
 import org.example.rentoza.user.UserService;
 import org.example.rentoza.user.dto.AuthResponseDTO;
 import org.example.rentoza.user.dto.UserLoginDTO;
@@ -19,6 +18,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.csrf.CsrfToken;
+import org.springframework.security.web.csrf.CsrfTokenRepository;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Duration;
@@ -37,27 +38,27 @@ public class AuthController {
     private static final String ACCESS_COOKIE = "access_token";
 
     private final UserService userService;
-    private final UserRepository userRepo;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final RefreshTokenServiceEnhanced refreshTokenService;
     private final AppProperties appProperties;
+    private final CsrfTokenRepository csrfTokenRepository;
     
     @Value("${jwt.expiration}")
     private long jwtExpirationMs;
 
     public AuthController(UserService userService,
-                          UserRepository userRepo,
                           PasswordEncoder passwordEncoder,
                           JwtUtil jwtUtil,
                           RefreshTokenServiceEnhanced refreshTokenService,
-                          AppProperties appProperties) {
+                          AppProperties appProperties,
+                          CsrfTokenRepository csrfTokenRepository) {
         this.userService = userService;
-        this.userRepo = userRepo;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
         this.refreshTokenService = refreshTokenService;
         this.appProperties = appProperties;
+        this.csrfTokenRepository = csrfTokenRepository;
     }
 
     /**
@@ -117,7 +118,9 @@ public class AuthController {
     }
 
     @PostMapping("/register")
-    public ResponseEntity<?> register(@Valid @RequestBody UserRegisterDTO dto, HttpServletRequest request) {
+    public ResponseEntity<?> register(@Valid @RequestBody UserRegisterDTO dto,
+                                      HttpServletRequest request,
+                                      HttpServletResponse res) {
         try {
             User user = userService.register(dto);
             String accessToken = jwtUtil.generateToken(user.getEmail(), user.getRole().name(), user.getId());
@@ -130,23 +133,16 @@ public class AuthController {
             ResponseCookie cookie = createRefreshTokenCookie(refreshRaw);
             ResponseCookie accessCookie = createAccessTokenCookie(accessToken);
 
-            UserResponseDTO userResponse = new UserResponseDTO(
-                    user.getId(),
-                    user.getFirstName(),
-                    user.getLastName(),
-                    user.getEmail(),
-                    user.getPhone(),
-                    user.getAge(),
-                    user.getRole().name()
-            );
+            res.addHeader("Set-Cookie", cookie.toString());
+            res.addHeader("Set-Cookie", accessCookie.toString());
+            ensureCsrfCookie(request, res);
+
+            UserResponseDTO userResponse = userService.toUserResponse(user);
 
             log.info("User registered successfully: email={}, role={}", user.getEmail(), user.getRole());
 
             AuthResponseDTO response = new AuthResponseDTO(accessToken, null, userResponse);
-            return ResponseEntity.ok()
-                    .header("Set-Cookie", cookie.toString())
-                    .header("Set-Cookie", accessCookie.toString())
-                    .body(response);
+            return ResponseEntity.ok(response);
 
         } catch (RuntimeException e) {
             log.warn("Registration failed: {}", e.getMessage());
@@ -186,16 +182,9 @@ public class AuthController {
         
         res.addHeader("Set-Cookie", cookie.toString());
         res.addHeader("Set-Cookie", accessCookie.toString());
+        ensureCsrfCookie(request, res);
 
-        UserResponseDTO userResponse = new UserResponseDTO(
-                user.getId(),
-                user.getFirstName(),
-                user.getLastName(),
-                user.getEmail(),
-                user.getPhone(),
-                user.getAge(),
-                user.getRole().name()
-        );
+        UserResponseDTO userResponse = userService.toUserResponse(user);
 
         log.info("User logged in successfully: email={}, role={}", user.getEmail(), user.getRole());
 
@@ -238,9 +227,13 @@ public class AuthController {
             
             res.addHeader("Set-Cookie", cookie.toString());
             res.addHeader("Set-Cookie", accessCookie.toString());
+            ensureCsrfCookie(request, res);
+
+            UserResponseDTO userResponse = userService.toUserResponse(user);
+            AuthResponseDTO response = new AuthResponseDTO(accessToken, null, userResponse);
 
             log.debug("Token refreshed successfully: email={}", result.email());
-            return ResponseEntity.ok(Map.of("accessToken", accessToken));
+            return ResponseEntity.ok(response);
 
         } catch (InvalidRefreshTokenException e) {
             // Standardized error response for token issues (401)
@@ -263,19 +256,10 @@ public class AuthController {
     }
 
     @PostMapping("/logout")
-    public ResponseEntity<?> logout(@RequestHeader(value = "Authorization", required = false) String authHeader,
+    public ResponseEntity<?> logout(@org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal,
                                     @CookieValue(value = REFRESH_COOKIE, required = false) String refreshCookie,
                                     HttpServletResponse res) {
-        String email = null;
-
-        // Extract email from access token
-        if (authHeader != null && authHeader.startsWith("Bearer ")) {
-            try {
-                email = jwtUtil.getEmailFromToken(authHeader.substring(7));
-            } catch (Exception e) {
-                log.warn("Invalid access token during logout: {}", e.getMessage());
-            }
-        }
+        String email = principal != null ? principal.getUsername() : null;
 
         // Revoke all refresh tokens for this user with audit trail
         if (email != null) {
@@ -291,5 +275,13 @@ public class AuthController {
         res.addHeader("Set-Cookie", clearedAccess.toString());
 
         return ResponseEntity.ok(Map.of("status", "logged_out"));
+    }
+
+    private void ensureCsrfCookie(HttpServletRequest request, HttpServletResponse response) {
+        CsrfToken token = csrfTokenRepository.loadToken(request);
+        if (token == null) {
+            token = csrfTokenRepository.generateToken(request);
+        }
+        csrfTokenRepository.saveToken(token, request, response);
     }
 }

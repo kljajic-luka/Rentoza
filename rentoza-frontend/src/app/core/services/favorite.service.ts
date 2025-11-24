@@ -26,13 +26,7 @@ export class FavoriteService {
   // Signal for favorite count
   public favoriteCount = signal<number>(0);
 
-  /**
-   * Get HTTP headers with Authorization token if available
-   */
-  private getAuthHeaders(): { [key: string]: string } {
-    const token = this.authService.getAccessToken();
-    return token ? { Authorization: `Bearer ${token}` } : {};
-  }
+
 
   /**
    * Load favorited car IDs for the authenticated user
@@ -41,7 +35,6 @@ export class FavoriteService {
   loadFavoritedCarIds(): Observable<number[]> {
     return this.http
       .get<number[]>(`${this.baseUrl}/car-ids`, {
-        headers: this.getAuthHeaders(),
         withCredentials: true,
       })
       .pipe(
@@ -60,7 +53,6 @@ export class FavoriteService {
    */
   getFavorites(): Observable<Favorite[]> {
     return this.http.get<Favorite[]>(this.baseUrl, {
-      headers: this.getAuthHeaders(),
       withCredentials: true,
     });
   }
@@ -81,7 +73,6 @@ export class FavoriteService {
         `${this.baseUrl}/${carId}`,
         {},
         {
-          headers: this.getAuthHeaders(),
           withCredentials: true,
         }
       )
@@ -106,7 +97,6 @@ export class FavoriteService {
 
     return this.http
       .delete<void>(`${this.baseUrl}/${carId}`, {
-        headers: this.getAuthHeaders(),
         withCredentials: true,
       })
       .pipe(
@@ -138,7 +128,6 @@ export class FavoriteService {
         `${this.baseUrl}/${carId}/toggle`,
         {},
         {
-          headers: this.getAuthHeaders(),
           withCredentials: true,
         }
       )
@@ -172,7 +161,6 @@ export class FavoriteService {
    */
   checkFavorite(carId: number): Observable<{ isFavorited: boolean }> {
     return this.http.get<{ isFavorited: boolean }>(`${this.baseUrl}/${carId}/check`, {
-      headers: this.getAuthHeaders(),
       withCredentials: true,
     });
   }
@@ -182,7 +170,6 @@ export class FavoriteService {
    */
   getCarFavoriteCount(carId: number): Observable<{ count: number }> {
     return this.http.get<{ count: number }>(`${this.baseUrl}/${carId}/count`, {
-      headers: this.getAuthHeaders(),
       withCredentials: true,
     });
   }

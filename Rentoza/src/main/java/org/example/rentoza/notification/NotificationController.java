@@ -4,7 +4,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.notification.dto.*;
-import org.example.rentoza.security.JwtUtil;
+
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -36,7 +36,6 @@ import java.util.Map;
 public class NotificationController {
 
     private final NotificationService notificationService;
-    private final JwtUtil jwtUtil;
 
     /**
      * Get paginated notifications for authenticated user.
@@ -48,19 +47,17 @@ public class NotificationController {
      */
     @GetMapping
     public ResponseEntity<?> getNotifications(
-            @RequestHeader("Authorization") String authHeader,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
 
         try {
-            Long userId = extractUserIdFromToken(authHeader);
-
             // Limit page size
             if (size > 100) {
                 size = 100;
             }
 
-            Page<NotificationResponseDTO> notifications = notificationService.getUserNotifications(userId, page, size);
+            Page<NotificationResponseDTO> notifications = notificationService.getUserNotifications(principal.id(), page, size);
             return ResponseEntity.ok(notifications);
 
         } catch (Exception e) {
@@ -77,10 +74,9 @@ public class NotificationController {
      * @return List of unread notifications
      */
     @GetMapping("/unread")
-    public ResponseEntity<?> getUnreadNotifications(@RequestHeader("Authorization") String authHeader) {
+    public ResponseEntity<?> getUnreadNotifications(@org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal) {
         try {
-            Long userId = extractUserIdFromToken(authHeader);
-            List<NotificationResponseDTO> notifications = notificationService.getUnreadNotifications(userId);
+            List<NotificationResponseDTO> notifications = notificationService.getUnreadNotifications(principal.id());
             return ResponseEntity.ok(notifications);
 
         } catch (Exception e) {
@@ -97,10 +93,9 @@ public class NotificationController {
      * @return Unread count
      */
     @GetMapping("/unread/count")
-    public ResponseEntity<?> getUnreadCount(@RequestHeader("Authorization") String authHeader) {
+    public ResponseEntity<?> getUnreadCount(@org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal) {
         try {
-            Long userId = extractUserIdFromToken(authHeader);
-            long count = notificationService.getUnreadCount(userId);
+            long count = notificationService.getUnreadCount(principal.id());
             return ResponseEntity.ok(Map.of("count", count));
 
         } catch (Exception e) {
@@ -120,11 +115,10 @@ public class NotificationController {
     @PatchMapping("/{id}/read")
     public ResponseEntity<?> markAsRead(
             @PathVariable Long id,
-            @RequestHeader("Authorization") String authHeader) {
+            @org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal) {
 
         try {
-            Long userId = extractUserIdFromToken(authHeader);
-            notificationService.markAsRead(id, userId);
+            notificationService.markAsRead(id, principal.id());
             return ResponseEntity.ok(Map.of("message", "Notification marked as read"));
 
         } catch (IllegalStateException e) {
@@ -144,10 +138,9 @@ public class NotificationController {
      * @return Success response with count
      */
     @PostMapping("/mark-all-read")
-    public ResponseEntity<?> markAllAsRead(@RequestHeader("Authorization") String authHeader) {
+    public ResponseEntity<?> markAllAsRead(@org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal) {
         try {
-            Long userId = extractUserIdFromToken(authHeader);
-            int count = notificationService.markAllAsRead(userId);
+            int count = notificationService.markAllAsRead(principal.id());
             return ResponseEntity.ok(Map.of("message", "All notifications marked as read", "count", count));
 
         } catch (Exception e) {
@@ -167,11 +160,10 @@ public class NotificationController {
     @PostMapping("/register-token")
     public ResponseEntity<?> registerDeviceToken(
             @Valid @RequestBody RegisterDeviceTokenRequestDTO request,
-            @RequestHeader("Authorization") String authHeader) {
+            @org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal) {
 
         try {
-            Long userId = extractUserIdFromToken(authHeader);
-            notificationService.registerDeviceToken(userId, request);
+            notificationService.registerDeviceToken(principal.id(), request);
             return ResponseEntity.status(HttpStatus.CREATED)
                     .body(Map.of("message", "Device token registered successfully"));
 
@@ -192,11 +184,13 @@ public class NotificationController {
     @DeleteMapping("/unregister-token")
     public ResponseEntity<?> unregisterDeviceToken(
             @Valid @RequestBody UnregisterDeviceTokenRequestDTO request,
-            @RequestHeader("Authorization") String authHeader) {
+            @org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal) {
 
         try {
-            // Verify authenticated (no need to check user ID for unregistration)
-            extractUserIdFromToken(authHeader);
+            // Verify authenticated (no need to check user ID for unregistration, but principal ensures it)
+            if (principal == null) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "Unauthorized"));
+            }
 
             notificationService.unregisterDeviceToken(request.getDeviceToken());
             return ResponseEntity.ok(Map.of("message", "Device token unregistered successfully"));
@@ -254,9 +248,5 @@ public class NotificationController {
     /**
      * Extract user ID from JWT token.
      */
-    private Long extractUserIdFromToken(String authHeader) {
-        String token = authHeader.substring(7); // Remove "Bearer "
-        String userIdStr = jwtUtil.getUserIdFromToken(token);
-        return Long.parseLong(userIdStr);
-    }
+
 }

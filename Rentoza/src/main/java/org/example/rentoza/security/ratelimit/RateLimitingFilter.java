@@ -171,9 +171,24 @@ public class RateLimitingFilter extends OncePerRequestFilter {
     private String getRateLimitKey(HttpServletRequest request) {
         // Try to extract JWT email for authenticated requests
         String authHeader = request.getHeader("Authorization");
+        String token = null;
+
+        // 1. Try Authorization header
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            token = authHeader.substring(7);
+        } 
+        // 2. Try access_token cookie
+        else if (request.getCookies() != null) {
+            for (jakarta.servlet.http.Cookie cookie : request.getCookies()) {
+                if ("access_token".equals(cookie.getName())) {
+                    token = cookie.getValue();
+                    break;
+                }
+            }
+        }
+
+        if (token != null) {
             try {
-                String token = authHeader.substring(7);
                 String email = jwtUtil.getEmailFromToken(token);
                 if (email != null && !email.isEmpty()) {
                     return "user:" + email;

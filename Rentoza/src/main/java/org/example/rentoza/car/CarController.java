@@ -5,14 +5,12 @@ import org.example.rentoza.car.dto.CarRequestDTO;
 import org.example.rentoza.car.dto.CarResponseDTO;
 import org.example.rentoza.car.dto.CarSearchCriteria;
 import org.example.rentoza.config.CachingConfig;
-import org.example.rentoza.security.JwtUtil;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.format.annotation.DateTimeFormat;
-import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -32,13 +30,11 @@ public class CarController {
 
     private final CarService service;
     private final AvailabilityService availabilityService;
-    private final JwtUtil jwtUtil;
     private final UserRepository userRepo;
 
-    public CarController(CarService service, AvailabilityService availabilityService, JwtUtil jwtUtil, UserRepository userRepo) {
+    public CarController(CarService service, AvailabilityService availabilityService, UserRepository userRepo) {
         this.service = service;
         this.availabilityService = availabilityService;
-        this.jwtUtil = jwtUtil;
         this.userRepo = userRepo;
     }
 
@@ -50,22 +46,15 @@ public class CarController {
     @PreAuthorize("hasRole('OWNER')")
     public ResponseEntity<?> addCar(
             @RequestBody CarRequestDTO dto,
-            @RequestHeader(value = "Authorization", required = false) String authHeader
+            @org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal
     ) {
         try {
-            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-                return ResponseEntity.status(401).body(Map.of("error", "Missing or invalid token"));
-            }
-
-            String token = authHeader.substring(7);
-            String email = jwtUtil.getEmailFromToken(token);
-            String role = jwtUtil.getRoleFromToken(token);
-            if (!"OWNER".equalsIgnoreCase(role)) {
+            if (!principal.hasRole("OWNER")) {
                 return ResponseEntity.status(403).body(Map.of("error", "Only owners can list cars"));
             }
 
-            User owner = userRepo.findByEmail(email)
-                    .orElseThrow(() -> new RuntimeException("Owner not found: " + email));
+            User owner = userRepo.findByEmail(principal.getUsername())
+                    .orElseThrow(() -> new RuntimeException("Owner not found: " + principal.getUsername()));
 
             Car saved = service.addCar(dto, owner);
             return ResponseEntity.ok(new CarResponseDTO(saved));
@@ -306,22 +295,15 @@ public class CarController {
     public ResponseEntity<?> updateCar(
             @PathVariable Long id,
             @RequestBody CarRequestDTO dto,
-            @RequestHeader(value = "Authorization", required = false) String authHeader
+            @org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal
     ) {
         try {
-            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-                return ResponseEntity.status(401).body(Map.of("error", "Missing or invalid token"));
-            }
-
-            String token = authHeader.substring(7);
-            String email = jwtUtil.getEmailFromToken(token);
-            String role = jwtUtil.getRoleFromToken(token);
-            if (!"OWNER".equalsIgnoreCase(role)) {
+            if (!principal.hasRole("OWNER")) {
                 return ResponseEntity.status(403).body(Map.of("error", "Only owners can update cars"));
             }
 
-            User owner = userRepo.findByEmail(email)
-                    .orElseThrow(() -> new RuntimeException("User not found: " + email));
+            User owner = userRepo.findByEmail(principal.getUsername())
+                    .orElseThrow(() -> new RuntimeException("User not found: " + principal.getUsername()));
 
             CarResponseDTO updated = service.updateCar(id, dto, owner);
             return ResponseEntity.ok(updated);
@@ -340,22 +322,15 @@ public class CarController {
     public ResponseEntity<?> toggleAvailability(
             @PathVariable Long id,
             @RequestBody Map<String, Boolean> request,
-            @RequestHeader(value = "Authorization", required = false) String authHeader
+            @org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal
     ) {
         try {
-            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-                return ResponseEntity.status(401).body(Map.of("error", "Missing or invalid token"));
-            }
-
-            String token = authHeader.substring(7);
-            String email = jwtUtil.getEmailFromToken(token);
-            String role = jwtUtil.getRoleFromToken(token);
-            if (!"OWNER".equalsIgnoreCase(role)) {
+            if (!principal.hasRole("OWNER")) {
                 return ResponseEntity.status(403).body(Map.of("error", "Only owners can modify car availability"));
             }
 
-            User owner = userRepo.findByEmail(email)
-                    .orElseThrow(() -> new RuntimeException("User not found: " + email));
+            User owner = userRepo.findByEmail(principal.getUsername())
+                    .orElseThrow(() -> new RuntimeException("User not found: " + principal.getUsername()));
 
             boolean available = request.getOrDefault("available", true);
             CarResponseDTO updated = service.toggleAvailability(id, available, owner);
@@ -375,8 +350,7 @@ public class CarController {
     @Deprecated
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteCar(
-            @PathVariable Long id,
-            @RequestHeader(value = "Authorization", required = false) String authHeader
+            @PathVariable Long id
     ) {
         return ResponseEntity.status(410).body(Map.of(
                 "error", "Car deletion is no longer supported. Use PATCH /api/cars/{id}/availability to deactivate cars instead.",

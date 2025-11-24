@@ -4,6 +4,8 @@ import org.example.rentoza.auth.oauth2.CustomAuthorizationRequestResolver;
 import org.example.rentoza.auth.oauth2.CustomOAuth2UserService;
 import org.example.rentoza.auth.oauth2.OAuth2AuthenticationSuccessHandler;
 import org.example.rentoza.config.AppProperties;
+import org.example.rentoza.security.csrf.CustomCookieCsrfTokenRepository;
+import org.example.rentoza.security.csrf.LoggingCsrfTokenRequestHandler;
 import org.example.rentoza.security.ratelimit.InMemoryRateLimitService;
 import org.example.rentoza.security.ratelimit.RateLimitingFilter;
 import org.slf4j.Logger;
@@ -22,7 +24,8 @@ import org.springframework.security.oauth2.client.registration.ClientRegistratio
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.authentication.session.NullAuthenticatedSessionStrategy;
+import org.springframework.security.web.csrf.CsrfTokenRepository;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 import org.springframework.web.cors.*;
 import java.util.Arrays;
@@ -114,12 +117,16 @@ public class SecurityConfig {
                 // Cookie-based endpoints (OAuth2, refresh token) are protected against CSRF
                 // Stateless JWT API endpoints are exempt (JWTs in headers are not vulnerable to CSRF)
                 .csrf(csrf -> csrf
-                        .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
-                        .ignoringRequestMatchers(
-                                "/api/auth/login",      // Stateless JWT login
-                                "/api/auth/register",   // Stateless JWT registration
-                                "/api/**"               // All stateless JWT API endpoints
-                        )
+                    .csrfTokenRepository(csrfTokenRepository())
+                    .csrfTokenRequestHandler(loggingCsrfTokenRequestHandler())
+                    .sessionAuthenticationStrategy(new NullAuthenticatedSessionStrategy())
+                    .ignoringRequestMatchers(
+                        "/api/auth/login",
+                        "/api/auth/register",
+                        "/api/auth/refresh",
+                        "/api/auth/logout",
+                        "/uploads/**"
+                    )
                 )
                 .authorizeHttpRequests(auth -> auth
                         // Public auth endpoints (local + OAuth2)
@@ -265,13 +272,24 @@ public class SecurityConfig {
                 // - NEVER use custom filter classes as anchors (e.g., JwtAuthFilter.class)
                 .addFilterBefore(rateLimitingFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(serviceAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(new CsrfCookieFilter(), org.springframework.security.web.csrf.CsrfFilter.class);
 
         SecurityFilterChain chain = http.build();
         logOAuth2Configuration();
         logRateLimitConfiguration();
         logSecurityChainInitialization();
         return chain;
+    }
+
+    @Bean
+    public CsrfTokenRepository csrfTokenRepository() {
+        return new CustomCookieCsrfTokenRepository(appProperties);
+    }
+
+    @Bean
+    public LoggingCsrfTokenRequestHandler loggingCsrfTokenRequestHandler() {
+        return new LoggingCsrfTokenRequestHandler();
     }
 
     @Bean
@@ -283,7 +301,7 @@ public class SecurityConfig {
         c.setAllowedOrigins(Arrays.asList(allowedOrigins));
 
         c.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        c.setAllowedHeaders(List.of("Authorization", "Content-Type", "Cache-Control", "X-CSRF-TOKEN"));
+        c.setAllowedHeaders(List.of("Authorization", "Content-Type", "Cache-Control", "X-XSRF-TOKEN", "X-CSRF-TOKEN"));
         c.setAllowCredentials(true); // Required for cookies
         c.setMaxAge(3600L); // Cache preflight requests for 1 hour
 

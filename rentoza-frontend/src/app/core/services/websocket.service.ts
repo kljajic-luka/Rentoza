@@ -1,10 +1,11 @@
 import { Injectable, inject, OnDestroy } from '@angular/core';
 import { Client, StompSubscription, messageCallbackType } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
-import { BehaviorSubject, Observable, Subject, timer, Subscription } from 'rxjs';
-import { filter, takeUntil } from 'rxjs/operators';
+import { BehaviorSubject, Observable, Subject, Subscription, timer, firstValueFrom } from 'rxjs';
+import { distinctUntilChanged, filter, takeUntil, take, timeout } from 'rxjs/operators';
 import { environment } from '@environments/environment';
 import { AuthService } from '@core/auth/auth.service';
+import { UserProfile } from '@core/models/user.model';
 import { ToastrService } from 'ngx-toastr';
 
 export enum WebSocketConnectionStatus {
@@ -34,6 +35,7 @@ export class WebSocketService implements OnDestroy {
     WebSocketConnectionStatus.DISCONNECTED
   );
   private subscriptions = new Map<string, StompSubscription>();
+  private subscriptionCallbacks = new Map<string, messageCallbackType>();
   private messageSubject = new Subject<{ destination: string; body: any }>();
   private destroy$ = new Subject<void>();
 
@@ -69,9 +71,18 @@ export class WebSocketService implements OnDestroy {
       return;
     }
 
+    if (environment.auth?.useCookies) {
+      try {
+        await this.awaitAuthenticatedSession();
+      } catch (error) {
+        this.handleConnectionError(error);
+        throw error;
+      }
+    }
+
     return new Promise((resolve, reject) => {
       const token = this.authService.getAccessToken();
-      if (!token) {
+      if (!environment.auth?.useCookies && !token) {
         const error = new Error('No access token available');
         this.handleConnectionError(error);
         reject(error);
@@ -86,12 +97,18 @@ export class WebSocketService implements OnDestroy {
         // Create SockJS connection
         const socket = new SockJS(environment.chatWsUrl);
 
+        // Build connect headers based on auth mode
+        const connectHeaders: Record<string, string> = {};
+
+        if (!environment.auth?.useCookies && token) {
+          connectHeaders['Authorization'] = `Bearer ${token}`;
+        }
+        // In cookie mode, browser automatically sends cookies during WebSocket handshake
+
         // Create STOMP client with production-ready configuration
         this.stompClient = new Client({
           webSocketFactory: () => socket as any,
-          connectHeaders: {
-            Authorization: `Bearer ${token}`,
-          },
+          connectHeaders, // Empty object when using cookies, contains Authorization when using headers
           debug: () => {
             // Debug logging disabled
           },
@@ -141,7 +158,8 @@ export class WebSocketService implements OnDestroy {
         // ✅ Handle token refresh (reconnect with new token)
         this.authService.accessToken$
           .pipe(
-            filter((token) => token !== this.authService.getAccessToken()),
+            filter((value): value is string => typeof value === 'string' && value.length > 0),
+            distinctUntilChanged(),
             takeUntil(this.destroy$)
           )
           .subscribe(() => {
@@ -210,19 +228,22 @@ export class WebSocketService implements OnDestroy {
       this.stompClient = null;
       this.connectionStatus$.next(WebSocketConnectionStatus.DISCONNECTED);
     }
+
+    if (isManual) {
+      this.subscriptionCallbacks.clear();
+    }
   }
 
   /**
    * Subscribe to a destination (topic or queue)
    */
   subscribe(destination: string, callback: messageCallbackType): void {
+    this.subscriptionCallbacks.set(destination, callback);
+
     if (!this.stompClient?.connected) {
-      // Store for later subscription
-      this.subscriptions.set(destination, { destination, callback } as any);
       return;
     }
 
-    // Unsubscribe if already subscribed
     if (this.subscriptions.has(destination)) {
       try {
         this.subscriptions.get(destination)?.unsubscribe();
@@ -252,6 +273,7 @@ export class WebSocketService implements OnDestroy {
    * Unsubscribe from a destination
    */
   unsubscribe(destination: string): void {
+    this.subscriptionCallbacks.delete(destination);
     const subscription = this.subscriptions.get(destination);
     if (subscription) {
       try {
@@ -357,16 +379,26 @@ export class WebSocketService implements OnDestroy {
       return;
     }
 
-    const destinations = Array.from(this.subscriptions.keys());
+    const callbacks = new Map(this.subscriptionCallbacks);
     this.subscriptions.clear();
 
-    destinations.forEach((destination) => {
-      // Re-subscribe (callback was stored)
-      const stored = (this.subscriptions.get(destination) as any)?.callback;
-      if (stored) {
-        this.subscribe(destination, stored);
-      }
+    callbacks.forEach((callback, destination) => {
+      this.subscribe(destination, callback);
     });
+  }
+
+  private async awaitAuthenticatedSession(): Promise<void> {
+    if (this.authService.getCurrentUser()) {
+      return;
+    }
+
+    await firstValueFrom(
+      this.authService.currentUser$.pipe(
+        filter((user): user is UserProfile => !!user),
+        take(1),
+        timeout({ each: 10000 })
+      )
+    );
   }
 
   /**

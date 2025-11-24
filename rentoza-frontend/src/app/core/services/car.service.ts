@@ -325,7 +325,9 @@ export class CarService {
    */
   getOwnerCars(ownerEmail: string): Observable<Car[]> {
     return this.http
-      .get<any[]>(`${this.baseUrl}/owner/${ownerEmail}`)
+      .get<any[]>(`${this.baseUrl}/owner/${ownerEmail}`, {
+        withCredentials: true,
+      })
       .pipe(map((cars) => cars.map((car) => this.mapBackendCarToFrontend(car))));
   }
 
@@ -342,7 +344,9 @@ export class CarService {
     };
 
     return this.http
-      .post<any>(`${this.baseUrl}/add`, backendData)
+      .post<any>(`${this.baseUrl}/add`, backendData, {
+        withCredentials: true,
+      })
       .pipe(map((car) => this.mapBackendCarToFrontend(car)));
   }
 
@@ -360,7 +364,9 @@ export class CarService {
     };
 
     return this.http
-      .put<any>(`${this.baseUrl}/${id}`, backendData)
+      .put<any>(`${this.baseUrl}/${id}`, backendData, {
+        withCredentials: true,
+      })
       .pipe(map((car) => this.mapBackendCarToFrontend(car)));
   }
 
@@ -369,7 +375,9 @@ export class CarService {
    * @param id Car ID
    */
   deleteCar(id: string): Observable<void> {
-    return this.http.delete<void>(`${this.baseUrl}/${id}`);
+    return this.http.delete<void>(`${this.baseUrl}/${id}`, {
+      withCredentials: true,
+    });
   }
 
   /**
@@ -379,7 +387,9 @@ export class CarService {
    */
   toggleAvailability(id: string, available: boolean): Observable<Car> {
     return this.http
-      .patch<any>(`${this.baseUrl}/${id}/availability`, { available })
+      .patch<any>(`${this.baseUrl}/${id}/availability`, { available }, {
+        withCredentials: true,
+      })
       .pipe(map((car) => this.mapBackendCarToFrontend(car)));
   }
 }

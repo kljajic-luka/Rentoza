@@ -4,6 +4,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { ToastrService } from 'ngx-toastr';
 import { finalize } from 'rxjs';
 
+import { environment } from '@environments/environment';
 import { AuthService } from '@core/auth/auth.service';
 import { RedirectService } from '@core/services/redirect.service';
 import { FavoriteService } from '@core/services/favorite.service';
@@ -91,8 +92,17 @@ export class AuthCallbackComponent implements OnInit {
     try {
       // ✅ STEP 1: Persist token to localStorage via AuthService
       // This ensures the token survives page reloads
-      console.log('🔐 OAuth2: Persisting access token to localStorage');
-      this.authService.setAccessToken(token);
+      // Conditional token persistence based on feature flag
+      if (!environment.auth?.useCookies) {
+        // Legacy mode: persist token to localStorage via AuthService
+        console.log('🔐 OAuth2: Persisting access token to localStorage');
+        this.authService.setAccessToken(token);
+      } else {
+        // Cookie mode: backend already set cookies, just update in-memory state
+        console.log('🍪 OAuth2: Using cookie-based session (backend set cookies)');
+        // Still update the in-memory token for immediate use
+        this.authService.setAccessToken(token);
+      }
 
       // ✅ STEP 2: Verify session with backend /api/users/me
       // This ensures frontend state synchronizes with backend RLS enforcement

@@ -5,6 +5,7 @@ import jakarta.transaction.Transactional;
 import org.example.rentoza.user.dto.UserProfileDTO;
 import org.example.rentoza.user.dto.UserRegisterDTO;
 import org.example.rentoza.user.dto.UpdateProfileRequestDTO;
+import org.example.rentoza.user.dto.UserResponseDTO;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -136,6 +137,22 @@ public class UserService {
 
     public Optional<User> getUserById(Long id) {
         return repo.findById(id);
+    }
+
+    public UserResponseDTO toUserResponse(User user) {
+        if (user == null) {
+            throw new IllegalArgumentException("User cannot be null when building response");
+        }
+
+        return new UserResponseDTO(
+                user.getId(),
+                user.getFirstName(),
+                user.getLastName(),
+                user.getEmail(),
+                user.getPhone(),
+                user.getAge(),
+                user.getRole() != null ? user.getRole().name() : null
+        );
     }
 
     /**

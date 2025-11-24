@@ -39,7 +39,7 @@
           </mat-error>
         </mat-form-field>
 
-        <button mat-raised-button color="primary" type="submit" [disabled]="isSubmitting()">
+        <button mat-raised-button color="primary" type="submit" [disabled]="form.invalid || isSubmitting()">
           <mat-progress-spinner
             *ngIf="isSubmitting()"
             diameter="20"

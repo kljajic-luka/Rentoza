@@ -32,6 +32,7 @@ export class AuthService {
   private readonly sessionExpiredSubject = new Subject<void>();
   private isRefreshing = false;
   private tokenWatcherInterval: ReturnType<typeof setInterval> | null = null;
+  private favoritesLoadedForSession = false;
 
   readonly currentUser$ = this.currentUserSubject.asObservable();
   readonly accessToken$ = this.accessTokenSubject.asObservable();
@@ -44,11 +45,27 @@ export class AuthService {
   ) {}
 
   /**
+   * Check if cookie-based authentication is enabled via feature flag.
+   * When true, tokens are NOT written to localStorage.
+   */
+  private shouldUseCookies(): boolean {
+    return environment.auth?.useCookies ?? false;
+  }
+
+  /**
    * Invoked during app bootstrap to silently restore a session using the refresh cookie.
    * Also restores user from localStorage for immediate availability.
    * If a valid token exists but no stored user is found, fetches user profile from /api/users/me.
    */
   async initializeSession(): Promise<void> {
+    // Cookie mode: rely on backend session via refresh endpoint
+    if (this.shouldUseCookies()) {
+      console.log('🍪 [AUTH] Cookie mode: Initializing session via refresh endpoint');
+      await firstValueFrom(this.refreshAccessToken().pipe(catchError(() => of(null))));
+      return;
+    }
+
+    // Legacy mode: restore from localStorage
     const storedToken = localStorage.getItem('access_token');
     const storedUserJson = localStorage.getItem('current_user');
 
@@ -111,87 +128,47 @@ export class AuthService {
 
     try {
       const backendUser = await firstValueFrom(
-        this.http
-          .get<any>(`${environment.baseApiUrl}/users/me`, {
-            withCredentials: true,
-          })
-          .pipe(
-            map((response) => {
-              // ✅ Backend returns: {id, email, firstName, lastName, roles: string[], authenticated: boolean}
-              if (!response.authenticated) {
-                throw new Error('Backend reports user not authenticated');
-              }
+        this.fetchBackendUserProfile().pipe(
+          tap((verifiedUser) => {
+            this.updateUserState(verifiedUser);
+            console.log('✅ Session verified with backend:', verifiedUser);
+          }),
+          catchError((error: HttpErrorResponse) => {
+            console.warn('⚠️ Session verification failed:', error.status);
 
-              const verifiedUser: UserProfile = {
-                id: String(response.id),
-                email: response.email,
-                firstName: response.firstName,
-                lastName: response.lastName,
-                phone: response.phone || undefined,
-                age: response.age || undefined,
-                avatarUrl: response.avatarUrl || undefined,
-                roles: response.roles as UserRole[], // ✅ Backend-verified roles
-              };
-
-              return verifiedUser;
-            }),
-            tap((verifiedUser) => {
-              // ✅ Update frontend state with backend-verified data
-              localStorage.setItem('current_user', JSON.stringify(verifiedUser));
-              this.currentUserSubject.next(verifiedUser);
-              console.log('✅ Session verified with backend:', verifiedUser);
-            }),
-            catchError((error: HttpErrorResponse) => {
-              console.warn('⚠️ Session verification failed:', error.status);
-
-              if (error.status === 401) {
-                // Token expired - try to refresh
-                console.log('🔄 Token expired - attempting refresh');
-                return this.refreshAccessToken().pipe(
-                  switchMap(() => {
-                    // Retry verification after refresh
-                    return this.http
-                      .get<any>(`${environment.baseApiUrl}/users/me`, {
-                        withCredentials: true,
-                      })
-                      .pipe(
-                        map(
-                          (response) =>
-                            ({
-                              id: String(response.id),
-                              email: response.email,
-                              firstName: response.firstName,
-                              lastName: response.lastName,
-                              phone: response.phone,
-                              age: response.age,
-                              avatarUrl: response.avatarUrl,
-                              roles: response.roles,
-                            } as UserProfile)
-                        )
-                      );
-                  }),
-                  catchError(() => {
-                    // Refresh failed - clear session
-                    console.log('❌ Session refresh failed - clearing session');
-                    this.clearSession();
-                    this.sessionExpiredSubject.next();
+            if (error.status === 401) {
+              console.log('🔄 Token expired - attempting refresh');
+              return this.refreshAccessToken().pipe(
+                switchMap((newToken) => {
+                  if (!newToken) {
                     return of(null);
-                  })
-                );
-              }
+                  }
+                  return this.fetchBackendUserProfile();
+                }),
+                tap((refreshedUser) => {
+                  if (refreshedUser) {
+                    this.updateUserState(refreshedUser);
+                  }
+                }),
+                catchError(() => {
+                  console.log('❌ Session refresh failed - clearing session');
+                  this.clearSession();
+                  this.sessionExpiredSubject.next();
+                  return of(null);
+                })
+              );
+            }
 
-              if (error.status === 403) {
-                // Insufficient permissions - clear session
-                console.log('🚫 Insufficient permissions - clearing session');
-                this.clearSession();
-                return of(null);
-              }
-
-              // Other errors - clear session
+            if (error.status === 403) {
+              console.log('🚫 Insufficient permissions - clearing session');
               this.clearSession();
               return of(null);
-            })
-          )
+            }
+
+            this.clearSession();
+            return of(null);
+          })
+        )
       );
 
       return backendUser;
@@ -272,13 +249,15 @@ export class AuthService {
    * ✅ Does NOT update currentUserSubject - caller must verify session via /api/users/me
    */
   setAccessToken(token: string): void {
-    // ✅ Persist to localStorage for OAuth2 session restoration
-    localStorage.setItem('access_token', token);
+    // Only persist to localStorage if NOT using cookies
+    if (!this.shouldUseCookies()) {
+      console.log('✅ Access token persisted to localStorage (OAuth2 flow)');
+    } else {
+      console.log('🍪 Access token NOT persisted (cookie mode)');
+    }
 
     // ✅ Update observable for immediate reactivity
-    this.accessTokenSubject.next(token);
-
-    console.log('✅ Access token persisted (OAuth2 flow)');
+    this.persistAccessToken(token);
   }
 
   isAuthenticated(): boolean {
@@ -427,7 +406,10 @@ export class AuthService {
     this.currentUserSubject.next(updatedUser);
 
     // Update localStorage
-    localStorage.setItem('current_user', JSON.stringify(updatedUser));
+    // Update localStorage only if NOT using cookies
+    if (!this.shouldUseCookies()) {
+      localStorage.setItem('current_user', JSON.stringify(updatedUser));
+    }
 
     console.log('✅ Avatar URL updated in user state:', avatarUrl);
   }
@@ -439,6 +421,8 @@ export class AuthService {
     // Clear localStorage
     localStorage.removeItem('access_token');
     localStorage.removeItem('current_user');
+
+    this.favoritesLoadedForSession = false;
 
     // Stop token watcher when session is cleared
     this.stopTokenWatcher();
@@ -453,39 +437,120 @@ export class AuthService {
   private persistSession(response: AuthResponse): void {
     const { accessToken, user } = response;
 
-    if (!accessToken || !user) {
-      console.debug('ℹ️ Skipping persist — initialization phase or incomplete data.');
+    if (!accessToken) {
+      console.debug('ℹ️ Skipping persist — no access token present.');
       return;
     }
 
-    // Decode token to extract roles
-    const decodedPayload = this.jwtHelper.decodeToken(accessToken) as Record<string, unknown>;
-    const rolesFromToken = this.extractRoles(decodedPayload);
-    const singleRole = (user as any)?.role ?? decodedPayload['role'];
-    const effectiveRoles = rolesFromToken.length ? rolesFromToken : singleRole ? [singleRole] : [];
+    this.persistAccessToken(accessToken);
 
-    // ✅ Build complete user profile with all fields
-    const completeUser: UserProfile = {
+    if (user) {
+      const decodedPayload = this.jwtHelper.decodeToken(accessToken) as Record<string, unknown>;
+      const rolesFromToken = this.extractRoles(decodedPayload);
+      const singleRole = (user as any)?.role ?? decodedPayload['role'];
+      const effectiveRoles = rolesFromToken.length ? rolesFromToken : singleRole ? [singleRole] : [];
+
+      const completeUser: UserProfile = {
+        ...user,
+        id: String(user.id),
+        roles: effectiveRoles.length ? effectiveRoles : user.roles ?? [],
+      };
+
+      this.updateUserState(completeUser);
+      return;
+    }
+
+    console.log('ℹ️ Refresh response missing user payload — hydrating via /api/users/me');
+    this.hydrateUserFromBackend();
+  }
+
+  private hydrateUserFromBackend(): void {
+    this.fetchBackendUserProfile()
+      .pipe(take(1))
+      .subscribe({
+        next: (profile) => {
+          this.updateUserState(profile);
+          console.log('✅ Session hydrated via /api/users/me');
+        },
+        error: (error: HttpErrorResponse) => {
+          console.error('❌ Failed to hydrate user after refresh:', error);
+          if (error.status === 401) {
+            this.clearSession();
+            this.sessionExpiredSubject.next();
+          }
+        },
+      });
+  }
+
+  private fetchBackendUserProfile(): Observable<UserProfile> {
+    return this.http
+      .get<any>(`${environment.baseApiUrl}/users/me`, {
+        withCredentials: true,
+      })
+      .pipe(map((response) => this.mapBackendUserResponse(response)));
+  }
+
+  private mapBackendUserResponse(response: any): UserProfile {
+    if (!response?.authenticated) {
+      throw new Error('Backend reports user not authenticated');
+    }
+
+    const normalizedRoles: UserRole[] = Array.isArray(response.roles)
+      ? (response.roles as UserRole[])
+      : typeof response.roles === 'string'
+        ? (response.roles.split(',') as UserRole[])
+        : [];
+
+    return {
+      id: String(response.id),
+      email: response.email,
+      firstName: response.firstName,
+      lastName: response.lastName,
+      phone: response.phone || undefined,
+      age: response.age || undefined,
+      avatarUrl: response.avatarUrl || undefined,
+      roles: normalizedRoles,
+    };
+  }
+
+  private updateUserState(user: UserProfile): void {
+    const normalizedUser: UserProfile = {
       ...user,
-      id: String(user.id), // Ensure id is string
-      roles: effectiveRoles.length ? effectiveRoles : user.roles ?? [],
+      id: String(user.id),
+      roles: Array.isArray(user.roles) ? (user.roles as UserRole[]) : [],
     };
 
-    // ✅ Store token and complete user in localStorage for session persistence
-    localStorage.setItem('access_token', accessToken);
-    localStorage.setItem('current_user', JSON.stringify(completeUser));
+    if (!this.shouldUseCookies()) {
+      localStorage.setItem('current_user', JSON.stringify(normalizedUser));
+    }
 
-    // ✅ Update observables with complete data
-    this.accessTokenSubject.next(accessToken);
-    this.currentUserSubject.next(completeUser);
+    this.currentUserSubject.next(normalizedUser);
+    this.loadFavoritesForSession();
+  }
 
-    // Load user's favorited cars after successful login/register
+  private loadFavoritesForSession(): void {
+    if (this.favoritesLoadedForSession) {
+      return;
+    }
+
+    this.favoritesLoadedForSession = true;
     import('@core/services/favorite.service').then(({ FavoriteService }) => {
       const favoriteService = this.injector.get(FavoriteService);
-      favoriteService.loadFavoritedCarIds().subscribe({
-        error: (err) => console.error('Failed to load favorited cars:', err),
-      });
+      favoriteService
+        .loadFavoritedCarIds()
+        .pipe(take(1))
+        .subscribe({
+          error: (err) => console.error('Failed to load favorited cars:', err),
+        });
     });
+  }
+
+  private persistAccessToken(token: string): void {
+    if (!this.shouldUseCookies()) {
+      localStorage.setItem('access_token', token);
+    }
+
+    this.accessTokenSubject.next(token);
   }
 
   private extractUserFromPayload(payload: Record<string, unknown>): UserProfile | null {

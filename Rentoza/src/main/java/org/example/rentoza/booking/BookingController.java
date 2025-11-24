@@ -4,7 +4,7 @@ import org.example.rentoza.booking.dto.BookingRequestDTO;
 import org.example.rentoza.booking.dto.BookingResponseDTO;
 import org.example.rentoza.booking.dto.UserBookingResponseDTO;
 import org.example.rentoza.exception.ResourceNotFoundException;
-import org.example.rentoza.security.JwtUtil;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -27,12 +27,10 @@ public class BookingController {
     private static final Logger log = LoggerFactory.getLogger(BookingController.class);
 
     private final BookingService service;
-    private final JwtUtil jwtUtil;
     private final BookingApprovalService approvalService;
 
-    public BookingController(BookingService service, JwtUtil jwtUtil, BookingApprovalService approvalService) {
+    public BookingController(BookingService service, BookingApprovalService approvalService) {
         this.service = service;
-        this.jwtUtil = jwtUtil;
         this.approvalService = approvalService;
     }
 
@@ -42,9 +40,9 @@ public class BookingController {
      */
     @GetMapping("/me")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<List<UserBookingResponseDTO>> getMyBookings(@RequestHeader("Authorization") String authHeader) {
+    public ResponseEntity<List<UserBookingResponseDTO>> getMyBookings(@org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal) {
         try {
-            List<UserBookingResponseDTO> bookings = service.getMyBookings(authHeader);
+            List<UserBookingResponseDTO> bookings = service.getMyBookings(principal.getUsername());
             return ResponseEntity.ok(bookings);
         } catch (RuntimeException e) {
             log.error("Error fetching user bookings", e);
@@ -58,9 +56,9 @@ public class BookingController {
      */
     @PostMapping
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<?> createBooking(@jakarta.validation.Valid @RequestBody BookingRequestDTO dto, @RequestHeader("Authorization") String authHeader) {
+    public ResponseEntity<?> createBooking(@jakarta.validation.Valid @RequestBody BookingRequestDTO dto, @org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal) {
         try {
-            Booking booking = service.createBooking(dto, authHeader);
+            Booking booking = service.createBooking(dto, principal.getUsername());
             return ResponseEntity.ok(new BookingResponseDTO(booking));
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
@@ -75,19 +73,11 @@ public class BookingController {
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<?> getUserBookings(
             @PathVariable String email,
-            @RequestHeader(value = "Authorization", required = false) String authHeader
+            @org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal
     ) {
         try {
-            // Verify authentication
-            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-                return ResponseEntity.status(401).body(Map.of("error", "Authentication required"));
-            }
-
-            String token = authHeader.substring(7);
-            String authenticatedEmail = jwtUtil.getEmailFromToken(token);
-
             // Verify the authenticated user can only access their own bookings
-            if (!authenticatedEmail.equalsIgnoreCase(email)) {
+            if (!principal.getUsername().equalsIgnoreCase(email)) {
                 return ResponseEntity.status(403).body(Map.of("error", "Unauthorized to access other users' bookings"));
             }
 
@@ -286,22 +276,14 @@ public class BookingController {
     @PreAuthorize("@bookingSecurity.canModifyBooking(#id, authentication.principal.id) or hasRole('ADMIN')")
     public ResponseEntity<?> cancelBooking(
             @PathVariable Long id,
-            @RequestHeader(value = "Authorization", required = false) String authHeader
+            @org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal
     ) {
         try {
-            // Verify authentication
-            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-                return ResponseEntity.status(401).body(Map.of("error", "Authentication required"));
-            }
-
-            String token = authHeader.substring(7);
-            String authenticatedEmail = jwtUtil.getEmailFromToken(token);
-
             // Get the booking to verify ownership
             Booking bookingToCancel = service.getBookingById(id);
 
             // Verify the authenticated user is the renter who created the booking
-            if (!bookingToCancel.getRenter().getEmail().equalsIgnoreCase(authenticatedEmail)) {
+            if (!bookingToCancel.getRenter().getEmail().equalsIgnoreCase(principal.getUsername())) {
                 return ResponseEntity.status(403).body(Map.of("error", "Unauthorized to cancel this booking"));
             }
 

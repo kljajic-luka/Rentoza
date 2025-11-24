@@ -71,7 +71,7 @@ public class AppProperties {
         /**
          * SameSite cookie policy (Strict, Lax, or None)
          */
-        private String sameSite = "Strict";
+        private String sameSite = "Lax";
 
         public boolean isSecure() {
             return secure;

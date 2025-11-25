@@ -1,5 +1,12 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnDestroy, OnInit, inject } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  ChangeDetectorRef,
+  Component,
+  OnDestroy,
+  OnInit,
+  inject,
+} from '@angular/core';
 import { NavigationEnd, Router, RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -8,7 +15,11 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatIconModule } from '@angular/material/icon';
 import { MatAutocompleteModule } from '@angular/material/autocomplete';
-import { MatDatepicker, MatDatepickerInputEvent, MatDatepickerModule } from '@angular/material/datepicker';
+import {
+  MatDatepicker,
+  MatDatepickerInputEvent,
+  MatDatepickerModule,
+} from '@angular/material/datepicker';
 import { MatSelectModule } from '@angular/material/select';
 import { MatNativeDateModule } from '@angular/material/core';
 import { FlexLayoutModule } from '@ngbracket/ngx-layout';
@@ -33,11 +44,11 @@ import { CarService } from '@core/services/car.service';
     MatDatepickerModule,
     MatSelectModule,
     MatNativeDateModule,
-    FlexLayoutModule
+    FlexLayoutModule,
   ],
   templateUrl: './home.component.html',
   styleUrls: ['./home.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class HomeComponent implements OnInit, OnDestroy {
   private readonly carService = inject(CarService);
@@ -88,7 +99,7 @@ export class HomeComponent implements OnInit, OnDestroy {
     'Priboj',
     'Aranđelovac',
     'Leskovac',
-    'Gornji Milanovac'
+    'Gornji Milanovac',
   ];
 
   // Search form fields with smart defaults
@@ -108,9 +119,23 @@ export class HomeComponent implements OnInit, OnDestroy {
 
   // Time options for dropdowns (06:00 - 22:00)
   readonly timeOptions = [
-    '06:00', '07:00', '08:00', '09:00', '10:00', '11:00',
-    '12:00', '13:00', '14:00', '15:00', '16:00', '17:00',
-    '18:00', '19:00', '20:00', '21:00', '22:00'
+    '06:00',
+    '07:00',
+    '08:00',
+    '09:00',
+    '10:00',
+    '11:00',
+    '12:00',
+    '13:00',
+    '14:00',
+    '15:00',
+    '16:00',
+    '17:00',
+    '18:00',
+    '19:00',
+    '20:00',
+    '21:00',
+    '22:00',
   ];
 
   ngOnInit(): void {
@@ -235,7 +260,13 @@ export class HomeComponent implements OnInit, OnDestroy {
     }
 
     // Stop if any required validation failed
-    if (this.locationError || this.startDateError || this.endDateError || this.startTimeError || this.endTimeError) {
+    if (
+      this.locationError ||
+      this.startDateError ||
+      this.endDateError ||
+      this.startTimeError ||
+      this.endTimeError
+    ) {
       return;
     }
 
@@ -249,10 +280,16 @@ export class HomeComponent implements OnInit, OnDestroy {
     }
 
     const startDateTime = new Date(this.searchStartDate as Date);
-    startDateTime.setHours(parseInt(this.searchStartTime.split(':')[0]), parseInt(this.searchStartTime.split(':')[1]));
+    startDateTime.setHours(
+      parseInt(this.searchStartTime.split(':')[0]),
+      parseInt(this.searchStartTime.split(':')[1])
+    );
 
     const endDateTime = new Date(this.searchEndDate as Date);
-    endDateTime.setHours(parseInt(this.searchEndTime.split(':')[0]), parseInt(this.searchEndTime.split(':')[1]));
+    endDateTime.setHours(
+      parseInt(this.searchEndTime.split(':')[0]),
+      parseInt(this.searchEndTime.split(':')[1])
+    );
 
     if (endDateTime <= startDateTime) {
       this.dateRangeError = 'Krajnji datum mora biti posle početnog';
@@ -266,7 +303,7 @@ export class HomeComponent implements OnInit, OnDestroy {
       startTime: this.searchStartTime,
       endDate: this.formatDate(this.searchEndDate as Date),
       endTime: this.searchEndTime,
-      availabilitySearch: 'true'
+      availabilitySearch: 'true',
     };
 
     this.router.navigate(['/cars'], { queryParams });

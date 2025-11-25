@@ -3,6 +3,7 @@ package org.example.rentoza.config;
 import jakarta.servlet.http.Cookie;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.example.rentoza.security.CookieConstants;
 import org.example.rentoza.security.JwtUtil;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.server.ServerHttpRequest;
@@ -16,10 +17,10 @@ import java.util.Map;
 
 /**
  * WebSocket handshake interceptor for JWT authentication.
- * Extracts JWT token from cookies or Authorization header and validates it before allowing WebSocket connection.
+ * Extracts JWT token from Authorization header or cookies and validates it before allowing WebSocket connection.
  * 
- * This enables cookie-based authentication for WebSocket connections, which is critical for
- * the localStorage → HttpOnly cookie migration.
+ * SECURITY: Token extraction priority is Header → Cookie (consistent with REST API).
+ * This enables both explicit token auth and cookie-based authentication for WebSocket connections.
  */
 @Component
 @Slf4j
@@ -55,7 +56,8 @@ public class WebSocketAuthInterceptor implements HandshakeInterceptor {
             denyHandshake(response, "JWT failed validation for WebSocket handshake");
             return false;
         } catch (Exception e) {
-            log.warn("WebSocket handshake failed - invalid token: {}", e.getMessage());
+            // SECURITY: Do not leak implementation details
+            log.warn("WebSocket handshake failed - invalid token");
             denyHandshake(response, "Invalid JWT for WebSocket handshake");
             return false;
         }
@@ -68,27 +70,29 @@ public class WebSocketAuthInterceptor implements HandshakeInterceptor {
     }
 
     /**
-     * Extract JWT token from cookies or Authorization header.
-     * Prioritizes cookies for the migration to HttpOnly cookies.
+     * Extract JWT token from Authorization header or cookies.
+     * 
+     * SECURITY FIX: Priority is now Header → Cookie (consistent with JwtAuthFilter).
+     * This prevents cookie-based token from overriding explicit Authorization header.
      */
     private String extractToken(ServerHttpRequest request) {
         if (request instanceof ServletServerHttpRequest servletRequest) {
             jakarta.servlet.http.HttpServletRequest httpRequest = servletRequest.getServletRequest();
             
-            // 1. Check access_token cookie (preferred for cookie-based auth)
-            Cookie[] cookies = httpRequest.getCookies();
-            if (cookies != null) {
-                for (Cookie cookie : cookies) {
-                    if ("access_token".equals(cookie.getName())) {
-                        return cookie.getValue();
-                    }
-                }
-            }
-            
-            // 2. Fallback to Authorization header (backwards compatibility)
+            // 1. Check Authorization header FIRST (preferred for explicit token auth)
             String authHeader = httpRequest.getHeader("Authorization");
             if (authHeader != null && authHeader.startsWith("Bearer ")) {
                 return authHeader.substring(7);
+            }
+            
+            // 2. Fallback to access_token cookie (browser-based connections)
+            Cookie[] cookies = httpRequest.getCookies();
+            if (cookies != null) {
+                for (Cookie cookie : cookies) {
+                    if (CookieConstants.ACCESS_TOKEN.equals(cookie.getName())) {
+                        return cookie.getValue();
+                    }
+                }
             }
         }
         

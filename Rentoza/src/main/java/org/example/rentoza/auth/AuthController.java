@@ -5,6 +5,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import org.example.rentoza.config.AppProperties;
+import org.example.rentoza.security.CookieConstants;
 import org.example.rentoza.security.JwtUtil;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserService;
@@ -28,14 +29,15 @@ import java.util.Map;
 /**
  * Authentication endpoints for user registration, login, token refresh, and logout.
  * Uses JWT for access tokens and secure HttpOnly cookies for refresh tokens.
+ * 
+ * SECURITY: All cookie names are centralized in CookieConstants to prevent typos
+ * and ensure consistency across the codebase.
  */
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
 
     private static final Logger log = LoggerFactory.getLogger(AuthController.class);
-    private static final String REFRESH_COOKIE = "rentoza_refresh";
-    private static final String ACCESS_COOKIE = "access_token";
 
     private final UserService userService;
     private final PasswordEncoder passwordEncoder;
@@ -65,7 +67,8 @@ public class AuthController {
      * Create a standardized refresh token cookie with environment-based security settings
      */
     private ResponseCookie createRefreshTokenCookie(String token) {
-        return ResponseCookie.from(REFRESH_COOKIE, token)
+        log.debug("AUDIT: Issuing refresh token cookie");
+        return ResponseCookie.from(CookieConstants.REFRESH_TOKEN, token)
                 .httpOnly(true)
                 .secure(appProperties.getCookie().isSecure())
                 .path("/api/auth/refresh")
@@ -79,7 +82,8 @@ public class AuthController {
      * Create a standardized access token cookie
      */
     private ResponseCookie createAccessTokenCookie(String token) {
-        return ResponseCookie.from(ACCESS_COOKIE, token)
+        log.debug("AUDIT: Issuing access token cookie");
+        return ResponseCookie.from(CookieConstants.ACCESS_TOKEN, token)
                 .httpOnly(true)
                 .secure(appProperties.getCookie().isSecure())
                 .path("/")
@@ -93,7 +97,8 @@ public class AuthController {
      * Create a cookie to clear the refresh token
      */
     private ResponseCookie clearRefreshTokenCookie() {
-        return ResponseCookie.from(REFRESH_COOKIE, "")
+        log.debug("AUDIT: Clearing refresh token cookie");
+        return ResponseCookie.from(CookieConstants.REFRESH_TOKEN, "")
                 .httpOnly(true)
                 .secure(appProperties.getCookie().isSecure())
                 .path("/api/auth/refresh")
@@ -107,7 +112,8 @@ public class AuthController {
      * Create a cookie to clear the access token
      */
     private ResponseCookie clearAccessTokenCookie() {
-        return ResponseCookie.from(ACCESS_COOKIE, "")
+        log.debug("AUDIT: Clearing access token cookie");
+        return ResponseCookie.from(CookieConstants.ACCESS_TOKEN, "")
                 .httpOnly(true)
                 .secure(appProperties.getCookie().isSecure())
                 .path("/")
@@ -194,7 +200,7 @@ public class AuthController {
 
     @PostMapping("/refresh")
     public ResponseEntity<?> refresh(
-            @CookieValue(value = REFRESH_COOKIE, required = false) String refreshCookie,
+            @CookieValue(value = CookieConstants.REFRESH_TOKEN, required = false) String refreshCookie,
             HttpServletRequest request,
             HttpServletResponse res) {
 
@@ -257,7 +263,7 @@ public class AuthController {
 
     @PostMapping("/logout")
     public ResponseEntity<?> logout(@org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal,
-                                    @CookieValue(value = REFRESH_COOKIE, required = false) String refreshCookie,
+                                    @CookieValue(value = CookieConstants.REFRESH_TOKEN, required = false) String refreshCookie,
                                     HttpServletResponse res) {
         String email = principal != null ? principal.getUsername() : null;
 

@@ -351,6 +351,12 @@ export class AuthService {
    * Start periodic token expiration watcher.
    * Checks every intervalMs (default: 60 seconds) if the current token has expired.
    * If expired, triggers session cleanup and emits sessionExpired$ event.
+   *
+   * SECURITY FIX: In cookie mode, tokens are HttpOnly and cannot be decoded client-side.
+   * Instead of checking token expiration directly, we rely on:
+   * 1. Session state (currentUser$ being null)
+   * 2. Backend 401 responses triggering refresh flow
+   * 3. sessionExpired$ events from failed refreshes
    */
   startTokenWatcher(intervalMs = 60000): void {
     // Clear any existing watcher
@@ -358,6 +364,32 @@ export class AuthService {
       clearInterval(this.tokenWatcherInterval);
     }
 
+    // In cookie mode, skip direct token inspection (tokens are HttpOnly)
+    // Session validity is maintained via:
+    // - token.interceptor.ts automatic 401 → refresh flow
+    // - sessionExpired$ events from AuthService.refreshAccessToken()
+    if (this.shouldUseCookies()) {
+      console.log('🍪 Token watcher: Cookie mode - relying on backend session management');
+
+      // Instead of token inspection, periodically verify session is still active
+      // by checking if we have a current user. If not, session may have expired.
+      this.tokenWatcherInterval = setInterval(() => {
+        const currentUser = this.currentUserSubject.value;
+        const token = this.accessTokenSubject.value;
+
+        // If we have no user and no token, session is already cleared
+        // If we have a token reference but no user, attempt to hydrate
+        if (token && !currentUser) {
+          console.log('⏰ Token watcher: Token exists but no user - verifying session');
+          this.hydrateUserFromBackend();
+        }
+      }, intervalMs);
+
+      console.log(`✅ Token watcher started in cookie mode (checking every ${intervalMs}ms)`);
+      return;
+    }
+
+    // Legacy localStorage mode: directly inspect token expiration
     this.tokenWatcherInterval = setInterval(() => {
       const token = this.getAccessToken();
       if (token && this.jwtHelper.isTokenExpired(token)) {

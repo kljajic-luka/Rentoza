@@ -6,14 +6,12 @@ import { catchError, defer, switchMap, throwError } from 'rxjs';
 import { environment } from '@environments/environment';
 import { AuthService } from './auth.service';
 import { RETRIED_REQUEST, SKIP_AUTH } from './auth.tokens';
+import { COOKIE_NAMES, HEADER_NAMES, AUTH_ENDPOINTS } from './cookie.constants';
 
-const AUTH_EXCLUDE_SEGMENTS = ['/auth/login', '/auth/register', '/auth/refresh', '/auth/logout'];
 const ABSOLUTE_URL_REGEX = /^https?:\/\//i;
-const XSRF_COOKIE_NAME = 'XSRF-TOKEN';
-const XSRF_HEADER_NAME = 'X-XSRF-TOKEN';
 
 const shouldBypassAuth = (url: string): boolean =>
-  AUTH_EXCLUDE_SEGMENTS.some((segment) => url.includes(segment));
+  AUTH_ENDPOINTS.some((segment) => url.includes(segment));
 
 const enrichRequest = (
   request: Parameters<HttpInterceptorFn>[0],
@@ -33,13 +31,20 @@ const enrichRequest = (
     !skipAuth && token && (!environment.auth?.useCookies || isCrossOriginRequest(request.url));
 
   if (shouldAttachAuthHeader) {
-    headersToApply['Authorization'] = `Bearer ${token}`;
+    headersToApply[HEADER_NAMES.AUTHORIZATION] = `Bearer ${token}`;
   }
 
   if (shouldAttachXsrfHeader(request)) {
-    const xsrfToken = readCookie(XSRF_COOKIE_NAME);
+    const xsrfToken = readCookie(COOKIE_NAMES.XSRF_TOKEN);
     if (xsrfToken) {
-      headersToApply[XSRF_HEADER_NAME] = xsrfToken;
+      headersToApply[HEADER_NAMES.XSRF] = xsrfToken;
+    } else {
+      // SECURITY: Log warning if XSRF token missing during mutation request
+      // This could indicate a misconfiguration or attack
+      console.warn(
+        `[Security] XSRF token missing for ${request.method} ${request.url}. ` +
+          'Ensure CSRF cookie is set by backend on authentication.'
+      );
     }
   }
 
@@ -72,7 +77,7 @@ const shouldAttachXsrfHeader = (request: Parameters<HttpInterceptorFn>[0]): bool
   if (
     request.method === 'GET' ||
     request.method === 'HEAD' ||
-    request.headers.has(XSRF_HEADER_NAME)
+    request.headers.has(HEADER_NAMES.XSRF)
   ) {
     return false;
   }

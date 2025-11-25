@@ -1,7 +1,7 @@
 package org.example.rentoza.security;
 
 import io.jsonwebtoken.ExpiredJwtException;
-import io.jsonwebtoken.SignatureException;
+import io.jsonwebtoken.security.SignatureException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -25,6 +25,8 @@ import java.util.List;
  * Bean Registration:
  * - Registered as @Bean in SecurityConfig (not @Component)
  * - This prevents duplicate registration and enables proper filter chain ordering
+ * 
+ * SECURITY: Uses CookieConstants for consistent cookie name references.
  */
 public class JwtAuthFilter extends OncePerRequestFilter {
 
@@ -116,22 +118,24 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             response.getWriter().write("{\"error\":\"Unauthorized\",\"message\":\"JWT token expired\"}");
             return; // Stop filter chain here
         } catch (SignatureException e) {
-            log.warn("Invalid JWT signature for request to {} from IP {}: {}",
-                    requestUri, request.getRemoteAddr(), e.getMessage());
+            // SECURITY: Do not leak implementation details in error messages
+            log.warn("Invalid JWT signature for request to {} from IP {}",
+                    requestUri, request.getRemoteAddr());
             // Return 401 for invalid signatures (potential tampering)
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             response.setContentType("application/json");
             response.setCharacterEncoding("UTF-8");
-            response.getWriter().write("{\"error\":\"Unauthorized\",\"message\":\"Invalid JWT signature\"}");
+            response.getWriter().write("{\"error\":\"Unauthorized\",\"message\":\"Authentication failed\"}");
             return; // Stop filter chain here
         } catch (Exception e) {
-            log.error("JWT validation error for request to {} from IP {}: {}",
-                    requestUri, request.getRemoteAddr(), e.getMessage());
+            // SECURITY: Do not leak implementation details in error messages
+            log.error("JWT validation error for request to {} from IP {}",
+                    requestUri, request.getRemoteAddr());
             // Return 401 for any other JWT errors
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             response.setContentType("application/json");
             response.setCharacterEncoding("UTF-8");
-            response.getWriter().write("{\"error\":\"Unauthorized\",\"message\":\"JWT validation failed\"}");
+            response.getWriter().write("{\"error\":\"Unauthorized\",\"message\":\"Authentication failed\"}");
             return; // Stop filter chain here
         }
 
@@ -140,19 +144,19 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     /**
      * Extract JWT token from Authorization header or access_token cookie.
-     * Prioritizes header if present.
+     * Prioritizes header if present (consistent with REST API pattern).
      */
     private String extractToken(HttpServletRequest request) {
-        // 1. Check Authorization header
+        // 1. Check Authorization header first (preferred for API calls)
         String bearerToken = request.getHeader("Authorization");
         if (bearerToken != null && bearerToken.startsWith("Bearer ")) {
             return bearerToken.substring(7);
         }
 
-        // 2. Check access_token cookie
+        // 2. Fallback to access_token cookie (for browser-based requests)
         if (request.getCookies() != null) {
             for (jakarta.servlet.http.Cookie cookie : request.getCookies()) {
-                if ("access_token".equals(cookie.getName())) {
+                if (CookieConstants.ACCESS_TOKEN.equals(cookie.getName())) {
                     return cookie.getValue();
                 }
             }

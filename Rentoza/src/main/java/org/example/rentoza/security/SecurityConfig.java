@@ -113,19 +113,16 @@ public class SecurityConfig {
                                            JwtAuthFilter jwtAuthFilter) throws Exception {
         http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-                // CSRF PROTECTION: Enabled with exemptions for stateless JWT endpoints
-                // Cookie-based endpoints (OAuth2, refresh token) are protected against CSRF
-                // Stateless JWT API endpoints are exempt (JWTs in headers are not vulnerable to CSRF)
+                // CSRF PROTECTION: Enabled for all cookie-based auth endpoints
+                // SECURITY FIX: login/register/refresh now require XSRF token to prevent session fixation
+                // Only logout and static uploads remain exempt (logout is idempotent, uploads use JWT header)
                 .csrf(csrf -> csrf
                     .csrfTokenRepository(csrfTokenRepository())
                     .csrfTokenRequestHandler(loggingCsrfTokenRequestHandler())
                     .sessionAuthenticationStrategy(new NullAuthenticatedSessionStrategy())
                     .ignoringRequestMatchers(
-                        "/api/auth/login",
-                        "/api/auth/register",
-                        "/api/auth/refresh",
-                        "/api/auth/logout",
-                        "/uploads/**"
+                        "/api/auth/logout",  // Idempotent - safe without CSRF
+                        "/uploads/**"         // Static files - no state change
                     )
                 )
                 .authorizeHttpRequests(auth -> auth
@@ -311,7 +308,17 @@ public class SecurityConfig {
     }
 
     /**
-     * Build Content Security Policy directive dynamically based on allowed origins
+     * Build Content Security Policy directive dynamically based on allowed origins.
+     * 
+     * SECURITY HARDENING:
+     * - Removed 'unsafe-eval' entirely (major XSS vector)
+     * - Retained 'unsafe-inline' for styles only (Angular Material requirement)
+     * - Scripts use strict allowlist (Google OAuth only)
+     * - Added frame-ancestors to prevent clickjacking
+     * - Added base-uri restriction to prevent base tag injection
+     * - Added form-action restriction
+     * 
+     * TODO: Implement nonce-based CSP for scripts when Angular build pipeline supports it
      */
     private String buildCspPolicy() {
         // Split comma-separated origins safely
@@ -322,10 +329,15 @@ public class SecurityConfig {
         String connectSrc = String.join(" ", origins);
 
         return "default-src 'self'; " +
-                "img-src 'self' data: blob: https://images.unsplash.com; " +
-                "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com https://apis.google.com; " +
-                "style-src 'self' 'unsafe-inline'; " +
-                "connect-src 'self' " + connectSrc + ";";
+                "img-src 'self' data: blob: https://images.unsplash.com https://*.googleusercontent.com; " +
+                "script-src 'self' https://accounts.google.com https://apis.google.com; " +
+                "style-src 'self' 'unsafe-inline'; " +  // Required for Angular Material
+                "connect-src 'self' " + connectSrc + " wss: https://accounts.google.com; " +
+                "frame-src 'self' https://accounts.google.com; " +
+                "frame-ancestors 'self'; " +  // Clickjacking protection
+                "base-uri 'self'; " +          // Base tag injection protection
+                "form-action 'self';"          // Form submission restriction
+                ;
     }
 
     @Bean

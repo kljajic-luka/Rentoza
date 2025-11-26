@@ -123,6 +123,30 @@
         }
       }
 
+      .deadline-container {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        border-radius: 16px;
+        background-color: rgba(0, 0, 0, 0.04);
+        flex-shrink: 0;
+
+        mat-icon {
+          font-size: 18px;
+          width: 18px;
+          height: 18px;
+          opacity: 0.7;
+        }
+
+        // Override countdown-timer styles for chip-like appearance
+        ::ng-deep .countdown-timer {
+          padding: 0;
+          background: none !important;
+          font-size: 13px;
+        }
+      }
+
       .deadline-chip {
         display: flex;
         align-items: center;

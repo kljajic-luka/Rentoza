@@ -174,19 +174,20 @@ public record BookingConversationDTO(
      * Messaging disabled for:
      * - PENDING_APPROVAL: Awaiting host approval (no chat until approved)
      * - DECLINED: Host declined request (no need for chat)
-     * - EXPIRED: Request timed out (no need for chat)
+     * - EXPIRED: Request timed out (no need for chat) - legacy status
+     * - EXPIRED_SYSTEM: System auto-expired due to host inactivity (no need for chat)
      * - CANCELLED: User/host cancelled (chat closed)
      * - COMPLETED: Trip finished (chat closed)
      * 
      * Rationale:
      * - PENDING_APPROVAL: No chat conversation exists yet (created on approval)
-     * - DECLINED/EXPIRED: Request rejected, no trip happening
+     * - DECLINED/EXPIRED/EXPIRED_SYSTEM: Request rejected, no trip happening
      * - CANCELLED/COMPLETED: Trip lifecycle ended
      */
     private static boolean computeMessagingAllowed(org.example.rentoza.booking.BookingStatus status) {
         return switch (status) {
             case ACTIVE -> true;
-            case PENDING_APPROVAL, DECLINED, EXPIRED, CANCELLED, COMPLETED -> false;
+            case PENDING_APPROVAL, DECLINED, EXPIRED, EXPIRED_SYSTEM, CANCELLED, COMPLETED -> false;
         };
     }
 }

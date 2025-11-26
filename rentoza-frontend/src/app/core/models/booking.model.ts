@@ -8,6 +8,7 @@ export type BookingStatus =
   | 'ACTIVE'
   | 'DECLINED'
   | 'EXPIRED'
+  | 'EXPIRED_SYSTEM' // System auto-expired due to host inactivity (distinct for analytics)
   | 'CANCELLED'
   | 'COMPLETED';
 

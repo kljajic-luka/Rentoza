@@ -13,6 +13,7 @@ import { Booking } from '@core/models/booking.model';
 import { BookingService } from '@core/services/booking.service';
 import { DeclineReasonDialogComponent } from '../../dialogs/decline-reason-dialog/decline-reason-dialog.component';
 import { GuestBookingPreviewDialogComponent } from '@features/bookings/guest-booking-preview-dialog/guest-booking-preview-dialog.component';
+import { CountdownTimerComponent } from '@shared/components/countdown-timer/countdown-timer.component';
 
 /**
  * Pending Requests Component - Host Approval Workflow (Phase 3)
@@ -48,6 +49,7 @@ import { GuestBookingPreviewDialogComponent } from '@features/bookings/guest-boo
     MatSnackBarModule,
     MatDialogModule,
     MatTooltipModule,
+    CountdownTimerComponent,
   ],
   templateUrl: './pending-requests.component.html',
   styleUrls: ['./pending-requests.component.scss'],

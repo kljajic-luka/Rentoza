@@ -75,6 +75,22 @@ public class BookingService {
         Car car = carRepo.findById(dto.getCarId())
                 .orElseThrow(() -> new RuntimeException("Car not found"));
 
+        // ========================================================================
+        // TRIP START BUFFER VALIDATION (Short Notice Protection)
+        // ========================================================================
+        // Reject booking if trip starts within 1 hour from now.
+        // Rationale: Hosts need minimum time to respond, and last-minute bookings
+        // create poor UX (auto-expiry would trigger almost immediately).
+        java.time.LocalDateTime tripStartDateTime = dto.getStartDate().atStartOfDay();
+        java.time.LocalDateTime oneHourFromNow = java.time.LocalDateTime.now().plusHours(1);
+        
+        if (tripStartDateTime.isBefore(oneHourFromNow)) {
+            throw new org.example.rentoza.exception.ValidationException(
+                    "Booking cannot be created less than 1 hour before trip start time. " +
+                    "Please select a later start date."
+            );
+        }
+
         Booking booking = new Booking();
         booking.setCar(car);
         booking.setRenter(renter);
@@ -85,10 +101,33 @@ public class BookingService {
         BookingStatus initialStatus;
         if (approvalEnabled || (betaUsers != null && betaUsers.contains(renter.getId()))) {
             initialStatus = BookingStatus.PENDING_APPROVAL;
-            // Set decision deadline for auto-expiry
-            booking.setDecisionDeadlineAt(java.time.LocalDateTime.now().plusHours(expiryHours));
-            log.debug("Booking created with PENDING_APPROVAL status (approvalEnabled={}, isBetaUser={})",
-                    approvalEnabled, betaUsers != null && betaUsers.contains(renter.getId()));
+            
+            // ========================================================================
+            // DYNAMIC DEADLINE CALCULATION (Logic Matrix Implementation)
+            // ========================================================================
+            // Formula: MIN(Now + 48h, TripStartTime - 1h)
+            // 
+            // This ensures:
+            // 1. Standard case: Host gets up to 48 hours to respond
+            // 2. Short notice: Host response window shrinks to ensure guest has at least
+            //    1 hour between approval and trip start
+            // 
+            // Examples:
+            // - Trip in 72h: deadline = now + 48h (standard)
+            // - Trip in 36h: deadline = now + 35h (buffer-constrained)
+            // - Trip in 6h:  deadline = now + 5h  (buffer-constrained)
+            java.time.LocalDateTime standardDeadline = java.time.LocalDateTime.now().plusHours(expiryHours);
+            java.time.LocalDateTime bufferDeadline = tripStartDateTime.minusHours(1);
+            
+            java.time.LocalDateTime effectiveDeadline = standardDeadline.isBefore(bufferDeadline) 
+                    ? standardDeadline 
+                    : bufferDeadline;
+            
+            booking.setDecisionDeadlineAt(effectiveDeadline);
+            
+            log.debug("Booking created with PENDING_APPROVAL status. " +
+                    "Deadline calculation: standardDeadline={}, bufferDeadline={}, effectiveDeadline={}",
+                    standardDeadline, bufferDeadline, effectiveDeadline);
         } else {
             initialStatus = BookingStatus.ACTIVE;
             // Backfill approval metadata for instant bookings

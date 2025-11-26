@@ -163,6 +163,8 @@ export class BookingHistoryComponent {
         return 'Otkazano';
       case 'COMPLETED':
         return 'Završeno';
+      case 'EXPIRED_SYSTEM':
+        return 'Odobrenje isteklo';
       default:
         return status;
     }
@@ -185,6 +187,8 @@ export class BookingHistoryComponent {
       case 'DECLINED':
         return 'status-declined';
       case 'EXPIRED':
+        return 'status-expired';
+      case 'EXPIRED_SYSTEM':
         return 'status-expired';
       case 'CANCELLED':
         return 'status-cancelled';
@@ -215,6 +219,8 @@ export class BookingHistoryComponent {
           : 'Domaćin je odbio Vaš zahtev za rezervaciju.';
       case 'EXPIRED':
         return 'Zahtev za rezervaciju je istekao jer domaćin nije odgovorio na vreme.';
+      case 'EXPIRED_SYSTEM':
+        return 'Zahtev za rezervaciju je istekao jer domaćin nije odgovorio na vreme.';
       case 'CANCELLED':
         return 'Rezervacija je otkazana.';
       case 'COMPLETED':
@@ -231,7 +237,7 @@ export class BookingHistoryComponent {
    * to indicate user should check tooltip for details.
    */
   protected shouldShowInfoIcon(status: string): boolean {
-    return ['PENDING_APPROVAL', 'DECLINED', 'EXPIRED'].includes(status);
+    return ['PENDING_APPROVAL', 'DECLINED', 'EXPIRED', 'EXPIRED_SYSTEM'].includes(status);
   }
 
   openDetails(id: number): void {

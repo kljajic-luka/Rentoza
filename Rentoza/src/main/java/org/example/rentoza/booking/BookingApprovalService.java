@@ -202,7 +202,7 @@ public class BookingApprovalService {
 
     /**
      * Auto-expire pending bookings that have passed their decision deadline.
-     * Called by scheduled job.
+     * Called by scheduled job every 15 minutes.
      * 
      * @return Number of bookings expired
      */
@@ -221,13 +221,14 @@ public class BookingApprovalService {
         log.info("[ApprovalService] Found {} pending bookings to expire", expiredBookings.size());
 
         for (Booking booking : expiredBookings) {
-            booking.setStatus(BookingStatus.EXPIRED);
+            // Use EXPIRED_SYSTEM for auto-expiry (distinguishable from user-initiated expiry)
+            booking.setStatus(BookingStatus.EXPIRED_SYSTEM);
             booking.setDeclineReason("Request expired (no response from host within deadline)");
             booking.setPaymentStatus("RELEASED");
 
             bookingRepository.save(booking);
 
-            log.info("Booking expired: bookingId={}, renterId={}, carId={}, decisionDeadline={}", 
+            log.info("Booking auto-expired: bookingId={}, renterId={}, carId={}, decisionDeadline={}", 
                     booking.getId(), booking.getRenter().getId(), booking.getCar().getId(), 
                     booking.getDecisionDeadlineAt());
 

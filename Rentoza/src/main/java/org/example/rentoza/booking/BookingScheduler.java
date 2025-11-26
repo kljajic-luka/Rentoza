@@ -46,20 +46,24 @@ public class BookingScheduler {
     /**
      * Auto-expire pending bookings that have exceeded their decision deadline.
      * 
-     * Cron Expression: "0 0 *\/6 * * *"
+     * Cron Expression: "0 0/15 * * * *"
      * - Second: 0
-     * - Minute: 0
-     * - Hour: Every 6 hours (0, 6, 12, 18)
-     * - Day of month: *
-     * - Month: *
-     * - Day of week: *
+     * - Minute: Every 15 minutes starting at 0 (0, 15, 30, 45)
+     * - Hour: every hour
+     * - Day of month: every day
+     * - Month: every month
+     * - Day of week: any
      * 
-     * Execution times: 00:00, 06:00, 12:00, 18:00 daily
+     * Execution times: Every 15 minutes (00:00, 00:15, 00:30, 00:45, etc.)
+     * 
+     * Rationale: For "Short Notice" bookings where trip starts within hours,
+     * the previous 6-hour schedule was too slow to catch expiries promptly.
+     * 15-minute frequency provides acceptable latency (~7.5 min average).
      * 
      * Can be overridden via application.properties:
-     * app.booking.scheduler.expiry-cron=0 0 4 * * *  (run at 4 AM daily)
+     * app.booking.scheduler.expiry-cron=0 0 0/6 * * *  (revert to 6h for low-volume deployments)
      */
-    @Scheduled(cron = "${app.booking.scheduler.expiry-cron:0 0 */6 * * *}")
+    @Scheduled(cron = "${app.booking.scheduler.expiry-cron:0 0/15 * * * *}")
     public void autoExpirePendingBookings() {
         log.info("Starting scheduled auto-expiry of pending booking approval requests");
 

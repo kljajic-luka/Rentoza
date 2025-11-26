@@ -45,14 +45,17 @@
             </mat-card-subtitle>
           </div>
         </div>
-        <mat-chip
-          class="deadline-chip"
-          [ngClass]="getDeadlineClass(booking.decisionDeadlineAt)"
-          matTooltip="Vreme do isteka zahteva"
-        >
+        @if (booking.decisionDeadlineAt) {
+        <div class="deadline-container" matTooltip="Vreme do isteka zahteva">
           <mat-icon>schedule</mat-icon>
-          {{ getDeadlineTimeLeft(booking.decisionDeadlineAt) }}
-        </mat-chip>
+          <app-countdown-timer
+            [targetDate]="booking.decisionDeadlineAt"
+            [showSeconds]="false"
+            [compactMode]="true"
+          >
+          </app-countdown-timer>
+        </div>
+        }
       </mat-card-header>
 
       <mat-card-content>

@@ -2,6 +2,7 @@ import { Routes } from '@angular/router';
 
 import { RoleGuard } from '@core/guards/role.guard';
 import { RoleRedirectGuard } from '@core/guards/role-redirect.guard';
+import { guestGuard } from '@core/guards/guest.guard';
 
 export const routes: Routes = [
   {
@@ -19,11 +20,13 @@ export const routes: Routes = [
       },
       {
         path: 'login',
+        canActivate: [guestGuard],
         loadComponent: () =>
           import('@features/auth/pages/login/login.component').then((m) => m.LoginComponent),
       },
       {
         path: 'register',
+        canActivate: [guestGuard],
         loadComponent: () =>
           import('@features/auth/pages/register/register.component').then(
             (m) => m.RegisterComponent

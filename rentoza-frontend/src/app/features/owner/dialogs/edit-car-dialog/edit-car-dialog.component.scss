@@ -19,14 +19,14 @@
     margin: 0 0 0.5rem 0;
     font-size: 1.125rem;
     font-weight: 600;
-    color: rgba(0, 0, 0, 0.87);
+    opacity: 0.9; // Theme-agnostic: works in both light and dark modes
   }
 
   h4 {
     margin: 0.5rem 0 0.25rem 0;
     font-size: 0.875rem;
     font-weight: 500;
-    color: rgba(0, 0, 0, 0.6);
+    opacity: 0.8; // Theme-agnostic: works in both light and dark modes
   }
 }
 

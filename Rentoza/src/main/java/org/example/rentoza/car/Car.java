@@ -13,6 +13,7 @@ import org.example.rentoza.review.Review;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -48,10 +49,16 @@ public class Car {
     @Column(nullable = false)
     private Integer year;
 
+    /**
+     * Daily rental price in Serbian Dinar (RSD).
+     * Uses BigDecimal for financial precision - prevents floating-point rounding errors.
+     * 
+     * Validation: Minimum 10 RSD (enforced at service layer, not JPA).
+     * Column: DECIMAL(19, 2) - supports large values with 2 decimal places.
+     */
     @NotNull
-    @Min(10)
-    @Column(nullable = false)
-    private Double pricePerDay;
+    @Column(name = "price_per_day", nullable = false, precision = 19, scale = 2)
+    private BigDecimal pricePerDay = BigDecimal.ZERO;
 
     @NotBlank
     @Column(nullable = false)

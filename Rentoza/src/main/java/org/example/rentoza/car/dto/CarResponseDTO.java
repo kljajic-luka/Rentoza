@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.Setter;
 import org.example.rentoza.car.*;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @Getter
@@ -16,7 +17,7 @@ public class CarResponseDTO {
     private String brand;
     private String model;
     private Integer year;
-    private Double pricePerDay;
+    private BigDecimal pricePerDay;
     private String location;
     private String imageUrl;
     private boolean available;

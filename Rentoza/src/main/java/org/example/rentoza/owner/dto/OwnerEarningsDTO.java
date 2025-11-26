@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -16,9 +17,9 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class OwnerEarningsDTO {
-    private Double totalEarnings;
-    private Double monthlyEarnings;
-    private Double yearlyEarnings;
+    private BigDecimal totalEarnings;
+    private BigDecimal monthlyEarnings;
+    private BigDecimal yearlyEarnings;
     private Integer totalBookings;
     private List<CarEarningDTO> carEarnings;
 
@@ -30,7 +31,7 @@ public class OwnerEarningsDTO {
         private Long carId;
         private String carBrand;
         private String carModel;
-        private Double earnings;
+        private BigDecimal earnings;
         private Integer bookingCount;
         private List<BookingDetailDTO> bookingDetails; // Added: individual booking details
     }
@@ -43,7 +44,7 @@ public class OwnerEarningsDTO {
         private Long bookingId;
         private LocalDate startDate;
         private LocalDate endDate;
-        private Double totalPrice;
+        private BigDecimal totalPrice;
         private String status;
     }
 }

@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.example.rentoza.booking.BookingStatus;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
 
@@ -21,7 +22,7 @@ public class BookingDetailsDTO {
     private LocalDate endDate;
     private LocalTime pickupTime;
     private String pickupTimeWindow;
-    private Double totalPrice;
+    private BigDecimal totalPrice;
     private String insuranceType;
     private boolean prepaidRefuel;
     private String cancellationPolicy;

@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 
 @Getter
@@ -19,10 +20,10 @@ public class UserBookingResponseDTO {
     private Integer carYear;
     private String carImageUrl;
     private String carLocation;
-    private Double carPricePerDay;
+    private BigDecimal carPricePerDay;
     private LocalDate startDate;
     private LocalDate endDate;
-    private Double totalPrice;
+    private BigDecimal totalPrice;
     private String status;
 
     // Review information

@@ -46,7 +46,7 @@ class CarControllerTest {
         car.setBrand("BMW");
         car.setModel("X5");
         car.setYear(2023);
-        car.setPricePerDay(150.0);
+        car.setPricePerDay(new java.math.BigDecimal("150.00"));
         car.setLocation("Beograd");
         car.setAvailable(true);
 

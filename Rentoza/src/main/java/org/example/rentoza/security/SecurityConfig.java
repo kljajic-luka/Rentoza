@@ -175,6 +175,12 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/users/me/profile-picture").authenticated()
                         .requestMatchers("/api/users/profile", "/api/users/profile/details").authenticated()
                         .requestMatchers(HttpMethod.PATCH, "/api/users/profile").authenticated()
+                        
+                        // ============ ADMIN ENDPOINTS (Phase 1 Remediation) ============
+                        // User moderation: ban/unban users, list banned users
+                        // RBAC: Strict ROLE_ADMIN requirement
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                        
                         // Bookings user endpoints - must come before internal service rules
                         .requestMatchers("/api/bookings/me").authenticated()
                         .requestMatchers("/api/bookings/pending").hasAnyRole("OWNER", "ADMIN")

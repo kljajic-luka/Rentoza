@@ -11,6 +11,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Entity
@@ -90,6 +91,37 @@ public class User {
 
     @Column(nullable = false)
     private boolean locked = false;
+
+    // ========== USER MODERATION FIELDS (Admin Infrastructure) ==========
+    
+    /**
+     * If true, user is banned and cannot login or perform any actions.
+     * Set by Admin via /api/admin/users/{id}/ban endpoint.
+     */
+    @Column(nullable = false)
+    private boolean banned = false;
+    
+    /**
+     * Admin-provided reason for the ban (audit trail).
+     * Example: "Multiple fraudulent booking attempts"
+     */
+    @Column(name = "ban_reason", length = 500)
+    private String banReason;
+    
+    /**
+     * Timestamp when the user was banned.
+     * Used for ban duration tracking and audit logs.
+     */
+    @Column(name = "banned_at")
+    private LocalDateTime bannedAt;
+    
+    /**
+     * Admin user who performed the ban action.
+     * Foreign key to users.id for accountability.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "banned_by")
+    private User bannedBy;
 
     @CreationTimestamp
     private Instant createdAt;

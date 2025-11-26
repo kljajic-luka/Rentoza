@@ -17,6 +17,7 @@ import org.example.rentoza.user.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -51,13 +52,13 @@ public class OwnerService {
 
         // 3. Calculate monthly earnings (current month only)
         LocalDate startOfMonth = LocalDate.now().withDayOfMonth(1);
-        double monthlyEarnings = allBookings.stream()
+        BigDecimal monthlyEarnings = allBookings.stream()
                 .filter(booking -> (booking.getStatus() == BookingStatus.COMPLETED ||
                                    booking.getStatus() == BookingStatus.ACTIVE) &&
                                    booking.getStartDate() != null &&
                                    !booking.getStartDate().isBefore(startOfMonth))
-                .mapToDouble(Booking::getTotalPrice)
-                .sum();
+                .map(Booking::getTotalPrice)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         // 4. Calculate average rating from reviews received by owner
         List<Review> receivedReviews = reviewRepo.findByReviewee(owner);
@@ -127,9 +128,9 @@ public class OwnerService {
         LocalDate startOfMonth = LocalDate.now().withDayOfMonth(1);
         LocalDate startOfYear = LocalDate.now().withDayOfYear(1);
 
-        double totalEarnings = 0.0;
-        double monthlyEarnings = 0.0;
-        double yearlyEarnings = 0.0;
+        BigDecimal totalEarnings = BigDecimal.ZERO;
+        BigDecimal monthlyEarnings = BigDecimal.ZERO;
+        BigDecimal yearlyEarnings = BigDecimal.ZERO;
         int totalBookings = 0;
 
         // Use a helper class to accumulate both aggregated data and individual booking details
@@ -137,7 +138,7 @@ public class OwnerService {
             Long carId;
             String carBrand;
             String carModel;
-            double totalEarnings = 0.0;
+            BigDecimal totalEarnings = BigDecimal.ZERO;
             int bookingCount = 0;
             List<OwnerEarningsDTO.BookingDetailDTO> bookingDetails = new ArrayList<>();
         }
@@ -147,16 +148,16 @@ public class OwnerService {
         for (Booking booking : allBookings) {
             if (booking.getStatus() == BookingStatus.COMPLETED || booking.getStatus() == BookingStatus.ACTIVE) {
                 Car car = booking.getCar();
-                double price = booking.getTotalPrice();
+                BigDecimal price = booking.getTotalPrice();
 
-                totalEarnings += price;
+                totalEarnings = totalEarnings.add(price);
                 totalBookings++;
 
                 if (booking.getStartDate() != null && !booking.getStartDate().isBefore(startOfMonth)) {
-                    monthlyEarnings += price;
+                    monthlyEarnings = monthlyEarnings.add(price);
                 }
                 if (booking.getStartDate() != null && !booking.getStartDate().isBefore(startOfYear)) {
-                    yearlyEarnings += price;
+                    yearlyEarnings = yearlyEarnings.add(price);
                 }
 
                 // Update per-car earnings with individual booking details
@@ -170,7 +171,7 @@ public class OwnerService {
                 }
 
                 // Add to aggregated data
-                accumulator.totalEarnings += price;
+                accumulator.totalEarnings = accumulator.totalEarnings.add(price);
                 accumulator.bookingCount++;
 
                 // Add individual booking detail
@@ -194,7 +195,7 @@ public class OwnerService {
                         acc.bookingCount,
                         acc.bookingDetails
                 ))
-                .sorted((c1, c2) -> Double.compare(c2.getEarnings(), c1.getEarnings()))
+                .sorted((c1, c2) -> c2.getEarnings().compareTo(c1.getEarnings()))
                 .toList();
 
         return new OwnerEarningsDTO(totalEarnings, monthlyEarnings, yearlyEarnings, totalBookings, carEarningsList);

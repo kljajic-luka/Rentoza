@@ -8,6 +8,7 @@ import org.example.rentoza.booking.dto.UserBookingResponseDTO;
 import org.example.rentoza.car.Car;
 import org.example.rentoza.car.CarRepository;
 import org.example.rentoza.chat.ChatServiceClient;
+import org.example.rentoza.exception.BookingConflictException;
 import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.notification.NotificationService;
 import org.example.rentoza.notification.NotificationType;
@@ -22,6 +23,8 @@ import org.hibernate.Hibernate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -74,6 +77,30 @@ public class BookingService {
 
         Car car = carRepo.findById(dto.getCarId())
                 .orElseThrow(() -> new RuntimeException("Car not found"));
+
+        // ========================================================================
+        // CONCURRENCY HARDENING: Pessimistic Lock Before Booking Creation
+        // ========================================================================
+        // CRITICAL: This MUST happen BEFORE creating the Booking entity.
+        // Uses SELECT ... FOR UPDATE to acquire exclusive row lock on conflicting bookings.
+        // Prevents race condition where two users could book same dates simultaneously.
+        //
+        // Lock Scope: Only rows matching (car_id, date range, active/pending status)
+        // Lock Duration: Until transaction commits/rolls back
+        // Timeout: 5 seconds (configured in repository query hint)
+        boolean hasConflict = repo.existsOverlappingBookingsWithLock(
+                dto.getCarId(),
+                dto.getStartDate(),
+                dto.getEndDate()
+        );
+        
+        if (hasConflict) {
+            log.warn("Booking conflict detected: carId={}, dates={} to {}", 
+                    dto.getCarId(), dto.getStartDate(), dto.getEndDate());
+            throw new BookingConflictException(
+                    "This car is already booked for the selected dates. Please choose different dates."
+            );
+        }
 
         // ========================================================================
         // TRIP START BUFFER VALIDATION (Short Notice Protection)
@@ -145,25 +172,44 @@ public class BookingService {
         booking.setPickupTimeWindow(dto.getPickupTimeWindow() != null ? dto.getPickupTimeWindow() : "MORNING");
         booking.setPickupTime(dto.getPickupTime()); // Nullable - only set when EXACT window selected
 
-        // Calculate total price with insurance and refuel
+        // ========================================================================
+        // PRICE CALCULATION WITH BigDecimal (Financial Precision)
+        // ========================================================================
+        // Uses BigDecimal.multiply() and .add() instead of * and + operators.
+        // RoundingMode.HALF_UP ensures consistent banker's rounding.
+        // Scale of 2 matches DECIMAL(19, 2) column in database.
         long days = ChronoUnit.DAYS.between(dto.getStartDate(), dto.getEndDate());
-        double basePrice = days * car.getPricePerDay();
+        BigDecimal basePrice = car.getPricePerDay()
+                .multiply(BigDecimal.valueOf(days));
 
-        // Apply insurance multiplier
-        double insuranceMultiplier = switch (booking.getInsuranceType().toUpperCase()) {
-            case "STANDARD" -> 1.10;
-            case "PREMIUM" -> 1.20;
-            default -> 1.00;
+        // Apply insurance multiplier (precise decimal representation)
+        BigDecimal insuranceMultiplier = switch (booking.getInsuranceType().toUpperCase()) {
+            case "STANDARD" -> new BigDecimal("1.10");
+            case "PREMIUM" -> new BigDecimal("1.20");
+            default -> BigDecimal.ONE; // 1.00 for BASIC
         };
 
         // Calculate refuel cost if applicable
-        double refuelCost = 0.0;
+        BigDecimal refuelCost = BigDecimal.ZERO;
         if (booking.isPrepaidRefuel() && car.getFuelConsumption() != null) {
             // Approximate: fuelConsumption * 6.5 (EUR/L) * 10 (assumed liters per rental)
-            refuelCost = car.getFuelConsumption() * 6.5 * 10;
+            // Using string constructor for precise decimal representation
+            refuelCost = new BigDecimal(car.getFuelConsumption().toString())
+                    .multiply(new BigDecimal("6.5"))
+                    .multiply(BigDecimal.TEN)
+                    .setScale(2, RoundingMode.HALF_UP);
         }
 
-        booking.setTotalPrice(basePrice * insuranceMultiplier + refuelCost);
+        // Final calculation with proper rounding
+        BigDecimal totalPrice = basePrice
+                .multiply(insuranceMultiplier)
+                .add(refuelCost)
+                .setScale(2, RoundingMode.HALF_UP);
+        
+        booking.setTotalPrice(totalPrice);
+        
+        log.debug("Price calculated: days={}, basePrice={}, multiplier={}, refuel={}, total={}",
+                days, basePrice, insuranceMultiplier, refuelCost, totalPrice);
 
         Booking savedBooking = repo.save(booking);
 

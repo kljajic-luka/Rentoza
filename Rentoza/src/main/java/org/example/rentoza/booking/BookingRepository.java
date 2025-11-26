@@ -1,8 +1,12 @@
 package org.example.rentoza.booking;
 
+import jakarta.persistence.LockModeType;
+import jakarta.persistence.QueryHint;
 import org.example.rentoza.car.Car;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.QueryHints;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
@@ -82,6 +86,43 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
            "AND b.status IN ('ACTIVE', 'CONFIRMED') " +
            "AND b.startDate <= :endDate AND b.endDate >= :startDate")
     boolean existsOverlappingBookings(
+            @Param("carId") Long carId,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate
+    );
+
+    /**
+     * CONCURRENCY HARDENING: Pessimistic locking query for booking creation.
+     * 
+     * This method acquires an exclusive row-level lock (SELECT ... FOR UPDATE) on all
+     * bookings for the given car within the date range. This prevents race conditions
+     * where two users could simultaneously pass the availability check and create
+     * overlapping bookings.
+     * 
+     * Lock Behavior:
+     * - PESSIMISTIC_WRITE: Acquires exclusive lock, blocking other transactions
+     * - Timeout: 5 seconds (prevents permanent deadlocks)
+     * - Scope: Only locks relevant rows using idx_booking_concurrency_lock index
+     * 
+     * Usage Pattern:
+     * 1. Call this method BEFORE creating a new Booking entity
+     * 2. If returns true, throw BookingConflictException
+     * 3. If returns false, safe to proceed with booking creation
+     * 4. Lock is released when transaction commits/rolls back
+     * 
+     * @param carId Car ID to check
+     * @param startDate Booking start date
+     * @param endDate Booking end date
+     * @return true if conflicting bookings exist (booking should be rejected)
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @QueryHints({
+        @QueryHint(name = "jakarta.persistence.lock.timeout", value = "5000") // 5 second timeout
+    })
+    @Query("SELECT COUNT(b) > 0 FROM Booking b WHERE b.car.id = :carId " +
+           "AND b.status IN ('ACTIVE', 'PENDING_APPROVAL') " +
+           "AND b.startDate <= :endDate AND b.endDate >= :startDate")
+    boolean existsOverlappingBookingsWithLock(
             @Param("carId") Long carId,
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate

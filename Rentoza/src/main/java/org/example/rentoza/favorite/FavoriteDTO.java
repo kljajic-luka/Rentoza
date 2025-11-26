@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 
 /**
@@ -23,7 +24,7 @@ public class FavoriteDTO {
     private String carBrand;
     private String carModel;
     private Integer carYear;
-    private Double carPricePerDay;
+    private BigDecimal carPricePerDay;
     private String carLocation;
     private String carImageUrl;
     private Boolean carAvailable;

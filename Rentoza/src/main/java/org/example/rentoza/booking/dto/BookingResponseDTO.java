@@ -7,6 +7,7 @@ import lombok.Setter;
 import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingStatus;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 
 @Getter
@@ -18,7 +19,7 @@ public class BookingResponseDTO {
     private Long id;
     private LocalDate startDate;
     private LocalDate endDate;
-    private Double totalPrice;
+    private BigDecimal totalPrice;
     private BookingStatus status;
     private String createdAt;
 

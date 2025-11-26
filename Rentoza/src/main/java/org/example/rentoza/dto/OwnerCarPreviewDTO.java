@@ -5,6 +5,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -15,7 +17,7 @@ public class OwnerCarPreviewDTO {
     private String model;
     private int year;
     private String imageUrl;
-    private Double pricePerDay;
+    private BigDecimal pricePerDay;
     private Double rating;
     private int tripCount;
 }

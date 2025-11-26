@@ -18,6 +18,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -47,8 +48,9 @@ public class CarService {
         if (dto.getModel() == null || dto.getModel().isBlank()) {
             throw new RuntimeException("Model is required");
         }
-        if (dto.getPricePerDay() == null || dto.getPricePerDay() <= 0) {
-            throw new RuntimeException("Invalid price per day");
+        // BigDecimal price validation (minimum 10 RSD)
+        if (dto.getPricePerDay() == null || dto.getPricePerDay().compareTo(BigDecimal.TEN) < 0) {
+            throw new RuntimeException("Price per day must be at least 10 RSD");
         }
 
         // Create new car entity with default values
@@ -218,7 +220,8 @@ public class CarService {
         if (dto.getYear() != null) {
             car.setYear(dto.getYear());
         }
-        if (dto.getPricePerDay() != null && dto.getPricePerDay() > 0) {
+        // BigDecimal price validation (minimum 10 RSD)
+        if (dto.getPricePerDay() != null && dto.getPricePerDay().compareTo(BigDecimal.TEN) >= 0) {
             car.setPricePerDay(dto.getPricePerDay());
         }
         if (dto.getLocation() != null && !dto.getLocation().isBlank()) {

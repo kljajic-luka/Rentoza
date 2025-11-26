@@ -5,6 +5,7 @@ import lombok.*;
 import org.example.rentoza.car.Car;
 import org.example.rentoza.user.User;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -26,7 +27,16 @@ public class Booking {
 
     private LocalDate startDate;
     private LocalDate endDate;
-    private Double totalPrice;
+    
+    /**
+     * Total booking price in Serbian Dinar (RSD).
+     * Uses BigDecimal for financial precision - IEEE 754 floats cannot
+     * represent decimal fractions exactly (e.g., 10.10 becomes 10.0999...).
+     * 
+     * Column: DECIMAL(19, 2) - supports up to 99 quadrillion RSD with 2 decimal places.
+     */
+    @Column(name = "total_price", nullable = false, precision = 19, scale = 2)
+    private BigDecimal totalPrice = BigDecimal.ZERO;
 
     @Column(name = "insurance_type", length = 20)
     private String insuranceType = "BASIC"; // BASIC, STANDARD, PREMIUM

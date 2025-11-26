@@ -40,17 +40,20 @@ public class RefreshTokenServiceEnhanced {
     private final SecureRandom random = new SecureRandom();
     private final long tokenExpiryDays;
     private final boolean fingerprintEnabled;
+    private final int maxActiveSessions;
 
     public RefreshTokenServiceEnhanced(
             RefreshTokenRepository repo,
             @Value("${refresh-token.expiration-days:14}") long tokenExpiryDays,
-            @Value("${refresh-token.fingerprint.enabled:false}") boolean fingerprintEnabled) {
+            @Value("${refresh-token.fingerprint.enabled:false}") boolean fingerprintEnabled,
+            @Value("${app.auth.max-sessions:5}") int maxActiveSessions) {
         this.repo = repo;
         this.tokenExpiryDays = tokenExpiryDays;
         this.fingerprintEnabled = fingerprintEnabled;
+        this.maxActiveSessions = maxActiveSessions;
 
-        log.info("Refresh token service initialized: expiryDays={}, fingerprintEnabled={}",
-                tokenExpiryDays, fingerprintEnabled);
+        log.info("Refresh token service initialized: expiryDays={}, fingerprintEnabled={}, maxActiveSessions={}",
+                tokenExpiryDays, fingerprintEnabled, maxActiveSessions);
     }
 
     // =====================================================
@@ -96,6 +99,28 @@ public class RefreshTokenServiceEnhanced {
      */
     @Transactional
     public String issue(String email, String ipAddress, String userAgent) {
+        return issue(email, ipAddress, userAgent, null);
+    }
+    
+    /**
+     * Issue a new refresh token with optional fingerprinting and token lineage.
+     *
+     * SECURITY HARDENING (Phase 2):
+     * - Session Capping: Limits active tokens per user to MAX_ACTIVE_SESSIONS
+     * - Token Lineage: Tracks previousTokenHash for chain-of-custody detection
+     *
+     * @param email User's email
+     * @param ipAddress Client IP address (optional, for fingerprinting)
+     * @param userAgent Client User-Agent (optional, for fingerprinting)
+     * @param previousTokenHash Hash of the parent token (for rotation lineage)
+     * @return Raw token string (sent to client in HttpOnly cookie)
+     */
+    @Transactional
+    public String issue(String email, String ipAddress, String userAgent, String previousTokenHash) {
+        // PHASE 2: SESSION CAPPING
+        // Enforce maximum active sessions per user
+        enforceSessionCap(email);
+        
         // Generate cryptographically secure random token
         byte[] bytes = new byte[TOKEN_BYTES];
         random.nextBytes(bytes);
@@ -105,14 +130,15 @@ public class RefreshTokenServiceEnhanced {
         // Calculate expiration
         Instant expiresAt = Instant.now().plusSeconds(60L * 60 * 24 * tokenExpiryDays);
 
-        // Build token entity
+        // Build token entity with lineage tracking
         RefreshToken.RefreshTokenBuilder builder = RefreshToken.builder()
                 .userEmail(email)
                 .tokenHash(hash)
                 .expiresAt(expiresAt)
                 .createdAt(Instant.now())
                 .revoked(false)
-                .used(false);
+                .used(false)
+                .previousTokenHash(previousTokenHash);  // PHASE 2: Token Lineage
 
         // Add fingerprinting if enabled
         if (fingerprintEnabled && ipAddress != null) {
@@ -123,10 +149,40 @@ public class RefreshTokenServiceEnhanced {
         RefreshToken entity = builder.build();
         repo.save(entity);
 
-        log.debug("Issued new refresh token: user={}, expiresAt={}, fingerprinted={}",
-                email, expiresAt, fingerprintEnabled && ipAddress != null);
+        log.debug("Issued new refresh token: user={}, expiresAt={}, fingerprinted={}, hasLineage={}",
+                email, expiresAt, fingerprintEnabled && ipAddress != null, previousTokenHash != null);
 
         return raw;
+    }
+    
+    /**
+     * Enforce session cap by removing oldest tokens if limit exceeded.
+     * 
+     * SECURITY HARDENING (Phase 2):
+     * - Prevents "Zombie Sessions" and database bloat
+     * - Ensures user cannot have unlimited active sessions
+     * - Removes oldest token first (LRU eviction)
+     *
+     * @param email User's email
+     */
+    private void enforceSessionCap(String email) {
+        Instant now = Instant.now();
+        long activeCount = repo.countActiveTokensByUser(email, now);
+        
+        if (activeCount >= maxActiveSessions) {
+            // Find and delete oldest tokens to make room
+            int tokensToRemove = (int) (activeCount - maxActiveSessions + 1);
+            
+            repo.findOldestActiveTokensByUser(email, now, tokensToRemove)
+                    .forEach(token -> {
+                        log.info("SESSION_CAP: Evicting oldest token for user={}, tokenId={}, createdAt={}",
+                                email, token.getId(), token.getCreatedAt());
+                        securityLog.info("SESSION_CAP: Evicted token - user={}, reason=MAX_SESSIONS_EXCEEDED", email);
+                        repo.delete(token);
+                    });
+            
+            repo.flush();
+        }
     }
 
     // =====================================================
@@ -149,6 +205,10 @@ public class RefreshTokenServiceEnhanced {
     /**
      * Rotate a refresh token with fingerprint validation
      *
+     * SECURITY HARDENING (Phase 2):
+     * - Token Lineage: New token stores hash of parent token
+     * - Theft Chain Detection: Reused token triggers cascade revocation
+     *
      * @param oldRawToken The old token from client cookie
      * @param ipAddress Current request IP (for fingerprint validation)
      * @param userAgent Current request User-Agent (for fingerprint validation)
@@ -165,6 +225,11 @@ public class RefreshTokenServiceEnhanced {
         if (tokenOpt.isEmpty()) {
             log.warn("Token rotation failed: token not found (hash: {}...)", oldHash.substring(0, 10));
             securityLog.warn("SECURITY: Token rotation attempt with non-existent token from IP: {}", ipAddress);
+            
+            // PHASE 2: THEFT CHAIN DETECTION
+            // Check if this token was previously rotated (it might be a stolen token)
+            detectTheftChain(oldHash, ipAddress);
+            
             throw new InvalidRefreshTokenException("Invalid or expired refresh token");
         }
 
@@ -177,8 +242,9 @@ public class RefreshTokenServiceEnhanced {
             securityLog.error("SECURITY ALERT: Possible token theft detected - user: {}, IP: {}, previousUse: {}",
                     email, ipAddress, old.getUsedAt());
 
-            // Revoke ALL tokens for this user as a security measure
-            revokeAll(email);
+            // PHASE 2: CASCADE REVOCATION
+            // Revoke ALL tokens for this user AND any child tokens in the lineage
+            revokeAllWithLineage(email, oldHash);
             throw new InvalidRefreshTokenException("Token reuse detected - all sessions invalidated for security");
         }
 
@@ -216,11 +282,60 @@ public class RefreshTokenServiceEnhanced {
         repo.delete(old);
         repo.flush(); // Ensure deletion is committed
 
-        // Issue new token
-        String newRaw = issue(email, ipAddress, userAgent);
+        // PHASE 2: TOKEN LINEAGE - Issue new token with parent hash
+        // This creates a chain: Token A -> Token B -> Token C
+        // If Token A is reused after Token B exists, we can detect the theft
+        String newRaw = issue(email, ipAddress, userAgent, oldHash);
 
-        log.debug("Token rotated successfully: user={}", email);
+        log.debug("Token rotated successfully: user={}, lineage={}", email, oldHash.substring(0, 10));
         return new RefreshTokenResult(true, email, newRaw);
+    }
+    
+    /**
+     * Detect theft chain by checking if a token was previously rotated.
+     * 
+     * SECURITY HARDENING (Phase 2):
+     * If someone presents Token A after it was already rotated to Token B,
+     * this is a strong indicator of token theft. We find Token B (which has
+     * Token A as its previousTokenHash) and revoke the entire user's session.
+     *
+     * @param stolenTokenHash Hash of the potentially stolen token
+     * @param ipAddress IP address of the attacker
+     */
+    private void detectTheftChain(String stolenTokenHash, String ipAddress) {
+        Optional<RefreshToken> childToken = repo.findByPreviousTokenHash(stolenTokenHash);
+        
+        if (childToken.isPresent()) {
+            RefreshToken child = childToken.get();
+            String email = child.getUserEmail();
+            
+            log.error("SECURITY ALERT: THEFT CHAIN DETECTED! Token was already rotated.");
+            log.error("SECURITY ALERT: user={}, attackerIP={}, childTokenCreated={}", 
+                    email, ipAddress, child.getCreatedAt());
+            securityLog.error("THEFT_CHAIN_DETECTED: user={}, attackerIP={}, stolenTokenHash={}...", 
+                    email, ipAddress, stolenTokenHash.substring(0, 10));
+            
+            // Revoke ALL tokens for this user - the attacker has the old token
+            revokeAll(email, "THEFT_CHAIN_DETECTED");
+        }
+    }
+    
+    /**
+     * Revoke all tokens for a user, including any in the theft chain lineage.
+     * 
+     * @param email User's email
+     * @param compromisedTokenHash Hash of the token that was reused
+     */
+    private void revokeAllWithLineage(String email, String compromisedTokenHash) {
+        // First, find and log any child tokens (for forensics)
+        Optional<RefreshToken> childToken = repo.findByPreviousTokenHash(compromisedTokenHash);
+        if (childToken.isPresent()) {
+            log.error("THEFT_FORENSICS: Found child token in theft chain - childId={}, createdAt={}",
+                    childToken.get().getId(), childToken.get().getCreatedAt());
+        }
+        
+        // Revoke all tokens for this user
+        revokeAll(email, "TOKEN_REUSE_CASCADE");
     }
 
     // =====================================================

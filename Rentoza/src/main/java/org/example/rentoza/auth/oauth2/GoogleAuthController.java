@@ -2,7 +2,6 @@ package org.example.rentoza.auth.oauth2;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import jakarta.servlet.http.HttpSession;
 import org.example.rentoza.user.User;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -18,12 +17,15 @@ import java.util.Map;
 /**
  * Controller providing Google OAuth2 helper endpoints.
  * These are read-only endpoints to help the frontend integrate with OAuth2.
+ * 
+ * STATELESS ARCHITECTURE:
+ * - No HttpSession usage (prevents JSESSIONID creation)
+ * - OAuth2 mode (login/register) is passed via query parameter to CustomAuthorizationRequestResolver
+ * - Mode is embedded in OAuth2 state parameter for stateless flow
  */
 @RestController
 @RequestMapping("/api/auth/google")
 public class GoogleAuthController {
-
-    public static final String OAUTH2_MODE_SESSION_KEY = "oauth2_mode";
 
     /**
      * Get the Google OAuth2 authorization URL for login.
@@ -73,14 +75,16 @@ public class GoogleAuthController {
 
     /**
      * Initiate Google OAuth2 registration flow.
-     * Sets REGISTER mode in session and redirects to OAuth2 authorization endpoint.
+     * Redirects to OAuth2 authorization endpoint with mode=register query parameter.
+     *
+     * STATELESS DESIGN:
+     * - No session creation (prevents JSESSIONID)
+     * - Mode is passed as query parameter: ?mode=register
+     * - CustomAuthorizationRequestResolver embeds mode in OAuth2 state parameter
+     * - CustomOAuth2UserService extracts mode from state (not session)
      *
      * CRITICAL: This endpoint preserves all query parameters (especially ?role=owner)
      * when redirecting to /oauth2/authorization/google
-     *
-     * This endpoint is called by the frontend when user clicks "Register with Google".
-     * It stores the registration intent in the session, then redirects to the standard
-     * OAuth2 authorization flow.
      *
      * @param request HTTP request
      * @param response HTTP response for redirect
@@ -89,21 +93,19 @@ public class GoogleAuthController {
     @GetMapping("/register")
     public void initiateGoogleRegistration(HttpServletRequest request, HttpServletResponse response)
             throws IOException {
-        // Store registration mode in session
-        HttpSession session = request.getSession(true);
-        session.setAttribute(OAUTH2_MODE_SESSION_KEY, OAuth2Mode.REGISTER);
-
         // Redirect to standard OAuth2 authorization endpoint
         String baseUrl = ServletUriComponentsBuilder.fromRequestUri(request)
                 .replacePath(null)
                 .build()
                 .toUriString();
 
-        // CRITICAL: Preserve query parameters (especially ?role=owner)
-        String oauth2AuthUrl = baseUrl + "/oauth2/authorization/google";
+        // STATELESS: Pass mode=register as query parameter (embedded in OAuth2 state by resolver)
+        String oauth2AuthUrl = baseUrl + "/oauth2/authorization/google?mode=register";
+        
+        // Preserve additional query parameters (especially ?role=owner)
         String queryString = request.getQueryString();
         if (queryString != null && !queryString.isBlank()) {
-            oauth2AuthUrl += "?" + queryString;
+            oauth2AuthUrl += "&" + queryString;
         }
         
         response.sendRedirect(oauth2AuthUrl);

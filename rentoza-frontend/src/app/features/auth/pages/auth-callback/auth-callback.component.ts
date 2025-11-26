@@ -2,11 +2,8 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ToastrService } from 'ngx-toastr';
-import { finalize } from 'rxjs';
 
-import { environment } from '@environments/environment';
 import { AuthService } from '@core/auth/auth.service';
-import { RedirectService } from '@core/services/redirect.service';
 import { FavoriteService } from '@core/services/favorite.service';
 import { MatCardModule } from '@angular/material/card';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
@@ -15,12 +12,16 @@ import { MatIconModule } from '@angular/material/icon';
 /**
  * Component that handles OAuth2 callback from Google authentication.
  *
+ * SECURITY HARDENING (Phase 1): Cookie-Only OAuth2 Flow
+ *
  * Flow:
- * 1. Google redirects to /auth/callback?token=JWT_TOKEN
- * 2. Component extracts token from query params
- * 3. Injects token into AuthService (same as local login)
- * 4. Fetches user profile
- * 5. Redirects to appropriate page based on user role
+ * 1. Google redirects to backend OAuth2 success handler
+ * 2. Backend sets HttpOnly cookies (access + refresh tokens)
+ * 3. Backend redirects to /oauth2/success (no token in URL!)
+ * 4. This component verifies session via /api/users/me
+ * 5. Redirects to appropriate page based on backend-verified role
+ *
+ * SECURITY: Token is NEVER exposed in URL or JavaScript.
  */
 @Component({
   selector: 'app-auth-callback',
@@ -34,7 +35,6 @@ export class AuthCallbackComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly authService = inject(AuthService);
-  private readonly redirectService = inject(RedirectService);
   private readonly toastr = inject(ToastrService);
   private readonly favoriteService = inject(FavoriteService);
 
@@ -46,8 +46,7 @@ export class AuthCallbackComponent implements OnInit {
   }
 
   private handleOAuth2Callback(): void {
-    // Extract token and error from query params
-    const token = this.route.snapshot.queryParamMap.get('token');
+    // Check for error parameter
     const error = this.route.snapshot.queryParamMap.get('error');
 
     // Handle OAuth2 error
@@ -67,66 +66,48 @@ export class AuthCallbackComponent implements OnInit {
       return;
     }
 
-    // Handle missing token
-    if (!token) {
-      console.error('No token received from OAuth2 callback');
-      this.errorMessage.set('Nije primljen token autentifikacije.');
-      this.isProcessing.set(false);
-
-      this.toastr.error('Nije primljen token autentifikacije', 'Greška');
-
-      // Redirect to login after 2 seconds
-      setTimeout(() => {
-        void this.router.navigate(['/auth/login'], {
-          queryParams: { error: 'no_token' },
-        });
-      }, 2000);
-      return;
-    }
-
-    // Process successful OAuth2 authentication
-    this.processGoogleToken(token);
+    // SECURITY HARDENING: No token in URL anymore!
+    // Backend has set HttpOnly cookies, we just need to verify the session
+    this.processOAuth2Session();
   }
 
-  private async processGoogleToken(token: string): Promise<void> {
+  /**
+   * Process OAuth2 session using cookie-only authentication.
+   *
+   * SECURITY HARDENING:
+   * - No token extraction from URL (eliminated XSS vector)
+   * - No localStorage storage (eliminated XSS vector)
+   * - Session verified via backend /api/users/me
+   * - Tokens are HttpOnly cookies managed by browser
+   */
+  private async processOAuth2Session(): Promise<void> {
     try {
-      // ✅ STEP 1: Persist token to localStorage via AuthService
-      // This ensures the token survives page reloads
-      // Conditional token persistence based on feature flag
-      if (!environment.auth?.useCookies) {
-        // Legacy mode: persist token to localStorage via AuthService
-        console.log('🔐 OAuth2: Persisting access token to localStorage');
-        this.authService.setAccessToken(token);
-      } else {
-        // Cookie mode: backend already set cookies, just update in-memory state
-        console.log('🍪 OAuth2: Using cookie-based session (backend set cookies)');
-        // Still update the in-memory token for immediate use
-        this.authService.setAccessToken(token);
-      }
+      console.log('🍪 OAuth2: Cookie-only session - verifying with backend');
 
-      // ✅ STEP 2: Verify session with backend /api/users/me
-      // This ensures frontend state synchronizes with backend RLS enforcement
-      console.log('🔄 OAuth2: Verifying session with backend /api/users/me');
+      // ✅ STEP 1: Verify session with backend /api/users/me
+      // The browser will automatically send the HttpOnly cookies
       const verifiedUser = await this.authService.verifySession();
 
       if (!verifiedUser) {
         throw new Error('Session verification failed - backend returned null');
       }
 
-      // ✅ STEP 3: Load user's favorited cars for immediate availability
+      console.log('✅ OAuth2: Session verified successfully', verifiedUser.email);
+
+      // ✅ STEP 2: Load user's favorited cars for immediate availability
       console.log('❤️ OAuth2: Loading favorited cars');
       this.favoriteService.loadFavoritedCarIds().subscribe({
         error: (err) => console.warn('Failed to preload favorites after OAuth login', err),
       });
 
-      // ✅ STEP 4: Start token expiration watcher
-      console.log('⏰ OAuth2: Starting token expiration watcher');
+      // ✅ STEP 3: Start session watcher
+      console.log('⏰ OAuth2: Starting session watcher');
       this.authService.startTokenWatcher(60000);
 
-      // ✅ STEP 5: Show success notification
+      // ✅ STEP 4: Show success notification
       this.toastr.success('Uspešno ste se prijavili putem Google naloga!', 'Dobrodošli');
 
-      // ✅ STEP 6: Role-based redirection using backend-verified roles
+      // ✅ STEP 5: Role-based redirection using backend-verified roles
       const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
 
       if (returnUrl) {

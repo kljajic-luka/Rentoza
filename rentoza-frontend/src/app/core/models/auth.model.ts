@@ -14,8 +14,21 @@ export interface RegisterRequest {
   role?: string;
 }
 
+/**
+ * Authentication response from backend.
+ *
+ * SECURITY HARDENING (Phase 1):
+ * - Access tokens are NEVER returned in JSON body (XSS prevention)
+ * - Tokens are delivered exclusively via HttpOnly cookies
+ * - This interface only contains user profile data and metadata
+ */
 export interface AuthResponse {
-  accessToken: string;
-  refreshToken?: string;
-  user?: User | UserProfile;
+  /** Authenticated user profile */
+  user: User | UserProfile;
+
+  /** Authentication status indicator */
+  authenticated: boolean;
+
+  /** Optional message (e.g., "Welcome back!") */
+  message?: string;
 }

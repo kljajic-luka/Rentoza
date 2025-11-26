@@ -45,85 +45,55 @@ export class AuthService {
   ) {}
 
   /**
-   * Check if cookie-based authentication is enabled via feature flag.
-   * When true, tokens are NOT written to localStorage.
+   * SECURITY HARDENING: Cookie-only authentication is now mandatory.
+   * localStorage fallback has been completely removed.
+   *
+   * This method is kept for backward compatibility but always returns true.
+   * @deprecated Will be removed in next major version
    */
   private shouldUseCookies(): boolean {
-    return environment.auth?.useCookies ?? false;
+    // KILL SWITCH: Cookies are MANDATORY. No localStorage fallback.
+    return true;
   }
 
   /**
    * Invoked during app bootstrap to silently restore a session using the refresh cookie.
-   * Also restores user from localStorage for immediate availability.
-   * If a valid token exists but no stored user is found, fetches user profile from /api/users/me.
+   *
+   * SECURITY HARDENING: This method now exclusively uses cookie-based authentication.
+   * No localStorage is involved - the browser automatically sends HttpOnly cookies.
    */
   async initializeSession(): Promise<void> {
-    // Cookie mode: rely on backend session via refresh endpoint
-    if (this.shouldUseCookies()) {
-      console.log('🍪 [AUTH] Cookie mode: Initializing session via refresh endpoint');
+    console.log('🍪 [AUTH] Initializing session via refresh endpoint (cookie-only mode)');
+
+    try {
+      // Attempt to refresh the session using HttpOnly refresh cookie
+      // If successful, user state will be hydrated from /api/users/me
       await firstValueFrom(this.refreshAccessToken().pipe(catchError(() => of(null))));
-      return;
+    } catch (error) {
+      console.log('ℹ️ [AUTH] No active session found');
     }
-
-    // Legacy mode: restore from localStorage
-    const storedToken = localStorage.getItem('access_token');
-    const storedUserJson = localStorage.getItem('current_user');
-
-    // Case 1: Both token and user exist in localStorage
-    if (storedToken && storedUserJson) {
-      try {
-        const user: UserProfile = JSON.parse(storedUserJson);
-        this.accessTokenSubject.next(storedToken);
-        this.currentUserSubject.next(user);
-
-        // ✅ Verify session with backend to ensure token is still valid
-        await this.verifySession();
-      } catch (error) {
-        console.warn('⚠️ Failed to parse stored user, clearing storage');
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('current_user');
-      }
-    }
-
-    // Case 2: Token exists but user is missing - fetch from API
-    if (storedToken && !storedUserJson) {
-      console.log('🔄 Token found but no stored user - fetching from /api/users/me');
-      this.accessTokenSubject.next(storedToken);
-
-      try {
-        await this.verifySession();
-        return;
-      } catch (error) {
-        console.warn('⚠️ Error during user profile restoration', error);
-        this.clearSession();
-        return;
-      }
-    }
-
-    // Case 3: No token or token with user already loaded - just refresh
-    await firstValueFrom(this.refreshAccessToken().pipe(catchError(() => of(null))));
   }
 
   /**
    * Verifies active session by querying backend /api/users/me endpoint.
    * This ensures frontend state never diverges from backend authorization reality.
    *
-   * ✅ Backend-verified roles (not client-side token claims)
+   * SECURITY HARDENING:
+   * - Does NOT check local token (tokens are HttpOnly, JS cannot access)
+   * - Relies entirely on backend session state via cookies
+   * - Backend-verified roles (not client-side token claims)
+   *
    * ✅ Handles 401 (expired token) → triggers refresh or logout
    * ✅ Handles 403 (insufficient permissions) → clears session
    * ✅ Syncs currentUser$ with backend state
-   *
-   * Call this during:
-   * - App initialization (APP_INITIALIZER)
-   * - After token refresh
-   * - When frontend suspects state divergence
    */
   async verifySession(): Promise<UserProfile | null> {
-    const token = this.getAccessToken();
+    // In cookie-only mode, we don't check local token
+    // The browser will send HttpOnly cookies automatically
+    const hasActiveUser = this.currentUserSubject.value !== null;
 
-    if (!token) {
-      console.log('🔒 No access token - skipping session verification');
-      return null;
+    if (!hasActiveUser) {
+      console.log('🔒 No current user - attempting session verification');
     }
 
     try {
@@ -241,42 +211,37 @@ export class AuthService {
   }
 
   /**
-   * Set access token directly (used for OAuth2 callback)
-   * This allows Google OAuth2 to inject the JWT token received from backend
-   *
-   * ✅ Persists to localStorage for session restoration across page reloads
-   * ✅ Updates accessTokenSubject for immediate reactivity
-   * ✅ Does NOT update currentUserSubject - caller must verify session via /api/users/me
+   * @deprecated OAuth2 now uses cookie-only flow. This method is a no-op.
+   * The access token is set via HttpOnly cookie by the backend.
+   * Frontend should call verifySession() after OAuth2 redirect.
    */
-  setAccessToken(token: string): void {
-    // Only persist to localStorage if NOT using cookies
-    if (!this.shouldUseCookies()) {
-      console.log('✅ Access token persisted to localStorage (OAuth2 flow)');
-    } else {
-      console.log('🍪 Access token NOT persisted (cookie mode)');
-    }
-
-    // ✅ Update observable for immediate reactivity
-    this.persistAccessToken(token);
+  setAccessToken(_token: string): void {
+    console.warn('⚠️ setAccessToken() is deprecated. Tokens are now cookie-only.');
+    // No-op: tokens are managed by HttpOnly cookies
+    // Hydrate user from backend instead
+    this.hydrateUserFromBackend();
   }
 
+  /**
+   * Check if user is authenticated.
+   *
+   * SECURITY HARDENING: In cookie-only mode, we cannot inspect the token
+   * (it's HttpOnly). We rely on currentUser$ being populated.
+   */
   isAuthenticated(): boolean {
-    const token = this.accessTokenSubject.value;
-    return Boolean(token && !this.jwtHelper.isTokenExpired(token));
+    // Cookie-only mode: check if we have a current user
+    // The actual token is HttpOnly and cannot be inspected by JS
+    return this.currentUserSubject.value !== null;
   }
 
-  willExpireSoon(thresholdSeconds = 60): boolean {
-    const token = this.accessTokenSubject.value;
-    if (!token) {
-      return false;
-    }
-
-    const expirationDate = this.jwtHelper.getTokenExpirationDate(token);
-    if (!expirationDate) {
-      return false;
-    }
-
-    return expirationDate.getTime() - Date.now() <= thresholdSeconds * 1000;
+  /**
+   * @deprecated In cookie-only mode, we cannot inspect token expiration.
+   * The interceptor handles 401 responses and triggers refresh automatically.
+   */
+  willExpireSoon(_thresholdSeconds = 60): boolean {
+    // Cookie-only mode: we cannot inspect HttpOnly token expiration
+    // Rely on interceptor's 401 → refresh flow instead
+    return false;
   }
 
   /**
@@ -306,14 +271,19 @@ export class AuthService {
       )
       .pipe(
         tap((response) => {
-          if (!response.accessToken) {
-            throw new Error('Refresh response did not include an access token.');
+          // SECURITY HARDENING: Response no longer contains accessToken
+          // Token is delivered via HttpOnly cookie by backend
+          if (!response.authenticated) {
+            throw new Error('Refresh failed: not authenticated');
           }
 
+          // Persist user data (not token - that's in HttpOnly cookie)
           this.persistSession(response);
-          this.refreshSubject.next(response.accessToken);
+
+          // Signal success (we don't have the token value, but session is valid)
+          this.refreshSubject.next('session-refreshed');
         }),
-        map((response) => response.accessToken),
+        map(() => 'session-refreshed'),
         catchError((error: HttpErrorResponse) => {
           this.refreshSubject.next(null);
           if (error.status === 401) {
@@ -348,15 +318,10 @@ export class AuthService {
   }
 
   /**
-   * Start periodic token expiration watcher.
-   * Checks every intervalMs (default: 60 seconds) if the current token has expired.
-   * If expired, triggers session cleanup and emits sessionExpired$ event.
+   * Start periodic session health watcher.
    *
-   * SECURITY FIX: In cookie mode, tokens are HttpOnly and cannot be decoded client-side.
-   * Instead of checking token expiration directly, we rely on:
-   * 1. Session state (currentUser$ being null)
-   * 2. Backend 401 responses triggering refresh flow
-   * 3. sessionExpired$ events from failed refreshes
+   * SECURITY HARDENING: In cookie-only mode, we cannot inspect tokens.
+   * Instead, we periodically verify the session is still active.
    */
   startTokenWatcher(intervalMs = 60000): void {
     // Clear any existing watcher
@@ -364,42 +329,32 @@ export class AuthService {
       clearInterval(this.tokenWatcherInterval);
     }
 
-    // In cookie mode, skip direct token inspection (tokens are HttpOnly)
-    // Session validity is maintained via:
-    // - token.interceptor.ts automatic 401 → refresh flow
-    // - sessionExpired$ events from AuthService.refreshAccessToken()
-    if (this.shouldUseCookies()) {
-      console.log('🍪 Token watcher: Cookie mode - relying on backend session management');
-
-      // Instead of token inspection, periodically verify session is still active
-      // by checking if we have a current user. If not, session may have expired.
-      this.tokenWatcherInterval = setInterval(() => {
-        const currentUser = this.currentUserSubject.value;
-        const token = this.accessTokenSubject.value;
-
-        // If we have no user and no token, session is already cleared
-        // If we have a token reference but no user, attempt to hydrate
-        if (token && !currentUser) {
-          console.log('⏰ Token watcher: Token exists but no user - verifying session');
-          this.hydrateUserFromBackend();
-        }
-      }, intervalMs);
-
-      console.log(`✅ Token watcher started in cookie mode (checking every ${intervalMs}ms)`);
-      return;
-    }
-
-    // Legacy localStorage mode: directly inspect token expiration
+    // Cookie-only mode: periodically verify session health
     this.tokenWatcherInterval = setInterval(() => {
-      const token = this.getAccessToken();
-      if (token && this.jwtHelper.isTokenExpired(token)) {
-        console.log('⏰ Token expired - triggering session cleanup');
-        this.clearSession();
-        this.sessionExpiredSubject.next();
+      const currentUser = this.currentUserSubject.value;
+
+      // If we have a user, periodically verify session is still valid
+      if (currentUser) {
+        // Silent verification - don't clear session on network errors
+        this.fetchBackendUserProfile()
+          .pipe(take(1))
+          .subscribe({
+            next: (profile) => {
+              this.currentUserSubject.next(profile);
+            },
+            error: (error: HttpErrorResponse) => {
+              if (error.status === 401) {
+                console.log('⏰ Session expired - clearing');
+                this.clearSession();
+                this.sessionExpiredSubject.next();
+              }
+              // Ignore other errors (network issues, etc.)
+            },
+          });
       }
     }, intervalMs);
 
-    console.log(`✅ Token watcher started (checking every ${intervalMs}ms)`);
+    console.log(`✅ Session watcher started (checking every ${intervalMs}ms)`);
   }
 
   /**
@@ -415,7 +370,7 @@ export class AuthService {
   }
 
   /**
-   * Update the current user's avatar URL in both memory and localStorage.
+   * Update the current user's avatar URL in memory.
    * Called after successful profile picture upload/delete.
    *
    * @param avatarUrl The new avatar URL (or null to remove)
@@ -434,25 +389,21 @@ export class AuthService {
       avatarUrl: avatarUrl ?? undefined,
     };
 
-    // Update observable
+    // Update observable (no localStorage in cookie-only mode)
     this.currentUserSubject.next(updatedUser);
-
-    // Update localStorage
-    // Update localStorage only if NOT using cookies
-    if (!this.shouldUseCookies()) {
-      localStorage.setItem('current_user', JSON.stringify(updatedUser));
-    }
 
     console.log('✅ Avatar URL updated in user state:', avatarUrl);
   }
 
+  /**
+   * Clear all session state.
+   *
+   * SECURITY HARDENING: No localStorage to clear.
+   * HttpOnly cookies are managed by backend via /api/auth/logout.
+   */
   clearSession(): void {
     this.accessTokenSubject.next(null);
     this.currentUserSubject.next(null);
-
-    // Clear localStorage
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('current_user');
 
     this.favoritesLoadedForSession = false;
 
@@ -466,38 +417,32 @@ export class AuthService {
     });
   }
 
+  /**
+   * Persist session from auth response.
+   *
+   * SECURITY HARDENING: Tokens are NOT stored (they're in HttpOnly cookies).
+   * Only user profile data is persisted in memory.
+   */
   private persistSession(response: AuthResponse): void {
-    const { accessToken, user } = response;
+    const { user } = response;
 
-    if (!accessToken) {
-      console.debug('ℹ️ Skipping persist — no access token present.');
+    if (!user) {
+      console.log('ℹ️ Response missing user payload — hydrating via /api/users/me');
+      this.hydrateUserFromBackend();
       return;
     }
 
-    this.persistAccessToken(accessToken);
+    // Extract role from user object (no token decoding - token is HttpOnly)
+    const singleRole = (user as any)?.role;
+    const effectiveRoles = singleRole ? [singleRole] : (user as any).roles ?? [];
 
-    if (user) {
-      const decodedPayload = this.jwtHelper.decodeToken(accessToken) as Record<string, unknown>;
-      const rolesFromToken = this.extractRoles(decodedPayload);
-      const singleRole = (user as any)?.role ?? decodedPayload['role'];
-      const effectiveRoles = rolesFromToken.length
-        ? rolesFromToken
-        : singleRole
-        ? [singleRole]
-        : [];
+    const completeUser: UserProfile = {
+      ...user,
+      id: String(user.id),
+      roles: effectiveRoles,
+    };
 
-      const completeUser: UserProfile = {
-        ...user,
-        id: String(user.id),
-        roles: effectiveRoles.length ? effectiveRoles : user.roles ?? [],
-      };
-
-      this.updateUserState(completeUser);
-      return;
-    }
-
-    console.log('ℹ️ Refresh response missing user payload — hydrating via /api/users/me');
-    this.hydrateUserFromBackend();
+    this.updateUserState(completeUser);
   }
 
   private hydrateUserFromBackend(): void {
@@ -549,6 +494,11 @@ export class AuthService {
     };
   }
 
+  /**
+   * Update user state in memory.
+   *
+   * SECURITY HARDENING: No localStorage storage.
+   */
   private updateUserState(user: UserProfile): void {
     const normalizedUser: UserProfile = {
       ...user,
@@ -556,10 +506,7 @@ export class AuthService {
       roles: Array.isArray(user.roles) ? (user.roles as UserRole[]) : [],
     };
 
-    if (!this.shouldUseCookies()) {
-      localStorage.setItem('current_user', JSON.stringify(normalizedUser));
-    }
-
+    // Update observable only (no localStorage in cookie-only mode)
     this.currentUserSubject.next(normalizedUser);
     this.loadFavoritesForSession();
   }
@@ -581,32 +528,21 @@ export class AuthService {
     });
   }
 
-  private persistAccessToken(token: string): void {
-    if (!this.shouldUseCookies()) {
-      localStorage.setItem('access_token', token);
-    }
-
-    this.accessTokenSubject.next(token);
+  /**
+   * @deprecated No longer used - tokens are HttpOnly cookies.
+   * Kept for backward compatibility during migration.
+   */
+  private persistAccessToken(_token: string): void {
+    // No-op: tokens are managed by HttpOnly cookies
+    console.debug('persistAccessToken() is deprecated - tokens are HttpOnly');
   }
 
-  private extractUserFromPayload(payload: Record<string, unknown>): UserProfile | null {
-    const roles = this.extractRoles(payload);
-    const subject = payload['sub'];
-    const email = payload['email'];
-    if (!subject || typeof subject !== 'string') {
-      return null;
-    }
-
-    return {
-      id: subject,
-      email: typeof email === 'string' ? email : '',
-      firstName: (payload['firstName'] as string) ?? '',
-      lastName: (payload['lastName'] as string) ?? '',
-      age: typeof payload['age'] === 'number' ? payload['age'] : undefined,
-      phone: (payload['phone'] as string) ?? undefined,
-      avatarUrl: (payload['avatarUrl'] as string) ?? undefined,
-      roles,
-    };
+  /**
+   * @deprecated No longer used - cannot decode HttpOnly tokens.
+   */
+  private extractUserFromPayload(_payload: Record<string, unknown>): UserProfile | null {
+    console.debug('extractUserFromPayload() is deprecated - tokens are HttpOnly');
+    return null;
   }
 
   private extractRoles(payload: Record<string, unknown>): UserRole[] {

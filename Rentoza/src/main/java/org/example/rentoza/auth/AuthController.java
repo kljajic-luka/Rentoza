@@ -147,8 +147,8 @@ public class AuthController {
 
             log.info("User registered successfully: email={}, role={}", user.getEmail(), user.getRole());
 
-            AuthResponseDTO response = new AuthResponseDTO(accessToken, null, userResponse);
-            return ResponseEntity.ok(response);
+            // SECURITY: Token delivered via HttpOnly cookie, NOT in JSON body
+            return ResponseEntity.ok(AuthResponseDTO.success(userResponse, "Account created successfully"));
 
         } catch (RuntimeException e) {
             log.warn("Registration failed: {}", e.getMessage());
@@ -194,8 +194,8 @@ public class AuthController {
 
         log.info("User logged in successfully: email={}, role={}", user.getEmail(), user.getRole());
 
-        AuthResponseDTO response = new AuthResponseDTO(accessToken, null, userResponse);
-        return ResponseEntity.ok(response);
+        // SECURITY: Token delivered via HttpOnly cookie, NOT in JSON body
+        return ResponseEntity.ok(AuthResponseDTO.success(userResponse));
     }
 
     @PostMapping("/refresh")
@@ -236,10 +236,11 @@ public class AuthController {
             ensureCsrfCookie(request, res);
 
             UserResponseDTO userResponse = userService.toUserResponse(user);
-            AuthResponseDTO response = new AuthResponseDTO(accessToken, null, userResponse);
 
             log.debug("Token refreshed successfully: email={}", result.email());
-            return ResponseEntity.ok(response);
+            
+            // SECURITY: Token delivered via HttpOnly cookie, NOT in JSON body
+            return ResponseEntity.ok(AuthResponseDTO.success(userResponse));
 
         } catch (InvalidRefreshTokenException e) {
             // Standardized error response for token issues (401)

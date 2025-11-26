@@ -3,44 +3,50 @@ import { inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { catchError, defer, switchMap, throwError } from 'rxjs';
 
-import { environment } from '@environments/environment';
 import { AuthService } from './auth.service';
 import { RETRIED_REQUEST, SKIP_AUTH } from './auth.tokens';
 import { COOKIE_NAMES, HEADER_NAMES, AUTH_ENDPOINTS } from './cookie.constants';
 
-const ABSOLUTE_URL_REGEX = /^https?:\/\//i;
+/**
+ * SECURITY HARDENING (Phase 1): Cookie-Only Authentication Interceptor
+ *
+ * This interceptor NO LONGER handles token attachment from localStorage.
+ * The browser automatically sends HttpOnly cookies with `withCredentials: true`.
+ *
+ * Responsibilities:
+ * 1. Set `withCredentials: true` on all requests (browser sends cookies)
+ * 2. Attach XSRF token header for CSRF protection
+ * 3. Handle 401 responses → trigger token refresh via HttpOnly refresh cookie
+ * 4. Handle session expiry → redirect to login
+ */
 
 const shouldBypassAuth = (url: string): boolean =>
   AUTH_ENDPOINTS.some((segment) => url.includes(segment));
 
-const enrichRequest = (
-  request: Parameters<HttpInterceptorFn>[0],
-  token: string | null,
-  skipAuth: boolean,
-  markRetried = false
-) => {
+/**
+ * Enrich request with credentials and XSRF header.
+ *
+ * SECURITY HARDENING: No longer attaches Authorization header from localStorage.
+ * The access token is in an HttpOnly cookie that the browser sends automatically.
+ */
+const enrichRequest = (request: Parameters<HttpInterceptorFn>[0], markRetried = false) => {
   const context = markRetried ? request.context.set(RETRIED_REQUEST, true) : request.context;
+
+  // Always send credentials (cookies) with requests
   let cloned = request.clone({
     withCredentials: true,
     context,
   });
 
-  const headersToApply: Record<string, string> = {};
-
-  const shouldAttachAuthHeader =
-    !skipAuth && token && (!environment.auth?.useCookies || isCrossOriginRequest(request.url));
-
-  if (shouldAttachAuthHeader) {
-    headersToApply[HEADER_NAMES.AUTHORIZATION] = `Bearer ${token}`;
-  }
-
+  // Attach XSRF header for mutation requests (CSRF protection)
   if (shouldAttachXsrfHeader(request)) {
     const xsrfToken = readCookie(COOKIE_NAMES.XSRF_TOKEN);
     if (xsrfToken) {
-      headersToApply[HEADER_NAMES.XSRF] = xsrfToken;
+      cloned = cloned.clone({
+        setHeaders: { [HEADER_NAMES.XSRF]: xsrfToken },
+      });
     } else {
       // SECURITY: Log warning if XSRF token missing during mutation request
-      // This could indicate a misconfiguration or attack
       console.warn(
         `[Security] XSRF token missing for ${request.method} ${request.url}. ` +
           'Ensure CSRF cookie is set by backend on authentication.'
@@ -48,35 +54,19 @@ const enrichRequest = (
     }
   }
 
-  if (Object.keys(headersToApply).length > 0) {
-    cloned = cloned.clone({ setHeaders: headersToApply });
-  }
-
   return cloned;
 };
 
-const isCrossOriginRequest = (url: string): boolean => {
-  if (!ABSOLUTE_URL_REGEX.test(url) || typeof window === 'undefined') {
-    return false;
-  }
-
-  try {
-    const target = new URL(url);
-    return target.origin !== window.location.origin;
-  } catch (error) {
-    // If URL parsing fails, fall back to treating it as same-origin to avoid false positives
-    return false;
-  }
-};
-
+/**
+ * Determine if XSRF header should be attached.
+ * Required for state-changing requests (POST, PUT, DELETE, PATCH).
+ */
 const shouldAttachXsrfHeader = (request: Parameters<HttpInterceptorFn>[0]): boolean => {
-  if (!environment.auth?.useCookies) {
-    return false;
-  }
-
+  // Skip for safe methods (GET, HEAD, OPTIONS)
   if (
     request.method === 'GET' ||
     request.method === 'HEAD' ||
+    request.method === 'OPTIONS' ||
     request.headers.has(HEADER_NAMES.XSRF)
   ) {
     return false;
@@ -85,6 +75,10 @@ const shouldAttachXsrfHeader = (request: Parameters<HttpInterceptorFn>[0]): bool
   return typeof document !== 'undefined';
 };
 
+/**
+ * Read a non-HttpOnly cookie by name.
+ * Used for XSRF token (which must be readable by JS for CSRF protection).
+ */
 const readCookie = (name: string): string | null => {
   if (typeof document === 'undefined') {
     return null;
@@ -101,11 +95,22 @@ const readCookie = (name: string): string | null => {
   return null;
 };
 
+/**
+ * Handle session expiry by clearing state and redirecting to login.
+ */
 const handleSessionExpiry = (authService: AuthService, router: Router) => {
   authService.clearSession();
   void router.navigate(['/auth/login'], { queryParams: { session: 'expired' } });
 };
 
+/**
+ * Cookie-Only Authentication Interceptor
+ *
+ * SECURITY HARDENING:
+ * - Does NOT read tokens from localStorage (eliminated attack surface)
+ * - Relies on browser to send HttpOnly cookies automatically
+ * - Only handles XSRF header attachment and 401 → refresh flow
+ */
 export const authTokenInterceptor: HttpInterceptorFn = (req, next) => {
   const authService = inject(AuthService);
   const router = inject(Router);
@@ -113,30 +118,35 @@ export const authTokenInterceptor: HttpInterceptorFn = (req, next) => {
   const skipAuth = req.context.get(SKIP_AUTH) || shouldBypassAuth(req.url);
 
   return defer(() => {
-    const token = authService.getAccessToken();
-    const requestWithAuth = enrichRequest(req, token, skipAuth);
+    // Enrich request with credentials (cookies sent by browser)
+    const requestWithAuth = enrichRequest(req);
 
     return next(requestWithAuth).pipe(
       catchError((error) => {
+        // Don't intercept errors on auth endpoints
         if (shouldBypassAuth(req.url) || req.url.includes('/auth/refresh')) {
           return throwError(() => error);
         }
 
+        // Only handle 401 Unauthorized
         if (error.status !== HttpStatusCode.Unauthorized || skipAuth) {
           return throwError(() => error);
         }
 
+        // If already retried, session is truly expired
         if (requestWithAuth.context.get(RETRIED_REQUEST)) {
           handleSessionExpiry(authService, router);
           return throwError(() => error);
         }
 
+        // Attempt token refresh (uses HttpOnly refresh cookie)
         return authService.refreshAccessToken().pipe(
-          switchMap((newToken) => {
-            if (!newToken) {
+          switchMap((result) => {
+            if (!result) {
               return throwError(() => error);
             }
-            const retriedRequest = enrichRequest(req, newToken, skipAuth, true);
+            // Retry original request (browser will send new access token cookie)
+            const retriedRequest = enrichRequest(req, true);
             return next(retriedRequest);
           }),
           catchError((refreshError) => {

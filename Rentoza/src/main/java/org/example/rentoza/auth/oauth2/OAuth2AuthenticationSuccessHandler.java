@@ -4,6 +4,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.example.rentoza.auth.RefreshTokenServiceEnhanced;
 import org.example.rentoza.config.AppProperties;
+import org.example.rentoza.security.CookieConstants;
 import org.example.rentoza.security.JwtUtil;
 import org.example.rentoza.user.AuthProvider;
 import org.example.rentoza.user.Role;
@@ -41,7 +42,6 @@ import java.util.UUID;
 public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationSuccessHandler {
 
     private static final Logger log = LoggerFactory.getLogger(OAuth2AuthenticationSuccessHandler.class);
-    private static final String REFRESH_COOKIE = "rentoza_refresh";
 
     private final JwtUtil jwtUtil;
     private final RefreshTokenServiceEnhanced refreshTokenService;
@@ -51,8 +51,11 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
 
     private static final String OAUTH2_PLACEHOLDER_PASSWORD = "OAUTH2_NO_PASSWORD_";
 
-    @Value("${oauth2.redirect-uri:http://localhost:4200/auth/callback}")
+    @Value("${oauth2.redirect-uri:http://localhost:4200/oauth2/success}")
     private String frontendRedirectUri;
+    
+    @Value("${jwt.expiration}")
+    private long jwtExpirationMs;
 
     public OAuth2AuthenticationSuccessHandler(
             JwtUtil jwtUtil,
@@ -94,19 +97,18 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
             String userAgent = RefreshTokenServiceEnhanced.extractUserAgent(request);
             String refreshToken = refreshTokenService.issue(user.getEmail(), ipAddress, userAgent);
 
-            // Set refresh token as HttpOnly cookie
-            ResponseCookie cookie = createRefreshTokenCookie(refreshToken);
-            response.addHeader("Set-Cookie", cookie.toString());
+            // SECURITY HARDENING: Set BOTH tokens as HttpOnly cookies
+            // Access token is NEVER exposed in URL or JSON body
+            ResponseCookie accessCookie = createAccessTokenCookie(accessToken);
+            ResponseCookie refreshCookie = createRefreshTokenCookie(refreshToken);
+            
+            response.addHeader("Set-Cookie", accessCookie.toString());
+            response.addHeader("Set-Cookie", refreshCookie.toString());
 
-            // Build redirect URL with access token
-            // Angular will read this token from URL and store it
-            String redirectUrl = UriComponentsBuilder.fromUriString(frontendRedirectUri)
-                    .queryParam("token", accessToken)
-                    .build()
-                    .toUriString();
-
-            log.debug("Redirecting to Angular app: {}", frontendRedirectUri);
-            getRedirectStrategy().sendRedirect(request, response, redirectUrl);
+            // Redirect to frontend WITHOUT token in URL
+            // Frontend will hydrate user state from /api/users/me
+            log.debug("Redirecting to Angular app (cookie-only): {}", frontendRedirectUri);
+            getRedirectStrategy().sendRedirect(request, response, frontendRedirectUri);
 
         } catch (Exception ex) {
             log.error("Error handling OAuth2 authentication success: {}", ex.getMessage());
@@ -122,25 +124,40 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
     }
 
     /**
-     * Create a standardized refresh token cookie with environment-based security settings.
+     * Create access token cookie with environment-based security settings.
      * 
-     * ✅ OAUTH2 PERSISTENCE FIX: Changed path from /api/auth/refresh to /
-     * This ensures the refresh cookie is sent on all requests, enabling:
-     * - Frontend verifySession() calls to /api/users/me
-     * - Token refresh across different API endpoints
-     * - Persistent authentication after page reload
-     * 
-     * Security remains intact:
-     * - HttpOnly: Prevents XSS attacks
+     * SECURITY HARDENING (Phase 1):
+     * - HttpOnly: true (JavaScript CANNOT read this cookie)
      * - Secure: HTTPS-only (production)
-     * - SameSite: CSRF protection
-     * - 14-day expiration
+     * - SameSite: Lax (allows OAuth2 redirect flow)
+     * - Path: / (global scope for all API calls)
      */
-    private ResponseCookie createRefreshTokenCookie(String token) {
-        return ResponseCookie.from(REFRESH_COOKIE, token)
+    private ResponseCookie createAccessTokenCookie(String token) {
+        return ResponseCookie.from(CookieConstants.ACCESS_TOKEN, token)
                 .httpOnly(true)
                 .secure(appProperties.getCookie().isSecure())
-                .path("/")  // ✅ Changed from /api/auth/refresh to / for broader scope
+                .path("/")
+                .domain(appProperties.getCookie().getDomain())
+                .sameSite(appProperties.getCookie().getSameSite())
+                .maxAge(Duration.ofMillis(jwtExpirationMs))
+                .build();
+    }
+    
+    /**
+     * Create refresh token cookie with environment-based security settings.
+     * 
+     * SECURITY HARDENING (Phase 1):
+     * - HttpOnly: true (JavaScript CANNOT read this cookie)
+     * - Secure: HTTPS-only (production)
+     * - SameSite: Lax (allows OAuth2 redirect flow)
+     * - Path: /api/auth/refresh (narrow scope for security)
+     * - MaxAge: 14 days
+     */
+    private ResponseCookie createRefreshTokenCookie(String token) {
+        return ResponseCookie.from(CookieConstants.REFRESH_TOKEN, token)
+                .httpOnly(true)
+                .secure(appProperties.getCookie().isSecure())
+                .path("/api/auth/refresh")
                 .domain(appProperties.getCookie().getDomain())
                 .sameSite(appProperties.getCookie().getSameSite())
                 .maxAge(Duration.ofDays(14))

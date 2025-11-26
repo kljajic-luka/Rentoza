@@ -1,5 +1,6 @@
 package org.example.rentoza.security;
 
+import org.example.rentoza.auth.oauth2.CookieOAuth2AuthorizationRequestRepository;
 import org.example.rentoza.auth.oauth2.CustomAuthorizationRequestResolver;
 import org.example.rentoza.auth.oauth2.CustomOAuth2UserService;
 import org.example.rentoza.auth.oauth2.OAuth2AuthenticationSuccessHandler;
@@ -42,19 +43,22 @@ public class SecurityConfig {
     private final OAuth2AuthenticationSuccessHandler oauth2SuccessHandler;
     private final CustomAuthorizationRequestResolver customAuthorizationRequestResolver;
     private final ClientRegistrationRepository clientRegistrationRepository;
+    private final CookieOAuth2AuthorizationRequestRepository cookieOAuth2AuthorizationRequestRepository;
 
     public SecurityConfig(JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint,
                           AppProperties appProperties,
                           CustomOAuth2UserService customOAuth2UserService,
                           OAuth2AuthenticationSuccessHandler oauth2SuccessHandler,
                           CustomAuthorizationRequestResolver customAuthorizationRequestResolver,
-                          ClientRegistrationRepository clientRegistrationRepository) {
+                          ClientRegistrationRepository clientRegistrationRepository,
+                          CookieOAuth2AuthorizationRequestRepository cookieOAuth2AuthorizationRequestRepository) {
         this.jwtAuthenticationEntryPoint = jwtAuthenticationEntryPoint;
         this.appProperties = appProperties;
         this.customOAuth2UserService = customOAuth2UserService;
         this.oauth2SuccessHandler = oauth2SuccessHandler;
         this.customAuthorizationRequestResolver = customAuthorizationRequestResolver;
         this.clientRegistrationRepository = clientRegistrationRepository;
+        this.cookieOAuth2AuthorizationRequestRepository = cookieOAuth2AuthorizationRequestRepository;
     }
 
     /**
@@ -241,12 +245,16 @@ public class SecurityConfig {
                 // - JWT validation happens on every request (stateless verification)
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 // Configure OAuth2 login with role-based registration support
+                // STATELESS: Uses cookie-based authorization request repository (no HttpSession)
                 .oauth2Login(oauth2 -> oauth2
                         // ROLE-BASED REGISTRATION: Custom authorization request resolver
                         // Captures ?role=owner from frontend and embeds it in OAuth2 state parameter
                         // This enables owner registration via Google OAuth2
                         .authorizationEndpoint(authorization -> authorization
                                 .authorizationRequestResolver(customAuthorizationRequestResolver)
+                                // STATELESS: Store OAuth2 authorization request in cookie instead of session
+                                // Prevents JSESSIONID creation during OAuth2 flows
+                                .authorizationRequestRepository(cookieOAuth2AuthorizationRequestRepository)
                         )
                         .userInfoEndpoint(userInfo -> userInfo
                                 .userService(customOAuth2UserService)

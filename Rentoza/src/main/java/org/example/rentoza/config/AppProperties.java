@@ -36,6 +36,8 @@ public class AppProperties {
          * Example: "https://rentoza.rs,https://www.rentoza.rs"
          */
         private String allowedOrigins = "http://localhost:4200";
+        //FOR DEVELOPMENT CHECK ON OTHER DEVICES
+        //private String allowedOrigins = "http://*:4200";
 
         public String getAllowedOrigins() {
             return allowedOrigins;

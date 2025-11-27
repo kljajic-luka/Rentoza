@@ -481,3 +481,234 @@ textarea {
   -webkit-user-select: text;
   user-select: text;
 }
+
+/* ============================================================================
+   📱 PHASE 2: MOBILE UX COMPONENT OPTIMIZATION
+   ============================================================================
+   Bottom Sheet Dialogs, Enhanced Touch Feedback, Mobile-First Patterns
+   ============================================================================ */
+
+/* 📱 BOTTOM SHEET DIALOGS (Mobile-First Modal Pattern) */
+@media (max-width: 768px) {
+  // Override Angular Material Dialog for mobile bottom sheet
+  .mat-mdc-dialog-container {
+    // Ensure dialog surface uses bottom sheet positioning
+    .mat-mdc-dialog-surface {
+      border-radius: 24px 24px 0 0 !important;
+      max-height: 90vh !important;
+      max-height: 90dvh !important; // Dynamic viewport height for mobile
+    }
+  }
+
+  // Bottom sheet positioning
+  .cdk-overlay-pane:has(.mat-mdc-dialog-container) {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    top: auto !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    margin: 0 !important;
+    
+    // Slide-up animation
+    animation: slideUpSheet 300ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  // Bottom sheet specific overrides
+  .mat-mdc-dialog-container {
+    border-radius: 24px 24px 0 0 !important;
+    overflow: hidden !important;
+    
+    // Safe area padding for home indicator
+    padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+  }
+
+  // Dialog content scrolling
+  .mat-mdc-dialog-content {
+    max-height: 70vh !important;
+    max-height: 70dvh !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  // Dialog actions at bottom
+  .mat-mdc-dialog-actions {
+    padding: 16px 24px !important;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)) !important;
+    border-top: 1px solid var(--color-border-subtle);
+    background: var(--color-surface);
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+  }
+
+  // Drag indicator for bottom sheets
+  .mat-mdc-dialog-title::before {
+    content: '';
+    display: block;
+    width: 40px;
+    height: 4px;
+    background: rgba(128, 128, 128, 0.4);
+    border-radius: 2px;
+    margin: 0 auto 16px;
+  }
+}
+
+// Slide-up animation for bottom sheets
+@keyframes slideUpSheet {
+  from {
+    transform: translateY(100%);
+    opacity: 0.8;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+// Slide-down animation for dismissal (optional, for JS-triggered close)
+@keyframes slideDownSheet {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(100%);
+    opacity: 0.8;
+  }
+}
+
+/* 📱 FULLSCREEN SEARCH OVERLAY (Airbnb/Turo Pattern) */
+.fullscreen-search-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: var(--color-bg);
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) 
+           env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+  animation: fadeInScale 250ms cubic-bezier(0.32, 0.72, 0, 1);
+  
+  &__header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+    border-bottom: 1px solid var(--color-border-subtle);
+    
+    .close-btn {
+      min-width: 44px;
+      min-height: 44px;
+    }
+    
+    h2 {
+      flex: 1;
+      margin: 0;
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+  }
+  
+  &__content {
+    padding: 24px 16px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    max-height: calc(100vh - 120px);
+    max-height: calc(100dvh - 120px);
+  }
+}
+
+@keyframes fadeInScale {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* 📱 ENHANCED CARD TOUCH FEEDBACK */
+@media (pointer: coarse) {
+  // Car cards get press effect
+  .car-card:active,
+  .featured__card:active {
+    transform: scale(0.98) !important;
+    transition: transform 0.1s ease-out !important;
+  }
+
+  // Disable hover transforms on touch devices
+  .car-card:hover,
+  .featured__card:hover {
+    transform: none !important;
+  }
+}
+
+/* 📱 MOBILE SEARCH TRIGGER STYLES */
+.mobile-search-trigger {
+  display: none;
+  
+  @media (max-width: 599px) {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 14px 18px;
+    background: var(--color-surface);
+    border-radius: 999px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+    border: 1px solid var(--color-border-subtle);
+    cursor: pointer;
+    transition: all 200ms ease;
+    min-height: 56px;
+    
+    &:active {
+      transform: scale(0.98);
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+    }
+    
+    mat-icon {
+      color: var(--primary-color, #3b82f6);
+      font-size: 24px;
+      width: 24px;
+      height: 24px;
+    }
+    
+    .trigger-text {
+      flex: 1;
+      text-align: left;
+      
+      .trigger-title {
+        font-weight: 600;
+        font-size: 0.95rem;
+        color: var(--color-text-primary);
+        display: block;
+      }
+      
+      .trigger-subtitle {
+        font-size: 0.8rem;
+        color: var(--color-text-muted);
+        margin-top: 2px;
+        display: block;
+      }
+    }
+  }
+}
+
+/* 🎯 HIDE DESKTOP SEARCH ON MOBILE (when trigger is active) */
+@media (max-width: 599px) {
+  .search-bar--desktop-only {
+    display: none !important;
+  }
+}
+
+/* 📱 CLS PREVENTION: Aspect ratio for all car images */
+.car-image-container,
+.car-card__media,
+.featured__media {
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  background: var(--color-surface-muted);
+}

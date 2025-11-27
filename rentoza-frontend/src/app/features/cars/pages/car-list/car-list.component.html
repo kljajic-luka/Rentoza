@@ -206,20 +206,51 @@
           <mat-card
             *ngFor="let car of results.content; trackBy: trackByCarId"
             class="car-card fade-in-card"
+            [routerLink]="['/cars', car.id]"
           >
+            <!-- 📱 Swipeable Image Carousel (CSS Scroll Snap) -->
             <div class="car-card__media">
-              <img
-                *ngIf="car.imageUrl; else placeholder"
-                [src]="car.imageUrl"
-                [alt]="car.make + ' ' + car.model"
-                loading="lazy"
-              />
-              <ng-template #placeholder>
-                <div class="image-placeholder">
-                  <mat-icon>directions_car_filled</mat-icon>
+              <div class="image-carousel" *ngIf="car.imageUrls?.length; else singleImage">
+                <div class="carousel-track">
+                  <img
+                    *ngFor="let imageUrl of car.imageUrls; let i = index"
+                    [src]="imageUrl"
+                    [alt]="car.make + ' ' + car.model + ' - Image ' + (i + 1)"
+                    loading="lazy"
+                    class="carousel-image"
+                  />
                 </div>
+                <!-- Dot Indicators -->
+                <div class="carousel-dots" *ngIf="car.imageUrls && car.imageUrls.length > 1">
+                  <span
+                    *ngFor="let _ of car.imageUrls; let i = index"
+                    class="dot"
+                    [class.active]="i === 0"
+                  ></span>
+                </div>
+              </div>
+              <ng-template #singleImage>
+                <img
+                  *ngIf="car.imageUrl; else placeholder"
+                  [src]="car.imageUrl"
+                  [alt]="car.make + ' ' + car.model"
+                  loading="lazy"
+                  class="single-image"
+                />
+                <ng-template #placeholder>
+                  <div class="image-placeholder">
+                    <mat-icon>directions_car_filled</mat-icon>
+                  </div>
+                </ng-template>
               </ng-template>
+
+              <!-- Year Badge -->
               <span class="year-badge">{{ car.year }}</span>
+
+              <!-- 📱 Favorite Button (Thumb Zone - 44x44px minimum) -->
+              <div class="favorite-zone" (click)="$event.stopPropagation()">
+                <app-favorite-button [carId]="+car.id"></app-favorite-button>
+              </div>
             </div>
 
             <mat-card-content class="car-card__content">
@@ -260,10 +291,14 @@
             </mat-card-content>
 
             <mat-card-actions class="car-card__actions">
-              <a mat-flat-button color="primary" [routerLink]="['/cars', car.id]">
+              <a
+                mat-flat-button
+                color="primary"
+                [routerLink]="['/cars', car.id]"
+                (click)="$event.stopPropagation()"
+              >
                 Detalji vozila
               </a>
-              <app-favorite-button [carId]="+car.id"></app-favorite-button>
             </mat-card-actions>
           </mat-card>
         </div>

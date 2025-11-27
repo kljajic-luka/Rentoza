@@ -27,6 +27,7 @@ import { Observable, Subscription, filter, map } from 'rxjs';
 
 import { Car } from '@core/models/car.model';
 import { CarService } from '@core/services/car.service';
+import { FavoriteButtonComponent } from '@shared/components/favorite-button/favorite-button.component';
 
 @Component({
   selector: 'app-home-page',
@@ -45,6 +46,7 @@ import { CarService } from '@core/services/car.service';
     MatSelectModule,
     MatNativeDateModule,
     FlexLayoutModule,
+    FavoriteButtonComponent,
   ],
   templateUrl: './home.component.html',
   styleUrls: ['./home.component.scss'],

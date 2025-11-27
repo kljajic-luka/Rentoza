@@ -59,6 +59,14 @@
   box-shadow: 0 18px 38px rgba(0, 0, 0, 0.12);
   backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.65);
+  
+  // 📱 TOUCH FEEDBACK
+  @media (pointer: coarse) {
+    &:active {
+      transform: scale(0.995);
+      transition: transform 0.1s ease-out;
+    }
+  }
 
   :host-context(.theme-dark) & {
     background: rgba(30, 41, 59, 0.92);
@@ -74,8 +82,67 @@
     grid-template-columns: repeat(2, minmax(200px, 1fr));
   }
 
+  // 📱 MOBILE: Pseudo-button search trigger (Airbnb/Turo pattern)
   @media (max-width: 599px) {
     grid-template-columns: 1fr;
+    padding: 0;
+    background: transparent;
+    box-shadow: none;
+    border: none;
+    backdrop-filter: none;
+  }
+}
+
+// 📱 MOBILE SEARCH TRIGGER (Full-screen overlay pattern)
+.mobile-search-trigger {
+  display: none;
+  
+  @media (max-width: 599px) {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 14px 18px;
+    background: rgba(255, 255, 255, 0.98);
+    border-radius: 999px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    cursor: pointer;
+    transition: all 200ms ease;
+    
+    &:active {
+      transform: scale(0.98);
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+    }
+    
+    mat-icon {
+      color: var(--primary-color);
+      font-size: 24px;
+      width: 24px;
+      height: 24px;
+    }
+    
+    .trigger-text {
+      flex: 1;
+      
+      .trigger-title {
+        font-weight: 600;
+        font-size: 0.95rem;
+        color: var(--color-text-primary);
+      }
+      
+      .trigger-subtitle {
+        font-size: 0.8rem;
+        color: var(--color-text-muted);
+        margin-top: 2px;
+      }
+    }
+    
+    :host-context(.theme-dark) & {
+      background: rgba(30, 41, 59, 0.95);
+      border-color: rgba(71, 85, 105, 0.4);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+    }
   }
 }
 
@@ -475,6 +542,18 @@
     box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
   }
 
+  // 📱 TOUCH FEEDBACK: Tactile press response on mobile
+  @media (pointer: coarse) {
+    &:active {
+      transform: scale(0.98);
+      transition: transform 0.1s ease-out;
+    }
+
+    &:hover {
+      transform: none; // Disable hover on touch devices
+    }
+  }
+
   // Fade-in animation for newly loaded cards
   &.fade-in-card {
     animation: fade-in-up 400ms cubic-bezier(0.4, 0, 0.2, 1) backwards;
@@ -489,12 +568,77 @@
 
   &__media {
     position: relative;
-    padding-top: 60%;
+    // 📱 CLS FIX: Define aspect-ratio to prevent layout shift
+    aspect-ratio: 4 / 3;
     overflow: hidden;
     background: var(--hover-color);
 
-    img,
-    .image-placeholder {
+    // 📱 SWIPEABLE CAROUSEL (CSS Scroll Snap)
+    .image-carousel {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .carousel-track {
+      display: flex;
+      width: 100%;
+      height: 100%;
+      overflow-x: auto;
+      overflow-y: hidden;
+      scroll-snap-type: x mandatory;
+      scroll-behavior: smooth;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none; // Firefox
+      -ms-overflow-style: none; // IE/Edge
+
+      &::-webkit-scrollbar {
+        display: none; // Chrome/Safari
+      }
+    }
+
+    .carousel-image {
+      flex: 0 0 100%;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      scroll-snap-align: center;
+      scroll-snap-stop: always;
+      pointer-events: none; // Prevent drag issues
+    }
+
+    // Dot Indicators
+    .carousel-dots {
+      position: absolute;
+      bottom: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 6px;
+      padding: 6px 10px;
+      background: rgba(0, 0, 0, 0.4);
+      backdrop-filter: blur(8px);
+      border-radius: 12px;
+      z-index: 2;
+
+      .dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.5);
+        transition: all 200ms ease;
+
+        &.active {
+          background: #fff;
+          width: 16px;
+          border-radius: 3px;
+        }
+      }
+    }
+
+    // Single image fallback
+    .single-image {
       position: absolute;
       inset: 0;
       width: 100%;
@@ -503,13 +647,26 @@
       transition: transform 350ms cubic-bezier(0.4, 0, 0.2, 1);
     }
 
-    img {
-      &:hover {
-        transform: scale(1.05);
+    img,
+    .image-placeholder {
+      width: 100%;
+      height: 100%;
+    }
+
+    .single-image:hover {
+      transform: scale(1.05);
+    }
+
+    // Disable image zoom on touch
+    @media (pointer: coarse) {
+      .single-image:hover {
+        transform: none;
       }
     }
 
     .image-placeholder {
+      position: absolute;
+      inset: 0;
       display: grid;
       place-items: center;
 
@@ -525,7 +682,7 @@
     .year-badge {
       position: absolute;
       top: 1rem;
-      right: 1rem;
+      left: 1rem;
       padding: 0.35rem 0.75rem;
       border-radius: 8px;
       background: rgba(0, 0, 0, 0.75);
@@ -533,6 +690,38 @@
       color: #fff;
       font-size: 0.75rem;
       font-weight: 600;
+      z-index: 2;
+    }
+
+    // 📱 FAVORITE BUTTON THUMB ZONE (44x44px minimum)
+    .favorite-zone {
+      position: absolute;
+      top: 0.75rem;
+      right: 0.75rem;
+      z-index: 3;
+
+      // Ensure touch target is adequate
+      ::ng-deep button {
+        min-width: 44px !important;
+        min-height: 44px !important;
+        width: 44px;
+        height: 44px;
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(8px);
+        border-radius: 50%;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        transition: all 200ms ease;
+
+        &:active {
+          transform: scale(0.9);
+        }
+
+        mat-icon {
+          font-size: 22px;
+          width: 22px;
+          height: 22px;
+        }
+      }
     }
   }
 
@@ -641,7 +830,7 @@
   &__actions {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: stretch;
     gap: 0.75rem;
     padding: 1rem 1.25rem;
     border-top: 1px solid var(--divider-color);
@@ -651,6 +840,12 @@
       border-radius: 8px;
       font-weight: 600;
       height: 42px;
+      
+      // 📱 Touch target compliance
+      @media (pointer: coarse) {
+        min-height: 44px;
+        height: 44px;
+      }
     }
   }
 }

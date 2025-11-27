@@ -26,7 +26,10 @@
               (blur)="validateField('location')"
               (keyup.enter)="searchCars()"
             />
-            <mat-autocomplete #cityAuto="matAutocomplete" (optionSelected)="onCitySelected($event.option.value)">
+            <mat-autocomplete
+              #cityAuto="matAutocomplete"
+              (optionSelected)="onCitySelected($event.option.value)"
+            >
               <mat-option *ngFor="let city of filteredCities" [value]="city">
                 {{ city }}
               </mat-option>
@@ -89,7 +92,9 @@
             <mat-datepicker #endPicker startView="month"></mat-datepicker>
           </mat-form-field>
           <span class="validation-hint" *ngIf="endDateError">{{ endDateError }}</span>
-          <span class="validation-hint" *ngIf="dateRangeError && !endDateError">{{ dateRangeError }}</span>
+          <span class="validation-hint" *ngIf="dateRangeError && !endDateError">{{
+            dateRangeError
+          }}</span>
         </div>
 
         <div class="search-segment">
@@ -163,14 +168,12 @@
     </a>
   </header>
 
-  <div class="featured__grid" fxLayout="row wrap" fxLayoutGap="28px">
-    <mat-card
-      *ngFor="let car of cars"
-      fxFlex="100"
-      fxFlex.gt-sm="calc(50% - 28px)"
-      fxFlex.gt-md="calc(33% - 28px)"
-      class="featured__card"
-    >
+  <!-- ═══════════════════════════════════════════════════════════════════════════
+       📱 PHASE 2.2: CSS Grid Layout (replaces fxLayout for mobile parity)
+       Matches car-list.component grid structure exactly
+       ═══════════════════════════════════════════════════════════════════════════ -->
+  <div class="featured__grid">
+    <mat-card *ngFor="let car of cars" class="featured__card" [routerLink]="['/cars', car.id]">
       <div class="featured__media">
         <img
           *ngIf="car.imageUrl; else placeholder"
@@ -184,20 +187,34 @@
           </div>
         </ng-template>
         <span class="chip">{{ car.year }}</span>
+
+        <!-- 📱 Favorite Button (Thumb Zone) - Same component as CarListComponent -->
+        <div class="favorite-zone" (click)="$event.stopPropagation()">
+          <app-favorite-button [carId]="+car.id"></app-favorite-button>
+        </div>
       </div>
+
       <div class="featured__body">
         <div class="featured__header">
           <h3>{{ car.make }} {{ car.model }}</h3>
           <span class="price">{{ car.pricePerDay | number : '1.0-0' }} RSD/dan</span>
         </div>
-        <p class="meta">{{ car.location }}</p>
+        <p class="meta">
+          <mat-icon class="meta-icon">place</mat-icon>
+          {{ car.location }}
+        </p>
         <p class="description">{{ car.description || 'Opis trenutno nije dostupan.' }}</p>
       </div>
+
       <div class="featured__footer">
-        <a mat-flat-button color="primary" [routerLink]="['/cars', car.id]"> Pogledaj detalje </a>
-        <button mat-icon-button color="primary" aria-label="Sačuvaj automobil">
-          <mat-icon>favorite_border</mat-icon>
-        </button>
+        <a
+          mat-flat-button
+          color="primary"
+          [routerLink]="['/cars', car.id]"
+          (click)="$event.stopPropagation()"
+        >
+          Pogledaj detalje
+        </a>
       </div>
     </mat-card>
   </div>

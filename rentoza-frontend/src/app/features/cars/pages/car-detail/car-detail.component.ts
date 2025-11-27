@@ -19,8 +19,7 @@ import { MatNativeDateModule } from '@angular/material/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatIconModule } from '@angular/material/icon';
-import { MatChipsModule } from '@angular/material/chips';
-import { MatDividerModule } from '@angular/material/divider';
+import { MatChipsModule } from '@angular/material/chips'; // Still needed for unavailable chip in header
 import {
   MatDialogModule,
   MatDialog,
@@ -72,8 +71,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
     MatButtonModule,
     MatProgressSpinnerModule,
     MatIconModule,
-    MatChipsModule,
-    MatDividerModule,
+    MatChipsModule, // Still needed for unavailable chip in header
     MatDialogModule,
     FlexLayoutModule,
     RouterModule,

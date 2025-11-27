@@ -3,6 +3,9 @@
   height: 100vh;
   background: var(--color-bg);
   transition: background-color 200ms ease;
+  
+  /* 📱 SAFE AREA: Extend background behind notch/home indicator */
+  /* viewport-fit=cover in index.html enables this */
 }
 
 .hidden {
@@ -15,11 +18,17 @@
   color: var(--color-text-primary);
   box-shadow: var(--shadow-elevated);
   transition: background-color 200ms ease, box-shadow 200ms ease, color 200ms ease;
+  
+  /* 📱 SAFE AREA: Account for left notch (landscape iPhone) */
+  padding-left: env(safe-area-inset-left, 0px);
 
   .sidenav-shell {
     display: flex;
     flex-direction: column;
     height: 100%;
+    
+    /* 📱 SAFE AREA: Top padding for notch */
+    padding-top: env(safe-area-inset-top, 0px);
   }
 
   .logo {
@@ -94,6 +103,8 @@
 
   .sidenav-footer {
     padding: 1.75rem 1.75rem 2rem;
+    /* 📱 SAFE AREA: Bottom padding for home indicator */
+    padding-bottom: calc(2rem + env(safe-area-inset-bottom, 0px));
     border-top: 1px solid var(--sidenav-divider);
     display: flex;
     flex-direction: column;
@@ -155,6 +166,10 @@
   min-height: 100vh;
   background: var(--color-bg);
   transition: background-color 200ms ease;
+  
+  /* 📱 MOMENTUM SCROLLING: Native iOS feel */
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
 }
 
 .layout-toolbar {
@@ -166,6 +181,12 @@
   color: var(--toolbar-color);
   box-shadow: var(--shadow-soft);
   transition: background-color 200ms ease, color 200ms ease, box-shadow 200ms ease;
+  
+  /* 📱 SAFE AREA: Account for notch in toolbar height */
+  padding-top: env(safe-area-inset-top, 0px);
+  /* 📱 SAFE AREA: Account for left/right notch (landscape) */
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
 
   .toolbar-title {
     cursor: pointer;
@@ -202,17 +223,30 @@
 
 .layout-router {
   padding: 1.5rem;
+  /* 📱 SAFE AREA: Add horizontal safe area padding */
+  padding-left: max(1.5rem, env(safe-area-inset-left, 0px));
+  padding-right: max(1.5rem, env(safe-area-inset-right, 0px));
   flex: 1 1 auto;
   background: var(--color-bg);
   transition: background-color 200ms ease;
+  
+  /* 📱 MOMENTUM SCROLLING: Ensure child scroll containers feel native */
+  -webkit-overflow-scrolling: touch;
 }
 
 @media (max-width: 768px) {
   .layout-router {
     padding: 1rem;
+    /* 📱 SAFE AREA: Reduced padding on mobile but still safe */
+    padding-left: max(1rem, env(safe-area-inset-left, 0px));
+    padding-right: max(1rem, env(safe-area-inset-right, 0px));
+    /* 📱 SAFE AREA: Bottom padding for home indicator */
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
   }
 
   .layout-toolbar {
     border-radius: 0 0 18px 18px;
+    /* 📱 Ensure toolbar content doesn't overlap safe area */
+    min-height: calc(56px + env(safe-area-inset-top, 0px));
   }
 }

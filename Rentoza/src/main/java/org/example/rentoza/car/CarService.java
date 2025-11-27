@@ -5,6 +5,7 @@ import org.example.rentoza.booking.BookingStatus;
 import org.example.rentoza.car.dto.CarRequestDTO;
 import org.example.rentoza.car.dto.CarResponseDTO;
 import org.example.rentoza.car.dto.CarSearchCriteria;
+import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.review.ReviewDirection;
 import org.example.rentoza.review.ReviewRepository;
 import org.example.rentoza.user.User;
@@ -20,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -89,14 +91,14 @@ public class CarService {
             car.setTransmissionType(dto.getTransmissionType());
         }
 
-        // Map features (initialize empty list, then add if provided)
+        // Map features (initialize empty set, then add if provided)
         if (dto.getFeatures() != null && !dto.getFeatures().isEmpty()) {
-            car.setFeatures(new ArrayList<>(dto.getFeatures()));
+            car.setFeatures(new HashSet<>(dto.getFeatures()));
         }
 
-        // Map add-ons (initialize empty list, then add if provided)
+        // Map add-ons (initialize empty set, then add if provided)
         if (dto.getAddOns() != null && !dto.getAddOns().isEmpty()) {
-            car.setAddOns(new ArrayList<>(dto.getAddOns()));
+            car.setAddOns(new HashSet<>(dto.getAddOns()));
         }
 
         // Map rental policies (override defaults if provided)
@@ -183,13 +185,22 @@ public class CarService {
      * - Single query with LEFT JOIN FETCH for all collections
      * - No N+1 queries when accessing features/addOns
      * - Optimized for detail page views
+     * 
+     * @throws ResourceNotFoundException if car not found
      */
     @Transactional(readOnly = true)
     public CarResponseDTO getCarById(Long id) {
+        log.debug("[CarService] Fetching car with ID: {}", id);
+        
         // Use the detail-loading method to prevent LazyInitializationException
         Car car = repo.findWithDetailsById(id)
-                .orElseThrow(() -> new RuntimeException("Car not found with ID: " + id));
+                .orElseThrow(() -> {
+                    log.warn("[CarService] Car not found with ID: {}", id);
+                    return new ResourceNotFoundException("Car not found with ID: " + id);
+                });
 
+        log.debug("[CarService] Found car: {} {} (ID={})", car.getBrand(), car.getModel(), car.getId());
+        
         CarResponseDTO dto = mapToResponse(car);
         
         // Populate owner stats for detailed view

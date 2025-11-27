@@ -6,6 +6,7 @@ import lombok.Setter;
 import org.example.rentoza.car.*;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 
 @Getter
@@ -63,8 +64,9 @@ public class CarResponseDTO {
         this.fuelType = car.getFuelType();
         this.fuelConsumption = car.getFuelConsumption();
         this.transmissionType = car.getTransmissionType();
-        this.features = car.getFeatures() != null ? List.copyOf(car.getFeatures()) : List.of();
-        this.addOns = car.getAddOns() != null ? List.copyOf(car.getAddOns()) : List.of();
+        // Convert Set to List for JSON array serialization (maintains consistent API contract)
+        this.features = car.getFeatures() != null ? new ArrayList<>(car.getFeatures()) : List.of();
+        this.addOns = car.getAddOns() != null ? new ArrayList<>(car.getAddOns()) : List.of();
         this.cancellationPolicy = car.getCancellationPolicy();
         this.minRentalDays = car.getMinRentalDays();
         this.maxRentalDays = car.getMaxRentalDays();

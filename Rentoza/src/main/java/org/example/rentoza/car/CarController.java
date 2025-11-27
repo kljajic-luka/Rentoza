@@ -5,6 +5,7 @@ import org.example.rentoza.car.dto.CarRequestDTO;
 import org.example.rentoza.car.dto.CarResponseDTO;
 import org.example.rentoza.car.dto.CarSearchCriteria;
 import org.example.rentoza.config.CachingConfig;
+import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
 import org.slf4j.Logger;
@@ -276,14 +277,15 @@ public class CarController {
     /**
      * Get car by ID.
      * PUBLIC: Marketplace listing endpoint (no RLS needed).
+     * 
+     * @throws ResourceNotFoundException if car not found (handled by GlobalExceptionHandler)
      */
     @GetMapping("/{id}")
-    public ResponseEntity<?> getCarById(@PathVariable Long id) {
-        try {
-            return ResponseEntity.ok(service.getCarById(id));
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
-        }
+    public ResponseEntity<CarResponseDTO> getCarById(@PathVariable Long id) {
+        log.debug("[GetCarById] Fetching car with ID: {}", id);
+        CarResponseDTO car = service.getCarById(id);
+        log.debug("[GetCarById] Found car: {} {} ({})", car.getBrand(), car.getModel(), car.getId());
+        return ResponseEntity.ok(car);
     }
 
     /**

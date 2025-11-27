@@ -292,3 +292,192 @@ hr {
     }
   }
 }
+
+/* ============================================================================
+   📱 MOBILE UX FOUNDATION LAYER (Phase 1)
+   ============================================================================
+   Transforms "Web Feel" → "Native App Experience" (Turo/Airbnb standard)
+   - Touch Physics: Momentum scrolling, tactile feedback
+   - Safe Areas: iPhone notch/home indicator awareness
+   - Touch Targets: Apple HIG 44px minimum
+   - Input Optimization: Focus states, sticky hover fix
+   ============================================================================ */
+
+/* 🌐 Global Touch Physics */
+html {
+  /* Momentum scrolling for iOS */
+  -webkit-overflow-scrolling: touch;
+  
+  /* Prevent pull-to-refresh on overscroll (optional, keeps it native) */
+  overscroll-behavior-y: contain;
+  
+  /* Smooth scroll for anchor links */
+  scroll-behavior: smooth;
+}
+
+/* 📱 Touch Feedback: Remove default grey highlight, add tactile transform */
+* {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+
+/* 🎯 Touch Targets: Apple HIG 44px minimum on mobile */
+@media (max-width: 768px) and (pointer: coarse) {
+  button,
+  [role="button"],
+  a[mat-button],
+  a[mat-raised-button],
+  a[mat-stroked-button],
+  a[mat-flat-button],
+  a[mat-list-item],
+  .mat-mdc-button-base,
+  .mat-mdc-icon-button,
+  .mat-mdc-list-item,
+  .mat-mdc-option,
+  .mat-mdc-menu-item,
+  .mat-mdc-chip {
+    min-height: 44px !important;
+  }
+
+  /* Input fields need adequate tap targets */
+  input,
+  textarea,
+  select,
+  .mat-mdc-form-field {
+    min-height: 44px;
+  }
+
+  .mat-mdc-text-field-wrapper {
+    min-height: 52px;
+  }
+}
+
+/* 👆 Tactile Press Feedback (replaces grey tap highlight) */
+@media (pointer: coarse) {
+  button:not(:disabled):active,
+  [role="button"]:not(:disabled):active,
+  a[mat-button]:active,
+  a[mat-raised-button]:active,
+  a[mat-stroked-button]:active,
+  a[mat-flat-button]:active,
+  a[mat-list-item]:active,
+  .mat-mdc-button-base:not(:disabled):active,
+  .mat-mdc-list-item:active,
+  .mat-mdc-chip:active {
+    transform: scale(0.97);
+    transition: transform 0.1s ease-out;
+  }
+
+  /* Icon buttons get slightly more compression for feel */
+  .mat-mdc-icon-button:not(:disabled):active {
+    transform: scale(0.92);
+    transition: transform 0.08s ease-out;
+  }
+
+  /* Cards get subtle press effect */
+  mat-card:active,
+  .mat-mdc-card:active {
+    transform: scale(0.985);
+    transition: transform 0.1s ease-out;
+  }
+}
+
+/* 🖱️ Sticky Hover Fix: Disable hover on touch devices */
+@media (hover: none) and (pointer: coarse) {
+  button:hover,
+  a:hover,
+  .mat-mdc-button-base:hover,
+  .mat-mdc-list-item:hover,
+  .mat-mdc-option:hover,
+  .mat-mdc-menu-item:hover {
+    background-color: inherit !important;
+    transform: none !important;
+    box-shadow: inherit !important;
+  }
+
+  /* Preserve focus states for accessibility */
+  button:focus-visible,
+  a:focus-visible,
+  .mat-mdc-button-base:focus-visible {
+    outline: 2px solid var(--icon-color);
+    outline-offset: 2px;
+  }
+}
+
+/* 🎹 Input Focus States: Substantial, not subtle */
+input:focus,
+textarea:focus,
+select:focus,
+.mat-mdc-form-field.mat-focused .mdc-text-field {
+  outline: none;
+  border-color: var(--icon-color) !important;
+}
+
+.mat-mdc-form-field.mat-focused {
+  .mdc-text-field--outlined .mdc-notched-outline__leading,
+  .mdc-text-field--outlined .mdc-notched-outline__notch,
+  .mdc-text-field--outlined .mdc-notched-outline__trailing {
+    border-color: var(--icon-color) !important;
+    border-width: 2px !important;
+  }
+}
+
+/* 📱 Keyboard-aware input styling */
+@media (max-width: 768px) {
+  /* Ensure inputs are large enough to tap and read */
+  input,
+  textarea {
+    font-size: 16px !important; /* Prevents iOS zoom on focus */
+  }
+
+  /* Better visibility when keyboard is open */
+  input:focus,
+  textarea:focus {
+    background-color: var(--color-surface) !important;
+  }
+}
+
+/* 🏠 Safe Area CSS Variables (for layout components) */
+:root {
+  /* Safe area insets with fallbacks */
+  --safe-area-inset-top: env(safe-area-inset-top, 0px);
+  --safe-area-inset-right: env(safe-area-inset-right, 0px);
+  --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-inset-left: env(safe-area-inset-left, 0px);
+  
+  /* Computed safe padding (adds standard padding + safe area) */
+  --safe-padding-top: max(1rem, env(safe-area-inset-top, 0px));
+  --safe-padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+}
+
+/* 📜 Scrollable Containers: Native momentum */
+.scrollable,
+[class*="scroll"],
+mat-sidenav-content,
+mat-dialog-content,
+.mat-mdc-dialog-content,
+.mat-drawer-inner-container,
+.cdk-virtual-scroll-viewport {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* 🚫 Prevent Text Selection on Interactive Elements (native feel) */
+button,
+[role="button"],
+.mat-mdc-button-base,
+.mat-mdc-chip,
+.mat-mdc-list-item,
+mat-toolbar {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* ✅ Allow text selection where needed */
+p, span, h1, h2, h3, h4, h5, h6,
+.selectable,
+input,
+textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}

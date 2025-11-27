@@ -1,5 +1,6 @@
 package org.example.rentoza.config;
 
+import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.security.ratelimit.RateLimitExceededException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,6 +28,22 @@ public class GlobalExceptionHandler {
         body.put("error", "Server error");
         body.put("message", ex.getMessage());
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(body);
+    }
+
+    /**
+     * Handle resource not found exceptions.
+     * Returns HTTP 404 with structured JSON response.
+     */
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleResourceNotFound(ResourceNotFoundException ex) {
+        log.warn("Resource not found: {}", ex.getMessage());
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", Instant.now().toString());
+        body.put("error", "Not Found");
+        body.put("message", ex.getMessage());
+
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(body);
     }
 
     @ExceptionHandler(io.jsonwebtoken.JwtException.class)

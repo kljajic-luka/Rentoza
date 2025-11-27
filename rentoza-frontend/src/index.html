@@ -4,12 +4,30 @@
     <meta charset="utf-8" />
     <title>Rentoza - Rent Premium Cars in Serbia</title>
     <base href="/" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!-- 📱 MOBILE UX FOUNDATION: Native Shell Configuration -->
+    <!-- viewport-fit=cover: Extends content behind notch/home indicator -->
+    <!-- maximum-scale=1: Prevents unwanted zoom on input focus (accessibility preserved via user-scalable) -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5, user-scalable=yes"
+    />
+
+    <!-- 🎨 Theme Color: Seamless browser chrome integration -->
+    <!-- Matches toolbar gradient primary color for unified native feel -->
+    <meta name="theme-color" content="#3b82f6" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#1e293b" media="(prefers-color-scheme: dark)" />
+
+    <!-- 🍎 iOS-Specific: Standalone mode + status bar styling -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Rentoza" />
+
+    <!-- 📋 SEO & PWA -->
     <meta
       name="description"
       content="Rentoza - Turo for Serbia. Rent premium cars from verified hosts across Serbia."
     />
-    <meta name="theme-color" content="#3f51b5" />
     <link rel="icon" type="image/png" href="assets/zora_logo.png" />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="assets/icons/icon-192x192.png" />

@@ -248,15 +248,14 @@
               </p>
 
               <!-- Features -->
-              <div class="features" *ngIf="car.features && car.features.length > 0">
-                <mat-chip-set>
-                  <mat-chip *ngFor="let feature of car.features.slice(0, 3)">
-                    {{ feature | translateEnum }}
-                  </mat-chip>
-                  <mat-chip *ngIf="car.features.length > 3">
-                    +{{ car.features.length - 3 }}
-                  </mat-chip>
-                </mat-chip-set>
+              <div class="feature-list" *ngIf="car.features && car.features.length > 0">
+                <span class="feature-item" *ngFor="let feature of car.features.slice(0, 3)">
+                  <mat-icon>check_circle</mat-icon>
+                  {{ feature | translateEnum }}
+                </span>
+                <span class="feature-more" *ngIf="car.features.length > 3">
+                  +{{ car.features.length - 3 }} više
+                </span>
               </div>
             </mat-card-content>
 

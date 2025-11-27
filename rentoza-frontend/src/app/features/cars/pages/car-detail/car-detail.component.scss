@@ -477,47 +477,104 @@
   }
 }
 
-// Features Section
+// Features Section - Modern Minimalist Grid
 .feature-category {
-  padding: 1.5rem 0;
+  padding: 1.25rem 0;
+
+  &:first-child {
+    padding-top: 0;
+  }
+
+  &:last-child {
+    padding-bottom: 0;
+  }
+
+  // Subtle separator between categories
+  & + .feature-category {
+    border-top: 1px solid var(--color-border-subtle, rgba(0, 0, 0, 0.06));
+  }
 
   .category-title {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: 0.6rem;
     margin: 0 0 1rem 0;
-    font-size: 1.1rem;
+    font-size: 0.875rem;
     font-weight: 600;
-    color: var(--color-text-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-muted);
 
     mat-icon {
       color: var(--chip-color);
-      font-size: 24px;
-      width: 24px;
-      height: 24px;
+      font-size: 20px;
+      width: 20px;
+      height: 20px;
     }
   }
+}
 
-  mat-chip-set {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
+// Feature Grid - Clean 2-column mobile, 3-column desktop
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem 1.5rem;
 
-    mat-chip {
-      background: var(--chip-bg);
-      color: var(--color-text-primary);
-      border-radius: 12px;
-      font-size: 0.9rem;
-      padding: 0.5rem 1rem;
-      font-weight: 500;
-      transition: all 0.2s ease;
+  @media (min-width: 768px) {
+    grid-template-columns: repeat(3, 1fr);
+  }
 
-      &:hover {
-        background: var(--chip-color);
-        color: white;
-        transform: translateY(-1px);
-      }
-    }
+  @media (min-width: 1200px) {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.feature-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--color-text-primary);
+  line-height: 1.4;
+
+  .feature-check {
+    color: var(--chip-color, #6366f1);
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+  }
+
+  span {
+    font-weight: 400;
+  }
+}
+
+// Add-ons Grid (inside specs section)
+.addon-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem 1rem;
+  margin-top: 0.5rem;
+
+  @media (min-width: 768px) {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.addon-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.875rem;
+  color: var(--color-text-primary);
+
+  .addon-check {
+    color: #10b981; // Success green
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
   }
 }
 

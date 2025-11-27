@@ -233,24 +233,27 @@
               </div>
             </div>
 
-            <!-- Add-ons as chips (full-width item) -->
+            <!-- Add-ons as feature grid (full-width item) -->
             <div
               class="spec-item spec-item--full-width"
               *ngIf="vm.car.addOns && vm.car.addOns.length > 0"
             >
               <mat-icon>playlist_add_check</mat-icon>
-              <div class="spec-content spec-content--chips">
+              <div class="spec-content">
                 <span class="spec-label">Dodatna oprema</span>
-                <mat-chip-set class="spec-chips">
-                  <mat-chip *ngFor="let addon of vm.car.addOns">{{ addon }}</mat-chip>
-                </mat-chip-set>
+                <div class="addon-grid">
+                  <span class="addon-item" *ngFor="let addon of vm.car.addOns">
+                    <mat-icon class="addon-check">check</mat-icon>
+                    {{ addon }}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
         </mat-card-content>
       </mat-card>
 
-      <!-- Features Section -->
+      <!-- Features Section - Modern Minimalist Grid -->
       <mat-card
         class="car-detail__features"
         *ngIf="categorizeFeatures(vm.car.features) as categorized"
@@ -259,64 +262,60 @@
           <mat-card-title>Oprema i karakteristike</mat-card-title>
         </mat-card-header>
         <mat-card-content>
+          <!-- Safety Features -->
           <div class="feature-category" *ngIf="categorized.safety.length">
             <h3 class="category-title">
               <mat-icon>security</mat-icon>
               Sigurnost
             </h3>
-            <mat-chip-set>
-              <mat-chip *ngFor="let feature of categorized.safety">
-                {{ feature | translateEnum }}
-              </mat-chip>
-            </mat-chip-set>
+            <div class="feature-grid">
+              <div class="feature-item" *ngFor="let feature of categorized.safety">
+                <mat-icon class="feature-check">check</mat-icon>
+                <span>{{ feature | translateEnum }}</span>
+              </div>
+            </div>
           </div>
 
-          <mat-divider
-            *ngIf="categorized.safety.length && categorized.connectivity.length"
-          ></mat-divider>
-
+          <!-- Connectivity Features -->
           <div class="feature-category" *ngIf="categorized.connectivity.length">
             <h3 class="category-title">
               <mat-icon>bluetooth</mat-icon>
               Povezivost
             </h3>
-            <mat-chip-set>
-              <mat-chip *ngFor="let feature of categorized.connectivity">
-                {{ feature | translateEnum }}
-              </mat-chip>
-            </mat-chip-set>
+            <div class="feature-grid">
+              <div class="feature-item" *ngFor="let feature of categorized.connectivity">
+                <mat-icon class="feature-check">check</mat-icon>
+                <span>{{ feature | translateEnum }}</span>
+              </div>
+            </div>
           </div>
 
-          <mat-divider
-            *ngIf="categorized.connectivity.length && categorized.comfort.length"
-          ></mat-divider>
-
+          <!-- Comfort Features -->
           <div class="feature-category" *ngIf="categorized.comfort.length">
             <h3 class="category-title">
               <mat-icon>airline_seat_recline_extra</mat-icon>
               Udobnost
             </h3>
-            <mat-chip-set>
-              <mat-chip *ngFor="let feature of categorized.comfort">
-                {{ feature | translateEnum }}
-              </mat-chip>
-            </mat-chip-set>
+            <div class="feature-grid">
+              <div class="feature-item" *ngFor="let feature of categorized.comfort">
+                <mat-icon class="feature-check">check</mat-icon>
+                <span>{{ feature | translateEnum }}</span>
+              </div>
+            </div>
           </div>
 
-          <mat-divider
-            *ngIf="categorized.comfort.length && categorized.additional.length"
-          ></mat-divider>
-
+          <!-- Additional Features -->
           <div class="feature-category" *ngIf="categorized.additional.length">
             <h3 class="category-title">
               <mat-icon>add_circle</mat-icon>
               Dodatno
             </h3>
-            <mat-chip-set>
-              <mat-chip *ngFor="let feature of categorized.additional">
-                {{ feature | translateEnum }}
-              </mat-chip>
-            </mat-chip-set>
+            <div class="feature-grid">
+              <div class="feature-item" *ngFor="let feature of categorized.additional">
+                <mat-icon class="feature-check">check</mat-icon>
+                <span>{{ feature | translateEnum }}</span>
+              </div>
+            </div>
           </div>
         </mat-card-content>
       </mat-card>

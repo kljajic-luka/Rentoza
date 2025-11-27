@@ -16,7 +16,9 @@ import org.hibernate.annotations.UpdateTimestamp;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 @Entity
 @Table(
         name = "cars",
@@ -111,23 +113,29 @@ public class Car {
      * N+1 PREVENTION:
      * - CarRepository.findWithDetailsById() uses @EntityGraph for single-car views
      * - List queries do NOT fetch features (intentional)
+     * 
+     * TYPE: Set<Feature> to prevent MultipleBagFetchException when eagerly
+     * loading multiple collections. Sets use different fetch strategy than Lists.
      */
     @ElementCollection(fetch = FetchType.LAZY)
     @CollectionTable(name = "car_features", joinColumns = @JoinColumn(name = "car_id"))
     @Column(name = "feature")
     @Enumerated(EnumType.STRING)
-    private List<Feature> features = new ArrayList<>();
+    private Set<Feature> features = new HashSet<>();
 
     /**
      * Custom add-ons - loaded LAZILY for performance.
      * Examples: "Dečije sedište", "Zimske gume"
      * 
      * PERFORMANCE: Same lazy loading strategy as features.
+     * 
+     * TYPE: Set<String> to prevent MultipleBagFetchException when eagerly
+     * loading multiple collections alongside features.
      */
     @ElementCollection(fetch = FetchType.LAZY)
     @CollectionTable(name = "car_add_ons", joinColumns = @JoinColumn(name = "car_id"))
     @Column(name = "add_on")
-    private List<String> addOns = new ArrayList<>(); // Custom add-ons like "Dečije sedište", "Zimske gume"
+    private Set<String> addOns = new HashSet<>();
 
     @Column(name = "cancellation_policy", length = 20)
     @Enumerated(EnumType.STRING)

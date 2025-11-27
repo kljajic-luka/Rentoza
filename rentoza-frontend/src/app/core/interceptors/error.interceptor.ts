@@ -99,14 +99,29 @@ function isSilentEndpoint(url: string): boolean {
  * Only shows generic messages - no technical details.
  */
 function extractUserFriendlyMessage(error: HttpErrorResponse): string {
+  // Check for specific error codes from backend
+  const errorCode = error.error?.code;
+
+  // Handle specific booking conflict types
+  if (error.status === 409) {
+    switch (errorCode) {
+      case 'USER_OVERLAP':
+        return 'Ne možete rezervisati dva vozila u isto vreme. Već imate aktivnu ili čekajuću rezervaciju za ovaj period.';
+      case 'CAR_UNAVAILABLE':
+        return 'Ovaj automobil je već rezervisan za izabrane datume. Molimo izaberite druge datume.';
+      default:
+        return (
+          error.error?.message || 'Ova radnja nije moguća zbog konflikta sa trenutnim stanjem.'
+        );
+    }
+  }
+
   // For specific error codes, show user-friendly messages
   switch (error.status) {
     case 0:
       return 'Nemoguće povezivanje sa serverom. Proverite vašu internet konekciju.';
     case 404:
       return 'Traženi resurs nije pronađen.';
-    case 409:
-      return 'Ova radnja nije moguća zbog konflikta sa trenutnim stanjem.';
     case 422:
       return 'Podaci koje ste uneli nisu validni.';
     case 500:

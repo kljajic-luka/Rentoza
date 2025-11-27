@@ -10,6 +10,7 @@ import org.example.rentoza.car.CarRepository;
 import org.example.rentoza.chat.ChatServiceClient;
 import org.example.rentoza.exception.BookingConflictException;
 import org.example.rentoza.exception.ResourceNotFoundException;
+import org.example.rentoza.exception.UserOverlapException;
 import org.example.rentoza.notification.NotificationService;
 import org.example.rentoza.notification.NotificationType;
 import org.example.rentoza.notification.dto.CreateNotificationRequestDTO;
@@ -99,6 +100,33 @@ public class BookingService {
                     dto.getCarId(), dto.getStartDate(), dto.getEndDate());
             throw new BookingConflictException(
                     "This car is already booked for the selected dates. Please choose different dates."
+            );
+        }
+
+        // ========================================================================
+        // RENTER AVAILABILITY CHECK: "One Driver, One Car" Constraint
+        // ========================================================================
+        // A user cannot physically drive two cars simultaneously.
+        // Check if the renter already has an active or pending booking for these dates.
+        // 
+        // Blocking statuses: PENDING_APPROVAL, ACTIVE
+        // Non-blocking: CANCELLED, DECLINED, COMPLETED, EXPIRED, EXPIRED_SYSTEM
+        //
+        // This is the "soft guardrail" - provides user-friendly error message.
+        // The database trigger (V10) is the "hard guardrail" for race conditions.
+        boolean hasUserOverlap = repo.existsOverlappingUserBooking(
+                renter.getId(),
+                dto.getStartDate(),
+                dto.getEndDate()
+        );
+        
+        if (hasUserOverlap) {
+            log.warn("User overlap conflict: userId={}, dates={} to {}. User already has an active/pending booking.", 
+                    renter.getId(), dto.getStartDate(), dto.getEndDate());
+            throw new UserOverlapException(
+                    "Ne možete rezervisati dva vozila u isto vreme. " +
+                    "Već imate aktivnu ili čekajuću rezervaciju za period " + 
+                    dto.getStartDate() + " do " + dto.getEndDate() + "."
             );
         }
 

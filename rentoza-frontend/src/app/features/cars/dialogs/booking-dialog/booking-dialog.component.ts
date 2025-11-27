@@ -394,6 +394,11 @@ export class BookingDialogComponent implements OnInit {
    * - If enabled: Status = PENDING_APPROVAL, awaiting host decision
    * - If disabled: Status = ACTIVE, instant confirmation (legacy)
    *
+   * Error Handling:
+   * - 409 USER_OVERLAP: User already has active/pending booking for dates
+   * - 409 CAR_UNAVAILABLE: Car is booked for selected dates
+   * - Other errors: Generic error message
+   *
    * Success message updated to reflect approval workflow.
    */
   private createBookingConfirmed(payload: any): void {
@@ -420,10 +425,37 @@ export class BookingDialogComponent implements OnInit {
       },
       error: (error) => {
         console.error('Booking error:', error);
-        const errorMessage =
-          error.error?.message || 'Greška pri kreiranju rezervacije. Pokušajte ponovo.';
+
+        // Handle specific conflict types
+        const errorCode = error.error?.code;
+        let errorMessage: string;
+
+        if (error.status === 409) {
+          switch (errorCode) {
+            case 'USER_OVERLAP':
+              // One Driver, One Car constraint
+              errorMessage =
+                'Ne možete rezervisati dva vozila u isto vreme. ' +
+                'Već imate aktivnu ili čekajuću rezervaciju za ovaj period.';
+              break;
+            case 'CAR_UNAVAILABLE':
+              // Car already booked
+              errorMessage =
+                'Ovaj automobil je upravo rezervisan za izabrane datume. ' +
+                'Molimo izaberite druge datume.';
+              break;
+            default:
+              errorMessage =
+                error.error?.message ||
+                'Rezervacija nije moguća zbog konflikta. Molimo pokušajte ponovo.';
+          }
+        } else {
+          errorMessage =
+            error.error?.message || 'Greška pri kreiranju rezervacije. Pokušajte ponovo.';
+        }
+
         this.snackBar.open(errorMessage, 'Zatvori', {
-          duration: 5000,
+          duration: 6000,
           panelClass: ['snackbar-error'],
         });
         this.isSubmitting.set(false);

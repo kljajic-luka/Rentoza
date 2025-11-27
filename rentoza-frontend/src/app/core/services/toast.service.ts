@@ -191,6 +191,29 @@ export class ToastService {
     this.toastr.warning(message, undefined, this.warningConfig);
   }
 
+  /**
+   * User overlap booking error (One Driver, One Car constraint)
+   * Shows when user tries to book two cars for overlapping dates
+   */
+  userOverlapError(): void {
+    this.toastr.warning(
+      'Ne možete rezervisati dva vozila u isto vreme. Već imate aktivnu ili čekajuću rezervaciju za ovaj period.',
+      undefined,
+      { ...this.warningConfig, timeOut: 6000 }
+    );
+  }
+
+  /**
+   * Car unavailable error (car already booked)
+   */
+  carUnavailableError(): void {
+    this.toastr.warning(
+      'Ovaj automobil je već rezervisan za izabrane datume. Molimo izaberite druge datume.',
+      undefined,
+      this.warningConfig
+    );
+  }
+
   // ============================================================
   // Utility Methods
   // ============================================================

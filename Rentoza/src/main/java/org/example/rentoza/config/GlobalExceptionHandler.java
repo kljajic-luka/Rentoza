@@ -1,6 +1,8 @@
 package org.example.rentoza.config;
 
 import org.example.rentoza.exception.ResourceNotFoundException;
+import org.example.rentoza.exception.UserOverlapException;
+import org.example.rentoza.exception.BookingConflictException;
 import org.example.rentoza.security.ratelimit.RateLimitExceededException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,6 +46,59 @@ public class GlobalExceptionHandler {
         body.put("message", ex.getMessage());
 
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(body);
+    }
+
+    /**
+     * Handle user overlap booking exceptions (One Driver, One Car constraint).
+     * 
+     * Returns HTTP 409 Conflict with structured JSON response:
+     * {
+     *   "timestamp": "2025-11-27T12:00:00Z",
+     *   "error": "Booking Overlap",
+     *   "code": "USER_OVERLAP",
+     *   "message": "Ne možete rezervisati dva vozila u isto vreme..."
+     * }
+     * 
+     * Frontend Handling:
+     * - Check for error.code === 'USER_OVERLAP' to show specific message
+     * - Display user-friendly Serbian message from error.message
+     * - Suggest alternative dates or show existing booking
+     */
+    @ExceptionHandler(UserOverlapException.class)
+    public ResponseEntity<Map<String, Object>> handleUserOverlapException(UserOverlapException ex) {
+        log.warn("User overlap booking attempt: {}", ex.getMessage());
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", Instant.now().toString());
+        body.put("error", "Booking Overlap");
+        body.put("code", "USER_OVERLAP");
+        body.put("message", ex.getMessage());
+
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+    }
+
+    /**
+     * Handle booking conflict exceptions (car already booked).
+     * 
+     * Returns HTTP 409 Conflict with structured JSON response:
+     * {
+     *   "timestamp": "2025-11-27T12:00:00Z",
+     *   "error": "Booking Conflict",
+     *   "code": "CAR_UNAVAILABLE",
+     *   "message": "This car is already booked for the selected dates..."
+     * }
+     */
+    @ExceptionHandler(BookingConflictException.class)
+    public ResponseEntity<Map<String, Object>> handleBookingConflictException(BookingConflictException ex) {
+        log.warn("Booking conflict: {}", ex.getMessage());
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", Instant.now().toString());
+        body.put("error", "Booking Conflict");
+        body.put("code", "CAR_UNAVAILABLE");
+        body.put("message", ex.getMessage());
+
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
     }
 
     @ExceptionHandler(io.jsonwebtoken.JwtException.class)

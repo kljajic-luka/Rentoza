@@ -285,4 +285,70 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
            "AND b.status IN ('ACTIVE', 'COMPLETED') " +
            "ORDER BY b.startDate ASC")
     List<Booking> findPublicBookingsForCar(@Param("carId") Long carId);
+
+    // ========== RENTER AVAILABILITY LOGIC (Single-Booking Constraint) ==========
+
+    /**
+     * Check if a user has any overlapping bookings for the given date range.
+     * 
+     * Business Rule: "One Driver, One Car"
+     * A renter cannot physically drive two cars simultaneously. This method
+     * enforces the constraint at the application layer (soft guardrail).
+     * 
+     * Overlap Formula:
+     * Two date ranges [A_start, A_end] and [B_start, B_end] overlap if:
+     * (A_start < B_end) AND (A_end > B_start)
+     * 
+     * Status Filter (blocking statuses only):
+     * - PENDING_APPROVAL: Request awaiting host decision (blocks user's dates)
+     * - ACTIVE: Confirmed and ongoing/future trip
+     * 
+     * Non-blocking statuses:
+     * - CANCELLED, DECLINED, COMPLETED, EXPIRED, EXPIRED_SYSTEM
+     * 
+     * Security:
+     * - Uses user ID (not email) for precise matching
+     * - Query is parameterized (SQL injection safe)
+     * 
+     * Performance:
+     * - Uses idx_booking_renter_dates index (if exists)
+     * - Returns boolean (COUNT > 0), not full entities
+     * 
+     * @param userId Renter's user ID
+     * @param startDate Requested booking start date
+     * @param endDate Requested booking end date
+     * @return true if user has overlapping booking (should reject new booking)
+     */
+    @Query("SELECT COUNT(b) > 0 FROM Booking b " +
+           "WHERE b.renter.id = :userId " +
+           "AND b.status IN ('PENDING_APPROVAL', 'ACTIVE') " +
+           "AND b.startDate < :endDate " +
+           "AND b.endDate > :startDate")
+    boolean existsOverlappingUserBooking(
+            @Param("userId") Long userId,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate
+    );
+
+    /**
+     * Find all overlapping user bookings for detailed error messaging.
+     * Used when existsOverlappingUserBooking returns true to provide
+     * context about which booking is conflicting.
+     * 
+     * @param userId Renter's user ID
+     * @param startDate Requested booking start date
+     * @param endDate Requested booking end date
+     * @return List of conflicting bookings (for logging/debugging)
+     */
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.car c " +
+           "WHERE b.renter.id = :userId " +
+           "AND b.status IN ('PENDING_APPROVAL', 'ACTIVE') " +
+           "AND b.startDate < :endDate " +
+           "AND b.endDate > :startDate")
+    List<Booking> findOverlappingUserBookings(
+            @Param("userId") Long userId,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate
+    );
 }

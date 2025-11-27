@@ -3,10 +3,10 @@ import { HttpClient } from '@angular/common/http';
 import { BehaviorSubject, Observable } from 'rxjs';
 import { tap, catchError } from 'rxjs/operators';
 import { Client, IMessage, StompSubscription } from '@stomp/stompjs';
-import { ToastrService } from 'ngx-toastr';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 import { environment } from '@environments/environment';
+import { ToastService } from './toast.service';
 import {
   Notification,
   RegisterDeviceTokenRequest,
@@ -30,7 +30,7 @@ import {
 })
 export class NotificationService {
   private readonly http = inject(HttpClient);
-  private readonly toastr = inject(ToastrService);
+  private readonly toast = inject(ToastService);
   private readonly destroyRef = inject(DestroyRef);
 
   private readonly baseUrl = `${environment.baseApiUrl}/notifications`;
@@ -80,7 +80,7 @@ export class NotificationService {
 
     this.stompClient.onStompError = (frame) => {
       console.error('WebSocket error:', frame);
-      this.toastr.error('Greška pri povezivanju za obaveštenja');
+      this.toast.error('Greška pri povezivanju za obaveštenja. Pokušajte osvežiti stranicu.');
     };
 
     this.stompClient.activate();
@@ -130,27 +130,21 @@ export class NotificationService {
    * Show toast notification based on type.
    */
   private showToastForNotification(notification: Notification): void {
-    const config = {
-      timeOut: 5000,
-      progressBar: true,
-      closeButton: true,
-    };
-
     switch (notification.type) {
       case NotificationType.BOOKING_CONFIRMED:
-        this.toastr.success(notification.message, 'Rezervacija potvrđena', config);
+        this.toast.bookingConfirmed();
         break;
       case NotificationType.BOOKING_CANCELLED:
-        this.toastr.warning(notification.message, 'Rezervacija otkazana', config);
+        this.toast.warning(notification.message);
         break;
       case NotificationType.NEW_MESSAGE:
-        this.toastr.info(notification.message, 'Nova poruka', config);
+        this.toast.info(notification.message);
         break;
       case NotificationType.REVIEW_RECEIVED:
-        this.toastr.info(notification.message, 'Nova recenzija', config);
+        this.toast.info(notification.message);
         break;
       default:
-        this.toastr.info(notification.message, 'Obaveštenje', config);
+        this.toast.info(notification.message);
     }
   }
 
@@ -251,24 +245,21 @@ export class NotificationService {
   /**
    * Register FCM device token for push notifications.
    */
-  registerDeviceToken(request: RegisterDeviceTokenRequest): Observable<NotificationSuccessResponse> {
-    return this.http.post<NotificationSuccessResponse>(
-      `${this.baseUrl}/register-token`,
-      request,
-      { withCredentials: true }
-    );
+  registerDeviceToken(
+    request: RegisterDeviceTokenRequest
+  ): Observable<NotificationSuccessResponse> {
+    return this.http.post<NotificationSuccessResponse>(`${this.baseUrl}/register-token`, request, {
+      withCredentials: true,
+    });
   }
 
   /**
    * Unregister device token.
    */
   unregisterDeviceToken(deviceToken: string): Observable<NotificationSuccessResponse> {
-    return this.http.delete<NotificationSuccessResponse>(
-      `${this.baseUrl}/unregister-token`,
-      {
-        body: { deviceToken },
-        withCredentials: true,
-      }
-    );
+    return this.http.delete<NotificationSuccessResponse>(`${this.baseUrl}/unregister-token`, {
+      body: { deviceToken },
+      withCredentials: true,
+    });
   }
 }

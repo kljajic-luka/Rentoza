@@ -2,11 +2,11 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
-import { ToastrService } from 'ngx-toastr';
 import { finalize, tap } from 'rxjs';
 
 import { AuthService } from '@core/auth/auth.service';
 import { RedirectService } from '@core/services/redirect.service';
+import { ToastService } from '@core/services/toast.service';
 import { LoginRequest } from '@core/models/auth.model';
 import { environment } from '@environments/environment';
 import { MatCardModule } from '@angular/material/card';
@@ -40,7 +40,7 @@ export class LoginComponent {
   private readonly redirectService = inject(RedirectService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
-  private readonly toastr = inject(ToastrService);
+  private readonly toast = inject(ToastService);
 
   readonly form = this.fb.nonNullable.group({
     email: ['', [Validators.required, Validators.email]],
@@ -62,7 +62,7 @@ export class LoginComponent {
       .login(payload)
       .pipe(
         tap((user) => {
-          this.toastr.success('Uspešno ste se prijavili!');
+          this.toast.success('Dobrodošli nazad! Uspešno ste se prijavili.');
 
           // Check if there's a return URL, otherwise use role-based redirection
           const returnUrl = this.getReturnUrl();
@@ -76,7 +76,7 @@ export class LoginComponent {
       )
       .subscribe({
         error: () => {
-          this.toastr.error('Pogrešan email ili lozinka');
+          this.toast.error('Pogrešan email ili lozinka. Pokušajte ponovo.');
         },
       });
   }

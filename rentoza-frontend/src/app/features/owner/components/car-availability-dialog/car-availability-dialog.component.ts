@@ -17,7 +17,6 @@ import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatNativeDateModule } from '@angular/material/core';
 import { MatCardModule } from '@angular/material/card';
-import { ToastrService } from 'ngx-toastr';
 import { forkJoin } from 'rxjs';
 import { finalize } from 'rxjs/operators';
 
@@ -26,6 +25,7 @@ import { BlockedDate } from '@core/models/blocked-date.model';
 import { Booking } from '@core/models/booking.model';
 import { AvailabilityService } from '@core/services/availability.service';
 import { BookingService } from '@core/services/booking.service';
+import { ToastService } from '@core/services/toast.service';
 
 export interface CarAvailabilityDialogData {
   car: Car;
@@ -57,7 +57,7 @@ export class CarAvailabilityDialogComponent implements OnInit {
   private readonly fb = inject(FormBuilder);
   private readonly availabilityService = inject(AvailabilityService);
   private readonly bookingService = inject(BookingService);
-  private readonly toastr = inject(ToastrService);
+  private readonly toast = inject(ToastService);
 
   blockedDates: BlockedDate[] = [];
   bookings: Booking[] = [];
@@ -91,10 +91,12 @@ export class CarAvailabilityDialogComponent implements OnInit {
       bookings: this.bookingService.getBookingsForCar(this.data.car.id.toString()),
       blockedDates: this.availabilityService.getBlockedDatesForCar(+this.data.car.id),
     })
-      .pipe(finalize(() => {
-        this.isLoading = false;
-        this.cdr.markForCheck();
-      }))
+      .pipe(
+        finalize(() => {
+          this.isLoading = false;
+          this.cdr.markForCheck();
+        })
+      )
       .subscribe({
         next: ({ bookings, blockedDates }) => {
           this.bookings = bookings;
@@ -103,7 +105,7 @@ export class CarAvailabilityDialogComponent implements OnInit {
         },
         error: (error) => {
           console.error('Error loading calendar data:', error);
-          this.toastr.error('Neuspelo učitavanje podataka kalendara');
+          this.toast.error('Neuspelo učitavanje podataka kalendara. Pokušajte ponovo.');
         },
       });
   }
@@ -211,7 +213,7 @@ export class CarAvailabilityDialogComponent implements OnInit {
     // Ensure end date is after start date
     if (normalizedEnd <= normalizedStart) {
       this.dateRangeForm.get('endDate')?.setValue(null);
-      this.toastr.warning('Krajnji datum mora biti posle početnog datuma');
+      this.toast.warning('Krajnji datum mora biti posle početnog datuma.');
     }
 
     this.cdr.markForCheck();
@@ -222,14 +224,14 @@ export class CarAvailabilityDialogComponent implements OnInit {
    */
   blockDates(): void {
     if (this.dateRangeForm.invalid) {
-      this.toastr.warning('Izaberite početni i krajnji datum');
+      this.toast.validationError('Molimo izaberite početni i krajnji datum.');
       return;
     }
 
     const { startDate, endDate } = this.dateRangeForm.value;
 
     if (endDate < startDate) {
-      this.toastr.warning('Krajnji datum mora biti posle početnog datuma');
+      this.toast.warning('Krajnji datum mora biti posle početnog datuma.');
       return;
     }
 
@@ -242,21 +244,23 @@ export class CarAvailabilityDialogComponent implements OnInit {
         startDate: this.toISODateString(startDate),
         endDate: this.toISODateString(endDate),
       })
-      .pipe(finalize(() => {
-        this.isLoading = false;
-        this.cdr.markForCheck();
-      }))
+      .pipe(
+        finalize(() => {
+          this.isLoading = false;
+          this.cdr.markForCheck();
+        })
+      )
       .subscribe({
         next: () => {
-          this.toastr.success('Datumi uspešno blokirani');
+          this.toast.success('Datumi su uspešno blokirani.');
           this.availabilityService.clearCache(+this.data.car.id);
           this.dateRangeForm.reset();
           this.loadData();
         },
         error: (error) => {
           console.error('Error blocking dates:', error);
-          const message = error.error?.error || 'Neuspelo blokiranje datuma';
-          this.toastr.error(message);
+          const message = error.error?.error || 'Neuspelo blokiranje datuma. Pokušajte ponovo.';
+          this.toast.error(message);
         },
       });
   }
@@ -268,7 +272,9 @@ export class CarAvailabilityDialogComponent implements OnInit {
   unblockDates(block: BlockedDate): void {
     // Show confirmation dialog
     const confirmed = confirm(
-      `Da li ste sigurni da želite da odblokirate datume od ${this.formatDate(block.startDate)} do ${this.formatDate(block.endDate)}?`
+      `Da li ste sigurni da želite da odblokirate datume od ${this.formatDate(
+        block.startDate
+      )} do ${this.formatDate(block.endDate)}?`
     );
 
     if (!confirmed) {
@@ -289,18 +295,14 @@ export class CarAvailabilityDialogComponent implements OnInit {
       .subscribe({
         next: () => {
           // Show success toast with updated message
-          this.toastr.success('Datumi su uspešno odblokirani.', 'Uspešno', {
-            timeOut: 3000,
-          });
+          this.toast.success('Datumi su uspešno odblokirani.');
           this.availabilityService.clearCache(+this.data.car.id);
           this.loadData();
         },
         error: (error) => {
           console.error('Error unblocking dates:', error);
           // Show error toast with clear message
-          this.toastr.error('Greška prilikom odblokiranja datuma. Pokušajte ponovo.', 'Greška', {
-            timeOut: 4000,
-          });
+          this.toast.error('Greška prilikom odblokiranja datuma. Pokušajte ponovo.');
         },
       });
   }

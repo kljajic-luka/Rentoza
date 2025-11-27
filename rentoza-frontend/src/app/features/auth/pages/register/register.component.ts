@@ -2,11 +2,11 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
-import { ToastrService } from 'ngx-toastr';
 import { finalize, tap } from 'rxjs';
 
 import { AuthService } from '@core/auth/auth.service';
 import { RedirectService } from '@core/services/redirect.service';
+import { ToastService } from '@core/services/toast.service';
 import { RegisterRequest } from '@core/models/auth.model';
 import { environment } from '@environments/environment';
 import { MatCardModule } from '@angular/material/card';
@@ -39,7 +39,7 @@ export class RegisterComponent {
   private readonly authService = inject(AuthService);
   private readonly redirectService = inject(RedirectService);
   private readonly router = inject(Router);
-  private readonly toastr = inject(ToastrService);
+  private readonly toast = inject(ToastService);
   private readonly route = inject(ActivatedRoute);
   private readonly requestedRole = (
     this.route.snapshot.queryParamMap.get('role') || ''
@@ -82,11 +82,10 @@ export class RegisterComponent {
       .register(payload)
       .pipe(
         tap((user) => {
-          this.toastr.success(
+          this.toast.success(
             this.isOwnerRegistration
-              ? 'Nalog kreiran! Dobrodošli u Rentoza zajednicu domaćina.'
-              : 'Nalog kreiran! Dobrodošli u Rentoza.',
-            'Uspešna registracija'
+              ? 'Dobrodošli u Rentoza zajednicu domaćina! Vaš nalog je kreiran.'
+              : 'Dobrodošli u Rentoza! Vaš nalog je uspešno kreiran.'
           );
           // Redirect to role-specific dashboard
           this.redirectService.redirectAfterLogin(user);
@@ -95,7 +94,9 @@ export class RegisterComponent {
       )
       .subscribe({
         error: () => {
-          this.toastr.error('Greška prilikom registracije. Pokušajte ponovo.');
+          this.toast.error(
+            'Registracija nije uspela. Molimo proverite podatke i pokušajte ponovo.'
+          );
         },
       });
   }

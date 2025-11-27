@@ -12,7 +12,7 @@ import {
 } from '@core/models/chat.model';
 import { WebSocketService, WebSocketConnectionStatus } from './websocket.service';
 import { AuthService } from '@core/auth/auth.service';
-import { ToastrService } from 'ngx-toastr';
+import { ToastService } from './toast.service';
 
 @Injectable({
   providedIn: 'root',
@@ -21,7 +21,7 @@ export class ChatService implements OnDestroy {
   private readonly http = inject(HttpClient);
   private readonly webSocketService = inject(WebSocketService);
   private readonly authService = inject(AuthService);
-  private readonly toastr = inject(ToastrService);
+  private readonly toast = inject(ToastService);
   private readonly chatApiUrl = environment.chatApiUrl || 'http://localhost:8081/api';
 
   private messageSubject = new Subject<MessageDTO>();
@@ -181,7 +181,7 @@ export class ChatService implements OnDestroy {
           this.addMessageToActiveConversation(message);
         }),
         catchError((error) => {
-          this.toastr.error('Failed to send message', 'Error');
+          this.toast.error('Poruka nije poslata. Pokušajte ponovo.');
           return this.handleError(error);
         })
       );
@@ -247,7 +247,7 @@ export class ChatService implements OnDestroy {
         delay: 1000,
       }),
       catchError((error) => {
-        this.toastr.error('Failed to load conversations', 'Error');
+        this.toast.error('Neuspešno učitavanje konverzacija. Pokušajte ponovo.');
         return this.handleError(error);
       })
     );

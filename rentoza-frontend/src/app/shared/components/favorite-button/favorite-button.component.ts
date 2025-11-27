@@ -5,7 +5,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { FavoriteService } from '@core/services/favorite.service';
 import { AuthService } from '@core/auth/auth.service';
-import { ToastrService } from 'ngx-toastr';
+import { ToastService } from '@core/services/toast.service';
 import { Router } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { firstValueFrom } from 'rxjs';
@@ -17,12 +17,7 @@ import { firstValueFrom } from 'rxjs';
 @Component({
   selector: 'app-favorite-button',
   standalone: true,
-  imports: [
-    CommonModule,
-    MatIconModule,
-    MatButtonModule,
-    MatTooltipModule
-  ],
+  imports: [CommonModule, MatIconModule, MatButtonModule, MatTooltipModule],
   template: `
     <button
       mat-icon-button
@@ -30,58 +25,61 @@ import { firstValueFrom } from 'rxjs';
       [disabled]="isLoading()"
       [matTooltip]="tooltipText()"
       (click)="toggleFavorite($event)"
-      attr.aria-label="{{isFavorited() ? 'Ukloni iz favorita' : 'Dodaj u favorite'}}"
+      attr.aria-label="{{ isFavorited() ? 'Ukloni iz favorita' : 'Dodaj u favorite' }}"
     >
       <mat-icon [class.animate]="isAnimating()">
         {{ isFavorited() ? 'favorite' : 'favorite_border' }}
       </mat-icon>
     </button>
   `,
-  styles: [`
-    button {
-      transition: all 200ms ease;
-    }
-
-    button.favorited mat-icon {
-      color: #ef4444; /* Red for favorited */
-      animation: heartBeat 0.3s ease;
-    }
-
-    button:not(.favorited) mat-icon {
-      color: rgba(100, 116, 139, 0.7);
-    }
-
-    button:hover:not(:disabled) mat-icon {
-      transform: scale(1.15);
-      color: #ef4444;
-    }
-
-    button:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    button mat-icon.animate {
-      animation: heartBeat 0.3s ease;
-    }
-
-    @keyframes heartBeat {
-      0%, 100% {
-        transform: scale(1);
+  styles: [
+    `
+      button {
+        transition: all 200ms ease;
       }
-      25% {
-        transform: scale(1.3);
+
+      button.favorited mat-icon {
+        color: #ef4444; /* Red for favorited */
+        animation: heartBeat 0.3s ease;
       }
-      50% {
-        transform: scale(1.1);
+
+      button:not(.favorited) mat-icon {
+        color: rgba(100, 116, 139, 0.7);
       }
-    }
-  `]
+
+      button:hover:not(:disabled) mat-icon {
+        transform: scale(1.15);
+        color: #ef4444;
+      }
+
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      button mat-icon.animate {
+        animation: heartBeat 0.3s ease;
+      }
+
+      @keyframes heartBeat {
+        0%,
+        100% {
+          transform: scale(1);
+        }
+        25% {
+          transform: scale(1.3);
+        }
+        50% {
+          transform: scale(1.1);
+        }
+      }
+    `,
+  ],
 })
 export class FavoriteButtonComponent {
   private readonly favoriteService = inject(FavoriteService);
   private readonly authService = inject(AuthService);
-  private readonly toastr = inject(ToastrService);
+  private readonly toast = inject(ToastService);
   private readonly router = inject(Router);
 
   @Input({ required: true }) carId!: number;
@@ -97,9 +95,7 @@ export class FavoriteButtonComponent {
   isFavorited = computed(() => this.favoriteService.favoritedCarIdsSignal().has(this.carId));
 
   // Computed tooltip text
-  tooltipText = computed(() =>
-    this.isFavorited() ? 'Ukloni iz favorita' : 'Dodaj u favorite'
-  );
+  tooltipText = computed(() => (this.isFavorited() ? 'Ukloni iz favorita' : 'Dodaj u favorite'));
 
   async toggleFavorite(event: Event): Promise<void> {
     event.stopPropagation();
@@ -108,9 +104,9 @@ export class FavoriteButtonComponent {
     // Check if user is authenticated
     const user = this.currentUser();
     if (!user) {
-      this.toastr.info('Prijavite se da biste dodali automobile u favorite', 'Prijava potrebna');
+      this.toast.loginRequired('Prijavite se da biste dodali automobile u favorite.');
       void this.router.navigate(['/auth/login'], {
-        queryParams: { returnUrl: this.router.url }
+        queryParams: { returnUrl: this.router.url },
       });
       return;
     }
@@ -121,25 +117,26 @@ export class FavoriteButtonComponent {
     try {
       const response = await firstValueFrom(this.favoriteService.toggleFavorite(this.carId));
       const message =
-        response?.message ??
-        (this.isFavorited() ? 'Dodato u favorite' : 'Uklonjeno iz favorita');
-      this.toastr.success(message);
+        response?.message ?? (this.isFavorited() ? 'Dodato u favorite' : 'Uklonjeno iz favorita');
+      this.toast.success(message);
     } catch (error: any) {
       console.error('Error toggling favorite:', error);
       const status = error?.status ?? error?.statusCode;
       if (status === 401) {
-        this.toastr.warning('Sesija je istekla. Prijavite se ponovo da biste sačuvali favorite.');
+        this.toast.sessionExpired();
         void this.router.navigate(['/auth/login'], {
           queryParams: { returnUrl: this.router.url },
         });
       } else if (status >= 500) {
-        this.toastr.error('Server trenutno nije dostupan. Pokušajte ponovo.');
+        this.toast.serverError();
       } else {
-        this.toastr.error('Greška prilikom ažuriranja favorita');
+        this.toast.error('Greška prilikom ažuriranja favorita. Pokušajte ponovo.');
       }
       this.favoriteService
         .loadFavoritedCarIds()
-        .subscribe({ error: (err) => console.error('Failed to refresh favorites after error', err) });
+        .subscribe({
+          error: (err) => console.error('Failed to refresh favorites after error', err),
+        });
     } finally {
       this.isLoading.set(false);
       setTimeout(() => this.isAnimating.set(false), 300);

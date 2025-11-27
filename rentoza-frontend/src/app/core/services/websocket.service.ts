@@ -6,7 +6,7 @@ import { distinctUntilChanged, filter, takeUntil, take, timeout } from 'rxjs/ope
 import { environment } from '@environments/environment';
 import { AuthService } from '@core/auth/auth.service';
 import { UserProfile } from '@core/models/user.model';
-import { ToastrService } from 'ngx-toastr';
+import { ToastService } from './toast.service';
 
 export enum WebSocketConnectionStatus {
   CONNECTING = 'CONNECTING',
@@ -28,7 +28,7 @@ interface ReconnectionConfig {
 })
 export class WebSocketService implements OnDestroy {
   private readonly authService = inject(AuthService);
-  private readonly toastr = inject(ToastrService);
+  private readonly toast = inject(ToastService);
 
   private stompClient: Client | null = null;
   private connectionStatus$ = new BehaviorSubject<WebSocketConnectionStatus>(
@@ -290,7 +290,7 @@ export class WebSocketService implements OnDestroy {
    */
   send(destination: string, body: any): void {
     if (!this.stompClient?.connected) {
-      this.toastr.warning('Connection lost. Please wait...', 'WebSocket');
+      this.toast.warning('Veza izgubljena. Molimo sačekajte...');
       return;
     }
 
@@ -300,7 +300,7 @@ export class WebSocketService implements OnDestroy {
         body: JSON.stringify(body),
       });
     } catch (error) {
-      this.toastr.error('Failed to send message', 'WebSocket');
+      this.toast.error('Poruka nije poslata. Pokušajte ponovo.');
     }
   }
 
@@ -337,7 +337,7 @@ export class WebSocketService implements OnDestroy {
     }
 
     if (this.reconnectionAttempts >= this.reconnectionConfig.maxAttempts) {
-      this.toastr.error('Unable to connect to chat service', 'Connection Error');
+      this.toast.serverError();
       return;
     }
 
@@ -405,12 +405,10 @@ export class WebSocketService implements OnDestroy {
    * Handle connection errors
    */
   private handleConnectionError(error: any): void {
-    // Don't show error toast on first connection attempt
+    // Don't show error toast on first connection attempt - silent reconnection
     if (this.reconnectionAttempts > 0) {
-      const message = error?.message || 'Connection failed';
-      this.toastr.warning(message, 'WebSocket Connection', {
-        timeOut: 3000,
-      });
+      // Silent reconnection - no toast needed
+      console.warn('WebSocket reconnection attempt failed:', error?.message || 'Unknown error');
     }
   }
 }

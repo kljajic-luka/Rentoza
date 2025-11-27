@@ -1,10 +1,10 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
-import { ToastrService } from 'ngx-toastr';
 
 import { AuthService } from '@core/auth/auth.service';
 import { FavoriteService } from '@core/services/favorite.service';
+import { ToastService } from '@core/services/toast.service';
 import { MatCardModule } from '@angular/material/card';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatIconModule } from '@angular/material/icon';
@@ -35,7 +35,7 @@ export class AuthCallbackComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly authService = inject(AuthService);
-  private readonly toastr = inject(ToastrService);
+  private readonly toast = inject(ToastService);
   private readonly favoriteService = inject(FavoriteService);
 
   protected readonly isProcessing = signal(true);
@@ -55,7 +55,7 @@ export class AuthCallbackComponent implements OnInit {
       this.errorMessage.set('Google prijavljivanje nije uspelo. Pokušajte ponovo.');
       this.isProcessing.set(false);
 
-      this.toastr.error('Google prijavljivanje nije uspelo', 'Greška');
+      this.toast.error('Google prijavljivanje nije uspelo. Pokušajte ponovo.');
 
       // Redirect to login after 2 seconds
       setTimeout(() => {
@@ -105,7 +105,7 @@ export class AuthCallbackComponent implements OnInit {
       this.authService.startTokenWatcher(60000);
 
       // ✅ STEP 4: Show success notification
-      this.toastr.success('Uspešno ste se prijavili putem Google naloga!', 'Dobrodošli');
+      this.toast.success('Dobrodošli! Uspešno ste se prijavili putem Google naloga.');
 
       // ✅ STEP 5: Role-based redirection using backend-verified roles
       const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
@@ -126,7 +126,7 @@ export class AuthCallbackComponent implements OnInit {
       this.errorMessage.set('Neuspešno učitavanje korisničkog profila.');
       this.isProcessing.set(false);
 
-      this.toastr.error('Neuspešno učitavanje profila', 'Greška');
+      this.toast.error('Neuspešno učitavanje profila. Pokušajte ponovo.');
 
       // Clear the session and redirect to login
       this.authService.clearSession();

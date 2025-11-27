@@ -21,9 +21,9 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { FlexLayoutModule } from '@ngbracket/ngx-layout';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { filter, map } from 'rxjs';
-import { ToastrService } from 'ngx-toastr';
 
 import { AuthService } from '@core/auth/auth.service';
+import { ToastService } from '@core/services/toast.service';
 import { UserProfile } from '@core/models/user.model';
 import { UserRole } from '@core/models/user-role.type';
 import { ThemeToggleComponent } from '../theme-toggle/theme-toggle.component';
@@ -65,7 +65,7 @@ export class LayoutComponent implements OnInit {
   protected readonly authService = inject(AuthService);
   protected readonly themeService = inject(ThemeService);
   private readonly router = inject(Router);
-  private readonly toastr = inject(ToastrService);
+  private readonly toast = inject(ToastService);
   private readonly breakpointObserver = inject(BreakpointObserver);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -133,10 +133,7 @@ export class LayoutComponent implements OnInit {
 
     // Handle session expiration gracefully
     this.authService.sessionExpired$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
-      this.toastr.info('Vaša sesija je istekla. Prijavite se ponovo.', 'Sesija istekla', {
-        timeOut: 5000,
-        progressBar: true,
-      });
+      this.toast.sessionExpired();
       void this.router.navigate(['/pocetna']);
     });
   }

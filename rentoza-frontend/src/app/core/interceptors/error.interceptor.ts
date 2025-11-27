@@ -1,9 +1,9 @@
 import { HttpErrorResponse, HttpInterceptorFn } from '@angular/common/http';
 import { inject } from '@angular/core';
-import { ToastrService } from 'ngx-toastr';
 import { catchError, throwError } from 'rxjs';
 
 import { AuthService } from '@core/auth/auth.service';
+import { ToastService } from '@core/services/toast.service';
 
 /**
  * List of API endpoints that should NOT show error toasts to users.
@@ -21,7 +21,7 @@ const SILENT_ERROR_ENDPOINTS = [
 const SILENT_ERROR_CODES = [401, 403];
 
 export const errorResponseInterceptor: HttpInterceptorFn = (req, next) => {
-  const toastr = inject(ToastrService);
+  const toast = inject(ToastService);
   const authService = inject(AuthService);
 
   return next(req).pipe(
@@ -30,7 +30,7 @@ export const errorResponseInterceptor: HttpInterceptorFn = (req, next) => {
 
       if (shouldShowToast) {
         const message = extractUserFriendlyMessage(error);
-        toastr.error(message, 'Greška');
+        toast.error(message);
       }
 
       // ✅ Handle 401 (Unauthorized) - token expired or invalid
@@ -52,9 +52,7 @@ export const errorResponseInterceptor: HttpInterceptorFn = (req, next) => {
 
         // Show user-friendly message for permission denials
         if (shouldShowToast) {
-          toastr.warning('Nemate dozvolu za pristup ovom resursu.', 'Zabranjen pristup', {
-            timeOut: 5000,
-          });
+          toast.warning('Nemate dozvolu za pristup ovom resursu.');
         }
 
         // Clear session if 403 indicates invalid authentication state

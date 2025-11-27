@@ -41,7 +41,7 @@ import {
   take,
   tap,
 } from 'rxjs';
-import { ToastrService } from 'ngx-toastr';
+import { ToastService } from '@core/services/toast.service';
 import { FlexLayoutModule } from '@ngbracket/ngx-layout';
 
 import { Car, Feature, CAR_RENTAL_RULES } from '@core/models/car.model';
@@ -92,7 +92,7 @@ export class CarDetailComponent {
   private readonly reviewService = inject(ReviewService);
   private readonly bookingService = inject(BookingService);
   private readonly availabilityService = inject(AvailabilityService);
-  private readonly toastr = inject(ToastrService);
+  private readonly toast = inject(ToastService);
   private readonly authService = inject(AuthService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly dialog = inject(MatDialog);
@@ -295,7 +295,7 @@ export class CarDetailComponent {
 
     if (this.isDateUnavailable(normalized)) {
       const nextAvailable = this.getNextAvailableDate(normalized);
-      this.toastr.warning('Odabrani datumi nisu dostupni. Molimo izaberite druge datume.');
+      this.toast.warning('Odabrani datumi nisu dostupni. Molimo izaberite druge datume.');
       this.bookingForm.controls.startDate.setValue(nextAvailable);
       this.updateEndDateMin(nextAvailable);
       this.bookingForm.controls.endDate.setValue(null);

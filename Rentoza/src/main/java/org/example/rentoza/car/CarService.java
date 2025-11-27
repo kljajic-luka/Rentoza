@@ -175,9 +175,19 @@ public class CarService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Get car by ID with full details (features, addOns, images).
+     * Uses @EntityGraph to load all collections in a single query.
+     * 
+     * PERFORMANCE:
+     * - Single query with LEFT JOIN FETCH for all collections
+     * - No N+1 queries when accessing features/addOns
+     * - Optimized for detail page views
+     */
     @Transactional(readOnly = true)
     public CarResponseDTO getCarById(Long id) {
-        Car car = repo.findById(id)
+        // Use the detail-loading method to prevent LazyInitializationException
+        Car car = repo.findWithDetailsById(id)
                 .orElseThrow(() -> new RuntimeException("Car not found with ID: " + id));
 
         CarResponseDTO dto = mapToResponse(car);

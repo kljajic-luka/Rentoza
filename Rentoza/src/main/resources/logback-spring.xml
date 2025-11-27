@@ -3,21 +3,29 @@
     <conversionRule conversionWord="clr" class="org.springframework.boot.logging.logback.ColorConverter"/>
     <conversionRule conversionWord="wex" class="org.springframework.boot.logging.logback.WhitespaceThrowableProxyConverter"/>
     <conversionRule conversionWord="wEx" class="org.springframework.boot.logging.logback.ExtendedWhitespaceThrowableProxyConverter"/>
+    
+    <!-- =============================================================================
+         PII MASKING CONVERTER - GDPR Compliance
+         ============================================================================= -->
+    <!-- Masks email addresses, phone numbers, and credit cards in log messages -->
+    <!-- Usage: %piiMsg (replaces %msg directly - NOT composite syntax) -->
+    <conversionRule conversionWord="piiMsg" class="org.example.rentoza.config.logging.PiiMaskingConverter"/>
+    
     <!-- =============================================================================
          Rentoza Application - Logback Configuration
          ============================================================================= -->
 
-    <!-- Property for log pattern - clean and readable -->
+    <!-- Property for log pattern - clean and readable WITH PII MASKING -->
     <property name="LOG_PATTERN"
-              value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"/>
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %piiMsg%n"/>
 
-    <!-- Property for colored console pattern (development) with correlation ID -->
+    <!-- Property for colored console pattern (development) with correlation ID WITH PII MASKING -->
     <property name="CONSOLE_LOG_PATTERN"
-              value="%clr(%d{HH:mm:ss.SSS}){faint} %clr([%X{correlationId:---------}]){blue} %clr(%-5level){highlight} %clr(%logger{36}){cyan} - %msg%n"/>
+              value="%clr(%d{HH:mm:ss.SSS}){faint} %clr([%X{correlationId:---------}]){blue} %clr(%-5level){highlight} %clr(%logger{36}){cyan} - %piiMsg%n"/>
     
-    <!-- Property for SQL-specific pattern with visual markers -->
+    <!-- Property for SQL-specific pattern with visual markers WITH PII MASKING -->
     <property name="SQL_LOG_PATTERN"
-              value="%clr(%d{HH:mm:ss.SSS}){faint} %clr([%X{correlationId:---------}]){blue} %clr([SQL]){green} - %msg%n"/>
+              value="%clr(%d{HH:mm:ss.SSS}){faint} %clr([%X{correlationId:---------}]){blue} %clr([SQL]){green} - %piiMsg%n"/>
 
     <!-- =============================================================================
          CONSOLE APPENDER (Development & Production)

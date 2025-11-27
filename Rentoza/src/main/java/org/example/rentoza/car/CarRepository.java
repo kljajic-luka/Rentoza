@@ -8,8 +8,13 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface CarRepository extends JpaRepository<Car, Long>, JpaSpecificationExecutor<Car> {
+    
+    // ========== LIST VIEWS (NO features/addOns - Performance Optimized) ==========
+    // These methods only load owner, keeping list views lightweight
+    
     @EntityGraph(attributePaths = {"owner"})
     List<Car> findByLocationIgnoreCase(String location);
 
@@ -30,9 +35,27 @@ public interface CarRepository extends JpaRepository<Car, Long>, JpaSpecificatio
     @EntityGraph(attributePaths = {"owner"})
     List<Car> findByLocationIgnoreCaseAndAvailableTrue(String location);
 
+    // ========== DETAIL VIEWS (WITH features/addOns - Full Data) ==========
+    // These methods eagerly load collections for single-car views
+    
+    /**
+     * Find car by ID with ALL details eagerly loaded.
+     * Use for: Car Detail Page, Edit Car Form
+     * 
+     * PERFORMANCE:
+     * - Single query using LEFT JOIN FETCH for all collections
+     * - Prevents LazyInitializationException in service layer
+     * - Optimized for single-entity retrieval
+     */
+    @EntityGraph(attributePaths = {"owner", "features", "addOns", "imageUrls"})
+    @Query("SELECT c FROM Car c WHERE c.id = :id")
+    Optional<Car> findWithDetailsById(@Param("id") Long id);
+
     /**
      * Availability search with eager loading of fields needed by CarResponseDTO
      * to avoid LazyInitializationException outside the transaction.
+     * 
+     * NOTE: For search results, we load features for filtering but NOT addOns.
      */
     @EntityGraph(attributePaths = {"owner", "features"})
     @Query("SELECT DISTINCT c FROM Car c WHERE LOWER(c.location) = LOWER(:location) AND c.available = true")
@@ -41,7 +64,7 @@ public interface CarRepository extends JpaRepository<Car, Long>, JpaSpecificatio
     // ========== RLS-ENFORCED QUERIES (Enterprise Security Enhancement) ==========
 
     /**
-     * Find car by ID with owner verification.
+     * Find car by ID with owner verification AND full details.
      * Returns car only if the authenticated user is the owner.
      * Use this for owner-only operations (update, delete, view private details).
      * 
@@ -51,14 +74,18 @@ public interface CarRepository extends JpaRepository<Car, Long>, JpaSpecificatio
      */
     @Query("SELECT c FROM Car c " +
            "LEFT JOIN FETCH c.owner " +
+           "LEFT JOIN FETCH c.features " +
+           "LEFT JOIN FETCH c.addOns " +
            "WHERE c.id = :id " +
            "AND c.owner.id = :ownerId")
-    java.util.Optional<Car> findByIdAndOwnerId(@Param("id") Long id, @Param("ownerId") Long ownerId);
+    Optional<Car> findByIdAndOwnerId(@Param("id") Long id, @Param("ownerId") Long ownerId);
 
     /**
      * Find all cars accessible by a user.
      * Returns cars owned by the user OR publicly available cars.
      * This enforces RLS while still allowing marketplace browsing.
+     * 
+     * NOTE: List view - does NOT load features/addOns for performance.
      * 
      * @param ownerId Authenticated user's ID
      * @return List of cars (user's own cars + public listings)

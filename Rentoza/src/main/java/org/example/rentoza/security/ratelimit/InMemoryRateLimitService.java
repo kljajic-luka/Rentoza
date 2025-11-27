@@ -2,6 +2,7 @@ package org.example.rentoza.security.ratelimit;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -12,26 +13,31 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * In-memory rate limiting service using token bucket algorithm.
  * 
- * PRODUCTION NOTE: Replace with Redis-backed implementation for distributed deployments.
- * Current implementation uses ConcurrentHashMap for thread-safe in-memory storage.
+ * FALLBACK IMPLEMENTATION:
+ * - Used when Redis is not configured (spring.data.redis.host not set)
+ * - Suitable for single-instance deployments or development
+ * - For production multi-instance deployments, configure Redis
  * 
  * Algorithm: Token Bucket
  * - Each key (IP or user) has a bucket with max capacity = limit
  * - Bucket refills automatically after window expiration
  * - Atomic operations ensure thread safety
  * 
- * Redis Migration:
- * - Replace ConcurrentHashMap with RedisTemplate<String, String>
- * - Use Redis INCR + EXPIRE for atomic counter operations
- * - Enables horizontal scaling across multiple application instances
+ * Limitations:
+ * - Not suitable for horizontal scaling (each instance has separate state)
+ * - State lost on application restart
  * 
  * Security:
  * - Thread-safe atomic operations (no race conditions)
  * - Automatic expiration prevents memory leaks
  * - No persistent storage (stateless across restarts)
+ * 
+ * @author Rentoza Security Team
+ * @since Phase 1 - Initial Implementation
  */
 @Service
-public class InMemoryRateLimitService {
+@ConditionalOnMissingBean(RedisRateLimitService.class)
+public class InMemoryRateLimitService implements RateLimitService {
 
     private static final Logger log = LoggerFactory.getLogger(InMemoryRateLimitService.class);
 
@@ -46,6 +52,7 @@ public class InMemoryRateLimitService {
      * @param windowSeconds Time window in seconds
      * @return true if request is allowed, false if limit exceeded
      */
+    @Override
     public boolean allowRequest(String key, int limit, int windowSeconds) {
         Instant now = Instant.now();
         
@@ -79,6 +86,7 @@ public class InMemoryRateLimitService {
     /**
      * Get current request count for a key (for monitoring/testing)
      */
+    @Override
     public int getCurrentCount(String key) {
         BucketState bucket = buckets.get(key);
         if (bucket == null || bucket.windowEnd.isBefore(Instant.now())) {
@@ -90,6 +98,7 @@ public class InMemoryRateLimitService {
     /**
      * Get remaining seconds in current window (for Retry-After header)
      */
+    @Override
     public long getRemainingSeconds(String key) {
         BucketState bucket = buckets.get(key);
         if (bucket == null) {
@@ -102,6 +111,7 @@ public class InMemoryRateLimitService {
     /**
      * Clear all rate limit state (for testing)
      */
+    @Override
     public void reset() {
         buckets.clear();
         log.debug("🔄 Rate limit state reset");

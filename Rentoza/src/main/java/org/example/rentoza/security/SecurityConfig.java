@@ -7,7 +7,7 @@ import org.example.rentoza.auth.oauth2.OAuth2AuthenticationSuccessHandler;
 import org.example.rentoza.config.AppProperties;
 import org.example.rentoza.security.csrf.CustomCookieCsrfTokenRepository;
 import org.example.rentoza.security.csrf.LoggingCsrfTokenRequestHandler;
-import org.example.rentoza.security.ratelimit.InMemoryRateLimitService;
+import org.example.rentoza.security.ratelimit.RateLimitService;
 import org.example.rentoza.security.ratelimit.RateLimitingFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -67,14 +67,18 @@ public class SecurityConfig {
      * Purpose: Token bucket rate limiting before authentication
      * Order: 1st in chain (fail-fast for abusive requests)
      * 
-     * @param rateLimitService In-memory token bucket service (Redis-ready)
+     * Implementation Selection:
+     * - If spring.data.redis.host is configured: RedisRateLimitService (distributed)
+     * - Otherwise: InMemoryRateLimitService (single-instance)
+     * 
+     * @param rateLimitService Rate limiting service (Redis or In-Memory)
      * @param appProperties Configuration for rate limits
      * @param jwtUtil JWT parser for extracting user email from tokens
      * @return Configured RateLimitingFilter instance
      */
     @Bean
     public RateLimitingFilter rateLimitingFilter(
-            InMemoryRateLimitService rateLimitService,
+            RateLimitService rateLimitService,
             AppProperties appProperties,
             JwtUtil jwtUtil) {
         return new RateLimitingFilter(rateLimitService, appProperties, jwtUtil);

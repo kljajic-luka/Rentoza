@@ -50,7 +50,7 @@ public class RateLimitingFilter extends OncePerRequestFilter {
 
     private static final Logger log = LoggerFactory.getLogger(RateLimitingFilter.class);
 
-    private final InMemoryRateLimitService rateLimitService;
+    private final RateLimitService rateLimitService;
     private final AppProperties appProperties;
     private final JwtUtil jwtUtil;
 
@@ -63,7 +63,7 @@ public class RateLimitingFilter extends OncePerRequestFilter {
             "/uploads/"           // Static content
     );
 
-    public RateLimitingFilter(InMemoryRateLimitService rateLimitService,
+    public RateLimitingFilter(RateLimitService rateLimitService,
                               AppProperties appProperties,
                               JwtUtil jwtUtil) {
         this.rateLimitService = rateLimitService;

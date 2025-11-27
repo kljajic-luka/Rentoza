@@ -101,13 +101,30 @@ public class Car {
     @Column(nullable = false, length = 20)
     private TransmissionType transmissionType = TransmissionType.MANUAL;
 
-    @ElementCollection(fetch = FetchType.EAGER)
+    /**
+     * Car features - loaded LAZILY for performance.
+     * 
+     * PERFORMANCE: Collections are NOT loaded until explicitly accessed.
+     * For list views (search results), we skip loading features.
+     * For detail views, use @EntityGraph or JOIN FETCH.
+     * 
+     * N+1 PREVENTION:
+     * - CarRepository.findWithDetailsById() uses @EntityGraph for single-car views
+     * - List queries do NOT fetch features (intentional)
+     */
+    @ElementCollection(fetch = FetchType.LAZY)
     @CollectionTable(name = "car_features", joinColumns = @JoinColumn(name = "car_id"))
     @Column(name = "feature")
     @Enumerated(EnumType.STRING)
     private List<Feature> features = new ArrayList<>();
 
-    @ElementCollection(fetch = FetchType.EAGER)
+    /**
+     * Custom add-ons - loaded LAZILY for performance.
+     * Examples: "Dečije sedište", "Zimske gume"
+     * 
+     * PERFORMANCE: Same lazy loading strategy as features.
+     */
+    @ElementCollection(fetch = FetchType.LAZY)
     @CollectionTable(name = "car_add_ons", joinColumns = @JoinColumn(name = "car_id"))
     @Column(name = "add_on")
     private List<String> addOns = new ArrayList<>(); // Custom add-ons like "Dečije sedište", "Zimske gume"

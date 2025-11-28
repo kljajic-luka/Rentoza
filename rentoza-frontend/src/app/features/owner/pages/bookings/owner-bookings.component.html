@@ -56,6 +56,14 @@
                 </div>
               </div>
             </mat-card-content>
+            <mat-card-actions>
+              @if (canCancel(booking)) {
+              <button mat-stroked-button color="warn" (click)="cancelBooking(booking)">
+                <mat-icon>cancel</mat-icon>
+                Otkaži
+              </button>
+              }
+            </mat-card-actions>
           </mat-card>
           }
         </div>
@@ -103,6 +111,14 @@
                 </div>
               </div>
             </mat-card-content>
+            <mat-card-actions>
+              @if (canCancel(booking)) {
+              <button mat-stroked-button color="warn" (click)="cancelBooking(booking)">
+                <mat-icon>cancel</mat-icon>
+                Otkaži
+              </button>
+              }
+            </mat-card-actions>
           </mat-card>
           }
         </div>

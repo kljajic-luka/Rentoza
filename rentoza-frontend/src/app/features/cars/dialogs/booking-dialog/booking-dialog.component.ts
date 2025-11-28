@@ -67,8 +67,22 @@ export class BookingDialogComponent implements OnInit {
 
   // Phase 2.1: Booking constants for date filtering
   private readonly BUFFER_DAYS = 1;
-  private readonly MAX_RENTAL_DAYS = 30;
+  private readonly DEFAULT_MIN_RENTAL_DAYS = 1;
+  private readonly DEFAULT_MAX_RENTAL_DAYS = 30;
   private readonly MAX_ADVANCE_BOOKING_DAYS = 365;
+
+  // Computed min/max from car settings or defaults
+  protected get minRentalDays(): number {
+    return this.data.car.minRentalDays ?? this.DEFAULT_MIN_RENTAL_DAYS;
+  }
+
+  protected get maxRentalDays(): number {
+    return this.data.car.maxRentalDays ?? this.DEFAULT_MAX_RENTAL_DAYS;
+  }
+
+  // Duration validation signals for error display
+  protected readonly durationTooShort = signal(false);
+  protected readonly durationTooLong = signal(false);
 
   protected readonly isSubmitting = signal(false);
   protected readonly totalPrice = signal(0);
@@ -176,6 +190,16 @@ export class BookingDialogComponent implements OnInit {
    * 4. Stop at next unavailable date (buffer-aware)
    * 5. Basic date validation
    */
+  /**
+   * Phase 2.1 + Car-specific Min/Max Enhancement
+   *
+   * Applies 5 validation rules:
+   * 1. Minimum rental (car.minRentalDays or default 1)
+   * 2. Maximum rental (car.maxRentalDays or default 30)
+   * 3. Advance booking limit (12 months)
+   * 4. Stop at next unavailable date (buffer-aware)
+   * 5. Basic date validation
+   */
   protected readonly endDateFilter = (date: Date | null): boolean => {
     if (!date) {
       return false;
@@ -188,13 +212,14 @@ export class BookingDialogComponent implements OnInit {
     const normalizedEnd = this.normalizeDate(date);
     const normalizedStart = this.normalizeDate(start);
 
-    // 1. Enforce minimum rental (1 day)
-    if (normalizedEnd <= this.addDays(normalizedStart, 0)) {
+    // 1. Enforce minimum rental (car-specific or default 1 day)
+    const minEndDate = this.addDays(normalizedStart, this.minRentalDays - 1);
+    if (normalizedEnd <= minEndDate) {
       return false;
     }
 
-    // 2. Enforce maximum rental duration (30 days)
-    if (normalizedEnd > this.addDays(normalizedStart, this.MAX_RENTAL_DAYS)) {
+    // 2. Enforce maximum rental duration (car-specific or default 30 days)
+    if (normalizedEnd > this.addDays(normalizedStart, this.maxRentalDays)) {
       return false;
     }
 
@@ -245,12 +270,18 @@ export class BookingDialogComponent implements OnInit {
 
     if (!start || !end) {
       this.resetPriceCalculation();
+      this.durationTooShort.set(false);
+      this.durationTooLong.set(false);
       return;
     }
 
     // Calculate days
     const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
     this.rentalDays.set(days);
+
+    // Validate duration against car's constraints
+    this.durationTooShort.set(days < this.minRentalDays);
+    this.durationTooLong.set(days > this.maxRentalDays);
 
     // Base price
     const base = days * this.data.car.pricePerDay;

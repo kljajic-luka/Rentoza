@@ -77,6 +77,8 @@ public record JwtUserPrincipal(
         return email;
     }
 
+    public Long getId(){return  id;}
+
     @Override
     public String getPassword() {
         // Not used in JWT authentication (password already verified during login)

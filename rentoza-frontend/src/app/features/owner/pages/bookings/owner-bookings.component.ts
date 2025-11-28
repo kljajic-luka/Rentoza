@@ -15,6 +15,11 @@ import { BookingService } from '@core/services/booking.service';
 import { AuthService } from '@core/auth/auth.service';
 import { OwnerReviewDialogComponent } from '@features/owner/dialogs/owner-review-dialog/owner-review-dialog.component';
 import { isBookingCompleted, canOwnerReviewRenter } from '@core/utils/booking.utils';
+import {
+  CancellationPreviewDialogComponent,
+  CancellationPreviewDialogData,
+  CancellationPreviewDialogResult,
+} from '@shared/components/cancellation-preview-dialog/cancellation-preview-dialog.component';
 
 @Component({
   selector: 'app-owner-bookings',
@@ -168,6 +173,46 @@ export class OwnerBookingsComponent implements OnInit {
   protected canReviewRenter(booking: Booking): boolean {
     // Use unified completion check to determine review eligibility
     return canOwnerReviewRenter(booking);
+  }
+
+  /**
+   * Check if host can cancel a booking.
+   * Only PENDING_APPROVAL and ACTIVE bookings are cancellable.
+   */
+  protected canCancel(booking: Booking): boolean {
+    return booking.status === 'PENDING_APPROVAL' || booking.status === 'ACTIVE';
+  }
+
+  /**
+   * Open cancellation preview dialog for a booking.
+   */
+  protected cancelBooking(booking: Booking): void {
+    const car = booking.car;
+    const dialogData: CancellationPreviewDialogData = {
+      bookingId: Number(booking.id),
+      userRole: 'HOST',
+      carInfo: car ? `${car.brand || ''} ${car.model}`.trim() : 'Vozilo',
+      tripDates: `${new Date(booking.startDate).toLocaleDateString('sr-RS')} - ${new Date(
+        booking.endDate
+      ).toLocaleDateString('sr-RS')}`,
+    };
+
+    const dialogRef = this.dialog.open(CancellationPreviewDialogComponent, {
+      width: '500px',
+      maxWidth: '95vw',
+      disableClose: true,
+      data: dialogData,
+    });
+
+    dialogRef.afterClosed().subscribe((result: CancellationPreviewDialogResult | undefined) => {
+      if (result?.confirmed) {
+        // Refresh bookings to reflect the cancellation
+        this.loadOwnerBookings();
+        this.snackBar.open('Rezervacija je uspešno otkazana.', 'Zatvori', {
+          duration: 4000,
+        });
+      }
+    });
   }
 
   protected reviewRenter(booking: Booking): void {

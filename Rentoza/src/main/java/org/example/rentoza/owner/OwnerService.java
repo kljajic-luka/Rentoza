@@ -5,8 +5,11 @@ import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingRepository;
 import org.example.rentoza.booking.BookingStatus;
 import org.example.rentoza.booking.dto.BookingResponseDTO;
+import org.example.rentoza.booking.cancellation.HostCancellationStats;
+import org.example.rentoza.booking.cancellation.HostCancellationStatsRepository;
 import org.example.rentoza.car.Car;
 import org.example.rentoza.car.CarRepository;
+import org.example.rentoza.owner.dto.HostCancellationStatsDTO;
 import org.example.rentoza.owner.dto.OwnerEarningsDTO;
 import org.example.rentoza.owner.dto.OwnerStatsDTO;
 import org.example.rentoza.review.Review;
@@ -32,6 +35,7 @@ public class OwnerService {
     private final CarRepository carRepo;
     private final BookingRepository bookingRepo;
     private final ReviewRepository reviewRepo;
+    private final HostCancellationStatsRepository cancellationStatsRepo;
 
     /**
      * Get comprehensive statistics for owner dashboard
@@ -199,5 +203,30 @@ public class OwnerService {
                 .toList();
 
         return new OwnerEarningsDTO(totalEarnings, monthlyEarnings, yearlyEarnings, totalBookings, carEarningsList);
+    }
+
+    /**
+     * Get host cancellation statistics for penalty tier display.
+     * 
+     * <p>Returns the host's current cancellation standing including:
+     * <ul>
+     *   <li>Cancellation counts (yearly, 30-day rolling)</li>
+     *   <li>Current penalty tier (0, 1, 2, 3+)</li>
+     *   <li>Next penalty amount if they cancel again</li>
+     *   <li>Suspension status (if applicable)</li>
+     * </ul>
+     * 
+     * <p>If the host has no cancellation history (new host), returns
+     * a zero-valued DTO with tier 0 and first-offence penalty amount.
+     * 
+     * @param hostId Host user ID
+     * @return HostCancellationStatsDTO with all tracking data
+     */
+    @Transactional(readOnly = true)
+    public HostCancellationStatsDTO getHostCancellationStats(Long hostId) {
+        // Find existing stats or return empty DTO for new hosts
+        return cancellationStatsRepo.findByHostId(hostId)
+                .map(HostCancellationStatsDTO::fromEntity)
+                .orElseGet(() -> HostCancellationStatsDTO.fromEntity(null));
     }
 }

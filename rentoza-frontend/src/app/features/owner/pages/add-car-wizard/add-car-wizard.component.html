@@ -285,17 +285,21 @@
     <!-- Step 5: Policies -->
     <mat-step [stepControl]="policiesForm" label="Politike">
       <form [formGroup]="policiesForm" class="step-form">
-        <h2 class="step-title">Pravila i politike</h2>
+        <h2 class="step-title">Pravila iznajmljivanja</h2>
         <p class="step-description">Definišite uslove iznajmljivanja</p>
 
-        <mat-form-field appearance="outline" class="form-field full-width">
-          <mat-label>Politika otkazivanja</mat-label>
-          <mat-select formControlName="cancellationPolicy" required>
-            <mat-option *ngFor="let policy of cancellationPolicies" [value]="policy">
-              {{ translateCancellationPolicy(policy) }}
-            </mat-option>
-          </mat-select>
-        </mat-form-field>
+        <!-- Platform Cancellation Policy Notice -->
+        <div class="platform-policy-notice">
+          <mat-icon>info</mat-icon>
+          <div>
+            <strong>Politika otkazivanja</strong>
+            <p>Platforma koristi standardnu politiku otkazivanja za sve rezervacije:</p>
+            <ul>
+              <li>Besplatno otkazivanje do 24h pre početka putovanja</li>
+              <li>Nakon toga se primenjuje penal u zavisnosti od dužine putovanja</li>
+            </ul>
+          </div>
+        </div>
 
         <div class="form-grid">
           <mat-form-field appearance="outline" class="form-field">
@@ -434,11 +438,15 @@
             </div>
 
             <div class="summary-section">
-              <h4>Politika</h4>
+              <h4>Dužina iznajmljivanja</h4>
               <p>
-                {{ translateCancellationPolicy(policiesForm.value.cancellationPolicy!) }} •
                 {{ policiesForm.value.minRentalDays }}-{{ policiesForm.value.maxRentalDays }} dana
               </p>
+            </div>
+
+            <div class="summary-section">
+              <h4>Politika otkazivanja</h4>
+              <p>Standardna platformska politika (Turo-stil)</p>
             </div>
 
             <div class="summary-section">

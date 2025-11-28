@@ -69,11 +69,116 @@
     color: inherit;
     opacity: 0.7;
   }
+
+  &--error {
+    background: rgba(244, 67, 54, 0.08);
+    color: #c62828;
+    border: 1px solid rgba(244, 67, 54, 0.3);
+
+    mat-icon {
+      color: #c62828;
+    }
+  }
 }
 
 :host-context(.theme-dark) .rental-info {
   background: rgba(255, 255, 255, 0.08);
   color: rgba(255, 255, 255, 0.87);
+
+  &--error {
+    background: rgba(244, 67, 54, 0.15);
+    color: #ef5350;
+    border-color: rgba(244, 67, 54, 0.4);
+
+    mat-icon {
+      color: #ef5350;
+    }
+  }
+}
+
+// Constraints Hint - Theme-aware
+.constraints-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0.75rem 0 0 0;
+  padding: 0.75rem;
+  background: rgba(255, 152, 0, 0.08);
+  border-left: 3px solid rgba(255, 152, 0, 0.6);
+  border-radius: 4px;
+  font-size: 0.875rem;
+  color: rgba(0, 0, 0, 0.7);
+
+  .hint-icon {
+    color: #ef6c00;
+    font-size: 1.25rem;
+    width: 1.25rem;
+    height: 1.25rem;
+    flex-shrink: 0;
+    margin-top: 0.1rem;
+  }
+
+  span {
+    line-height: 1.4;
+  }
+
+  strong {
+    color: #e65100;
+  }
+}
+
+:host-context(.theme-dark) .constraints-hint {
+  background: rgba(255, 152, 0, 0.12);
+  border-left-color: rgba(255, 152, 0, 0.8);
+  color: rgba(255, 255, 255, 0.7);
+
+  .hint-icon {
+    color: #ffb74d;
+  }
+
+  strong {
+    color: #ffb74d;
+  }
+}
+
+// Validation Error - Theme-aware
+.validation-error {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.5rem 0 0 0;
+  padding: 0.625rem 0.75rem;
+  background: rgba(244, 67, 54, 0.08);
+  border-left: 3px solid #f44336;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  color: #c62828;
+
+  mat-icon {
+    color: #f44336;
+    font-size: 1.125rem;
+    width: 1.125rem;
+    height: 1.125rem;
+    flex-shrink: 0;
+  }
+
+  strong {
+    color: #b71c1c;
+  }
+}
+
+:host-context(.theme-dark) .validation-error {
+  background: rgba(244, 67, 54, 0.15);
+  border-left-color: #ef5350;
+  color: #ef5350;
+
+  mat-icon {
+    color: #ef5350;
+  }
+
+  strong {
+    color: #ff8a80;
+  }
 }
 
 // Driver Info Hint - Theme-aware

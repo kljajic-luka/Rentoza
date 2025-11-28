@@ -137,6 +137,25 @@ public class Car {
     @Column(name = "add_on")
     private Set<String> addOns = new HashSet<>();
 
+    /**
+     * @deprecated Legacy field from owner-selected cancellation policy model.
+     * 
+     * <p>As of 2024-01, Rentoza uses a platform-standard Turo-style cancellation
+     * policy with time-based rules instead of owner-selected tiers.
+     * 
+     * <p><b>Migration Status:</b>
+     * <ul>
+     *   <li>New bookings: Ignore this field, use {@code CancellationPolicyService}</li>
+     *   <li>Existing bookings: Legacy data preserved for historical reference</li>
+     *   <li>Add-Car Wizard: Field removed from UI (Phase 3)</li>
+     * </ul>
+     * 
+     * <p>This field is retained for backward compatibility with existing car
+     * listings. It will be fully removed in a future major version.
+     * 
+     * @see org.example.rentoza.booking.cancellation.CancellationRecord
+     */
+    @Deprecated(since = "2024-01", forRemoval = false)
     @Column(name = "cancellation_policy", length = 20)
     @Enumerated(EnumType.STRING)
     private CancellationPolicy cancellationPolicy = CancellationPolicy.FLEXIBLE;

@@ -2,8 +2,13 @@ package org.example.rentoza.booking;
 
 import org.springframework.transaction.annotation.Transactional;
 import lombok.extern.slf4j.Slf4j;
+import org.example.rentoza.booking.cancellation.CancellationPolicyService;
+import org.example.rentoza.booking.cancellation.CancellationReason;
 import org.example.rentoza.booking.dto.BookingRequestDTO;
 import org.example.rentoza.booking.dto.BookingResponseDTO;
+import org.example.rentoza.booking.dto.CancellationPreviewDTO;
+import org.example.rentoza.booking.dto.CancellationRequestDTO;
+import org.example.rentoza.booking.dto.CancellationResultDTO;
 import org.example.rentoza.booking.dto.UserBookingResponseDTO;
 import org.example.rentoza.car.Car;
 import org.example.rentoza.car.CarRepository;
@@ -43,6 +48,7 @@ public class BookingService {
     private final ChatServiceClient chatServiceClient;
     private final NotificationService notificationService;
     private final org.example.rentoza.security.CurrentUser currentUser;
+    private final CancellationPolicyService cancellationPolicyService;
 
     @org.springframework.beans.factory.annotation.Value("${app.booking.host-approval.enabled:false}")
     private boolean approvalEnabled;
@@ -55,7 +61,8 @@ public class BookingService {
 
     public BookingService(BookingRepository repo, CarRepository carRepo, UserRepository userRepo,
                           ReviewRepository reviewRepo, ChatServiceClient chatServiceClient,
-                          NotificationService notificationService, org.example.rentoza.security.CurrentUser currentUser) {
+                          NotificationService notificationService, org.example.rentoza.security.CurrentUser currentUser,
+                          CancellationPolicyService cancellationPolicyService) {
         this.repo = repo;
         this.carRepo = carRepo;
         this.userRepo = userRepo;
@@ -63,6 +70,7 @@ public class BookingService {
         this.chatServiceClient = chatServiceClient;
         this.notificationService = notificationService;
         this.currentUser = currentUser;
+        this.cancellationPolicyService = cancellationPolicyService;
     }
 
     @Transactional
@@ -235,9 +243,20 @@ public class BookingService {
                 .setScale(2, RoundingMode.HALF_UP);
         
         booking.setTotalPrice(totalPrice);
+
+        // ========================================================================
+        // CANCELLATION POLICY: Snapshot Daily Rate at Booking Time
+        // ========================================================================
+        // CRITICAL: Lock the car's daily rate at booking creation.
+        // This ensures penalty calculations use the rate agreed upon at booking,
+        // even if the owner changes the price before a potential cancellation.
+        // 
+        // Used by: TuroCancellationPolicyService.calculateGuestCancellation()
+        // Immutable: This value should NEVER be updated after booking creation.
+        booking.setSnapshotDailyRate(car.getPricePerDay());
         
-        log.debug("Price calculated: days={}, basePrice={}, multiplier={}, refuel={}, total={}",
-                days, basePrice, insuranceMultiplier, refuelCost, totalPrice);
+        log.debug("Price calculated: days={}, basePrice={}, multiplier={}, refuel={}, total={}, snapshotDailyRate={}",
+                days, basePrice, insuranceMultiplier, refuelCost, totalPrice, car.getPricePerDay());
 
         Booking savedBooking = repo.save(booking);
 
@@ -328,7 +347,8 @@ public class BookingService {
      * 
      * Security:
      * - Public-safe: returns minimal DTO (BookingSlotDTO)
-     * - Only includes ACTIVE/CONFIRMED bookings (filters out cancelled/pending)
+     * - Only includes blocking statuses: ACTIVE, PENDING_APPROVAL
+     * - CANCELLED, DECLINED, COMPLETED, EXPIRED are excluded (dates are free)
      * - Does NOT require authentication or ownership verification
      * - Compliant with RLS: no sensitive data exposure
      * 
@@ -336,13 +356,11 @@ public class BookingService {
      * @return List of BookingSlotDTO with only date ranges
      */
     public List<org.example.rentoza.booking.dto.BookingSlotDTO> getPublicBookedSlots(Long carId) {
-        // Fetch bookings for the car
-        List<Booking> bookings = repo.findByCarId(carId);
+        // Use optimized query that already filters by blocking statuses (ACTIVE, PENDING_APPROVAL)
+        List<Booking> bookings = repo.findPublicBookingsForCar(carId);
         
         // Map to public-safe DTO with only date ranges
-        // Filter to only ACTIVE bookings (exclude CANCELLED, PENDING)
         return bookings.stream()
-                .filter(b -> b.getStatus() == BookingStatus.ACTIVE )
                 .map(org.example.rentoza.booking.dto.BookingSlotDTO::new)
                 .toList();
     }
@@ -445,15 +463,117 @@ public class BookingService {
                 .toList();
     }
 
+    // ==================== CANCELLATION POLICY MIGRATION (Phase 2) ====================
+
     /**
-     * Cancel booking with ownership verification.
-     * RLS-ENFORCED: Only the renter can cancel their booking.
+     * Generate a cancellation preview WITHOUT executing the cancellation.
+     * 
+     * <p>Allows users to see the financial consequences before committing.
+     * RLS-ENFORCED: Only renter or host can preview their booking cancellation.
+     * 
+     * @param id Booking ID
+     * @return Preview DTO with penalty/refund calculations
+     */
+    @Transactional(readOnly = true)
+    public CancellationPreviewDTO getCancellationPreview(Long id) {
+        var booking = repo.findById(id)
+                .orElseThrow(() -> new RuntimeException("Booking not found"));
+        
+        // RLS ENFORCEMENT: Only renter or host can preview
+        Long userId = currentUser.id();
+        User initiator = getCurrentUserEntity();
+        
+        boolean isRenter = booking.getRenter().getId().equals(userId);
+        boolean isHost = booking.getCar().getOwner().getId().equals(userId);
+        
+        if (!isRenter && !isHost && !currentUser.isAdmin()) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Unauthorized to preview cancellation for booking " + id
+            );
+        }
+        
+        // Force initialize for calculation
+        Hibernate.initialize(booking.getCar());
+        Hibernate.initialize(booking.getRenter());
+        Hibernate.initialize(booking.getCar().getOwner());
+        
+        return cancellationPolicyService.generatePreview(booking, initiator);
+    }
+
+    /**
+     * Cancel booking with Turo-style policy enforcement.
+     * 
+     * <p>This method:
+     * <ul>
+     *   <li>Validates booking state and user authorization</li>
+     *   <li>Calculates penalties/refunds via CancellationPolicyService</li>
+     *   <li>Creates immutable CancellationRecord audit entry</li>
+     *   <li>Updates booking state and denormalized fields</li>
+     *   <li>Applies host penalty escalation if applicable</li>
+     *   <li>Sends notifications to both parties</li>
+     * </ul>
+     * 
+     * <p>RLS-ENFORCED: Only the renter or host can cancel their booking.
+     * 
+     * @param id Booking ID
+     * @param request Cancellation request with reason and optional notes
+     * @return Cancellation result with financial details
+     * @throws RuntimeException if booking not found
+     * @throws IllegalStateException if booking cannot be cancelled
+     * @throws org.springframework.security.access.AccessDeniedException if user is not authorized
+     */
+    @Transactional
+    public CancellationResultDTO cancelBookingWithPolicy(Long id, CancellationRequestDTO request) {
+        var booking = repo.findById(id)
+                .orElseThrow(() -> new RuntimeException("Booking not found"));
+        
+        // RLS ENFORCEMENT: Only renter or host can cancel
+        Long userId = currentUser.id();
+        User initiator = getCurrentUserEntity();
+        
+        boolean isRenter = booking.getRenter().getId().equals(userId);
+        boolean isHost = booking.getCar().getOwner().getId().equals(userId);
+        
+        if (!isRenter && !isHost && !currentUser.isAdmin()) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Unauthorized to cancel booking " + id + ": only the renter or host can cancel"
+            );
+        }
+        
+        // Force initialize for processing
+        Hibernate.initialize(booking.getCar());
+        Hibernate.initialize(booking.getRenter());
+        Hibernate.initialize(booking.getCar().getOwner());
+        
+        // Process cancellation through policy service
+        CancellationResultDTO result = cancellationPolicyService.processCancellation(
+            booking, 
+            initiator, 
+            request.reason(), 
+            request.notes()
+        );
+        
+        // Send notifications
+        sendCancellationNotifications(booking, result);
+        
+        return result;
+    }
+
+    /**
+     * Legacy cancel booking method - deprecated in favor of cancelBookingWithPolicy.
+     * 
+     * <p><b>DEPRECATED:</b> Use {@link #cancelBookingWithPolicy(Long, CancellationRequestDTO)} instead.
+     * This method is kept for backwards compatibility with existing clients.
+     * 
+     * <p>RLS-ENFORCED: Only the renter can cancel their booking.
      * 
      * @param id Booking ID
      * @return Cancelled booking
      * @throws RuntimeException if booking not found
      * @throws org.springframework.security.access.AccessDeniedException if user is not the renter
+     * @deprecated Use {@link #cancelBookingWithPolicy(Long, CancellationRequestDTO)} for proper penalty handling
      */
+    @Deprecated(since = "2024-01", forRemoval = true)
     @Transactional
     public Booking cancelBooking(Long id) {
         var booking = repo.findById(id)
@@ -502,6 +622,87 @@ public class BookingService {
         }
 
         return booking;
+    }
+
+    /**
+     * Send cancellation notifications to both parties with financial details.
+     */
+    private void sendCancellationNotifications(Booking booking, CancellationResultDTO result) {
+        try {
+            Car car = booking.getCar();
+            User renter = booking.getRenter();
+            User owner = car.getOwner();
+            String carInfo = car.getBrand() + " " + car.getModel();
+            
+            // Determine cancelling party for messaging
+            String cancellerName = switch (result.cancelledBy()) {
+                case GUEST -> renter.getFirstName();
+                case HOST -> owner.getFirstName();
+                case SYSTEM -> "sistem";
+            };
+            
+            // Format refund/penalty for notification
+            String refundInfo = result.refundToGuest().compareTo(java.math.BigDecimal.ZERO) > 0
+                ? String.format(" Povraćaj: %,.2f RSD.", result.refundToGuest())
+                : "";
+            
+            String penaltyInfo = result.penaltyAmount().compareTo(java.math.BigDecimal.ZERO) > 0
+                ? String.format(" Penali: %,.2f RSD.", result.penaltyAmount())
+                : "";
+            
+            // Notify renter
+            String renterMessage = switch (result.cancelledBy()) {
+                case GUEST -> "Otkazali ste rezervaciju za " + carInfo + "." + refundInfo;
+                case HOST -> "Vlasnik je otkazao vašu rezervaciju za " + carInfo + ". Dobićete pun povraćaj.";
+                case SYSTEM -> "Vaša rezervacija za " + carInfo + " je otkazana od strane sistema." + refundInfo;
+            };
+            
+            notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                    .recipientId(renter.getId())
+                    .type(NotificationType.BOOKING_CANCELLED)
+                    .message(renterMessage)
+                    .relatedEntityId("booking-" + booking.getId())
+                    .build());
+
+            // Notify owner
+            String ownerMessage = switch (result.cancelledBy()) {
+                case GUEST -> "Gost " + renter.getFirstName() + " je otkazao rezervaciju za " + carInfo + "." + penaltyInfo;
+                case HOST -> "Otkazali ste rezervaciju za " + carInfo + " gostu " + renter.getFirstName() + ".";
+                case SYSTEM -> "Rezervacija za " + carInfo + " je otkazana od strane sistema.";
+            };
+            
+            // Add host penalty/suspension info if applicable
+            if (result.cancelledBy() == org.example.rentoza.booking.cancellation.CancelledBy.HOST) {
+                if (result.hostPenaltyApplied() != null && result.hostPenaltyApplied().compareTo(java.math.BigDecimal.ZERO) > 0) {
+                    ownerMessage += String.format(" Penali: %,.2f RSD.", result.hostPenaltyApplied());
+                }
+                if (result.hostSuspendedUntil() != null) {
+                    ownerMessage += " Suspendovani ste do " + 
+                        result.hostSuspendedUntil().format(java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm")) + ".";
+                }
+            }
+            
+            notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                    .recipientId(owner.getId())
+                    .type(NotificationType.BOOKING_CANCELLED)
+                    .message(ownerMessage)
+                    .relatedEntityId("booking-" + booking.getId())
+                    .build());
+
+            log.info("Cancellation notifications sent for booking {} (cancelledBy={})", 
+                booking.getId(), result.cancelledBy());
+        } catch (Exception e) {
+            log.error("Failed to send cancellation notifications: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Get the current authenticated user as a User entity.
+     */
+    private User getCurrentUserEntity() {
+        String email = currentUser.email();
+        return userRepo.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Current user not found: " + email));
     }
 
     @Transactional

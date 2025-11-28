@@ -1,8 +1,24 @@
 package org.example.rentoza.car;
 
 /**
- * Cancellation policy options for car rentals
+ * @deprecated Legacy cancellation policy options for car rentals.
+ * 
+ * <p>As of 2024-01, Rentoza uses a platform-standard Turo-style cancellation
+ * policy with time-based rules:
+ * <ul>
+ *   <li>24+ hours before trip: Free cancellation</li>
+ *   <li>Less than 24h, short trip: 1 day penalty</li>
+ *   <li>Less than 24h, long trip: 50% penalty</li>
+ *   <li>No-show: 100% penalty</li>
+ * </ul>
+ * 
+ * <p>This enum is retained for backward compatibility with existing car listings
+ * and historical booking data. New cancellation logic is handled by
+ * {@code CancellationPolicyService}.
+ * 
+ * @see org.example.rentoza.booking.cancellation.CancellationRecord
  */
+@Deprecated(since = "2024-01", forRemoval = false)
 public enum CancellationPolicy {
     /**
      * Flexible - Full refund up to 24 hours before pickup

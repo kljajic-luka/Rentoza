@@ -16,14 +16,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { STEPPER_GLOBAL_OPTIONS } from '@angular/cdk/stepper';
 
-import {
-  FuelType,
-  TransmissionType,
-  Feature,
-  CancellationPolicy,
-  CAR_RENTAL_RULES,
-  Car,
-} from '@core/models/car.model';
+import { FuelType, TransmissionType, Feature, CAR_RENTAL_RULES, Car } from '@core/models/car.model';
 import { CarService } from '@core/services/car.service';
 import { AuthService } from '@core/auth/auth.service';
 
@@ -73,7 +66,6 @@ export class AddCarWizardComponent implements OnInit {
   // Enums for templates
   protected readonly FuelType = FuelType;
   protected readonly TransmissionType = TransmissionType;
-  protected readonly CancellationPolicy = CancellationPolicy;
   protected readonly Feature = Feature;
   protected readonly rentalRules = CAR_RENTAL_RULES;
 
@@ -84,13 +76,6 @@ export class AddCarWizardComponent implements OnInit {
     FuelType.ELEKTRIČNI,
     FuelType.HIBRID,
     FuelType.PLUG_IN_HIBRID,
-  ];
-
-  protected readonly cancellationPolicies = [
-    CancellationPolicy.FLEXIBLE,
-    CancellationPolicy.MODERATE,
-    CancellationPolicy.STRICT,
-    CancellationPolicy.NON_REFUNDABLE,
   ];
 
   // Grouped features
@@ -156,9 +141,9 @@ export class AddCarWizardComponent implements OnInit {
     fuelConsumption: [0, [Validators.min(0), Validators.max(50)]],
   });
 
-  // Step 5: Policies
+  // Step 5: Rental Policies (simplified - no cancellation policy selection)
+  // Note: Cancellation policy is now platform-controlled (Turo-style) per migration plan.
   protected readonly policiesForm = this.fb.nonNullable.group({
-    cancellationPolicy: [CancellationPolicy.FLEXIBLE, [Validators.required]],
     minRentalDays: [1, [Validators.required, Validators.min(1)]],
     maxRentalDays: [30, [Validators.required, Validators.min(1)]],
   });
@@ -260,7 +245,7 @@ export class AddCarWizardComponent implements OnInit {
       fuelConsumption: this.specificationsForm.value.fuelConsumption,
       features: this.selectedFeatures(),
       addOns: this.addOns(),
-      cancellationPolicy: this.policiesForm.value.cancellationPolicy!,
+      // Note: cancellationPolicy removed - now platform-controlled (Turo-style)
       minRentalDays: this.policiesForm.value.minRentalDays!,
       maxRentalDays: this.policiesForm.value.maxRentalDays!,
       imageUrls: this.imageUrls(),
@@ -311,16 +296,6 @@ export class AddCarWizardComponent implements OnInit {
 
   protected translateTransmission(transmission: TransmissionType): string {
     return transmission === TransmissionType.MANUAL ? 'Manuelni' : 'Automatik';
-  }
-
-  protected translateCancellationPolicy(policy: CancellationPolicy): string {
-    const translations: Record<CancellationPolicy, string> = {
-      [CancellationPolicy.FLEXIBLE]: 'Fleksibilna',
-      [CancellationPolicy.MODERATE]: 'Umerena',
-      [CancellationPolicy.STRICT]: 'Striktna',
-      [CancellationPolicy.NON_REFUNDABLE]: 'Bez povraćaja',
-    };
-    return translations[policy];
   }
 
   protected translateFeature(feature: Feature): string {

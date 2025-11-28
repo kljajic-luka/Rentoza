@@ -143,6 +143,17 @@
   </mat-dialog-content>
 
   <mat-dialog-actions align="end" *ngIf="booking()">
+    @if (canCancel()) {
+    <button
+      mat-stroked-button
+      color="warn"
+      (click)="openCancellationDialog()"
+      matTooltip="Otkaži ovu rezervaciju"
+    >
+      <mat-icon>cancel</mat-icon>
+      Otkaži
+    </button>
+    }
     <button mat-stroked-button (click)="openRules()"><mat-icon>gavel</mat-icon> Pravila</button>
     <button mat-stroked-button (click)="openPhotos()">
       <mat-icon>photo_library</mat-icon> Slike

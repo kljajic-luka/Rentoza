@@ -2,6 +2,7 @@ package org.example.rentoza.owner;
 
 import lombok.RequiredArgsConstructor;
 import org.example.rentoza.booking.dto.BookingResponseDTO;
+import org.example.rentoza.owner.dto.HostCancellationStatsDTO;
 import org.example.rentoza.owner.dto.OwnerEarningsDTO;
 import org.example.rentoza.owner.dto.OwnerStatsDTO;
 import org.springframework.http.ResponseEntity;
@@ -88,6 +89,36 @@ public class OwnerController {
         } catch (RuntimeException e) {
             return ResponseEntity.notFound().build();
         }
+    }
+
+    /**
+     * Get host cancellation statistics for the authenticated owner.
+     * 
+     * <p>Returns penalty tier, suspension status, and next penalty amount.
+     * Used by frontend to:
+     * <ul>
+     *   <li>Display cancellation history on dashboard</li>
+     *   <li>Show warning before cancellation confirmation</li>
+     *   <li>Indicate suspension status (if applicable)</li>
+     * </ul>
+     * 
+     * <p><b>Security:</b> Returns only the authenticated user's stats.
+     * 
+     * <p><b>New Hosts:</b> Returns zero-valued DTO if no cancellation history exists.
+     * 
+     * GET /api/owner/cancellation-stats
+     * 
+     * @param principal Authenticated owner
+     * @return HostCancellationStatsDTO with tier info, suspension status, next penalty
+     */
+    @GetMapping("/cancellation-stats")
+    @PreAuthorize("hasAnyRole('OWNER', 'ADMIN')")
+    public ResponseEntity<HostCancellationStatsDTO> getCancellationStats(
+            @org.springframework.security.core.annotation.AuthenticationPrincipal 
+            org.example.rentoza.security.JwtUserPrincipal principal
+    ) {
+        HostCancellationStatsDTO stats = ownerService.getHostCancellationStats(principal.getId());
+        return ResponseEntity.ok(stats);
     }
 
 

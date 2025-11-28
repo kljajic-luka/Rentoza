@@ -475,3 +475,43 @@
     }
   }
 }
+
+// Platform Cancellation Policy Notice (Turo-style migration)
+.platform-policy-notice {
+  display: flex;
+  gap: 1rem;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+  background: rgba(59, 130, 246, 0.1);
+  border-radius: 8px;
+  border-left: 4px solid #3b82f6;
+
+  mat-icon {
+    color: #3b82f6;
+    flex-shrink: 0;
+    margin-top: 0.25rem;
+  }
+
+  strong {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: var(--color-text-primary);
+  }
+
+  p {
+    margin: 0 0 0.5rem 0;
+    color: var(--color-text-muted);
+    font-size: 0.875rem;
+  }
+
+  ul {
+    margin: 0;
+    padding-left: 1.25rem;
+    color: var(--color-text-muted);
+    font-size: 0.875rem;
+
+    li {
+      margin-bottom: 0.25rem;
+    }
+  }
+}

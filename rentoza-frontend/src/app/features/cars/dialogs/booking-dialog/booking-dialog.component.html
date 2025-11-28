@@ -49,10 +49,41 @@
           </mat-form-field>
         </div>
 
+        <!-- Rental Duration Info & Constraints -->
         @if (rentalDays() > 0) {
-        <p class="rental-info">
+        <p class="rental-info" [class.rental-info--error]="durationTooShort() || durationTooLong()">
           <mat-icon>schedule</mat-icon>
           Trajanje iznajmljivanja: <strong>{{ rentalDays() }} dana</strong>
+        </p>
+        }
+
+        <!-- Car-specific constraints hint -->
+        @if (minRentalDays > 1 || maxRentalDays < 30) {
+        <p class="constraints-hint">
+          <mat-icon class="hint-icon">info</mat-icon>
+          <span>
+            Vlasnik zahteva @if (minRentalDays > 1) { min.
+            <strong>{{ minRentalDays }} dana</strong> } @if (minRentalDays > 1 && maxRentalDays <
+            30) { i } @if (maxRentalDays < 30) { max. <strong>{{ maxRentalDays }} dana</strong> }
+            iznajmljivanja.
+          </span>
+        </p>
+        }
+
+        <!-- Duration validation errors -->
+        @if (durationTooShort()) {
+        <p class="validation-error">
+          <mat-icon>error_outline</mat-icon>
+          <span
+            >Minimalno trajanje iznajmljivanja je <strong>{{ minRentalDays }} dana</strong>.</span
+          >
+        </p>
+        } @if (durationTooLong()) {
+        <p class="validation-error">
+          <mat-icon>error_outline</mat-icon>
+          <span
+            >Maksimalno trajanje iznajmljivanja je <strong>{{ maxRentalDays }} dana</strong>.</span
+          >
         </p>
         }
       </section>
@@ -269,7 +300,13 @@
       mat-raised-button
       color="primary"
       (click)="submitBooking()"
-      [disabled]="bookingForm.invalid || isSubmitting() || rentalDays() === 0"
+      [disabled]="
+        bookingForm.invalid ||
+        isSubmitting() ||
+        rentalDays() === 0 ||
+        durationTooShort() ||
+        durationTooLong()
+      "
     >
       @if (isSubmitting()) {
       <ng-container>

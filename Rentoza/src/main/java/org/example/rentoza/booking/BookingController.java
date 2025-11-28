@@ -1,7 +1,11 @@
 package org.example.rentoza.booking;
 
+import jakarta.validation.Valid;
 import org.example.rentoza.booking.dto.BookingRequestDTO;
 import org.example.rentoza.booking.dto.BookingResponseDTO;
+import org.example.rentoza.booking.dto.CancellationPreviewDTO;
+import org.example.rentoza.booking.dto.CancellationRequestDTO;
+import org.example.rentoza.booking.dto.CancellationResultDTO;
 import org.example.rentoza.booking.dto.UserBookingResponseDTO;
 import org.example.rentoza.exception.ResourceNotFoundException;
 
@@ -268,10 +272,17 @@ public class BookingController {
     }
 
     /**
-     * Cancel a booking.
+     * Cancel a booking (LEGACY - deprecated).
+     * 
+     * <p><b>DEPRECATED:</b> Use POST /{id}/cancel with CancellationRequestDTO instead.
+     * This endpoint is kept for backwards compatibility.
+     * 
      * RLS-ENFORCED: Only the renter can cancel their booking (verified at service layer).
      * SpEL expression ensures only booking modifier can access.
+     * 
+     * @deprecated Use POST /{id}/cancel with CancellationRequestDTO for proper penalty handling
      */
+    @Deprecated(since = "2024-01")
     @PutMapping("/cancel/{id}")
     @PreAuthorize("@bookingSecurity.canModifyBooking(#id, authentication.principal.id) or hasRole('ADMIN')")
     public ResponseEntity<?> cancelBooking(
@@ -289,6 +300,90 @@ public class BookingController {
 
             Booking booking = service.cancelBooking(id);
             return ResponseEntity.ok(new BookingResponseDTO(booking));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    // ==================== CANCELLATION POLICY MIGRATION (Phase 2) ====================
+
+    /**
+     * Preview cancellation consequences before committing.
+     * 
+     * <p>Returns a preview of what would happen if the booking was cancelled,
+     * including penalty amounts, refunds, and applicable rules. Does NOT
+     * actually cancel the booking.
+     * 
+     * <p>RLS-ENFORCED: Only renter or host can preview cancellation.
+     * 
+     * @param id Booking ID to preview cancellation for
+     * @return Preview DTO with financial consequences
+     */
+    @GetMapping("/{id}/cancellation-preview")
+    @PreAuthorize("@bookingSecurity.canModifyBooking(#id, authentication.principal.id) or hasRole('ADMIN')")
+    public ResponseEntity<?> getCancellationPreview(@PathVariable Long id) {
+        try {
+            CancellationPreviewDTO preview = service.getCancellationPreview(id);
+            return ResponseEntity.ok(preview);
+        } catch (IllegalStateException e) {
+            // Booking in non-cancellable state
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                "error", "Cannot cancel",
+                "message", e.getMessage()
+            ));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Cancel a booking with Turo-style policy enforcement.
+     * 
+     * <p>This endpoint:
+     * <ul>
+     *   <li>Calculates penalties/refunds based on timing and trip duration</li>
+     *   <li>Creates an immutable CancellationRecord audit entry</li>
+     *   <li>Applies host penalty escalation (RSD 5,500 → 11,000 → 16,500)</li>
+     *   <li>Triggers 7-day suspension for 3rd+ host cancellation</li>
+     *   <li>Sends notifications to both parties with financial details</li>
+     * </ul>
+     * 
+     * <p><b>Guest Cancellation Rules:</b>
+     * <ul>
+     *   <li>>24h before trip: Full refund</li>
+     *   <li>&lt;1h since booking (remorse): Full refund</li>
+     *   <li>&lt;24h, short trip (≤2 days): 1 day penalty</li>
+     *   <li>&lt;24h, long trip (>2 days): 50% penalty</li>
+     * </ul>
+     * 
+     * <p><b>Host Cancellation:</b> Guest always gets full refund, host pays tiered penalty.
+     * 
+     * <p>RLS-ENFORCED: Only renter or host can cancel their booking.
+     * 
+     * @param id Booking ID to cancel
+     * @param request Cancellation reason and optional notes
+     * @return Cancellation result with financial details
+     */
+    @PostMapping("/{id}/cancel")
+    @PreAuthorize("@bookingSecurity.canModifyBooking(#id, authentication.principal.id) or hasRole('ADMIN')")
+    public ResponseEntity<?> cancelBookingWithPolicy(
+            @PathVariable Long id,
+            @Valid @RequestBody CancellationRequestDTO request
+    ) {
+        try {
+            CancellationResultDTO result = service.cancelBookingWithPolicy(id, request);
+            return ResponseEntity.ok(result);
+        } catch (IllegalStateException e) {
+            // Booking in non-cancellable state or already cancelled
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                "error", "Cannot cancel",
+                "message", e.getMessage()
+            ));
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                "error", "Unauthorized",
+                "message", e.getMessage()
+            ));
         } catch (RuntimeException e) {
             return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
         }

@@ -1,6 +1,11 @@
-import { Component, Inject, OnInit, inject, signal } from '@angular/core';
+import { Component, Inject, OnInit, inject, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
+import {
+  MAT_DIALOG_DATA,
+  MatDialogModule,
+  MatDialogRef,
+  MatDialog,
+} from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatDividerModule } from '@angular/material/divider';
@@ -10,6 +15,11 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { BookingService } from '@core/services/booking.service';
 import { BookingDetails } from '@core/models/booking-details.model';
 import { CarRules } from '@app/core/models/car-rules.model';
+import {
+  CancellationPreviewDialogComponent,
+  CancellationPreviewDialogData,
+  CancellationPreviewDialogResult,
+} from '@shared/components/cancellation-preview-dialog/cancellation-preview-dialog.component';
 
 @Component({
   selector: 'app-booking-details-dialog',
@@ -30,10 +40,21 @@ import { CarRules } from '@app/core/models/car-rules.model';
 export class BookingDetailsDialogComponent implements OnInit {
   private readonly bookingService = inject(BookingService);
   private readonly dialogRef = inject(MatDialogRef<BookingDetailsDialogComponent>);
+  private readonly dialog = inject(MatDialog);
 
   booking = signal<BookingDetails | null>(null);
   isLoading = signal(true);
   error = signal<string | null>(null);
+
+  /**
+   * Computed: Whether the booking can be cancelled.
+   * Only PENDING_APPROVAL and ACTIVE bookings are cancellable by guest.
+   */
+  protected readonly canCancel = computed(() => {
+    const b = this.booking();
+    if (!b) return false;
+    return b.status === 'PENDING_APPROVAL' || b.status === 'ACTIVE';
+  });
 
   constructor(@Inject(MAT_DIALOG_DATA) public data: { bookingId: number }) {}
 
@@ -75,6 +96,36 @@ export class BookingDetailsDialogComponent implements OnInit {
   openReceipt(): void {
     // Placeholder for Receipt Modal
     alert('Prikaz računa biće uskoro dostupan.');
+  }
+
+  /**
+   * Opens the cancellation preview dialog for this booking.
+   * Closes the booking details dialog on successful cancellation.
+   */
+  openCancellationDialog(): void {
+    const b = this.booking();
+    if (!b) return;
+
+    const dialogData: CancellationPreviewDialogData = {
+      bookingId: this.data.bookingId,
+      userRole: 'GUEST',
+      carInfo: `${b.brand} ${b.model} ${b.year}`,
+      tripDates: `${this.formatDate(b.startDate)} - ${this.formatDate(b.endDate)}`,
+    };
+
+    const dialogRef = this.dialog.open(CancellationPreviewDialogComponent, {
+      width: '500px',
+      maxWidth: '95vw',
+      disableClose: true,
+      data: dialogData,
+    });
+
+    dialogRef.afterClosed().subscribe((result: CancellationPreviewDialogResult | undefined) => {
+      if (result?.confirmed) {
+        // Close the booking details dialog with cancellation result
+        this.dialogRef.close({ cancelled: true });
+      }
+    });
   }
 
   getDuration(start: string, end: string): number {

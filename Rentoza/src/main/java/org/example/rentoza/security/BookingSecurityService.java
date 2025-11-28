@@ -75,8 +75,13 @@ public class BookingSecurityService {
 
     /**
      * Checks if the user can modify (cancel, update) a booking.
-     * Only the renter can modify their booking (owners cannot unilaterally cancel).
+     * Both the renter AND the car owner can cancel a booking:
+     * - Renter: Can cancel their own booking (guest cancellation)
+     * - Owner: Can cancel bookings on their car (host cancellation)
      * Admins can modify any booking.
+     * 
+     * <p>This supports Turo-style cancellation where hosts can cancel,
+     * albeit with tiered penalties (RSD 5,500 → 11,000 → 16,500).
      * 
      * @param bookingId Booking ID to check
      * @param userId Authenticated user's ID
@@ -88,18 +93,24 @@ public class BookingSecurityService {
             return true;
         }
 
-        // Use findByIdWithRelations to ensure renter is loaded
+        // Use findByIdWithRelations to ensure renter and car owner are loaded
         Booking booking = bookingRepository.findByIdWithRelations(bookingId).orElse(null);
         if (booking == null) {
             return false;
         }
 
-        // Only renter can cancel their booking
+        // Renter (guest) can cancel their booking
         boolean isRenter = booking.getRenter().getId().equals(userId);
         
-        log.debug("Modify check for booking {}: userId={}, isRenter={}", bookingId, userId, isRenter);
+        // Owner (host) can also cancel bookings on their car
+        boolean isOwner = booking.getCar().getOwner().getId().equals(userId);
         
-        return isRenter;
+        boolean canModify = isRenter || isOwner;
+        
+        log.debug("Modify check for booking {}: userId={}, isRenter={}, isOwner={}, canModify={}", 
+                bookingId, userId, isRenter, isOwner, canModify);
+        
+        return canModify;
     }
 
     /**

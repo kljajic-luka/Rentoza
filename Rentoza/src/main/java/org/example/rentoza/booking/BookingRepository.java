@@ -79,11 +79,21 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     java.util.Optional<Booking> findByIdWithRelations(@Param("id") Long id);
 
     /**
-     * Check if there are any confirmed bookings overlapping with the given date range for a car.
+     * Check if there are any active/pending bookings overlapping with the given date range for a car.
      * Used for validation when blocking dates or creating new bookings.
+     * 
+     * Blocking Statuses:
+     * - PENDING_APPROVAL: Awaiting host decision (blocks dates to prevent overbooking)
+     * - ACTIVE: Confirmed and ongoing/future trip
+     * 
+     * Non-Blocking Statuses (EXCLUDED):
+     * - CANCELLED: Trip was cancelled (dates now free)
+     * - DECLINED: Host rejected the request
+     * - COMPLETED: Trip finished (dates now free)
+     * - EXPIRED, EXPIRED_SYSTEM: Request expired without action
      */
     @Query("SELECT COUNT(b) > 0 FROM Booking b WHERE b.car.id = :carId " +
-           "AND b.status IN ('ACTIVE', 'CONFIRMED') " +
+           "AND b.status IN ('ACTIVE', 'PENDING_APPROVAL') " +
            "AND b.startDate <= :endDate AND b.endDate >= :startDate")
     boolean existsOverlappingBookings(
             @Param("carId") Long carId,
@@ -138,11 +148,14 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     List<Booking> findOverdueBookings(@Param("currentDate") LocalDate currentDate);
 
     /**
-     * Phase 2.3: Find all confirmed bookings for a car that overlap with the given date range.
+     * Phase 2.3: Find all blocking bookings for a car that overlap with the given date range.
      * Used for real-time conflict detection before creating a booking.
+     * 
+     * Returns ACTIVE and PENDING_APPROVAL bookings only (these block dates).
+     * CANCELLED, DECLINED, COMPLETED, EXPIRED bookings are excluded.
      */
     @Query("SELECT b FROM Booking b WHERE b.car.id = :carId " +
-           "AND b.status IN ('ACTIVE', 'CONFIRMED') " +
+           "AND b.status IN ('ACTIVE', 'PENDING_APPROVAL') " +
            "AND b.startDate <= :endDate AND b.endDate >= :startDate")
     List<Booking> findByCarIdAndDateRange(
             @Param("carId") Long carId,
@@ -254,17 +267,21 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     List<Booking> findPendingBookingsBefore(@Param("threshold") java.time.LocalDateTime threshold);
 
     /**
-     * Check for conflicting bookings excluding PENDING_APPROVAL and DECLINED.
+     * Check for conflicting bookings during host approval.
      * Used for availability checks during approval to prevent race conditions.
-     * Only considers ACTIVE and COMPLETED bookings as blocking.
+     * 
+     * Only ACTIVE bookings block dates. PENDING_APPROVAL from other users
+     * don't block because only one can be approved.
+     * 
+     * COMPLETED bookings do NOT block - those dates are now free.
      * 
      * @param carId Car ID
      * @param startDate Booking start date
      * @param endDate Booking end date
-     * @return true if there are conflicting bookings
+     * @return true if there are conflicting ACTIVE bookings
      */
     @Query("SELECT COUNT(b) > 0 FROM Booking b WHERE b.car.id = :carId " +
-           "AND b.status IN ('ACTIVE', 'COMPLETED') " +
+           "AND b.status = 'ACTIVE' " +
            "AND b.startDate <= :endDate AND b.endDate >= :startDate")
     boolean existsConflictingBookings(
             @Param("carId") Long carId,
@@ -273,16 +290,25 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     );
 
     /**
-     * Find bookings for public calendar view (excludes pending/declined).
-     * Returns only ACTIVE and COMPLETED bookings to show unavailable dates.
-     * PENDING_APPROVAL bookings are not shown to prevent blocking dates speculatively.
+     * Find bookings for public calendar view.
+     * Returns only ACTIVE and PENDING_APPROVAL bookings to show unavailable dates.
+     * 
+     * Blocking Statuses (shown as unavailable):
+     * - ACTIVE: Confirmed trip (definitely blocks dates)
+     * - PENDING_APPROVAL: Awaiting host decision (blocks to prevent overbooking)
+     * 
+     * Non-Blocking Statuses (EXCLUDED - dates are free):
+     * - CANCELLED: Trip was cancelled
+     * - DECLINED: Host rejected
+     * - COMPLETED: Trip finished (dates now free for future bookings)
+     * - EXPIRED, EXPIRED_SYSTEM: Request expired
      * 
      * @param carId Car ID
-     * @return List of confirmed bookings for calendar display
+     * @return List of blocking bookings for calendar display
      */
     @Query("SELECT b FROM Booking b " +
            "WHERE b.car.id = :carId " +
-           "AND b.status IN ('ACTIVE', 'COMPLETED') " +
+           "AND b.status IN ('ACTIVE', 'PENDING_APPROVAL') " +
            "ORDER BY b.startDate ASC")
     List<Booking> findPublicBookingsForCar(@Param("carId") Long carId);
 

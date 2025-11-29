@@ -1,0 +1,345 @@
+/**
+ * Check-In Handshake Protocol - Frontend Models
+ *
+ * These models mirror the Phase 2 backend DTOs exactly.
+ * @see CheckInStatusDTO, HostCheckInSubmissionDTO, etc.
+ */
+
+// ============================================================================
+// ENUMS
+// ============================================================================
+
+export type CheckInPhotoType =
+  | 'HOST_EXTERIOR_FRONT'
+  | 'HOST_EXTERIOR_REAR'
+  | 'HOST_EXTERIOR_LEFT'
+  | 'HOST_EXTERIOR_RIGHT'
+  | 'HOST_INTERIOR_DASHBOARD'
+  | 'HOST_INTERIOR_REAR'
+  | 'HOST_ODOMETER'
+  | 'HOST_FUEL_GAUGE'
+  | 'HOST_DAMAGE_PREEXISTING'
+  | 'HOST_CUSTOM'
+  | 'GUEST_DAMAGE_NOTED'
+  | 'GUEST_HOTSPOT'
+  | 'CHECKOUT_EXTERIOR_FRONT'
+  | 'CHECKOUT_EXTERIOR_REAR'
+  | 'CHECKOUT_EXTERIOR_LEFT'
+  | 'CHECKOUT_EXTERIOR_RIGHT'
+  | 'CHECKOUT_ODOMETER'
+  | 'CHECKOUT_FUEL_GAUGE'
+  | 'CHECKOUT_DAMAGE_NEW';
+
+export type ExifValidationStatus =
+  | 'PENDING'
+  | 'VALID'
+  | 'VALID_NO_GPS'
+  | 'VALID_WITH_WARNINGS'
+  | 'REJECTED_TOO_OLD'
+  | 'REJECTED_NO_EXIF'
+  | 'REJECTED_LOCATION_MISMATCH'
+  | 'REJECTED_NO_GPS'
+  | 'REJECTED_FUTURE_TIMESTAMP'
+  | 'OVERRIDE_APPROVED';
+
+export type HotspotLocation =
+  | 'FRONT_BUMPER'
+  | 'REAR_BUMPER'
+  | 'FRONT_LEFT_FENDER'
+  | 'FRONT_RIGHT_FENDER'
+  | 'REAR_LEFT_FENDER'
+  | 'REAR_RIGHT_FENDER'
+  | 'LEFT_DOOR_FRONT'
+  | 'LEFT_DOOR_REAR'
+  | 'RIGHT_DOOR_FRONT'
+  | 'RIGHT_DOOR_REAR'
+  | 'HOOD'
+  | 'ROOF'
+  | 'TRUNK'
+  | 'WINDSHIELD'
+  | 'REAR_WINDOW'
+  | 'LEFT_MIRROR'
+  | 'RIGHT_MIRROR'
+  | 'LEFT_HEADLIGHT'
+  | 'RIGHT_HEADLIGHT'
+  | 'LEFT_TAILLIGHT'
+  | 'RIGHT_TAILLIGHT'
+  | 'WHEEL_FRONT_LEFT'
+  | 'WHEEL_FRONT_RIGHT'
+  | 'WHEEL_REAR_LEFT'
+  | 'WHEEL_REAR_RIGHT'
+  | 'INTERIOR_DASHBOARD'
+  | 'INTERIOR_SEATS'
+  | 'INTERIOR_OTHER'
+  | 'OTHER';
+
+// ============================================================================
+// CHECK-IN STATE MACHINE
+// ============================================================================
+
+/**
+ * Check-in workflow states (mirrors backend BookingStatus for check-in flow)
+ */
+export type CheckInState =
+  | 'NOT_READY' // Before T-24h
+  | 'CHECK_IN_OPEN' // Window opened, awaiting host
+  | 'HOST_SUBMITTED' // Host completed, awaiting guest
+  | 'GUEST_ACKNOWLEDGED' // Guest confirmed, awaiting handshake
+  | 'HANDSHAKE_PENDING' // Both ready, confirming handshake
+  | 'TRIP_ACTIVE' // Handshake complete, trip started
+  | 'NO_SHOW_HOST' // Host failed to complete
+  | 'NO_SHOW_GUEST'; // Guest failed to complete
+
+// ============================================================================
+// RESPONSE DTOs
+// ============================================================================
+
+export interface CheckInStatusDTO {
+  bookingId: number;
+  checkInSessionId: string;
+  status: string; // Backend BookingStatus
+
+  // Phase completion
+  hostCheckInComplete: boolean;
+  guestCheckInComplete: boolean;
+  guestAcknowledged: boolean;
+  handshakeReady: boolean;
+  hostCheckedIn: boolean;
+  handshakeComplete: boolean;
+
+  // Timestamps (ISO strings from backend)
+  checkInOpenedAt: string | null;
+  hostCompletedAt: string | null;
+  guestCompletedAt: string | null;
+  handshakeCompletedAt: string | null;
+  bookingStartTime: string | null;
+
+  // Host data (visible to guest after host completes)
+  vehiclePhotos: CheckInPhotoDTO[];
+  odometerReading: number | null;
+  fuelLevelPercent: number | null;
+
+  // Remote handoff
+  lockboxAvailable: boolean;
+  geofenceValid: boolean;
+  geofenceDistanceMeters: number | null;
+
+  // Deadlines
+  tripStartScheduled: string;
+  noShowDeadline: string | null;
+  minutesUntilNoShow: number | null;
+
+  // Role-specific flags (NOTE: Jackson serializes isHost/isGuest as host/guest)
+  host: boolean;
+  guest: boolean;
+
+  // Car info
+  car: CarSummaryDTO;
+}
+
+export interface CarSummaryDTO {
+  id: number;
+  brand: string;
+  model: string;
+  year: number;
+  imageUrl: string | null;
+}
+
+export interface CheckInPhotoDTO {
+  photoId: number;
+  photoType: CheckInPhotoType;
+  url: string;
+  uploadedAt: string;
+  exifValidationStatus: ExifValidationStatus;
+  exifValidationMessage: string | null;
+  width: number | null;
+  height: number | null;
+  mimeType: string | null;
+  exifTimestamp: string | null;
+  exifLatitude: number | null;
+  exifLongitude: number | null;
+  deviceModel: string | null;
+}
+
+// ============================================================================
+// REQUEST DTOs
+// ============================================================================
+
+export interface HostCheckInSubmissionDTO {
+  bookingId: number;
+  odometerReading: number;
+  fuelLevelPercent: number;
+  photoIds: number[];
+  lockboxCode?: string;
+  carLatitude?: number;
+  carLongitude?: number;
+  hostLatitude?: number;
+  hostLongitude?: number;
+}
+
+export interface GuestConditionAcknowledgmentDTO {
+  bookingId: number;
+  conditionAccepted: boolean;
+  hotspots?: HotspotMarkingDTO[];
+  guestLatitude: number;
+  guestLongitude: number;
+  conditionComment?: string;
+}
+
+export interface HotspotMarkingDTO {
+  location: HotspotLocation;
+  description: string;
+  photoId?: number;
+}
+
+export interface HandshakeConfirmationDTO {
+  bookingId: number;
+  confirmed: boolean;
+  hostVerifiedPhysicalId?: boolean;
+  latitude?: number;
+  longitude?: number;
+  deviceFingerprint?: string;
+}
+
+// ============================================================================
+// PHOTO UPLOAD
+// ============================================================================
+
+export interface PhotoUploadRequest {
+  file: File;
+  photoType: CheckInPhotoType;
+  clientTimestamp: string; // ISO string - critical for basement problem fix
+}
+
+export interface PhotoUploadProgress {
+  photoType: CheckInPhotoType;
+  state: 'compressing' | 'uploading' | 'validating' | 'complete' | 'error';
+  progress: number; // 0-100
+  error?: string;
+  result?: CheckInPhotoDTO;
+}
+
+// ============================================================================
+// OFFLINE QUEUE
+// ============================================================================
+
+export interface QueuedUpload {
+  id: string; // UUID for tracking
+  bookingId: number;
+  photoType: CheckInPhotoType;
+  file: Blob;
+  clientTimestamp: string;
+  retryCount: number;
+  createdAt: string;
+  lastAttempt?: string;
+  error?: string;
+}
+
+// ============================================================================
+// GEOLOCATION
+// ============================================================================
+
+export interface GeolocationResult {
+  latitude: number;
+  longitude: number;
+  accuracy: number; // in meters
+  timestamp: number;
+}
+
+export interface GeolocationError {
+  code: 'PERMISSION_DENIED' | 'POSITION_UNAVAILABLE' | 'TIMEOUT' | 'UNSUPPORTED';
+  message: string;
+}
+
+// ============================================================================
+// UI STATE
+// ============================================================================
+
+export interface CheckInWizardState {
+  currentStep: WizardStep;
+  status: CheckInStatusDTO | null;
+  uploadProgress: Map<CheckInPhotoType, PhotoUploadProgress>;
+  geolocation: GeolocationResult | null;
+  geolocationError: GeolocationError | null;
+  isLoading: boolean;
+  error: string | null;
+}
+
+export type WizardStep =
+  | 'loading'
+  | 'photo-upload'
+  | 'odometer-fuel'
+  | 'review'
+  | 'condition-ack'
+  | 'hotspot-marking'
+  | 'handshake'
+  | 'complete';
+
+// ============================================================================
+// REQUIRED PHOTOS CONFIGURATION
+// ============================================================================
+
+export const REQUIRED_HOST_PHOTOS: CheckInPhotoType[] = [
+  'HOST_EXTERIOR_FRONT',
+  'HOST_EXTERIOR_REAR',
+  'HOST_EXTERIOR_LEFT',
+  'HOST_EXTERIOR_RIGHT',
+  'HOST_INTERIOR_DASHBOARD',
+  'HOST_INTERIOR_REAR',
+  'HOST_ODOMETER',
+  'HOST_FUEL_GAUGE',
+];
+
+export const PHOTO_TYPE_LABELS: Record<CheckInPhotoType, string> = {
+  HOST_EXTERIOR_FRONT: 'Prednja strana',
+  HOST_EXTERIOR_REAR: 'Zadnja strana',
+  HOST_EXTERIOR_LEFT: 'Leva strana',
+  HOST_EXTERIOR_RIGHT: 'Desna strana',
+  HOST_INTERIOR_DASHBOARD: 'Instrument tabla',
+  HOST_INTERIOR_REAR: 'Zadnja sedišta',
+  HOST_ODOMETER: 'Kilometraža',
+  HOST_FUEL_GAUGE: 'Nivo goriva',
+  HOST_DAMAGE_PREEXISTING: 'Postojeća oštećenja',
+  HOST_CUSTOM: 'Dodatna fotografija',
+  GUEST_DAMAGE_NOTED: 'Primećena oštećenja',
+  GUEST_HOTSPOT: 'Označena tačka',
+  CHECKOUT_EXTERIOR_FRONT: 'Povratak - Prednja strana',
+  CHECKOUT_EXTERIOR_REAR: 'Povratak - Zadnja strana',
+  CHECKOUT_EXTERIOR_LEFT: 'Povratak - Leva strana',
+  CHECKOUT_EXTERIOR_RIGHT: 'Povratak - Desna strana',
+  CHECKOUT_ODOMETER: 'Povratak - Kilometraža',
+  CHECKOUT_FUEL_GAUGE: 'Povratak - Nivo goriva',
+  CHECKOUT_DAMAGE_NEW: 'Nova oštećenja',
+};
+
+export const HOTSPOT_LOCATION_LABELS: Record<HotspotLocation, string> = {
+  FRONT_BUMPER: 'Prednji branik',
+  REAR_BUMPER: 'Zadnji branik',
+  FRONT_LEFT_FENDER: 'Prednji levi blatobran',
+  FRONT_RIGHT_FENDER: 'Prednji desni blatobran',
+  REAR_LEFT_FENDER: 'Zadnji levi blatobran',
+  REAR_RIGHT_FENDER: 'Zadnji desni blatobran',
+  LEFT_DOOR_FRONT: 'Prednja leva vrata',
+  LEFT_DOOR_REAR: 'Zadnja leva vrata',
+  RIGHT_DOOR_FRONT: 'Prednja desna vrata',
+  RIGHT_DOOR_REAR: 'Zadnja desna vrata',
+  HOOD: 'Hauba',
+  ROOF: 'Krov',
+  TRUNK: 'Gepek',
+  WINDSHIELD: 'Vetrobransko staklo',
+  REAR_WINDOW: 'Zadnje staklo',
+  LEFT_MIRROR: 'Levi retrovizor',
+  RIGHT_MIRROR: 'Desni retrovizor',
+  LEFT_HEADLIGHT: 'Levi far',
+  RIGHT_HEADLIGHT: 'Desni far',
+  LEFT_TAILLIGHT: 'Levo stop svetlo',
+  RIGHT_TAILLIGHT: 'Desno stop svetlo',
+  WHEEL_FRONT_LEFT: 'Prednji levi točak',
+  WHEEL_FRONT_RIGHT: 'Prednji desni točak',
+  WHEEL_REAR_LEFT: 'Zadnji levi točak',
+  WHEEL_REAR_RIGHT: 'Zadnji desni točak',
+  INTERIOR_DASHBOARD: 'Unutrašnjost - Kontrolna tabla',
+  INTERIOR_SEATS: 'Unutrašnjost - Sedišta',
+  INTERIOR_OTHER: 'Unutrašnjost - Ostalo',
+  OTHER: 'Ostalo',
+};

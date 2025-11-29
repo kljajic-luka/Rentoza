@@ -84,16 +84,21 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
      * 
      * Blocking Statuses:
      * - PENDING_APPROVAL: Awaiting host decision (blocks dates to prevent overbooking)
-     * - ACTIVE: Confirmed and ongoing/future trip
+     * - ACTIVE: Confirmed, waiting for check-in window
+     * - CHECK_IN_OPEN: Check-in window is open (T-24h to T+30m)
+     * - CHECK_IN_HOST_COMPLETE: Host completed check-in, awaiting guest
+     * - CHECK_IN_COMPLETE: Both parties completed, awaiting handshake
+     * - IN_TRIP: Trip is in progress
      * 
      * Non-Blocking Statuses (EXCLUDED):
      * - CANCELLED: Trip was cancelled (dates now free)
      * - DECLINED: Host rejected the request
      * - COMPLETED: Trip finished (dates now free)
      * - EXPIRED, EXPIRED_SYSTEM: Request expired without action
+     * - NO_SHOW_HOST, NO_SHOW_GUEST: No-show scenarios (dates freed)
      */
     @Query("SELECT COUNT(b) > 0 FROM Booking b WHERE b.car.id = :carId " +
-           "AND b.status IN ('ACTIVE', 'PENDING_APPROVAL') " +
+           "AND b.status IN ('PENDING_APPROVAL', 'ACTIVE', 'CHECK_IN_OPEN', 'CHECK_IN_HOST_COMPLETE', 'CHECK_IN_COMPLETE', 'IN_TRIP') " +
            "AND b.startDate <= :endDate AND b.endDate >= :startDate")
     boolean existsOverlappingBookings(
             @Param("carId") Long carId,
@@ -130,7 +135,7 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
         @QueryHint(name = "jakarta.persistence.lock.timeout", value = "5000") // 5 second timeout
     })
     @Query("SELECT COUNT(b) > 0 FROM Booking b WHERE b.car.id = :carId " +
-           "AND b.status IN ('ACTIVE', 'PENDING_APPROVAL') " +
+           "AND b.status IN ('PENDING_APPROVAL', 'ACTIVE', 'CHECK_IN_OPEN', 'CHECK_IN_HOST_COMPLETE', 'CHECK_IN_COMPLETE', 'IN_TRIP') " +
            "AND b.startDate <= :endDate AND b.endDate >= :startDate")
     boolean existsOverlappingBookingsWithLock(
             @Param("carId") Long carId,
@@ -141,9 +146,12 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     /**
      * Find all bookings that are overdue (end date in the past) but not yet marked as COMPLETED.
      * Used by scheduled task to auto-complete bookings.
+     * 
+     * Note: This targets ACTIVE bookings (pre-check-in) and IN_TRIP bookings (during trip).
+     * The scheduler should transition IN_TRIP → COMPLETED when trip ends.
      */
     @Query("SELECT b FROM Booking b " +
-           "WHERE b.status = 'ACTIVE' " +
+           "WHERE b.status IN ('ACTIVE', 'IN_TRIP') " +
            "AND b.endDate < :currentDate")
     List<Booking> findOverdueBookings(@Param("currentDate") LocalDate currentDate);
 
@@ -151,11 +159,13 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
      * Phase 2.3: Find all blocking bookings for a car that overlap with the given date range.
      * Used for real-time conflict detection before creating a booking.
      * 
-     * Returns ACTIVE and PENDING_APPROVAL bookings only (these block dates).
-     * CANCELLED, DECLINED, COMPLETED, EXPIRED bookings are excluded.
+     * Returns blocking status bookings (these block dates):
+     * - PENDING_APPROVAL, ACTIVE, CHECK_IN_OPEN, CHECK_IN_HOST_COMPLETE, CHECK_IN_COMPLETE, IN_TRIP
+     * 
+     * CANCELLED, DECLINED, COMPLETED, EXPIRED, NO_SHOW bookings are excluded.
      */
     @Query("SELECT b FROM Booking b WHERE b.car.id = :carId " +
-           "AND b.status IN ('ACTIVE', 'PENDING_APPROVAL') " +
+           "AND b.status IN ('PENDING_APPROVAL', 'ACTIVE', 'CHECK_IN_OPEN', 'CHECK_IN_HOST_COMPLETE', 'CHECK_IN_COMPLETE', 'IN_TRIP') " +
            "AND b.startDate <= :endDate AND b.endDate >= :startDate")
     List<Booking> findByCarIdAndDateRange(
             @Param("carId") Long carId,
@@ -270,18 +280,23 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
      * Check for conflicting bookings during host approval.
      * Used for availability checks during approval to prevent race conditions.
      * 
-     * Only ACTIVE bookings block dates. PENDING_APPROVAL from other users
+     * Only in-progress bookings block dates. PENDING_APPROVAL from other users
      * don't block because only one can be approved.
      * 
-     * COMPLETED bookings do NOT block - those dates are now free.
+     * Blocking statuses (already approved/in-progress):
+     * - ACTIVE: Confirmed, waiting for check-in
+     * - CHECK_IN_OPEN, CHECK_IN_HOST_COMPLETE, CHECK_IN_COMPLETE: Check-in in progress
+     * - IN_TRIP: Trip is happening
+     * 
+     * COMPLETED/NO_SHOW bookings do NOT block - those dates are now free.
      * 
      * @param carId Car ID
      * @param startDate Booking start date
      * @param endDate Booking end date
-     * @return true if there are conflicting ACTIVE bookings
+     * @return true if there are conflicting in-progress bookings
      */
     @Query("SELECT COUNT(b) > 0 FROM Booking b WHERE b.car.id = :carId " +
-           "AND b.status = 'ACTIVE' " +
+           "AND b.status IN ('ACTIVE', 'CHECK_IN_OPEN', 'CHECK_IN_HOST_COMPLETE', 'CHECK_IN_COMPLETE', 'IN_TRIP') " +
            "AND b.startDate <= :endDate AND b.endDate >= :startDate")
     boolean existsConflictingBookings(
             @Param("carId") Long carId,
@@ -291,24 +306,29 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
 
     /**
      * Find bookings for public calendar view.
-     * Returns only ACTIVE and PENDING_APPROVAL bookings to show unavailable dates.
+     * Returns blocking bookings to show unavailable dates.
      * 
      * Blocking Statuses (shown as unavailable):
-     * - ACTIVE: Confirmed trip (definitely blocks dates)
      * - PENDING_APPROVAL: Awaiting host decision (blocks to prevent overbooking)
+     * - ACTIVE: Confirmed, waiting for check-in window
+     * - CHECK_IN_OPEN: Check-in window is open
+     * - CHECK_IN_HOST_COMPLETE: Host completed check-in
+     * - CHECK_IN_COMPLETE: Both parties completed check-in
+     * - IN_TRIP: Trip is in progress
      * 
      * Non-Blocking Statuses (EXCLUDED - dates are free):
      * - CANCELLED: Trip was cancelled
      * - DECLINED: Host rejected
      * - COMPLETED: Trip finished (dates now free for future bookings)
      * - EXPIRED, EXPIRED_SYSTEM: Request expired
+     * - NO_SHOW_HOST, NO_SHOW_GUEST: No-show (dates freed)
      * 
      * @param carId Car ID
      * @return List of blocking bookings for calendar display
      */
     @Query("SELECT b FROM Booking b " +
            "WHERE b.car.id = :carId " +
-           "AND b.status IN ('ACTIVE', 'PENDING_APPROVAL') " +
+           "AND b.status IN ('PENDING_APPROVAL', 'ACTIVE', 'CHECK_IN_OPEN', 'CHECK_IN_HOST_COMPLETE', 'CHECK_IN_COMPLETE', 'IN_TRIP') " +
            "ORDER BY b.startDate ASC")
     List<Booking> findPublicBookingsForCar(@Param("carId") Long carId);
 
@@ -327,10 +347,12 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
      * 
      * Status Filter (blocking statuses only):
      * - PENDING_APPROVAL: Request awaiting host decision (blocks user's dates)
-     * - ACTIVE: Confirmed and ongoing/future trip
+     * - ACTIVE: Confirmed, waiting for check-in window
+     * - CHECK_IN_OPEN, CHECK_IN_HOST_COMPLETE, CHECK_IN_COMPLETE: Check-in in progress
+     * - IN_TRIP: Trip is in progress
      * 
      * Non-blocking statuses:
-     * - CANCELLED, DECLINED, COMPLETED, EXPIRED, EXPIRED_SYSTEM
+     * - CANCELLED, DECLINED, COMPLETED, EXPIRED, EXPIRED_SYSTEM, NO_SHOW_HOST, NO_SHOW_GUEST
      * 
      * Security:
      * - Uses user ID (not email) for precise matching
@@ -347,7 +369,7 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
      */
     @Query("SELECT COUNT(b) > 0 FROM Booking b " +
            "WHERE b.renter.id = :userId " +
-           "AND b.status IN ('PENDING_APPROVAL', 'ACTIVE') " +
+           "AND b.status IN ('PENDING_APPROVAL', 'ACTIVE', 'CHECK_IN_OPEN', 'CHECK_IN_HOST_COMPLETE', 'CHECK_IN_COMPLETE', 'IN_TRIP') " +
            "AND b.startDate < :endDate " +
            "AND b.endDate > :startDate")
     boolean existsOverlappingUserBooking(
@@ -369,7 +391,7 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     @Query("SELECT b FROM Booking b " +
            "JOIN FETCH b.car c " +
            "WHERE b.renter.id = :userId " +
-           "AND b.status IN ('PENDING_APPROVAL', 'ACTIVE') " +
+           "AND b.status IN ('PENDING_APPROVAL', 'ACTIVE', 'CHECK_IN_OPEN', 'CHECK_IN_HOST_COMPLETE', 'CHECK_IN_COMPLETE', 'IN_TRIP') " +
            "AND b.startDate < :endDate " +
            "AND b.endDate > :startDate")
     List<Booking> findOverlappingUserBookings(
@@ -377,4 +399,119 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate
     );
+
+    // ========== CHECK-IN WORKFLOW QUERIES ==========
+
+    /**
+     * Find bookings eligible for check-in window opening.
+     * ACTIVE bookings starting within the date range that don't have a session yet.
+     * 
+     * @param startFrom Start date range (inclusive)
+     * @param startTo End date range (inclusive)
+     * @return Bookings ready for check-in window opening
+     */
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.car c " +
+           "JOIN FETCH b.renter r " +
+           "LEFT JOIN FETCH c.owner " +
+           "WHERE b.status = 'ACTIVE' " +
+           "AND b.checkInSessionId IS NULL " +
+           "AND b.startDate >= :startFrom " +
+           "AND b.startDate <= :startTo")
+    List<Booking> findBookingsForCheckInWindowOpening(
+            @Param("startFrom") LocalDate startFrom,
+            @Param("startTo") LocalDate startTo
+    );
+
+    /**
+     * Find bookings needing check-in reminder (opened but not completed by host).
+     * 
+     * @param status Current booking status
+     * @param openedBefore Bookings opened before this timestamp
+     * @return Bookings needing reminder
+     */
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.car c " +
+           "JOIN FETCH b.renter r " +
+           "LEFT JOIN FETCH c.owner " +
+           "WHERE b.status = :status " +
+           "AND b.checkInOpenedAt IS NOT NULL " +
+           "AND b.checkInOpenedAt < :openedBefore")
+    List<Booking> findBookingsNeedingReminder(
+            @Param("status") BookingStatus status,
+            @Param("openedBefore") java.time.Instant openedBefore
+    );
+
+    /**
+     * Find potential host no-shows.
+     * CHECK_IN_OPEN bookings where trip start + grace period has passed.
+     * 
+     * @param status CHECK_IN_OPEN
+     * @param threshold Date/time threshold for no-show detection
+     * @return Potential host no-show bookings
+     */
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.car c " +
+           "JOIN FETCH b.renter r " +
+           "LEFT JOIN FETCH c.owner " +
+           "WHERE b.status = :status " +
+           "AND b.hostCheckInCompletedAt IS NULL " +
+           "AND b.startDate < :thresholdDate")
+    List<Booking> findPotentialHostNoShows(
+            @Param("status") BookingStatus status,
+            @Param("thresholdDate") LocalDate thresholdDate
+    );
+
+    /**
+     * Find potential guest no-shows.
+     * CHECK_IN_HOST_COMPLETE bookings where host completed + grace period has passed.
+     * 
+     * @param status CHECK_IN_HOST_COMPLETE
+     * @param hostCompletedBefore Threshold for host completion time
+     * @return Potential guest no-show bookings
+     */
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.car c " +
+           "JOIN FETCH b.renter r " +
+           "LEFT JOIN FETCH c.owner " +
+           "WHERE b.status = :status " +
+           "AND b.guestCheckInCompletedAt IS NULL " +
+           "AND b.hostCheckInCompletedAt IS NOT NULL " +
+           "AND b.hostCheckInCompletedAt < :hostCompletedBefore")
+    List<Booking> findPotentialGuestNoShows(
+            @Param("status") BookingStatus status,
+            @Param("hostCompletedBefore") java.time.Instant hostCompletedBefore
+    );
+
+    /**
+     * Find bookings currently in check-in phase.
+     * Used for dashboard/monitoring.
+     */
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.car c " +
+           "JOIN FETCH b.renter r " +
+           "WHERE b.status IN ('CHECK_IN_OPEN', 'CHECK_IN_HOST_COMPLETE', 'CHECK_IN_COMPLETE') " +
+           "ORDER BY b.startDate ASC")
+    List<Booking> findBookingsInCheckInPhase();
+
+    /**
+     * Find active trips (IN_TRIP status).
+     * Used for monitoring and scheduled checkout processing.
+     */
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.car c " +
+           "JOIN FETCH b.renter r " +
+           "WHERE b.status = 'IN_TRIP' " +
+           "ORDER BY b.endDate ASC")
+    List<Booking> findActiveTrips();
+
+    /**
+     * Find booking by check-in session ID.
+     */
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.car c " +
+           "JOIN FETCH b.renter r " +
+           "LEFT JOIN FETCH c.owner " +
+           "WHERE b.checkInSessionId = :sessionId")
+    java.util.Optional<Booking> findByCheckInSessionId(@Param("sessionId") String sessionId);
 }

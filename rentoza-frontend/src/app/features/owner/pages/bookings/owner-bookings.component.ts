@@ -1,5 +1,6 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Router } from '@angular/router';
 import { filter, take } from 'rxjs';
 import { MatTabsModule } from '@angular/material/tabs';
 import { MatCardModule } from '@angular/material/card';
@@ -43,6 +44,7 @@ export class OwnerBookingsComponent implements OnInit {
   private readonly bookingService = inject(BookingService);
   private readonly authService = inject(AuthService);
   private readonly dialog = inject(MatDialog);
+  private readonly router = inject(Router);
 
   protected readonly isLoading = signal(false);
   protected readonly upcomingBookings = signal<Booking[]>([]);
@@ -145,11 +147,20 @@ export class OwnerBookingsComponent implements OnInit {
   protected getStatusClass(status: string): string {
     switch (status) {
       case 'CONFIRMED':
-        return 'status-confirmed';
       case 'ACTIVE':
+        return 'status-confirmed';
+      case 'CHECK_IN_OPEN':
+      case 'CHECK_IN_HOST_COMPLETE':
+      case 'CHECK_IN_COMPLETE':
+        return 'status-check-in';
+      case 'IN_TRIP':
         return 'status-active';
       case 'COMPLETED':
         return 'status-completed';
+      case 'NO_SHOW_HOST':
+      case 'NO_SHOW_GUEST':
+      case 'CANCELLED':
+        return 'status-cancelled';
       default:
         return '';
     }
@@ -160,11 +171,25 @@ export class OwnerBookingsComponent implements OnInit {
       case 'CONFIRMED':
         return 'Potvrđeno';
       case 'ACTIVE':
-        return 'U toku';
+        return 'Aktivno';
       case 'COMPLETED':
         return 'Završeno';
       case 'CANCELLED':
         return 'Otkazano';
+      case 'CHECK_IN_OPEN':
+        return 'Check-in otvoren';
+      case 'CHECK_IN_HOST_COMPLETE':
+        return 'Čeka se gost';
+      case 'CHECK_IN_COMPLETE':
+        return 'Spreman za handshake';
+      case 'IN_TRIP':
+        return 'U toku';
+      case 'NO_SHOW_HOST':
+        return 'Host nije se pojavio';
+      case 'NO_SHOW_GUEST':
+        return 'Gost nije se pojavio';
+      case 'PENDING_APPROVAL':
+        return 'Čeka odobrenje';
       default:
         return status;
     }
@@ -181,6 +206,59 @@ export class OwnerBookingsComponent implements OnInit {
    */
   protected canCancel(booking: Booking): boolean {
     return booking.status === 'PENDING_APPROVAL' || booking.status === 'ACTIVE';
+  }
+
+  /**
+   * Check if check-in is available for this booking.
+   * Host can initiate check-in when booking status is in a check-in phase.
+   * The booking.status field contains the workflow state (CHECK_IN_OPEN, CHECK_IN_HOST_COMPLETE, etc.)
+   */
+  protected canCheckIn(booking: Booking): boolean {
+    // Check-in available if booking is in any check-in related status
+    return (
+      booking.status === 'CHECK_IN_OPEN' ||
+      booking.status === 'CHECK_IN_HOST_COMPLETE' ||
+      booking.status === 'CHECK_IN_COMPLETE'
+    );
+  }
+
+  /**
+   * Get check-in button label based on current booking status.
+   */
+  protected getCheckInLabel(booking: Booking): string {
+    switch (booking.status) {
+      case 'CHECK_IN_OPEN':
+        return 'Započni Check-in';
+      case 'CHECK_IN_HOST_COMPLETE':
+        return 'Čeka se gost';
+      case 'CHECK_IN_COMPLETE':
+        return 'Završi Handshake';
+      default:
+        return 'Check-in';
+    }
+  }
+
+  /**
+   * Get check-in button icon based on current booking status.
+   */
+  protected getCheckInIcon(booking: Booking): string {
+    switch (booking.status) {
+      case 'CHECK_IN_OPEN':
+        return 'photo_camera';
+      case 'CHECK_IN_HOST_COMPLETE':
+        return 'hourglass_empty';
+      case 'CHECK_IN_COMPLETE':
+        return 'handshake';
+      default:
+        return 'login';
+    }
+  }
+
+  /**
+   * Navigate to check-in wizard.
+   */
+  protected goToCheckIn(booking: Booking): void {
+    this.router.navigate(['/bookings', booking.id, 'check-in']);
   }
 
   /**

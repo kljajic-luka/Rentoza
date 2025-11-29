@@ -1,5 +1,5 @@
 -- ============================================================================
--- V12: Fix Renter Overlap Trigger Column Name
+-- V13: Fix Renter Overlap Trigger Column Name
 -- ============================================================================
 -- 
 -- Bug Fix: V10 trigger used wrong column name 'user_id' instead of 'renter_id'.
@@ -17,7 +17,7 @@
 -- Drop the broken trigger
 DROP TRIGGER IF EXISTS trg_prevent_overlapping_renter_bookings;
 
-
+DELIMITER //
 
 -- Recreate trigger with correct column name (renter_id, not user_id)
 CREATE TRIGGER trg_prevent_overlapping_renter_bookings

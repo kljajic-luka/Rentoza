@@ -21,6 +21,7 @@ import { AuthService } from '@core/auth/auth.service';
  *   - USER users trying to access owner routes (/owner/**)
  *     are redirected to /pocetna
  * ✅ Session awareness: Redirects to /pocetna on session expiration
+ * ✅ Shared routes: /bookings/:id and /bookings/:id/check-in are accessible by both roles
  */
 @Injectable({ providedIn: 'root' })
 export class RoleRedirectGuard implements CanActivate {
@@ -28,7 +29,10 @@ export class RoleRedirectGuard implements CanActivate {
   private readonly router = inject(Router);
 
   // Routes forbidden for OWNER users (renter-only)
-  private readonly renterOnlyPaths = ['/pocetna', '/vozila', '/cars', '/bookings', '/favorites'];
+  private readonly renterOnlyPaths = ['/pocetna', '/vozila', '/cars', '/favorites'];
+
+  // Booking list route (renter-only, but detail/check-in are shared)
+  private readonly bookingsListPath = '/bookings';
 
   canActivate(
     route: ActivatedRouteSnapshot,
@@ -81,6 +85,20 @@ export class RoleRedirectGuard implements CanActivate {
   }
 
   private isRenterOnlyRoute(path: string): boolean {
+    // Check if it's a booking detail or check-in route (shared between owner and renter)
+    // Pattern: /bookings/:id or /bookings/:id/check-in or /bookings/:id/anything
+    const bookingDetailPattern = /^\/bookings\/\d+/;
+    if (bookingDetailPattern.test(path)) {
+      // Booking detail and check-in routes are accessible by both roles
+      return false;
+    }
+
+    // /bookings (list) is renter-only
+    if (path === this.bookingsListPath || path === this.bookingsListPath + '/') {
+      return true;
+    }
+
+    // Check other renter-only paths
     return this.renterOnlyPaths.some(
       (renterPath) => path === renterPath || path.startsWith(renterPath + '/')
     );

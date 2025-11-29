@@ -1,11 +1,19 @@
 import { HttpInterceptorFn, HttpStatusCode } from '@angular/common/http';
 import { inject } from '@angular/core';
 import { Router } from '@angular/router';
-import { catchError, defer, switchMap, throwError } from 'rxjs';
+import { catchError, defer, from, switchMap, throwError } from 'rxjs';
 
 import { AuthService } from './auth.service';
 import { RETRIED_REQUEST, SKIP_AUTH } from './auth.tokens';
 import { COOKIE_NAMES, HEADER_NAMES, AUTH_ENDPOINTS } from './cookie.constants';
+
+/**
+ * Delay utility that uses setTimeout to ensure we're in a new browser event loop tick.
+ * This is more reliable than RxJS delay() for cookie synchronization.
+ */
+const waitForCookieSync = (ms: number = 300): Promise<void> => {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+};
 
 /**
  * SECURITY HARDENING (Phase 1): Cookie-Only Authentication Interceptor
@@ -98,7 +106,8 @@ const readCookie = (name: string): string | null => {
 /**
  * Handle session expiry by clearing state and redirecting to login.
  */
-const handleSessionExpiry = (authService: AuthService, router: Router) => {
+const handleSessionExpiry = (authService: AuthService, router: Router, reason: string) => {
+  console.log(`🔒 Session expired: ${reason}`);
   authService.clearSession();
   void router.navigate(['/auth/login'], { queryParams: { session: 'expired' } });
 };
@@ -135,22 +144,47 @@ export const authTokenInterceptor: HttpInterceptorFn = (req, next) => {
 
         // If already retried, session is truly expired
         if (requestWithAuth.context.get(RETRIED_REQUEST)) {
-          handleSessionExpiry(authService, router);
+          handleSessionExpiry(authService, router, `Retry failed for ${req.url}`);
           return throwError(() => error);
         }
+
+        console.log(`🔄 401 on ${req.url} - attempting token refresh...`);
 
         // Attempt token refresh (uses HttpOnly refresh cookie)
         return authService.refreshAccessToken().pipe(
           switchMap((result) => {
             if (!result) {
+              console.log(`❌ Token refresh returned null for ${req.url}`);
               return throwError(() => error);
             }
-            // Retry original request (browser will send new access token cookie)
-            const retriedRequest = enrichRequest(req, true);
-            return next(retriedRequest);
+            console.log(`✅ Token refreshed, waiting 300ms for cookie sync...`);
+
+            // Wait for browser to process Set-Cookie headers in a new event loop tick
+            return from(waitForCookieSync(300)).pipe(
+              switchMap(() => {
+                console.log(`🔄 Retrying ${req.url} after cookie sync delay`);
+                const retriedRequest = enrichRequest(req, true);
+                return next(retriedRequest).pipe(
+                  catchError((retryError) => {
+                    if (retryError.status === HttpStatusCode.Unauthorized) {
+                      console.error(`❌ Retry still got 401 after refresh - cookie issue`);
+                      // Preserve session - user can manually refresh the page
+                    }
+                    return throwError(() => retryError);
+                  })
+                );
+              })
+            );
           }),
           catchError((refreshError) => {
-            handleSessionExpiry(authService, router);
+            // Only handle actual refresh endpoint failures
+            if (refreshError.url?.includes('/auth/refresh')) {
+              console.error(`❌ Refresh endpoint failed:`, refreshError);
+              handleSessionExpiry(authService, router, `Refresh failed: ${refreshError.message}`);
+            } else {
+              // Retry failure - preserve session
+              console.warn(`⚠️ Retry failed but session preserved`);
+            }
             return throwError(() => refreshError);
           })
         );

@@ -94,6 +94,24 @@ export const routes: Routes = [
           ),
       },
       {
+        path: ':id',
+        canActivate: [RoleGuard, RoleRedirectGuard],
+        data: { roles: ['USER', 'OWNER', 'ADMIN'] },
+        loadComponent: () =>
+          import('@features/bookings/pages/booking-detail/booking-detail.component').then(
+            (m) => m.BookingDetailComponent
+          ),
+      },
+      {
+        path: ':id/check-in',
+        canActivate: [RoleGuard, RoleRedirectGuard],
+        data: { roles: ['USER', 'OWNER', 'ADMIN'] },
+        loadComponent: () =>
+          import('@features/bookings/check-in/check-in-wizard.component').then(
+            (m) => m.CheckInWizardComponent
+          ),
+      },
+      {
         path: ':id/review',
         canActivate: [RoleGuard, RoleRedirectGuard],
         data: { roles: ['USER', 'ADMIN'] },

@@ -68,14 +68,19 @@ public class AuthController {
      */
     private ResponseCookie createRefreshTokenCookie(String token) {
         log.debug("AUDIT: Issuing refresh token cookie");
-        return ResponseCookie.from(CookieConstants.REFRESH_TOKEN, token)
+        var builder = ResponseCookie.from(CookieConstants.REFRESH_TOKEN, token)
                 .httpOnly(true)
                 .secure(appProperties.getCookie().isSecure())
                 .path("/api/auth/refresh")
-                .domain(appProperties.getCookie().getDomain())
                 .sameSite(appProperties.getCookie().getSameSite())
-                .maxAge(Duration.ofDays(14))
-                .build();
+                .maxAge(Duration.ofDays(14));
+        
+        String domain = appProperties.getCookie().getDomain();
+        if (domain != null && !domain.isBlank()) {
+            builder.domain(domain);
+        }
+        
+        return builder.build();
     }
 
     /**
@@ -83,14 +88,20 @@ public class AuthController {
      */
     private ResponseCookie createAccessTokenCookie(String token) {
         log.debug("AUDIT: Issuing access token cookie");
-        return ResponseCookie.from(CookieConstants.ACCESS_TOKEN, token)
+        var builder = ResponseCookie.from(CookieConstants.ACCESS_TOKEN, token)
                 .httpOnly(true)
                 .secure(appProperties.getCookie().isSecure())
                 .path("/")
-                .domain(appProperties.getCookie().getDomain())
                 .sameSite(appProperties.getCookie().getSameSite())
-                .maxAge(Duration.ofMillis(jwtExpirationMs))
-                .build();
+                .maxAge(Duration.ofMillis(jwtExpirationMs));
+        
+        // Only set domain if explicitly configured (empty = use request host)
+        String domain = appProperties.getCookie().getDomain();
+        if (domain != null && !domain.isBlank()) {
+            builder.domain(domain);
+        }
+        
+        return builder.build();
     }
 
     /**
@@ -98,14 +109,19 @@ public class AuthController {
      */
     private ResponseCookie clearRefreshTokenCookie() {
         log.debug("AUDIT: Clearing refresh token cookie");
-        return ResponseCookie.from(CookieConstants.REFRESH_TOKEN, "")
+        var builder = ResponseCookie.from(CookieConstants.REFRESH_TOKEN, "")
                 .httpOnly(true)
                 .secure(appProperties.getCookie().isSecure())
                 .path("/api/auth/refresh")
-                .domain(appProperties.getCookie().getDomain())
                 .sameSite(appProperties.getCookie().getSameSite())
-                .maxAge(0)
-                .build();
+                .maxAge(0);
+        
+        String domain = appProperties.getCookie().getDomain();
+        if (domain != null && !domain.isBlank()) {
+            builder.domain(domain);
+        }
+        
+        return builder.build();
     }
 
     /**
@@ -113,14 +129,19 @@ public class AuthController {
      */
     private ResponseCookie clearAccessTokenCookie() {
         log.debug("AUDIT: Clearing access token cookie");
-        return ResponseCookie.from(CookieConstants.ACCESS_TOKEN, "")
+        var builder = ResponseCookie.from(CookieConstants.ACCESS_TOKEN, "")
                 .httpOnly(true)
                 .secure(appProperties.getCookie().isSecure())
                 .path("/")
-                .domain(appProperties.getCookie().getDomain())
                 .sameSite(appProperties.getCookie().getSameSite())
-                .maxAge(0)
-                .build();
+                .maxAge(0);
+        
+        String domain = appProperties.getCookie().getDomain();
+        if (domain != null && !domain.isBlank()) {
+            builder.domain(domain);
+        }
+        
+        return builder.build();
     }
 
     @PostMapping("/register")
@@ -206,9 +227,13 @@ public class AuthController {
             HttpServletResponse res) {
 
         if (refreshCookie == null || refreshCookie.isBlank()) {
-            log.debug("Refresh attempt with no cookie - guest user");
+            log.warn("🔒 Refresh attempt with no cookie - guest user or cookie not sent");
+            log.debug("Request cookies: {}", java.util.Arrays.toString(request.getCookies() != null ? 
+                java.util.Arrays.stream(request.getCookies()).map(c -> c.getName()).toArray() : new String[]{"none"}));
             return ResponseEntity.status(401).body(Map.of("error", "No session"));
         }
+
+        log.debug("🔄 Refresh cookie present (length: {})", refreshCookie.length());
 
         try {
             // Extract IP/UserAgent for fingerprint validation

@@ -260,6 +260,8 @@ export class AuthService {
 
     const context = new HttpContext().set(SKIP_AUTH, true);
 
+    console.log('🔄 [AUTH] Starting token refresh...');
+
     return this.http
       .post<AuthResponse>(
         `${this.apiUrl}/refresh`,
@@ -271,6 +273,11 @@ export class AuthService {
       )
       .pipe(
         tap((response) => {
+          console.log('🔄 [AUTH] Refresh response received:', {
+            authenticated: response.authenticated,
+            hasUser: !!response.user,
+          });
+
           // SECURITY HARDENING: Response no longer contains accessToken
           // Token is delivered via HttpOnly cookie by backend
           if (!response.authenticated) {
@@ -282,18 +289,36 @@ export class AuthService {
 
           // Signal success (we don't have the token value, but session is valid)
           this.refreshSubject.next('session-refreshed');
+          console.log('✅ [AUTH] Token refresh successful');
         }),
         map(() => 'session-refreshed'),
         catchError((error: HttpErrorResponse) => {
           this.refreshSubject.next(null);
+          console.error('🔒 Token refresh failed:', {
+            status: error.status,
+            statusText: error.statusText,
+            url: error.url,
+            message: error.message,
+            error: error.error,
+            headers: error.headers?.keys(),
+          });
+
           if (error.status === 401) {
-            console.log('🔒 Refresh token expired - session ended');
+            console.log('🔒 Refresh token expired or invalid - session ended');
             this.clearSession();
             this.sessionExpiredSubject.next(); // Emit session expired event
             return of(null);
           }
+
+          // For network errors or other issues, don't immediately clear session
+          // The user might just have temporary connectivity issues
+          if (error.status === 0 || error.status >= 500) {
+            console.warn('🔒 Refresh failed due to network/server error - preserving session');
+            return of(null); // Don't throw, just return null to indicate failure
+          }
+
           this.clearSession();
-          this.sessionExpiredSubject.next(); // Emit session expired event on any refresh error
+          this.sessionExpiredSubject.next(); // Emit session expired event on other errors
           return throwError(() => error);
         }),
         finalize(() => {

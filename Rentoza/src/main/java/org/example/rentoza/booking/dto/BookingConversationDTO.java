@@ -169,7 +169,11 @@ public record BookingConversationDTO(
      * Compute whether messaging is allowed based on booking status.
      * 
      * Messaging enabled for:
-     * - ACTIVE: Booking approved, trip is active
+     * - ACTIVE: Booking approved, waiting for check-in window
+     * - CHECK_IN_OPEN: Check-in window is open
+     * - CHECK_IN_HOST_COMPLETE: Host completed, guest pending
+     * - CHECK_IN_COMPLETE: Both parties completed, awaiting handshake
+     * - IN_TRIP: Trip is in progress
      * 
      * Messaging disabled for:
      * - PENDING_APPROVAL: Awaiting host approval (no chat until approved)
@@ -178,16 +182,19 @@ public record BookingConversationDTO(
      * - EXPIRED_SYSTEM: System auto-expired due to host inactivity (no need for chat)
      * - CANCELLED: User/host cancelled (chat closed)
      * - COMPLETED: Trip finished (chat closed)
+     * - NO_SHOW_HOST/NO_SHOW_GUEST: No-show scenarios (dispute channel, not chat)
      * 
      * Rationale:
      * - PENDING_APPROVAL: No chat conversation exists yet (created on approval)
      * - DECLINED/EXPIRED/EXPIRED_SYSTEM: Request rejected, no trip happening
      * - CANCELLED/COMPLETED: Trip lifecycle ended
+     * - NO_SHOW: Escalated to dispute resolution, not normal chat
      */
     private static boolean computeMessagingAllowed(org.example.rentoza.booking.BookingStatus status) {
         return switch (status) {
-            case ACTIVE -> true;
-            case PENDING_APPROVAL, DECLINED, EXPIRED, EXPIRED_SYSTEM, CANCELLED, COMPLETED -> false;
+            case ACTIVE, CHECK_IN_OPEN, CHECK_IN_HOST_COMPLETE, CHECK_IN_COMPLETE, IN_TRIP -> true;
+            case PENDING_APPROVAL, DECLINED, EXPIRED, EXPIRED_SYSTEM, CANCELLED, COMPLETED,
+                 NO_SHOW_HOST, NO_SHOW_GUEST -> false;
         };
     }
 }

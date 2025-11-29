@@ -10,7 +10,23 @@ export type BookingStatus =
   | 'EXPIRED'
   | 'EXPIRED_SYSTEM' // System auto-expired due to host inactivity (distinct for analytics)
   | 'CANCELLED'
-  | 'COMPLETED';
+  | 'COMPLETED'
+  // Check-in workflow statuses
+  | 'CHECK_IN_OPEN'
+  | 'CHECK_IN_HOST_COMPLETE'
+  | 'CHECK_IN_COMPLETE'
+  | 'IN_TRIP'
+  | 'NO_SHOW_HOST'
+  | 'NO_SHOW_GUEST';
+
+export type CheckInStatus =
+  | 'NOT_STARTED'
+  | 'CHECK_IN_OPEN'
+  | 'HOST_SUBMITTED'
+  | 'GUEST_ACKNOWLEDGED'
+  | 'HANDSHAKE_PENDING'
+  | 'COMPLETED'
+  | 'DISPUTED';
 
 export interface Booking {
   id: string | number;
@@ -42,6 +58,10 @@ export interface Booking {
   declineReason?: string;
   decisionDeadlineAt?: string;
   version?: number; // Optimistic locking version
+  // Check-in fields
+  checkInStatus?: CheckInStatus;
+  checkInOpenAt?: string;
+  checkInCompletedAt?: string;
 }
 
 export interface BookingRequest {

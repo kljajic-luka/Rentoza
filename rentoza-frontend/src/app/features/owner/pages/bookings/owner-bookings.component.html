@@ -53,11 +53,31 @@
                   <mat-chip [class]="getStatusClass(booking.status)">
                     {{ getStatusLabel(booking.status) }}
                   </mat-chip>
+                  @if (booking.status === 'CHECK_IN_OPEN' || booking.status ===
+                  'CHECK_IN_HOST_COMPLETE' || booking.status === 'CHECK_IN_COMPLETE') {
+                  <mat-chip class="status-check-in">
+                    <mat-icon>login</mat-icon>
+                    {{
+                      booking.status === 'CHECK_IN_OPEN'
+                        ? 'Check-in otvoren'
+                        : booking.status === 'CHECK_IN_HOST_COMPLETE'
+                        ? 'Čeka se gost'
+                        : booking.status === 'CHECK_IN_COMPLETE'
+                        ? 'Handshake'
+                        : booking.status
+                    }}
+                  </mat-chip>
+                  }
                 </div>
               </div>
             </mat-card-content>
             <mat-card-actions>
-              @if (canCancel(booking)) {
+              @if (canCheckIn(booking)) {
+              <button mat-raised-button color="primary" (click)="goToCheckIn(booking)">
+                <mat-icon>{{ getCheckInIcon(booking) }}</mat-icon>
+                {{ getCheckInLabel(booking) }}
+              </button>
+              } @if (canCancel(booking)) {
               <button mat-stroked-button color="warn" (click)="cancelBooking(booking)">
                 <mat-icon>cancel</mat-icon>
                 Otkaži
@@ -108,11 +128,31 @@
                 </div>
                 <div class="info-row">
                   <mat-chip class="status-active"> U toku </mat-chip>
+                  @if (booking.status === 'CHECK_IN_OPEN' || booking.status ===
+                  'CHECK_IN_HOST_COMPLETE' || booking.status === 'CHECK_IN_COMPLETE') {
+                  <mat-chip class="status-check-in">
+                    <mat-icon>login</mat-icon>
+                    {{
+                      booking.status === 'CHECK_IN_OPEN'
+                        ? 'Check-in otvoren'
+                        : booking.status === 'CHECK_IN_HOST_COMPLETE'
+                        ? 'Čeka se gost'
+                        : booking.status === 'CHECK_IN_COMPLETE'
+                        ? 'Handshake'
+                        : booking.status
+                    }}
+                  </mat-chip>
+                  }
                 </div>
               </div>
             </mat-card-content>
             <mat-card-actions>
-              @if (canCancel(booking)) {
+              @if (canCheckIn(booking)) {
+              <button mat-raised-button color="primary" (click)="goToCheckIn(booking)">
+                <mat-icon>{{ getCheckInIcon(booking) }}</mat-icon>
+                {{ getCheckInLabel(booking) }}
+              </button>
+              } @if (canCancel(booking)) {
               <button mat-stroked-button color="warn" (click)="cancelBooking(booking)">
                 <mat-icon>cancel</mat-icon>
                 Otkaži

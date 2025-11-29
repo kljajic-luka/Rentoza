@@ -133,14 +133,19 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
      * - Path: / (global scope for all API calls)
      */
     private ResponseCookie createAccessTokenCookie(String token) {
-        return ResponseCookie.from(CookieConstants.ACCESS_TOKEN, token)
+        var builder = ResponseCookie.from(CookieConstants.ACCESS_TOKEN, token)
                 .httpOnly(true)
                 .secure(appProperties.getCookie().isSecure())
                 .path("/")
-                .domain(appProperties.getCookie().getDomain())
                 .sameSite(appProperties.getCookie().getSameSite())
-                .maxAge(Duration.ofMillis(jwtExpirationMs))
-                .build();
+                .maxAge(Duration.ofMillis(jwtExpirationMs));
+        
+        String domain = appProperties.getCookie().getDomain();
+        if (domain != null && !domain.isBlank()) {
+            builder.domain(domain);
+        }
+        
+        return builder.build();
     }
     
     /**
@@ -154,14 +159,19 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
      * - MaxAge: 14 days
      */
     private ResponseCookie createRefreshTokenCookie(String token) {
-        return ResponseCookie.from(CookieConstants.REFRESH_TOKEN, token)
+        var builder = ResponseCookie.from(CookieConstants.REFRESH_TOKEN, token)
                 .httpOnly(true)
                 .secure(appProperties.getCookie().isSecure())
                 .path("/api/auth/refresh")
-                .domain(appProperties.getCookie().getDomain())
                 .sameSite(appProperties.getCookie().getSameSite())
-                .maxAge(Duration.ofDays(14))
-                .build();
+                .maxAge(Duration.ofDays(14));
+        
+        String domain = appProperties.getCookie().getDomain();
+        if (domain != null && !domain.isBlank()) {
+            builder.domain(domain);
+        }
+        
+        return builder.build();
     }
 
     private OAuth2UserPrincipal resolvePrincipal(Object principalObj) {

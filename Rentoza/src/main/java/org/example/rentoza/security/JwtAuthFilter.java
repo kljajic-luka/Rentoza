@@ -58,6 +58,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             String token = extractToken(request);
             
             if (token != null) {
+                log.debug("Token found for {}, validating...", requestUri);
                 // SECURITY: Validate token BEFORE loading UserDetails to prevent unnecessary DB queries
                 // with invalid/expired tokens
                 if (!jwtUtil.validateToken(token)) {
@@ -150,16 +151,25 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         // 1. Check Authorization header first (preferred for API calls)
         String bearerToken = request.getHeader("Authorization");
         if (bearerToken != null && bearerToken.startsWith("Bearer ")) {
+            log.debug("Token extracted from Authorization header");
             return bearerToken.substring(7);
         }
 
         // 2. Fallback to access_token cookie (for browser-based requests)
         if (request.getCookies() != null) {
+            log.debug("Checking cookies for access token. Cookie count: {}", request.getCookies().length);
             for (jakarta.servlet.http.Cookie cookie : request.getCookies()) {
+                log.trace("Cookie found: {} (first 20 chars of value: {})", 
+                    cookie.getName(), 
+                    cookie.getValue() != null ? cookie.getValue().substring(0, Math.min(20, cookie.getValue().length())) + "..." : "null");
                 if (CookieConstants.ACCESS_TOKEN.equals(cookie.getName())) {
+                    log.debug("Access token cookie found");
                     return cookie.getValue();
                 }
             }
+            log.debug("No access token cookie found among {} cookies", request.getCookies().length);
+        } else {
+            log.debug("No cookies present in request");
         }
 
         return null;

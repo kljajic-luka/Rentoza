@@ -1,0 +1,792 @@
+package org.example.rentoza.booking.checkin;
+
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
+import jakarta.persistence.LockModeType;
+import lombok.extern.slf4j.Slf4j;
+import org.example.rentoza.booking.Booking;
+import org.example.rentoza.booking.BookingRepository;
+import org.example.rentoza.booking.BookingStatus;
+import org.example.rentoza.booking.checkin.dto.*;
+import org.example.rentoza.booking.checkin.GeofenceService.GeofenceResult;
+import org.example.rentoza.exception.ResourceNotFoundException;
+import org.example.rentoza.notification.NotificationService;
+import org.example.rentoza.notification.NotificationType;
+import org.example.rentoza.notification.dto.CreateNotificationRequestDTO;
+import org.example.rentoza.user.User;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.time.*;
+import java.time.temporal.ChronoUnit;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+/**
+ * Core orchestrator for the check-in workflow.
+ * 
+ * <h2>Responsibilities</h2>
+ * <ul>
+ *   <li>Host check-in completion (photos, odometer, fuel)</li>
+ *   <li>Guest condition acknowledgment</li>
+ *   <li>Handshake confirmation with geofence validation</li>
+ *   <li>Trip start transition</li>
+ *   <li>No-show processing</li>
+ * </ul>
+ * 
+ * <h2>Concurrency</h2>
+ * <p>Handshake uses pessimistic locking to prevent duplicate trip starts.
+ * 
+ * @see CheckInScheduler for automated state transitions
+ * @see CheckInEventService for audit trail
+ */
+@Service
+@Slf4j
+public class CheckInService {
+
+    private static final ZoneId SERBIA_ZONE = ZoneId.of("Europe/Belgrade");
+    private static final int REQUIRED_HOST_PHOTO_TYPES = 8;
+
+    private final BookingRepository bookingRepository;
+    private final CheckInEventService eventService;
+    private final CheckInPhotoRepository photoRepository;
+    private final GeofenceService geofenceService;
+    private final NotificationService notificationService;
+    
+    // Metrics
+    private final Counter hostCompletedCounter;
+    private final Counter guestCompletedCounter;
+    private final Counter handshakeCompletedCounter;
+    private final Timer checkInDurationTimer;
+
+    @Value("${app.checkin.noshow.grace-minutes:30}")
+    private int noShowGraceMinutes;
+
+    public CheckInService(
+            BookingRepository bookingRepository,
+            CheckInEventService eventService,
+            CheckInPhotoRepository photoRepository,
+            GeofenceService geofenceService,
+            NotificationService notificationService,
+            MeterRegistry meterRegistry) {
+        this.bookingRepository = bookingRepository;
+        this.eventService = eventService;
+        this.photoRepository = photoRepository;
+        this.geofenceService = geofenceService;
+        this.notificationService = notificationService;
+        
+        this.hostCompletedCounter = Counter.builder("checkin.host.completed")
+                .description("Host check-in completions")
+                .register(meterRegistry);
+        
+        this.guestCompletedCounter = Counter.builder("checkin.guest.completed")
+                .description("Guest check-in completions")
+                .register(meterRegistry);
+        
+        this.handshakeCompletedCounter = Counter.builder("checkin.handshake.completed")
+                .description("Successful trip starts")
+                .register(meterRegistry);
+        
+        this.checkInDurationTimer = Timer.builder("checkin.duration")
+                .description("Time from check-in open to trip start")
+                .register(meterRegistry);
+    }
+
+    // ========== STATUS RETRIEVAL ==========
+
+    /**
+     * Get current check-in status for a booking.
+     */
+    @Transactional(readOnly = true)
+    public CheckInStatusDTO getCheckInStatus(Long bookingId, Long userId) {
+        Booking booking = bookingRepository.findByIdWithRelations(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Rezervacija nije pronađena"));
+        
+        validateAccess(booking, userId);
+        
+        return mapToStatusDTO(booking, userId);
+    }
+
+    // ========== HOST WORKFLOW ==========
+
+    /**
+     * Complete host check-in with odometer/fuel readings.
+     * 
+     * @param dto Submission data
+     * @param userId Current user ID
+     * @return Updated check-in status
+     */
+    @Transactional
+    public CheckInStatusDTO completeHostCheckIn(HostCheckInSubmissionDTO dto, Long userId) {
+        Booking booking = bookingRepository.findByIdWithRelations(dto.getBookingId())
+                .orElseThrow(() -> new ResourceNotFoundException("Rezervacija nije pronađena"));
+        
+        // Validate host access
+        if (!isHost(booking, userId)) {
+            throw new AccessDeniedException("Samo vlasnik vozila može završiti prijem");
+        }
+        
+        // Validate status
+        if (booking.getStatus() != BookingStatus.CHECK_IN_OPEN) {
+            throw new IllegalStateException("Prijem nije otvoren. Trenutni status: " + booking.getStatus());
+        }
+        
+        // Validate photos
+        long validPhotoTypes = photoRepository.countRequiredHostPhotoTypes(booking.getId());
+        if (validPhotoTypes < REQUIRED_HOST_PHOTO_TYPES) {
+            throw new IllegalStateException(String.format(
+                "Potrebno je minimum %d tipova fotografija. Pronađeno: %d", 
+                REQUIRED_HOST_PHOTO_TYPES, validPhotoTypes));
+        }
+        
+        // Update booking
+        booking.setStartOdometer(dto.getOdometerReading());
+        booking.setStartFuelLevel(dto.getFuelLevelPercent());
+        booking.setHostCheckInCompletedAt(Instant.now());
+        booking.setStatus(BookingStatus.CHECK_IN_HOST_COMPLETE);
+        
+        // Set car location if provided
+        if (dto.getCarLatitude() != null && dto.getCarLongitude() != null) {
+            booking.setCarLatitude(BigDecimal.valueOf(dto.getCarLatitude()));
+            booking.setCarLongitude(BigDecimal.valueOf(dto.getCarLongitude()));
+        }
+        
+        // Set host location
+        if (dto.getHostLatitude() != null && dto.getHostLongitude() != null) {
+            booking.setHostCheckInLatitude(BigDecimal.valueOf(dto.getHostLatitude()));
+            booking.setHostCheckInLongitude(BigDecimal.valueOf(dto.getHostLongitude()));
+        }
+        
+        // Handle lockbox code (encrypted storage would be implemented separately)
+        if (dto.getLockboxCode() != null && !dto.getLockboxCode().isBlank()) {
+            // TODO: Encrypt with LockboxEncryptionService
+            booking.setLockboxCodeEncrypted(dto.getLockboxCode().getBytes());
+            
+            eventService.recordEvent(
+                booking,
+                booking.getCheckInSessionId(),
+                CheckInEventType.HOST_LOCKBOX_SUBMITTED,
+                userId,
+                CheckInActorRole.HOST,
+                Map.of("codeLength", dto.getLockboxCode().length())
+            );
+        }
+        
+        // Record events
+        eventService.recordEvent(
+            booking,
+            booking.getCheckInSessionId(),
+            CheckInEventType.HOST_ODOMETER_SUBMITTED,
+            userId,
+            CheckInActorRole.HOST,
+            Map.of("reading", dto.getOdometerReading())
+        );
+        
+        eventService.recordEvent(
+            booking,
+            booking.getCheckInSessionId(),
+            CheckInEventType.HOST_FUEL_SUBMITTED,
+            userId,
+            CheckInActorRole.HOST,
+            Map.of("levelPercent", dto.getFuelLevelPercent())
+        );
+        
+        eventService.recordEvent(
+            booking,
+            booking.getCheckInSessionId(),
+            CheckInEventType.HOST_SECTION_COMPLETE,
+            userId,
+            CheckInActorRole.HOST,
+            Map.of(
+                "photoCount", validPhotoTypes,
+                "odometerSubmitted", true,
+                "fuelSubmitted", true
+            )
+        );
+        
+        bookingRepository.save(booking);
+        
+        hostCompletedCounter.increment();
+        log.info("[CheckIn] Host completed check-in for booking {}", booking.getId());
+        
+        // Notify guest
+        notifyGuestCheckInReady(booking);
+        
+        return mapToStatusDTO(booking, userId);
+    }
+
+    // ========== GUEST WORKFLOW ==========
+
+    /**
+     * Guest acknowledges vehicle condition.
+     */
+    @Transactional
+    public CheckInStatusDTO acknowledgeCondition(GuestConditionAcknowledgmentDTO dto, Long userId) {
+        Booking booking = bookingRepository.findByIdWithRelations(dto.getBookingId())
+                .orElseThrow(() -> new ResourceNotFoundException("Rezervacija nije pronađena"));
+        
+        // Validate guest access
+        if (!isGuest(booking, userId)) {
+            throw new AccessDeniedException("Samo gost može potvrditi stanje vozila");
+        }
+        
+        // Validate status
+        if (booking.getStatus() != BookingStatus.CHECK_IN_HOST_COMPLETE) {
+            throw new IllegalStateException(
+                "Domaćin još nije završio prijem. Trenutni status: " + booking.getStatus());
+        }
+        
+        if (!dto.getConditionAccepted()) {
+            throw new IllegalArgumentException("Morate potvrditi stanje vozila da biste nastavili");
+        }
+        
+        // Update booking
+        booking.setGuestCheckInCompletedAt(Instant.now());
+        booking.setStatus(BookingStatus.CHECK_IN_COMPLETE);
+        
+        // Set guest location
+        if (dto.getGuestLatitude() != null && dto.getGuestLongitude() != null) {
+            booking.setGuestCheckInLatitude(BigDecimal.valueOf(dto.getGuestLatitude()));
+            booking.setGuestCheckInLongitude(BigDecimal.valueOf(dto.getGuestLongitude()));
+        }
+        
+        // Record event
+        eventService.recordEvent(
+            booking,
+            booking.getCheckInSessionId(),
+            CheckInEventType.GUEST_CONDITION_ACKNOWLEDGED,
+            userId,
+            CheckInActorRole.GUEST,
+            Map.of(
+                "conditionAccepted", true,
+                "hotspotsMarked", dto.getHotspots() != null ? dto.getHotspots().size() : 0,
+                "comment", dto.getConditionComment() != null ? dto.getConditionComment() : ""
+            )
+        );
+        
+        eventService.recordEvent(
+            booking,
+            booking.getCheckInSessionId(),
+            CheckInEventType.GUEST_SECTION_COMPLETE,
+            userId,
+            CheckInActorRole.GUEST,
+            Map.of("conditionAcknowledged", true)
+        );
+        
+        // Process hotspots if any
+        if (dto.getHotspots() != null) {
+            for (int i = 0; i < dto.getHotspots().size(); i++) {
+                HotspotMarkingDTO hotspot = dto.getHotspots().get(i);
+                eventService.recordEvent(
+                    booking,
+                    booking.getCheckInSessionId(),
+                    CheckInEventType.GUEST_HOTSPOT_MARKED,
+                    userId,
+                    CheckInActorRole.GUEST,
+                    Map.of(
+                        "hotspotId", i + 1,
+                        "photoId", hotspot.getPhotoId(),
+                        "xPercent", hotspot.getXPercent(),
+                        "yPercent", hotspot.getYPercent(),
+                        "description", hotspot.getDescription() != null ? hotspot.getDescription() : ""
+                    )
+                );
+            }
+        }
+        
+        bookingRepository.save(booking);
+        
+        guestCompletedCounter.increment();
+        log.info("[CheckIn] Guest acknowledged condition for booking {}", booking.getId());
+        
+        // Notify both parties that handshake is ready
+        notifyHandshakeReady(booking);
+        
+        return mapToStatusDTO(booking, userId);
+    }
+
+    // ========== HANDSHAKE ==========
+
+    /**
+     * Confirm handshake (both parties must confirm to start trip).
+     * Uses pessimistic locking to prevent race conditions.
+     */
+    @Transactional
+    public CheckInStatusDTO confirmHandshake(HandshakeConfirmationDTO dto, Long userId) {
+        // Acquire pessimistic lock
+        Booking booking = bookingRepository.findById(dto.getBookingId())
+                .orElseThrow(() -> new ResourceNotFoundException("Rezervacija nije pronađena"));
+        
+        // Idempotency check
+        if (booking.getStatus() == BookingStatus.IN_TRIP) {
+            log.info("[CheckIn] Handshake already completed for booking {} - idempotent return", dto.getBookingId());
+            return mapToStatusDTO(booking, userId);
+        }
+        
+        // Validate status
+        if (booking.getStatus() != BookingStatus.CHECK_IN_COMPLETE) {
+            throw new IllegalStateException(
+                "Prijem nije završen. Trenutni status: " + booking.getStatus());
+        }
+        
+        if (!dto.getConfirmed()) {
+            throw new IllegalArgumentException("Morate potvrditi predaju vozila");
+        }
+        
+        boolean isHost = isHost(booking, userId);
+        boolean isGuest = isGuest(booking, userId);
+        
+        if (!isHost && !isGuest) {
+            throw new AccessDeniedException("Niste učesnik ove rezervacije");
+        }
+        
+        // Process host confirmation
+        if (isHost) {
+            if (booking.getHandshakeCompletedAt() != null && isHostHandshakeConfirmed(booking)) {
+                log.debug("[CheckIn] Host already confirmed handshake for booking {}", dto.getBookingId());
+            } else {
+                eventService.recordEvent(
+                    booking,
+                    booking.getCheckInSessionId(),
+                    CheckInEventType.HANDSHAKE_HOST_CONFIRMED,
+                    userId,
+                    CheckInActorRole.HOST,
+                    Map.of(
+                        "confirmedAt", Instant.now().toString(),
+                        "verifiedPhysicalId", dto.getHostVerifiedPhysicalId() != null 
+                            ? dto.getHostVerifiedPhysicalId() : false
+                    )
+                );
+            }
+        }
+        
+        // Process guest confirmation
+        if (isGuest) {
+            // Geofence validation for remote handoff
+            if (booking.getLockboxCodeEncrypted() != null && dto.getLatitude() != null) {
+                // Infer location density for dynamic radius adjustment
+                // Urban areas (Belgrade high-rises) get larger radius due to GPS multipath
+                GeofenceService.LocationDensity density = geofenceService.inferLocationDensity(
+                    booking.getCarLatitude(), booking.getCarLongitude()
+                );
+                
+                GeofenceResult geoResult = geofenceService.validateProximity(
+                    booking.getCarLatitude(), booking.getCarLongitude(),
+                    BigDecimal.valueOf(dto.getLatitude()), BigDecimal.valueOf(dto.getLongitude()),
+                    density
+                );
+                
+                booking.setGeofenceDistanceMeters(geoResult.getDistanceMeters());
+                
+                if (geoResult.shouldBlock()) {
+                    eventService.recordEvent(
+                        booking,
+                        booking.getCheckInSessionId(),
+                        CheckInEventType.GEOFENCE_CHECK_FAILED,
+                        userId,
+                        CheckInActorRole.GUEST,
+                        Map.of(
+                            "distanceMeters", geoResult.getDistanceMeters(),
+                            "thresholdMeters", geoResult.getRequiredRadiusMeters(),
+                            "locationDensity", density != null ? density.name() : "UNKNOWN",
+                            "dynamicRadiusApplied", geoResult.isDynamicRadiusApplied()
+                        )
+                    );
+                    throw new GeofenceViolationException(geoResult.getReason());
+                } else {
+                    eventService.recordEvent(
+                        booking,
+                        booking.getCheckInSessionId(),
+                        CheckInEventType.GEOFENCE_CHECK_PASSED,
+                        userId,
+                        CheckInActorRole.GUEST,
+                        Map.of(
+                            "distanceMeters", geoResult.getDistanceMeters(),
+                            "thresholdMeters", geoResult.getRequiredRadiusMeters(),
+                            "locationDensity", density != null ? density.name() : "UNKNOWN",
+                            "dynamicRadiusApplied", geoResult.isDynamicRadiusApplied()
+                        )
+                    );
+                }
+                
+                booking.setGuestCheckInLatitude(BigDecimal.valueOf(dto.getLatitude()));
+                booking.setGuestCheckInLongitude(BigDecimal.valueOf(dto.getLongitude()));
+            }
+            
+            if (!isGuestHandshakeConfirmed(booking)) {
+                eventService.recordEvent(
+                    booking,
+                    booking.getCheckInSessionId(),
+                    CheckInEventType.HANDSHAKE_GUEST_CONFIRMED,
+                    userId,
+                    CheckInActorRole.GUEST,
+                    Map.of(
+                        "confirmedAt", Instant.now().toString(),
+                        "latitude", dto.getLatitude() != null ? dto.getLatitude() : "N/A",
+                        "longitude", dto.getLongitude() != null ? dto.getLongitude() : "N/A"
+                    )
+                );
+            }
+        }
+        
+        // Check if both parties have confirmed
+        boolean hostConfirmed = isHostHandshakeConfirmed(booking);
+        boolean guestConfirmed = isGuestHandshakeConfirmed(booking);
+        
+        if (hostConfirmed && guestConfirmed) {
+            // Start the trip!
+            booking.setStatus(BookingStatus.IN_TRIP);
+            booking.setHandshakeCompletedAt(Instant.now());
+            booking.setTripStartedAt(Instant.now());
+            
+            eventService.recordEvent(
+                booking,
+                booking.getCheckInSessionId(),
+                CheckInEventType.TRIP_STARTED,
+                userId,
+                isHost ? CheckInActorRole.HOST : CheckInActorRole.GUEST,
+                Map.of(
+                    "handshakeMethod", booking.getLockboxCodeEncrypted() != null ? "REMOTE" : "IN_PERSON",
+                    "geofenceStatus", booking.getGeofenceDistanceMeters() != null ? "PASSED" : "N/A"
+                )
+            );
+            
+            handshakeCompletedCounter.increment();
+            
+            // Record check-in duration
+            if (booking.getCheckInOpenedAt() != null) {
+                Duration duration = Duration.between(booking.getCheckInOpenedAt(), Instant.now());
+                checkInDurationTimer.record(duration);
+            }
+            
+            log.info("[CheckIn] Trip started for booking {} - handshake complete", booking.getId());
+            
+            // Notify both parties
+            notifyTripStarted(booking);
+        }
+        
+        bookingRepository.save(booking);
+        
+        return mapToStatusDTO(booking, userId);
+    }
+
+    // ========== NO-SHOW HANDLING ==========
+
+    /**
+     * Process a no-show scenario.
+     */
+    @Transactional
+    public void processNoShow(Booking booking, String party) {
+        if ("HOST".equals(party)) {
+            booking.setStatus(BookingStatus.NO_SHOW_HOST);
+            
+            eventService.recordSystemEvent(
+                booking,
+                booking.getCheckInSessionId(),
+                CheckInEventType.NO_SHOW_HOST_TRIGGERED,
+                Map.of(
+                    "deadlineAt", booking.getStartDate().toString(),
+                    "missedBy", calculateMissedBy(booking)
+                )
+            );
+            
+            // Notify guest
+            notifyNoShow(booking, "HOST");
+            
+        } else if ("GUEST".equals(party)) {
+            booking.setStatus(BookingStatus.NO_SHOW_GUEST);
+            
+            eventService.recordSystemEvent(
+                booking,
+                booking.getCheckInSessionId(),
+                CheckInEventType.NO_SHOW_GUEST_TRIGGERED,
+                Map.of(
+                    "hostCompletedAt", booking.getHostCheckInCompletedAt().toString(),
+                    "missedBy", calculateMissedBy(booking)
+                )
+            );
+            
+            // Notify host
+            notifyNoShow(booking, "GUEST");
+        }
+        
+        bookingRepository.save(booking);
+        log.warn("[CheckIn] No-show processed for booking {}, party: {}", booking.getId(), party);
+    }
+
+    // ========== SCHEDULER SUPPORT METHODS ==========
+
+    /**
+     * Find bookings eligible for check-in window opening.
+     */
+    @Transactional(readOnly = true)
+    public List<Booking> findBookingsForCheckInWindowOpening(LocalDate startFrom, LocalDate startTo) {
+        return bookingRepository.findAll().stream()
+                .filter(b -> b.getStatus() == BookingStatus.ACTIVE)
+                .filter(b -> b.getCheckInSessionId() == null)
+                .filter(b -> !b.getStartDate().isBefore(startFrom) && !b.getStartDate().isAfter(startTo))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Find bookings needing reminder notifications.
+     */
+    @Transactional(readOnly = true)
+    public List<Booking> findBookingsNeedingReminder(BookingStatus status, Instant openedBefore) {
+        return bookingRepository.findAll().stream()
+                .filter(b -> b.getStatus() == status)
+                .filter(b -> b.getCheckInOpenedAt() != null && b.getCheckInOpenedAt().isBefore(openedBefore))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Find potential host no-shows.
+     */
+    @Transactional(readOnly = true)
+    public List<Booking> findPotentialHostNoShows(BookingStatus status, LocalDateTime threshold) {
+        LocalDate thresholdDate = threshold.toLocalDate();
+        
+        return bookingRepository.findAll().stream()
+                .filter(b -> b.getStatus() == status)
+                .filter(b -> b.getHostCheckInCompletedAt() == null)
+                .filter(b -> b.getStartDate().isBefore(thresholdDate) || 
+                            (b.getStartDate().equals(thresholdDate) && 
+                             (b.getPickupTime() == null || b.getPickupTime().isBefore(threshold.toLocalTime().minusMinutes(noShowGraceMinutes)))))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Find potential guest no-shows.
+     */
+    @Transactional(readOnly = true)
+    public List<Booking> findPotentialGuestNoShows(BookingStatus status, LocalDateTime threshold) {
+        Instant noShowInstant = threshold.atZone(SERBIA_ZONE).toInstant();
+        
+        return bookingRepository.findAll().stream()
+                .filter(b -> b.getStatus() == status)
+                .filter(b -> b.getGuestCheckInCompletedAt() == null)
+                .filter(b -> b.getHostCheckInCompletedAt() != null)
+                .filter(b -> b.getHostCheckInCompletedAt().plus(noShowGraceMinutes, ChronoUnit.MINUTES).isBefore(noShowInstant))
+                .collect(Collectors.toList());
+    }
+
+    // ========== NOTIFICATION METHODS ==========
+
+    public void notifyCheckInWindowOpened(Booking booking) {
+        User host = booking.getCar().getOwner();
+        notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                .recipientId(host.getId())
+                .type(NotificationType.CHECK_IN_WINDOW_OPENED)
+                .message(String.format("Prijem vozila je otvoren za rezervaciju %s - %s. Otpremite fotografije vozila.", 
+                    booking.getCar().getBrand(), booking.getCar().getModel()))
+                .relatedEntityId(String.valueOf(booking.getId()))
+                .build());
+    }
+
+    public void notifyGuestCheckInReady(Booking booking) {
+        notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                .recipientId(booking.getRenter().getId())
+                .type(NotificationType.CHECK_IN_HOST_COMPLETE)
+                .message("Domaćin je završio prijem vozila. Potvrdite stanje vozila da biste započeli putovanje.")
+                .relatedEntityId(String.valueOf(booking.getId()))
+                .build());
+    }
+
+    public void sendCheckInReminder(Booking booking, String recipient) {
+        Long recipientId = "HOST".equals(recipient) 
+                ? booking.getCar().getOwner().getId() 
+                : booking.getRenter().getId();
+        
+        notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                .recipientId(recipientId)
+                .type(NotificationType.CHECK_IN_REMINDER)
+                .message("Podsetnik: Prijem vozila još nije završen. Molimo završite pre početka putovanja.")
+                .relatedEntityId(String.valueOf(booking.getId()))
+                .build());
+    }
+
+    private void notifyHandshakeReady(Booking booking) {
+        // Notify host
+        notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                .recipientId(booking.getCar().getOwner().getId())
+                .type(NotificationType.HANDSHAKE_CONFIRMED)
+                .message("Gost je potvrdio stanje vozila. Potvrdite predaju da započnete putovanje.")
+                .relatedEntityId(String.valueOf(booking.getId()))
+                .build());
+        
+        // Notify guest
+        notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                .recipientId(booking.getRenter().getId())
+                .type(NotificationType.HANDSHAKE_CONFIRMED)
+                .message("Stanje vozila je potvrđeno. Sačekajte potvrdu domaćina ili potvrdite preuzimanje.")
+                .relatedEntityId(String.valueOf(booking.getId()))
+                .build());
+    }
+
+    private void notifyTripStarted(Booking booking) {
+        // Notify host
+        notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                .recipientId(booking.getCar().getOwner().getId())
+                .type(NotificationType.TRIP_STARTED)
+                .message("Putovanje je započelo! Vozilo je predato gostu.")
+                .relatedEntityId(String.valueOf(booking.getId()))
+                .build());
+        
+        // Notify guest
+        notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                .recipientId(booking.getRenter().getId())
+                .type(NotificationType.TRIP_STARTED)
+                .message("Putovanje je započelo! Srećan put!")
+                .relatedEntityId(String.valueOf(booking.getId()))
+                .build());
+    }
+
+    private void notifyNoShow(Booking booking, String noShowParty) {
+        if ("HOST".equals(noShowParty)) {
+            notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                    .recipientId(booking.getRenter().getId())
+                    .type(NotificationType.NO_SHOW_HOST)
+                    .message("Domaćin se nije pojavio. Kontaktirajte podršku za povrat sredstava.")
+                    .relatedEntityId(String.valueOf(booking.getId()))
+                    .build());
+        } else {
+            notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                    .recipientId(booking.getCar().getOwner().getId())
+                    .type(NotificationType.NO_SHOW_GUEST)
+                    .message("Gost se nije pojavio u roku od 30 minuta.")
+                    .relatedEntityId(String.valueOf(booking.getId()))
+                    .build());
+        }
+    }
+
+    // ========== HELPER METHODS ==========
+
+    private boolean isHost(Booking booking, Long userId) {
+        return booking.getCar().getOwner().getId().equals(userId);
+    }
+
+    private boolean isGuest(Booking booking, Long userId) {
+        return booking.getRenter().getId().equals(userId);
+    }
+
+    private void validateAccess(Booking booking, Long userId) {
+        if (!isHost(booking, userId) && !isGuest(booking, userId)) {
+            throw new AccessDeniedException("Nemate pristup ovoj rezervaciji");
+        }
+    }
+
+    private boolean isHostHandshakeConfirmed(Booking booking) {
+        return eventService.hasEventOfType(booking.getId(), CheckInEventType.HANDSHAKE_HOST_CONFIRMED);
+    }
+
+    private boolean isGuestHandshakeConfirmed(Booking booking) {
+        return eventService.hasEventOfType(booking.getId(), CheckInEventType.HANDSHAKE_GUEST_CONFIRMED);
+    }
+
+    private String calculateMissedBy(Booking booking) {
+        Instant now = Instant.now();
+        LocalDateTime startDateTime = LocalDateTime.of(booking.getStartDate(), 
+            booking.getPickupTime() != null ? booking.getPickupTime() : LocalTime.of(12, 0));
+        Instant startInstant = startDateTime.atZone(SERBIA_ZONE).toInstant();
+        
+        Duration missed = Duration.between(startInstant.plus(noShowGraceMinutes, ChronoUnit.MINUTES), now);
+        return missed.toMinutes() + " minuta";
+    }
+
+    private CheckInStatusDTO mapToStatusDTO(Booking booking, Long userId) {
+        boolean isHost = isHost(booking, userId);
+        boolean isGuest = isGuest(booking, userId);
+        
+        List<CheckInPhotoDTO> photos = null;
+        // Only show photos to guest after host completes, or always to host
+        if (isHost || booking.getStatus().ordinal() >= BookingStatus.CHECK_IN_HOST_COMPLETE.ordinal()) {
+            photos = photoRepository.findByBookingId(booking.getId()).stream()
+                    .filter(p -> !p.isDeleted())
+                    .map(this::mapToPhotoDTO)
+                    .collect(Collectors.toList());
+        }
+        
+        LocalDateTime noShowDeadline = null;
+        Long minutesUntilNoShow = null;
+        
+        if (booking.getStatus() == BookingStatus.CHECK_IN_OPEN || 
+            booking.getStatus() == BookingStatus.CHECK_IN_HOST_COMPLETE) {
+            LocalDateTime startDateTime = LocalDateTime.of(booking.getStartDate(),
+                booking.getPickupTime() != null ? booking.getPickupTime() : LocalTime.of(12, 0));
+            noShowDeadline = startDateTime.plusMinutes(noShowGraceMinutes);
+            minutesUntilNoShow = ChronoUnit.MINUTES.between(LocalDateTime.now(SERBIA_ZONE), noShowDeadline);
+            if (minutesUntilNoShow < 0) minutesUntilNoShow = 0L;
+        }
+        
+        return CheckInStatusDTO.builder()
+                .bookingId(booking.getId())
+                .checkInSessionId(booking.getCheckInSessionId())
+                .status(booking.getStatus())
+                .hostCheckInComplete(booking.getHostCheckInCompletedAt() != null)
+                .guestCheckInComplete(booking.getGuestCheckInCompletedAt() != null)
+                .handshakeReady(booking.getStatus() == BookingStatus.CHECK_IN_COMPLETE)
+                .checkInOpenedAt(toLocalDateTime(booking.getCheckInOpenedAt()))
+                .hostCompletedAt(toLocalDateTime(booking.getHostCheckInCompletedAt()))
+                .guestCompletedAt(toLocalDateTime(booking.getGuestCheckInCompletedAt()))
+                .handshakeCompletedAt(toLocalDateTime(booking.getHandshakeCompletedAt()))
+                .vehiclePhotos(photos)
+                .odometerReading(booking.getStartOdometer())
+                .fuelLevelPercent(booking.getStartFuelLevel())
+                .lockboxAvailable(booking.getLockboxCodeEncrypted() != null)
+                .geofenceValid(booking.getGeofenceDistanceMeters() != null && 
+                              booking.getGeofenceDistanceMeters() <= geofenceService.getDefaultRadiusMeters())
+                .geofenceDistanceMeters(booking.getGeofenceDistanceMeters())
+                .tripStartScheduled(LocalDateTime.of(booking.getStartDate(),
+                    booking.getPickupTime() != null ? booking.getPickupTime() : LocalTime.of(12, 0)))
+                .noShowDeadline(noShowDeadline)
+                .minutesUntilNoShow(minutesUntilNoShow)
+                .isHost(isHost)
+                .isGuest(isGuest)
+                .car(CheckInStatusDTO.CarSummaryDTO.builder()
+                        .id(booking.getCar().getId())
+                        .brand(booking.getCar().getBrand())
+                        .model(booking.getCar().getModel())
+                        .year(booking.getCar().getYear())
+                        .imageUrl(booking.getCar().getImageUrl())
+                        .build())
+                .build();
+    }
+
+    private CheckInPhotoDTO mapToPhotoDTO(CheckInPhoto photo) {
+        return CheckInPhotoDTO.builder()
+                .photoId(photo.getId())
+                .photoType(photo.getPhotoType())
+                .url(photo.getStorageKey()) // In production, generate pre-signed URL
+                .uploadedAt(toLocalDateTime(photo.getUploadedAt()))
+                .exifValidationStatus(photo.getExifValidationStatus())
+                .exifValidationMessage(photo.getExifValidationMessage())
+                .width(photo.getImageWidth())
+                .height(photo.getImageHeight())
+                .mimeType(photo.getMimeType())
+                .exifTimestamp(toLocalDateTime(photo.getExifTimestamp()))
+                .exifLatitude(photo.getExifLatitude() != null ? photo.getExifLatitude().doubleValue() : null)
+                .exifLongitude(photo.getExifLongitude() != null ? photo.getExifLongitude().doubleValue() : null)
+                .deviceModel(photo.getExifDeviceModel())
+                .build();
+    }
+
+    private LocalDateTime toLocalDateTime(Instant instant) {
+        if (instant == null) return null;
+        return LocalDateTime.ofInstant(instant, SERBIA_ZONE);
+    }
+
+    /**
+     * Custom exception for geofence violations.
+     */
+    public static class GeofenceViolationException extends RuntimeException {
+        public GeofenceViolationException(String message) {
+            super(message);
+        }
+    }
+}

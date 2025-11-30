@@ -2,10 +2,17 @@
  * Photo Compression Service
  *
  * Implements aggressive client-side image compression to handle Serbian 4G/Edge constraints.
+ * **CRITICAL**: Preserves EXIF metadata using piexifjs to maintain timestamp/GPS for fraud prevention.
  *
  * ## Architecture Decision
  * Uses Canvas API instead of Web Workers for broader browser compatibility on mobile.
  * The compression is async and yields to the main thread periodically.
+ *
+ * ## EXIF Preservation
+ * The canvas.toBlob() API strips EXIF metadata. We use piexifjs to:
+ * 1. Extract EXIF from original image BEFORE compression
+ * 2. Re-inject EXIF into compressed image AFTER canvas processing
+ * This preserves DateTimeOriginal, GPS coordinates, and device info for backend validation.
  *
  * ## Target
  * All images must be < 500KB before upload (backend safety limit is 10MB).
@@ -15,6 +22,7 @@
  */
 
 import { Injectable, signal, computed } from '@angular/core';
+import * as piexif from 'piexifjs';
 
 export interface CompressionResult {
   originalSize: number;
@@ -24,6 +32,7 @@ export interface CompressionResult {
   width: number;
   height: number;
   mimeType: string;
+  exifPreserved: boolean;
 }
 
 export interface CompressionOptions {
@@ -32,6 +41,7 @@ export interface CompressionOptions {
   quality: number; // 0-1
   targetSizeKB: number;
   mimeType: 'image/jpeg' | 'image/webp';
+  preserveExif: boolean;
 }
 
 const DEFAULT_OPTIONS: CompressionOptions = {
@@ -40,6 +50,7 @@ const DEFAULT_OPTIONS: CompressionOptions = {
   quality: 0.8,
   targetSizeKB: 500,
   mimeType: 'image/jpeg',
+  preserveExif: true, // Default to preserving EXIF for check-in photos
 };
 
 @Injectable({ providedIn: 'root' })
@@ -58,6 +69,7 @@ export class PhotoCompressionService {
 
   /**
    * Compress an image file to meet size constraints.
+   * EXIF metadata is preserved by default for check-in photo validation.
    *
    * @param file - Original image file
    * @param options - Compression options (optional)
@@ -80,9 +92,28 @@ export class PhotoCompressionService {
     this._currentFile.set(file.name);
 
     try {
+      // Extract EXIF from original file BEFORE compression (if preserving)
+      let exifData: string | null = null;
+      if (
+        opts.preserveExif &&
+        (file.type === 'image/jpeg' || file.name.toLowerCase().endsWith('.jpg'))
+      ) {
+        try {
+          exifData = await this.extractExif(file);
+          if (exifData) {
+            console.log('[Compression] EXIF extracted from original image');
+          } else {
+            console.log('[Compression] No EXIF found in original image');
+          }
+        } catch (e) {
+          console.warn('[Compression] Failed to extract EXIF, continuing without:', e);
+        }
+      }
+      this._compressionProgress.set(15);
+
       // Load image
       const img = await this.loadImage(file);
-      this._compressionProgress.set(20);
+      this._compressionProgress.set(25);
 
       // Calculate target dimensions maintaining aspect ratio
       const { width, height } = this.calculateDimensions(
@@ -94,16 +125,31 @@ export class PhotoCompressionService {
       this._compressionProgress.set(40);
 
       // Compress with iterative quality reduction if needed
-      const result = await this.compressWithQualityReduction(img, width, height, opts);
+      let result = await this.compressWithQualityReduction(img, width, height, opts);
+      this._compressionProgress.set(85);
+
+      // Re-inject EXIF into compressed image
+      let exifPreserved = false;
+      if (exifData && opts.mimeType === 'image/jpeg') {
+        try {
+          const blobWithExif = await this.injectExif(result.blob, exifData);
+          result = { ...result, blob: blobWithExif, compressedSize: blobWithExif.size };
+          exifPreserved = true;
+          console.log('[Compression] EXIF re-injected into compressed image');
+        } catch (e) {
+          console.warn('[Compression] Failed to inject EXIF into compressed image:', e);
+        }
+      }
+
       this._compressionProgress.set(100);
 
       console.log(
         `[Compression] ${file.name}: ${this.formatSize(file.size)} → ${this.formatSize(
           result.compressedSize
-        )} (${result.compressionRatio.toFixed(1)}x)`
+        )} (${result.compressionRatio.toFixed(1)}x) | EXIF: ${exifPreserved ? '✓' : '✗'}`
       );
 
-      return result;
+      return { ...result, exifPreserved };
     } finally {
       this._isCompressing.set(false);
       this._currentFile.set(null);
@@ -279,6 +325,7 @@ export class PhotoCompressionService {
       width: canvas.width,
       height: canvas.height,
       mimeType: options.mimeType,
+      exifPreserved: false, // Will be set to true by caller if EXIF is injected
     };
   }
 
@@ -310,5 +357,108 @@ export class PhotoCompressionService {
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
     return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+  }
+
+  // ========== EXIF PRESERVATION METHODS ==========
+
+  /**
+   * Extract EXIF data from a JPEG file as a binary string.
+   * This data can later be re-injected into a compressed version.
+   */
+  private async extractExif(file: File): Promise<string | null> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+
+      reader.onload = (e) => {
+        try {
+          const dataUrl = e.target?.result as string;
+          if (!dataUrl) {
+            resolve(null);
+            return;
+          }
+
+          // piexifjs works with data URLs
+          const exifObj = piexif.load(dataUrl);
+
+          // Check if we have meaningful EXIF data
+          if (
+            exifObj &&
+            (Object.keys(exifObj['0th'] || {}).length > 0 ||
+              Object.keys(exifObj['Exif'] || {}).length > 0 ||
+              Object.keys(exifObj['GPS'] || {}).length > 0)
+          ) {
+            // Dump EXIF to binary string
+            const exifBytes = piexif.dump(exifObj);
+            console.log('[EXIF] Extracted EXIF data:', {
+              '0th': Object.keys(exifObj['0th'] || {}).length + ' tags',
+              Exif: Object.keys(exifObj['Exif'] || {}).length + ' tags',
+              GPS: Object.keys(exifObj['GPS'] || {}).length + ' tags',
+            });
+            resolve(exifBytes);
+          } else {
+            console.log('[EXIF] No meaningful EXIF data found in image');
+            resolve(null);
+          }
+        } catch (error) {
+          console.warn('[EXIF] Failed to extract EXIF:', error);
+          resolve(null); // Don't reject, just continue without EXIF
+        }
+      };
+
+      reader.onerror = () => {
+        console.warn('[EXIF] FileReader error');
+        resolve(null);
+      };
+
+      reader.readAsDataURL(file);
+    });
+  }
+
+  /**
+   * Inject EXIF data into a compressed JPEG blob.
+   * Returns a new Blob with the EXIF metadata embedded.
+   */
+  private async injectExif(blob: Blob, exifBytes: string): Promise<Blob> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+
+      reader.onload = (e) => {
+        try {
+          const dataUrl = e.target?.result as string;
+          if (!dataUrl) {
+            reject(new Error('Failed to read compressed image'));
+            return;
+          }
+
+          // Insert EXIF into the data URL
+          const newDataUrl = piexif.insert(exifBytes, dataUrl);
+
+          // Convert data URL back to Blob
+          const byteString = atob(newDataUrl.split(',')[1]);
+          const mimeString = newDataUrl.split(',')[0].split(':')[1].split(';')[0];
+          const ab = new ArrayBuffer(byteString.length);
+          const ia = new Uint8Array(ab);
+
+          for (let i = 0; i < byteString.length; i++) {
+            ia[i] = byteString.charCodeAt(i);
+          }
+
+          const blobWithExif = new Blob([ab], { type: mimeString });
+          console.log(
+            `[EXIF] Injected EXIF into compressed image (${this.formatSize(
+              blob.size
+            )} → ${this.formatSize(blobWithExif.size)})`
+          );
+          resolve(blobWithExif);
+        } catch (error) {
+          console.error('[EXIF] Failed to inject EXIF:', error);
+          reject(error);
+        }
+      };
+
+      reader.onerror = () => reject(new Error('FileReader error'));
+
+      reader.readAsDataURL(blob);
+    });
   }
 }

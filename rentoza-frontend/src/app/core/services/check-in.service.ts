@@ -17,7 +17,7 @@
 
 import { Injectable, signal, computed, inject, OnDestroy } from '@angular/core';
 import { HttpClient, HttpEvent, HttpEventType, HttpRequest } from '@angular/common/http';
-import { Observable, Subject, from, of, throwError } from 'rxjs';
+import { Observable, Subject, Subscription, from, of, throwError } from 'rxjs';
 import { map, catchError, switchMap, tap, takeUntil, finalize, filter } from 'rxjs/operators';
 
 import { environment } from '@environments/environment';
@@ -33,6 +33,8 @@ import {
   WizardStep,
   REQUIRED_HOST_PHOTOS,
   QueuedUpload,
+  DamagePhotoSlot,
+  MAX_DAMAGE_PHOTOS,
 } from '@core/models/check-in.model';
 import { PhotoCompressionService } from './photo-compression.service';
 import { GeolocationService } from './geolocation.service';
@@ -67,8 +69,13 @@ export class CheckInService implements OnDestroy {
   private readonly _error = signal<string | null>(null);
   private readonly _currentStep = signal<WizardStep>('loading');
   private readonly _currentPhase = signal<CheckInPhase>('LOADING');
-  private readonly _uploadProgress = signal<Map<CheckInPhotoType, PhotoUploadProgress>>(new Map());
+  // String-keyed map: photoType for required photos, UUID for damage photos
+  private readonly _uploadProgress = signal<Map<string, PhotoUploadProgress>>(new Map());
   private readonly _uploadedPhotoIds = signal<number[]>([]);
+
+  // Upload cancellation: track in-flight HTTP requests by slotId
+  // Prevents race condition when user re-selects same slot before previous upload completes
+  private readonly _activeUploads = new Map<string, Subscription>();
 
   // Public readonly signals
   readonly status = this._status.asReadonly();
@@ -139,6 +146,9 @@ export class CheckInService implements OnDestroy {
     this.destroy$.next();
     this.destroy$.complete();
     this.stopPolling();
+    // Cancel all in-flight uploads
+    this._activeUploads.forEach((sub) => sub.unsubscribe());
+    this._activeUploads.clear();
     // Clean up blob URLs
     this.compressionService.revokeAllObjectUrls();
   }
@@ -186,10 +196,11 @@ export class CheckInService implements OnDestroy {
           if (status.vehiclePhotos) {
             const ids = status.vehiclePhotos.map((p) => p.photoId);
             this._uploadedPhotoIds.set(ids);
-            // Mark existing photos as complete
+            // Mark existing photos as complete (slotId = photoType for required photos)
             const progress = new Map(this._uploadProgress());
             status.vehiclePhotos.forEach((photo) => {
               progress.set(photo.photoType, {
+                slotId: photo.photoType, // Required photos use photoType as slotId
                 photoType: photo.photoType,
                 state: 'complete',
                 progress: 100,
@@ -210,21 +221,107 @@ export class CheckInService implements OnDestroy {
   }
 
   /**
-   * Upload a photo with compression and clientTimestamp.
+   * Upload a photo with compression, GPS injection, and upload cancellation.
    *
-   * Flow:
-   * 1. Validate file type
-   * 2. Compress image to <500KB
-   * 3. Upload with progress tracking
-   * 4. Queue for retry if offline
+   * "Snap & Go" Pattern:
+   * - Fire-and-forget: returns immediately, upload runs in background
+   * - Cancellation: re-selecting same slot cancels previous in-flight upload
+   * - GPS injection: current position appended to FormData for backend verification
+   * - Progress tracking: updates _uploadProgress signal throughout
+   *
+   * @param bookingId - Booking ID
+   * @param file - Image file to upload
+   * @param slotId - Unique slot identifier (photoType for required, UUID for damage)
+   * @param photoType - Photo type enum for backend
    */
-  async uploadPhoto(
+  uploadPhoto(bookingId: number, file: File, slotId: string, photoType: CheckInPhotoType): void {
+    // Cancel any existing upload for this slot (race condition prevention)
+    const existingUpload = this._activeUploads.get(slotId);
+    if (existingUpload) {
+      existingUpload.unsubscribe();
+      this._activeUploads.delete(slotId);
+    }
+
+    // Update progress: compressing
+    this.updateUploadProgress(slotId, photoType, 'compressing', 0);
+
+    // Validate file type
+    if (!this.compressionService.isValidImageType(file)) {
+      this.updateUploadProgress(
+        slotId,
+        photoType,
+        'error',
+        0,
+        'Nevažeći format slike. Koristite JPEG, PNG ili HEIC.'
+      );
+      return;
+    }
+
+    // Capture client timestamp and GPS BEFORE upload starts (basement problem fix)
+    const clientTimestamp = new Date().toISOString();
+    const position = this.geolocationService.position();
+
+    // Fire-and-forget Observable chain: compress → upload
+    const subscription = from(this.compressionService.compressImage(file, { targetSizeKB: 500 }))
+      .pipe(
+        tap(() => this.updateUploadProgress(slotId, photoType, 'uploading', 0)),
+        switchMap((compressed) => {
+          // Check if online
+          if (!this.offlineQueueService.isOnline()) {
+            // Queue for later (async, but we don't block)
+            this.offlineQueueService.enqueue(
+              bookingId,
+              photoType,
+              compressed.blob,
+              clientTimestamp
+            );
+            throw new Error('Nema internet konekcije. Fotografija je sačuvana za kasnije.');
+          }
+
+          return this.uploadWithProgressObservable(
+            bookingId,
+            compressed.blob,
+            slotId,
+            photoType,
+            clientTimestamp,
+            position?.latitude,
+            position?.longitude
+          );
+        }),
+        takeUntil(this.destroy$),
+        finalize(() => {
+          // Clean up from active uploads map
+          this._activeUploads.delete(slotId);
+        })
+      )
+      .subscribe({
+        next: (result) => {
+          this.updateUploadProgress(slotId, photoType, 'complete', 100, undefined, result);
+          this._uploadedPhotoIds.update((ids) => [...ids, result.photoId]);
+        },
+        error: (error) => {
+          const errorMessage = this.extractPhotoErrorMessage(error);
+          this.updateUploadProgress(slotId, photoType, 'error', 0, errorMessage);
+        },
+      });
+
+    // Track subscription for potential cancellation
+    this._activeUploads.set(slotId, subscription);
+  }
+
+  /**
+   * Legacy async uploadPhoto for backward compatibility.
+   * @deprecated Use uploadPhoto(bookingId, file, slotId, photoType) instead
+   */
+  async uploadPhotoAsync(
     bookingId: number,
     file: File,
     photoType: CheckInPhotoType
   ): Promise<CheckInPhotoDTO> {
+    const slotId = photoType; // For required photos, slotId = photoType
+
     // Update progress: compressing
-    this.updateUploadProgress(photoType, 'compressing', 0);
+    this.updateUploadProgress(slotId, photoType, 'compressing', 0);
 
     try {
       // Validate file type
@@ -239,9 +336,10 @@ export class CheckInService implements OnDestroy {
 
       // Capture client timestamp BEFORE upload (basement problem fix)
       const clientTimestamp = new Date().toISOString();
+      const position = this.geolocationService.position();
 
       // Update progress: uploading
-      this.updateUploadProgress(photoType, 'uploading', 0);
+      this.updateUploadProgress(slotId, photoType, 'uploading', 0);
 
       // Check if online
       if (!this.offlineQueueService.isOnline()) {
@@ -259,18 +357,21 @@ export class CheckInService implements OnDestroy {
       const result = await this.uploadWithProgress(
         bookingId,
         compressed.blob,
+        slotId,
         photoType,
-        clientTimestamp
+        clientTimestamp,
+        position?.latitude,
+        position?.longitude
       );
 
       // Update progress: complete
-      this.updateUploadProgress(photoType, 'complete', 100, undefined, result);
+      this.updateUploadProgress(slotId, photoType, 'complete', 100, undefined, result);
       this._uploadedPhotoIds.update((ids) => [...ids, result.photoId]);
 
       return result;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Upload nije uspeo';
-      this.updateUploadProgress(photoType, 'error', 0, errorMessage);
+      this.updateUploadProgress(slotId, photoType, 'error', 0, errorMessage);
       throw error;
     }
   }
@@ -431,22 +532,24 @@ export class CheckInService implements OnDestroy {
     const items = this.offlineQueueService.getItemsForBooking(bookingId);
 
     for (const item of items) {
+      const slotId = item.photoType; // For queued items, slotId = photoType
       try {
-        this.updateUploadProgress(item.photoType, 'uploading', 0);
+        this.updateUploadProgress(slotId, item.photoType, 'uploading', 0);
 
         const result = await this.uploadWithProgress(
           item.bookingId,
           item.file,
+          slotId,
           item.photoType,
           item.clientTimestamp
         );
 
         await this.offlineQueueService.dequeue(item.id);
-        this.updateUploadProgress(item.photoType, 'complete', 100, undefined, result);
+        this.updateUploadProgress(slotId, item.photoType, 'complete', 100, undefined, result);
         this._uploadedPhotoIds.update((ids) => [...ids, result.photoId]);
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Retry failed';
-        this.updateUploadProgress(item.photoType, 'error', 0, errorMessage);
+        this.updateUploadProgress(slotId, item.photoType, 'error', 0, errorMessage);
       }
     }
   }
@@ -459,17 +562,25 @@ export class CheckInService implements OnDestroy {
   }
 
   /**
-   * Clear upload progress for a specific photo type.
+   * Clear upload progress for a specific slot.
    * Used when user wants to remove/replace a photo.
+   * @param slotId - Slot identifier (photoType for required, UUID for damage)
    */
-  clearPhotoProgress(photoType: CheckInPhotoType): void {
+  clearPhotoProgress(slotId: string): void {
+    // Cancel any in-flight upload for this slot
+    const activeUpload = this._activeUploads.get(slotId);
+    if (activeUpload) {
+      activeUpload.unsubscribe();
+      this._activeUploads.delete(slotId);
+    }
+
     const current = new Map(this._uploadProgress());
-    current.delete(photoType);
+    current.delete(slotId);
     this._uploadProgress.set(current);
 
     // Also remove from uploaded photo IDs if present
     // Note: Backend photo is not deleted, but user can upload a replacement
-    // which will override on next submission
+    // which will override on next submission (orphan cleanup deferred to Phase 4)
   }
 
   /**
@@ -488,17 +599,31 @@ export class CheckInService implements OnDestroy {
 
   // ========== PRIVATE METHODS ==========
 
+  /**
+   * Upload with progress tracking (Promise-based for legacy async support).
+   */
   private uploadWithProgress(
     bookingId: number,
     blob: Blob,
+    slotId: string,
     photoType: CheckInPhotoType,
-    clientTimestamp: string
+    clientTimestamp: string,
+    clientLatitude?: number,
+    clientLongitude?: number
   ): Promise<CheckInPhotoDTO> {
     return new Promise((resolve, reject) => {
       const formData = new FormData();
       formData.append('file', blob, `${photoType}.jpg`);
       formData.append('photoType', photoType);
       formData.append('clientTimestamp', clientTimestamp);
+
+      // Inject GPS coordinates for backend verification (defense-in-depth)
+      if (clientLatitude != null) {
+        formData.append('clientLatitude', clientLatitude.toString());
+      }
+      if (clientLongitude != null) {
+        formData.append('clientLongitude', clientLongitude.toString());
+      }
 
       const request = new HttpRequest(
         'POST',
@@ -517,9 +642,9 @@ export class CheckInService implements OnDestroy {
           next: (event: HttpEvent<any>) => {
             if (event.type === HttpEventType.UploadProgress && event.total) {
               const progress = Math.round((event.loaded / event.total) * 100);
-              this.updateUploadProgress(photoType, 'uploading', progress);
+              this.updateUploadProgress(slotId, photoType, 'uploading', progress);
             } else if (event.type === HttpEventType.Response) {
-              this.updateUploadProgress(photoType, 'validating', 100);
+              this.updateUploadProgress(slotId, photoType, 'validating', 100);
               resolve(event.body as CheckInPhotoDTO);
             }
           },
@@ -530,7 +655,92 @@ export class CheckInService implements OnDestroy {
     });
   }
 
+  /**
+   * Upload with progress tracking (Observable-based for fire-and-forget pattern).
+   */
+  private uploadWithProgressObservable(
+    bookingId: number,
+    blob: Blob,
+    slotId: string,
+    photoType: CheckInPhotoType,
+    clientTimestamp: string,
+    clientLatitude?: number,
+    clientLongitude?: number
+  ): Observable<CheckInPhotoDTO> {
+    const formData = new FormData();
+    formData.append('file', blob, `${photoType}.jpg`);
+    formData.append('photoType', photoType);
+    formData.append('clientTimestamp', clientTimestamp);
+
+    // Inject GPS coordinates for backend verification
+    if (clientLatitude != null) {
+      formData.append('clientLatitude', clientLatitude.toString());
+    }
+    if (clientLongitude != null) {
+      formData.append('clientLongitude', clientLongitude.toString());
+    }
+
+    const request = new HttpRequest(
+      'POST',
+      `${this.baseUrl}/${bookingId}/check-in/host/photos`,
+      formData,
+      {
+        reportProgress: true,
+        withCredentials: true,
+      }
+    );
+
+    return this.http.request(request).pipe(
+      tap((event: HttpEvent<any>) => {
+        if (event.type === HttpEventType.UploadProgress && event.total) {
+          const progress = Math.round((event.loaded / event.total) * 100);
+          this.updateUploadProgress(slotId, photoType, 'uploading', progress);
+        } else if (event.type === HttpEventType.UploadProgress) {
+          // Indeterminate progress
+          this.updateUploadProgress(slotId, photoType, 'uploading', 50);
+        }
+      }),
+      filter((event: HttpEvent<any>) => event.type === HttpEventType.Response),
+      map((event) => {
+        this.updateUploadProgress(slotId, photoType, 'validating', 100);
+        // HttpResponse has body property
+        return (event as any).body as CheckInPhotoDTO;
+      })
+    );
+  }
+
+  /**
+   * Extract user-friendly error message from photo upload errors.
+   * Maps backend EXIF validation errors to Serbian messages.
+   */
+  private extractPhotoErrorMessage(error: any): string {
+    // Backend EXIF validation errors
+    if (error?.error?.exifValidationStatus) {
+      switch (error.error.exifValidationStatus) {
+        case 'REJECTED_TOO_OLD':
+          return 'Fotografija je prestara. Slikajte novu fotografiju.';
+        case 'REJECTED_NO_EXIF':
+          return 'Fotografija nema metapodatke. Koristite kameru, ne galeriju.';
+        case 'REJECTED_FUTURE_TIMESTAMP':
+          return 'Sat na uređaju nije tačan. Proverite podešavanja.';
+        case 'REJECTED_NO_GPS':
+          return 'Fotografija nema GPS lokaciju. Omogućite lokaciju u podešavanjima kamere.';
+        case 'REJECTED_LOCATION_MISMATCH':
+          return 'Lokacija fotografije ne odgovara lokaciji vozila.';
+      }
+    }
+
+    // Backend message (Serbian)
+    if (error?.error?.message) return error.error.message;
+    if (error?.error?.messagesr) return error.error.messagesr;
+
+    // Generic error
+    if (error?.message) return error.message;
+    return 'Upload nije uspeo. Pokušajte ponovo.';
+  }
+
   private updateUploadProgress(
+    slotId: string,
     photoType: CheckInPhotoType,
     state: PhotoUploadProgress['state'],
     progress: number,
@@ -538,7 +748,7 @@ export class CheckInService implements OnDestroy {
     result?: CheckInPhotoDTO
   ): void {
     const current = new Map(this._uploadProgress());
-    current.set(photoType, { photoType, state, progress, error, result });
+    current.set(slotId, { slotId, photoType, state, progress, error, result });
     this._uploadProgress.set(current);
   }
 
@@ -560,6 +770,9 @@ export class CheckInService implements OnDestroy {
 
   private updatePhaseFromStatus(status: CheckInStatusDTO): void {
     // Determine the current phase based on status
+    // Note: The wizard template handles role-based display (host vs guest)
+    // This method sets the phase based on workflow state, not viewer role
+
     if (status.handshakeCompletedAt) {
       this._currentPhase.set('COMPLETE');
     } else if (
@@ -568,10 +781,13 @@ export class CheckInService implements OnDestroy {
     ) {
       this._currentPhase.set('HANDSHAKE');
     } else if (status.hostCheckInComplete) {
-      // Host done, now guest's turn
-      this._currentPhase.set(status.guest ? 'GUEST_PHASE' : 'HOST_PHASE');
+      // Host done - phase is GUEST_PHASE regardless of who is viewing
+      // The wizard template determines if viewer should see GuestCheckIn or WaitingScreen
+      this._currentPhase.set('GUEST_PHASE');
     } else if (status.status === 'CHECK_IN_OPEN' || status.status === 'PENDING_HOST_CHECKIN') {
-      this._currentPhase.set(status.host ? 'HOST_PHASE' : 'GUEST_PHASE');
+      // Check-in open, host hasn't submitted yet - HOST_PHASE
+      // The wizard template determines if viewer should see HostCheckIn or WaitingScreen
+      this._currentPhase.set('HOST_PHASE');
     } else {
       this._currentPhase.set('NONE');
     }

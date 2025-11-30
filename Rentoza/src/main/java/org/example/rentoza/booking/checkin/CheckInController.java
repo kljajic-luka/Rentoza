@@ -94,24 +94,33 @@ public class CheckInController {
      *   <li>Must be recent (within 24 hours)</li>
      *   <li>GPS coordinates extracted if present</li>
      * </ul>
+     * 
+     * <p>Client GPS coordinates (clientLatitude/clientLongitude) are accepted as a
+     * fallback for location verification when EXIF GPS is missing (e.g., Canvas
+     * compression scenarios). This is defense-in-depth; piexifjs should preserve
+     * EXIF in the frontend.
      */
     @PostMapping(value = "/host/photos", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<CheckInPhotoDTO> uploadHostPhoto(
             @PathVariable Long bookingId,
             @RequestPart("file") MultipartFile file,
             @RequestParam("photoType") CheckInPhotoType photoType,
-            @RequestParam(value = "clientTimestamp", required = false) Instant clientTimestamp) throws IOException {
+            @RequestParam(value = "clientTimestamp", required = false) Instant clientTimestamp,
+            @RequestParam(value = "clientLatitude", required = false) BigDecimal clientLatitude,
+            @RequestParam(value = "clientLongitude", required = false) BigDecimal clientLongitude) throws IOException {
         
         Long userId = currentUser.id();
-        log.debug("[CheckIn] Photo upload for booking {} by user {}, type: {}", 
-            bookingId, userId, photoType);
+        log.debug("[CheckIn] Photo upload for booking {} by user {}, type: {}, clientGPS: ({}, {})", 
+            bookingId, userId, photoType, clientLatitude, clientLongitude);
         
         CheckInPhotoDTO photo = photoService.uploadPhoto(
             bookingId, 
             userId, 
             file, 
             photoType, 
-            clientTimestamp
+            clientTimestamp,
+            clientLatitude,
+            clientLongitude
         );
         
         photoUploadCounter.increment();

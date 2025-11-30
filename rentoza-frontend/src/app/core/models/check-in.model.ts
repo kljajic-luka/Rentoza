@@ -211,13 +211,36 @@ export interface PhotoUploadRequest {
   clientTimestamp: string; // ISO string - critical for basement problem fix
 }
 
+/**
+ * Photo upload progress tracking.
+ *
+ * `slotId` is the map key: for required photos it equals `photoType` (e.g., 'HOST_EXTERIOR_FRONT'),
+ * for damage photos it's a UUID (e.g., 'damage-a1b2c3d4').
+ *
+ * NOTE: When a user re-uploads to the same slot, the previous backend photo becomes orphaned.
+ * This minor storage cost is accepted for UX speed; backend cleanup deferred to Phase 4.
+ */
 export interface PhotoUploadProgress {
+  slotId: string; // UUID for damage photos, enum string for required photos
   photoType: CheckInPhotoType;
   state: 'compressing' | 'uploading' | 'validating' | 'complete' | 'error';
   progress: number; // 0-100
   error?: string;
   result?: CheckInPhotoDTO;
 }
+
+/**
+ * Dynamic damage photo slot for documenting pre-existing vehicle damage.
+ * Host can add multiple damage photos beyond the 8 required slots.
+ */
+export interface DamagePhotoSlot {
+  id: string; // UUID - unique identifier for this slot
+  photoType: 'HOST_DAMAGE_PREEXISTING';
+  description?: string; // Optional damage description (e.g., "Scratch on front bumper")
+}
+
+/** Maximum allowed damage photos per check-in (prevents abuse) */
+export const MAX_DAMAGE_PHOTOS = 10;
 
 // ============================================================================
 // OFFLINE QUEUE

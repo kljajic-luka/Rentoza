@@ -36,6 +36,7 @@ import { HostCheckInComponent } from './host-check-in.component';
 import { GuestCheckInComponent } from './guest-check-in.component';
 import { HandshakeComponent } from './handshake.component';
 import { CheckInCompleteComponent } from './check-in-complete.component';
+import { CheckInWaitingComponent } from './check-in-waiting.component';
 import { environment } from '@environments/environment';
 
 @Component({
@@ -54,6 +55,7 @@ import { environment } from '@environments/environment';
     GuestCheckInComponent,
     HandshakeComponent,
     CheckInCompleteComponent,
+    CheckInWaitingComponent,
   ],
   providers: [
     {
@@ -189,22 +191,72 @@ import { environment } from '@environments/environment';
         </div>
         }
 
-        <!-- Phase content -->
+        <!-- Phase content with role-aware rendering -->
         @switch (checkInService.currentPhase()) { @case ('HOST_PHASE') {
+        <!-- HOST_PHASE: Host edits, Guest waits -->
+        @if (checkInService.isHost()) { @if (showingReview()) {
+        <app-host-check-in
+          [bookingId]="bookingId()"
+          [status]="checkInService.currentStatus()"
+          [readOnly]="true"
+          (backFromReview)="exitReviewMode()"
+        >
+        </app-host-check-in>
+        } @else {
         <app-host-check-in
           [bookingId]="bookingId()"
           [status]="checkInService.currentStatus()"
           (completed)="onHostPhaseCompleted()"
         >
         </app-host-check-in>
-        } @case ('GUEST_PHASE') {
+        } } @else {
+        <!-- Guest waiting for Host to finish -->
+        <app-check-in-waiting
+          [status]="checkInService.currentStatus()"
+          title="Domaćin priprema vozilo"
+          message="Sačekajte da domaćin unese fotografije i podatke o vozilu."
+          icon="schedule"
+          [iconType]="'waiting'"
+          [nextSteps]="guestWaitingSteps"
+          [animate]="true"
+          (refresh)="retryLoad()"
+        >
+        </app-check-in-waiting>
+        } } @case ('GUEST_PHASE') {
+        <!-- GUEST_PHASE: Guest reviews, Host waits -->
+        @if (checkInService.isGuest()) {
         <app-guest-check-in
           [bookingId]="bookingId()"
           [status]="checkInService.currentStatus()"
           (completed)="onGuestPhaseCompleted()"
         >
         </app-guest-check-in>
-        } @case ('HANDSHAKE') {
+        } @else {
+        <!-- Host waiting for Guest to review -->
+        @if (showingReview()) {
+        <app-host-check-in
+          [bookingId]="bookingId()"
+          [status]="checkInService.currentStatus()"
+          [readOnly]="true"
+          (backFromReview)="exitReviewMode()"
+        >
+        </app-host-check-in>
+        } @else {
+        <app-check-in-waiting
+          [status]="checkInService.currentStatus()"
+          title="Vaš deo je završen!"
+          message="Čeka se da gost pregleda i potvrdi stanje vozila."
+          icon="check_circle"
+          [iconType]="'success'"
+          [nextSteps]="hostWaitingSteps"
+          [showReviewButton]="true"
+          [showSubmittedData]="true"
+          [animate]="true"
+          (refresh)="retryLoad()"
+          (reviewData)="enterReviewMode()"
+        >
+        </app-check-in-waiting>
+        } } } @case ('HANDSHAKE') {
         <app-handshake
           [bookingId]="bookingId()"
           [status]="checkInService.currentStatus()"
@@ -488,6 +540,22 @@ export class CheckInWizardComponent implements OnInit, OnDestroy {
   // Booking ID from route
   bookingId = signal<number>(0);
 
+  // Review mode: Host can review their submitted data in read-only mode
+  showingReview = signal(false);
+
+  // Step text for waiting screens
+  readonly guestWaitingSteps = [
+    'Domaćin uploaduje fotografije vozila',
+    'Vi pregledate stanje vozila',
+    'Potvrda preuzimanja vozila',
+  ];
+
+  readonly hostWaitingSteps = [
+    'Gost pregleda fotografije',
+    'Gost potvrđuje stanje vozila',
+    'Finalna potvrda preuzimanja',
+  ];
+
   // Computed: should show location status (only if location is required)
   showLocationStatus = computed(() => {
     // Skip location UI if disabled in environment
@@ -540,7 +608,14 @@ export class CheckInWizardComponent implements OnInit, OnDestroy {
   }
 
   retryLoad(): void {
-    this.checkInService.loadStatus(this.bookingId());
+    this.checkInService.loadStatus(this.bookingId()).subscribe({
+      next: (status) => {
+        console.log('[CheckInWizard] Status refreshed:', status.status);
+      },
+      error: (err) => {
+        console.error('[CheckInWizard] Failed to refresh status:', err);
+      },
+    });
   }
 
   // Location
@@ -598,11 +673,21 @@ export class CheckInWizardComponent implements OnInit, OnDestroy {
 
   // Phase completion handlers
   onHostPhaseCompleted(): void {
-    this.snackBar.open('Host check-in završen!', 'OK', {
+    this.snackBar.open('Check-in uspešno poslat gostu!', 'OK', {
       duration: 3000,
       panelClass: 'success-snackbar',
     });
-    // Status will auto-refresh via polling
+
+    // Reload status to get updated phase (HOST_COMPLETE -> GUEST_PHASE)
+    // This triggers the transition to the waiting screen
+    this.checkInService.loadStatus(this.bookingId()).subscribe({
+      next: (status) => {
+        console.log('[CheckInWizard] Status updated after host submission:', status.status);
+      },
+      error: (err) => {
+        console.error('[CheckInWizard] Failed to refresh status after submission:', err);
+      },
+    });
   }
 
   onGuestPhaseCompleted(): void {
@@ -617,5 +702,14 @@ export class CheckInWizardComponent implements OnInit, OnDestroy {
       duration: 5000,
       panelClass: 'success-snackbar',
     });
+  }
+
+  // Review mode handlers
+  enterReviewMode(): void {
+    this.showingReview.set(true);
+  }
+
+  exitReviewMode(): void {
+    this.showingReview.set(false);
   }
 }

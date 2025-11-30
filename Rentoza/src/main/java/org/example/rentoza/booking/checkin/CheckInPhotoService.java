@@ -51,6 +51,17 @@ public class CheckInPhotoService {
 
     /**
      * Upload a check-in photo with EXIF validation.
+     * 
+     * <p>GPS coordinates can come from two sources (in order of preference):
+     * <ol>
+     *   <li>EXIF data embedded in the image (most reliable)</li>
+     *   <li>Client-provided GPS as fallback (defense-in-depth)</li>
+     * </ol>
+     * The client GPS is used when EXIF GPS is missing (e.g., after
+     * canvas-based compression that strips EXIF despite piexifjs preservation).
+     * 
+     * @param clientLatitude  Client-provided latitude (fallback)
+     * @param clientLongitude Client-provided longitude (fallback)
      */
     @Transactional
     public CheckInPhotoDTO uploadPhoto(
@@ -58,7 +69,9 @@ public class CheckInPhotoService {
             Long userId,
             MultipartFile file,
             CheckInPhotoType photoType,
-            Instant clientTimestamp) throws IOException {
+            Instant clientTimestamp,
+            BigDecimal clientLatitude,
+            BigDecimal clientLongitude) throws IOException {
         
         // Validate file
         if (file.isEmpty()) {
@@ -103,6 +116,19 @@ public class CheckInPhotoService {
             booking.getCheckInOpenedAt()
         );
         
+        // Use client GPS as fallback when EXIF GPS is missing
+        // (defense-in-depth for canvas compression scenarios)
+        BigDecimal finalLatitude = exifResult.getLatitude();
+        BigDecimal finalLongitude = exifResult.getLongitude();
+        boolean usedClientGps = false;
+        
+        if (finalLatitude == null && clientLatitude != null) {
+            finalLatitude = clientLatitude;
+            finalLongitude = clientLongitude;
+            usedClientGps = true;
+            log.debug("[CheckIn] Using client GPS as fallback: ({}, {})", clientLatitude, clientLongitude);
+        }
+        
         // Generate storage path
         String sessionId = booking.getCheckInSessionId();
         String filename = String.format("%s_%s_%s.jpg", 
@@ -136,8 +162,8 @@ public class CheckInPhotoService {
                 .mimeType(contentType)
                 .fileSizeBytes((int) file.getSize())
                 .exifTimestamp(exifResult.getPhotoTimestamp())
-                .exifLatitude(exifResult.getLatitude())
-                .exifLongitude(exifResult.getLongitude())
+                .exifLatitude(finalLatitude)
+                .exifLongitude(finalLongitude)
                 .exifDeviceMake(exifResult.getDeviceMake())
                 .exifDeviceModel(exifResult.getDeviceModel())
                 .exifValidationStatus(exifResult.getStatus())
@@ -162,7 +188,8 @@ public class CheckInPhotoService {
                 "photoType", photoType.name(),
                 "exifValid", exifResult.isAccepted(),
                 "exifStatus", exifResult.getStatus().name(),
-                "fileSize", file.getSize()
+                "fileSize", file.getSize(),
+                "usedClientGps", usedClientGps
             )
         );
         

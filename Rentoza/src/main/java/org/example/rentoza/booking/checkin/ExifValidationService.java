@@ -15,7 +15,6 @@ import org.apache.commons.imaging.formats.tiff.constants.TiffTagConstants;
 import org.apache.commons.imaging.formats.tiff.taginfos.TagInfo;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-
 import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -105,10 +104,6 @@ public class ExifValidationService {
             ? clientUploadStarted 
             : Instant.now();
         
-        if (clientUploadStarted == null) {
-            log.debug("[EXIF] No client timestamp provided, using server time (less accurate)");
-        }
-        
         try {
             ImageMetadata metadata = Imaging.getMetadata(new ByteArrayInputStream(photoBytes), null);
             
@@ -136,6 +131,7 @@ public class ExifValidationService {
             
             // Extract timestamp
             LocalDateTime photoTime = extractPhotoTimestamp(tiffMetadata);
+            
             if (photoTime == null) {
                 return ExifValidationResult.rejected(
                     ExifValidationStatus.REJECTED_NO_EXIF,
@@ -256,21 +252,31 @@ public class ExifValidationService {
         // Try DateTimeOriginal first (when photo was taken)
         String dateTimeOriginal = extractExifDateTag(metadata, ExifTagConstants.EXIF_TAG_DATE_TIME_ORIGINAL);
         if (dateTimeOriginal != null) {
-            return parseExifDate(dateTimeOriginal);
+            LocalDateTime parsed = parseExifDate(dateTimeOriginal);
+            if (parsed != null) {
+                return parsed;
+            }
         }
         
         // Fall back to DateTimeDigitized
         String dateTimeDigitized = extractExifDateTag(metadata, ExifTagConstants.EXIF_TAG_DATE_TIME_DIGITIZED);
         if (dateTimeDigitized != null) {
-            return parseExifDate(dateTimeDigitized);
+            LocalDateTime parsed = parseExifDate(dateTimeDigitized);
+            if (parsed != null) {
+                return parsed;
+            }
         }
         
         // Last resort: TIFF DateTime
         String dateTime = extractStringTag(metadata, TiffTagConstants.TIFF_TAG_DATE_TIME);
         if (dateTime != null) {
-            return parseExifDate(dateTime);
+            LocalDateTime parsed = parseExifDate(dateTime);
+            if (parsed != null) {
+                return parsed;
+            }
         }
         
+        log.warn("[EXIF] No valid timestamp found in any tag");
         return null;
     }
 
@@ -281,7 +287,7 @@ public class ExifValidationService {
                 return field.getStringValue();
             }
         } catch (Exception e) {
-            log.debug("[EXIF] Could not extract tag {}", tagInfo.name, e);
+            log.debug("[EXIF] Could not extract tag {}: {}", tagInfo.name, e.getMessage());
         }
         return null;
     }
@@ -293,7 +299,7 @@ public class ExifValidationService {
                 return field.getStringValue();
             }
         } catch (Exception e) {
-            log.debug("[EXIF] Could not extract tag {}", tagInfo.name, e);
+            log.debug("[EXIF] Could not extract tag {}: {}", tagInfo.name, e.getMessage());
         }
         return null;
     }
@@ -305,10 +311,10 @@ public class ExifValidationService {
         
         try {
             // Remove any null characters (common in some EXIF implementations)
-            dateString = dateString.trim().replace("\u0000", "");
-            return LocalDateTime.parse(dateString, EXIF_DATE_FORMAT);
+            String cleaned = dateString.trim().replace("\u0000", "");
+            return LocalDateTime.parse(cleaned, EXIF_DATE_FORMAT);
         } catch (DateTimeParseException e) {
-            log.debug("[EXIF] Could not parse date: {}", dateString);
+            log.debug("[EXIF] Failed to parse date '{}': {}", dateString, e.getMessage());
             return null;
         }
     }

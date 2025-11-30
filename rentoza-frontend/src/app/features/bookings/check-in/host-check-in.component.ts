@@ -17,6 +17,8 @@ import {
   computed,
   ChangeDetectionStrategy,
   OnInit,
+  OnChanges,
+  SimpleChanges,
   DestroyRef,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -42,6 +44,8 @@ import {
   CheckInPhotoType,
   REQUIRED_HOST_PHOTOS,
   PhotoUploadProgress,
+  DamagePhotoSlot,
+  MAX_DAMAGE_PHOTOS,
 } from '../../../core/models/check-in.model';
 
 interface PhotoSlot {
@@ -81,7 +85,14 @@ const PHOTO_SLOTS: PhotoSlot[] = [
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="host-check-in">
+    <div class="host-check-in" [class.readonly-mode]="readOnly">
+      <!-- Read-only banner -->
+      @if (readOnly) {
+      <div class="readonly-banner">
+        <mat-icon>visibility</mat-icon>
+        <span>Pregled unetih podataka (samo za čitanje)</span>
+      </div>
+      }
       <!-- Header -->
       <div class="section-header">
         <mat-icon>camera_alt</mat-icon>
@@ -91,7 +102,7 @@ const PHOTO_SLOTS: PhotoSlot[] = [
         </div>
       </div>
 
-      <!-- Photo grid -->
+      <!-- Required Photo grid -->
       <div class="photo-grid">
         @for (slot of photoSlots; track slot.type) {
         <div
@@ -99,15 +110,18 @@ const PHOTO_SLOTS: PhotoSlot[] = [
           [class.completed]="isPhotoCompleted(slot.type)"
           [class.uploading]="isPhotoUploading(slot.type)"
           [class.error]="isPhotoError(slot.type)"
-          (click)="triggerFileInput(slot.type)"
+          [class.readonly]="readOnly"
+          (click)="readOnly ? null : triggerFileInput(slot.type)"
         >
           <!-- Thumbnail or placeholder -->
           @if (getPhotoPreview(slot.type)) {
           <img [src]="getPhotoPreview(slot.type)" [alt]="slot.label" class="photo-preview" />
-          <div class="photo-overlay">
+          <!-- Minimal success badge (replaces full overlay) -->
+          <div class="success-badge">
             <mat-icon>check_circle</mat-icon>
           </div>
-          <!-- Remove/Replace button -->
+          <!-- Remove/Replace button - hidden in readOnly mode -->
+          @if (!readOnly) {
           <button
             mat-mini-fab
             color="warn"
@@ -117,7 +131,7 @@ const PHOTO_SLOTS: PhotoSlot[] = [
           >
             <mat-icon>close</mat-icon>
           </button>
-          } @else {
+          } } @else {
           <div class="photo-placeholder">
             <mat-icon>{{ slot.icon }}</mat-icon>
             <span>{{ slot.label }}</span>
@@ -138,12 +152,15 @@ const PHOTO_SLOTS: PhotoSlot[] = [
           </div>
           }
 
-          <!-- Error state -->
+          <!-- Error state with retry button -->
           @if (isPhotoError(slot.type)) {
           <div class="error-overlay">
             <mat-icon>error</mat-icon>
-            <span>{{ getPhotoError(slot.type) }}</span>
-            <button mat-button (click)="$event.stopPropagation()">Pokušaj ponovo</button>
+            <span class="error-message">{{ getPhotoError(slot.type) }}</span>
+            <button mat-button class="retry-btn" (click)="retryUpload($event, slot.type)">
+              <mat-icon>refresh</mat-icon>
+              Pokušaj ponovo
+            </button>
           </div>
           }
 
@@ -153,7 +170,7 @@ const PHOTO_SLOTS: PhotoSlot[] = [
             accept="image/*"
             capture="environment"
             [id]="'file-' + slot.type"
-            (change)="onFileSelected($event, slot.type)"
+            (change)="onFileSelected($event, slot.type, slot.type)"
             hidden
           />
         </div>
@@ -170,7 +187,156 @@ const PHOTO_SLOTS: PhotoSlot[] = [
         </mat-progress-bar>
       </div>
 
-      <!-- Vehicle details form -->
+      <!-- Damage Photos Section (hidden in readOnly if no damage photos exist) -->
+      @if (!readOnly || damagePhotos().length > 0) {
+      <div class="damage-section">
+        <div class="section-header small">
+          <mat-icon>report_problem</mat-icon>
+          <div>
+            <h3>Postojeća oštećenja {{ readOnly ? '' : '(opciono)' }}</h3>
+            <p>
+              {{
+                readOnly
+                  ? 'Dokumentovana oštećenja'
+                  : 'Dokumentujte postojeće ogrebotine, ulubljenja i sl.'
+              }}
+            </p>
+          </div>
+        </div>
+
+        <!-- Damage photo grid -->
+        @if (damagePhotos().length > 0) {
+        <div class="photo-grid damage-grid">
+          @for (slot of damagePhotos(); track slot.id) {
+          <div
+            class="photo-slot damage-slot"
+            [class.completed]="isPhotoCompleted(slot.id)"
+            [class.uploading]="isPhotoUploading(slot.id)"
+            [class.error]="isPhotoError(slot.id)"
+            [class.readonly]="readOnly"
+            (click)="readOnly ? null : triggerFileInput(slot.id)"
+          >
+            @if (getPhotoPreview(slot.id)) {
+            <img [src]="getPhotoPreview(slot.id)" alt="Oštećenje" class="photo-preview" />
+            <div class="success-badge">
+              <mat-icon>check_circle</mat-icon>
+            </div>
+            @if (!readOnly) {
+            <button
+              mat-mini-fab
+              color="warn"
+              class="remove-photo-btn"
+              (click)="removeDamagePhoto($event, slot.id)"
+              aria-label="Ukloni fotografiju"
+            >
+              <mat-icon>close</mat-icon>
+            </button>
+            } } @else {
+            <div class="photo-placeholder">
+              <mat-icon>add_a_photo</mat-icon>
+              <span>Oštećenje</span>
+              <button
+                mat-icon-button
+                class="delete-slot-btn"
+                (click)="removeDamagePhoto($event, slot.id)"
+                aria-label="Ukloni slot"
+              >
+                <mat-icon>delete</mat-icon>
+              </button>
+            </div>
+            } @if (isPhotoUploading(slot.id)) {
+            <div class="upload-progress">
+              <mat-progress-bar
+                mode="determinate"
+                [value]="getUploadProgress(slot.id)"
+              ></mat-progress-bar>
+              <span>{{ getUploadProgress(slot.id) }}%</span>
+            </div>
+            } @if (isPhotoError(slot.id)) {
+            <div class="error-overlay">
+              <mat-icon>error</mat-icon>
+              <span class="error-message">{{ getPhotoError(slot.id) }}</span>
+              <button mat-button class="retry-btn" (click)="retryUpload($event, slot.id)">
+                <mat-icon>refresh</mat-icon>
+                Ponovo
+              </button>
+            </div>
+            }
+
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              [id]="'file-' + slot.id"
+              (change)="onFileSelected($event, slot.id, slot.photoType)"
+              hidden
+            />
+          </div>
+          }
+        </div>
+        }
+
+        <!-- Add damage photo button (hidden in readOnly mode) -->
+        @if (!readOnly) { @if (damagePhotos().length < maxDamagePhotos) {
+        <button mat-stroked-button color="accent" class="add-damage-btn" (click)="addDamagePhoto()">
+          <mat-icon>add_a_photo</mat-icon>
+          Dodaj fotografiju oštećenja
+        </button>
+        } @else {
+        <p class="damage-limit-hint">
+          Maksimalan broj fotografija oštećenja dostignut ({{ maxDamagePhotos }})
+        </p>
+        } }
+      </div>
+      }
+
+      <!-- Vehicle details: Edit mode (form) vs Read-only mode (presentation) -->
+      @if (readOnly) {
+      <!-- Read-only presentation mode -->
+      <div class="review-section">
+        <div class="section-header small">
+          <mat-icon>assignment</mat-icon>
+          <div>
+            <h3>Podaci o vozilu</h3>
+            <p>Uneti podaci pri check-inu</p>
+          </div>
+        </div>
+
+        <div class="review-data-grid">
+          <div class="review-data-item">
+            <mat-icon>speed</mat-icon>
+            <div class="review-data-content">
+              <span class="review-data-label">Kilometraža</span>
+              <span class="review-data-value">{{ status?.odometerReading | number }} km</span>
+            </div>
+          </div>
+
+          <div class="review-data-item">
+            <mat-icon>local_gas_station</mat-icon>
+            <div class="review-data-content">
+              <span class="review-data-label">Nivo goriva</span>
+              <div class="fuel-display">
+                <div class="fuel-bar">
+                  <div class="fuel-fill" [style.width.%]="status?.fuelLevelPercent || 0"></div>
+                </div>
+                <span class="review-data-value">{{ status?.fuelLevelPercent || 0 }}%</span>
+              </div>
+            </div>
+          </div>
+
+          @if (status?.lockboxAvailable) {
+          <div class="review-data-item">
+            <mat-icon>lock</mat-icon>
+            <div class="review-data-content">
+              <span class="review-data-label">Lockbox</span>
+              <span class="review-data-value">Dostupan</span>
+            </div>
+          </div>
+          }
+        </div>
+      </div>
+      } @else {
+      <!-- Edit mode (form) -->
       <mat-expansion-panel [expanded]="allRequiredPhotosUploaded()">
         <mat-expansion-panel-header>
           <mat-panel-title>
@@ -225,8 +391,10 @@ const PHOTO_SLOTS: PhotoSlot[] = [
           </mat-form-field>
         </form>
       </mat-expansion-panel>
+      }
 
-      <!-- Submit button -->
+      <!-- Submit button (hidden in readOnly mode) -->
+      @if (!readOnly) {
       <div class="submit-section">
         <button
           mat-raised-button
@@ -259,6 +427,20 @@ const PHOTO_SLOTS: PhotoSlot[] = [
         </p>
         }
       </div>
+      } @else {
+      <!-- Back button in readOnly mode -->
+      <div class="submit-section">
+        <button
+          mat-stroked-button
+          color="primary"
+          (click)="backFromReview.emit()"
+          class="submit-button"
+        >
+          <mat-icon>arrow_back</mat-icon>
+          Nazad na čekanje
+        </button>
+      </div>
+      }
     </div>
   `,
   styles: [
@@ -272,6 +454,20 @@ const PHOTO_SLOTS: PhotoSlot[] = [
         align-items: center;
         gap: 12px;
         margin-bottom: 20px;
+      }
+
+      .section-header.small {
+        margin-bottom: 12px;
+      }
+
+      .section-header.small h3 {
+        margin: 0;
+        font-size: 16px;
+      }
+
+      .section-header.small p {
+        margin: 2px 0 0;
+        font-size: 13px;
       }
 
       .section-header mat-icon {
@@ -363,23 +559,26 @@ const PHOTO_SLOTS: PhotoSlot[] = [
         object-fit: cover;
       }
 
-      .photo-overlay {
+      /* Minimal success badge (replaces obstructive overlay) */
+      .success-badge {
         position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
+        bottom: 8px;
+        left: 8px;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: var(--success-color, #4caf50);
         display: flex;
         align-items: center;
         justify-content: center;
-        background: rgba(76, 175, 80, 0.8);
-        color: white;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
       }
 
-      .photo-overlay mat-icon {
-        font-size: 48px;
-        width: 48px;
-        height: 48px;
+      .success-badge mat-icon {
+        font-size: 18px;
+        width: 18px;
+        height: 18px;
+        color: white;
       }
 
       .remove-photo-btn {
@@ -422,6 +621,35 @@ const PHOTO_SLOTS: PhotoSlot[] = [
         color: white;
         padding: 8px;
         text-align: center;
+        gap: 4px;
+      }
+
+      .error-overlay mat-icon {
+        font-size: 24px;
+        width: 24px;
+        height: 24px;
+      }
+
+      .error-message {
+        font-size: 11px;
+        line-height: 1.3;
+        max-height: 36px;
+        overflow: hidden;
+      }
+
+      .retry-btn {
+        font-size: 12px !important;
+        padding: 0 8px !important;
+        min-width: auto !important;
+        height: 28px !important;
+        line-height: 28px !important;
+      }
+
+      .retry-btn mat-icon {
+        font-size: 16px;
+        width: 16px;
+        height: 16px;
+        margin-right: 4px;
       }
 
       /* Progress summary */
@@ -439,6 +667,51 @@ const PHOTO_SLOTS: PhotoSlot[] = [
         font-size: 14px;
         font-weight: 500;
         color: var(--color-text-primary, #212121);
+      }
+
+      /* Damage section */
+      .damage-section {
+        margin-bottom: 20px;
+        padding: 16px;
+        background: var(--color-surface-muted, #fafafa);
+        border-radius: 12px;
+        border: 1px dashed var(--color-border-subtle, #ddd);
+      }
+
+      .damage-grid {
+        margin-bottom: 12px;
+      }
+
+      .damage-slot {
+        border-color: var(--warn-color, #ff9800);
+      }
+
+      .damage-slot.completed {
+        border-color: var(--warn-color, #ff9800);
+        border-style: solid;
+      }
+
+      .delete-slot-btn {
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        color: var(--color-text-muted, #757575);
+      }
+
+      .add-damage-btn {
+        width: 100%;
+        height: 44px;
+      }
+
+      .add-damage-btn mat-icon {
+        margin-right: 8px;
+      }
+
+      .damage-limit-hint {
+        font-size: 12px;
+        color: var(--color-text-muted, #757575);
+        text-align: center;
+        margin: 8px 0 0;
       }
 
       /* Details form */
@@ -522,13 +795,130 @@ const PHOTO_SLOTS: PhotoSlot[] = [
           transform: rotate(360deg);
         }
       }
+
+      /* Read-only mode styles */
+      .readonly-banner {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 12px 16px;
+        margin-bottom: 16px;
+        background: var(--info-bg, rgba(25, 118, 210, 0.12));
+        color: var(--info-color, #1565c0);
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 500;
+      }
+
+      .readonly-banner mat-icon {
+        font-size: 20px;
+        width: 20px;
+        height: 20px;
+      }
+
+      .readonly-mode .photo-slot {
+        cursor: default;
+      }
+
+      .readonly-mode .photo-slot:active {
+        transform: none;
+      }
+
+      .photo-slot.readonly {
+        cursor: default;
+      }
+
+      .photo-slot.readonly:active {
+        transform: none;
+      }
+
+      /* Review/Presentation mode styles */
+      .review-section {
+        margin-bottom: 20px;
+        padding: 16px;
+        background: var(--color-surface, white);
+        border-radius: 12px;
+        border: 1px solid var(--color-border-subtle, #e0e0e0);
+      }
+
+      .review-data-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .review-data-item {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 12px;
+        background: var(--color-surface-muted, #fafafa);
+        border-radius: 8px;
+      }
+
+      .review-data-item mat-icon {
+        font-size: 28px;
+        width: 28px;
+        height: 28px;
+        color: var(--primary-color, #1976d2);
+        flex-shrink: 0;
+      }
+
+      .review-data-content {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .review-data-label {
+        font-size: 12px;
+        color: var(--color-text-muted, #757575);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .review-data-value {
+        font-size: 20px;
+        font-weight: 600;
+        color: var(--color-text-primary, #212121);
+      }
+
+      /* Fuel display in review mode */
+      .fuel-display {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .fuel-bar {
+        flex: 1;
+        height: 12px;
+        background: var(--color-border-subtle, #e0e0e0);
+        border-radius: 6px;
+        overflow: hidden;
+      }
+
+      .fuel-fill {
+        height: 100%;
+        background: linear-gradient(
+          90deg,
+          var(--warn-color, #f44336),
+          var(--success-color, #4caf50)
+        );
+        border-radius: 6px;
+        transition: width 0.3s ease;
+      }
     `,
   ],
 })
-export class HostCheckInComponent implements OnInit {
+export class HostCheckInComponent implements OnInit, OnChanges {
   @Input() bookingId!: number;
   @Input() status!: CheckInStatusDTO | null;
+  @Input() readOnly = false;
   @Output() completed = new EventEmitter<void>();
+  @Output() backFromReview = new EventEmitter<void>();
 
   private fb = inject(FormBuilder);
   private snackBar = inject(MatSnackBar);
@@ -540,8 +930,12 @@ export class HostCheckInComponent implements OnInit {
   photoSlots = PHOTO_SLOTS;
   requiredPhotosCount = REQUIRED_HOST_PHOTOS.length;
 
-  // Local photo previews (blob URLs)
-  private localPreviews = signal<Map<CheckInPhotoType, string>>(new Map());
+  // Local photo previews (blob URLs or hydrated backend URLs) keyed by slotId
+  private localPreviews = signal<Map<string, string>>(new Map());
+
+  // Dynamic damage photo slots
+  readonly damagePhotos = signal<DamagePhotoSlot[]>([]);
+  readonly maxDamagePhotos = MAX_DAMAGE_PHOTOS;
 
   // Form validity as a signal for reactive computed properties
   private formValidSignal = signal(false);
@@ -553,8 +947,71 @@ export class HostCheckInComponent implements OnInit {
     lockboxCode: [''],
   });
 
+  /**
+   * Handle input changes - hydrate data when entering read-only mode.
+   */
+  ngOnChanges(changes: SimpleChanges): void {
+    // Handle readOnly mode changes
+    if (changes['readOnly']) {
+      if (this.readOnly) {
+        this.detailsForm.disable();
+      } else {
+        this.detailsForm.enable();
+      }
+    }
+
+    // Hydrate photos from status when status changes in read-only mode
+    if ((changes['status'] || changes['readOnly']) && this.readOnly && this.status) {
+      this.hydratePhotosFromStatus();
+    }
+  }
+
+  /**
+   * Populate localPreviews with full URLs from status.vehiclePhotos.
+   * This ensures images load correctly in read-only/review mode.
+   */
+  private hydratePhotosFromStatus(): void {
+    if (!this.status?.vehiclePhotos) return;
+
+    const newPreviews = new Map<string, string>();
+
+    for (const photo of this.status.vehiclePhotos) {
+      // Construct full URL from backend storage key
+      let fullUrl = photo.url;
+
+      // If URL is relative, prepend the API base URL
+      // Backend returns storage keys like "checkin/session-id/filename.jpg"
+      // Controller expects: /api/checkin/photos/{sessionId}/{filename}
+      // So we strip the "checkin/" prefix from storage key
+      if (fullUrl && !fullUrl.startsWith('http')) {
+        const baseUrl = environment.baseApiUrl.replace(/\/$/, ''); // Remove trailing slash
+        // Strip "checkin/" prefix if present (storage key format)
+        const pathSegment = fullUrl.replace(/^checkin\//, '');
+        fullUrl = `${baseUrl}/checkin/photos/${pathSegment}`;
+      }
+
+      if (fullUrl) {
+        // Use photoType as the key (matches slot.type for required photos)
+        newPreviews.set(photo.photoType, fullUrl);
+      }
+    }
+
+    // Set all hydrated previews at once
+    this.localPreviews.set(newPreviews);
+
+    console.log('[HostCheckIn] Hydrated photos from status:', {
+      photoCount: this.status.vehiclePhotos.length,
+      previewsSet: newPreviews.size,
+    });
+  }
+
   // Computed
   completedPhotosCount = computed(() => {
+    // In read-only mode, count from hydrated previews
+    if (this.readOnly) {
+      return this.localPreviews().size;
+    }
+    // In edit mode, count from upload progress
     const progress = this.checkInService.uploadProgress();
     let count = 0;
     progress.forEach((p) => {
@@ -564,6 +1021,12 @@ export class HostCheckInComponent implements OnInit {
   });
 
   allRequiredPhotosUploaded = computed(() => {
+    // In read-only mode, check hydrated previews
+    if (this.readOnly) {
+      const previews = this.localPreviews();
+      return REQUIRED_HOST_PHOTOS.every((type) => previews.has(type));
+    }
+    // In edit mode, check upload progress
     const progress = this.checkInService.uploadProgress();
     return REQUIRED_HOST_PHOTOS.every((type) => {
       const p = progress.get(type);
@@ -605,8 +1068,8 @@ export class HostCheckInComponent implements OnInit {
   }
 
   // Methods
-  triggerFileInput(photoType: CheckInPhotoType): void {
-    const input = document.getElementById(`file-${photoType}`) as HTMLInputElement;
+  triggerFileInput(slotId: string): void {
+    const input = document.getElementById(`file-${slotId}`) as HTMLInputElement;
     if (input) {
       input.click();
     }
@@ -615,65 +1078,114 @@ export class HostCheckInComponent implements OnInit {
   /**
    * Remove a photo to allow re-uploading a different one.
    */
-  removePhoto(event: Event, photoType: CheckInPhotoType): void {
+  removePhoto(event: Event, slotId: string): void {
     event.stopPropagation(); // Don't trigger file input
 
     // Clear local preview
     this.localPreviews.update((map) => {
       const newMap = new Map(map);
-      const oldUrl = newMap.get(photoType);
+      const oldUrl = newMap.get(slotId);
       if (oldUrl) {
         URL.revokeObjectURL(oldUrl); // Clean up blob URL
       }
-      newMap.delete(photoType);
+      newMap.delete(slotId);
       return newMap;
     });
 
-    // Clear upload progress state
-    this.checkInService.clearPhotoProgress(photoType);
+    // Clear upload progress state (also cancels any in-flight upload)
+    this.checkInService.clearPhotoProgress(slotId);
 
-    this.snackBar.open(`${this.getSlotLabel(photoType)} uklonjena. Možete dodati novu.`, '', {
+    this.snackBar.open(`Fotografija uklonjena. Možete dodati novu.`, '', {
       duration: 2000,
     });
   }
 
-  async onFileSelected(event: Event, photoType: CheckInPhotoType): Promise<void> {
+  /**
+   * Handle file selection - fire-and-forget pattern.
+   * Upload starts immediately in background; no await/blocking.
+   */
+  onFileSelected(event: Event, slotId: string, photoType: CheckInPhotoType): void {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
 
     if (!file) return;
 
-    try {
-      // Create local preview immediately
-      const previewUrl = URL.createObjectURL(file);
-      this.localPreviews.update((map) => {
-        const newMap = new Map(map);
-        newMap.set(photoType, previewUrl);
-        return newMap;
-      });
+    // Create local preview immediately (optimistic UI)
+    const previewUrl = URL.createObjectURL(file);
+    this.localPreviews.update((map) => {
+      const newMap = new Map(map);
+      // Revoke old URL if exists (prevents memory leak on re-upload)
+      const oldUrl = newMap.get(slotId);
+      if (oldUrl) {
+        URL.revokeObjectURL(oldUrl);
+      }
+      newMap.set(slotId, previewUrl);
+      return newMap;
+    });
 
-      // Upload with compression
-      await this.checkInService.uploadPhoto(this.bookingId, file, photoType);
+    // Fire-and-forget: upload starts in background, no await
+    // CheckInService handles compression, GPS injection, progress tracking, error handling
+    this.checkInService.uploadPhoto(this.bookingId, file, slotId, photoType);
 
-      this.snackBar.open(`${this.getSlotLabel(photoType)} postavljena`, '', {
-        duration: 2000,
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Upload nije uspeo';
-      this.snackBar.open(message, 'OK', { duration: 5000 });
-    } finally {
-      // Reset input to allow re-selecting same file
-      input.value = '';
-    }
+    // Reset input to allow re-selecting same file
+    input.value = '';
   }
 
-  isPhotoCompleted(photoType: CheckInPhotoType): boolean {
-    const progress = this.checkInService.uploadProgress().get(photoType);
+  /**
+   * Retry a failed upload by clearing state and re-triggering file input.
+   */
+  retryUpload(event: Event, slotId: string): void {
+    event.stopPropagation();
+    this.checkInService.clearPhotoProgress(slotId);
+    this.triggerFileInput(slotId);
+  }
+
+  // ========== DAMAGE PHOTOS ==========
+
+  /**
+   * Add a new damage photo slot.
+   */
+  addDamagePhoto(): void {
+    if (this.damagePhotos().length >= this.maxDamagePhotos) {
+      this.snackBar.open(`Maksimalno ${this.maxDamagePhotos} fotografija oštećenja`, '', {
+        duration: 3000,
+      });
+      return;
+    }
+
+    const newSlot: DamagePhotoSlot = {
+      id: `damage-${crypto.randomUUID()}`,
+      photoType: 'HOST_DAMAGE_PREEXISTING',
+    };
+
+    this.damagePhotos.update((slots) => [...slots, newSlot]);
+  }
+
+  /**
+   * Remove a damage photo slot.
+   */
+  removeDamagePhoto(event: Event, slotId: string): void {
+    event.stopPropagation();
+
+    // Clear upload state and local preview
+    this.removePhoto(event, slotId);
+
+    // Remove from damage photos array
+    this.damagePhotos.update((slots) => slots.filter((s) => s.id !== slotId));
+  }
+
+  isPhotoCompleted(slotId: string): boolean {
+    // In read-only mode, check if we have a hydrated preview
+    if (this.readOnly) {
+      return this.localPreviews().has(slotId);
+    }
+    // In edit mode, check upload progress
+    const progress = this.checkInService.uploadProgress().get(slotId);
     return progress?.state === 'complete';
   }
 
-  isPhotoUploading(photoType: CheckInPhotoType): boolean {
-    const progress = this.checkInService.uploadProgress().get(photoType);
+  isPhotoUploading(slotId: string): boolean {
+    const progress = this.checkInService.uploadProgress().get(slotId);
     return (
       progress?.state === 'uploading' ||
       progress?.state === 'compressing' ||
@@ -681,27 +1193,27 @@ export class HostCheckInComponent implements OnInit {
     );
   }
 
-  isPhotoError(photoType: CheckInPhotoType): boolean {
-    const progress = this.checkInService.uploadProgress().get(photoType);
+  isPhotoError(slotId: string): boolean {
+    const progress = this.checkInService.uploadProgress().get(slotId);
     return progress?.state === 'error';
   }
 
-  getUploadProgress(photoType: CheckInPhotoType): number {
-    return this.checkInService.uploadProgress().get(photoType)?.progress ?? 0;
+  getUploadProgress(slotId: string): number {
+    return this.checkInService.uploadProgress().get(slotId)?.progress ?? 0;
   }
 
-  getPhotoError(photoType: CheckInPhotoType): string {
-    return this.checkInService.uploadProgress().get(photoType)?.error ?? '';
+  getPhotoError(slotId: string): string {
+    return this.checkInService.uploadProgress().get(slotId)?.error ?? '';
   }
 
-  getPhotoPreview(photoType: CheckInPhotoType): string | null {
+  getPhotoPreview(slotId: string): string | null {
     // Always prefer local blob preview (backend URL may not be accessible from dev server)
-    const localPreview = this.localPreviews().get(photoType);
+    const localPreview = this.localPreviews().get(slotId);
     if (localPreview) {
       return localPreview;
     }
     // Fallback to backend URL only if no local preview (e.g., page reload)
-    const progress = this.checkInService.uploadProgress().get(photoType);
+    const progress = this.checkInService.uploadProgress().get(slotId);
     if (progress?.result?.url) {
       // Prepend API base URL if relative path
       const url = progress.result.url;
@@ -713,8 +1225,8 @@ export class HostCheckInComponent implements OnInit {
     return null;
   }
 
-  private getSlotLabel(photoType: CheckInPhotoType): string {
-    return PHOTO_SLOTS.find((s) => s.type === photoType)?.label ?? photoType;
+  private getSlotLabel(slotId: string): string {
+    return PHOTO_SLOTS.find((s) => s.type === slotId)?.label ?? slotId;
   }
 
   submitHostCheckIn(): void {

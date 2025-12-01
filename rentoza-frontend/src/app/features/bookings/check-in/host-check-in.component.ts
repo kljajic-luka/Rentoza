@@ -47,6 +47,8 @@ import {
   DamagePhotoSlot,
   MAX_DAMAGE_PHOTOS,
 } from '../../../core/models/check-in.model';
+import { LazyImgDirective } from '../../../shared/directives/lazy-img.directive';
+import { generateUUID } from '../../../core/utils/uuid';
 
 interface PhotoSlot {
   type: CheckInPhotoType;
@@ -82,6 +84,7 @@ const PHOTO_SLOTS: PhotoSlot[] = [
     MatExpansionModule,
     MatSliderModule,
     MatSnackBarModule,
+    LazyImgDirective,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -115,7 +118,12 @@ const PHOTO_SLOTS: PhotoSlot[] = [
         >
           <!-- Thumbnail or placeholder -->
           @if (getPhotoPreview(slot.type)) {
-          <img [src]="getPhotoPreview(slot.type)" [alt]="slot.label" class="photo-preview" />
+          <img
+            appLazyImg
+            [lazySrc]="getPhotoPreview(slot.type)!"
+            [alt]="slot.label"
+            class="photo-preview"
+          />
           <!-- Minimal success badge (replaces full overlay) -->
           <div class="success-badge">
             <mat-icon>check_circle</mat-icon>
@@ -217,7 +225,12 @@ const PHOTO_SLOTS: PhotoSlot[] = [
             (click)="readOnly ? null : triggerFileInput(slot.id)"
           >
             @if (getPhotoPreview(slot.id)) {
-            <img [src]="getPhotoPreview(slot.id)" alt="Oštećenje" class="photo-preview" />
+            <img
+              appLazyImg
+              [lazySrc]="getPhotoPreview(slot.id)!"
+              alt="Oštećenje"
+              class="photo-preview"
+            />
             <div class="success-badge">
               <mat-icon>check_circle</mat-icon>
             </div>
@@ -278,14 +291,30 @@ const PHOTO_SLOTS: PhotoSlot[] = [
 
         <!-- Add damage photo button (hidden in readOnly mode) -->
         @if (!readOnly) { @if (damagePhotos().length < maxDamagePhotos) {
-        <button mat-stroked-button color="accent" class="add-damage-btn" (click)="addDamagePhoto()">
+        <button
+          mat-stroked-button
+          color="accent"
+          class="add-damage-btn"
+          [class.near-limit]="damagePhotos().length >= 8"
+          (click)="addDamagePhoto()"
+        >
           <mat-icon>add_a_photo</mat-icon>
-          Dodaj fotografiju oštećenja
+          Dodaj fotografiju oštećenja @if (damagePhotos().length >= 8) {
+          <span class="limit-counter">({{ damagePhotos().length }}/{{ maxDamagePhotos }})</span>
+          }
         </button>
-        } @else {
-        <p class="damage-limit-hint">
-          Maksimalan broj fotografija oštećenja dostignut ({{ maxDamagePhotos }})
+        @if (damagePhotos().length >= 8) {
+        <p class="damage-warning-hint">
+          <mat-icon>info</mat-icon>
+          Preostalo još {{ maxDamagePhotos - damagePhotos().length }} fotografija
         </p>
+        } } @else {
+        <div class="damage-limit-reached">
+          <mat-icon>block</mat-icon>
+          <p class="damage-limit-hint">
+            Maksimalan broj fotografija oštećenja dostignut ({{ maxDamagePhotos }})
+          </p>
+        </div>
         } }
       </div>
       }
@@ -707,11 +736,59 @@ const PHOTO_SLOTS: PhotoSlot[] = [
         margin-right: 8px;
       }
 
+      /* Near limit warning (8-9 photos) */
+      .add-damage-btn.near-limit {
+        border-color: var(--warn-color, #ff9800);
+        color: var(--warn-color, #ff9800);
+      }
+
+      .add-damage-btn .limit-counter {
+        margin-left: 8px;
+        font-size: 12px;
+        opacity: 0.8;
+      }
+
+      .damage-warning-hint {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        font-size: 12px;
+        color: var(--warn-color, #ff9800);
+        text-align: center;
+        margin: 8px 0 0;
+      }
+
+      .damage-warning-hint mat-icon {
+        font-size: 16px;
+        width: 16px;
+        height: 16px;
+      }
+
+      /* Limit reached state */
+      .damage-limit-reached {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        padding: 12px;
+        background: var(--error-bg, rgba(244, 67, 54, 0.08));
+        border-radius: 8px;
+        margin-top: 8px;
+      }
+
+      .damage-limit-reached mat-icon {
+        font-size: 24px;
+        width: 24px;
+        height: 24px;
+        color: var(--warn-color, #f44336);
+      }
+
       .damage-limit-hint {
         font-size: 12px;
         color: var(--color-text-muted, #757575);
         text-align: center;
-        margin: 8px 0 0;
+        margin: 0;
       }
 
       /* Details form */
@@ -1154,7 +1231,7 @@ export class HostCheckInComponent implements OnInit, OnChanges {
     }
 
     const newSlot: DamagePhotoSlot = {
-      id: `damage-${crypto.randomUUID()}`,
+      id: `damage-${generateUUID()}`,
       photoType: 'HOST_DAMAGE_PREEXISTING',
     };
 

@@ -9,17 +9,33 @@
  * Uses IndexedDB via idb-keyval pattern for simplicity.
  * Falls back to in-memory queue if IndexedDB is unavailable.
  *
- * ## Sync Strategy
+ * ## Sync Strategy (Phase 2: Resilience)
+ * - **Exponential Backoff**: Prevents server flooding during spotty 4G
+ *   - Base delay: 1s → 2s → 4s → 8s → 16s → max 32s
+ *   - Jitter: ±20% randomization to prevent thundering herd
  * - Manual "Retry All" button in UI
  * - Background sync when online event fires (if supported)
+ *
+ * ## Rate Limiting
+ * - Max 3 concurrent uploads
+ * - Respects 429 (Too Many Requests) responses
  */
 
 import { Injectable, signal, computed, OnDestroy } from '@angular/core';
 import { QueuedUpload, CheckInPhotoType } from '@core/models/check-in.model';
+import { generateUUID } from '../utils/uuid';
 
 const DB_NAME = 'rentoza-offline-queue';
 const STORE_NAME = 'pending-uploads';
 const DB_VERSION = 1;
+
+// Exponential backoff configuration
+const BACKOFF_CONFIG = {
+  baseDelayMs: 1000, // 1 second
+  maxDelayMs: 32000, // 32 seconds max
+  maxRetries: 10, // Give up after 10 retries
+  jitterFactor: 0.2, // ±20% randomization
+};
 
 @Injectable({ providedIn: 'root' })
 export class OfflineQueueService implements OnDestroy {
@@ -63,7 +79,7 @@ export class OfflineQueueService implements OnDestroy {
     file: Blob,
     clientTimestamp: string
   ): Promise<string> {
-    const id = crypto.randomUUID();
+    const id = generateUUID();
 
     const item: QueuedUpload = {
       id,
@@ -122,7 +138,7 @@ export class OfflineQueueService implements OnDestroy {
   }
 
   /**
-   * Process the queue - attempt to upload all pending items.
+   * Process the queue - attempt to upload all pending items with exponential backoff.
    * Returns array of successfully synced item IDs.
    */
   async processQueue(uploadFn: (item: QueuedUpload) => Promise<boolean>): Promise<string[]> {
@@ -144,6 +160,25 @@ export class OfflineQueueService implements OnDestroy {
       const items = [...this._queue()];
 
       for (const item of items) {
+        // Check if max retries exceeded
+        if (item.retryCount >= BACKOFF_CONFIG.maxRetries) {
+          console.warn(`[OfflineQueue] Max retries exceeded for ${item.id}, skipping`);
+          continue;
+        }
+
+        // Apply exponential backoff delay before retry
+        if (item.retryCount > 0) {
+          const delay = this.calculateBackoffDelay(item.retryCount);
+          console.log(`[OfflineQueue] Waiting ${delay}ms before retry #${item.retryCount + 1}`);
+          await this.sleep(delay);
+
+          // Re-check online status after delay
+          if (!this._isOnline()) {
+            console.log('[OfflineQueue] Lost connection during backoff, stopping sync');
+            break;
+          }
+        }
+
         try {
           const success = await uploadFn(item);
 
@@ -159,6 +194,13 @@ export class OfflineQueueService implements OnDestroy {
           }
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+          // Check for rate limiting
+          if (this.isRateLimitError(error)) {
+            console.warn('[OfflineQueue] Rate limited, applying longer backoff');
+            await this.sleep(BACKOFF_CONFIG.maxDelayMs);
+          }
+
           await this.updateItem(item.id, {
             retryCount: item.retryCount + 1,
             lastAttempt: new Date().toISOString(),
@@ -177,6 +219,39 @@ export class OfflineQueueService implements OnDestroy {
     }
 
     return synced;
+  }
+
+  /**
+   * Calculate exponential backoff delay with jitter.
+   * Formula: min(baseDelay * 2^retryCount, maxDelay) * (1 ± jitter)
+   */
+  private calculateBackoffDelay(retryCount: number): number {
+    const exponentialDelay = Math.min(
+      BACKOFF_CONFIG.baseDelayMs * Math.pow(2, retryCount),
+      BACKOFF_CONFIG.maxDelayMs
+    );
+
+    // Add jitter: random value between -jitter and +jitter
+    const jitter = 1 + (Math.random() * 2 - 1) * BACKOFF_CONFIG.jitterFactor;
+
+    return Math.round(exponentialDelay * jitter);
+  }
+
+  /**
+   * Check if error is a rate limit (429) response.
+   */
+  private isRateLimitError(error: unknown): boolean {
+    if (error && typeof error === 'object' && 'status' in error) {
+      return (error as { status: number }).status === 429;
+    }
+    return false;
+  }
+
+  /**
+   * Sleep helper for backoff delays.
+   */
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**

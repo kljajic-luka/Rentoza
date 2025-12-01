@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, inject, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { filter, take } from 'rxjs';
@@ -10,6 +10,7 @@ import { MatChipsModule } from '@angular/material/chips';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import { MatDividerModule } from '@angular/material/divider';
 
 import { Booking } from '@core/models/booking.model';
 import { BookingService } from '@core/services/booking.service';
@@ -35,6 +36,7 @@ import {
     MatProgressSpinnerModule,
     MatSnackBarModule,
     MatDialogModule,
+    MatDividerModule,
   ],
   templateUrl: './owner-bookings.component.html',
   styleUrls: ['./owner-bookings.component.scss'],
@@ -50,6 +52,14 @@ export class OwnerBookingsComponent implements OnInit {
   protected readonly upcomingBookings = signal<Booking[]>([]);
   protected readonly activeBookings = signal<Booking[]>([]);
   protected readonly completedBookings = signal<Booking[]>([]);
+
+  protected readonly hasAnyBooking = computed(() => {
+    return (
+      this.upcomingBookings().length > 0 ||
+      this.activeBookings().length > 0 ||
+      this.completedBookings().length > 0
+    );
+  });
 
   ngOnInit(): void {
     this.loadOwnerBookings();
@@ -308,5 +318,44 @@ export class OwnerBookingsComponent implements OnInit {
         this.loadOwnerBookings();
       }
     });
+  }
+
+  protected openBookingDetails(booking: Booking): void {
+    import('../../dialogs/owner-booking-details-dialog/owner-booking-details-dialog.component').then(
+      ({ OwnerBookingDetailsDialogComponent }) => {
+        const dialogRef = this.dialog.open(OwnerBookingDetailsDialogComponent, {
+          width: '800px',
+          maxWidth: '95vw',
+          maxHeight: '90vh',
+          data: { bookingId: booking.id },
+          panelClass: 'owner-booking-details-dialog-panel',
+        });
+
+        // Optional: Refresh bookings if actions were taken in dialog (e.g. cancellation)
+        dialogRef.afterClosed().subscribe((result) => {
+          if (result?.refresh) {
+            this.loadOwnerBookings();
+          }
+        });
+      }
+    );
+  }
+
+  // Helper for template calculations
+  protected getNetEarnings(totalPrice: number): number {
+    // Platform fee is 20%
+    return totalPrice * 0.8;
+  }
+
+  protected getTimeUntil(dateStr: string): string {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = date.getTime() - now.getTime();
+    const days = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+    
+    if (days < 0) return 'Završeno';
+    if (days === 0) return 'Danas';
+    if (days === 1) return 'Sutra';
+    return `za ${days} dana`;
   }
 }

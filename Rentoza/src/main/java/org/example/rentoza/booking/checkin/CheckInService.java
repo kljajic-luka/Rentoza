@@ -14,6 +14,7 @@ import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.notification.NotificationService;
 import org.example.rentoza.notification.NotificationType;
 import org.example.rentoza.notification.dto.CreateNotificationRequestDTO;
+import org.example.rentoza.security.LockboxEncryptionService;
 import org.example.rentoza.user.User;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.jpa.repository.Lock;
@@ -58,6 +59,7 @@ public class CheckInService {
     private final CheckInPhotoRepository photoRepository;
     private final GeofenceService geofenceService;
     private final NotificationService notificationService;
+    private final LockboxEncryptionService lockboxEncryptionService;
     
     // Metrics
     private final Counter hostCompletedCounter;
@@ -74,12 +76,14 @@ public class CheckInService {
             CheckInPhotoRepository photoRepository,
             GeofenceService geofenceService,
             NotificationService notificationService,
+            LockboxEncryptionService lockboxEncryptionService,
             MeterRegistry meterRegistry) {
         this.bookingRepository = bookingRepository;
         this.eventService = eventService;
         this.photoRepository = photoRepository;
         this.geofenceService = geofenceService;
         this.notificationService = notificationService;
+        this.lockboxEncryptionService = lockboxEncryptionService;
         
         this.hostCompletedCounter = Counter.builder("checkin.host.completed")
                 .description("Host check-in completions")
@@ -163,10 +167,12 @@ public class CheckInService {
             booking.setHostCheckInLongitude(BigDecimal.valueOf(dto.getHostLongitude()));
         }
         
-        // Handle lockbox code (encrypted storage would be implemented separately)
+        // Handle lockbox code with AES-256-GCM encryption
         if (dto.getLockboxCode() != null && !dto.getLockboxCode().isBlank()) {
-            // TODO: Encrypt with LockboxEncryptionService
-            booking.setLockboxCodeEncrypted(dto.getLockboxCode().getBytes());
+            byte[] encryptedCode = lockboxEncryptionService.encrypt(dto.getLockboxCode());
+            booking.setLockboxCodeEncrypted(encryptedCode);
+            
+            log.info("[CheckIn] Lockbox code encrypted and stored for booking {}", booking.getId());
             
             eventService.recordEvent(
                 booking,

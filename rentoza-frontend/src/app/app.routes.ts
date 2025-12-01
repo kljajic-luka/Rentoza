@@ -7,6 +7,7 @@ import { guestGuard } from '@core/guards/guest.guard';
 export const routes: Routes = [
   {
     path: '',
+    canActivate: [RoleRedirectGuard],
     loadComponent: () =>
       import('@features/home/pages/home/home.component').then((m) => m.HomeComponent),
   },

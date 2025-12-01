@@ -4,9 +4,14 @@
  * Implements aggressive client-side image compression to handle Serbian 4G/Edge constraints.
  * **CRITICAL**: Preserves EXIF metadata using piexifjs to maintain timestamp/GPS for fraud prevention.
  *
- * ## Architecture Decision
- * Uses Canvas API instead of Web Workers for broader browser compatibility on mobile.
- * The compression is async and yields to the main thread periodically.
+ * ## Architecture Decision (Phase 2: Anti-Jank Layer)
+ * Primary: Web Worker with OffscreenCanvas for 60fps UI during compression
+ * Fallback: Main thread Canvas API for browsers without Worker/OffscreenCanvas support
+ *
+ * ## Web Worker Strategy
+ * - Offloads CPU-intensive compression to a separate thread
+ * - Prevents UI jank on low-end Android devices during "Snap & Go" flow
+ * - Automatically falls back to main thread if Web Workers unavailable
  *
  * ## EXIF Preservation
  * The canvas.toBlob() API strips EXIF metadata. We use piexifjs to:
@@ -18,11 +23,13 @@
  * All images must be < 500KB before upload (backend safety limit is 10MB).
  *
  * ## Memory Management
- * Properly revokes Blob URLs to prevent memory leaks on mobile browsers.
+ * - Web Worker: Explicitly closes ImageBitmaps after use to prevent OOM on iOS
+ * - Main Thread: Revokes Blob URLs to prevent memory leaks on mobile browsers
  */
 
-import { Injectable, signal, computed } from '@angular/core';
+import { Injectable, signal, computed, OnDestroy } from '@angular/core';
 import * as piexif from 'piexifjs';
+import { generateUUID } from '../utils/uuid';
 
 export interface CompressionResult {
   originalSize: number;
@@ -54,7 +61,7 @@ const DEFAULT_OPTIONS: CompressionOptions = {
 };
 
 @Injectable({ providedIn: 'root' })
-export class PhotoCompressionService {
+export class PhotoCompressionService implements OnDestroy {
   // Reactive state for UI feedback
   private readonly _isCompressing = signal(false);
   private readonly _compressionProgress = signal(0);
@@ -67,8 +74,122 @@ export class PhotoCompressionService {
   // Track object URLs for cleanup
   private activeObjectUrls = new Set<string>();
 
+  // Web Worker management
+  private worker: Worker | null = null;
+  private workerSupported = false;
+  private pendingRequests = new Map<
+    string,
+    {
+      resolve: (result: { data: ArrayBuffer; width: number; height: number }) => void;
+      reject: (error: Error) => void;
+    }
+  >();
+
+  constructor() {
+    this.initializeWorker();
+  }
+
+  ngOnDestroy(): void {
+    this.terminateWorker();
+    this.revokeAllObjectUrls();
+  }
+
+  /**
+   * Initialize Web Worker if supported.
+   * Falls back to main thread if Worker or OffscreenCanvas not available.
+   */
+  private initializeWorker(): void {
+    // Check for Web Worker and OffscreenCanvas support
+    if (typeof Worker === 'undefined') {
+      console.log('[Compression] Web Workers not supported, using main thread');
+      return;
+    }
+
+    if (typeof OffscreenCanvas === 'undefined') {
+      console.log('[Compression] OffscreenCanvas not supported, using main thread');
+      return;
+    }
+
+    try {
+      // Create worker from the TypeScript worker file
+      // Angular's build system handles the worker bundling
+      this.worker = new Worker(new URL('../workers/compression.worker', import.meta.url), {
+        type: 'module',
+      });
+
+      this.worker.onmessage = (event) => this.handleWorkerMessage(event);
+      this.worker.onerror = (error) => this.handleWorkerError(error);
+
+      this.workerSupported = true;
+      console.log('[Compression] Web Worker initialized successfully');
+    } catch (error) {
+      console.warn('[Compression] Failed to initialize Web Worker, using main thread:', error);
+      this.worker = null;
+      this.workerSupported = false;
+    }
+  }
+
+  /**
+   * Handle messages from the compression worker.
+   */
+  private handleWorkerMessage(event: MessageEvent): void {
+    const { type, id, success, data, width, height, error, percent } = event.data;
+
+    if (type === 'ready') {
+      console.log('[Compression] Worker ready');
+      return;
+    }
+
+    if (type === 'progress') {
+      this._compressionProgress.set(percent);
+      return;
+    }
+
+    if (type === 'result') {
+      const pending = this.pendingRequests.get(id);
+      if (!pending) return;
+
+      this.pendingRequests.delete(id);
+
+      if (success && data) {
+        pending.resolve({ data, width, height });
+      } else {
+        pending.reject(new Error(error || 'Compression failed'));
+      }
+    }
+  }
+
+  /**
+   * Handle worker errors.
+   */
+  private handleWorkerError(error: ErrorEvent): void {
+    console.error('[Compression] Worker error:', error);
+
+    // Reject all pending requests
+    this.pendingRequests.forEach(({ reject }) => {
+      reject(new Error('Worker error: ' + error.message));
+    });
+    this.pendingRequests.clear();
+
+    // Terminate and recreate worker
+    this.terminateWorker();
+    this.initializeWorker();
+  }
+
+  /**
+   * Terminate the worker and clean up.
+   */
+  private terminateWorker(): void {
+    if (this.worker) {
+      this.worker.terminate();
+      this.worker = null;
+    }
+    this.pendingRequests.clear();
+  }
+
   /**
    * Compress an image file to meet size constraints.
+   * Uses Web Worker when available, falls back to main thread.
    * EXIF metadata is preserved by default for check-in photo validation.
    *
    * @param file - Original image file
@@ -109,24 +230,15 @@ export class PhotoCompressionService {
           console.warn('[Compression] Failed to extract EXIF, continuing without:', e);
         }
       }
-      this._compressionProgress.set(15);
+      this._compressionProgress.set(10);
 
-      // Load image
-      const img = await this.loadImage(file);
-      this._compressionProgress.set(25);
-
-      // Calculate target dimensions maintaining aspect ratio
-      const { width, height } = this.calculateDimensions(
-        img.width,
-        img.height,
-        opts.maxWidth,
-        opts.maxHeight
-      );
-      this._compressionProgress.set(40);
-
-      // Compress with iterative quality reduction if needed
-      let result = await this.compressWithQualityReduction(img, width, height, opts);
-      this._compressionProgress.set(85);
+      // Try Web Worker first, fall back to main thread
+      let result: CompressionResult;
+      if (this.workerSupported && this.worker) {
+        result = await this.compressWithWorker(file, opts);
+      } else {
+        result = await this.compressOnMainThread(file, opts);
+      }
 
       // Re-inject EXIF into compressed image
       let exifPreserved = false;
@@ -146,7 +258,9 @@ export class PhotoCompressionService {
       console.log(
         `[Compression] ${file.name}: ${this.formatSize(file.size)} → ${this.formatSize(
           result.compressedSize
-        )} (${result.compressionRatio.toFixed(1)}x) | EXIF: ${exifPreserved ? '✓' : '✗'}`
+        )} (${result.compressionRatio.toFixed(1)}x) | EXIF: ${
+          exifPreserved ? '✓' : '✗'
+        } | Worker: ${this.workerSupported ? '✓' : '✗'}`
       );
 
       return { ...result, exifPreserved };
@@ -154,6 +268,91 @@ export class PhotoCompressionService {
       this._isCompressing.set(false);
       this._currentFile.set(null);
     }
+  }
+
+  /**
+   * Compress image using Web Worker (off main thread).
+   * Keeps UI responsive during heavy compression.
+   */
+  private async compressWithWorker(
+    file: File,
+    options: CompressionOptions
+  ): Promise<CompressionResult> {
+    const requestId = generateUUID();
+    const arrayBuffer = await file.arrayBuffer();
+
+    return new Promise((resolve, reject) => {
+      this.pendingRequests.set(requestId, {
+        resolve: (result) => {
+          const blob = new Blob([result.data], { type: options.mimeType });
+          resolve({
+            originalSize: file.size,
+            compressedSize: blob.size,
+            compressionRatio: file.size / blob.size,
+            blob,
+            width: result.width,
+            height: result.height,
+            mimeType: options.mimeType,
+            exifPreserved: false, // Will be set by caller after EXIF injection
+          });
+        },
+        reject,
+      });
+
+      // Send to worker (transfer the ArrayBuffer for zero-copy)
+      this.worker!.postMessage(
+        {
+          type: 'compress',
+          id: requestId,
+          imageData: arrayBuffer,
+          mimeType: file.type,
+          options: {
+            maxWidth: options.maxWidth,
+            maxHeight: options.maxHeight,
+            quality: options.quality,
+            targetSizeKB: options.targetSizeKB,
+            outputMimeType: options.mimeType,
+          },
+        },
+        [arrayBuffer]
+      );
+
+      // Timeout after 30 seconds
+      setTimeout(() => {
+        if (this.pendingRequests.has(requestId)) {
+          this.pendingRequests.delete(requestId);
+          reject(new Error('Compression timeout'));
+        }
+      }, 30000);
+    });
+  }
+
+  /**
+   * Compress image on main thread (fallback).
+   * Used when Web Workers are not supported.
+   */
+  private async compressOnMainThread(
+    file: File,
+    options: CompressionOptions
+  ): Promise<CompressionResult> {
+    // Load image
+    const img = await this.loadImage(file);
+    this._compressionProgress.set(25);
+
+    // Calculate target dimensions maintaining aspect ratio
+    const { width, height } = this.calculateDimensions(
+      img.width,
+      img.height,
+      options.maxWidth,
+      options.maxHeight
+    );
+    this._compressionProgress.set(40);
+
+    // Compress with iterative quality reduction if needed
+    const result = await this.compressWithQualityReduction(img, width, height, options);
+    this._compressionProgress.set(85);
+
+    return result;
   }
 
   /**

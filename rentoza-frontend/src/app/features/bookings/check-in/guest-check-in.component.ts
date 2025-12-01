@@ -38,6 +38,8 @@ import {
   HotspotMarkingDTO,
 } from '../../../core/models/check-in.model';
 import { VehicleWireframeComponent } from './vehicle-wireframe.component';
+import { PhotoViewerDialogComponent } from '../../../shared/components/photo-viewer-dialog/photo-viewer-dialog.component';
+import { LazyImgDirective } from '../../../shared/directives/lazy-img.directive';
 import { environment } from '../../../../environments/environment';
 
 @Component({
@@ -57,6 +59,7 @@ import { environment } from '../../../../environments/environment';
     MatSnackBarModule,
     MatProgressSpinnerModule,
     VehicleWireframeComponent,
+    LazyImgDirective,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -90,7 +93,12 @@ import { environment } from '../../../../environments/environment';
       <div class="photo-gallery">
         @for (photo of status?.vehiclePhotos; track photo.photoId) {
         <div class="photo-item" (click)="openPhotoViewer(photo)">
-          <img [src]="getPhotoUrl(photo)" [alt]="getPhotoLabel(photo.photoType)" />
+          <img
+            appLazyImg
+            [lazySrc]="getPhotoUrl(photo)"
+            [alt]="getPhotoLabel(photo.photoType)"
+            rootMargin="200px"
+          />
           <div class="photo-label">{{ getPhotoLabel(photo.photoType) }}</div>
 
           <!-- EXIF validation badge -->
@@ -589,8 +597,23 @@ export class GuestCheckInComponent {
   }
 
   openPhotoViewer(photo: CheckInPhotoDTO): void {
-    // TODO: Open full-screen photo viewer dialog
-    console.log('Open photo viewer', photo);
+    const photos: CheckInPhotoDTO[] = this.status?.vehiclePhotos || [];
+    const startIndex = photos.findIndex((p: CheckInPhotoDTO) => p.photoId === photo.photoId);
+
+    this.dialog.open(PhotoViewerDialogComponent, {
+      data: {
+        photos: photos.map((p: CheckInPhotoDTO) => ({
+          ...p,
+          url: this.getPhotoUrl(p),
+        })),
+        startIndex: startIndex >= 0 ? startIndex : 0,
+      },
+      panelClass: 'photo-viewer-dialog-panel',
+      maxWidth: '100vw',
+      maxHeight: '100vh',
+      width: '100vw',
+      height: '100vh',
+    });
   }
 
   onHotspotClicked(location: HotspotLocation): void {

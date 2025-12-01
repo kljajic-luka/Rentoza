@@ -6,6 +6,7 @@
  * - Swipe-to-confirm gesture for physical handoff
  * - Optional physical ID verification (host verifies guest's ID)
  * - Digital signatures captured
+ * - **Geofence Distance Indicator** (Phase 2: Trust UI)
  */
 import {
   Component,
@@ -32,6 +33,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 
 import { CheckInService } from '../../../core/services/check-in.service';
+import { GeolocationService } from '../../../core/services/geolocation.service';
 import { CheckInStatusDTO } from '../../../core/models/check-in.model';
 
 @Component({
@@ -57,6 +59,26 @@ import { CheckInStatusDTO } from '../../../core/models/check-in.model';
         <h2>Potvrda primopredaje</h2>
         <p>{{ roleInstructions() }}</p>
       </div>
+
+      <!-- Geofence Distance Badge -->
+      @if (status?.geofenceDistanceMeters !== null && status?.geofenceDistanceMeters !== undefined)
+      {
+      <div
+        class="geofence-badge"
+        [class.close]="isWithinGeofence()"
+        [class.far]="!isWithinGeofence()"
+      >
+        <mat-icon>{{ isWithinGeofence() ? 'location_on' : 'location_off' }}</mat-icon>
+        <span class="distance-text">
+          Udaljenost do vozila: {{ formatDistance(status!.geofenceDistanceMeters!) }}
+        </span>
+        @if (isWithinGeofence()) {
+        <mat-icon class="status-icon">check_circle</mat-icon>
+        } @else {
+        <mat-icon class="status-icon warning-icon">warning</mat-icon>
+        }
+      </div>
+      }
 
       <!-- Status indicators -->
       <mat-card class="status-card">
@@ -336,6 +358,77 @@ import { CheckInStatusDTO } from '../../../core/models/check-in.model';
         margin-top: 8px;
         font-size: 12px;
       }
+
+      /* Geofence Distance Badge */
+      .geofence-badge {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 16px;
+        border-radius: 12px;
+        font-size: 14px;
+        font-weight: 500;
+        width: 100%;
+        box-sizing: border-box;
+      }
+
+      .geofence-badge.close {
+        background: rgba(34, 197, 94, 0.15);
+        color: #166534;
+        border: 1px solid rgba(34, 197, 94, 0.3);
+      }
+
+      .geofence-badge.far {
+        background: rgba(239, 68, 68, 0.15);
+        color: #b91c1c;
+        border: 1px solid rgba(239, 68, 68, 0.3);
+      }
+
+      .geofence-badge mat-icon {
+        font-size: 20px;
+        width: 20px;
+        height: 20px;
+      }
+
+      .geofence-badge .distance-text {
+        flex: 1;
+      }
+
+      .geofence-badge .status-icon {
+        font-size: 18px;
+        width: 18px;
+        height: 18px;
+      }
+
+      .geofence-badge.close .status-icon {
+        color: #16a34a;
+      }
+
+      .geofence-badge .warning-icon {
+        color: #dc2626;
+        animation: pulse-warning 1.5s ease-in-out infinite;
+      }
+
+      @keyframes pulse-warning {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.5;
+        }
+      }
+
+      /* Dark theme adjustments */
+      :host-context(.theme-dark) .geofence-badge.close {
+        background: rgba(34, 197, 94, 0.2);
+        color: #86efac;
+      }
+
+      :host-context(.theme-dark) .geofence-badge.far {
+        background: rgba(239, 68, 68, 0.2);
+        color: #fca5a5;
+      }
     `,
   ],
 })
@@ -348,6 +441,10 @@ export class HandshakeComponent implements OnInit, OnDestroy {
 
   private snackBar = inject(MatSnackBar);
   checkInService = inject(CheckInService);
+  private geolocationService = inject(GeolocationService);
+
+  // Geofence threshold in meters (100m = close, >100m = far)
+  private readonly GEOFENCE_THRESHOLD_METERS = 100;
 
   // State
   verifyPhysicalId = false;
@@ -387,6 +484,27 @@ export class HandshakeComponent implements OnInit, OnDestroy {
   canConfirm = computed(() => {
     return !this._isConfirmed() && !this.checkInService.isLoading();
   });
+
+  /**
+   * Check if user is within geofence threshold (close to vehicle).
+   * Green if < 100m, Red if >= 100m.
+   */
+  isWithinGeofence(): boolean {
+    const distance = this.status?.geofenceDistanceMeters;
+    if (distance === null || distance === undefined) return true; // Assume OK if no data
+    return distance < this.GEOFENCE_THRESHOLD_METERS;
+  }
+
+  /**
+   * Format distance for display.
+   * Shows meters if < 1000m, otherwise km.
+   */
+  formatDistance(meters: number): string {
+    if (meters < 1000) {
+      return `${Math.round(meters)}m`;
+    }
+    return `${(meters / 1000).toFixed(1)}km`;
+  }
 
   // Touch handlers
   onTouchStart(event: TouchEvent): void {

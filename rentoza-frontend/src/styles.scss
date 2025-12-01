@@ -293,6 +293,39 @@ hr {
   }
 }
 
+/* 🖼️ Photo Viewer Dialog (Full-screen with pinch-zoom) */
+.photo-viewer-dialog-panel {
+  .mat-mdc-dialog-container {
+    padding: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    overflow: hidden !important;
+    max-width: 100vw !important;
+    max-height: 100vh !important;
+
+    .mat-mdc-dialog-surface {
+      background: transparent !important;
+      box-shadow: none !important;
+      border-radius: 0 !important;
+    }
+  }
+}
+
+// Override for photo viewer on mobile - no bottom sheet behavior
+@media (max-width: 768px) {
+  .cdk-overlay-pane:has(.photo-viewer-dialog-panel) {
+    position: fixed !important;
+    inset: 0 !important;
+    animation: none !important;
+    
+    .mat-mdc-dialog-container {
+      border-radius: 0 !important;
+      padding-bottom: 0 !important;
+    }
+  }
+}
+
 /* ============================================================================
    📱 MOBILE UX FOUNDATION LAYER (Phase 1)
    ============================================================================

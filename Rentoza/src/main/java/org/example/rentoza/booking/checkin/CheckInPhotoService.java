@@ -8,6 +8,7 @@ import org.example.rentoza.booking.BookingStatus;
 import org.example.rentoza.booking.checkin.ExifValidationService.ExifValidationResult;
 import org.example.rentoza.booking.checkin.dto.CheckInPhotoDTO;
 import org.example.rentoza.exception.ResourceNotFoundException;
+import org.example.rentoza.security.LockboxEncryptionService;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
 import org.springframework.beans.factory.annotation.Value;
@@ -42,6 +43,7 @@ public class CheckInPhotoService {
     private final CheckInPhotoRepository photoRepository;
     private final CheckInEventService eventService;
     private final ExifValidationService exifValidationService;
+    private final LockboxEncryptionService lockboxEncryptionService;
 
     @Value("${app.checkin.photo.upload-dir:uploads/checkin}")
     private String uploadDir;
@@ -248,9 +250,11 @@ public class CheckInPhotoService {
         
         bookingRepository.save(booking);
         
-        // TODO: Decrypt with LockboxEncryptionService
-        // For now, return raw bytes as string (would be encrypted in production)
-        return new String(booking.getLockboxCodeEncrypted());
+        // Decrypt the lockbox code using AES-256-GCM
+        String decryptedCode = lockboxEncryptionService.decrypt(booking.getLockboxCodeEncrypted());
+        log.info("[CheckIn] Lockbox code decrypted and revealed for booking {} to user {}", bookingId, userId);
+        
+        return decryptedCode;
     }
 
     private CheckInPhotoDTO mapToDTO(CheckInPhoto photo) {

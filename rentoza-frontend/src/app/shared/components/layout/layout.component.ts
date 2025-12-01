@@ -171,6 +171,21 @@ export class LayoutComponent implements OnInit {
     return user.roles?.some((role) => link.roles!.includes(role)) ?? false;
   }
 
+  protected canShowSearchButton(user: UserProfile | null): boolean {
+    // Show for guests
+    if (!user) {
+      return true;
+    }
+
+    // Show for USER role
+    if (user.roles?.includes('USER')) {
+      return true;
+    }
+
+    // Hide for OWNER role (unless they also have USER role, handled above)
+    return false;
+  }
+
   protected logout(): void {
     this.authService.logout();
     this.router.navigate(['/']);

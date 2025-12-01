@@ -197,7 +197,8 @@ public class SecurityConfig {
                             .hasAnyAuthority("ROLE_USER", "ROLE_OWNER", "ROLE_ADMIN", "INTERNAL_SERVICE")
                         // Internal service endpoints - only specific endpoints require INTERNAL_SERVICE authority
                         .requestMatchers(HttpMethod.GET, "/api/users/profile/*").hasAuthority("INTERNAL_SERVICE")
-                        .requestMatchers(HttpMethod.GET, "/api/bookings/*").hasAuthority("INTERNAL_SERVICE")
+                        // Booking details - accessible to authenticated users (RLS enforced in controller)
+                        .requestMatchers(HttpMethod.GET, "/api/bookings/*").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/bookings/debug/**").hasAuthority("INTERNAL_SERVICE")
                         .requestMatchers("/api/favorites/**").authenticated()
                         .anyRequest().authenticated()

@@ -1,0 +1,181 @@
+<div class="dialog-container">
+  <!-- Header -->
+  <div class="dialog-header">
+    <h2 mat-dialog-title>Detalji rezervacije #{{ data.bookingId }}</h2>
+    <button mat-icon-button (click)="close()" class="close-btn">
+      <mat-icon>close</mat-icon>
+    </button>
+  </div>
+
+  <mat-dialog-content class="dialog-content">
+    @if (isLoading()) {
+      <div class="loading-state">
+        <mat-spinner diameter="48"></mat-spinner>
+        <p>Učitavanje detalja...</p>
+      </div>
+    } @else if (error()) {
+      <div class="error-state">
+        <mat-icon color="warn">error</mat-icon>
+        <p>{{ error() }}</p>
+        <button mat-stroked-button (click)="loadBookingDetails()">Pokušaj ponovo</button>
+      </div>
+    } @else if (booking(); as b) {
+      <!-- Status Banner -->
+      <div class="status-banner" [ngClass]="getStatusClass(b.status)">
+        <mat-icon>info</mat-icon>
+        <span>Status: <strong>{{ getStatusLabel(b.status) }}</strong></span>
+      </div>
+
+      <mat-tab-group class="details-tabs" mat-stretch-tabs="false" mat-align-tabs="start">
+        
+        <!-- TAB 1: OVERVIEW -->
+        <mat-tab label="Pregled">
+          <div class="tab-body">
+            <!-- Renter Profile Card -->
+            <div class="section-card renter-card">
+              <div class="renter-header">
+                <div class="avatar-placeholder">
+                  {{ b.renter.firstName?.charAt(0) }}{{ b.renter.lastName?.charAt(0) }}
+                </div>
+                <div class="renter-info">
+                  <h3>{{ b.renter.firstName }} {{ b.renter.lastName }}</h3>
+                  <p class="renter-meta">Zakupac</p>
+                </div>
+              </div>
+              
+              <mat-divider></mat-divider>
+              
+              <div class="renter-actions">
+                @if (showContactInfo()) {
+                  <div class="contact-row">
+                    <mat-icon>phone</mat-icon>
+                    <span>{{ b.renter.phone || 'Broj nije dostupan' }}</span>
+                  </div>
+                  <div class="contact-row">
+                    <mat-icon>email</mat-icon>
+                    <span>{{ b.renter.email || 'Email nije dostupan' }}</span>
+                  </div>
+                  <button mat-stroked-button color="primary" class="message-btn" (click)="sendMessage()">
+                    <mat-icon>chat</mat-icon>
+                    Pošalji poruku
+                  </button>
+                } @else {
+                  <div class="privacy-notice">
+                    <mat-icon>visibility_off</mat-icon>
+                    <span>Kontakt podaci su dostupni samo za potvrđene rezervacije.</span>
+                  </div>
+                }
+              </div>
+            </div>
+
+            <!-- Vehicle Info -->
+            <div class="section-card vehicle-card">
+              <h3>Vozilo</h3>
+              <div class="vehicle-row">
+                <mat-icon>directions_car</mat-icon>
+                <span>{{ b.car.brand }} {{ b.car.model }} ({{ b.car.year }})</span>
+              </div>
+              <div class="vehicle-row">
+                <mat-icon>calendar_today</mat-icon>
+                <span>{{ b.startDate | date:'dd.MM.yyyy' }} - {{ b.endDate | date:'dd.MM.yyyy' }}</span>
+              </div>
+              <div class="vehicle-row">
+                <mat-icon>schedule</mat-icon>
+                <span>{{ durationDays() }} dana</span>
+              </div>
+            </div>
+          </div>
+        </mat-tab>
+
+        <!-- TAB 2: FINANCIALS -->
+        <mat-tab label="Finansije">
+          <div class="tab-body">
+            <div class="financial-ledger">
+              <div class="ledger-row">
+                <span>Cena najma ({{ durationDays() }} dana)</span>
+                <span>{{ grossTotal() | currency:'RSD':'symbol':'1.0-0' }}</span>
+              </div>
+              <!-- Placeholder for extras if any -->
+              
+              <mat-divider></mat-divider>
+              
+              <div class="ledger-row gross">
+                <span>Ukupno (Bruto)</span>
+                <span>{{ grossTotal() | currency:'RSD':'symbol':'1.0-0' }}</span>
+              </div>
+
+              <div class="ledger-row fee">
+                <span>Platformska provizija (20%)</span>
+                <span class="negative">- {{ platformFee() | currency:'RSD':'symbol':'1.0-0' }}</span>
+              </div>
+
+              <mat-divider></mat-divider>
+
+              <div class="ledger-row net">
+                <span>Vaša zarada (Neto)</span>
+                <span class="highlight">{{ netEarnings() | currency:'RSD':'symbol':'1.0-0' }}</span>
+              </div>
+            </div>
+            
+            <p class="financial-note">
+              <mat-icon>info_outline</mat-icon>
+              Isplata se vrši 24h nakon završetka putovanja.
+            </p>
+          </div>
+        </mat-tab>
+
+        <!-- TAB 3: TIMELINE -->
+        <mat-tab label="Vremenska linija">
+          <div class="tab-body">
+            <div class="timeline">
+              <div class="timeline-step" [class.completed]="isStepCompleted('created')">
+                <div class="step-icon"><mat-icon>add_circle</mat-icon></div>
+                <div class="step-content">
+                  <h4>Zahtev kreiran</h4>
+                  <p>{{ b.createdAt | date:'dd.MM.yyyy HH:mm' }}</p>
+                </div>
+              </div>
+
+              <div class="timeline-step" [class.completed]="isStepCompleted('approved')">
+                <div class="step-icon"><mat-icon>check_circle</mat-icon></div>
+                <div class="step-content">
+                  <h4>Rezervacija potvrđena</h4>
+                  <p *ngIf="isStepCompleted('approved')">Spremno za check-in</p>
+                </div>
+              </div>
+
+              <div class="timeline-step" [class.completed]="isStepCompleted('checkin')">
+                <div class="step-icon"><mat-icon>camera_alt</mat-icon></div>
+                <div class="step-content">
+                  <h4>Check-in završen</h4>
+                  <p *ngIf="isStepCompleted('checkin')">Primopredaja obavljena</p>
+                </div>
+              </div>
+
+              <div class="timeline-step" [class.completed]="isStepCompleted('started')">
+                <div class="step-icon"><mat-icon>directions_car</mat-icon></div>
+                <div class="step-content">
+                  <h4>Putovanje započeto</h4>
+                  <p>{{ b.startDate | date:'dd.MM.yyyy' }}</p>
+                </div>
+              </div>
+
+              <div class="timeline-step" [class.completed]="isStepCompleted('ended')">
+                <div class="step-icon"><mat-icon>flag</mat-icon></div>
+                <div class="step-content">
+                  <h4>Putovanje završeno</h4>
+                  <p>{{ b.endDate | date:'dd.MM.yyyy' }}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </mat-tab>
+
+      </mat-tab-group>
+    }
+  </mat-dialog-content>
+
+  <mat-dialog-actions align="end">
+    <button mat-button (click)="close()">Zatvori</button>
+  </mat-dialog-actions>
+</div>

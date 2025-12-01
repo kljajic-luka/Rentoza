@@ -96,9 +96,22 @@
         <span>Rentoza Rent a Car</span>
       </div>
       <span class="spacer"></span>
-      <button mat-stroked-button color="accent" class="toolbar-cta" (click)="navigate('/cars')">
-        <span>Pretraži vozila</span>
-      </button>
+      <ng-container *ngIf="currentUser$ | async as user; else guestSearchBtn">
+        <button
+          *ngIf="canShowSearchButton(user)"
+          mat-stroked-button
+          color="accent"
+          class="toolbar-cta"
+          (click)="navigate('/cars')"
+        >
+          <span>Pretraži vozila</span>
+        </button>
+      </ng-container>
+      <ng-template #guestSearchBtn>
+        <button mat-stroked-button color="accent" class="toolbar-cta" (click)="navigate('/cars')">
+          <span>Pretraži vozila</span>
+        </button>
+      </ng-template>
     </mat-toolbar>
 
     <section class="layout-router">

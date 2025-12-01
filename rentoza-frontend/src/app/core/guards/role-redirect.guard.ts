@@ -98,6 +98,11 @@ export class RoleRedirectGuard implements CanActivate {
       return true;
     }
 
+    // Root path is renter-only (Owners should be on dashboard)
+    if (path === '/') {
+      return true;
+    }
+
     // Check other renter-only paths
     return this.renterOnlyPaths.some(
       (renterPath) => path === renterPath || path.startsWith(renterPath + '/')

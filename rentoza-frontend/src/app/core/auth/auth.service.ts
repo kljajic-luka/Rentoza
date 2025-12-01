@@ -158,7 +158,9 @@ export class AuthService {
       })
       .pipe(
         tap((response) => this.persistSession(response)),
-        map((response) => response.user as UserProfile)
+        // FIX: Return the normalized user from internal state, not the raw response
+        // This ensures 'roles' array is populated correctly for RedirectService
+        map(() => this.currentUserSubject.value!)
       );
   }
 

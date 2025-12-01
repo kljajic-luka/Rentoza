@@ -27,7 +27,11 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDialogModule, MatDialog } from '@angular/material/dialog';
 import { STEPPER_GLOBAL_OPTIONS } from '@angular/cdk/stepper';
 
-import { CheckInService, CheckInPhase } from '../../../core/services/check-in.service';
+import {
+  CheckInService,
+  CheckInPhase,
+  RenderDecision,
+} from '../../../core/services/check-in.service';
 import { GeolocationService } from '../../../core/services/geolocation.service';
 import { OfflineQueueService } from '../../../core/services/offline-queue.service';
 import { AuthService } from '../../../core/auth/auth.service';
@@ -91,8 +95,8 @@ import { environment } from '@environments/environment';
         }
       </header>
 
-      <!-- Loading state -->
-      @if (checkInService.currentPhase() === 'LOADING') {
+      <!-- Loading state (derived from renderDecision signal) -->
+      @if (checkInService.renderDecision() === 'LOADING') {
       <div class="loading-container">
         <mat-progress-bar mode="indeterminate"></mat-progress-bar>
         <p>Učitavanje check-in statusa...</p>
@@ -112,18 +116,18 @@ import { environment } from '@environments/environment';
       </div>
       }
 
-      <!-- Main content -->
-      @if (checkInService.currentPhase() !== 'LOADING' && !checkInService.error()) {
+      <!-- Main content - Role-Aware State Machine via renderDecision -->
+      @if (checkInService.renderDecision() !== 'LOADING' && !checkInService.error()) {
       <div class="wizard-content">
         <!-- Progress indicator -->
         <div class="progress-steps">
           <div
             class="step"
-            [class.active]="isStepActive('HOST')"
-            [class.completed]="isStepCompleted('HOST')"
+            [class.active]="isStepActiveByRender('HOST')"
+            [class.completed]="isStepCompletedByRender('HOST')"
           >
             <div class="step-icon">
-              @if (isStepCompleted('HOST')) {
+              @if (isStepCompletedByRender('HOST')) {
               <mat-icon>check</mat-icon>
               } @else {
               <span>1</span>
@@ -132,15 +136,15 @@ import { environment } from '@environments/environment';
             <span class="step-label">Domaćin</span>
           </div>
 
-          <div class="step-connector" [class.completed]="isStepCompleted('HOST')"></div>
+          <div class="step-connector" [class.completed]="isStepCompletedByRender('HOST')"></div>
 
           <div
             class="step"
-            [class.active]="isStepActive('GUEST')"
-            [class.completed]="isStepCompleted('GUEST')"
+            [class.active]="isStepActiveByRender('GUEST')"
+            [class.completed]="isStepCompletedByRender('GUEST')"
           >
             <div class="step-icon">
-              @if (isStepCompleted('GUEST')) {
+              @if (isStepCompletedByRender('GUEST')) {
               <mat-icon>check</mat-icon>
               } @else {
               <span>2</span>
@@ -149,15 +153,15 @@ import { environment } from '@environments/environment';
             <span class="step-label">Gost</span>
           </div>
 
-          <div class="step-connector" [class.completed]="isStepCompleted('GUEST')"></div>
+          <div class="step-connector" [class.completed]="isStepCompletedByRender('GUEST')"></div>
 
           <div
             class="step"
-            [class.active]="isStepActive('HANDSHAKE')"
-            [class.completed]="isStepCompleted('HANDSHAKE')"
+            [class.active]="isStepActiveByRender('HANDSHAKE')"
+            [class.completed]="isStepCompletedByRender('HANDSHAKE')"
           >
             <div class="step-icon">
-              @if (isStepCompleted('HANDSHAKE')) {
+              @if (isStepCompletedByRender('HANDSHAKE')) {
               <mat-icon>check</mat-icon>
               } @else {
               <span>3</span>
@@ -191,61 +195,33 @@ import { environment } from '@environments/environment';
         </div>
         }
 
-        <!-- Phase content with role-aware rendering -->
-        @switch (checkInService.currentPhase()) { @case ('HOST_PHASE') {
-        <!-- HOST_PHASE: Host edits, Guest waits -->
-        @if (checkInService.isHost()) { @if (showingReview()) {
-        <app-host-check-in
-          [bookingId]="bookingId()"
-          [status]="checkInService.currentStatus()"
-          [readOnly]="true"
-          (backFromReview)="exitReviewMode()"
-        >
-        </app-host-check-in>
-        } @else {
+        <!-- ================================================================
+             ROLE-AWARE STATE MACHINE (renderDecision)
+             ================================================================
+             This switch is EXHAUSTIVE and uses the single source of truth.
+             No role checks needed here - renderDecision already incorporates role.
+        -->
+        @switch (checkInService.renderDecision()) { @case ('HOST_EDIT') {
+        <!-- Host can upload photos and submit -->
         <app-host-check-in
           [bookingId]="bookingId()"
           [status]="checkInService.currentStatus()"
           (completed)="onHostPhaseCompleted()"
-        >
-        </app-host-check-in>
-        } } @else {
-        <!-- Guest waiting for Host to finish -->
-        <app-check-in-waiting
-          [status]="checkInService.currentStatus()"
-          title="Domaćin priprema vozilo"
-          message="Sačekajte da domaćin unese fotografije i podatke o vozilu."
-          icon="schedule"
-          [iconType]="'waiting'"
-          [nextSteps]="guestWaitingSteps"
-          [animate]="true"
-          (refresh)="retryLoad()"
-        >
-        </app-check-in-waiting>
-        } } @case ('GUEST_PHASE') {
-        <!-- GUEST_PHASE: Guest reviews, Host waits -->
-        @if (checkInService.isGuest()) {
-        <app-guest-check-in
-          [bookingId]="bookingId()"
-          [status]="checkInService.currentStatus()"
-          (completed)="onGuestPhaseCompleted()"
-        >
-        </app-guest-check-in>
-        } @else {
-        <!-- Host waiting for Guest to review -->
+        ></app-host-check-in>
+        } @case ('HOST_WAITING') {
+        <!-- Host waiting for guest - can review their submission -->
         @if (showingReview()) {
         <app-host-check-in
           [bookingId]="bookingId()"
           [status]="checkInService.currentStatus()"
           [readOnly]="true"
           (backFromReview)="exitReviewMode()"
-        >
-        </app-host-check-in>
+        ></app-host-check-in>
         } @else {
         <app-check-in-waiting
           [status]="checkInService.currentStatus()"
-          title="Vaš deo je završen!"
-          message="Čeka se da gost pregleda i potvrdi stanje vozila."
+          [title]="waitingTitle()"
+          [message]="waitingMessage()"
           icon="check_circle"
           [iconType]="'success'"
           [nextSteps]="hostWaitingSteps"
@@ -254,20 +230,49 @@ import { environment } from '@environments/environment';
           [animate]="true"
           (refresh)="retryLoad()"
           (reviewData)="enterReviewMode()"
-        >
-        </app-check-in-waiting>
-        } } } @case ('HANDSHAKE') {
+        ></app-check-in-waiting>
+        } } @case ('HOST_REVIEW') {
+        <!-- Explicit HOST_REVIEW state if needed -->
+        <app-host-check-in
+          [bookingId]="bookingId()"
+          [status]="checkInService.currentStatus()"
+          [readOnly]="true"
+          (backFromReview)="exitReviewMode()"
+        ></app-host-check-in>
+        } @case ('GUEST_WAITING') {
+        <!-- Guest waiting for host to complete -->
+        <app-check-in-waiting
+          [status]="checkInService.currentStatus()"
+          [title]="waitingTitle()"
+          [message]="waitingMessage()"
+          icon="schedule"
+          [iconType]="'waiting'"
+          [nextSteps]="guestWaitingSteps"
+          [animate]="true"
+          (refresh)="retryLoad()"
+        ></app-check-in-waiting>
+        } @case ('GUEST_EDIT') {
+        <!-- Guest can review photos and acknowledge condition -->
+        <app-guest-check-in
+          [bookingId]="bookingId()"
+          [status]="checkInService.currentStatus()"
+          (completed)="onGuestPhaseCompleted()"
+        ></app-guest-check-in>
+        } @case ('HANDSHAKE') {
+        <!-- Both parties confirming physical handoff -->
         <app-handshake
           [bookingId]="bookingId()"
           [status]="checkInService.currentStatus()"
           (completed)="onHandshakeCompleted()"
-        >
-        </app-handshake>
+        ></app-handshake>
         } @case ('COMPLETE') {
-        <app-check-in-complete [bookingId]="bookingId()" [status]="checkInService.currentStatus()">
-        </app-check-in-complete>
-        } @default {
-        <!-- Waiting state -->
+        <!-- Trip has started -->
+        <app-check-in-complete
+          [bookingId]="bookingId()"
+          [status]="checkInService.currentStatus()"
+        ></app-check-in-complete>
+        } @case ('NOT_READY') {
+        <!-- Check-in window not yet open -->
         <div class="waiting-container">
           <mat-icon>schedule</mat-icon>
           <h2>Check-in još nije dostupan</h2>
@@ -278,6 +283,21 @@ import { environment } from '@environments/environment';
             {{ checkInService.currentStatus()?.bookingStartTime | date : 'dd.MM.yyyy HH:mm' }}
           </p>
           }
+          <button mat-stroked-button color="primary" (click)="retryLoad()" class="refresh-btn">
+            <mat-icon>refresh</mat-icon>
+            Osveži status
+          </button>
+        </div>
+        } @default {
+        <!-- Fallback for any unhandled state (should never happen with exhaustive switch) -->
+        <div class="waiting-container">
+          <mat-icon>help_outline</mat-icon>
+          <h2>Nepoznato stanje</h2>
+          <p>Došlo je do neočekivane greške. Pokušajte osvežiti stranicu.</p>
+          <button mat-raised-button color="primary" (click)="retryLoad()">
+            <mat-icon>refresh</mat-icon>
+            Osveži
+          </button>
         </div>
         } }
       </div>
@@ -562,8 +582,40 @@ export class CheckInWizardComponent implements OnInit, OnDestroy {
     if (environment.checkIn?.requireLocation === false) {
       return false;
     }
-    const phase = this.checkInService.currentPhase();
-    return phase === 'HOST_PHASE' || phase === 'GUEST_PHASE';
+    const decision = this.checkInService.renderDecision();
+    return decision === 'HOST_EDIT' || decision === 'GUEST_EDIT';
+  });
+
+  /**
+   * Dynamic waiting screen title based on renderDecision state.
+   * Provides role-aware messaging.
+   */
+  waitingTitle = computed((): string => {
+    const decision = this.checkInService.renderDecision();
+    switch (decision) {
+      case 'HOST_WAITING':
+        return 'Vaš deo je završen!';
+      case 'GUEST_WAITING':
+        return 'Domaćin priprema vozilo';
+      default:
+        return 'Čekanje...';
+    }
+  });
+
+  /**
+   * Dynamic waiting screen message based on renderDecision state.
+   * Provides context-specific instructions.
+   */
+  waitingMessage = computed((): string => {
+    const decision = this.checkInService.renderDecision();
+    switch (decision) {
+      case 'HOST_WAITING':
+        return 'Čeka se da gost pregleda i potvrdi stanje vozila.';
+      case 'GUEST_WAITING':
+        return 'Sačekajte da domaćin unese fotografije i podatke o vozilu.';
+      default:
+        return 'Molimo sačekajte...';
+    }
   });
 
   // Lifecycle hooks
@@ -666,6 +718,56 @@ export class CheckInWizardComponent implements OnInit, OnDestroy {
         return !!status.guestAcknowledged;
       case 'HANDSHAKE':
         return !!status.handshakeComplete;
+      default:
+        return false;
+    }
+  }
+
+  /**
+   * Step active check using renderDecision signal.
+   * Maps renderDecision states to visual progress indicator.
+   */
+  isStepActiveByRender(step: 'HOST' | 'GUEST' | 'HANDSHAKE'): boolean {
+    const decision = this.checkInService.renderDecision();
+    switch (step) {
+      case 'HOST':
+        return (
+          decision === 'HOST_EDIT' || decision === 'HOST_WAITING' || decision === 'HOST_REVIEW'
+        );
+      case 'GUEST':
+        return decision === 'GUEST_WAITING' || decision === 'GUEST_EDIT';
+      case 'HANDSHAKE':
+        return decision === 'HANDSHAKE';
+      default:
+        return false;
+    }
+  }
+
+  /**
+   * Step completion check using status data.
+   * Determined by backend-provided completion flags.
+   */
+  isStepCompletedByRender(step: 'HOST' | 'GUEST' | 'HANDSHAKE'): boolean {
+    const status = this.checkInService.currentStatus();
+    const decision = this.checkInService.renderDecision();
+    if (!status) return false;
+
+    switch (step) {
+      case 'HOST':
+        // Host step is complete when host has checked in AND we're past HOST_EDIT
+        return (
+          !!status.hostCheckInComplete &&
+          (decision === 'GUEST_WAITING' ||
+            decision === 'GUEST_EDIT' ||
+            decision === 'HANDSHAKE' ||
+            decision === 'COMPLETE')
+        );
+      case 'GUEST':
+        // Guest step is complete when guest acknowledged AND we're at/past HANDSHAKE
+        return !!status.guestAcknowledged && (decision === 'HANDSHAKE' || decision === 'COMPLETE');
+      case 'HANDSHAKE':
+        // Handshake complete means trip has started
+        return decision === 'COMPLETE';
       default:
         return false;
     }

@@ -51,6 +51,25 @@ export type CheckInPhase =
   | 'HANDSHAKE'
   | 'COMPLETE';
 
+/**
+ * Role-aware render decision for the wizard component.
+ *
+ * This is the SINGLE SOURCE OF TRUTH for what UI to display.
+ * Derived reactively from status + role - cannot be manipulated via console.
+ *
+ * @see Architectural Blueprint: "Strict Logic Matrix"
+ */
+export type RenderDecision =
+  | 'LOADING' // Initial state while fetching status
+  | 'NOT_READY' // Check-in window not yet open
+  | 'HOST_EDIT' // Host can edit (upload photos, submit)
+  | 'HOST_WAITING' // Host waiting for guest to acknowledge
+  | 'HOST_REVIEW' // Host reviewing submitted data (read-only)
+  | 'GUEST_WAITING' // Guest waiting for host to complete
+  | 'GUEST_EDIT' // Guest can acknowledge condition
+  | 'HANDSHAKE' // Both parties confirming handshake
+  | 'COMPLETE'; // Trip started
+
 @Injectable({ providedIn: 'root' })
 export class CheckInService implements OnDestroy {
   private readonly http = inject(HttpClient);
@@ -116,6 +135,66 @@ export class CheckInService implements OnDestroy {
 
   readonly isHost = computed(() => this._status()?.host ?? false);
   readonly isGuest = computed(() => this._status()?.guest ?? false);
+
+  /**
+   * Role-aware render decision - the SINGLE SOURCE OF TRUTH for wizard UI.
+   *
+   * This computed signal implements the "Strict Logic Matrix" from the architecture:
+   * - CHECK_IN_OPEN + HOST → HOST_EDIT
+   * - CHECK_IN_OPEN + GUEST → GUEST_WAITING
+   * - CHECK_IN_HOST_COMPLETE + HOST → HOST_WAITING (with read-only review)
+   * - CHECK_IN_HOST_COMPLETE + GUEST → GUEST_EDIT
+   * - CHECK_IN_COMPLETE → HANDSHAKE
+   * - IN_TRIP → COMPLETE
+   *
+   * SECURITY: This signal is derived from immutable backend status.
+   * Console manipulation of other signals won't affect this decision.
+   */
+  readonly renderDecision = computed<RenderDecision>(() => {
+    const status = this._status();
+
+    // Loading state
+    if (!status) {
+      return this._isLoading() ? 'LOADING' : 'NOT_READY';
+    }
+
+    const isHost = status.host;
+    const isGuest = status.guest;
+    const bookingStatus = status.status;
+
+    // State machine with role segregation
+    switch (bookingStatus) {
+      case 'CHECK_IN_OPEN':
+      case 'PENDING_HOST_CHECKIN':
+        // Check-in open, awaiting host
+        return isHost ? 'HOST_EDIT' : 'GUEST_WAITING';
+
+      case 'CHECK_IN_HOST_COMPLETE':
+      case 'HOST_SUBMITTED':
+        // Host completed, awaiting guest
+        if (isHost) {
+          // Host can review their submission (read-only) while waiting
+          return 'HOST_WAITING';
+        }
+        return 'GUEST_EDIT';
+
+      case 'CHECK_IN_COMPLETE':
+      case 'GUEST_ACKNOWLEDGED':
+      case 'HANDSHAKE_PENDING':
+        // Both ready for handshake
+        return 'HANDSHAKE';
+
+      case 'IN_TRIP':
+      case 'ACTIVE':
+      case 'IN_PROGRESS':
+        // Trip has started
+        return 'COMPLETE';
+
+      default:
+        // Any other status (PENDING_APPROVAL, COMPLETED, etc.)
+        return 'NOT_READY';
+    }
+  });
 
   readonly requiredPhotosComplete = computed(() => {
     const progress = this._uploadProgress();
@@ -307,73 +386,6 @@ export class CheckInService implements OnDestroy {
 
     // Track subscription for potential cancellation
     this._activeUploads.set(slotId, subscription);
-  }
-
-  /**
-   * Legacy async uploadPhoto for backward compatibility.
-   * @deprecated Use uploadPhoto(bookingId, file, slotId, photoType) instead
-   */
-  async uploadPhotoAsync(
-    bookingId: number,
-    file: File,
-    photoType: CheckInPhotoType
-  ): Promise<CheckInPhotoDTO> {
-    const slotId = photoType; // For required photos, slotId = photoType
-
-    // Update progress: compressing
-    this.updateUploadProgress(slotId, photoType, 'compressing', 0);
-
-    try {
-      // Validate file type
-      if (!this.compressionService.isValidImageType(file)) {
-        throw new Error('Nevažeći format slike. Koristite JPEG, PNG ili HEIC.');
-      }
-
-      // Compress image
-      const compressed = await this.compressionService.compressImage(file, {
-        targetSizeKB: 500,
-      });
-
-      // Capture client timestamp BEFORE upload (basement problem fix)
-      const clientTimestamp = new Date().toISOString();
-      const position = this.geolocationService.position();
-
-      // Update progress: uploading
-      this.updateUploadProgress(slotId, photoType, 'uploading', 0);
-
-      // Check if online
-      if (!this.offlineQueueService.isOnline()) {
-        // Queue for later
-        await this.offlineQueueService.enqueue(
-          bookingId,
-          photoType,
-          compressed.blob,
-          clientTimestamp
-        );
-        throw new Error('Nema internet konekcije. Fotografija je sačuvana za kasnije.');
-      }
-
-      // Upload with progress tracking
-      const result = await this.uploadWithProgress(
-        bookingId,
-        compressed.blob,
-        slotId,
-        photoType,
-        clientTimestamp,
-        position?.latitude,
-        position?.longitude
-      );
-
-      // Update progress: complete
-      this.updateUploadProgress(slotId, photoType, 'complete', 100, undefined, result);
-      this._uploadedPhotoIds.update((ids) => [...ids, result.photoId]);
-
-      return result;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Upload nije uspeo';
-      this.updateUploadProgress(slotId, photoType, 'error', 0, errorMessage);
-      throw error;
-    }
   }
 
   /**

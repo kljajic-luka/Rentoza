@@ -15,7 +15,9 @@ import org.apache.commons.imaging.formats.tiff.constants.TiffTagConstants;
 import org.apache.commons.imaging.formats.tiff.taginfos.TagInfo;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
@@ -108,10 +110,9 @@ public class ExifValidationService {
             ImageMetadata metadata = Imaging.getMetadata(new ByteArrayInputStream(photoBytes), null);
             
             if (metadata == null) {
-                return ExifValidationResult.rejected(
-                    ExifValidationStatus.REJECTED_NO_EXIF,
-                    "Fotografija nema EXIF podatke - koristite kameru, ne galeriju ili snimke ekrana"
-                );
+                // No EXIF found - check if we have sidecar data to fall back on
+                return handleMissingOrUnreadableExif(clientUploadStarted, 
+                    "Fotografija nema EXIF podatke - koristite kameru, ne galeriju ili snimke ekrana");
             }
             
             TiffImageMetadata tiffMetadata = null;
@@ -123,10 +124,8 @@ public class ExifValidationService {
             }
             
             if (tiffMetadata == null) {
-                return ExifValidationResult.rejected(
-                    ExifValidationStatus.REJECTED_NO_EXIF,
-                    "Nije moguće pročitati EXIF metapodatke"
-                );
+                return handleMissingOrUnreadableExif(clientUploadStarted, 
+                    "Nije moguće pročitati EXIF metapodatke");
             }
             
             // Extract timestamp
@@ -212,12 +211,15 @@ public class ExifValidationService {
                 .clientTimestampUsed(clientUploadStarted != null)
                 .build();
             
+        } catch (IOException e) {
+            // HEIC Trap: Apache Commons Imaging throws IOException for HEIC/modern formats
+            // "Not a Valid TIFF File" - This is NOT a real error, just unsupported format
+            log.warn("[EXIF] Cannot read image format (likely HEIC/modern format): {}", e.getMessage());
+            return handleUnsupportedImageFormat(clientUploadStarted, e.getMessage());
         } catch (Exception e) {
-            log.error("[EXIF] Validation failed", e);
-            return ExifValidationResult.rejected(
-                ExifValidationStatus.REJECTED_NO_EXIF,
-                "Greška pri čitanju metapodataka slike: " + e.getMessage()
-            );
+            log.error("[EXIF] Validation failed with unexpected error", e);
+            return handleMissingOrUnreadableExif(clientUploadStarted, 
+                "Greška pri čitanju metapodataka slike: " + e.getMessage());
         }
     }
 
@@ -322,6 +324,54 @@ public class ExifValidationService {
     private boolean isWithinSerbia(double lat, double lon) {
         return lat >= SERBIA_MIN_LAT && lat <= SERBIA_MAX_LAT &&
                lon >= SERBIA_MIN_LON && lon <= SERBIA_MAX_LON;
+    }
+
+    /**
+     * Handle HEIC or other unsupported image formats that Apache Commons Imaging cannot read.
+     * Falls back to client sidecar timestamp if available.
+     * 
+     * @param clientUploadStarted Client-provided timestamp from sidecar data
+     * @param errorDetail         Technical error details for logging
+     * @return VALID_WITH_WARNINGS if sidecar available, REJECTED otherwise
+     */
+    private ExifValidationResult handleUnsupportedImageFormat(Instant clientUploadStarted, String errorDetail) {
+        if (clientUploadStarted != null) {
+            log.info("[EXIF] HEIC/unsupported format detected - APPROVED via sidecar fallback. Error was: {}", errorDetail);
+            return ExifValidationResult.builder()
+                .status(ExifValidationStatus.VALID_WITH_WARNINGS)
+                .message("Format slike (HEIC/moderni format) nije podržan za EXIF čitanje - prihvaćeno na osnovu vremena prijave klijenta")
+                .photoTimestamp(clientUploadStarted)
+                .clientTimestampUsed(true)
+                .build();
+        }
+        
+        log.warn("[EXIF] Unsupported format AND no sidecar - REJECTED. Error: {}", errorDetail);
+        return ExifValidationResult.rejected(
+            ExifValidationStatus.REJECTED_NO_EXIF,
+            "Format slike nije podržan i nije moguće proveriti autentičnost fotografije"
+        );
+    }
+
+    /**
+     * Handle missing or unreadable EXIF metadata with sidecar fallback.
+     * 
+     * @param clientUploadStarted Client-provided timestamp from sidecar data
+     * @param userMessage         User-facing error message
+     * @return VALID_WITH_WARNINGS if sidecar available, REJECTED otherwise
+     */
+    private ExifValidationResult handleMissingOrUnreadableExif(Instant clientUploadStarted, String userMessage) {
+        if (clientUploadStarted != null) {
+            log.info("[EXIF] Missing EXIF - APPROVED via sidecar fallback");
+            return ExifValidationResult.builder()
+                .status(ExifValidationStatus.VALID_WITH_WARNINGS)
+                .message("EXIF podaci nedostaju - prihvaćeno na osnovu vremena prijave klijenta")
+                .photoTimestamp(clientUploadStarted)
+                .clientTimestampUsed(true)
+                .build();
+        }
+        
+        log.warn("[EXIF] Missing EXIF AND no sidecar - REJECTED: {}", userMessage);
+        return ExifValidationResult.rejected(ExifValidationStatus.REJECTED_NO_EXIF, userMessage);
     }
 
     /**

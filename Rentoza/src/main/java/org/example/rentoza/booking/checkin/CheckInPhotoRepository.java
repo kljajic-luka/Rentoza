@@ -49,11 +49,12 @@ public interface CheckInPhotoRepository extends JpaRepository<CheckInPhoto, Long
 
     /**
      * Count all valid photos for a booking (EXIF validation passed).
+     * Includes VALID_WITH_WARNINGS for HEIC/modern formats validated via sidecar.
      */
     @Query("SELECT COUNT(p) FROM CheckInPhoto p " +
            "WHERE p.booking.id = :bookingId " +
            "AND p.deletedAt IS NULL " +
-           "AND p.exifValidationStatus IN ('VALID', 'VALID_NO_GPS')")
+           "AND p.exifValidationStatus IN ('VALID', 'VALID_NO_GPS', 'VALID_WITH_WARNINGS')")
     long countValidPhotosByBookingId(@Param("bookingId") Long bookingId);
 
     /**
@@ -95,11 +96,12 @@ public interface CheckInPhotoRepository extends JpaRepository<CheckInPhoto, Long
 
     /**
      * Count required host photos for completion check.
+     * Includes VALID_WITH_WARNINGS for HEIC/modern formats validated via sidecar.
      */
     @Query("SELECT COUNT(DISTINCT p.photoType) FROM CheckInPhoto p " +
            "WHERE p.booking.id = :bookingId " +
            "AND p.deletedAt IS NULL " +
-           "AND p.exifValidationStatus IN ('VALID', 'VALID_NO_GPS') " +
+           "AND p.exifValidationStatus IN ('VALID', 'VALID_NO_GPS', 'VALID_WITH_WARNINGS') " +
            "AND p.photoType IN (" +
            "  'HOST_EXTERIOR_FRONT', 'HOST_EXTERIOR_REAR', 'HOST_EXTERIOR_LEFT', 'HOST_EXTERIOR_RIGHT', " +
            "  'HOST_INTERIOR_DASHBOARD', 'HOST_INTERIOR_REAR', 'HOST_ODOMETER', 'HOST_FUEL_GAUGE'" +

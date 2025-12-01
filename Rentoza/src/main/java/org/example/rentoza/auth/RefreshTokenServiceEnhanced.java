@@ -162,6 +162,7 @@ public class RefreshTokenServiceEnhanced {
      * - Prevents "Zombie Sessions" and database bloat
      * - Ensures user cannot have unlimited active sessions
      * - Removes oldest token first (LRU eviction)
+     * - Handles race conditions gracefully when multiple logins occur simultaneously
      *
      * @param email User's email
      */
@@ -175,13 +176,27 @@ public class RefreshTokenServiceEnhanced {
             
             repo.findOldestActiveTokensByUser(email, now, tokensToRemove)
                     .forEach(token -> {
-                        log.info("SESSION_CAP: Evicting oldest token for user={}, tokenId={}, createdAt={}",
-                                email, token.getId(), token.getCreatedAt());
-                        securityLog.info("SESSION_CAP: Evicted token - user={}, reason=MAX_SESSIONS_EXCEEDED", email);
-                        repo.delete(token);
+                        try {
+                            log.info("SESSION_CAP: Evicting oldest token for user={}, tokenId={}, createdAt={}",
+                                    email, token.getId(), token.getCreatedAt());
+                            securityLog.info("SESSION_CAP: Evicted token - user={}, reason=MAX_SESSIONS_EXCEEDED", email);
+                            repo.delete(token);
+                        } catch (org.springframework.orm.ObjectOptimisticLockingFailureException e) {
+                            // Token was already deleted by a concurrent transaction - this is fine
+                            log.debug("SESSION_CAP: Token {} already evicted by concurrent transaction (race condition handled)", 
+                                    token.getId());
+                        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+                            // Token was already deleted - handle gracefully
+                            log.debug("SESSION_CAP: Token {} no longer exists (concurrent deletion)", token.getId());
+                        }
                     });
             
-            repo.flush();
+            try {
+                repo.flush();
+            } catch (org.springframework.orm.ObjectOptimisticLockingFailureException e) {
+                // Flush failed due to concurrent modifications - this is acceptable
+                log.debug("SESSION_CAP: Flush skipped due to concurrent token eviction");
+            }
         }
     }
 

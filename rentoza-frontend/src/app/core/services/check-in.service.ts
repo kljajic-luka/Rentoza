@@ -433,9 +433,12 @@ export class CheckInService implements OnDestroy {
     this._isLoading.set(true);
     this._error.set(null);
 
-    // Get current position (required for guest)
+    // Check if location is required (bypass in development if configured)
+    const locationRequired = environment.checkIn?.requireLocation !== false;
+
+    // Get current position (required for guest in production)
     const position = this.geolocationService.position();
-    if (!position) {
+    if (locationRequired && !position) {
       this._error.set('Lokacija je obavezna za potvrdu stanja vozila');
       this._isLoading.set(false);
       return throwError(() => new Error('Location required'));
@@ -444,8 +447,9 @@ export class CheckInService implements OnDestroy {
     const payload: GuestConditionAcknowledgmentDTO = {
       bookingId,
       conditionAccepted,
-      guestLatitude: position.latitude,
-      guestLongitude: position.longitude,
+      // Use mock coordinates in development if location not available
+      guestLatitude: position?.latitude ?? 44.8176, // Belgrade fallback
+      guestLongitude: position?.longitude ?? 20.4633,
       conditionComment,
       hotspots: hotspots as any,
     };

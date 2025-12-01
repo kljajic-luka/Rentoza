@@ -38,6 +38,7 @@ import {
   HotspotMarkingDTO,
 } from '../../../core/models/check-in.model';
 import { VehicleWireframeComponent } from './vehicle-wireframe.component';
+import { environment } from '../../../../environments/environment';
 
 @Component({
   selector: 'app-guest-check-in',
@@ -89,7 +90,7 @@ import { VehicleWireframeComponent } from './vehicle-wireframe.component';
       <div class="photo-gallery">
         @for (photo of status?.vehiclePhotos; track photo.photoId) {
         <div class="photo-item" (click)="openPhotoViewer(photo)">
-          <img [src]="photo.url" [alt]="getPhotoLabel(photo.photoType)" />
+          <img [src]="getPhotoUrl(photo)" [alt]="getPhotoLabel(photo.photoType)" />
           <div class="photo-label">{{ getPhotoLabel(photo.photoType) }}</div>
 
           <!-- EXIF validation badge -->
@@ -226,7 +227,7 @@ import { VehicleWireframeComponent } from './vehicle-wireframe.component';
           }
         </button>
 
-        @if (!canSubmit() && !geolocationService.hasPosition()) {
+        @if (!canSubmit() && locationRequired && !geolocationService.hasPosition()) {
         <p class="submit-hint">
           <mat-icon>location_off</mat-icon>
           Potreban je pristup lokaciji za potvrdu
@@ -504,15 +505,24 @@ export class GuestCheckInComponent {
   // State
   private _markedHotspots = signal<HotspotMarkingDTO[]>([]);
   private _lockboxCode = signal<string | null>(null);
+  private _conditionAccepted = signal<boolean>(false);
 
   markedHotspots = this._markedHotspots.asReadonly();
   lockboxCode = this._lockboxCode.asReadonly();
+  conditionAccepted = this._conditionAccepted.asReadonly();
 
   // Form
   conditionForm: FormGroup = this.fb.group({
     conditionAccepted: [false],
     conditionComment: [''],
   });
+
+  constructor() {
+    // Sync form checkbox with signal for reactive computed
+    this.conditionForm.get('conditionAccepted')?.valueChanges.subscribe((value) => {
+      this._conditionAccepted.set(value);
+    });
+  }
 
   // Computed
   vehicleTitle = computed(() => {
@@ -521,10 +531,17 @@ export class GuestCheckInComponent {
     return `${car.brand} ${car.model} (${car.year})`;
   });
 
+  /**
+   * Check if location requirement is bypassed in development.
+   * Uses environment.checkIn.requireLocation setting.
+   */
+  protected readonly locationRequired = environment.checkIn?.requireLocation !== false;
+
   canSubmit = computed(() => {
-    const hasPosition = this.geolocationService.hasPosition();
+    // In development, bypass location check if requireLocation is false
+    const hasPosition = this.locationRequired ? this.geolocationService.hasPosition() : true;
     const isLoading = this.checkInService.isLoading();
-    const accepted = this.conditionForm.get('conditionAccepted')?.value;
+    const accepted = this._conditionAccepted();
     const hasHotspots = this._markedHotspots().length > 0;
 
     return hasPosition && !isLoading && (accepted || hasHotspots);
@@ -545,6 +562,30 @@ export class GuestCheckInComponent {
 
   getPhotoLabel(photoType: string): string {
     return this.photoLabels[photoType] ?? photoType;
+  }
+
+  /**
+   * Transform storage URL to proper API URL for serving photos.
+   * Backend stores: "checkin/{sessionId}/{filename}"
+   * API serves: "/api/checkin/photos/{sessionId}/{filename}"
+   */
+  getPhotoUrl(photo: CheckInPhotoDTO): string {
+    let url = photo.url;
+
+    // If URL is already absolute, return as-is
+    if (url && url.startsWith('http')) {
+      return url;
+    }
+
+    // Transform storage path to API URL
+    if (url) {
+      const baseUrl = environment.baseApiUrl.replace(/\/$/, ''); // Remove trailing slash
+      // Strip "checkin/" prefix if present (storage key format)
+      const pathSegment = url.replace(/^checkin\//, '');
+      return `${baseUrl}/checkin/photos/${pathSegment}`;
+    }
+
+    return '';
   }
 
   openPhotoViewer(photo: CheckInPhotoDTO): void {

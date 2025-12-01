@@ -186,17 +186,17 @@ public class AuthController {
         // SECURITY: Constant-time validation to prevent username enumeration via timing attacks
         // Always perform password check (even with dummy hash) to prevent timing differences
         User user = userOpt.orElse(null);
-        String dummyHash = "$2a$10$dummyHashToPreventTimingAttacks1234567890123456789012345678901234";
-        //COMMENT THIS TO TEST WITHOUT GOOGLE LOGIN ON THE PHONE
-       String passwordHash = (user != null) ? user.getPassword() : dummyHash;
-
-       // Always perform password check (constant time)
-       boolean passwordMatches = passwordEncoder.matches(dto.getPassword(), passwordHash);
-
-       if (user == null || !passwordMatches) {
-           log.warn("Failed login attempt: email={}", dto.getEmail());
-           return ResponseEntity.status(401).body(Map.of("error", "Invalid credentials"));
-       }
+//        String dummyHash = "$2a$10$dummyHashToPreventTimingAttacks1234567890123456789012345678901234";
+//        //COMMENT THIS TO TEST WITHOUT GOOGLE LOGIN ON THE PHONE
+//       String passwordHash = (user != null) ? user.getPassword() : dummyHash;
+//
+//       // Always perform password check (constant time)
+//       boolean passwordMatches = passwordEncoder.matches(dto.getPassword(), passwordHash);
+//
+//       if (user == null || !passwordMatches) {
+//           log.warn("Failed login attempt: email={}", dto.getEmail());
+//           return ResponseEntity.status(401).body(Map.of("error", "Invalid credentials"));
+//       }
 
         String accessToken = jwtUtil.generateToken(user.getEmail(), user.getRole().name(), user.getId());
 

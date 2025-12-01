@@ -148,7 +148,7 @@ export async function performLogin(
   await submitButton.waitFor({ state: 'visible', timeout: 5000 });
 
   await Promise.all([
-    page.waitForURL(/\/(home|dashboard|profile|cars)/, { timeout: 15000 }),
+    page.waitForURL(/\/(home|dashboard|profile|cars|bookings|owner)?$/, { timeout: 15000 }),
     submitButton.click(),
   ]);
 

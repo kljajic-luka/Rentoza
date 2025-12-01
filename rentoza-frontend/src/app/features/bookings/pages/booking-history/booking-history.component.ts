@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
-import { RouterModule } from '@angular/router';
+import { Router, RouterModule } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatButtonModule } from '@angular/material/button';
@@ -43,6 +43,7 @@ interface CategorizedBookings {
 export class BookingHistoryComponent {
   private readonly bookingService = inject(BookingService);
   private readonly dialog = inject(MatDialog);
+  private readonly router = inject(Router);
 
   protected readonly isLoading = signal(true);
   protected readonly bookings = signal<UserBooking[]>([]);
@@ -165,6 +166,14 @@ export class BookingHistoryComponent {
         return 'Završeno';
       case 'EXPIRED_SYSTEM':
         return 'Odobrenje isteklo';
+      case 'CHECK_IN_OPEN':
+        return 'Check-in otvoren';
+      case 'CHECK_IN_HOST_COMPLETE':
+        return 'Čeka vaš check-in';
+      case 'CHECK_IN_COMPLETE':
+        return 'Check-in završen';
+      case 'IN_TRIP':
+        return 'Putovanje u toku';
       default:
         return status;
     }
@@ -194,6 +203,12 @@ export class BookingHistoryComponent {
         return 'status-cancelled';
       case 'COMPLETED':
         return 'status-completed';
+      case 'CHECK_IN_OPEN':
+      case 'CHECK_IN_HOST_COMPLETE':
+        return 'status-check-in';
+      case 'CHECK_IN_COMPLETE':
+      case 'IN_TRIP':
+        return 'status-active';
       default:
         return 'status-default';
     }
@@ -225,6 +240,14 @@ export class BookingHistoryComponent {
         return 'Rezervacija je otkazana.';
       case 'COMPLETED':
         return 'Putovanje je završeno.';
+      case 'CHECK_IN_OPEN':
+        return 'Check-in je otvoren. Domaćin treba da prvi fotografiše vozilo.';
+      case 'CHECK_IN_HOST_COMPLETE':
+        return 'Domaćin je pripremio vozilo. Pregledajte fotografije i potvrdite stanje vozila.';
+      case 'CHECK_IN_COMPLETE':
+        return 'Check-in je završen. Možete preuzeti vozilo.';
+      case 'IN_TRIP':
+        return 'Putovanje je u toku. Uživajte!';
       default:
         return booking.status;
     }
@@ -237,7 +260,30 @@ export class BookingHistoryComponent {
    * to indicate user should check tooltip for details.
    */
   protected shouldShowInfoIcon(status: string): boolean {
-    return ['PENDING_APPROVAL', 'DECLINED', 'EXPIRED', 'EXPIRED_SYSTEM'].includes(status);
+    return [
+      'PENDING_APPROVAL',
+      'DECLINED',
+      'EXPIRED',
+      'EXPIRED_SYSTEM',
+      'CHECK_IN_HOST_COMPLETE',
+    ].includes(status);
+  }
+
+  // ========== CHECK-IN WORKFLOW ==========
+
+  /**
+   * Check if guest can perform check-in for this booking.
+   * Guest can check-in when host has completed their phase.
+   */
+  protected canGuestCheckIn(booking: UserBooking): boolean {
+    return booking.status === 'CHECK_IN_HOST_COMPLETE';
+  }
+
+  /**
+   * Navigate to guest check-in wizard.
+   */
+  protected goToGuestCheckIn(bookingId: number): void {
+    this.router.navigate(['/bookings', bookingId, 'check-in']);
   }
 
   openDetails(id: number): void {

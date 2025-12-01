@@ -104,6 +104,12 @@
         </mat-card-content>
 
         <mat-card-actions>
+          <!-- @if (canGuestCheckIn(booking)) {
+          <button mat-raised-button color="accent" (click)="goToGuestCheckIn(booking.id)">
+            <mat-icon>camera_alt</mat-icon>
+            Pregledaj vozilo i potvrdi
+          </button>
+          } -->
           <button mat-raised-button color="primary" (click)="openDetails(booking.id)">
             <mat-icon>receipt_long</mat-icon>
             Detalji rezervacije
@@ -195,6 +201,12 @@
         </mat-card-content>
 
         <mat-card-actions>
+          @if (canGuestCheckIn(booking)) {
+          <button mat-raised-button color="accent" (click)="goToGuestCheckIn(booking.id)">
+            <mat-icon>camera_alt</mat-icon>
+            Pregledaj vozilo i potvrdi
+          </button>
+          }
           <button mat-raised-button color="primary" (click)="openDetails(booking.id)">
             <mat-icon>receipt_long</mat-icon>
             Detalji rezervacije

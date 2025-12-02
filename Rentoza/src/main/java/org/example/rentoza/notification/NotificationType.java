@@ -100,5 +100,45 @@ public enum NotificationType {
      * Triggered when handshake confirmation is complete.
      * Sent to both parties confirming successful handover.
      */
-    HANDSHAKE_CONFIRMED
+    HANDSHAKE_CONFIRMED,
+
+    // ==========================================================================
+    // CHECK-OUT WORKFLOW NOTIFICATIONS
+    // ==========================================================================
+
+    /**
+     * Triggered when the checkout window opens (trip end or early return).
+     * Sent to both host and guest.
+     */
+    CHECKOUT_WINDOW_OPENED,
+
+    /**
+     * Triggered when the guest completes their checkout submission.
+     * Sent to host to confirm vehicle return condition.
+     */
+    CHECKOUT_GUEST_COMPLETE,
+
+    /**
+     * Triggered when the host reports new damage at checkout.
+     * Sent to guest with damage details.
+     */
+    CHECKOUT_DAMAGE_REPORTED,
+
+    /**
+     * Triggered when checkout is successfully completed.
+     * Sent to both host and guest.
+     */
+    CHECKOUT_COMPLETE,
+
+    /**
+     * Triggered when a late return is detected.
+     * Sent to both parties with fee information.
+     */
+    LATE_RETURN_DETECTED,
+
+    /**
+     * Triggered as a reminder to complete checkout.
+     * Sent to guest who hasn't returned the vehicle.
+     */
+    CHECKOUT_REMINDER
 }

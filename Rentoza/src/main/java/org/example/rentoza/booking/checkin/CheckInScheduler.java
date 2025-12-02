@@ -11,7 +11,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
@@ -102,10 +101,12 @@ public class CheckInScheduler {
         
         try {
             // Find bookings starting within next 24-26 hours (buffer for hourly run)
-            LocalDate today = LocalDate.now(SERBIA_ZONE);
-            LocalDate tomorrow = today.plusDays(1);
+            // Uses exact timestamps for precise T-24h detection
+            LocalDateTime now = LocalDateTime.now(SERBIA_ZONE);
+            LocalDateTime windowStart = now; // Open window now
+            LocalDateTime windowEnd = now.plusHours(26); // Buffer for hourly cron
             
-            List<Booking> eligibleBookings = checkInService.findBookingsForCheckInWindowOpening(today, tomorrow);
+            List<Booking> eligibleBookings = checkInService.findBookingsForCheckInWindowOpening(windowStart, windowEnd);
             
             int opened = 0;
             for (Booking booking : eligibleBookings) {
@@ -129,9 +130,7 @@ public class CheckInScheduler {
                         CheckInEventType.CHECK_IN_OPENED,
                         Map.of(
                             "triggeredBy", "SCHEDULER",
-                            "bookingStartDate", booking.getStartDate().toString(),
-                            "scheduledPickupTime", booking.getPickupTime() != null 
-                                ? booking.getPickupTime().toString() : booking.getPickupTimeWindow()
+                            "bookingStartTime", booking.getStartTime().toString()
                         )
                     );
                     
@@ -139,8 +138,8 @@ public class CheckInScheduler {
                     checkInService.notifyCheckInWindowOpened(booking);
                     
                     opened++;
-                    log.info("[CheckIn] Opened check-in window for booking {} (session: {})", 
-                        booking.getId(), sessionId);
+                    log.info("[CheckIn] Opened check-in window for booking {} (session: {}, startTime: {})", 
+                        booking.getId(), sessionId, booking.getStartTime());
                     
                 } catch (Exception e) {
                     log.error("[CheckIn] Failed to open check-in window for booking {}: {}", 

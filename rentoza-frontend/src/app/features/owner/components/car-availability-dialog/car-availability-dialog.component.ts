@@ -121,9 +121,11 @@ export class CarAvailabilityDialogComponent implements OnInit {
 
     const dateStr = this.toISODateString(date);
 
-    // Check if date is in any booking
+    // Check if date is in any booking (using startTime/endTime - extract date portion)
     const isBooked = this.bookings.some((booking) => {
-      return this.isDateInRange(dateStr, booking.startDate, booking.endDate);
+      const bookingStart = booking.startTime.split('T')[0];
+      const bookingEnd = booking.endTime.split('T')[0];
+      return this.isDateInRange(dateStr, bookingStart, bookingEnd);
     });
 
     // Check if date is in any blocked range
@@ -160,7 +162,9 @@ export class CarAvailabilityDialogComponent implements OnInit {
     // Check if date is available
     const dateStr = this.toISODateString(date);
     const isBooked = this.bookings.some((booking) => {
-      return this.isDateInRange(dateStr, booking.startDate, booking.endDate);
+      const bookingStart = booking.startTime.split('T')[0];
+      const bookingEnd = booking.endTime.split('T')[0];
+      return this.isDateInRange(dateStr, bookingStart, bookingEnd);
     });
 
     const isBlocked = this.blockedDates.some((blocked) => {

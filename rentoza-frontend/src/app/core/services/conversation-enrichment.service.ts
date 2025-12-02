@@ -42,8 +42,8 @@ export class ConversationEnrichmentService {
         carBrand: booking?.carBrand,
         carModel: booking?.carModel,
         carYear: booking?.carYear,
-        startDate: booking?.startDate,
-        endDate: booking?.endDate,
+        startTime: booking?.startTime,
+        endTime: booking?.endTime,
         renterName: renterName,
         ownerName: ownerName,
       })),
@@ -89,6 +89,7 @@ export class ConversationEnrichmentService {
 
         // Map Booking to UserBooking structure expected by cache/enrichment
         // Note: Booking model has nested car/renter, UserBooking is flat
+        // Using startTime/endTime for exact timestamp architecture
         const userBooking: UserBooking = {
           id: Number(booking.id),
           carId: Number(booking.car?.id),
@@ -98,8 +99,8 @@ export class ConversationEnrichmentService {
           carImageUrl: booking.car?.imageUrl || null,
           carLocation: '', // Not available in standard Booking DTO
           carPricePerDay: 0, // Not available in standard Booking DTO
-          startDate: booking.startDate,
-          endDate: booking.endDate,
+          startTime: booking.startTime,
+          endTime: booking.endTime,
           totalPrice: booking.totalPrice,
           status: booking.status,
           hasReview: false,
@@ -107,8 +108,6 @@ export class ConversationEnrichmentService {
           reviewComment: null,
           insuranceType: 'BASIC', // Default
           prepaidRefuel: false,
-          pickupTimeWindow: booking.pickupTimeWindow,
-          pickupTime: booking.pickupTime,
         };
 
         this.bookingCache.set(bookingId, userBooking);

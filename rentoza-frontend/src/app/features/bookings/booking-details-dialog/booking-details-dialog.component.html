@@ -51,31 +51,15 @@
         <div class="info-grid">
           <div class="info-item">
             <span class="label">Početak</span>
-            <span class="value">{{ formatDate(b.startDate) }}</span>
+            <span class="value">{{ b.startTime | date:'dd.MM.yyyy HH:mm' }}</span>
           </div>
           <div class="info-item">
             <span class="label">Kraj</span>
-            <span class="value">{{ formatDate(b.endDate) }}</span>
+            <span class="value">{{ b.endTime | date:'dd.MM.yyyy HH:mm' }}</span>
           </div>
           <div class="info-item">
             <span class="label">Trajanje</span>
-            <span class="value">{{ getDuration(b.startDate, b.endDate) }} dana</span>
-          </div>
-          <div class="info-item">
-            <span class="label">Preuzimanje</span>
-            <span class="value">
-              {{
-                b.pickupTimeWindow === 'EXACT'
-                  ? b.pickupTime
-                  : b.pickupTimeWindow === 'MORNING'
-                  ? 'Jutro (08-12h)'
-                  : b.pickupTimeWindow === 'AFTERNOON'
-                  ? 'Popodne (12-16h)'
-                  : b.pickupTimeWindow === 'EVENING'
-                  ? 'Veče (16-20h)'
-                  : 'Po dogovoru'
-              }}
-            </span>
+            <span class="value">{{ getDuration(b.startTime, b.endTime) }} dana</span>
           </div>
         </div>
       </div>

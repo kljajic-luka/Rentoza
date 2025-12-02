@@ -4,6 +4,7 @@ import org.example.rentoza.car.dto.AvailabilitySearchRequestDTO;
 import org.example.rentoza.car.dto.CarRequestDTO;
 import org.example.rentoza.car.dto.CarResponseDTO;
 import org.example.rentoza.car.dto.CarSearchCriteria;
+import org.example.rentoza.car.dto.UnavailableRangeDTO;
 import org.example.rentoza.config.CachingConfig;
 import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.user.User;
@@ -17,6 +18,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.Arrays;
 import java.util.List;
@@ -286,6 +288,69 @@ public class CarController {
         CarResponseDTO car = service.getCarById(id);
         log.debug("[GetCarById] Found car: {} {} ({})", car.getBrand(), car.getModel(), car.getId());
         return ResponseEntity.ok(car);
+    }
+
+    /**
+     * Get unavailable time ranges for a specific car.
+     * 
+     * Purpose:
+     * - Returns all periods when the car is unavailable (bookings, blocked dates, unusable gaps)
+     * - Used by frontend calendar to disable invalid date/time selections
+     * - Includes gap detection: periods shorter than minRentalDays are marked unavailable
+     * 
+     * Example Request:
+     * GET /api/cars/123/availability?start=2025-01-01T00:00:00&end=2025-12-31T23:59:59
+     * 
+     * Security:
+     * - @PreAuthorize("permitAll()") - accessible to all users (anonymous + authenticated)
+     * - Public endpoint for calendar UI
+     * 
+     * Validation:
+     * - Car must exist (throws ResourceNotFoundException)
+     * - If end is not provided, defaults to start + 365 days
+     * - If start is not provided, defaults to now
+     * - Maximum query window: 365 days
+     * 
+     * @param id Car ID
+     * @param start Optional start of query window (ISO-8601 datetime, default: now)
+     * @param end Optional end of query window (ISO-8601 datetime, default: start + 365 days)
+     * @return List of unavailable ranges with reasons
+     */
+    @GetMapping("/{id}/availability")
+    @PreAuthorize("permitAll()")
+    public ResponseEntity<List<UnavailableRangeDTO>> getCarAvailability(
+            @PathVariable Long id,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime start,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime end
+    ) {
+        try {
+            // Default query window: next 365 days from now
+            LocalDateTime queryStart = start != null ? start : LocalDateTime.now();
+            LocalDateTime queryEnd = end != null ? end : queryStart.plusDays(365);
+            
+            // Validate query window
+            if (queryEnd.isBefore(queryStart)) {
+                return ResponseEntity.badRequest().build();
+            }
+            
+            // Clamp to maximum 365 days
+            if (java.time.Duration.between(queryStart, queryEnd).toDays() > 365) {
+                queryEnd = queryStart.plusDays(365);
+            }
+            
+            List<UnavailableRangeDTO> ranges = availabilityService.getUnavailableRanges(id, queryStart, queryEnd);
+            
+            log.debug("[GetCarAvailability] Returning {} unavailable ranges for carId={}", ranges.size(), id);
+            
+            return ResponseEntity.ok(ranges);
+            
+        } catch (ResourceNotFoundException e) {
+            log.warn("[GetCarAvailability] Car not found: {}", id);
+            return ResponseEntity.notFound().build();
+        } catch (Exception e) {
+            log.error("[GetCarAvailability] Unexpected error for carId={}", id, e);
+            return ResponseEntity.status(500).build();
+        }
     }
 
     /**

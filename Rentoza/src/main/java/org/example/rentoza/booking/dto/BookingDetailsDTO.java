@@ -7,9 +7,15 @@ import lombok.NoArgsConstructor;
 import org.example.rentoza.booking.BookingStatus;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.time.LocalTime;
+import java.time.LocalDateTime;
 
+/**
+ * DTO for detailed booking information.
+ * 
+ * <h2>Exact Timestamp Architecture</h2>
+ * Returns precise start/end timestamps for booking display.
+ * Times are in Europe/Belgrade timezone.
+ */
 @Data
 @Builder
 @NoArgsConstructor
@@ -18,10 +24,19 @@ public class BookingDetailsDTO {
     // Trip
     private Long id;
     private BookingStatus status;
-    private LocalDate startDate;
-    private LocalDate endDate;
-    private LocalTime pickupTime;
-    private String pickupTimeWindow;
+    
+    /**
+     * Exact trip start timestamp.
+     * Format: ISO-8601 LocalDateTime (e.g., "2025-10-10T10:00:00")
+     */
+    private LocalDateTime startTime;
+    
+    /**
+     * Exact trip end timestamp.
+     * Format: ISO-8601 LocalDateTime (e.g., "2025-10-12T10:00:00")
+     */
+    private LocalDateTime endTime;
+    
     private BigDecimal totalPrice;
     private String insuranceType;
     private boolean prepaidRefuel;
@@ -36,7 +51,7 @@ public class BookingDetailsDTO {
     private String location;
     private String primaryImageUrl;
     
-    // Car Details (Extra fields requested in prompt)
+    // Car Details
     private Integer seats;
     private String fuelType;
     private Double fuelConsumption;

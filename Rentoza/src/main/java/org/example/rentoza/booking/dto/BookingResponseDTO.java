@@ -8,8 +8,15 @@ import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingStatus;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 
+/**
+ * DTO for booking response.
+ * 
+ * <h2>Exact Timestamp Architecture</h2>
+ * Returns precise start/end timestamps for frontend display.
+ * Times are in Europe/Belgrade timezone.
+ */
 @Getter
 @Setter
 @NoArgsConstructor
@@ -17,8 +24,19 @@ import java.time.LocalDate;
 public class BookingResponseDTO {
 
     private Long id;
-    private LocalDate startDate;
-    private LocalDate endDate;
+    
+    /**
+     * Exact trip start timestamp.
+     * Format: ISO-8601 LocalDateTime (e.g., "2025-10-10T10:00:00")
+     */
+    private LocalDateTime startTime;
+    
+    /**
+     * Exact trip end timestamp.
+     * Format: ISO-8601 LocalDateTime (e.g., "2025-10-12T10:00:00")
+     */
+    private LocalDateTime endTime;
+    
     private BigDecimal totalPrice;
     private BookingStatus status;
     private String createdAt;
@@ -38,9 +56,9 @@ public class BookingResponseDTO {
     @AllArgsConstructor
     public static class CarDetailsDTO {
         private Long id;
-        private String brand;  // Changed from 'make' to 'brand' for consistency
+        private String brand;
         private String model;
-        private Integer year;  // Added year field
+        private Integer year;
         private String imageUrl;
     }
 
@@ -56,11 +74,11 @@ public class BookingResponseDTO {
 
     public BookingResponseDTO(Booking booking) {
         this.id = booking.getId();
-        this.startDate = booking.getStartDate();
-        this.endDate = booking.getEndDate();
+        this.startTime = booking.getStartTime();
+        this.endTime = booking.getEndTime();
         this.totalPrice = booking.getTotalPrice();
         this.status = booking.getStatus();
-        this.createdAt = booking.getStartDate() != null ? booking.getStartDate().toString() : null;
+        this.createdAt = booking.getCreatedAt() != null ? booking.getCreatedAt().toString() : null;
 
         // Map car details
         if (booking.getCar() != null) {

@@ -169,18 +169,73 @@ public enum CheckInEventType {
      */
     LOCKBOX_CODE_REVEALED,
     
-    // ========== CHECKOUT (Phase 2 - Future) ==========
+    // ========== CHECKOUT ==========
     
     /**
      * Checkout process initiated.
-     * Metadata: {@code {"initiatedBy": "HOST|GUEST|SCHEDULER"}}
+     * Metadata: {@code {"initiatedBy": "HOST|GUEST|SCHEDULER", "reason": "TRIP_END|EARLY_RETURN"}}
      */
     CHECKOUT_INITIATED,
     
     /**
+     * Guest uploaded a checkout photo.
+     * Metadata: {@code {"photoId": 456, "photoType": "CHECKOUT_EXTERIOR_FRONT", "exifValid": true}}
+     */
+    CHECKOUT_GUEST_PHOTO_UPLOADED,
+    
+    /**
+     * Guest submitted end odometer reading at checkout.
+     * Metadata: {@code {"reading": 45890, "totalMileage": 212}}
+     */
+    CHECKOUT_GUEST_ODOMETER_SUBMITTED,
+    
+    /**
+     * Guest submitted end fuel level at checkout.
+     * Metadata: {@code {"levelPercent": 60, "startLevel": 75, "difference": -15}}
+     */
+    CHECKOUT_GUEST_FUEL_SUBMITTED,
+    
+    /**
+     * Guest completed all required checkout steps.
+     * Triggers transition to CHECKOUT_GUEST_COMPLETE status.
+     * Metadata: {@code {"photoCount": 6, "odometerSubmitted": true, "fuelSubmitted": true}}
+     */
+    CHECKOUT_GUEST_SECTION_COMPLETE,
+    
+    /**
+     * Host confirmed vehicle return and condition.
+     * Metadata: {@code {"conditionAccepted": true, "newDamageReported": false}}
+     */
+    CHECKOUT_HOST_CONFIRMED,
+    
+    /**
+     * Host reported new damage found at checkout.
+     * Metadata: {@code {"damageDescription": "...", "estimatedCostRsd": 15000, "photoIds": [789, 790]}}
+     */
+    CHECKOUT_HOST_DAMAGE_REPORTED,
+    
+    /**
+     * Dispute opened during checkout (damage disagreement).
+     * Metadata: {@code {"openedBy": "HOST|GUEST", "reason": "DAMAGE_DISPUTE|MILEAGE_DISPUTE"}}
+     */
+    CHECKOUT_DISPUTE_OPENED,
+    
+    /**
      * Checkout completed, trip ended.
      * Triggers transition to COMPLETED status.
-     * Metadata: {@code {"endOdometer": 45890, "endFuelLevel": 60, "newDamageReported": false}}
+     * Metadata: {@code {"endOdometer": 45890, "endFuelLevel": 60, "newDamageReported": false, "totalMileage": 212}}
      */
-    CHECKOUT_COMPLETE
+    CHECKOUT_COMPLETE,
+    
+    /**
+     * Late return detected (guest returned after scheduled end time).
+     * Metadata: {@code {"scheduledEndTime": "...", "actualReturnTime": "...", "lateMinutes": 45, "lateFeeRsd": 500}}
+     */
+    LATE_RETURN_DETECTED,
+    
+    /**
+     * Guest initiated early return (before scheduled end date).
+     * Metadata: {@code {"scheduledEndDate": "...", "requestedReturnDate": "...", "daysEarly": 2}}
+     */
+    EARLY_RETURN_INITIATED
 }

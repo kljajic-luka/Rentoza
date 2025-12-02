@@ -1,11 +1,9 @@
 export interface BookingDetails {
-  // Trip
+  // Trip (Exact Timestamp Architecture)
   id: number;
   status: 'PENDING_APPROVAL' | 'ACTIVE' | 'DECLINED' | 'EXPIRED' | 'CANCELLED' | 'COMPLETED';
-  startDate: string;
-  endDate: string;
-  pickupTime?: string;
-  pickupTimeWindow?: string;
+  startTime: string;  // ISO-8601 datetime
+  endTime: string;    // ISO-8601 datetime
   totalPrice: number;
   insuranceType?: string;
   prepaidRefuel: boolean;

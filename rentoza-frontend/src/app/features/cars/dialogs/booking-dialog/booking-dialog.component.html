@@ -6,16 +6,16 @@
 
   <mat-dialog-content>
     <form [formGroup]="bookingForm" class="booking-form">
-      <!-- Trip Details Section -->
+      <!-- Trip Details Section - Start -->
       <section class="form-section">
         <h3 class="section-title">
-          <mat-icon>calendar_month</mat-icon>
-          Detalji putovanja
+          <mat-icon>flight_takeoff</mat-icon>
+          Početak putovanja
         </h3>
 
-        <div class="form-row">
-          <mat-form-field appearance="outline" class="form-field">
-            <mat-label>Datum početka</mat-label>
+        <div class="form-row datetime-row">
+          <mat-form-field appearance="outline" class="form-field date-field">
+            <mat-label>Datum</mat-label>
             <input
               matInput
               [matDatepicker]="startPicker"
@@ -27,12 +27,39 @@
             <mat-datepicker-toggle matIconSuffix [for]="startPicker"></mat-datepicker-toggle>
             <mat-datepicker #startPicker></mat-datepicker>
             <mat-error *ngIf="bookingForm.controls.startDate.invalid">
-              Datum početka je obavezan
+              Datum je obavezan
             </mat-error>
           </mat-form-field>
 
-          <mat-form-field appearance="outline" class="form-field">
-            <mat-label>Datum završetka</mat-label>
+          <mat-form-field appearance="outline" class="form-field time-field">
+            <mat-label>Vreme</mat-label>
+            <mat-select formControlName="startTime">
+              @for (slot of timeSlots; track slot.value) {
+                <mat-option 
+                  [value]="slot.value"
+                  [disabled]="bookingForm.controls.startDate.value && isTimeSlotDisabled(bookingForm.controls.startDate.value, slot)">
+                  {{ slot.label }}
+                </mat-option>
+              }
+            </mat-select>
+            <mat-icon matPrefix>schedule</mat-icon>
+            <mat-error *ngIf="bookingForm.controls.startTime.invalid">
+              Vreme je obavezno
+            </mat-error>
+          </mat-form-field>
+        </div>
+      </section>
+
+      <!-- Trip Details Section - End -->
+      <section class="form-section">
+        <h3 class="section-title">
+          <mat-icon>flight_land</mat-icon>
+          Kraj putovanja
+        </h3>
+
+        <div class="form-row datetime-row">
+          <mat-form-field appearance="outline" class="form-field date-field">
+            <mat-label>Datum</mat-label>
             <input
               matInput
               [matDatepicker]="endPicker"
@@ -44,101 +71,63 @@
             <mat-datepicker-toggle matIconSuffix [for]="endPicker"></mat-datepicker-toggle>
             <mat-datepicker #endPicker></mat-datepicker>
             <mat-error *ngIf="bookingForm.controls.endDate.invalid">
-              Datum završetka je obavezan
+              Datum je obavezan
+            </mat-error>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="form-field time-field">
+            <mat-label>Vreme</mat-label>
+            <mat-select formControlName="endTime">
+              @for (slot of timeSlots; track slot.value) {
+                <mat-option 
+                  [value]="slot.value"
+                  [disabled]="bookingForm.controls.endDate.value && isTimeSlotDisabled(bookingForm.controls.endDate.value, slot)">
+                  {{ slot.label }}
+                </mat-option>
+              }
+            </mat-select>
+            <mat-icon matPrefix>schedule</mat-icon>
+            <mat-error *ngIf="bookingForm.controls.endTime.invalid">
+              Vreme je obavezno
             </mat-error>
           </mat-form-field>
         </div>
+      </section>
 
-        <!-- Rental Duration Info & Constraints -->
-        @if (rentalDays() > 0) {
-        <p class="rental-info" [class.rental-info--error]="durationTooShort() || durationTooLong()">
+      <!-- Rental Duration Info -->
+      @if (rentalDays() > 0) {
+        <div class="rental-summary" [class.rental-summary--error]="durationTooShort() || durationTooLong()">
           <mat-icon>schedule</mat-icon>
-          Trajanje iznajmljivanja: <strong>{{ rentalDays() }} dana</strong>
-        </p>
-        }
+          <span>Trajanje: <strong>{{ formatDuration() }}</strong></span>
+        </div>
+      }
 
-        <!-- Car-specific constraints hint -->
-        @if (minRentalDays > 1 || maxRentalDays < 30) {
+      <!-- Car-specific constraints hint -->
+      @if (minRentalDays > 1 || maxRentalDays < 30) {
         <p class="constraints-hint">
           <mat-icon class="hint-icon">info</mat-icon>
           <span>
             Vlasnik zahteva @if (minRentalDays > 1) { min.
-            <strong>{{ minRentalDays }} dana</strong> } @if (minRentalDays > 1 && maxRentalDays <
-            30) { i } @if (maxRentalDays < 30) { max. <strong>{{ maxRentalDays }} dana</strong> }
+            <strong>{{ minRentalDays }} dana</strong> } @if (minRentalDays > 1 && maxRentalDays < 30) { i } 
+            @if (maxRentalDays < 30) { max. <strong>{{ maxRentalDays }} dana</strong> }
             iznajmljivanja.
           </span>
         </p>
-        }
+      }
 
-        <!-- Duration validation errors -->
-        @if (durationTooShort()) {
+      <!-- Duration validation errors -->
+      @if (durationTooShort()) {
         <p class="validation-error">
           <mat-icon>error_outline</mat-icon>
-          <span
-            >Minimalno trajanje iznajmljivanja je <strong>{{ minRentalDays }} dana</strong>.</span
-          >
+          <span>Minimalno trajanje iznajmljivanja je <strong>24 sata</strong>.</span>
         </p>
-        } @if (durationTooLong()) {
+      } 
+      @if (durationTooLong()) {
         <p class="validation-error">
           <mat-icon>error_outline</mat-icon>
-          <span
-            >Maksimalno trajanje iznajmljivanja je <strong>{{ maxRentalDays }} dana</strong>.</span
-          >
+          <span>Maksimalno trajanje iznajmljivanja je <strong>{{ maxRentalDays }} dana</strong>.</span>
         </p>
-        }
-      </section>
-
-      <mat-divider></mat-divider>
-
-      <!-- Pickup Time Section (Phase 2.2) -->
-      <section class="form-section">
-        <h3 class="section-title">
-          <mat-icon>schedule</mat-icon>
-          Vreme preuzimanja
-        </h3>
-
-        <mat-radio-group formControlName="pickupTimeWindow" class="pickup-time-options">
-          <mat-radio-button value="MORNING" class="pickup-time-option">
-            <div class="option-content">
-              <strong>Jutro</strong>
-              <span class="option-time">08:00 – 12:00</span>
-            </div>
-          </mat-radio-button>
-
-          <mat-radio-button value="AFTERNOON" class="pickup-time-option">
-            <div class="option-content">
-              <strong>Popodne</strong>
-              <span class="option-time">12:00 – 16:00</span>
-            </div>
-          </mat-radio-button>
-
-          <mat-radio-button value="EVENING" class="pickup-time-option">
-            <div class="option-content">
-              <strong>Veče</strong>
-              <span class="option-time">16:00 – 20:00</span>
-            </div>
-          </mat-radio-button>
-
-          <mat-radio-button value="EXACT" class="pickup-time-option">
-            <div class="option-content">
-              <strong>Tačno vreme</strong>
-              <span class="option-time">Odaberite specifično vreme</span>
-            </div>
-          </mat-radio-button>
-        </mat-radio-group>
-
-        @if (bookingForm.value.pickupTimeWindow === 'EXACT') {
-        <mat-form-field appearance="outline" class="exact-time-field">
-          <mat-label>Tačno vreme preuzimanja</mat-label>
-          <input matInput type="time" formControlName="pickupTime" />
-          <mat-icon matPrefix>access_time</mat-icon>
-          <mat-hint>Format: HH:mm (npr. 14:30)</mat-hint>
-          <mat-error *ngIf="bookingForm.controls.pickupTime.invalid">
-            Vreme je obavezno kada je odabrano tačno vreme
-          </mat-error>
-        </mat-form-field>
-        }
-      </section>
+      }
 
       <mat-divider></mat-divider>
 
@@ -179,9 +168,7 @@
 
         <p class="driver-info-hint">
           <mat-icon class="hint-icon">info</mat-icon>
-          <span
-            >Ovi podaci su preuzeti sa vašeg profila. Za izmenu, posetite stranicu profila.</span
-          >
+          <span>Ovi podaci su preuzeti sa vašeg profila. Za izmenu, posetite stranicu profila.</span>
         </p>
       </section>
 
@@ -240,12 +227,10 @@
           <div class="addon-content">
             <strong>Prepaid Refuel</strong>
             <p class="addon-description">
-              Gorivo unapred plaćeno - vratite vozilo sa bilo kojom količinom goriva @if
-              (data.car.fuelConsumption) {
-              <br />
-              <span class="addon-cost"
-                >(Approx. {{ refuelCost() | currency : 'RSD' : 'symbol' : '1.0-0' }})</span
-              >
+              Gorivo unapred plaćeno - vratite vozilo sa bilo kojom količinom goriva
+              @if (data.car.fuelConsumption) {
+                <br />
+                <span class="addon-cost">(Approx. {{ refuelCost() | currency : 'RSD' : 'symbol' : '1.0-0' }})</span>
               }
             </p>
           </div>
@@ -262,33 +247,34 @@
         </h3>
 
         @if (rentalDays() > 0) {
-        <div class="price-breakdown">
-          <div class="price-line">
-            <span>Osnovna cena ({{ rentalDays() }} dana)</span>
-            <span>{{ basePrice() | currency : 'RSD' : 'symbol' : '1.0-0' }}</span>
-          </div>
+          <div class="price-breakdown">
+            <div class="price-line">
+              <span>Osnovna cena ({{ rentalDays() }} {{ rentalDays() === 1 ? 'dan' : 'dana' }})</span>
+              <span>{{ basePrice() | currency : 'RSD' : 'symbol' : '1.0-0' }}</span>
+            </div>
 
-          @if (insuranceCost() > 0) {
-          <div class="price-line">
-            <span>Osiguranje ({{ bookingForm.value.insuranceType }})</span>
-            <span>+{{ insuranceCost() | currency : 'RSD' : 'symbol' : '1.0-0' }}</span>
-          </div>
-          } @if (refuelCost() > 0) {
-          <div class="price-line">
-            <span>Prepaid Refuel</span>
-            <span>+{{ refuelCost() | currency : 'RSD' : 'symbol' : '1.0-0' }}</span>
-          </div>
-          }
+            @if (insuranceCost() > 0) {
+              <div class="price-line">
+                <span>Osiguranje ({{ bookingForm.value.insuranceType }})</span>
+                <span>+{{ insuranceCost() | currency : 'RSD' : 'symbol' : '1.0-0' }}</span>
+              </div>
+            } 
+            @if (refuelCost() > 0) {
+              <div class="price-line">
+                <span>Prepaid Refuel</span>
+                <span>+{{ refuelCost() | currency : 'RSD' : 'symbol' : '1.0-0' }}</span>
+              </div>
+            }
 
-          <mat-divider></mat-divider>
+            <mat-divider></mat-divider>
 
-          <div class="price-line price-total">
-            <strong>Ukupno</strong>
-            <strong>{{ totalPrice() | currency : 'RSD' : 'symbol' : '1.0-0' }}</strong>
+            <div class="price-line price-total">
+              <strong>Ukupno</strong>
+              <strong>{{ totalPrice() | currency : 'RSD' : 'symbol' : '1.0-0' }}</strong>
+            </div>
           </div>
-        </div>
         } @else {
-        <p class="no-price-message">Izaberite datume da vidite cenu</p>
+          <p class="no-price-message">Izaberite datume i vremena da vidite cenu</p>
         }
       </section>
     </form>
@@ -309,15 +295,11 @@
       "
     >
       @if (isSubmitting()) {
-      <ng-container>
         <mat-spinner diameter="20"></mat-spinner>
         <span>Slanje zahteva...</span>
-      </ng-container>
       } @else {
-      <ng-container>
         <mat-icon>send</mat-icon>
         <span>Pošalji zahtev za rezervaciju</span>
-      </ng-container>
       }
     </button>
   </mat-dialog-actions>

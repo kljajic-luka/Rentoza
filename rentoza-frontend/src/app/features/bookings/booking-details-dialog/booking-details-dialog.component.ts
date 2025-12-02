@@ -110,7 +110,7 @@ export class BookingDetailsDialogComponent implements OnInit {
       bookingId: this.data.bookingId,
       userRole: 'GUEST',
       carInfo: `${b.brand} ${b.model} ${b.year}`,
-      tripDates: `${this.formatDate(b.startDate)} - ${this.formatDate(b.endDate)}`,
+      tripDates: `${this.formatDate(b.startTime)} - ${this.formatDate(b.endTime)}`,
     };
 
     const dialogRef = this.dialog.open(CancellationPreviewDialogComponent, {

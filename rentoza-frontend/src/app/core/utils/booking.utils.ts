@@ -3,6 +3,8 @@
  *
  * These utilities ensure frontend and backend consistency for determining
  * booking completion status and review eligibility.
+ * 
+ * Updated for Exact Timestamp Architecture - uses endTime instead of endDate.
  */
 
 /**
@@ -10,24 +12,22 @@
  *
  * A booking is completed if:
  * 1. Status is explicitly set to 'COMPLETED', OR
- * 2. The end date is in the past (regardless of status)
+ * 2. The end time is in the past (regardless of status)
  *
  * This unified check ensures frontend and backend consistency for review eligibility.
  *
- * @param booking - Booking object with status and endDate fields
+ * @param booking - Booking object with status and endTime fields
  * @returns true if the booking is completed
  */
-export function isBookingCompleted(booking: { status: string; endDate: string | Date }): boolean {
-  if (!booking || !booking.endDate) {
+export function isBookingCompleted(booking: { status: string; endTime: string | Date }): boolean {
+  if (!booking || !booking.endTime) {
     return false;
   }
 
   const now = new Date();
-  const endDate = new Date(booking.endDate);
-  // Treat booking as completed only after the END of the end date (23:59:59.999)
-  endDate.setHours(23, 59, 59, 999);
+  const endTime = new Date(booking.endTime);
 
-  return booking.status === 'COMPLETED' || endDate < now;
+  return booking.status === 'COMPLETED' || endTime < now;
 }
 
 /**
@@ -37,10 +37,10 @@ export function isBookingCompleted(booking: { status: string; endDate: string | 
  * 1. The booking is completed (using unified completion check), AND
  * 2. The user has not already reviewed this booking
  *
- * @param booking - Booking object with status, endDate, and hasReview fields
+ * @param booking - Booking object with status, endTime, and hasReview fields
  * @returns true if the booking can be reviewed
  */
-export function canReviewBooking(booking: { status: string; endDate: string | Date; hasReview: boolean }): boolean {
+export function canReviewBooking(booking: { status: string; endTime: string | Date; hasReview: boolean }): boolean {
   return isBookingCompleted(booking) && !booking.hasReview;
 }
 
@@ -51,9 +51,55 @@ export function canReviewBooking(booking: { status: string; endDate: string | Da
  * 1. The booking is completed (using unified completion check), AND
  * 2. The owner has not already reviewed the renter
  *
- * @param booking - Booking object with status, endDate, and hasOwnerReview fields
+ * @param booking - Booking object with status, endTime, and hasOwnerReview fields
  * @returns true if the owner can review the renter
  */
-export function canOwnerReviewRenter(booking: { status: string; endDate: string | Date; hasOwnerReview?: boolean }): boolean {
+export function canOwnerReviewRenter(booking: { status: string; endTime: string | Date; hasOwnerReview?: boolean }): boolean {
   return isBookingCompleted(booking) && !booking.hasOwnerReview;
+}
+
+/**
+ * Format a datetime string for display.
+ * 
+ * @param dateTimeStr - ISO-8601 datetime string
+ * @returns Formatted date and time string (e.g., "10.10.2025 09:00")
+ */
+export function formatDateTime(dateTimeStr: string): string {
+  const date = new Date(dateTimeStr);
+  return date.toLocaleDateString('sr-RS', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+/**
+ * Format a datetime string for short display (date only).
+ * 
+ * @param dateTimeStr - ISO-8601 datetime string
+ * @returns Formatted date string (e.g., "10.10.2025")
+ */
+export function formatDate(dateTimeStr: string): string {
+  const date = new Date(dateTimeStr);
+  return date.toLocaleDateString('sr-RS', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+}
+
+/**
+ * Format a datetime string for time only.
+ * 
+ * @param dateTimeStr - ISO-8601 datetime string
+ * @returns Formatted time string (e.g., "09:00")
+ */
+export function formatTime(dateTimeStr: string): string {
+  const date = new Date(dateTimeStr);
+  return date.toLocaleTimeString('sr-RS', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }

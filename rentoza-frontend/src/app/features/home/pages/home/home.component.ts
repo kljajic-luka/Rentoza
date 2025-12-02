@@ -119,26 +119,20 @@ export class HomeComponent implements OnInit, OnDestroy {
   startTimeError = '';
   endTimeError = '';
 
-  // Time options for dropdowns (06:00 - 22:00)
-  readonly timeOptions = [
-    '06:00',
-    '07:00',
-    '08:00',
-    '09:00',
-    '10:00',
-    '11:00',
-    '12:00',
-    '13:00',
-    '14:00',
-    '15:00',
-    '16:00',
-    '17:00',
-    '18:00',
-    '19:00',
-    '20:00',
-    '21:00',
-    '22:00',
-  ];
+  // Time options for dropdowns (30-minute intervals, 00:00 - 23:30)
+  readonly timeOptions: string[] = this.generateTimeSlots();
+
+  private generateTimeSlots(): string[] {
+    const slots: string[] = [];
+    for (let hour = 0; hour < 24; hour++) {
+      for (const minute of [0, 30]) {
+        const hh = hour.toString().padStart(2, '0');
+        const mm = minute.toString().padStart(2, '0');
+        slots.push(`${hh}:${mm}`);
+      }
+    }
+    return slots;
+  }
 
   ngOnInit(): void {
     this.resetSearchFields();
@@ -298,17 +292,30 @@ export class HomeComponent implements OnInit, OnDestroy {
       return;
     }
 
-    // Navigate with availability search params
+    // Navigate with availability search params (Exact Timestamp Architecture)
+    // Combine date + time into ISO-8601 LocalDateTime strings
+    const startTimeISO = this.combineDateTime(this.searchStartDate as Date, this.searchStartTime);
+    const endTimeISO = this.combineDateTime(this.searchEndDate as Date, this.searchEndTime);
+
     const queryParams: any = {
       location,
-      startDate: this.formatDate(this.searchStartDate as Date),
-      startTime: this.searchStartTime,
-      endDate: this.formatDate(this.searchEndDate as Date),
-      endTime: this.searchEndTime,
+      startTime: startTimeISO,
+      endTime: endTimeISO,
       availabilitySearch: 'true',
     };
 
     this.router.navigate(['/cars'], { queryParams });
+  }
+
+  /**
+   * Combine date and time into ISO-8601 LocalDateTime string.
+   * Format: YYYY-MM-DDTHH:mm:00
+   */
+  private combineDateTime(date: Date, time: string): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}T${time}:00`;
   }
 
   /**

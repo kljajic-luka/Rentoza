@@ -93,7 +93,7 @@ import { BookingService } from '../../../../core/services/booking.service';
             <mat-icon>event</mat-icon>
             <div>
               <span class="label">Od</span>
-              <span class="value">{{ booking()?.startDate | date : 'dd.MM.yyyy HH:mm' }}</span>
+              <span class="value">{{ booking()?.startTime | date : 'dd.MM.yyyy HH:mm' }}</span>
             </div>
           </div>
           <mat-divider></mat-divider>
@@ -101,7 +101,7 @@ import { BookingService } from '../../../../core/services/booking.service';
             <mat-icon>event</mat-icon>
             <div>
               <span class="label">Do</span>
-              <span class="value">{{ booking()?.endDate | date : 'dd.MM.yyyy HH:mm' }}</span>
+              <span class="value">{{ booking()?.endTime | date : 'dd.MM.yyyy HH:mm' }}</span>
             </div>
           </div>
         </mat-card-content>

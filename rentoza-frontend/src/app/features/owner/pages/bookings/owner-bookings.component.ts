@@ -91,9 +91,8 @@ export class OwnerBookingsComponent implements OnInit {
                 return;
               }
 
-              // Group bookings by date-based logic
-              const today = new Date();
-              today.setHours(0, 0, 0, 0); // Normalize to midnight for accurate comparison
+              // Group bookings by time-based logic (exact timestamp architecture)
+              const now = new Date();
 
               const upcoming: Booking[] = [];
               const active: Booking[] = [];
@@ -101,21 +100,20 @@ export class OwnerBookingsComponent implements OnInit {
 
               bookings.forEach((booking) => {
                 // Defensive check: ensure booking has required properties
-                if (!booking || !booking.status || !booking.startDate || !booking.endDate) {
+                // Using startTime/endTime for exact timestamp architecture
+                if (!booking || !booking.status || !booking.startTime || !booking.endTime) {
                   console.warn('Invalid booking object:', booking);
                   return;
                 }
 
-                // Parse and normalize dates
-                const startDate = new Date(booking.startDate);
-                const endDate = new Date(booking.endDate);
-                startDate.setHours(0, 0, 0, 0);
-                endDate.setHours(0, 0, 0, 0);
+                // Parse timestamps (exact timestamp architecture)
+                const startTime = new Date(booking.startTime);
+                const endTime = new Date(booking.endTime);
 
-                // Categorize based on dates AND status
-                // 1. Completed: End date has passed OR status indicates completion
+                // Categorize based on times AND status
+                // 1. Completed: End time has passed OR status indicates completion
                 if (
-                  endDate < today ||
+                  endTime < now ||
                   booking.status === 'COMPLETED' ||
                   booking.status === 'CANCELLED' ||
                   booking.status === 'DECLINED' ||
@@ -123,12 +121,12 @@ export class OwnerBookingsComponent implements OnInit {
                 ) {
                   completed.push(booking);
                 }
-                // 2. Upcoming: Start date is in the future OR pending approval
-                else if (startDate > today || booking.status === 'PENDING_APPROVAL') {
+                // 2. Upcoming: Start time is in the future OR pending approval
+                else if (startTime > now || booking.status === 'PENDING_APPROVAL') {
                   upcoming.push(booking);
                 }
-                // 3. Active: Current date is within booking period (startDate <= today <= endDate)
-                else if (startDate <= today && endDate >= today) {
+                // 3. Active: Current time is within booking period (startTime <= now <= endTime)
+                else if (startTime <= now && endTime >= now) {
                   active.push(booking);
                 }
               });
@@ -280,8 +278,8 @@ export class OwnerBookingsComponent implements OnInit {
       bookingId: Number(booking.id),
       userRole: 'HOST',
       carInfo: car ? `${car.brand || ''} ${car.model}`.trim() : 'Vozilo',
-      tripDates: `${new Date(booking.startDate).toLocaleDateString('sr-RS')} - ${new Date(
-        booking.endDate
+      tripDates: `${new Date(booking.startTime).toLocaleDateString('sr-RS')} - ${new Date(
+        booking.endTime
       ).toLocaleDateString('sr-RS')}`,
     };
 

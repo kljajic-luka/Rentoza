@@ -139,22 +139,18 @@ export class ChatUiHelper {
       }
     }
 
-    if (!conv.startDate || !conv.endDate) {
+    // Using startTime/endTime for exact timestamp architecture
+    if (!conv.startTime || !conv.endTime) {
       return 'unknown';
     }
 
     const now = new Date();
-    now.setHours(0, 0, 0, 0);
+    const startTime = new Date(conv.startTime);
+    const endTime = new Date(conv.endTime);
 
-    const startDate = new Date(conv.startDate);
-    startDate.setHours(0, 0, 0, 0);
-
-    const endDate = new Date(conv.endDate);
-    endDate.setHours(23, 59, 59, 999);
-
-    if (now < startDate) {
+    if (now < startTime) {
       return 'future';
-    } else if (now > endDate) {
+    } else if (now > endTime) {
       return 'past';
     } else {
       return 'current';

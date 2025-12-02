@@ -75,11 +75,11 @@ public class BookingApprovalService {
             throw new AccessDeniedException("User is not the car owner");
         }
 
-        // Check date availability (race condition protection)
+        // Check time availability (race condition protection)
         boolean conflictsExist = bookingRepository.existsConflictingBookings(
                 booking.getCar().getId(),
-                booking.getStartDate(),
-                booking.getEndDate()
+                booking.getStartTime(),
+                booking.getEndTime()
         );
 
         if (conflictsExist) {

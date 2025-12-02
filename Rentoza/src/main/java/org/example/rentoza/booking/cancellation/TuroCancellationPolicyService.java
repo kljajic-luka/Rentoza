@@ -291,20 +291,8 @@ public class TuroCancellationPolicyService implements CancellationPolicyService 
     }
 
     private LocalDateTime calculateTripStartDateTime(Booking booking) {
-        LocalDate startDate = booking.getStartDate();
-        LocalTime pickupTime = booking.getPickupTime();
-        
-        if (pickupTime == null) {
-            // Default based on pickup window
-            pickupTime = switch (booking.getPickupTimeWindow()) {
-                case "MORNING" -> LocalTime.of(9, 0);
-                case "AFTERNOON" -> LocalTime.of(14, 0);
-                case "EVENING" -> LocalTime.of(18, 0);
-                default -> LocalTime.of(10, 0); // Default fallback
-            };
-        }
-        
-        return LocalDateTime.of(startDate, pickupTime);
+        // With exact timestamp architecture, startTime is now directly available
+        return booking.getStartTime();
     }
 
     private boolean isWithinRemorseWindow(Booking booking) {

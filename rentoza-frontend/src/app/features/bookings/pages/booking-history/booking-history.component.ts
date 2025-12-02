@@ -54,16 +54,17 @@ export class BookingHistoryComponent {
 
     return allBookings.reduce<CategorizedBookings>(
       (acc, booking) => {
-        const startDate = new Date(booking.startDate);
-        const endDate = new Date(booking.endDate);
+        // Use startTime/endTime for exact timestamp architecture
+        const startTime = new Date(booking.startTime);
+        const endTime = new Date(booking.endTime);
 
         // Use unified completion check to determine if booking is completed
         if (isBookingCompleted(booking)) {
           acc.past.push(booking);
-        } else if (now < startDate) {
+        } else if (now < startTime) {
           acc.upcoming.push(booking);
         } else {
-          // Ongoing: start date has passed but booking not yet completed
+          // Ongoing: start time has passed but booking not yet completed
           acc.ongoing.push(booking);
         }
 
@@ -90,15 +91,15 @@ export class BookingHistoryComponent {
 
   protected getTimeIndicator(booking: UserBooking, category: BookingCategory): string {
     const now = new Date();
-    const startDate = new Date(booking.startDate);
-    const endDate = new Date(booking.endDate);
+    const startTime = new Date(booking.startTime);
+    const endTime = new Date(booking.endTime);
 
     if (category === 'upcoming') {
-      return `Počinje za ${this.getTimeUntil(startDate, now)}`;
+      return `Počinje za ${this.getTimeUntil(startTime, now)}`;
     } else if (category === 'ongoing') {
-      return `Preostalo vreme: ${this.getTimeUntil(endDate, now)}`;
+      return `Preostalo vreme: ${this.getTimeUntil(endTime, now)}`;
     } else {
-      return `Završeno pre ${this.getTimeSince(endDate, now)}`;
+      return `Završeno pre ${this.getTimeSince(endTime, now)}`;
     }
   }
 

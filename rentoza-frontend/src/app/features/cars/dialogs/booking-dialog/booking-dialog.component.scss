@@ -50,8 +50,83 @@
   }
 }
 
+// DateTime row - date picker + time selector
+.datetime-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 1rem;
+
+  @media (max-width: 600px) {
+    grid-template-columns: 1fr;
+  }
+
+  .date-field {
+    flex: 2;
+  }
+
+  .time-field {
+    flex: 1;
+    min-width: 120px;
+  }
+}
+
 .form-field {
   width: 100%;
+}
+
+// Rental Summary - Exact Timestamp
+.rental-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+  padding: 0.75rem 1rem;
+  background: rgba(76, 175, 80, 0.08);
+  border-radius: 8px;
+  border-left: 4px solid #4caf50;
+  color: rgba(0, 0, 0, 0.87);
+
+  mat-icon {
+    color: #4caf50;
+  }
+
+  strong {
+    color: #2e7d32;
+  }
+
+  &--error {
+    background: rgba(244, 67, 54, 0.08);
+    border-left-color: #f44336;
+
+    mat-icon {
+      color: #f44336;
+    }
+
+    strong {
+      color: #c62828;
+    }
+  }
+}
+
+:host-context(.theme-dark) .rental-summary {
+  background: rgba(76, 175, 80, 0.12);
+  color: rgba(255, 255, 255, 0.87);
+
+  strong {
+    color: #81c784;
+  }
+
+  &--error {
+    background: rgba(244, 67, 54, 0.15);
+
+    mat-icon {
+      color: #ef5350;
+    }
+
+    strong {
+      color: #ef5350;
+    }
+  }
 }
 
 // Rental Duration Info - Theme-aware

@@ -15,8 +15,8 @@ import { environment } from '@environments/environment';
 
 interface BookingDetail {
   bookingId: number;
-  startDate: string;
-  endDate: string;
+  startTime: string;  // ISO-8601 datetime
+  endTime: string;    // ISO-8601 datetime
   totalPrice: number;
   status: string;
 }

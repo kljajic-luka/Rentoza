@@ -263,6 +263,21 @@ export class PendingRequestsComponent implements OnInit {
     });
   }
 
+  /**
+   * Format datetime string for display (dd.MM.yyyy HH:mm)
+   * Exact Timestamp Architecture support
+   */
+  protected formatDateTime(dateTimeString: string): string {
+    const date = new Date(dateTimeString);
+    return date.toLocaleDateString('sr-RS', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+
   protected refreshList(): void {
     this.loadPendingRequests();
   }

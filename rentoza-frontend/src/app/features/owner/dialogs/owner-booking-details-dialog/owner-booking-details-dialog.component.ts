@@ -47,8 +47,8 @@ export class OwnerBookingDetailsDialogComponent implements OnInit {
   readonly durationDays = computed(() => {
     const b = this.booking();
     if (!b) return 0;
-    const start = new Date(b.startDate);
-    const end = new Date(b.endDate);
+    const start = new Date(b.startTime);
+    const end = new Date(b.endTime);
     const diffTime = Math.abs(end.getTime() - start.getTime());
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   });

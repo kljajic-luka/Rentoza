@@ -14,6 +14,8 @@ import org.example.rentoza.user.UserRepository;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -86,10 +88,14 @@ public class BlockedDateService {
         }
 
         // Check for overlap with existing bookings
+        // Convert LocalDate to LocalDateTime for exact timestamp architecture
+        LocalDateTime startTime = request.getStartDate().atStartOfDay();
+        LocalDateTime endTime = request.getEndDate().atTime(LocalTime.MAX);
+        
         boolean hasBookingConflict = bookingRepository.existsOverlappingBookings(
                 car.getId(),
-                request.getStartDate(),
-                request.getEndDate()
+                startTime,
+                endTime
         );
 
         if (hasBookingConflict) {
@@ -152,7 +158,11 @@ public class BlockedDateService {
      * Used during booking validation.
      */
     public boolean isDateRangeAvailable(Long carId, LocalDate startDate, LocalDate endDate) {
-        boolean hasBookings = bookingRepository.existsOverlappingBookings(carId, startDate, endDate);
+        // Convert LocalDate to LocalDateTime for exact timestamp architecture
+        LocalDateTime startTime = startDate.atStartOfDay();
+        LocalDateTime endTime = endDate.atTime(LocalTime.MAX);
+        
+        boolean hasBookings = bookingRepository.existsOverlappingBookings(carId, startTime, endTime);
         boolean hasBlocks = blockedDateRepository.existsOverlappingBlockedDates(carId, startDate, endDate);
 
         return !hasBookings && !hasBlocks;

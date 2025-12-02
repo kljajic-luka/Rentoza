@@ -257,6 +257,55 @@ public class CheckInPhotoService {
         return decryptedCode;
     }
 
+    /**
+     * Store an ID verification photo in the PII bucket.
+     * 
+     * <p>This method is used by the ID verification service to store:
+     * <ul>
+     *   <li>Selfie for liveness check</li>
+     *   <li>ID document front</li>
+     *   <li>ID document back</li>
+     * </ul>
+     *
+     * @param bookingId The booking ID
+     * @param sessionId The check-in session ID
+     * @param file The photo file
+     * @param photoType Type identifier (selfie, id_front, id_back)
+     * @return Storage key for the photo
+     */
+    public String storeIdPhoto(Long bookingId, String sessionId, MultipartFile file, String photoType) throws IOException {
+        // Validate file
+        if (file.isEmpty()) {
+            throw new IllegalArgumentException("Fotografija je obavezna");
+        }
+        
+        long maxBytes = maxSizeMb * 1024L * 1024L;
+        if (file.getSize() > maxBytes) {
+            throw new IllegalArgumentException(
+                String.format("Fotografija je prevelika. Maksimum: %dMB", maxSizeMb));
+        }
+        
+        // Generate storage path in PII bucket
+        String filename = String.format("%s_%s_%s.jpg", 
+            photoType, 
+            System.currentTimeMillis(),
+            UUID.randomUUID().toString().substring(0, 8)
+        );
+        String storageKey = String.format("checkin_pii/%s/%s", sessionId, filename);
+        
+        // Ensure directory exists
+        Path uploadPath = Paths.get(uploadDir + "_pii", sessionId);
+        Files.createDirectories(uploadPath);
+        
+        // Save file
+        Path filePath = uploadPath.resolve(filename);
+        Files.write(filePath, file.getBytes());
+        
+        log.info("[CheckIn] ID photo stored: booking={}, type={}, key={}", bookingId, photoType, storageKey);
+        
+        return storageKey;
+    }
+
     private CheckInPhotoDTO mapToDTO(CheckInPhoto photo) {
         return CheckInPhotoDTO.builder()
                 .photoId(photo.getId())

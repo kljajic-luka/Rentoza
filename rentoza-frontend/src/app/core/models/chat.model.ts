@@ -38,8 +38,8 @@ export interface ConversationDTO {
   carYear?: number;
   renterName?: string;
   ownerName?: string;
-  startDate?: string;
-  endDate?: string;
+  startTime?: string;  // ISO-8601 datetime
+  endTime?: string;    // ISO-8601 datetime
   tripStatus?: string; // "Current", "Future", "Past", or "Unknown"
 }
 

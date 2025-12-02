@@ -20,13 +20,15 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatSelectModule } from '@angular/material/select';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
-import { Car } from '@core/models/car.model';
+import { Car, UnavailableRange } from '@core/models/car.model';
 import { BookingService } from '@core/services/booking.service';
+import { CarService } from '@core/services/car.service';
 import { AuthService } from '@core/auth/auth.service';
-import { take } from 'rxjs';
-import { Booking } from '@core/models/booking.model';
+import { take, finalize } from 'rxjs';
+import { Booking, generateTimeSlots, TimeSlot, combineDateTime, calculatePeriods } from '@core/models/booking.model';
 import { BlockedDate } from '@core/models/blocked-date.model';
 
 export interface BookingDialogData {
@@ -35,6 +37,14 @@ export interface BookingDialogData {
   blockedDates: BlockedDate[];
 }
 
+/**
+ * BookingDialogComponent - Exact Timestamp Architecture
+ * 
+ * Uses precise start/end timestamps instead of date + time window.
+ * - Time slots are in 30-minute intervals
+ * - Minimum rental duration: 24 hours
+ * - All times are Europe/Belgrade local time
+ */
 @Component({
   selector: 'app-booking-dialog',
   standalone: true,
@@ -52,6 +62,7 @@ export interface BookingDialogData {
     MatDividerModule,
     MatProgressSpinnerModule,
     MatSnackBarModule,
+    MatSelectModule,
   ],
   templateUrl: './booking-dialog.component.html',
   styleUrls: ['./booking-dialog.component.scss'],
@@ -59,17 +70,26 @@ export interface BookingDialogData {
 export class BookingDialogComponent implements OnInit {
   private readonly fb = inject(FormBuilder);
   private readonly bookingService = inject(BookingService);
+  private readonly carService = inject(CarService);
   private readonly authService = inject(AuthService);
   private readonly snackBar = inject(MatSnackBar);
   private readonly dialogRef = inject(MatDialogRef<BookingDialogComponent>);
   private readonly destroyRef = inject(DestroyRef);
   private readonly cdr = inject(ChangeDetectorRef);
 
-  // Phase 2.1: Booking constants for date filtering
+  // Booking constraints
   private readonly BUFFER_DAYS = 1;
   private readonly DEFAULT_MIN_RENTAL_DAYS = 1;
   private readonly DEFAULT_MAX_RENTAL_DAYS = 30;
   private readonly MAX_ADVANCE_BOOKING_DAYS = 365;
+  private readonly MIN_HOURS_BEFORE_BOOKING = 1; // Minimum 1 hour before trip start
+
+  // Time slots for 30-minute intervals
+  protected readonly timeSlots: TimeSlot[] = generateTimeSlots();
+
+  // Default times
+  protected readonly defaultStartTime = '09:00';
+  protected readonly defaultEndTime = '10:00';
 
   // Computed min/max from car settings or defaults
   protected get minRentalDays(): number {
@@ -90,33 +110,34 @@ export class BookingDialogComponent implements OnInit {
   protected readonly insuranceCost = signal(0);
   protected readonly refuelCost = signal(0);
   protected readonly rentalDays = signal(0);
+  protected readonly rentalHours = signal(0);
 
   protected readonly startDateMin = new Date();
   protected endDateMin = new Date();
 
+  // Unavailable ranges from backend (includes bookings, blocked dates, and gaps)
+  private readonly unavailableRanges = signal<UnavailableRange[]>([]);
+  private readonly isLoadingAvailability = signal(false);
+
   protected readonly bookingForm = this.fb.nonNullable.group({
     startDate: [null as Date | null, Validators.required],
+    startTime: [this.defaultStartTime, Validators.required],
     endDate: [null as Date | null, Validators.required],
-    driverName: [''], // Read-only, prefilled from user profile
-    driverSurname: [''], // Read-only, prefilled from user profile
-    driverAge: [null as number | null], // Read-only, prefilled from user profile
-    driverPhone: [''], // Read-only, prefilled from user profile
+    endTime: [this.defaultEndTime, Validators.required],
+    driverName: [''],
+    driverSurname: [''],
+    driverAge: [null as number | null],
+    driverPhone: [''],
     insuranceType: ['BASIC', Validators.required],
     prepaidRefuel: [false],
-    pickupTimeWindow: [
-      'MORNING' as 'MORNING' | 'AFTERNOON' | 'EVENING' | 'EXACT',
-      Validators.required,
-    ], // Phase 2.2
-    pickupTime: [null as string | null], // Phase 2.2: Conditionally required
   });
 
   constructor(@Inject(MAT_DIALOG_DATA) public data: BookingDialogData) {}
 
   ngOnInit(): void {
-    // Prefill driver details from current user and disable for read-only behavior
+    // Prefill driver details from current user
     this.authService.currentUser$.pipe(take(1)).subscribe((user) => {
       if (user) {
-        // 1️⃣ Patch user data first (before disabling)
         this.bookingForm.patchValue({
           driverName: user.firstName || '',
           driverSurname: user.lastName || '',
@@ -124,16 +145,13 @@ export class BookingDialogComponent implements OnInit {
           driverPhone: user.phone || '',
         });
 
-        // 2️⃣ Disable driver fields to enforce read-only (prevents typing, keeps visible data)
+        // Disable driver fields for read-only
         this.bookingForm.get('driverName')?.disable({ emitEvent: false });
         this.bookingForm.get('driverSurname')?.disable({ emitEvent: false });
         this.bookingForm.get('driverAge')?.disable({ emitEvent: false });
         this.bookingForm.get('driverPhone')?.disable({ emitEvent: false });
 
-        // 3️⃣ Force view refresh so Angular Material updates the input displays
         this.cdr.detectChanges();
-      } else {
-        console.warn('⚠️ currentUser$ emitted null or incomplete user');
       }
     });
 
@@ -142,115 +160,130 @@ export class BookingDialogComponent implements OnInit {
       this.calculatePrice();
     });
 
-    // Phase 2.2: Conditional validation for pickupTime
-    this.bookingForm.get('pickupTimeWindow')?.valueChanges.subscribe((window) => {
-      const pickupTimeControl = this.bookingForm.get('pickupTime');
-      if (window === 'EXACT') {
-        pickupTimeControl?.setValidators([Validators.required]);
-      } else {
-        pickupTimeControl?.clearValidators();
-        pickupTimeControl?.setValue(null);
-      }
-      pickupTimeControl?.updateValueAndValidity();
-    });
-
-    // Phase 2.1 Regression Fix: Reactive refresh for end date when start date changes
+    // Reactive refresh for end date when start date changes
     this.bookingForm
       .get('startDate')
       ?.valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => {
         this.bookingForm.get('endDate')?.updateValueAndValidity();
       });
+
+    // Load unavailable ranges from backend
+    this.loadAvailabilityRanges();
   }
 
   /**
-   * Phase 2.1 Regression Fix: Self-contained start date filter
-   * Filters out unavailable dates and dates in the past
+   * Load unavailable time ranges for the car from the backend.
+   * This includes bookings, blocked dates, and unusable gaps.
+   */
+  private loadAvailabilityRanges(): void {
+    this.isLoadingAvailability.set(true);
+    const now = new Date();
+    const endDate = new Date(now);
+    endDate.setFullYear(endDate.getFullYear() + 1); // 1 year ahead
+
+    this.carService
+      .getCarAvailability(Number(this.data.car.id), now.toISOString(), endDate.toISOString())
+      .pipe(
+        takeUntilDestroyed(this.destroyRef),
+        finalize(() => this.isLoadingAvailability.set(false))
+      )
+      .subscribe({
+        next: (ranges) => {
+          this.unavailableRanges.set(ranges);
+          this.cdr.markForCheck();
+        },
+        error: (err) => {
+          console.error('Failed to load availability ranges:', err);
+          // Continue with existing data.bookings and data.blockedDates as fallback
+        },
+      });
+  }
+
+  /**
+   * Filter for start date - excludes unavailable dates and past dates.
+   * Uses unavailable ranges from backend for accurate filtering.
+   * 
+   * PERFORMANCE NOTE: This is O(N) per calendar cell render.
+   * For MVP with < 100 bookings/year, acceptable. For optimization:
+   * - Convert ranges to Set<string> of disabled dates (YYYY-MM-DD) for O(1) lookup
+   * - Or use Interval Tree for O(log N) range queries
+   * - Monitor calendar render performance on older mobile devices
    */
   protected readonly startDateFilter = (date: Date | null): boolean => {
     if (!date) {
       return false;
     }
+
     const normalized = this.normalizeDate(date);
+
+    // Past dates
     const today = this.normalizeDate(new Date());
-    return normalized >= today && !this.isDateUnavailable(normalized);
+    if (normalized < today) {
+      return false;
+    }
+
+    // Check if date is fully inside any unavailable range
+    const dateStart = new Date(normalized);
+    dateStart.setHours(0, 0, 0, 0);
+    const dateEnd = new Date(normalized);
+    dateEnd.setHours(23, 59, 59, 999);
+
+    return !this.isDateInUnavailableRange(dateStart, dateEnd);
   };
 
   /**
-   * Phase 2.1 Regression Fix: Self-contained end date filter
-   *
-   * This filter is now computed based on the dialog's OWN form state,
-   * not passed from parent. This fixes the context binding issue where
-   * filter functions lost access to 'this'.
-   *
-   * Applies 5 validation rules:
-   * 1. Minimum rental (1 day)
-   * 2. Maximum rental (30 days)
-   * 3. Advance booking limit (12 months)
-   * 4. Stop at next unavailable date (buffer-aware)
-   * 5. Basic date validation
-   */
-  /**
-   * Phase 2.1 + Car-specific Min/Max Enhancement
-   *
-   * Applies 5 validation rules:
-   * 1. Minimum rental (car.minRentalDays or default 1)
-   * 2. Maximum rental (car.maxRentalDays or default 30)
-   * 3. Advance booking limit (12 months)
-   * 4. Stop at next unavailable date (buffer-aware)
-   * 5. Basic date validation
+   * Filter for end date - enforces rental constraints and prevents "jump-over".
+   * Prevents selecting an end date that would span across an unavailable range.
    */
   protected readonly endDateFilter = (date: Date | null): boolean => {
     if (!date) {
       return false;
     }
+
     const start = this.bookingForm.controls.startDate.value;
     if (!start) {
-      return false;
+      return this.startDateFilter(date);
     }
 
     const normalizedEnd = this.normalizeDate(date);
     const normalizedStart = this.normalizeDate(start);
 
-    // 1. Enforce minimum rental (car-specific or default 1 day)
-    const minEndDate = this.addDays(normalizedStart, this.minRentalDays - 1);
-    if (normalizedEnd <= minEndDate) {
+    // Minimum rental (24 hours = at least 1 day)
+    if (normalizedEnd < normalizedStart) {
       return false;
     }
 
-    // 2. Enforce maximum rental duration (car-specific or default 30 days)
+    // Maximum rental duration
     if (normalizedEnd > this.addDays(normalizedStart, this.maxRentalDays)) {
       return false;
     }
 
-    // 3. Enforce advance booking limit (≤ 12 months)
+    // Advance booking limit (12 months)
     const maxAdvance = this.addDays(this.normalizeDate(new Date()), this.MAX_ADVANCE_BOOKING_DAYS);
     if (normalizedEnd > maxAdvance) {
       return false;
     }
 
-    // 4. Compute next unavailable date AFTER start + 1 day (permissive UI filtering)
-    const nextBlocked = this.getNextUnavailableDate(this.addDays(normalizedStart, 1));
+    // Check if entire range [start, end] overlaps with unavailable range
+    const startDateTime = combineDateTime(
+      start,
+      this.bookingForm.value.startTime || this.defaultStartTime
+    );
+    const endDateTime = combineDateTime(date, this.bookingForm.value.endTime || this.defaultEndTime);
 
-    // 5. Permit all dates before the next blocked segment (exclusive)
-    if (nextBlocked && normalizedEnd >= nextBlocked) {
-      return false;
-    }
-
-    return true;
+    return !this.isRangeUnavailable(startDateTime, endDateTime);
   };
 
   protected handleStartDateChange(date: Date | null): void {
     if (!date) return;
 
-    // Update minimum end date to be one day after start date
-    const minEnd = new Date(date);
-    minEnd.setDate(minEnd.getDate() + 1);
-    this.endDateMin = minEnd;
+    // Update minimum end date to be at least the same day
+    this.endDateMin = new Date(date);
 
     // Clear end date if it's now invalid
     const endDate = this.bookingForm.value.endDate;
-    if (endDate && endDate <= date) {
+    if (endDate && endDate < date) {
       this.bookingForm.patchValue({ endDate: null });
     }
 
@@ -263,28 +296,40 @@ export class BookingDialogComponent implements OnInit {
   }
 
   private calculatePrice(): void {
-    const start = this.bookingForm.value.startDate;
-    const end = this.bookingForm.value.endDate;
+    const startDate = this.bookingForm.value.startDate;
+    const startTime = this.bookingForm.value.startTime;
+    const endDate = this.bookingForm.value.endDate;
+    const endTime = this.bookingForm.value.endTime;
     const insuranceType = this.bookingForm.value.insuranceType || 'BASIC';
     const prepaidRefuel = this.bookingForm.value.prepaidRefuel || false;
 
-    if (!start || !end) {
+    if (!startDate || !endDate || !startTime || !endTime) {
       this.resetPriceCalculation();
       this.durationTooShort.set(false);
       this.durationTooLong.set(false);
       return;
     }
 
-    // Calculate days
-    const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-    this.rentalDays.set(days);
+    // Combine date and time
+    const startDateTime = combineDateTime(startDate, startTime);
+    const endDateTime = combineDateTime(endDate, endTime);
 
-    // Validate duration against car's constraints
-    this.durationTooShort.set(days < this.minRentalDays);
-    this.durationTooLong.set(days > this.maxRentalDays);
+    // Calculate hours
+    const startMs = new Date(startDateTime).getTime();
+    const endMs = new Date(endDateTime).getTime();
+    const hours = Math.round((endMs - startMs) / (1000 * 60 * 60));
+    this.rentalHours.set(hours);
 
-    // Base price
-    const base = days * this.data.car.pricePerDay;
+    // Calculate 24-hour periods for pricing
+    const periods = calculatePeriods(startDateTime, endDateTime);
+    this.rentalDays.set(periods);
+
+    // Validate duration
+    this.durationTooShort.set(hours < 24); // Minimum 24 hours
+    this.durationTooLong.set(periods > this.maxRentalDays);
+
+    // Base price (per 24-hour period)
+    const base = periods * this.data.car.pricePerDay;
     this.basePrice.set(base);
 
     // Insurance cost
@@ -317,6 +362,7 @@ export class BookingDialogComponent implements OnInit {
 
   private resetPriceCalculation(): void {
     this.rentalDays.set(0);
+    this.rentalHours.set(0);
     this.basePrice.set(0);
     this.insuranceCost.set(0);
     this.refuelCost.set(0);
@@ -329,20 +375,14 @@ export class BookingDialogComponent implements OnInit {
       return;
     }
 
-    // Get all form values including disabled controls (driver fields)
     const formValues = this.bookingForm.getRawValue();
-
-    // Validate driver information is present (should be prefilled from profile)
     const { driverName, driverSurname, driverAge, driverPhone } = formValues;
 
     if (!driverName || !driverSurname || !driverAge || !driverPhone) {
       this.snackBar.open(
         'Podaci vozača nisu kompletni. Molimo ažurirajte svoj profil.',
         'Zatvori',
-        {
-          duration: 5000,
-          panelClass: ['snackbar-error'],
-        }
+        { duration: 5000, panelClass: ['snackbar-error'] }
       );
       return;
     }
@@ -355,98 +395,90 @@ export class BookingDialogComponent implements OnInit {
       return;
     }
 
+    // Validate minimum hours before booking
+    const startDateTime = combineDateTime(formValues.startDate!, formValues.startTime!);
+    const endDateTime = combineDateTime(formValues.endDate!, formValues.endTime!);
+    const startMs = new Date(startDateTime).getTime();
+    const nowMs = Date.now();
+    const hoursUntilStart = (startMs - nowMs) / (1000 * 60 * 60);
+
+    if (hoursUntilStart < this.MIN_HOURS_BEFORE_BOOKING) {
+      this.snackBar.open(
+        'Rezervacija mora biti napravljena najmanje 1 sat pre početka putovanja.',
+        'Zatvori',
+        { duration: 5000, panelClass: ['snackbar-error'] }
+      );
+      return;
+    }
+
+    // Validate that selected range doesn't overlap with unavailable ranges
+    if (this.isRangeUnavailable(startDateTime, endDateTime)) {
+      const reason = this.getUnavailabilityReasonForRange(startDateTime, endDateTime);
+      this.snackBar.open(reason, 'Zatvori', {
+        duration: 5000,
+        panelClass: ['snackbar-error'],
+      });
+      return;
+    }
+
     this.isSubmitting.set(true);
 
+    // Build payload with exact timestamps (reuse endDateTime from above)
     const payload = {
       carId: this.data.car.id.toString(),
-      startDate: formValues.startDate!.toISOString(),
-      endDate: formValues.endDate!.toISOString(),
+      startTime: startDateTime,
+      endTime: endDateTime,
       driverName: formValues.driverName,
       driverSurname: formValues.driverSurname,
       driverAge: formValues.driverAge,
       driverPhone: formValues.driverPhone,
       insuranceType: formValues.insuranceType || 'BASIC',
       prepaidRefuel: formValues.prepaidRefuel || false,
-      pickupTimeWindow: formValues.pickupTimeWindow || 'MORNING', // Phase 2.2
-      pickupTime: formValues.pickupTime || undefined, // Phase 2.2: Only if EXACT
     };
 
-    // Phase 2.3: Pre-submit validation - check for conflicts before creating booking
+    // Validate availability before creating booking
     this.bookingService.validateBooking(payload).subscribe({
       next: (result) => {
         if (result.available) {
-          // Dates are available, proceed with booking creation
           this.createBookingConfirmed(payload);
         } else {
-          // Dates not available (shouldn't reach here if 409 is returned, but handle just in case)
           this.snackBar.open(
-            'Ovi datumi su upravo rezervisani. Molimo izaberite druge datume.',
+            'Ovaj termin je upravo rezervisan. Molimo izaberite drugi termin.',
             'Zatvori',
-            {
-              duration: 5000,
-              panelClass: ['snackbar-error'],
-            }
+            { duration: 5000, panelClass: ['snackbar-error'] }
           );
           this.isSubmitting.set(false);
         }
       },
       error: (error) => {
-        // Handle 409 Conflict - dates were taken by another user
         if (error.status === 409) {
           this.snackBar.open(
-            'Ovi datumi su upravo rezervisani. Molimo izaberite druge datume.',
+            'Ovaj termin je upravo rezervisan. Molimo izaberite drugi termin.',
             'Zatvori',
-            {
-              duration: 5000,
-              panelClass: ['snackbar-error'],
-            }
+            { duration: 5000, panelClass: ['snackbar-error'] }
           );
-          this.isSubmitting.set(false);
         } else {
-          // Other validation errors
-          console.error('Validation error:', error);
-          const errorMessage =
-            error.error?.message || 'Greška pri proveri dostupnosti. Pokušajte ponovo.';
+          const errorMessage = error.error?.message || 'Greška pri proveri dostupnosti.';
           this.snackBar.open(errorMessage, 'Zatvori', {
             duration: 5000,
             panelClass: ['snackbar-error'],
           });
-          this.isSubmitting.set(false);
         }
+        this.isSubmitting.set(false);
       },
     });
   }
 
-  /**
-   * Phase 2.3: Create booking after validation passes
-   * Phase 3: Updated for host approval workflow
-   *
-   * Behavior depends on backend feature flag (app.booking.host-approval.enabled):
-   * - If enabled: Status = PENDING_APPROVAL, awaiting host decision
-   * - If disabled: Status = ACTIVE, instant confirmation (legacy)
-   *
-   * Error Handling:
-   * - 409 USER_OVERLAP: User already has active/pending booking for dates
-   * - 409 CAR_UNAVAILABLE: Car is booked for selected dates
-   * - Other errors: Generic error message
-   *
-   * Success message updated to reflect approval workflow.
-   */
   private createBookingConfirmed(payload: any): void {
     this.bookingService.createBooking(payload).subscribe({
       next: (booking) => {
-        // Phase 3: Check if booking requires approval or is instant
         if (booking.status === 'PENDING_APPROVAL') {
           this.snackBar.open(
             'Vaš zahtev za rezervaciju je poslat! Čekamo odobrenje domaćina.',
             'Zatvori',
-            {
-              duration: 5000,
-              panelClass: ['snackbar-info'],
-            }
+            { duration: 5000, panelClass: ['snackbar-info'] }
           );
         } else {
-          // Legacy instant booking (ACTIVE)
           this.snackBar.open('Vaša rezervacija je uspešno potvrđena!', 'Zatvori', {
             duration: 4000,
             panelClass: ['snackbar-success'],
@@ -456,33 +488,26 @@ export class BookingDialogComponent implements OnInit {
       },
       error: (error) => {
         console.error('Booking error:', error);
-
-        // Handle specific conflict types
         const errorCode = error.error?.code;
         let errorMessage: string;
 
         if (error.status === 409) {
           switch (errorCode) {
             case 'USER_OVERLAP':
-              // One Driver, One Car constraint
               errorMessage =
                 'Ne možete rezervisati dva vozila u isto vreme. ' +
                 'Već imate aktivnu ili čekajuću rezervaciju za ovaj period.';
               break;
             case 'CAR_UNAVAILABLE':
-              // Car already booked
               errorMessage =
-                'Ovaj automobil je upravo rezervisan za izabrane datume. ' +
-                'Molimo izaberite druge datume.';
+                'Ovaj automobil je upravo rezervisan za izabrani termin. ' +
+                'Molimo izaberite drugi termin.';
               break;
             default:
-              errorMessage =
-                error.error?.message ||
-                'Rezervacija nije moguća zbog konflikta. Molimo pokušajte ponovo.';
+              errorMessage = error.error?.message || 'Rezervacija nije moguća zbog konflikta.';
           }
         } else {
-          errorMessage =
-            error.error?.message || 'Greška pri kreiranju rezervacije. Pokušajte ponovo.';
+          errorMessage = error.error?.message || 'Greška pri kreiranju rezervacije.';
         }
 
         this.snackBar.open(errorMessage, 'Zatvori', {
@@ -498,61 +523,132 @@ export class BookingDialogComponent implements OnInit {
     this.dialogRef.close(false);
   }
 
-  // ========== Phase 2.1 Date Filtering Helper Methods ==========
+  // ========== Date Filtering Helper Methods ==========
 
   /**
-   * Check if a specific date is unavailable (booked or blocked, including buffer days)
+   * Check if a date range falls within any unavailable range.
+   * Uses backend unavailable ranges (includes gaps).
    */
-  private isDateUnavailable(date: Date): boolean {
-    const normalized = this.normalizeDate(date);
-
-    // Check if date is in any booking (with buffer days)
-    const isBooked = this.data.bookings.some((booking) =>
-      this.isDateWithinRange(
-        normalized,
-        this.addDays(this.normalizeDate(booking.startDate), -this.BUFFER_DAYS),
-        this.addDays(this.normalizeDate(booking.endDate), this.BUFFER_DAYS)
-      )
-    );
-
-    // Check if date is in any blocked range (with buffer days)
-    const isBlocked = this.data.blockedDates.some((blocked) =>
-      this.isDateWithinRange(
-        normalized,
-        this.addDays(this.normalizeDate(blocked.startDate), -this.BUFFER_DAYS),
-        this.addDays(this.normalizeDate(blocked.endDate), this.BUFFER_DAYS)
-      )
-    );
-
-    return isBooked || isBlocked;
+  private isDateInUnavailableRange(dateStart: Date, dateEnd: Date): boolean {
+    return this.unavailableRanges().some((range) => {
+      const rangeStart = new Date(range.start);
+      const rangeEnd = new Date(range.end);
+      // Check if date range overlaps with unavailable range
+      // Overlap formula: (A.start < B.end) && (A.end > B.start)
+      return dateStart < rangeEnd && dateEnd > rangeStart;
+    });
   }
 
   /**
-   * Find the next unavailable date AFTER a given date (including buffer days)
-   *
-   * Phase 2.1 Regression Fix: Filters out ranges that END before 'from' date,
-   * ensuring we only return truly future blocked segments.
+   * Check if a time range (startDateTime to endDateTime) overlaps with any unavailable range.
+   * Used for preventing "jump-over" selections.
    */
+  private isRangeUnavailable(start: string, end: string): boolean {
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+
+    return this.unavailableRanges().some((range) => {
+      const rangeStart = new Date(range.start);
+      const rangeEnd = new Date(range.end);
+      // Overlap formula: (A.start < B.end) && (A.end > B.start)
+      return startDate < rangeEnd && endDate > rangeStart;
+    });
+  }
+
+  /**
+   * Check if a specific datetime falls within any unavailable range.
+   * Used for time slot filtering.
+   */
+  private isDateTimeInUnavailableRange(dateTime: string): boolean {
+    const dt = new Date(dateTime);
+
+    return this.unavailableRanges().some((range) => {
+      const rangeStart = new Date(range.start);
+      const rangeEnd = new Date(range.end);
+      return dt >= rangeStart && dt <= rangeEnd;
+    });
+  }
+
+  /**
+   * Check if a time slot should be disabled for a given date.
+   * Implements hour-level granularity filtering.
+   */
+  protected isTimeSlotDisabled(date: Date, timeSlot: TimeSlot): boolean {
+    if (!date) {
+      return false;
+    }
+
+    const selectedDate = this.normalizeDate(date);
+    const now = new Date();
+
+    // If selecting today, disable past hours
+    if (this.isSameDay(selectedDate, now)) {
+      const slotTime = this.parseTimeSlot(timeSlot.value);
+      const currentHour = now.getHours();
+      const currentMinute = now.getMinutes();
+
+      if (
+        slotTime.hour < currentHour ||
+        (slotTime.hour === currentHour && slotTime.minute < currentMinute)
+      ) {
+        return true;
+      }
+    }
+
+    // Check if this specific datetime falls in unavailable range
+    const dateTime = combineDateTime(date, timeSlot.value);
+    return this.isDateTimeInUnavailableRange(dateTime);
+  }
+
+  /**
+   * Parse time slot string (HH:mm) into hour and minute.
+   */
+  private parseTimeSlot(timeStr: string): { hour: number; minute: number } {
+    const [hour, minute] = timeStr.split(':').map(Number);
+    return { hour, minute };
+  }
+
+  /**
+   * Check if two dates are on the same day.
+   */
+  private isSameDay(date1: Date, date2: Date): boolean {
+    return (
+      date1.getFullYear() === date2.getFullYear() &&
+      date1.getMonth() === date2.getMonth() &&
+      date1.getDate() === date2.getDate()
+    );
+  }
+
+  /**
+   * Legacy method - kept for backward compatibility.
+   * Now uses unavailable ranges from backend instead of local data.
+   */
+  private isDateUnavailable(date: Date): boolean {
+    const normalized = this.normalizeDate(date);
+    const dateStart = new Date(normalized);
+    dateStart.setHours(0, 0, 0, 0);
+    const dateEnd = new Date(normalized);
+    dateEnd.setHours(23, 59, 59, 999);
+    return this.isDateInUnavailableRange(dateStart, dateEnd);
+  }
+
   private getNextUnavailableDate(from: Date): Date | null {
     const ranges = [
       ...this.data.bookings.map((b) => ({
-        start: this.addDays(this.normalizeDate(b.startDate), -this.BUFFER_DAYS),
-        end: this.addDays(this.normalizeDate(b.endDate), this.BUFFER_DAYS),
+        start: this.addDays(this.normalizeDate(new Date(b.startTime)), -this.BUFFER_DAYS),
+        end: this.addDays(this.normalizeDate(new Date(b.endTime)), this.BUFFER_DAYS),
       })),
       ...this.data.blockedDates.map((b) => ({
         start: this.addDays(this.normalizeDate(b.startDate), -this.BUFFER_DAYS),
         end: this.addDays(this.normalizeDate(b.endDate), this.BUFFER_DAYS),
       })),
     ]
-      .filter((r) => r.end > from) // Ignore past ranges that end before 'from'
+      .filter((r) => r.end > from)
       .sort((a, b) => a.start.getTime() - b.start.getTime());
 
     return ranges.length > 0 ? ranges[0].start : null;
   }
 
-  /**
-   * Check if a date is within a range (inclusive)
-   */
   private isDateWithinRange(date: Date, start: string | Date, end: string | Date): boolean {
     const target = this.normalizeDate(date);
     const startDate = this.normalizeDate(start);
@@ -560,23 +656,95 @@ export class BookingDialogComponent implements OnInit {
     return target >= startDate && target <= endDate;
   }
 
-  /**
-   * Normalize date to midnight local time, avoiding UTC timezone shifts
-   *
-   * Phase 2.1 Regression Fix: Uses local year/month/date to prevent
-   * ISO string parsing issues that cause unexpected timezone conversions
-   */
   private normalizeDate(value: Date | string): Date {
     const d = new Date(value);
     return new Date(d.getFullYear(), d.getMonth(), d.getDate());
   }
 
-  /**
-   * Add days to a date
-   */
   private addDays(date: Date, days: number): Date {
     const result = new Date(date);
     result.setDate(result.getDate() + days);
     return result;
+  }
+
+  /**
+   * Format duration for display.
+   */
+  protected formatDuration(): string {
+    const hours = this.rentalHours();
+    if (hours < 24) {
+      return `${hours} sat${hours === 1 ? '' : hours < 5 ? 'a' : 'i'}`;
+    }
+    const days = this.rentalDays();
+    return `${days} dan${days === 1 ? '' : days < 5 ? 'a' : 'a'} (${hours}h)`;
+  }
+
+  /**
+   * Get unavailability reason message for a specific date.
+   * Used for tooltips.
+   */
+  protected getUnavailabilityReason(date: Date): string {
+    if (!date) {
+      return '';
+    }
+
+    const dateStart = new Date(this.normalizeDate(date));
+    dateStart.setHours(0, 0, 0, 0);
+    const dateEnd = new Date(this.normalizeDate(date));
+    dateEnd.setHours(23, 59, 59, 999);
+
+    const range = this.findOverlappingRange(dateStart, dateEnd);
+    if (!range) {
+      return '';
+    }
+
+    switch (range.reason) {
+      case 'BOOKING':
+        return 'Vozilo je već rezervisano u ovom periodu';
+      case 'BLOCKED_DATE':
+        return 'Vlasnik je blokirao ove datume';
+      case 'GAP_TOO_SMALL':
+        return 'Period je prekratak za minimalno trajanje';
+      default:
+        return 'Datum nije dostupan';
+    }
+  }
+
+  /**
+   * Get unavailability reason message for a time range.
+   * Used for error messages in submitBooking.
+   */
+  private getUnavailabilityReasonForRange(start: string, end: string): string {
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+
+    const range = this.findOverlappingRange(startDate, endDate);
+    if (!range) {
+      return 'Izabrani period nije dostupan.';
+    }
+
+    switch (range.reason) {
+      case 'BOOKING':
+        return 'Vozilo je već rezervisano u ovom periodu. Molimo izaberite drugi termin.';
+      case 'BLOCKED_DATE':
+        return 'Vlasnik je blokirao ove datume. Molimo izaberite drugi termin.';
+      case 'GAP_TOO_SMALL':
+        return 'Period je prekratak za minimalno trajanje iznajmljivanja.';
+      default:
+        return 'Izabrani period nije dostupan.';
+    }
+  }
+
+  /**
+   * Find the first unavailable range that overlaps with the given date range.
+   */
+  private findOverlappingRange(dateStart: Date, dateEnd: Date): UnavailableRange | null {
+    return (
+      this.unavailableRanges().find((range) => {
+        const rangeStart = new Date(range.start);
+        const rangeEnd = new Date(range.end);
+        return dateStart < rangeEnd && dateEnd > rangeStart;
+      }) || null
+    );
   }
 }

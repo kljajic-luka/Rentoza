@@ -3,7 +3,7 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable, map, shareReplay } from 'rxjs';
 
 import { environment } from '@environments/environment';
-import { Car } from '@core/models/car.model';
+import { Car, UnavailableRange } from '@core/models/car.model';
 import { Review } from '@core/models/review.model';
 import { CarSearchCriteria, PagedResponse } from '@core/models/car-search.model';
 import { isWithinRadius } from '@core/utils/distance.util';
@@ -71,13 +71,14 @@ export class CarService {
   }
 
   /**
-   * Search cars by availability (location + date/time range)
-   * Time-aware search that filters out cars with overlapping bookings
+   * Search cars by availability (location + time range).
+   * Uses exact timestamp architecture for precise availability filtering.
+   * 
    * @param location Location string (city/region)
-   * @param startDate Rental start date (YYYY-MM-DD)
-   * @param startTime Rental start time (HH:mm)
-   * @param endDate Rental end date (YYYY-MM-DD)
-   * @param endTime Rental end time (HH:mm)
+   * @param startDateTime ISO-8601 timestamp OR YYYY-MM-DD date
+   * @param startTimeOfDay Time of day (HH:mm) - combines with date if not ISO
+   * @param endDateTime ISO-8601 timestamp OR YYYY-MM-DD date
+   * @param endTimeOfDay Time of day (HH:mm) - combines with date if not ISO
    * @param page Page number (0-indexed, default: 0)
    * @param size Page size (default: 20)
    * @param sort Sort order (optional)
@@ -85,19 +86,21 @@ export class CarService {
    */
   searchAvailableCars(
     location: string,
-    startDate: string,
-    startTime: string,
-    endDate: string,
-    endTime: string,
+    startDateTime: string,
+    startTimeOfDay: string,
+    endDateTime: string,
+    endTimeOfDay: string,
     page: number = 0,
     size: number = 20,
     sort?: string
   ): Observable<PagedResponse<Car>> {
+    // Combine date + time if needed, or use as-is if already ISO timestamp
+    const startTime = this.toISOTimestamp(startDateTime, startTimeOfDay);
+    const endTime = this.toISOTimestamp(endDateTime, endTimeOfDay);
+
     let params = new HttpParams()
       .set('location', location)
-      .set('startDate', startDate)
       .set('startTime', startTime)
-      .set('endDate', endDate)
       .set('endTime', endTime)
       .set('page', page.toString())
       .set('size', size.toString());
@@ -117,6 +120,40 @@ export class CarService {
         hasPrevious: response.hasPrevious,
       }))
     );
+  }
+
+  /**
+   * Get unavailable time ranges for a specific car.
+   * Used by the booking calendar to disable invalid date/time selections.
+   * 
+   * @param carId Car ID
+   * @param start Optional start of query window (ISO-8601 datetime, default: now)
+   * @param end Optional end of query window (ISO-8601 datetime, default: start + 1 year)
+   * @returns Observable of unavailable ranges
+   */
+  getCarAvailability(
+    carId: number,
+    start?: string,  // ISO-8601 datetime
+    end?: string     // ISO-8601 datetime
+  ): Observable<UnavailableRange[]> {
+    let params = new HttpParams();
+    if (start) params = params.set('start', start);
+    if (end) params = params.set('end', end);
+    
+    return this.http.get<UnavailableRange[]>(
+      `${this.baseUrl}/${carId}/availability`,
+      { params }
+    );
+  }
+
+  /**
+   * Convert date string + time to ISO timestamp, or return as-is if already ISO.
+   */
+  private toISOTimestamp(dateOrTimestamp: string, time: string): string {
+    if (dateOrTimestamp.includes('T')) {
+      return dateOrTimestamp;
+    }
+    return `${dateOrTimestamp}T${time}:00`;
   }
 
   /**

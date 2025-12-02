@@ -65,7 +65,7 @@
             <div>
               <span class="label">Period:</span>
               <span class="value"
-                >{{ formatDate(booking.startDate) }} - {{ formatDate(booking.endDate) }}</span
+                >{{ formatDateTime(booking.startTime) }} - {{ formatDateTime(booking.endTime) }}</span
               >
             </div>
           </div>
@@ -80,19 +80,15 @@
             </div>
           </div>
 
-          @if (booking.pickupTimeWindow) {
           <div class="detail-item">
             <mat-icon>access_time</mat-icon>
             <div>
               <span class="label">Preuzimanje:</span>
               <span class="value">
-                @switch (booking.pickupTimeWindow) { @case ('MORNING') { Ujutro (08:00 - 12:00) }
-                @case ('AFTERNOON') { Popodne (12:00 - 17:00) } @case ('EVENING') { Uveče (17:00 -
-                21:00) } @case ('EXACT') { {{ booking.pickupTime }} } }
+                {{ booking.startTime | date:'HH:mm' }}
               </span>
             </div>
           </div>
-          }
         </div>
       </mat-card-content>
 

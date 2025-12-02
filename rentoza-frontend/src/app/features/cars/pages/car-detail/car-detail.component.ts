@@ -357,8 +357,8 @@ export class CarDetailComponent {
   private getNextUnavailableDate(from: Date): Date | null {
     const ranges = [
       ...this.bookingsSubject.value.map((b) => ({
-        start: this.addDays(this.normalizeDate(b.startDate), -this.BUFFER_DAYS),
-        end: this.addDays(this.normalizeDate(b.endDate), this.BUFFER_DAYS),
+        start: this.addDays(this.normalizeDate(b.startTime), -this.BUFFER_DAYS),
+        end: this.addDays(this.normalizeDate(b.endTime), this.BUFFER_DAYS),
       })),
       ...this.blockedDatesSubject.value.map((b) => ({
         start: this.addDays(this.normalizeDate(b.startDate), -this.BUFFER_DAYS),
@@ -390,8 +390,8 @@ export class CarDetailComponent {
     const isBooked = this.bookingsSubject.value.some((booking) =>
       this.isDateWithinRange(
         normalized,
-        this.addDays(this.normalizeDate(booking.startDate), -this.BUFFER_DAYS),
-        this.addDays(this.normalizeDate(booking.endDate), this.BUFFER_DAYS)
+        this.addDays(this.normalizeDate(booking.startTime), -this.BUFFER_DAYS),
+        this.addDays(this.normalizeDate(booking.endTime), this.BUFFER_DAYS)
       )
     );
 
@@ -428,21 +428,21 @@ export class CarDetailComponent {
     // Combine bookings and blocked dates for checking (including buffer days)
     const unavailableRanges = [
       ...this.bookingsSubject.value.map((b) => ({
-        startDate: this.addDays(this.normalizeDate(b.startDate), -this.BUFFER_DAYS),
-        endDate: this.addDays(this.normalizeDate(b.endDate), this.BUFFER_DAYS),
+        rangeStart: this.addDays(this.normalizeDate(b.startTime), -this.BUFFER_DAYS),
+        rangeEnd: this.addDays(this.normalizeDate(b.endTime), this.BUFFER_DAYS),
       })),
       ...this.blockedDatesSubject.value.map((b) => ({
-        startDate: this.addDays(this.normalizeDate(b.startDate), -this.BUFFER_DAYS),
-        endDate: this.addDays(this.normalizeDate(b.endDate), this.BUFFER_DAYS),
+        rangeStart: this.addDays(this.normalizeDate(b.startDate), -this.BUFFER_DAYS),
+        rangeEnd: this.addDays(this.normalizeDate(b.endDate), this.BUFFER_DAYS),
       })),
-    ].sort((a, b) => a.startDate.getTime() - b.startDate.getTime());
+    ].sort((a, b) => a.rangeStart.getTime() - b.rangeStart.getTime());
 
     let adjusted = true;
     while (adjusted) {
       adjusted = false;
       for (const range of unavailableRanges) {
-        if (candidate >= range.startDate && candidate <= range.endDate) {
-          candidate = this.addDays(range.endDate, 1);
+        if (candidate >= range.rangeStart && candidate <= range.rangeEnd) {
+          candidate = this.addDays(range.rangeEnd, 1);
           adjusted = true;
           break;
         }
@@ -458,8 +458,8 @@ export class CarDetailComponent {
       this.rangesOverlap(
         start,
         end,
-        this.addDays(this.normalizeDate(booking.startDate), -this.BUFFER_DAYS),
-        this.addDays(this.normalizeDate(booking.endDate), this.BUFFER_DAYS)
+        this.addDays(this.normalizeDate(booking.startTime), -this.BUFFER_DAYS),
+        this.addDays(this.normalizeDate(booking.endTime), this.BUFFER_DAYS)
       )
     );
 

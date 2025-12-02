@@ -210,8 +210,8 @@ class AvailabilityServiceTest {
 
         Booking overlappingBooking = new Booking();
         overlappingBooking.setId(100L);
-        overlappingBooking.setStartDate(LocalDate.now().plusDays(2));
-        overlappingBooking.setEndDate(LocalDate.now().plusDays(4));
+        overlappingBooking.setStartTime(LocalDateTime.of(LocalDate.now().plusDays(2), LocalTime.of(9, 0)));
+        overlappingBooking.setEndTime(LocalDateTime.of(LocalDate.now().plusDays(4), LocalTime.of(18, 0)));
 
         // Mock repository responses
         when(carRepository.findByLocationIgnoreCaseAndAvailableTrue("beograd"))
@@ -246,8 +246,8 @@ class AvailabilityServiceTest {
 
         Booking nonOverlappingBooking = new Booking();
         nonOverlappingBooking.setId(100L);
-        nonOverlappingBooking.setStartDate(LocalDate.now().minusDays(2));
-        nonOverlappingBooking.setEndDate(LocalDate.now().plusDays(1));
+        nonOverlappingBooking.setStartTime(LocalDateTime.of(LocalDate.now().minusDays(2), LocalTime.of(9, 0)));
+        nonOverlappingBooking.setEndTime(LocalDateTime.of(LocalDate.now().plusDays(1), LocalTime.of(18, 0)));
 
         // Mock repository responses
         when(carRepository.findByLocationIgnoreCaseAndAvailableTrue("beograd"))
@@ -282,8 +282,8 @@ class AvailabilityServiceTest {
 
         Booking nonOverlappingBooking = new Booking();
         nonOverlappingBooking.setId(100L);
-        nonOverlappingBooking.setStartDate(LocalDate.now().plusDays(3));
-        nonOverlappingBooking.setEndDate(LocalDate.now().plusDays(5));
+        nonOverlappingBooking.setStartTime(LocalDateTime.of(LocalDate.now().plusDays(3), LocalTime.of(18, 0)));
+        nonOverlappingBooking.setEndTime(LocalDateTime.of(LocalDate.now().plusDays(5), LocalTime.of(18, 0)));
 
         // Mock repository responses
         when(carRepository.findByLocationIgnoreCaseAndAvailableTrue("beograd"))

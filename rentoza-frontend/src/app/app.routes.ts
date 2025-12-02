@@ -113,6 +113,15 @@ export const routes: Routes = [
           ),
       },
       {
+        path: ':id/checkout',
+        canActivate: [RoleGuard, RoleRedirectGuard],
+        data: { roles: ['USER', 'OWNER', 'ADMIN'] },
+        loadComponent: () =>
+          import('@features/bookings/check-out/checkout-wizard.component').then(
+            (m) => m.CheckoutWizardComponent
+          ),
+      },
+      {
         path: ':id/review',
         canActivate: [RoleGuard, RoleRedirectGuard],
         data: { roles: ['USER', 'ADMIN'] },

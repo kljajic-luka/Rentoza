@@ -31,7 +31,7 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
@@ -92,22 +92,22 @@ public class BookingService {
         // ========================================================================
         // CRITICAL: This MUST happen BEFORE creating the Booking entity.
         // Uses SELECT ... FOR UPDATE to acquire exclusive row lock on conflicting bookings.
-        // Prevents race condition where two users could book same dates simultaneously.
+        // Prevents race condition where two users could book same times simultaneously.
         //
-        // Lock Scope: Only rows matching (car_id, date range, active/pending status)
+        // Lock Scope: Only rows matching (car_id, time range, active/pending status)
         // Lock Duration: Until transaction commits/rolls back
         // Timeout: 5 seconds (configured in repository query hint)
         boolean hasConflict = repo.existsOverlappingBookingsWithLock(
                 dto.getCarId(),
-                dto.getStartDate(),
-                dto.getEndDate()
+                dto.getStartTime(),
+                dto.getEndTime()
         );
         
         if (hasConflict) {
-            log.warn("Booking conflict detected: carId={}, dates={} to {}", 
-                    dto.getCarId(), dto.getStartDate(), dto.getEndDate());
+            log.warn("Booking conflict detected: carId={}, times={} to {}", 
+                    dto.getCarId(), dto.getStartTime(), dto.getEndTime());
             throw new BookingConflictException(
-                    "This car is already booked for the selected dates. Please choose different dates."
+                    "This car is already booked for the selected times. Please choose different times."
             );
         }
 
@@ -115,26 +115,26 @@ public class BookingService {
         // RENTER AVAILABILITY CHECK: "One Driver, One Car" Constraint
         // ========================================================================
         // A user cannot physically drive two cars simultaneously.
-        // Check if the renter already has an active or pending booking for these dates.
+        // Check if the renter already has an active or pending booking for these times.
         // 
         // Blocking statuses: PENDING_APPROVAL, ACTIVE
         // Non-blocking: CANCELLED, DECLINED, COMPLETED, EXPIRED, EXPIRED_SYSTEM
         //
         // This is the "soft guardrail" - provides user-friendly error message.
-        // The database trigger (V10) is the "hard guardrail" for race conditions.
+        // The database trigger (V18) is the "hard guardrail" for race conditions.
         boolean hasUserOverlap = repo.existsOverlappingUserBooking(
                 renter.getId(),
-                dto.getStartDate(),
-                dto.getEndDate()
+                dto.getStartTime(),
+                dto.getEndTime()
         );
         
         if (hasUserOverlap) {
-            log.warn("User overlap conflict: userId={}, dates={} to {}. User already has an active/pending booking.", 
-                    renter.getId(), dto.getStartDate(), dto.getEndDate());
+            log.warn("User overlap conflict: userId={}, times={} to {}. User already has an active/pending booking.", 
+                    renter.getId(), dto.getStartTime(), dto.getEndTime());
             throw new UserOverlapException(
                     "Ne možete rezervisati dva vozila u isto vreme. " +
                     "Već imate aktivnu ili čekajuću rezervaciju za period " + 
-                    dto.getStartDate() + " do " + dto.getEndDate() + "."
+                    dto.getStartTime() + " do " + dto.getEndTime() + "."
             );
         }
 
@@ -144,8 +144,8 @@ public class BookingService {
         // Reject booking if trip starts within 1 hour from now.
         // Rationale: Hosts need minimum time to respond, and last-minute bookings
         // create poor UX (auto-expiry would trigger almost immediately).
-        java.time.LocalDateTime tripStartDateTime = dto.getStartDate().atStartOfDay();
-        java.time.LocalDateTime oneHourFromNow = java.time.LocalDateTime.now().plusHours(1);
+        LocalDateTime tripStartDateTime = dto.getStartTime();
+        LocalDateTime oneHourFromNow = LocalDateTime.now().plusHours(1);
         
         if (tripStartDateTime.isBefore(oneHourFromNow)) {
             throw new org.example.rentoza.exception.ValidationException(
@@ -157,8 +157,8 @@ public class BookingService {
         Booking booking = new Booking();
         booking.setCar(car);
         booking.setRenter(renter);
-        booking.setStartDate(dto.getStartDate());
-        booking.setEndDate(dto.getEndDate());
+        booking.setStartTime(dto.getStartTime());
+        booking.setEndTime(dto.getEndTime());
 
         // Determine initial status based on feature flag
         BookingStatus initialStatus;
@@ -204,19 +204,19 @@ public class BookingService {
         booking.setInsuranceType(dto.getInsuranceType() != null ? dto.getInsuranceType() : "BASIC");
         booking.setPrepaidRefuel(dto.isPrepaidRefuel());
 
-        // Phase 2.2: Set pickup time window and exact time (if applicable)
-        booking.setPickupTimeWindow(dto.getPickupTimeWindow() != null ? dto.getPickupTimeWindow() : "MORNING");
-        booking.setPickupTime(dto.getPickupTime()); // Nullable - only set when EXACT window selected
-
         // ========================================================================
         // PRICE CALCULATION WITH BigDecimal (Financial Precision)
         // ========================================================================
         // Uses BigDecimal.multiply() and .add() instead of * and + operators.
         // RoundingMode.HALF_UP ensures consistent banker's rounding.
         // Scale of 2 matches DECIMAL(19, 2) column in database.
-        long days = ChronoUnit.DAYS.between(dto.getStartDate(), dto.getEndDate());
+        //
+        // Exact Timestamp Architecture: Calculate 24-hour periods, rounded up.
+        // Example: 36 hours = 2 periods (ceil(36/24) = 2)
+        long hours = ChronoUnit.HOURS.between(dto.getStartTime(), dto.getEndTime());
+        int periods = Math.max(1, (int) Math.ceil(hours / 24.0));
         BigDecimal basePrice = car.getPricePerDay()
-                .multiply(BigDecimal.valueOf(days));
+                .multiply(BigDecimal.valueOf(periods));
 
         // Apply insurance multiplier (precise decimal representation)
         BigDecimal insuranceMultiplier = switch (booking.getInsuranceType().toUpperCase()) {
@@ -255,8 +255,8 @@ public class BookingService {
         // Immutable: This value should NEVER be updated after booking creation.
         booking.setSnapshotDailyRate(car.getPricePerDay());
         
-        log.debug("Price calculated: days={}, basePrice={}, multiplier={}, refuel={}, total={}, snapshotDailyRate={}",
-                days, basePrice, insuranceMultiplier, refuelCost, totalPrice, car.getPricePerDay());
+        log.debug("Price calculated: hours={}, periods={}, basePrice={}, multiplier={}, refuel={}, total={}, snapshotDailyRate={}",
+                hours, periods, basePrice, insuranceMultiplier, refuelCost, totalPrice, car.getPricePerDay());
 
         Booking savedBooking = repo.save(booking);
 
@@ -747,8 +747,8 @@ public class BookingService {
                             car.getImageUrl(),
                             car.getLocation(),
                             car.getPricePerDay(),
-                            booking.getStartDate(),
-                            booking.getEndDate(),
+                            booking.getStartTime(),
+                            booking.getEndTime(),
                             booking.getTotalPrice(),
                             booking.getStatus().name(),
                             review != null,
@@ -770,15 +770,15 @@ public class BookingService {
     @Scheduled(cron = "0 0 * * * *") // Every hour at minute 0
     @Transactional
     public void autoCompleteOverdueBookings() {
-        LocalDate today = LocalDate.now();
-        List<Booking> overdueBookings = repo.findOverdueBookings(today);
+        LocalDateTime now = LocalDateTime.now();
+        List<Booking> overdueBookings = repo.findOverdueBookings(now);
 
         if (!overdueBookings.isEmpty()) {
             log.info("Auto-completing {} overdue bookings", overdueBookings.size());
 
             for (Booking booking : overdueBookings) {
                 booking.setStatus(BookingStatus.COMPLETED);
-                log.debug("Auto-completed booking ID {} (end date: {})", booking.getId(), booking.getEndDate());
+                log.debug("Auto-completed booking ID {} (end time: {})", booking.getId(), booking.getEndTime());
             }
 
             repo.saveAll(overdueBookings);
@@ -803,46 +803,41 @@ public class BookingService {
         }
 
         return booking.getStatus() == BookingStatus.COMPLETED
-            || (booking.getEndDate() != null && booking.getEndDate().isBefore(LocalDate.now()));
+            || (booking.getEndTime() != null && booking.getEndTime().isBefore(LocalDateTime.now()));
     }
 
     /**
-     * Phase 2.2: Format pickup time window and exact time for notifications and display
+     * Format trip time info for notifications and display.
      * 
-     * @param pickupTimeWindow The pickup time window (MORNING, AFTERNOON, EVENING, EXACT)
-     * @param pickupTime The exact pickup time (only for EXACT window)
-     * @return Formatted pickup time string in Serbian
+     * @param startTime Trip start timestamp
+     * @param endTime Trip end timestamp
+     * @return Formatted time string in Serbian
      */
-    private String formatPickupTimeInfo(String pickupTimeWindow, java.time.LocalTime pickupTime) {
-        if (pickupTimeWindow == null) {
-            pickupTimeWindow = "MORNING";
+    private String formatTripTimeInfo(LocalDateTime startTime, LocalDateTime endTime) {
+        if (startTime == null || endTime == null) {
+            return "Vreme nije navedeno";
         }
-
-        return switch (pickupTimeWindow.toUpperCase()) {
-            case "MORNING" -> "Jutro (08:00 – 12:00)";
-            case "AFTERNOON" -> "Popodne (12:00 – 16:00)";
-            case "EVENING" -> "Veče (16:00 – 20:00)";
-            case "EXACT" -> pickupTime != null ? pickupTime.toString() : "Tačno vreme (nije navedeno)";
-            default -> "Jutro (08:00 – 12:00)";
-        };
+        
+        java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm");
+        return startTime.format(formatter) + " - " + endTime.format(formatter);
     }
 
     /**
-     * Phase 2.3: Check if a booking can be made for the given date range
-     * Validates availability without persisting the booking (used for pre-submit validation)
+     * Check if a booking can be made for the given time range.
+     * Validates availability without persisting the booking (used for pre-submit validation).
      * 
-     * @param dto The booking request containing car ID and date range
-     * @return true if dates are available, false if there's a conflict
+     * @param dto The booking request containing car ID and time range
+     * @return true if times are available, false if there's a conflict
      */
     public boolean checkAvailability(BookingRequestDTO dto) {
-        // Get all confirmed bookings for the car in the given date range
-        List<Booking> existingBookings = repo.findByCarIdAndDateRange(
+        // Get all confirmed bookings for the car in the given time range
+        List<Booking> existingBookings = repo.findByCarIdAndTimeRangeBlocking(
                 dto.getCarId(),
-                dto.getStartDate(),
-                dto.getEndDate()
+                dto.getStartTime(),
+                dto.getEndTime()
         );
 
-        // If any overlapping bookings exist, dates are not available
+        // If any overlapping bookings exist, times are not available
         return existingBookings.isEmpty();
     }
 
@@ -857,12 +852,12 @@ public class BookingService {
             String carInfo = car.getBrand() + " " + car.getModel();
             String insuranceInfo = booking.getInsuranceType() != null ? booking.getInsuranceType() : "Basic";
             String refuelInfo = booking.isPrepaidRefuel() ? " sa plaćenim gorivom" : "";
-            String pickupTimeInfo = formatPickupTimeInfo(booking.getPickupTimeWindow(), booking.getPickupTime());
+            String tripTimeInfo = formatTripTimeInfo(booking.getStartTime(), booking.getEndTime());
 
             // Notify renter: request sent
             String renterMessage = String.format(
-                    "Vaš zahtev za rezervaciju %s je poslat! Čeka se odobrenje vlasnika. (%s insurance%s, Preuzimanje: %s)",
-                    carInfo, insuranceInfo, refuelInfo, pickupTimeInfo);
+                    "Vaš zahtev za rezervaciju %s je poslat! Čeka se odobrenje vlasnika. (%s insurance%s, Period: %s)",
+                    carInfo, insuranceInfo, refuelInfo, tripTimeInfo);
             notificationService.createNotification(CreateNotificationRequestDTO.builder()
                     .recipientId(renter.getId())
                     .type(NotificationType.BOOKING_REQUEST_SENT)
@@ -872,8 +867,8 @@ public class BookingService {
 
             // Notify owner: request received
             String ownerMessage = String.format(
-                    "Novi zahtev za rezervaciju %s od %s %s! (%s insurance%s, Preuzimanje: %s)",
-                    carInfo, renter.getFirstName(), renter.getLastName(), insuranceInfo, refuelInfo, pickupTimeInfo);
+                    "Novi zahtev za rezervaciju %s od %s %s! (%s insurance%s, Period: %s)",
+                    carInfo, renter.getFirstName(), renter.getLastName(), insuranceInfo, refuelInfo, tripTimeInfo);
             notificationService.createNotification(CreateNotificationRequestDTO.builder()
                     .recipientId(car.getOwner().getId())
                     .type(NotificationType.BOOKING_REQUEST_RECEIVED)
@@ -897,11 +892,11 @@ public class BookingService {
             String carInfo = car.getBrand() + " " + car.getModel();
             String insuranceInfo = booking.getInsuranceType() != null ? booking.getInsuranceType() : "Basic";
             String refuelInfo = booking.isPrepaidRefuel() ? " with prepaid refuel" : "";
-            String pickupTimeInfo = formatPickupTimeInfo(booking.getPickupTimeWindow(), booking.getPickupTime());
+            String tripTimeInfo = formatTripTimeInfo(booking.getStartTime(), booking.getEndTime());
 
             // Notify renter: confirmed
-            String renterMessage = String.format("Vaša rezervacija za %s je potvrđena! (%s insurance%s, Preuzimanje: %s)",
-                    carInfo, insuranceInfo, refuelInfo, pickupTimeInfo);
+            String renterMessage = String.format("Vaša rezervacija za %s je potvrđena! (%s insurance%s, Period: %s)",
+                    carInfo, insuranceInfo, refuelInfo, tripTimeInfo);
             notificationService.createNotification(CreateNotificationRequestDTO.builder()
                     .recipientId(renter.getId())
                     .type(NotificationType.BOOKING_CONFIRMED)
@@ -910,8 +905,8 @@ public class BookingService {
                     .build());
 
             // Notify owner: confirmed
-            String ownerMessage = String.format("Nova rezervacija za %s od %s %s (%s insurance%s, Preuzimanje: %s)",
-                    carInfo, renter.getFirstName(), renter.getLastName(), insuranceInfo, refuelInfo, pickupTimeInfo);
+            String ownerMessage = String.format("Nova rezervacija za %s od %s %s (%s insurance%s, Period: %s)",
+                    carInfo, renter.getFirstName(), renter.getLastName(), insuranceInfo, refuelInfo, tripTimeInfo);
             notificationService.createNotification(CreateNotificationRequestDTO.builder()
                     .recipientId(car.getOwner().getId())
                     .type(NotificationType.BOOKING_CONFIRMED)
@@ -1001,10 +996,8 @@ public class BookingService {
                 // Trip
                 .id(booking.getId())
                 .status(booking.getStatus())
-                .startDate(booking.getStartDate())
-                .endDate(booking.getEndDate())
-                .pickupTime(booking.getPickupTime())
-                .pickupTimeWindow(booking.getPickupTimeWindow())
+                .startTime(booking.getStartTime())
+                .endTime(booking.getEndTime())
                 .totalPrice(booking.getTotalPrice())
                 .insuranceType(booking.getInsuranceType())
                 .prepaidRefuel(booking.isPrepaidRefuel())

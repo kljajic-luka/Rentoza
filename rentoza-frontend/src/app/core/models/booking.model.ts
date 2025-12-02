@@ -1,14 +1,19 @@
 import { Car } from './car.model';
 import { User } from './user.model';
 
-export type PickupTimeWindow = 'MORNING' | 'AFTERNOON' | 'EVENING' | 'EXACT';
-
+/**
+ * Booking status enum values.
+ * 
+ * <h2>Exact Timestamp Architecture</h2>
+ * Statuses remain the same, but timing-related behavior
+ * is now based on exact timestamps instead of date + time windows.
+ */
 export type BookingStatus =
   | 'PENDING_APPROVAL'
   | 'ACTIVE'
   | 'DECLINED'
   | 'EXPIRED'
-  | 'EXPIRED_SYSTEM' // System auto-expired due to host inactivity (distinct for analytics)
+  | 'EXPIRED_SYSTEM' // System auto-expired due to host inactivity
   | 'CANCELLED'
   | 'COMPLETED'
   // Check-in workflow statuses
@@ -17,7 +22,11 @@ export type BookingStatus =
   | 'CHECK_IN_COMPLETE'
   | 'IN_TRIP'
   | 'NO_SHOW_HOST'
-  | 'NO_SHOW_GUEST';
+  | 'NO_SHOW_GUEST'
+  // Checkout workflow statuses
+  | 'CHECKOUT_OPEN'
+  | 'CHECKOUT_GUEST_COMPLETE'
+  | 'CHECKOUT_HOST_COMPLETE';
 
 export type CheckInStatus =
   | 'NOT_STARTED'
@@ -28,13 +37,20 @@ export type CheckInStatus =
   | 'COMPLETED'
   | 'DISPUTED';
 
+/**
+ * Booking interface.
+ * 
+ * <h2>Exact Timestamp Architecture</h2>
+ * Uses precise start/end timestamps instead of date + time window.
+ * All times are in Europe/Belgrade timezone.
+ */
 export interface Booking {
   id: string | number;
   car: {
     id: string | number;
-    brand: string; // Changed from make to brand to match backend DTO
+    brand: string;
     model: string;
-    year?: number; // Added year
+    year?: number;
     imageUrl?: string;
   };
   renter: {
@@ -44,15 +60,21 @@ export interface Booking {
     email?: string;
     phone?: string;
   };
-  startDate: string;
-  endDate: string;
+  /**
+   * Exact trip start timestamp.
+   * Format: ISO-8601 LocalDateTime (e.g., "2025-10-10T10:00:00")
+   */
+  startTime: string;
+  /**
+   * Exact trip end timestamp.
+   * Format: ISO-8601 LocalDateTime (e.g., "2025-10-12T10:00:00")
+   */
+  endTime: string;
   totalPrice: number;
   status: BookingStatus;
   createdAt: string;
   hasOwnerReview?: boolean;
-  pickupTimeWindow?: PickupTimeWindow; // Phase 2.2
-  pickupTime?: string; // HH:mm format, only for EXACT
-  // Host Approval Fields (Phase 3)
+  // Host Approval Fields
   approvedBy?: number;
   approvedAt?: string;
   declinedBy?: number;
@@ -66,16 +88,33 @@ export interface Booking {
   checkInCompletedAt?: string;
 }
 
+/**
+ * Booking request interface.
+ * 
+ * <h2>Exact Timestamp Architecture</h2>
+ * Uses precise start/end timestamps.
+ * Times should be on 30-minute boundaries.
+ * Minimum duration: 24 hours.
+ */
 export interface BookingRequest {
   carId: string;
-  startDate: string;
-  endDate: string;
+  /**
+   * Exact trip start timestamp.
+   * Format: ISO-8601 LocalDateTime (e.g., "2025-10-10T10:00:00")
+   */
+  startTime: string;
+  /**
+   * Exact trip end timestamp.
+   * Format: ISO-8601 LocalDateTime (e.g., "2025-10-12T10:00:00")
+   */
+  endTime: string;
   insuranceType?: string; // BASIC, STANDARD, PREMIUM
   prepaidRefuel?: boolean;
-  pickupTimeWindow?: PickupTimeWindow; // Phase 2.2: MORNING | AFTERNOON | EVENING | EXACT
-  pickupTime?: string; // Phase 2.2: HH:mm format, required only if pickupTimeWindow === 'EXACT'
 }
 
+/**
+ * User's booking history entry.
+ */
 export interface UserBooking {
   id: number;
   carId: number;
@@ -85,33 +124,112 @@ export interface UserBooking {
   carImageUrl: string | null;
   carLocation: string;
   carPricePerDay: number;
-  startDate: string;
-  endDate: string;
+  /**
+   * Exact trip start timestamp.
+   */
+  startTime: string;
+  /**
+   * Exact trip end timestamp.
+   */
+  endTime: string;
   totalPrice: number;
   status: string;
   hasReview: boolean;
   reviewRating: number | null;
   reviewComment: string | null;
-  insuranceType?: string; // BASIC, STANDARD, PREMIUM
+  insuranceType?: string;
   prepaidRefuel?: boolean;
-  pickupTimeWindow?: PickupTimeWindow; // Phase 2.2
-  pickupTime?: string; // Phase 2.2: HH:mm format
 }
 
 /**
  * Public-safe DTO for calendar availability display.
  *
  * Purpose:
- * - Minimal booking information for calendar UI (shows which dates are booked)
+ * - Minimal booking information for calendar UI (shows which times are booked)
  * - No PII exposure (no renter, owner, or pricing information)
  * - Used by renters/guests to see unavailable dates
  *
- * Backend Endpoint:
- * - GET /api/bookings/car/{carId}/public
- * - @PreAuthorize("permitAll()") - accessible to all users
+ * Calendar Display:
+ * Since we use full-day blocking for calendar display, the frontend should
+ * gray out entire days if any hours within that day are booked.
  */
 export interface BookingSlotDto {
   carId: number;
-  startDate: string; // ISO date string
-  endDate: string; // ISO date string
+  /**
+   * Exact trip start timestamp.
+   */
+  startTime: string;
+  /**
+   * Exact trip end timestamp.
+   */
+  endTime: string;
+}
+
+/**
+ * Time slot option for the datetime picker.
+ */
+export interface TimeSlot {
+  value: string; // HH:mm format
+  label: string; // Display label (e.g., "10:00", "10:30")
+}
+
+/**
+ * Generate time slots in 30-minute intervals.
+ */
+export function generateTimeSlots(): TimeSlot[] {
+  const slots: TimeSlot[] = [];
+  for (let hour = 0; hour < 24; hour++) {
+    for (const minute of [0, 30]) {
+      const hh = hour.toString().padStart(2, '0');
+      const mm = minute.toString().padStart(2, '0');
+      const value = `${hh}:${mm}`;
+      slots.push({ value, label: value });
+    }
+  }
+  return slots;
+}
+
+/**
+ * Combine date and time into ISO-8601 LocalDateTime string.
+ */
+export function combineDateTime(date: Date, time: string): string {
+  const year = date.getFullYear();
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const day = date.getDate().toString().padStart(2, '0');
+  return `${year}-${month}-${day}T${time}:00`;
+}
+
+/**
+ * Parse ISO-8601 LocalDateTime string to Date and time.
+ */
+export function parseDateTime(dateTimeStr: string): { date: Date; time: string } {
+  const dt = new Date(dateTimeStr);
+  const time = `${dt.getHours().toString().padStart(2, '0')}:${dt.getMinutes().toString().padStart(2, '0')}`;
+  return { date: dt, time };
+}
+
+/**
+ * Format duration in hours/days for display.
+ */
+export function formatDuration(startTime: string, endTime: string): string {
+  const start = new Date(startTime);
+  const end = new Date(endTime);
+  const hours = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60));
+  
+  if (hours < 24) {
+    return `${hours} sat${hours === 1 ? '' : hours < 5 ? 'a' : 'i'}`;
+  }
+  
+  const days = Math.ceil(hours / 24);
+  return `${days} dan${days === 1 ? '' : days < 5 ? 'a' : 'a'}`;
+}
+
+/**
+ * Calculate rental periods (24-hour blocks) for pricing.
+ */
+export function calculatePeriods(startTime: string, endTime: string): number {
+  const start = new Date(startTime);
+  const end = new Date(endTime);
+  const hours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+  return Math.max(1, Math.ceil(hours / 24));
 }

@@ -7,6 +7,7 @@ import org.example.rentoza.user.User;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -252,8 +253,13 @@ class BookingConversationDTOTest {
         Booking booking = new Booking();
         booking.setId(1L);
         booking.setStatus(status);
-        booking.setStartDate(startDate);
-        booking.setEndDate(endDate);
+        // Convert LocalDate to LocalDateTime for exact timestamp architecture
+        if (startDate != null) {
+            booking.setStartTime(startDate.atTime(LocalTime.of(9, 0)));
+        }
+        if (endDate != null) {
+            booking.setEndTime(endDate.atTime(LocalTime.of(18, 0)));
+        }
         booking.setRenter(renter);
         booking.setCar(car);
         

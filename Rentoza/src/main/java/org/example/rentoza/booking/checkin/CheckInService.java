@@ -497,7 +497,7 @@ public class CheckInService {
                 booking.getCheckInSessionId(),
                 CheckInEventType.NO_SHOW_HOST_TRIGGERED,
                 Map.of(
-                    "deadlineAt", booking.getStartDate().toString(),
+                    "deadlineAt", booking.getStartTime().toString(),
                     "missedBy", calculateMissedBy(booking)
                 )
             );
@@ -530,13 +530,14 @@ public class CheckInService {
 
     /**
      * Find bookings eligible for check-in window opening.
+     * Uses exact timestamps for precise T-24h detection.
      */
     @Transactional(readOnly = true)
-    public List<Booking> findBookingsForCheckInWindowOpening(LocalDate startFrom, LocalDate startTo) {
+    public List<Booking> findBookingsForCheckInWindowOpening(LocalDateTime startFrom, LocalDateTime startTo) {
         return bookingRepository.findAll().stream()
                 .filter(b -> b.getStatus() == BookingStatus.ACTIVE)
                 .filter(b -> b.getCheckInSessionId() == null)
-                .filter(b -> !b.getStartDate().isBefore(startFrom) && !b.getStartDate().isAfter(startTo))
+                .filter(b -> !b.getStartTime().isBefore(startFrom) && !b.getStartTime().isAfter(startTo))
                 .collect(Collectors.toList());
     }
 
@@ -553,17 +554,14 @@ public class CheckInService {
 
     /**
      * Find potential host no-shows.
+     * Uses exact startTime for precise no-show detection.
      */
     @Transactional(readOnly = true)
     public List<Booking> findPotentialHostNoShows(BookingStatus status, LocalDateTime threshold) {
-        LocalDate thresholdDate = threshold.toLocalDate();
-        
         return bookingRepository.findAll().stream()
                 .filter(b -> b.getStatus() == status)
                 .filter(b -> b.getHostCheckInCompletedAt() == null)
-                .filter(b -> b.getStartDate().isBefore(thresholdDate) || 
-                            (b.getStartDate().equals(thresholdDate) && 
-                             (b.getPickupTime() == null || b.getPickupTime().isBefore(threshold.toLocalTime().minusMinutes(noShowGraceMinutes)))))
+                .filter(b -> b.getStartTime().isBefore(threshold.minusMinutes(noShowGraceMinutes)))
                 .collect(Collectors.toList());
     }
 
@@ -697,9 +695,7 @@ public class CheckInService {
 
     private String calculateMissedBy(Booking booking) {
         Instant now = Instant.now();
-        LocalDateTime startDateTime = LocalDateTime.of(booking.getStartDate(), 
-            booking.getPickupTime() != null ? booking.getPickupTime() : LocalTime.of(12, 0));
-        Instant startInstant = startDateTime.atZone(SERBIA_ZONE).toInstant();
+        Instant startInstant = booking.getStartTime().atZone(SERBIA_ZONE).toInstant();
         
         Duration missed = Duration.between(startInstant.plus(noShowGraceMinutes, ChronoUnit.MINUTES), now);
         return missed.toMinutes() + " minuta";
@@ -723,9 +719,7 @@ public class CheckInService {
         
         if (booking.getStatus() == BookingStatus.CHECK_IN_OPEN || 
             booking.getStatus() == BookingStatus.CHECK_IN_HOST_COMPLETE) {
-            LocalDateTime startDateTime = LocalDateTime.of(booking.getStartDate(),
-                booking.getPickupTime() != null ? booking.getPickupTime() : LocalTime.of(12, 0));
-            noShowDeadline = startDateTime.plusMinutes(noShowGraceMinutes);
+            noShowDeadline = booking.getStartTime().plusMinutes(noShowGraceMinutes);
             minutesUntilNoShow = ChronoUnit.MINUTES.between(LocalDateTime.now(SERBIA_ZONE), noShowDeadline);
             if (minutesUntilNoShow < 0) minutesUntilNoShow = 0L;
         }
@@ -748,8 +742,7 @@ public class CheckInService {
                 .geofenceValid(booking.getGeofenceDistanceMeters() != null && 
                               booking.getGeofenceDistanceMeters() <= geofenceService.getDefaultRadiusMeters())
                 .geofenceDistanceMeters(booking.getGeofenceDistanceMeters())
-                .tripStartScheduled(LocalDateTime.of(booking.getStartDate(),
-                    booking.getPickupTime() != null ? booking.getPickupTime() : LocalTime.of(12, 0)))
+                .tripStartScheduled(booking.getStartTime())
                 .noShowDeadline(noShowDeadline)
                 .minutesUntilNoShow(minutesUntilNoShow)
                 .isHost(isHost)

@@ -13,9 +13,8 @@ import org.hibernate.annotations.CreationTimestamp;
 
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -34,8 +33,27 @@ public class Booking {
     @Version
     private Long version; // Optimistic locking for concurrent approval/decline
 
-    private LocalDate startDate;
-    private LocalDate endDate;
+    /**
+     * Exact trip start timestamp (Europe/Belgrade timezone).
+     * Replaces the old startDate + pickupTimeWindow model.
+     * 
+     * <p><b>Timezone:</b> Stored as local time (no UTC conversion).
+     * Application layer interprets as Europe/Belgrade.
+     * 
+     * <p><b>Granularity:</b> 30-minute intervals (e.g., 09:00, 09:30, 10:00)
+     */
+    @Column(name = "start_time", nullable = false)
+    private LocalDateTime startTime;
+
+    /**
+     * Exact trip end timestamp (Europe/Belgrade timezone).
+     * Replaces the old endDate field.
+     * 
+     * <p><b>Constraint:</b> Must be at least 24 hours after startTime.
+     * <p><b>Default return time:</b> 10:00 AM on end date.
+     */
+    @Column(name = "end_time", nullable = false)
+    private LocalDateTime endTime;
     
     /**
      * Total booking price in Serbian Dinar (RSD).
@@ -52,13 +70,6 @@ public class Booking {
 
     @Column(name = "prepaid_refuel")
     private boolean prepaidRefuel = false;
-
-    // Phase 2.2: Pickup time support
-    @Column(name = "pickup_time_window", length = 20)
-    private String pickupTimeWindow = "MORNING"; // MORNING, AFTERNOON, EVENING, EXACT
-
-    @Column(name = "pickup_time")
-    private LocalTime pickupTime; // Only used when pickupTimeWindow is EXACT
 
     @Enumerated(EnumType.STRING)
     private BookingStatus status = BookingStatus.PENDING_APPROVAL;
@@ -199,14 +210,14 @@ public class Booking {
 
     /**
      * Actual trip start timestamp (after handshake).
-     * May differ from scheduled startDate due to late handshake.
+     * May differ from scheduled startTime due to late handshake.
      */
     @Column(name = "trip_started_at")
     private Instant tripStartedAt;
 
     /**
      * Actual trip end timestamp (for early returns or checkout).
-     * May differ from scheduled endDate.
+     * May differ from scheduled endTime.
      */
     @Column(name = "trip_ended_at")
     private Instant tripEndedAt;
@@ -300,6 +311,117 @@ public class Booking {
     @Column(name = "geofence_distance_meters")
     private Integer geofenceDistanceMeters;
 
+    // ========== CHECKOUT WORKFLOW ==========
+
+    /**
+     * UUID generated when checkout is initiated.
+     * Correlates all checkout events and photos.
+     */
+    @Column(name = "checkout_session_id", length = 36)
+    private String checkoutSessionId;
+
+    /**
+     * When the checkout window was opened (trip end or early return).
+     */
+    @Column(name = "checkout_opened_at")
+    private Instant checkoutOpenedAt;
+
+    /**
+     * When the guest completed their checkout (photos, readings).
+     */
+    @Column(name = "guest_checkout_completed_at")
+    private Instant guestCheckoutCompletedAt;
+
+    /**
+     * When the host confirmed vehicle return and condition.
+     */
+    @Column(name = "host_checkout_completed_at")
+    private Instant hostCheckoutCompletedAt;
+
+    /**
+     * When the checkout process was fully completed.
+     */
+    @Column(name = "checkout_completed_at")
+    private Instant checkoutCompletedAt;
+
+    // ========== CHECKOUT LOCATION TRACKING ==========
+
+    /**
+     * Guest's GPS latitude when submitting checkout.
+     */
+    @Column(name = "guest_checkout_latitude", precision = 10, scale = 8)
+    private BigDecimal guestCheckoutLatitude;
+
+    /**
+     * Guest's GPS longitude when submitting checkout.
+     */
+    @Column(name = "guest_checkout_longitude", precision = 11, scale = 8)
+    private BigDecimal guestCheckoutLongitude;
+
+    /**
+     * Host's GPS latitude when confirming checkout.
+     */
+    @Column(name = "host_checkout_latitude", precision = 10, scale = 8)
+    private BigDecimal hostCheckoutLatitude;
+
+    /**
+     * Host's GPS longitude when confirming checkout.
+     */
+    @Column(name = "host_checkout_longitude", precision = 11, scale = 8)
+    private BigDecimal hostCheckoutLongitude;
+
+    // ========== DAMAGE ASSESSMENT ==========
+
+    /**
+     * Flag indicating new damage was reported at checkout.
+     */
+    @Column(name = "new_damage_reported")
+    private Boolean newDamageReported = false;  // Change from boolean to Boolean
+
+    /**
+     * Host's notes about damage found at return.
+     */
+    @Column(name = "damage_assessment_notes", columnDefinition = "TEXT")
+    private String damageAssessmentNotes;
+
+    /**
+     * Estimated damage cost in RSD.
+     */
+    @Column(name = "damage_claim_amount", precision = 19, scale = 2)
+    private BigDecimal damageClaimAmount;
+
+    /**
+     * Status of damage claim: PENDING, APPROVED, REJECTED, PAID.
+     */
+    @Column(name = "damage_claim_status", length = 20)
+    private String damageClaimStatus;
+
+    // ========== LATE RETURN TRACKING ==========
+
+    /**
+     * Scheduled return time based on booking end date.
+     */
+    @Column(name = "scheduled_return_time")
+    private Instant scheduledReturnTime;
+
+    /**
+     * Actual time guest returned the vehicle.
+     */
+    @Column(name = "actual_return_time")
+    private Instant actualReturnTime;
+
+    /**
+     * Minutes past scheduled return (negative if early).
+     */
+    @Column(name = "late_return_minutes")
+    private Integer lateReturnMinutes;
+
+    /**
+     * Late return fee in RSD.
+     */
+    @Column(name = "late_fee_amount", precision = 19, scale = 2)
+    private BigDecimal lateFeeAmount;
+
     // ========== CHECK-IN RELATIONSHIPS ==========
 
     /**
@@ -363,5 +485,78 @@ public class Booking {
      */
     public boolean isRemoteHandoff() {
         return lockboxCodeEncrypted != null;
+    }
+
+    /**
+     * Check if the checkout window is currently open.
+     */
+    public boolean isCheckoutWindowOpen() {
+        return status == BookingStatus.CHECKOUT_OPEN
+            || status == BookingStatus.CHECKOUT_GUEST_COMPLETE
+            || status == BookingStatus.CHECKOUT_HOST_COMPLETE;
+    }
+
+    /**
+     * Check if checkout has been completed.
+     */
+    public boolean isCheckoutComplete() {
+        return status == BookingStatus.COMPLETED && checkoutCompletedAt != null;
+    }
+
+    /**
+     * Check if there was a late return.
+     */
+    public boolean isLateReturn() {
+        return lateReturnMinutes != null && lateReturnMinutes > 0;
+    }
+
+    /**
+     * Check if there was an early return.
+     */
+    public boolean isEarlyReturn() {
+        return lateReturnMinutes != null && lateReturnMinutes < 0;
+    }
+
+    // ========== DURATION HELPER METHODS (Exact Timestamp Architecture) ==========
+
+    /**
+     * Calculate the booking duration in hours.
+     * 
+     * @return hours between startTime and endTime
+     */
+    public long getDurationHours() {
+        if (startTime == null || endTime == null) {
+            return 0;
+        }
+        return ChronoUnit.HOURS.between(startTime, endTime);
+    }
+
+    /**
+     * Calculate the booking duration in 24-hour periods (for pricing).
+     * Rounds up to the nearest full day.
+     * 
+     * @return number of 24-hour periods (minimum 1)
+     */
+    public int getDurationDays() {
+        long hours = getDurationHours();
+        return Math.max(1, (int) Math.ceil(hours / 24.0));
+    }
+
+    /**
+     * Get the start date portion (for display and calendar purposes).
+     * 
+     * @return LocalDate of the trip start
+     */
+    public java.time.LocalDate getStartDate() {
+        return startTime != null ? startTime.toLocalDate() : null;
+    }
+
+    /**
+     * Get the end date portion (for display and calendar purposes).
+     * 
+     * @return LocalDate of the trip end
+     */
+    public java.time.LocalDate getEndDate() {
+        return endTime != null ? endTime.toLocalDate() : null;
     }
 }

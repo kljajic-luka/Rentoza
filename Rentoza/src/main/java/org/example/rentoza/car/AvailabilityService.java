@@ -2,11 +2,14 @@ package org.example.rentoza.car;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.example.rentoza.availability.BlockedDate;
 import org.example.rentoza.availability.BlockedDateRepository;
 import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingRepository;
 import org.example.rentoza.booking.BookingTimeUtil;
 import org.example.rentoza.car.dto.AvailabilitySearchRequestDTO;
+import org.example.rentoza.car.dto.UnavailableRangeDTO;
+import org.example.rentoza.exception.ResourceNotFoundException;
 import org.hibernate.Hibernate;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -16,7 +19,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Service for time-aware availability searches.
@@ -218,5 +226,120 @@ public class AvailabilityService {
         });
 
         return !hasOverlap; // Available if no overlaps
+    }
+
+    /**
+     * Get all unavailable time ranges for a specific car, including:
+     * - Active/pending bookings
+     * - Owner-blocked dates
+     * - Unusable gaps (periods too short for minimum rental duration)
+     * 
+     * Gap Detection Logic:
+     * If the gap between two consecutive unavailable ranges is less than
+     * `car.minRentalDays * 24 hours`, the gap is marked as unavailable by
+     * extending the earlier range to cover it. This prevents "hugging" issues
+     * where unusable voids are created in the schedule.
+     * 
+     * @param carId Car ID to check
+     * @param queryStart Start of query window (inclusive)
+     * @param queryEnd End of query window (inclusive)
+     * @return List of unavailable ranges, sorted by start time
+     */
+    @Transactional(readOnly = true)
+    public List<UnavailableRangeDTO> getUnavailableRanges(
+            Long carId,
+            LocalDateTime queryStart,
+            LocalDateTime queryEnd
+    ) {
+        log.debug("[AvailabilityService] Fetching unavailable ranges for carId={} between {} and {}",
+                carId, queryStart, queryEnd);
+
+        // Validate car exists and get minRentalDays
+        Car car = carRepository.findById(carId)
+                .orElseThrow(() -> new ResourceNotFoundException("Car not found with ID: " + carId));
+
+        int minRentalDays = car.getMinRentalDays() != null ? car.getMinRentalDays() : 1;
+        long minHours = minRentalDays * 24L;
+
+        // Step 1: Fetch active bookings (blocking statuses)
+        List<Booking> activeBookings = bookingRepository.findByCarIdAndTimeRangeBlocking(
+                carId,
+                queryStart.minusDays(365), // Fetch wider range to catch gaps
+                queryEnd.plusDays(365)
+        );
+
+        // Step 2: Fetch blocked dates
+        List<BlockedDate> blockedDates = blockedDateRepository.findByCarIdOrderByStartDateAsc(carId);
+
+        // Step 3: Convert to UnavailableRangeDTO list
+        List<UnavailableRangeDTO> allRanges = new ArrayList<>();
+
+        // Convert bookings
+        for (Booking booking : activeBookings) {
+            allRanges.add(new UnavailableRangeDTO(
+                    booking.getStartTime(),
+                    booking.getEndTime(),
+                    UnavailableRangeDTO.UnavailabilityReason.BOOKING
+            ));
+        }
+
+        // Convert blocked dates (LocalDate to LocalDateTime)
+        for (BlockedDate blocked : blockedDates) {
+            LocalDateTime blockStart = blocked.getStartDate().atStartOfDay();
+            LocalDateTime blockEnd = blocked.getEndDate().atTime(LocalTime.MAX);
+            
+            // Only include if overlaps with query window
+            if (blockStart.isBefore(queryEnd) && blockEnd.isAfter(queryStart)) {
+                allRanges.add(new UnavailableRangeDTO(
+                        blockStart,
+                        blockEnd,
+                        UnavailableRangeDTO.UnavailabilityReason.BLOCKED_DATE
+                ));
+            }
+        }
+
+        // Step 4: Sort by start time
+        allRanges.sort(Comparator.comparing(UnavailableRangeDTO::start));
+
+        // Step 5: Detect and merge small gaps
+        List<UnavailableRangeDTO> mergedRanges = new ArrayList<>();
+        for (int i = 0; i < allRanges.size(); i++) {
+            UnavailableRangeDTO current = allRanges.get(i);
+            
+            // Try to merge with next ranges if gap is too small
+            LocalDateTime currentEnd = current.end();
+            int j = i + 1;
+            
+            while (j < allRanges.size()) {
+                UnavailableRangeDTO next = allRanges.get(j);
+                long gapHours = ChronoUnit.HOURS.between(currentEnd, next.start());
+                
+                if (gapHours > 0 && gapHours < minHours) {
+                    // Gap is too small - extend current range to cover it
+                    currentEnd = next.end();
+                    j++;
+                } else {
+                    break;
+                }
+            }
+            
+            // Add merged range (or original if no merge)
+            if (!currentEnd.equals(current.end())) {
+                mergedRanges.add(new UnavailableRangeDTO(
+                        current.start(),
+                        currentEnd,
+                        current.reason() // Keep original reason
+                ));
+            } else {
+                mergedRanges.add(current);
+            }
+            
+            i = j - 1; // Skip merged ranges
+        }
+
+        // Step 6: Filter to query window
+        return mergedRanges.stream()
+                .filter(range -> range.start().isBefore(queryEnd) && range.end().isAfter(queryStart))
+                .collect(Collectors.toList());
     }
 }

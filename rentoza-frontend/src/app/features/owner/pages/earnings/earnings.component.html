@@ -94,7 +94,7 @@
                               <mat-icon class="booking-icon">event</mat-icon>
                               <span class="booking-info">
                                 {{ car.carBrand }} {{ car.carModel }} •
-                                {{ booking.startDate | date:'dd.MM.yyyy' }} - {{ booking.endDate | date:'dd.MM.yyyy' }}
+                                {{ booking.startTime | date:'dd.MM.yyyy' }} - {{ booking.endTime | date:'dd.MM.yyyy' }}
                               </span>
                               <span class="booking-price">{{ booking.totalPrice | currency:'RSD':'symbol':'1.0-0' }}</span>
                             </div>

@@ -69,7 +69,7 @@ public enum CheckInPhotoType {
     /** Guest-marked hotspot on vehicle diagram */
     GUEST_HOTSPOT,
     
-    // ========== CHECKOUT PHOTOS (Phase 2) ==========
+    // ========== GUEST CHECKOUT PHOTOS ==========
     
     /** Checkout: Front exterior */
     CHECKOUT_EXTERIOR_FRONT,
@@ -83,14 +83,31 @@ public enum CheckInPhotoType {
     /** Checkout: Right side exterior */
     CHECKOUT_EXTERIOR_RIGHT,
     
+    /** Checkout: Interior dashboard view */
+    CHECKOUT_INTERIOR_DASHBOARD,
+    
+    /** Checkout: Interior rear seat view */
+    CHECKOUT_INTERIOR_REAR,
+    
     /** Checkout: Odometer reading */
     CHECKOUT_ODOMETER,
     
     /** Checkout: Fuel gauge reading */
     CHECKOUT_FUEL_GAUGE,
     
-    /** Checkout: New damage discovered */
-    CHECKOUT_DAMAGE_NEW;
+    /** Checkout: New damage discovered by guest */
+    CHECKOUT_DAMAGE_NEW,
+    
+    /** Checkout: Custom photo (additional evidence) */
+    CHECKOUT_CUSTOM,
+    
+    // ========== HOST CHECKOUT CONFIRMATION PHOTOS ==========
+    
+    /** Host checkout confirmation photo (general) */
+    HOST_CHECKOUT_CONFIRMATION,
+    
+    /** Host checkout: damage evidence photo */
+    HOST_CHECKOUT_DAMAGE_EVIDENCE;
     
     /**
      * Check if this photo type is required for host check-in.
@@ -131,6 +148,30 @@ public enum CheckInPhotoType {
      * @return true if part of checkout process
      */
     public boolean isCheckoutPhoto() {
-        return name().startsWith("CHECKOUT_");
+        return name().startsWith("CHECKOUT_") || name().startsWith("HOST_CHECKOUT_");
+    }
+    
+    /**
+     * Check if this photo type is required for guest checkout.
+     * @return true if this is one of the 6 required checkout photos
+     */
+    public boolean isRequiredForCheckout() {
+        return switch (this) {
+            case CHECKOUT_EXTERIOR_FRONT,
+                 CHECKOUT_EXTERIOR_REAR,
+                 CHECKOUT_EXTERIOR_LEFT,
+                 CHECKOUT_EXTERIOR_RIGHT,
+                 CHECKOUT_ODOMETER,
+                 CHECKOUT_FUEL_GAUGE -> true;
+            default -> false;
+        };
+    }
+    
+    /**
+     * Check if this photo type is a host checkout photo.
+     * @return true if uploaded by host during checkout confirmation
+     */
+    public boolean isHostCheckoutPhoto() {
+        return name().startsWith("HOST_CHECKOUT_");
     }
 }

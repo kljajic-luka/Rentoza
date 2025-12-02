@@ -77,7 +77,7 @@
               </div>
               <div class="vehicle-row">
                 <mat-icon>calendar_today</mat-icon>
-                <span>{{ b.startDate | date:'dd.MM.yyyy' }} - {{ b.endDate | date:'dd.MM.yyyy' }}</span>
+                <span>{{ b.startTime | date:'dd.MM.yyyy HH:mm' }} - {{ b.endTime | date:'dd.MM.yyyy HH:mm' }}</span>
               </div>
               <div class="vehicle-row">
                 <mat-icon>schedule</mat-icon>
@@ -156,7 +156,7 @@
                 <div class="step-icon"><mat-icon>directions_car</mat-icon></div>
                 <div class="step-content">
                   <h4>Putovanje započeto</h4>
-                  <p>{{ b.startDate | date:'dd.MM.yyyy' }}</p>
+                  <p>{{ b.startTime | date:'dd.MM.yyyy HH:mm' }}</p>
                 </div>
               </div>
 
@@ -164,7 +164,7 @@
                 <div class="step-icon"><mat-icon>flag</mat-icon></div>
                 <div class="step-content">
                   <h4>Putovanje završeno</h4>
-                  <p>{{ b.endDate | date:'dd.MM.yyyy' }}</p>
+                  <p>{{ b.endTime | date:'dd.MM.yyyy HH:mm' }}</p>
                 </div>
               </div>
             </div>

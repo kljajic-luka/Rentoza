@@ -117,6 +117,19 @@ export interface CarSummary extends Car {
 }
 
 /**
+ * Unavailable time range for a car.
+ * Used by the availability endpoint to communicate blocked periods to the frontend calendar.
+ */
+export interface UnavailableRange {
+  /** Start timestamp of the unavailable period (ISO-8601) */
+  start: string;
+  /** End timestamp of the unavailable period (ISO-8601) */
+  end: string;
+  /** The reason why this period is unavailable */
+  reason: 'BOOKING' | 'BLOCKED_DATE' | 'GAP_TOO_SMALL';
+}
+
+/**
  * Default rental rules (Serbian)
  */
 export const CAR_RENTAL_RULES = [

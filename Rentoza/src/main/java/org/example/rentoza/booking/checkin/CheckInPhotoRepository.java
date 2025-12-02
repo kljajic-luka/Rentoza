@@ -127,4 +127,46 @@ public interface CheckInPhotoRepository extends JpaRepository<CheckInPhoto, Long
     List<CheckInPhoto> findByUploadedAtBetween(
             @Param("startTime") Instant startTime, 
             @Param("endTime") Instant endTime);
+
+    // ========== CHECKOUT PHOTO QUERIES ==========
+
+    /**
+     * Count required guest checkout photo types for completion check.
+     * Includes VALID_WITH_WARNINGS for HEIC/modern formats validated via sidecar.
+     */
+    @Query("SELECT COUNT(DISTINCT p.photoType) FROM CheckInPhoto p " +
+           "WHERE p.booking.id = :bookingId " +
+           "AND p.deletedAt IS NULL " +
+           "AND p.exifValidationStatus IN ('VALID', 'VALID_NO_GPS', 'VALID_WITH_WARNINGS') " +
+           "AND p.photoType IN (" +
+           "  'CHECKOUT_EXTERIOR_FRONT', 'CHECKOUT_EXTERIOR_REAR', 'CHECKOUT_EXTERIOR_LEFT', 'CHECKOUT_EXTERIOR_RIGHT', " +
+           "  'CHECKOUT_ODOMETER', 'CHECKOUT_FUEL_GAUGE'" +
+           ")")
+    long countCheckoutPhotoTypes(@Param("bookingId") Long bookingId);
+
+    /**
+     * Find all checkout photos for a booking.
+     */
+    @Query("SELECT p FROM CheckInPhoto p " +
+           "WHERE p.booking.id = :bookingId " +
+           "AND p.deletedAt IS NULL " +
+           "AND p.photoType IN (" +
+           "  'CHECKOUT_EXTERIOR_FRONT', 'CHECKOUT_EXTERIOR_REAR', 'CHECKOUT_EXTERIOR_LEFT', 'CHECKOUT_EXTERIOR_RIGHT', " +
+           "  'CHECKOUT_INTERIOR_DASHBOARD', 'CHECKOUT_INTERIOR_REAR', 'CHECKOUT_ODOMETER', 'CHECKOUT_FUEL_GAUGE', " +
+           "  'CHECKOUT_DAMAGE_NEW', 'CHECKOUT_CUSTOM', 'HOST_CHECKOUT_CONFIRMATION', 'HOST_CHECKOUT_DAMAGE_EVIDENCE'" +
+           ")")
+    List<CheckInPhoto> findCheckoutPhotosByBookingId(@Param("bookingId") Long bookingId);
+
+    /**
+     * Find checkout photos by session ID.
+     */
+    @Query("SELECT p FROM CheckInPhoto p " +
+           "WHERE p.checkInSessionId = :sessionId " +
+           "AND p.deletedAt IS NULL " +
+           "AND p.photoType IN (" +
+           "  'CHECKOUT_EXTERIOR_FRONT', 'CHECKOUT_EXTERIOR_REAR', 'CHECKOUT_EXTERIOR_LEFT', 'CHECKOUT_EXTERIOR_RIGHT', " +
+           "  'CHECKOUT_INTERIOR_DASHBOARD', 'CHECKOUT_INTERIOR_REAR', 'CHECKOUT_ODOMETER', 'CHECKOUT_FUEL_GAUGE', " +
+           "  'CHECKOUT_DAMAGE_NEW', 'CHECKOUT_CUSTOM', 'HOST_CHECKOUT_CONFIRMATION', 'HOST_CHECKOUT_DAMAGE_EVIDENCE'" +
+           ")")
+    List<CheckInPhoto> findCheckoutPhotosBySessionId(@Param("sessionId") String sessionId);
 }

@@ -21,7 +21,13 @@ package org.example.rentoza.booking;
  *
  * CHECK_IN_COMPLETE ──────[Both Confirm]─────► IN_TRIP
  *
- * IN_TRIP ────────────────[Trip Ends]────────► COMPLETED
+ * IN_TRIP ────────────────[Trip End/Early Return]─► CHECKOUT_OPEN
+ *
+ * CHECKOUT_OPEN ──────────[Guest Completes]──► CHECKOUT_GUEST_COMPLETE
+ *
+ * CHECKOUT_GUEST_COMPLETE ─[Host Confirms]───► CHECKOUT_HOST_COMPLETE
+ *
+ * CHECKOUT_HOST_COMPLETE ─[Settlement Done]──► COMPLETED
  * </pre>
  *
  * @see org.example.rentoza.booking.checkin.CheckInEvent for audit trail
@@ -70,6 +76,26 @@ public enum BookingStatus {
      * Billing clock is running. Locked until trip end.
      */
     IN_TRIP,
+    
+    // ========== CHECKOUT PHASE ==========
+    
+    /**
+     * Checkout window is open (trip end time reached or early return initiated).
+     * Guest can upload return photos and readings.
+     */
+    CHECKOUT_OPEN,
+    
+    /**
+     * Guest has completed their checkout (photos uploaded, readings submitted).
+     * Host can now verify vehicle condition and confirm return.
+     */
+    CHECKOUT_GUEST_COMPLETE,
+    
+    /**
+     * Host has confirmed vehicle return.
+     * May include damage assessment. Awaiting final settlement.
+     */
+    CHECKOUT_HOST_COMPLETE,
     
     /** Trip finished successfully (checkout completed) */
     COMPLETED,

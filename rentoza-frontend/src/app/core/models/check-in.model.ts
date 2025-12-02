@@ -22,13 +22,20 @@ export type CheckInPhotoType =
   | 'HOST_CUSTOM'
   | 'GUEST_DAMAGE_NOTED'
   | 'GUEST_HOTSPOT'
+  // Checkout photo types
   | 'CHECKOUT_EXTERIOR_FRONT'
   | 'CHECKOUT_EXTERIOR_REAR'
   | 'CHECKOUT_EXTERIOR_LEFT'
   | 'CHECKOUT_EXTERIOR_RIGHT'
+  | 'CHECKOUT_INTERIOR_DASHBOARD'
+  | 'CHECKOUT_INTERIOR_REAR'
   | 'CHECKOUT_ODOMETER'
   | 'CHECKOUT_FUEL_GAUGE'
-  | 'CHECKOUT_DAMAGE_NEW';
+  | 'CHECKOUT_DAMAGE_NEW'
+  | 'CHECKOUT_CUSTOM'
+  // Host checkout confirmation photos
+  | 'HOST_CHECKOUT_CONFIRMATION'
+  | 'HOST_CHECKOUT_DAMAGE_EVIDENCE';
 
 export type ExifValidationStatus =
   | 'PENDING'
@@ -330,10 +337,28 @@ export const PHOTO_TYPE_LABELS: Record<CheckInPhotoType, string> = {
   CHECKOUT_EXTERIOR_REAR: 'Povratak - Zadnja strana',
   CHECKOUT_EXTERIOR_LEFT: 'Povratak - Leva strana',
   CHECKOUT_EXTERIOR_RIGHT: 'Povratak - Desna strana',
+  CHECKOUT_INTERIOR_DASHBOARD: 'Povratak - Instrument tabla',
+  CHECKOUT_INTERIOR_REAR: 'Povratak - Zadnja sedišta',
   CHECKOUT_ODOMETER: 'Povratak - Kilometraža',
   CHECKOUT_FUEL_GAUGE: 'Povratak - Nivo goriva',
   CHECKOUT_DAMAGE_NEW: 'Nova oštećenja',
+  CHECKOUT_CUSTOM: 'Povratak - Dodatna fotografija',
+  HOST_CHECKOUT_CONFIRMATION: 'Potvrda povratka',
+  HOST_CHECKOUT_DAMAGE_EVIDENCE: 'Dokaz oštećenja',
 };
+
+// ============================================================================
+// CHECKOUT REQUIRED PHOTOS
+// ============================================================================
+
+export const REQUIRED_CHECKOUT_PHOTOS: CheckInPhotoType[] = [
+  'CHECKOUT_EXTERIOR_FRONT',
+  'CHECKOUT_EXTERIOR_REAR',
+  'CHECKOUT_EXTERIOR_LEFT',
+  'CHECKOUT_EXTERIOR_RIGHT',
+  'CHECKOUT_ODOMETER',
+  'CHECKOUT_FUEL_GAUGE',
+];
 
 export const HOTSPOT_LOCATION_LABELS: Record<HotspotLocation, string> = {
   FRONT_BUMPER: 'Prednji branik',

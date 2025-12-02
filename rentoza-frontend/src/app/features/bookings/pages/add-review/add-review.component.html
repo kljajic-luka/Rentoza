@@ -42,7 +42,7 @@
             </p>
             <p class="car-summary__dates">
               <mat-icon>event</mat-icon>
-              {{ booking()!.startDate | date: 'dd.MM.yyyy' }} - {{ booking()!.endDate | date: 'dd.MM.yyyy' }}
+              {{ booking()!.startTime | date: 'dd.MM.yyyy HH:mm' }} - {{ booking()!.endTime | date: 'dd.MM.yyyy HH:mm' }}
             </p>
           </div>
         </section>

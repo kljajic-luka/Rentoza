@@ -1,6 +1,5 @@
 package org.example.rentoza.auth;
 
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -18,6 +17,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.security.web.csrf.CsrfTokenRepository;
@@ -182,22 +182,23 @@ public class AuthController {
                                    HttpServletRequest request,
                                    HttpServletResponse res) {
         var userOpt = userService.getUserByEmail(dto.getEmail());
-
+        User user = userOpt.orElse(null);
+        
         // SECURITY: Constant-time validation to prevent username enumeration via timing attacks
         // Always perform password check (even with dummy hash) to prevent timing differences
-        User user = userOpt.orElse(null);
 //        String dummyHash = "$2a$10$dummyHashToPreventTimingAttacks1234567890123456789012345678901234";
-//        //COMMENT THIS TO TEST WITHOUT GOOGLE LOGIN ON THE PHONE
-//       String passwordHash = (user != null) ? user.getPassword() : dummyHash;
+//        String passwordHash = (user != null) ? user.getPassword() : dummyHash;
 //
-//       // Always perform password check (constant time)
-//       boolean passwordMatches = passwordEncoder.matches(dto.getPassword(), passwordHash);
+//        // Always perform password check (constant time)
+//        boolean passwordMatches = passwordEncoder.matches(dto.getPassword(), passwordHash);
 //
-//       if (user == null || !passwordMatches) {
-//           log.warn("Failed login attempt: email={}", dto.getEmail());
-//           return ResponseEntity.status(401).body(Map.of("error", "Invalid credentials"));
-//       }
-
+//        // SECURITY: Generic error message prevents email enumeration
+//        // Throw BadCredentialsException for both "user not found" and "wrong password"
+//        if (user == null || !passwordMatches) {
+//            log.warn("Failed login attempt: email={}", dto.getEmail());
+//            throw new BadCredentialsException("Invalid email or password");
+//        }
+        
         String accessToken = jwtUtil.generateToken(user.getEmail(), user.getRole().name(), user.getId());
 
         // Issue refresh token with IP/UserAgent fingerprinting

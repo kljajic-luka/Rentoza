@@ -65,37 +65,60 @@ export class CheckoutService {
    */
   renderDecision = computed((): CheckoutRenderDecision => {
     const status = this._currentStatus();
+    console.log('[CheckoutService] renderDecision - status:', status);
+    
     if (this._isLoading() && !status) return 'LOADING';
-    if (!status) return 'NOT_READY';
+    if (!status) {
+      console.log('[CheckoutService] renderDecision -> NOT_READY (no status)');
+      return 'NOT_READY';
+    }
 
     const bookingStatus = status.status;
+    console.log('[CheckoutService] bookingStatus:', bookingStatus);
 
     // Determine role
     const isHost = status.isHost;
     const isGuest = status.isGuest;
+    console.log('[CheckoutService] isHost:', isHost, 'isGuest:', isGuest);
 
     // Trip not yet at checkout
     if (bookingStatus === 'IN_TRIP') {
+      console.log('[CheckoutService] renderDecision -> IN_TRIP');
       return 'IN_TRIP';
     }
 
     // Checkout open - guest can submit
     if (bookingStatus === 'CHECKOUT_OPEN') {
-      if (isGuest) return 'GUEST_EDIT';
-      if (isHost) return 'HOST_WAITING';
+      if (isGuest) {
+        console.log('[CheckoutService] renderDecision -> GUEST_EDIT');
+        return 'GUEST_EDIT';
+      }
+      if (isHost) {
+        console.log('[CheckoutService] renderDecision -> HOST_WAITING');
+        return 'HOST_WAITING';
+      }
     }
 
     // Guest completed - waiting for host
     if (bookingStatus === 'CHECKOUT_GUEST_COMPLETE') {
-      if (isGuest) return 'GUEST_WAITING';
-      if (isHost) return 'HOST_CONFIRM';
+      if (isGuest) {
+        console.log('[CheckoutService] renderDecision -> GUEST_WAITING');
+        return 'GUEST_WAITING';
+      }
+      if (isHost) {
+        console.log('[CheckoutService] renderDecision -> HOST_CONFIRM');
+        return 'HOST_CONFIRM';
+      }
     }
 
     // Host completed or fully completed
     if (bookingStatus === 'CHECKOUT_HOST_COMPLETE' || bookingStatus === 'COMPLETED') {
+      console.log('[CheckoutService] renderDecision -> COMPLETE');
       return 'COMPLETE';
     }
 
+    console.log('[CheckoutService] renderDecision -> NOT_READY (no matching condition)');
+    console.log('[CheckoutService] Unhandled status:', bookingStatus, 'isHost:', isHost, 'isGuest:', isGuest);
     return 'NOT_READY';
   });
 

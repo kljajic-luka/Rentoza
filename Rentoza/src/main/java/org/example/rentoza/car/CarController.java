@@ -17,9 +17,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -162,8 +160,8 @@ public class CarController {
      * Example Request:
      * GET /api/cars/availability-search
      *   ?location=beograd
-     *   &startDate=2025-01-15&startTime=09:00
-     *   &endDate=2025-01-17&endTime=18:00
+     *   &startTime=2025-01-15T09:00:00
+     *   &endTime=2025-01-17T18:00:00
      *   &page=0&size=20
      *
      * Security:
@@ -179,10 +177,8 @@ public class CarController {
      * - Maximum search range: 90 days
      *
      * @param location Location string (city/region, case-insensitive)
-     * @param startDate Rental start date (ISO 8601: YYYY-MM-DD)
-     * @param startTime Rental start time (ISO 8601: HH:mm)
-     * @param endDate Rental end date (ISO 8601: YYYY-MM-DD)
-     * @param endTime Rental end time (ISO 8601: HH:mm)
+     * @param startTime Rental start timestamp (ISO 8601: YYYY-MM-DDTHH:mm:ss)
+     * @param endTime Rental end timestamp (ISO 8601: YYYY-MM-DDTHH:mm:ss)
      * @param page Page number (0-indexed, default: 0)
      * @param size Page size (default: 20, max: 100)
      * @param sort Sort order (optional, format: "field,direction")
@@ -192,24 +188,20 @@ public class CarController {
     @PreAuthorize("permitAll()")
     public ResponseEntity<?> searchAvailableCars(
             @RequestParam String location,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.TIME) LocalTime startTime,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.TIME) LocalTime endTime,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startTime,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime,
             @RequestParam(required = false, defaultValue = "0") Integer page,
             @RequestParam(required = false, defaultValue = "20") Integer size,
             @RequestParam(required = false) String sort
     ) {
         try {
-            log.info("[AvailabilitySearch] Request: location={}, startDate={}, startTime={}, endDate={}, endTime={}, page={}, size={}",
-                location, startDate, startTime, endDate, endTime, page, size);
+            log.info("[AvailabilitySearch] Request: location={}, startTime={}, endTime={}, page={}, size={}",
+                location, startTime, endTime, page, size);
 
             // Build request DTO
             AvailabilitySearchRequestDTO request = AvailabilitySearchRequestDTO.builder()
                 .location(location)
-                .startDate(startDate)
                 .startTime(startTime)
-                .endDate(endDate)
                 .endTime(endTime)
                 .page(page)
                 .size(size)

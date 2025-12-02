@@ -258,7 +258,7 @@ export class CheckoutWizardComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     // Extract booking ID from route
-    this.bookingId = Number(this.route.snapshot.paramMap.get('bookingId'));
+    this.bookingId = Number(this.route.snapshot.paramMap.get('id'));
 
     if (isNaN(this.bookingId)) {
       this.router.navigate(['/bookings']);

@@ -345,36 +345,61 @@ export class CarListComponent implements OnInit, OnDestroy {
 
       if (isAvailabilitySearch) {
         // AVAILABILITY SEARCH MODE
+        // Home component sends startTime/endTime as ISO-8601 strings (e.g., "2025-12-02T09:00:00")
         const location = params.get('location') || '';
-        const startDate = params.get('startDate') || '';
-        const startTime = params.get('startTime') || '09:00';
-        const endDate = params.get('endDate') || '';
-        const endTime = params.get('endTime') || '18:00';
+        const startTimeISO = params.get('startTime') || '';
+        const endTimeISO = params.get('endTime') || '';
         const page = params.get('page') ? Number(params.get('page')) : 0;
         const size = params.get('size') ? Number(params.get('size')) : 20;
 
-        // Update availability params
+        // Parse ISO strings to extract date and time for UI display
+        let searchStartDate: Date | null = null;
+        let searchStartTime = '';
+        let searchEndDate: Date | null = null;
+        let searchEndTime = '';
+
+        if (startTimeISO && startTimeISO.includes('T')) {
+          const startDateObj = new Date(startTimeISO);
+          if (!isNaN(startDateObj.getTime())) {
+            searchStartDate = startDateObj;
+            const [datePart, timePart] = startTimeISO.split('T');
+            searchStartTime = timePart.substring(0, 5); // Extract HH:mm
+          }
+        }
+
+        if (endTimeISO && endTimeISO.includes('T')) {
+          const endDateObj = new Date(endTimeISO);
+          if (!isNaN(endDateObj.getTime())) {
+            searchEndDate = endDateObj;
+            const [datePart, timePart] = endTimeISO.split('T');
+            searchEndTime = timePart.substring(0, 5); // Extract HH:mm
+          }
+        }
+
+        // Update availability params (pass ISO strings directly to service)
         this.availabilityParams$.next({
           location,
-          startDate,
-          startTime,
-          endDate,
-          endTime,
+          startDate: '', // Not used, kept for compatibility
+          startTime: startTimeISO, // ISO string: 2025-12-02T09:00:00
+          endDate: '', // Not used, kept for compatibility
+          endTime: endTimeISO, // ISO string: 2025-12-02T18:00:00
           page,
           size,
         });
 
         this.searchLocation = location;
-        this.searchStartDate = startDate ? new Date(startDate) : null;
-        this.searchStartTime = startTime;
-        this.searchEndDate = endDate ? new Date(endDate) : null;
-        this.searchEndTime = endTime;
+        this.searchStartDate = searchStartDate;
+        this.searchStartTime = searchStartTime;
+        this.searchEndDate = searchEndDate;
+        this.searchEndTime = searchEndTime;
 
         // Enable availability mode
         this.isAvailabilityMode$.next(true);
 
-        // Update availability filter display
-        this.updateAvailabilityFilterDisplay(location, startDate, startTime, endDate, endTime);
+        // Update availability filter display (use extracted date/time for display)
+        const displayStartDate = searchStartDate ? this.formatDate(searchStartDate) : '';
+        const displayEndDate = searchEndDate ? this.formatDate(searchEndDate) : '';
+        this.updateAvailabilityFilterDisplay(location, displayStartDate, searchStartTime, displayEndDate, searchEndTime);
 
         // Apply filter criteria parsed from URL alongside availability
         this.searchCriteria$.next(parsedFilters);
@@ -494,16 +519,17 @@ export class CarListComponent implements OnInit, OnDestroy {
       return;
     }
 
-    const startDate = this.formatDate(this.searchStartDate as Date);
-    const endDate = this.formatDate(this.searchEndDate as Date);
+    // Combine date + time into ISO strings (matching home.component.ts)
+    const startTimeISO = this.combineDateTime(this.searchStartDate as Date, this.searchStartTime);
+    const endTimeISO = this.combineDateTime(this.searchEndDate as Date, this.searchEndTime);
     const pageSize = this.searchCriteria$.value.size ?? 20;
 
     const params = {
       location: normalizedLocation,
-      startDate,
-      startTime: this.searchStartTime,
-      endDate,
-      endTime: this.searchEndTime,
+      startDate: '', // Not used, kept for compatibility
+      startTime: startTimeISO, // ISO string: 2025-12-02T09:00:00
+      endDate: '', // Not used, kept for compatibility
+      endTime: endTimeISO, // ISO string: 2025-12-02T18:00:00
       page: 0,
       size: pageSize,
     };
@@ -511,6 +537,8 @@ export class CarListComponent implements OnInit, OnDestroy {
     this.availabilityParams$.next(params);
     this.isAvailabilityMode$.next(true);
     this.availabilityFilterDisplay$.next(null);
+    const startDate = this.formatDate(this.searchStartDate as Date);
+    const endDate = this.formatDate(this.searchEndDate as Date);
     this.updateAvailabilityFilterDisplay(
       normalizedLocation,
       startDate,
@@ -911,6 +939,17 @@ export class CarListComponent implements OnInit, OnDestroy {
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
+  }
+
+  /**
+   * Combine date and time into ISO-8601 LocalDateTime string.
+   * Format: YYYY-MM-DDTHH:mm:00
+   */
+  private combineDateTime(date: Date, time: string): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}T${time}:00`;
   }
 
   validateField(field: 'location' | 'startDate' | 'endDate'): void {

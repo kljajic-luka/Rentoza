@@ -112,21 +112,31 @@ export class OwnerBookingsComponent implements OnInit {
 
                 // Categorize based on times AND status
                 // 1. Completed: End time has passed OR status indicates completion
+                // BUT: Exclude checkout statuses (they need action even if endTime passed)
                 if (
-                  endTime < now ||
-                  booking.status === 'COMPLETED' ||
-                  booking.status === 'CANCELLED' ||
-                  booking.status === 'DECLINED' ||
-                  booking.status === 'EXPIRED'
+                  (endTime < now || booking.status === 'COMPLETED') &&
+                  !['CHECKOUT_OPEN', 'CHECKOUT_GUEST_COMPLETE', 'CHECKOUT_HOST_COMPLETE'].includes(booking.status) &&
+                  booking.status !== 'CANCELLED' &&
+                  booking.status !== 'DECLINED' &&
+                  booking.status !== 'EXPIRED'
                 ) {
                   completed.push(booking);
                 }
                 // 2. Upcoming: Start time is in the future OR pending approval
-                else if (startTime > now || booking.status === 'PENDING_APPROVAL') {
+                // BUT: If check-in is open, treat as active (better UX)
+                else if (
+                  (startTime > now || booking.status === 'PENDING_APPROVAL') &&
+                  !['CHECK_IN_OPEN', 'CHECK_IN_HOST_COMPLETE', 'CHECK_IN_COMPLETE'].includes(booking.status) &&
+                  !['CHECKOUT_OPEN', 'CHECKOUT_GUEST_COMPLETE', 'CHECKOUT_HOST_COMPLETE'].includes(booking.status)
+                ) {
                   upcoming.push(booking);
                 }
-                // 3. Active: Current time is within booking period (startTime <= now <= endTime)
-                else if (startTime <= now && endTime >= now) {
+                // 3. Active: Current time is within booking period OR check-in/checkout is in progress
+                else if (
+                  (startTime <= now && endTime >= now) ||
+                  ['CHECK_IN_OPEN', 'CHECK_IN_HOST_COMPLETE', 'CHECK_IN_COMPLETE'].includes(booking.status) ||
+                  ['CHECKOUT_OPEN', 'CHECKOUT_GUEST_COMPLETE', 'CHECKOUT_HOST_COMPLETE'].includes(booking.status)
+                ) {
                   active.push(booking);
                 }
               });
@@ -163,6 +173,10 @@ export class OwnerBookingsComponent implements OnInit {
         return 'status-check-in';
       case 'IN_TRIP':
         return 'status-active';
+      case 'CHECKOUT_OPEN':
+      case 'CHECKOUT_GUEST_COMPLETE':
+      case 'CHECKOUT_HOST_COMPLETE':
+        return 'status-checkout';
       case 'COMPLETED':
         return 'status-completed';
       case 'NO_SHOW_HOST':
@@ -192,6 +206,12 @@ export class OwnerBookingsComponent implements OnInit {
         return 'Spreman za handshake';
       case 'IN_TRIP':
         return 'U toku';
+      case 'CHECKOUT_OPEN':
+        return 'Čeka se gost';
+      case 'CHECKOUT_GUEST_COMPLETE':
+        return 'Potvrdi checkout';
+      case 'CHECKOUT_HOST_COMPLETE':
+        return 'Checkout završen';
       case 'NO_SHOW_HOST':
         return 'Host nije se pojavio';
       case 'NO_SHOW_GUEST':
@@ -267,6 +287,52 @@ export class OwnerBookingsComponent implements OnInit {
    */
   protected goToCheckIn(booking: Booking): void {
     this.router.navigate(['/bookings', booking.id, 'check-in']);
+  }
+
+  /**
+   * Check if checkout is available for this booking.
+   * Host can confirm checkout when guest has completed their part.
+   */
+  protected canCheckout(booking: Booking): boolean {
+    return (
+      booking.status === 'CHECKOUT_GUEST_COMPLETE' ||
+      booking.status === 'CHECKOUT_OPEN' // For viewing status
+    );
+  }
+
+  /**
+   * Get checkout button label based on current booking status.
+   */
+  protected getCheckoutLabel(booking: Booking): string {
+    switch (booking.status) {
+      case 'CHECKOUT_OPEN':
+        return 'Čeka se gost';
+      case 'CHECKOUT_GUEST_COMPLETE':
+        return 'Potvrdi Checkout';
+      default:
+        return 'Checkout';
+    }
+  }
+
+  /**
+   * Get checkout button icon based on current booking status.
+   */
+  protected getCheckoutIcon(booking: Booking): string {
+    switch (booking.status) {
+      case 'CHECKOUT_OPEN':
+        return 'hourglass_empty';
+      case 'CHECKOUT_GUEST_COMPLETE':
+        return 'check_circle';
+      default:
+        return 'logout';
+    }
+  }
+
+  /**
+   * Navigate to checkout wizard.
+   */
+  protected goToCheckout(booking: Booking): void {
+    this.router.navigate(['/bookings', booking.id, 'checkout']);
   }
 
   /**

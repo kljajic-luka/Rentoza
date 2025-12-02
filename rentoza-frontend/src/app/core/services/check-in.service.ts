@@ -684,7 +684,6 @@ export class CheckInService implements OnDestroy {
     clientLongitude?: number
   ): Observable<CheckInPhotoDTO> {
     const formData = new FormData();
-    formData.append('file', blob, `${photoType}.jpg`);
     formData.append('photoType', photoType);
     formData.append('clientTimestamp', clientTimestamp);
 
@@ -695,6 +694,9 @@ export class CheckInService implements OnDestroy {
     if (clientLongitude != null) {
       formData.append('clientLongitude', clientLongitude.toString());
     }
+
+    // Append file LAST to ensure parameters are parsed before file stream
+    formData.append('file', blob, `${photoType}.jpg`);
 
     const request = new HttpRequest(
       'POST',

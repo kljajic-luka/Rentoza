@@ -164,4 +164,29 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
     }
+
+    /**
+     * Handle authentication failures (invalid credentials).
+     * 
+     * SECURITY: Generic error message prevents email enumeration attacks.
+     * Returns HTTP 401 Unauthorized with clean JSON response.
+     * 
+     * Response format:
+     * {
+     *   "timestamp": "2025-12-02T18:00:00Z",
+     *   "error": "Unauthorized",
+     *   "message": "Invalid email or password"
+     * }
+     */
+    @ExceptionHandler(BadCredentialsException.class)
+    public ResponseEntity<Map<String, Object>> handleBadCredentials(BadCredentialsException ex) {
+        log.warn("Authentication failed: {}", ex.getMessage());
+        
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", Instant.now().toString());
+        body.put("error", "Unauthorized");
+        body.put("message", "Invalid email or password");
+        
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
+    }
 }

@@ -92,8 +92,8 @@ public class CheckOutStatusDTO {
     
     // ========== ROLE FLAGS ==========
     
-    private boolean isHost;
-    private boolean isGuest;
+    private Boolean isHost;
+    private Boolean isGuest;
     
     // ========== VEHICLE INFO ==========
     

@@ -175,6 +175,12 @@ export class BookingHistoryComponent {
         return 'Check-in završen';
       case 'IN_TRIP':
         return 'Putovanje u toku';
+      case 'CHECKOUT_OPEN':
+        return 'Vraćanje vozila';
+      case 'CHECKOUT_GUEST_COMPLETE':
+        return 'Čeka se potvrda';
+      case 'CHECKOUT_HOST_COMPLETE':
+        return 'Checkout završen';
       default:
         return status;
     }
@@ -210,6 +216,10 @@ export class BookingHistoryComponent {
       case 'CHECK_IN_COMPLETE':
       case 'IN_TRIP':
         return 'status-active';
+      case 'CHECKOUT_OPEN':
+      case 'CHECKOUT_GUEST_COMPLETE':
+      case 'CHECKOUT_HOST_COMPLETE':
+        return 'status-checkout';
       default:
         return 'status-default';
     }
@@ -249,6 +259,12 @@ export class BookingHistoryComponent {
         return 'Check-in je završen. Možete preuzeti vozilo.';
       case 'IN_TRIP':
         return 'Putovanje je u toku. Uživajte!';
+      case 'CHECKOUT_OPEN':
+        return 'Vreme je da vratite vozilo. Uploadujte fotografije i unesite završne podatke.';
+      case 'CHECKOUT_GUEST_COMPLETE':
+        return 'Vaš checkout je uspešno prosleđen. Čekamo da domaćin potvrdi stanje vozila.';
+      case 'CHECKOUT_HOST_COMPLETE':
+        return 'Checkout je završen. Putovanje je uspešno okončano.';
       default:
         return booking.status;
     }
@@ -285,6 +301,21 @@ export class BookingHistoryComponent {
    */
   protected goToGuestCheckIn(bookingId: number): void {
     this.router.navigate(['/bookings', bookingId, 'check-in']);
+  }
+
+  /**
+   * Check if guest can perform checkout for this booking.
+   * Guest can checkout when status is CHECKOUT_OPEN.
+   */
+  protected canGuestCheckout(booking: UserBooking): boolean {
+    return booking.status === 'CHECKOUT_OPEN';
+  }
+
+  /**
+   * Navigate to guest checkout wizard.
+   */
+  protected goToGuestCheckout(bookingId: number): void {
+    this.router.navigate(['/bookings', bookingId, 'checkout']);
   }
 
   openDetails(id: number): void {

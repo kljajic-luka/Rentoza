@@ -24,6 +24,12 @@ export function isBookingCompleted(booking: { status: string; endTime: string | 
     return false;
   }
 
+  // Checkout statuses are NOT completed (they need action)
+  const checkoutStatuses = ['CHECKOUT_OPEN', 'CHECKOUT_GUEST_COMPLETE', 'CHECKOUT_HOST_COMPLETE'];
+  if (checkoutStatuses.includes(booking.status)) {
+    return false;
+  }
+
   const now = new Date();
   const endTime = new Date(booking.endTime);
 

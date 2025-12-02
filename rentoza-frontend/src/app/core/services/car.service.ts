@@ -150,8 +150,17 @@ export class CarService {
    * Convert date string + time to ISO timestamp, or return as-is if already ISO.
    */
   private toISOTimestamp(dateOrTimestamp: string, time: string): string {
+    // If dateOrTimestamp is already an ISO timestamp, return it
     if (dateOrTimestamp.includes('T')) {
       return dateOrTimestamp;
+    }
+    // If time is already an ISO timestamp (and dateOrTimestamp is empty), return time
+    if (!dateOrTimestamp && time.includes('T')) {
+      return time;
+    }
+    // Otherwise, combine date + time
+    if (!dateOrTimestamp) {
+      throw new Error('Both dateOrTimestamp and time cannot be empty');
     }
     return `${dateOrTimestamp}T${time}:00`;
   }

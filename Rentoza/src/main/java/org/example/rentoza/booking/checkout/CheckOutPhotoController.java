@@ -1,4 +1,4 @@
-package org.example.rentoza.booking.checkin;
+package org.example.rentoza.booking.checkout;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -17,36 +17,30 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 
 /**
- * Controller for serving check-in photo files.
+ * Controller for serving checkout photo files.
  * 
- * <p>This endpoint serves uploaded check-in photos from the file system.
+ * <p>This endpoint serves uploaded checkout photos from the file system.
  * Photos are organized by session ID (UUID) to prevent conflicts.
  * 
  * <h2>URL Pattern</h2>
  * <pre>
- * GET /api/checkin/photos/{sessionId}/{filename}
+ * GET /api/checkout/photos/{sessionId}/{filename}
  * </pre>
- * 
- * <h2>Security</h2>
- * <ul>
- *   <li>Requires authentication</li>
- *   <li>Path traversal attacks are blocked</li>
- *   <li>Only files within the upload directory are served</li>
- * </ul>
  */
 @RestController
-@RequestMapping("/api/checkin/photos")
+@RequestMapping("/api/checkout/photos")
 @PreAuthorize("isAuthenticated()")
 @Slf4j
-public class CheckInPhotoController {
+public class CheckOutPhotoController {
 
-    @Value("${app.checkin.photo.upload-dir:uploads/checkin}")
+    // Default to sibling directory of checkin uploads if not specified
+    @Value("${app.checkout.photo.upload-dir:uploads/checkout}")
     private String uploadDir;
 
     /**
-     * Serve a check-in photo file.
+     * Serve a checkout photo file.
      * 
-     * @param sessionId The check-in session ID (UUID)
+     * @param sessionId The checkout session ID (UUID)
      * @param filename The photo filename
      * @return The photo file as binary response
      */
@@ -58,7 +52,7 @@ public class CheckInPhotoController {
         
         // Sanitize inputs to prevent directory traversal
         if (containsPathTraversal(sessionId) || containsPathTraversal(filename)) {
-            log.warn("[CheckIn] Rejected directory traversal attempt: session={}, file={}", 
+            log.warn("[CheckOut] Rejected directory traversal attempt: session={}, file={}", 
                 sessionId, filename);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
         }
@@ -71,14 +65,17 @@ public class CheckInPhotoController {
             Path uploadDirPath = Paths.get(uploadDir).toAbsolutePath().normalize();
             Path absoluteFilePath = filePath.toAbsolutePath().normalize();
             
+            // Note: If uploadDir doesn't exist yet, toAbsolutePath might behave oddly if relative?
+            // But we assume it's created by service.
+            
             if (!absoluteFilePath.startsWith(uploadDirPath)) {
-                log.warn("[CheckIn] Path escape attempt: {}", filePath);
+                log.warn("[CheckOut] Path escape attempt: {}", filePath);
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
             }
             
             // Check file exists
             if (!Files.exists(filePath) || !Files.isReadable(filePath)) {
-                log.debug("[CheckIn] Photo not found: {}", filePath);
+                log.debug("[CheckOut] Photo not found: {}", filePath);
                 return ResponseEntity.notFound().build();
             }
             
@@ -88,55 +85,29 @@ public class CheckInPhotoController {
             // Determine content type
             String contentType = Files.probeContentType(filePath);
             if (contentType == null) {
-                // Default to JPEG for check-in photos
                 contentType = "image/jpeg";
             }
             
-            log.debug("[CheckIn] Serving photo: {}, type: {}", filePath, contentType);
+            log.debug("[CheckOut] Serving photo: {}, type: {}", filePath, contentType);
             
             return ResponseEntity.ok()
                     .contentType(MediaType.parseMediaType(contentType))
-                    .header(HttpHeaders.CACHE_CONTROL, "max-age=3600, public") // Cache for 1 hour
+                    .header(HttpHeaders.CACHE_CONTROL, "max-age=3600, public")
                     .body(resource);
                     
         } catch (IOException e) {
-            log.error("[CheckIn] Error serving photo: session={}, file={}", sessionId, filename, e);
+            log.error("[CheckOut] Error serving photo: session={}, file={}", sessionId, filename, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
-    /**
-     * Serve a checkout photo file.
-     * 
-     * @param sessionId The checkout session ID (UUID)
-     * @param filename The photo filename
-     * @return The photo file as binary response
-     */
-    @GetMapping(value = "/../../checkout/photos/{sessionId}/{filename}") // Hacky way to map to sibling path? No, better use full path or separate controller.
-    // Actually, let's just add a new mapping to the class or method.
-    // Since class has @RequestMapping("/api/checkin/photos"), I can't easily add /api/checkout/photos here without changing class mapping.
-    // I will change class mapping to /api and add specific paths to methods.
-    // BUT that breaks existing clients.
-    // BETTER: Create a new CheckOutPhotoController.
-    // OR: Just add a method that maps to the full path? Spring allows method-level mappings to override class-level? No, they append.
-    // 
-    // Wait, I can just add a new controller class in the same file? No, Java doesn't like public classes in same file.
-    // 
-    // I will create a NEW controller file: CheckOutPhotoController.java.
-    // It's cleaner.
-    
-    // ABORTING EDIT to create new file instead.
-
-    /**
-     * Check if a path segment contains directory traversal patterns.
-     */
     private boolean containsPathTraversal(String segment) {
         return segment == null ||
                segment.contains("..") ||
                segment.contains("/") ||
                segment.contains("\\") ||
-               segment.contains("%2e") || // URL-encoded .
-               segment.contains("%2f") || // URL-encoded /
-               segment.contains("%5c");   // URL-encoded \
+               segment.contains("%2e") || 
+               segment.contains("%2f") || 
+               segment.contains("%5c");
     }
 }

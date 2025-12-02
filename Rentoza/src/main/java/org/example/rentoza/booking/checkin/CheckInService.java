@@ -761,7 +761,7 @@ public class CheckInService {
         return CheckInPhotoDTO.builder()
                 .photoId(photo.getId())
                 .photoType(photo.getPhotoType())
-                .url(photo.getStorageKey()) // In production, generate pre-signed URL
+                .url(photo.getStorageKey())
                 .uploadedAt(toLocalDateTime(photo.getUploadedAt()))
                 .exifValidationStatus(photo.getExifValidationStatus())
                 .exifValidationMessage(photo.getExifValidationMessage())

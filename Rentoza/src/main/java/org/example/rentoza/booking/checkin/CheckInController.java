@@ -105,13 +105,30 @@ public class CheckInController {
             @PathVariable Long bookingId,
             @RequestPart("file") MultipartFile file,
             @RequestParam("photoType") CheckInPhotoType photoType,
-            @RequestParam(value = "clientTimestamp", required = false) Instant clientTimestamp,
+            @RequestParam(value = "clientTimestamp", required = false) String clientTimestampStr,
             @RequestParam(value = "clientLatitude", required = false) BigDecimal clientLatitude,
             @RequestParam(value = "clientLongitude", required = false) BigDecimal clientLongitude) throws IOException {
         
         Long userId = currentUser.id();
+        log.info("[CheckIn] RAW UPLOAD REQUEST: bookingId={}, photoType={}", bookingId, photoType);
+        log.info("[CheckIn] RAW PARAM: clientTimestampStr='{}'", clientTimestampStr);
+        log.info("[CheckIn] RAW PARAM: clientLatitude={}", clientLatitude);
+        log.info("[CheckIn] RAW PARAM: clientLongitude={}", clientLongitude);
+        log.info("[CheckIn] RAW FILE: name={}, size={}, contentType={}", 
+            file.getOriginalFilename(), file.getSize(), file.getContentType());
+            
         log.debug("[CheckIn] Photo upload for booking {} by user {}, type: {}, clientGPS: ({}, {})", 
             bookingId, userId, photoType, clientLatitude, clientLongitude);
+            
+        // Manual parsing of timestamp to avoid Spring multipart binding issues
+        Instant clientTimestamp = null;
+        if (clientTimestampStr != null && !clientTimestampStr.isBlank()) {
+            try {
+                clientTimestamp = Instant.parse(clientTimestampStr);
+            } catch (Exception e) {
+                log.warn("[CheckIn] Failed to parse clientTimestamp: {}", clientTimestampStr);
+            }
+        }
         
         CheckInPhotoDTO photo = photoService.uploadPhoto(
             bookingId, 

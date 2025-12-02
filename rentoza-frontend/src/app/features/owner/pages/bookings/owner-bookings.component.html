@@ -81,6 +81,18 @@
                     Odobri
                   </button>
                 }
+                @if (canCheckIn(booking)) {
+                  <button mat-raised-button color="accent" (click)="goToCheckIn(booking)">
+                    <mat-icon>{{ getCheckInIcon(booking) }}</mat-icon>
+                    {{ getCheckInLabel(booking) }}
+                  </button>
+                }
+                @if (canCheckout(booking)) {
+                  <button mat-raised-button color="accent" (click)="goToCheckout(booking)">
+                    <mat-icon>{{ getCheckoutIcon(booking) }}</mat-icon>
+                    {{ getCheckoutLabel(booking) }}
+                  </button>
+                }
               </mat-card-actions>
             </mat-card>
           }
@@ -151,6 +163,12 @@
                     {{ getCheckInLabel(booking) }}
                   </button>
                 }
+                @if (canCheckout(booking)) {
+                  <button mat-raised-button color="accent" (click)="goToCheckout(booking)">
+                    <mat-icon>{{ getCheckoutIcon(booking) }}</mat-icon>
+                    {{ getCheckoutLabel(booking) }}
+                  </button>
+                }
               </mat-card-actions>
             </mat-card>
           }
@@ -215,6 +233,12 @@
                   <mat-icon>receipt_long</mat-icon>
                   Detalji
                 </button>
+                @if (canCheckout(booking)) {
+                  <button mat-raised-button color="accent" (click)="goToCheckout(booking)">
+                    <mat-icon>{{ getCheckoutIcon(booking) }}</mat-icon>
+                    {{ getCheckoutLabel(booking) }}
+                  </button>
+                }
                 @if (canReviewRenter(booking)) {
                   <button mat-raised-button color="primary" (click)="reviewRenter(booking)">
                     <mat-icon>rate_review</mat-icon>

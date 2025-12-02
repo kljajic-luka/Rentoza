@@ -510,7 +510,23 @@ export class GuestCheckoutComponent {
   getPhotoUrl(url: string): string {
     if (!url) return '';
     if (url.startsWith('http')) return url;
-    return `${environment.baseApiUrl}${url.startsWith('/') ? '' : '/'}${url}`;
+
+    const baseUrl = environment.baseApiUrl.replace(/\/$/, '');
+
+    // Handle check-in photos
+    if (url.startsWith('checkin/')) {
+      const pathSegment = url.replace(/^checkin\//, '');
+      return `${baseUrl}/checkin/photos/${pathSegment}`;
+    }
+
+    // Handle checkout photos
+    if (url.startsWith('checkout/')) {
+      const pathSegment = url.replace(/^checkout\//, '');
+      return `${baseUrl}/checkout/photos/${pathSegment}`;
+    }
+
+    // Fallback
+    return `${baseUrl}/${url}`;
   }
 
   getPhotoLabel(photoType: CheckInPhotoType): string {

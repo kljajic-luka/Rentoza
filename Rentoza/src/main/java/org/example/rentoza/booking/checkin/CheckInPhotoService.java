@@ -95,14 +95,45 @@ public class CheckInPhotoService {
         Booking booking = bookingRepository.findByIdWithRelations(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Rezervacija nije pronađena"));
         
-        // Validate access (only host can upload in CHECK_IN_OPEN)
-        if (!booking.getCar().getOwner().getId().equals(userId)) {
-            throw new AccessDeniedException("Samo vlasnik vozila može otpremiti fotografije");
+        // Validate access based on photo type and booking status
+        if (photoType.isCheckoutPhoto()) {
+            // Checkout photo authorization
+            if (photoType.isHostCheckoutPhoto()) {
+                // Host checkout photo: only owner can upload
+                if (!booking.getCar().getOwner().getId().equals(userId)) {
+                    throw new AccessDeniedException("Samo vlasnik vozila može otpremiti fotografije za checkout");
+                }
+            } else {
+                // Guest checkout photo: only renter can upload
+                if (!booking.getRenter().getId().equals(userId)) {
+                    throw new AccessDeniedException("Samo gost može otpremiti fotografije za checkout");
+                }
+            }
+        } else {
+            // Check-in photo: only owner can upload
+            if (!booking.getCar().getOwner().getId().equals(userId)) {
+                throw new AccessDeniedException("Samo vlasnik vozila može otpremiti fotografije");
+            }
         }
         
-        // Validate status
-        if (booking.getStatus() != BookingStatus.CHECK_IN_OPEN) {
-            throw new IllegalStateException("Prijem nije otvoren za otpremanje fotografija");
+        // Validate status based on photo type
+        if (photoType.isCheckoutPhoto()) {
+            if (photoType.isHostCheckoutPhoto()) {
+                // Host checkout: must be in CHECKOUT_GUEST_COMPLETE
+                if (booking.getStatus() != BookingStatus.CHECKOUT_GUEST_COMPLETE) {
+                    throw new IllegalStateException("Checkout nije spreman za otpremanje fotografija od strane domaćina");
+                }
+            } else {
+                // Guest checkout: must be in CHECKOUT_OPEN
+                if (booking.getStatus() != BookingStatus.CHECKOUT_OPEN) {
+                    throw new IllegalStateException("Checkout nije otvoren za otpremanje fotografija");
+                }
+            }
+        } else {
+            // Check-in photo: must be in CHECK_IN_OPEN
+            if (booking.getStatus() != BookingStatus.CHECK_IN_OPEN) {
+                throw new IllegalStateException("Prijem nije otvoren za otpremanje fotografija");
+            }
         }
         
         // Get user
@@ -113,9 +144,12 @@ public class CheckInPhotoService {
         byte[] photoBytes = file.getBytes();
         
         // EXIF validation
+        // We must pass clientTimestamp to allow the service to:
+        // 1. Calculate photo age relative to when the user actually took/uploaded it
+        // 2. Enable "sidecar fallback" for HEIC/no-EXIF images (requires non-null timestamp)
         ExifValidationResult exifResult = exifValidationService.validate(
             photoBytes, 
-            booking.getCheckInOpenedAt()
+            clientTimestamp
         );
         
         // Use client GPS as fallback when EXIF GPS is missing
@@ -132,16 +166,37 @@ public class CheckInPhotoService {
         }
         
         // Generate storage path
-        String sessionId = booking.getCheckInSessionId();
+        String sessionId = photoType.isCheckoutPhoto() 
+            ? booking.getCheckoutSessionId() 
+            : booking.getCheckInSessionId();
+            
+        if (sessionId == null) {
+            // Auto-heal: Generate session ID if missing (legacy booking support)
+            sessionId = UUID.randomUUID().toString();
+            if (photoType.isCheckoutPhoto()) {
+                booking.setCheckoutSessionId(sessionId);
+                log.info("[CheckIn] Auto-generated missing checkoutSessionId for booking {}", bookingId);
+            } else {
+                booking.setCheckInSessionId(sessionId);
+                log.info("[CheckIn] Auto-generated missing checkInSessionId for booking {}", bookingId);
+            }
+            bookingRepository.save(booking);
+        }
+        
         String filename = String.format("%s_%s_%s.jpg", 
             photoType.name().toLowerCase(), 
             System.currentTimeMillis(),
             UUID.randomUUID().toString().substring(0, 8)
         );
-        String storageKey = String.format("checkin/%s/%s", sessionId, filename);
+        String storageKey = String.format(
+            photoType.isCheckoutPhoto() ? "checkout/%s/%s" : "checkin/%s/%s", 
+            sessionId, 
+            filename
+        );
         
-        // Ensure directory exists
-        Path uploadPath = Paths.get(uploadDir, sessionId);
+        // Ensure directory exists (use different base dir for checkout if needed)
+        String baseDir = photoType.isCheckoutPhoto() ? uploadDir.replace("checkin", "checkout") : uploadDir;
+        Path uploadPath = Paths.get(baseDir, sessionId);
         Files.createDirectories(uploadPath);
         
         // Save file
@@ -149,9 +204,14 @@ public class CheckInPhotoService {
         Files.write(filePath, photoBytes);
         
         // Determine storage bucket
-        CheckInPhoto.StorageBucket bucket = photoType.name().contains("ID") 
-            ? CheckInPhoto.StorageBucket.CHECKIN_PII 
-            : CheckInPhoto.StorageBucket.CHECKIN_STANDARD;
+        CheckInPhoto.StorageBucket bucket;
+        if (photoType.name().contains("ID")) {
+            bucket = CheckInPhoto.StorageBucket.CHECKIN_PII;
+        } else if (photoType.isCheckoutPhoto()) {
+            bucket = CheckInPhoto.StorageBucket.CHECKIN_STANDARD; // Or create CHECKOUT_STANDARD if needed
+        } else {
+            bucket = CheckInPhoto.StorageBucket.CHECKIN_STANDARD;
+        }
         
         // Create photo entity
         CheckInPhoto photo = CheckInPhoto.builder()
@@ -177,13 +237,30 @@ public class CheckInPhotoService {
         
         photo = photoRepository.save(photo);
         
+        // Determine event type and actor role based on photo type
+        CheckInEventType eventType;
+        CheckInActorRole actorRole;
+        
+        if (photoType.isCheckoutPhoto()) {
+            if (photoType.isHostCheckoutPhoto()) {
+                eventType = CheckInEventType.CHECKOUT_HOST_CONFIRMED; // Host checkout photo
+                actorRole = CheckInActorRole.HOST;
+            } else {
+                eventType = CheckInEventType.CHECKOUT_GUEST_PHOTO_UPLOADED;
+                actorRole = CheckInActorRole.GUEST;
+            }
+        } else {
+            eventType = CheckInEventType.HOST_PHOTO_UPLOADED;
+            actorRole = CheckInActorRole.HOST;
+        }
+        
         // Record event
         eventService.recordEvent(
             booking,
             sessionId,
-            CheckInEventType.HOST_PHOTO_UPLOADED,
+            eventType,
             userId,
-            CheckInActorRole.HOST,
+            actorRole,
             clientTimestamp,
             Map.of(
                 "photoId", photo.getId(),

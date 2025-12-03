@@ -61,3 +61,4 @@ public interface IdVerificationRepository extends JpaRepository<CheckInIdVerific
     boolean hasGuestBeenVerified(@Param("guestId") Long guestId);
 }
 
+

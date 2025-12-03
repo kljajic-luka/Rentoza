@@ -49,3 +49,4 @@ public interface TripExtensionRepository extends JpaRepository<TripExtension, Lo
     List<TripExtension> findByGuestId(@Param("guestId") Long guestId);
 }
 
+

@@ -49,3 +49,4 @@ CREATE INDEX idx_trip_extension_status ON trip_extensions (status);
 CREATE INDEX idx_trip_extension_deadline ON trip_extensions (response_deadline)
     COMMENT 'For scheduler to find expired pending requests';
 
+

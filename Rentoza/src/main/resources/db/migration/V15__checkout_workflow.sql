@@ -191,3 +191,4 @@ INSERT INTO check_in_config (config_key, config_value, config_type, description)
     ('checkout.damage.notification_threshold_rsd', '5000', 'INTEGER', 'RSD threshold for damage notification');
 
 
+

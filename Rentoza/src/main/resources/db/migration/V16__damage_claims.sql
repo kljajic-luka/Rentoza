@@ -67,3 +67,4 @@ CREATE INDEX idx_damage_claim_guest ON damage_claims (guest_id);
 CREATE INDEX idx_damage_claim_deadline ON damage_claims (response_deadline)
     COMMENT 'For scheduler to find expired pending claims';
 
+

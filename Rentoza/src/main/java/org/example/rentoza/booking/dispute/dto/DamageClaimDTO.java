@@ -72,3 +72,4 @@ public class DamageClaimDTO {
     private String vehicleImageUrl;
 }
 
+

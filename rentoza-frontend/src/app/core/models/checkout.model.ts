@@ -173,3 +173,4 @@ export const DAMAGE_CLAIM_STATUS_LABELS: Record<DamageClaimStatus, string> = {
   PAID: 'Plaćeno',
 };
 
+

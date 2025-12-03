@@ -66,3 +66,4 @@ public interface DamageClaimRepository extends JpaRepository<DamageClaim, Long> 
     long countAwaitingReview();
 }
 
+

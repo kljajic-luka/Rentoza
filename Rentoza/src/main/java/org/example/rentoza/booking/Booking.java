@@ -8,6 +8,7 @@ import org.example.rentoza.booking.checkin.CheckInEvent;
 import org.example.rentoza.booking.checkin.CheckInIdVerification;
 import org.example.rentoza.booking.checkin.CheckInPhoto;
 import org.example.rentoza.car.Car;
+import org.example.rentoza.common.GeoPoint;
 import org.example.rentoza.user.User;
 import org.hibernate.annotations.CreationTimestamp;
 
@@ -267,6 +268,85 @@ public class Booking {
     private Instant lockboxCodeRevealedAt;
 
     // ========== GEOFENCE VALIDATION (Location-Based Handshake) ==========
+
+    // ========== PICKUP LOCATION (Phase 2.4: Geospatial Migration) ==========
+
+    /**
+     * Agreed pickup location snapshot at booking creation time.
+     * 
+     * <p><b>IMMUTABLE:</b> This location is locked when booking is created.
+     * Represents the contractual pickup point agreed between guest and host.
+     * 
+     * <p><b>Purpose:</b>
+     * <ul>
+     *   <li>Calculate delivery distance/fee at booking</li>
+     *   <li>Validate car location variance at check-in</li>
+     *   <li>Display exact pickup address to booked guest</li>
+     *   <li>Geofence validation reference point</li>
+     * </ul>
+     * 
+     * <p><b>Different from car_latitude/car_longitude:</b>
+     * Those fields capture where the car ACTUALLY IS at check-in (T-24h),
+     * which may differ from the agreed pickup location.
+     * 
+     * @see org.example.rentoza.common.GeoPoint
+     */
+    @Embedded
+    @AttributeOverrides({
+            @AttributeOverride(name = "latitude", column = @Column(name = "pickup_latitude")),
+            @AttributeOverride(name = "longitude", column = @Column(name = "pickup_longitude")),
+            @AttributeOverride(name = "address", column = @Column(name = "pickup_address")),
+            @AttributeOverride(name = "city", column = @Column(name = "pickup_city")),
+            @AttributeOverride(name = "zipCode", column = @Column(name = "pickup_zip_code")),
+            @AttributeOverride(name = "accuracyMeters", column = @Column(name = "pickup_accuracy_meters"))
+    })
+    private GeoPoint pickupLocation;
+
+    /**
+     * Distance in meters between booked pickup location and actual car location at check-in.
+     * 
+     * <p>Used for:
+     * <ul>
+     *   <li>Audit trail: track if host moved car after booking</li>
+     *   <li>Dispute resolution: "car was not where promised"</li>
+     *   <li>Warning threshold: >500m triggers host notification</li>
+     *   <li>Block threshold: >2km may block check-in completion</li>
+     * </ul>
+     */
+    @Column(name = "pickup_location_variance_meters")
+    private Integer pickupLocationVarianceMeters;
+
+    /**
+     * Host who refined the pickup location at check-in.
+     * Null if location was not refined (exact match).
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "execution_location_updated_by")
+    private User executionLocationUpdatedBy;
+
+    /**
+     * When the host refined the pickup location.
+     */
+    @Column(name = "execution_location_updated_at")
+    private LocalDateTime executionLocationUpdatedAt;
+
+    // ========== DELIVERY TRACKING ==========
+
+    /**
+     * Calculated driving distance for delivery (from OSRM).
+     * Null if guest picks up at car location (no delivery).
+     */
+    @Column(name = "delivery_distance_km", precision = 8, scale = 2)
+    private BigDecimal deliveryDistanceKm;
+
+    /**
+     * Final calculated delivery fee (in RSD).
+     * May differ from estimate due to POI overrides or promotions.
+     */
+    @Column(name = "delivery_fee_calculated", precision = 10, scale = 2)
+    private BigDecimal deliveryFeeCalculated;
+
+    // ========== CHECK-IN GEOFENCE VALIDATION ==========
 
     /**
      * Car's GPS latitude at check-in (from host photo EXIF or manual entry).
@@ -571,5 +651,53 @@ public class Booking {
      */
     public java.time.LocalDate getEndDate() {
         return endTime != null ? endTime.toLocalDate() : null;
+    }
+
+    // ========== GEOSPATIAL HELPER METHODS ==========
+
+    /**
+     * Check if booking has an agreed pickup location.
+     */
+    public boolean hasPickupLocation() {
+        return pickupLocation != null && pickupLocation.hasCoordinates();
+    }
+
+    /**
+     * Check if this booking has a delivery component.
+     */
+    public boolean hasDelivery() {
+        return deliveryDistanceKm != null && deliveryDistanceKm.compareTo(BigDecimal.ZERO) > 0;
+    }
+
+    /**
+     * Calculate variance between agreed pickup location and actual car location at check-in.
+     * 
+     * @return Distance in meters, or null if locations unavailable
+     */
+    public Integer calculatePickupLocationVariance() {
+        if (pickupLocation == null || !pickupLocation.hasCoordinates()) {
+            return null;
+        }
+        if (carLatitude == null || carLongitude == null) {
+            return null;
+        }
+
+        GeoPoint actualCarLocation = new GeoPoint(carLatitude, carLongitude);
+        double distance = pickupLocation.distanceTo(actualCarLocation);
+        return (int) Math.round(distance);
+    }
+
+    /**
+     * Check if car location variance exceeds warning threshold (500m).
+     */
+    public boolean hasSignificantLocationVariance() {
+        return pickupLocationVarianceMeters != null && pickupLocationVarianceMeters > 500;
+    }
+
+    /**
+     * Check if car location variance exceeds blocking threshold (2km).
+     */
+    public boolean hasBlockingLocationVariance() {
+        return pickupLocationVarianceMeters != null && pickupLocationVarianceMeters > 2000;
     }
 }

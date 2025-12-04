@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
+import org.example.rentoza.common.GeoPoint;
 import org.example.rentoza.user.User;
 import org.example.rentoza.booking.Booking;
 import org.example.rentoza.review.Review;
@@ -24,7 +25,8 @@ import java.util.Set;
         name = "cars",
         indexes = {
                 @Index(name = "idx_car_location", columnList = "location"),
-                @Index(name = "idx_car_available", columnList = "available")
+                @Index(name = "idx_car_available", columnList = "available"),
+                @Index(name = "idx_car_location_city_available", columnList = "location_city, available")
         }
 )
 @Getter
@@ -62,9 +64,82 @@ public class Car {
     @Column(name = "price_per_day", nullable = false, precision = 19, scale = 2)
     private BigDecimal pricePerDay = BigDecimal.ZERO;
 
+    /**
+     * @deprecated Legacy string-based location field.
+     * 
+     * <p>As of 2025-02, Rentoza uses geospatial coordinates via {@link #locationGeoPoint}
+     * for precise car positioning, radius-based search, and delivery fee calculation.
+     * 
+     * <p><b>Migration Status:</b> Kept temporarily for backward compatibility.
+     * Will be removed after V28 migration (2 weeks post-deployment monitoring).
+     * 
+     * @see #locationGeoPoint
+     */
+    @Deprecated(since = "2025-02", forRemoval = true)
     @NotBlank
     @Column(nullable = false)
     private String location;
+
+    // ========== GEOSPATIAL LOCATION (Phase 2.4: Turo-style Architecture) ==========
+
+    /**
+     * Precise geospatial location of the car (parking position).
+     * 
+     * <p>Embedded GeoPoint contains:
+     * <ul>
+     *   <li>latitude/longitude (DECIMAL precision)</li>
+     *   <li>Human-readable address (from geocoding)</li>
+     *   <li>City name (for UI grouping)</li>
+     *   <li>ZIP code</li>
+     * </ul>
+     * 
+     * <p><b>Usage:</b>
+     * <ul>
+     *   <li>Radius-based car search (SPATIAL INDEX)</li>
+     *   <li>Delivery distance calculation</li>
+     *   <li>Check-in geofence validation</li>
+     *   <li>Privacy obfuscation for unbooked guests</li>
+     * </ul>
+     * 
+     * @see org.example.rentoza.common.GeoPoint
+     */
+    @Embedded
+    @AttributeOverrides({
+            @AttributeOverride(name = "latitude", column = @Column(name = "location_latitude")),
+            @AttributeOverride(name = "longitude", column = @Column(name = "location_longitude")),
+            @AttributeOverride(name = "address", column = @Column(name = "location_address")),
+            @AttributeOverride(name = "city", column = @Column(name = "location_city")),
+            @AttributeOverride(name = "zipCode", column = @Column(name = "location_zip_code")),
+            @AttributeOverride(name = "accuracyMeters", column = @Column(name = "location_accuracy_meters"))
+    })
+    private GeoPoint locationGeoPoint;
+
+    // ========== DELIVERY PRICING (Turo-style) ==========
+
+    /**
+     * Free delivery radius in kilometers.
+     * 
+     * <p>If guest pickup location is within this radius from the car,
+     * no delivery fee is charged. Beyond this, per-km rate applies.
+     * 
+     * <p><b>Default:</b> 0 (no free delivery, all distance charged)
+     * <p><b>Example:</b> 5.0 = first 5km free, charge beyond
+     */
+    @Column(name = "delivery_radius_km")
+    @Min(0)
+    @Max(100)
+    private Double deliveryRadiusKm = 0.0;
+
+    /**
+     * Delivery fee per kilometer beyond free radius (in RSD).
+     * 
+     * <p>If null or 0, car does not offer delivery service
+     * (guest must pick up at car location).
+     * 
+     * <p><b>Example:</b> 100.00 = charge 100 RSD per km beyond free radius
+     */
+    @Column(name = "delivery_fee_per_km", precision = 10, scale = 2)
+    private BigDecimal deliveryFeePerKm;
 
     // TODO: Long-term: Switch to cloud storage URLs (S3, Cloudinary, etc.)
     // Currently supports Base64-encoded images for MVP
@@ -201,5 +276,35 @@ public class Car {
         if (location != null) location = location.trim().toLowerCase();
         if (brand != null) brand = brand.trim();
         if (model != null) model = model.trim();
+        // GeoPoint validation handled by GeoPoint.validate()
+        if (locationGeoPoint != null) {
+            locationGeoPoint.validate();
+        }
+    }
+
+    // ========== GEOSPATIAL HELPER METHODS ==========
+
+    /**
+     * Check if car has valid geospatial coordinates.
+     */
+    public boolean hasGeoLocation() {
+        return locationGeoPoint != null && locationGeoPoint.hasCoordinates();
+    }
+
+    /**
+     * Check if car offers delivery service.
+     */
+    public boolean offersDelivery() {
+        return deliveryFeePerKm != null && deliveryFeePerKm.compareTo(BigDecimal.ZERO) > 0;
+    }
+
+    /**
+     * Get effective city name (from GeoPoint if available, else legacy location).
+     */
+    public String getEffectiveCity() {
+        if (locationGeoPoint != null && locationGeoPoint.getCity() != null) {
+            return locationGeoPoint.getCity();
+        }
+        return location;
     }
 }

@@ -1,6 +1,8 @@
 package org.example.rentoza.car;
 
 import org.example.rentoza.user.User;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
@@ -117,4 +119,175 @@ public interface CarRepository extends JpaRepository<Car, Long>, JpaSpecificatio
      */
     @EntityGraph(attributePaths = {"owner"})
     List<Car> findByOwnerIdAndAvailableTrue(Long ownerId);
+
+    // ========== GEOSPATIAL QUERIES (SPATIAL INDEX Optimized) ==========
+    // These methods use MySQL SPATIAL INDEX for efficient proximity searches
+    // CRITICAL: MySQL POINT uses (longitude, latitude) order - not (lat, lon)!
+
+    /**
+     * Find available cars within a radius of a given location.
+     * Uses native MySQL ST_Distance_Sphere for accurate distance calculation.
+     * 
+     * PERFORMANCE:
+     * - Uses SPATIAL INDEX on location_point column (generated POINT)
+     * - Returns only cars with valid geospatial coordinates
+     * - Ordered by distance ascending (closest first)
+     * 
+     * IMPORTANT: MySQL POINT is POINT(longitude, latitude) - X=lon, Y=lat
+     * 
+     * @param latitude  Center point latitude (Y coordinate)
+     * @param longitude Center point longitude (X coordinate)
+     * @param radiusKm  Maximum distance in kilometers
+     * @return List of cars with distance, ordered by proximity
+     */
+    @Query(value = """
+        SELECT c.*, 
+               ST_Distance_Sphere(
+                   c.location_point, 
+                   ST_PointFromText(CONCAT('POINT(', :longitude, ' ', :latitude, ')'), 4326)
+               ) / 1000 AS distance_km
+        FROM cars c
+        WHERE c.available = true
+          AND c.location_latitude IS NOT NULL
+          AND c.location_longitude IS NOT NULL
+          AND ST_Distance_Sphere(
+                  c.location_point,
+                  ST_PointFromText(CONCAT('POINT(', :longitude, ' ', :latitude, ')'), 4326)
+              ) <= :radiusKm * 1000
+        ORDER BY distance_km ASC
+        """, nativeQuery = true)
+    List<Car> findNearby(
+            @Param("latitude") Double latitude,
+            @Param("longitude") Double longitude,
+            @Param("radiusKm") Double radiusKm);
+
+    /**
+     * Find available cars within radius with pagination support.
+     * Use for search results with page/size controls.
+     * 
+     * @param latitude  Center point latitude
+     * @param longitude Center point longitude
+     * @param radiusKm  Maximum distance in kilometers
+     * @param pageable  Pagination parameters
+     * @return Page of cars ordered by distance
+     */
+    @Query(value = """
+        SELECT c.*, 
+               ST_Distance_Sphere(
+                   c.location_point, 
+                   ST_PointFromText(CONCAT('POINT(', :longitude, ' ', :latitude, ')'), 4326)
+               ) / 1000 AS distance_km
+        FROM cars c
+        WHERE c.available = true
+          AND c.location_latitude IS NOT NULL
+          AND c.location_longitude IS NOT NULL
+          AND ST_Distance_Sphere(
+                  c.location_point,
+                  ST_PointFromText(CONCAT('POINT(', :longitude, ' ', :latitude, ')'), 4326)
+              ) <= :radiusKm * 1000
+        ORDER BY distance_km ASC
+        """,
+            countQuery = """
+        SELECT COUNT(*)
+        FROM cars c
+        WHERE c.available = true
+          AND c.location_latitude IS NOT NULL
+          AND c.location_longitude IS NOT NULL
+          AND ST_Distance_Sphere(
+                  c.location_point,
+                  ST_PointFromText(CONCAT('POINT(', :longitude, ' ', :latitude, ')'), 4326)
+              ) <= :radiusKm * 1000
+        """,
+            nativeQuery = true)
+    Page<Car> findNearbyPaginated(
+            @Param("latitude") Double latitude,
+            @Param("longitude") Double longitude,
+            @Param("radiusKm") Double radiusKm,
+            Pageable pageable);
+
+    /**
+     * Find cars within delivery range of a specific car.
+     * Used to suggest cars that can deliver to a user's location.
+     * 
+     * @param carId    The car to check delivery from
+     * @param latitude User's requested pickup latitude
+     * @param longitude User's requested pickup longitude
+     * @return Optional containing the car if within delivery range, empty otherwise
+     */
+    @Query(value = """
+        SELECT c.*,
+               ST_Distance_Sphere(
+                   c.location_point,
+                   ST_PointFromText(CONCAT('POINT(', :longitude, ' ', :latitude, ')'), 4326)
+               ) / 1000 AS distance_km
+        FROM cars c
+        WHERE c.id = :carId
+          AND c.available = true
+          AND c.delivery_radius_km IS NOT NULL
+          AND c.delivery_radius_km > 0
+          AND c.location_latitude IS NOT NULL
+          AND c.location_longitude IS NOT NULL
+          AND ST_Distance_Sphere(
+                  c.location_point,
+                  ST_PointFromText(CONCAT('POINT(', :longitude, ' ', :latitude, ')'), 4326)
+              ) <= c.delivery_radius_km * 1000
+        """, nativeQuery = true)
+    Optional<Car> findIfWithinDeliveryRange(
+            @Param("carId") Long carId,
+            @Param("latitude") Double latitude,
+            @Param("longitude") Double longitude);
+
+    /**
+     * Find cars that offer delivery to a specific location.
+     * Returns cars where the user's location is within the car's delivery radius.
+     * 
+     * @param latitude  User's pickup location latitude
+     * @param longitude User's pickup location longitude
+     * @return List of cars that can deliver to the location
+     */
+    @Query(value = """
+        SELECT c.*,
+               ST_Distance_Sphere(
+                   c.location_point,
+                   ST_PointFromText(CONCAT('POINT(', :longitude, ' ', :latitude, ')'), 4326)
+               ) / 1000 AS distance_km
+        FROM cars c
+        WHERE c.available = true
+          AND c.delivery_radius_km IS NOT NULL
+          AND c.delivery_radius_km > 0
+          AND c.location_latitude IS NOT NULL
+          AND c.location_longitude IS NOT NULL
+          AND ST_Distance_Sphere(
+                  c.location_point,
+                  ST_PointFromText(CONCAT('POINT(', :longitude, ' ', :latitude, ')'), 4326)
+              ) <= c.delivery_radius_km * 1000
+        ORDER BY distance_km ASC
+        """, nativeQuery = true)
+    List<Car> findCarsOfferingDeliveryTo(
+            @Param("latitude") Double latitude,
+            @Param("longitude") Double longitude);
+
+    /**
+     * Count cars with valid geospatial coordinates.
+     * Used for migration progress tracking.
+     * 
+     * @return Count of cars with lat/lon populated
+     */
+    @Query("SELECT COUNT(c) FROM Car c WHERE c.locationGeoPoint.latitude IS NOT NULL AND c.locationGeoPoint.longitude IS NOT NULL")
+    long countCarsWithGeoLocation();
+
+    /**
+     * Find cars without geospatial coordinates (for migration batch processing).
+     * 
+     * @param limit Maximum number of cars to return
+     * @return List of cars needing geocoding
+     */
+    @Query(value = """
+        SELECT c.* FROM cars c
+        WHERE c.location_latitude IS NULL
+          AND c.location IS NOT NULL
+          AND c.location != ''
+        LIMIT :limit
+        """, nativeQuery = true)
+    List<Car> findCarsNeedingGeocoding(@Param("limit") int limit);
 }

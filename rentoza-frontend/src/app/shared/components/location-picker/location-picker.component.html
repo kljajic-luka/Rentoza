@@ -1,0 +1,59 @@
+<div class="location-picker" [style.height]="height">
+  <!-- Loading spinner -->
+  @if (isLoading()) {
+  <div class="loading-overlay">
+    <mat-spinner diameter="40"></mat-spinner>
+    <span>Loading map...</span>
+  </div>
+  }
+
+  <!-- Error state -->
+  @if (mapError()) {
+  <div class="error-overlay">
+    <mat-icon>error_outline</mat-icon>
+    <span>{{ mapError() }}</span>
+    <button mat-stroked-button (click)="mapError.set(null)">Dismiss</button>
+  </div>
+  }
+
+  <!-- Map container -->
+  <div #mapContainer class="map-container"></div>
+
+  <!-- Controls overlay -->
+  @if (!isLoading() && !mapError()) {
+  <div class="controls-overlay">
+    <!-- Geolocation button -->
+    @if (showGeolocationButton) {
+    <button
+      mat-mini-fab
+      color="primary"
+      class="geolocation-btn"
+      (click)="requestGeolocation()"
+      [disabled]="isGeolocating()"
+      matTooltip="Use my current location"
+    >
+      @if (isGeolocating()) {
+      <mat-spinner diameter="20"></mat-spinner>
+      } @else {
+      <mat-icon>my_location</mat-icon>
+      }
+    </button>
+    }
+  </div>
+
+  <!-- Privacy indicator -->
+  @if (showPrivacyCircle) {
+  <div class="privacy-indicator">
+    <mat-icon>privacy_tip</mat-icon>
+    <span>Approximate location shown</span>
+  </div>
+  }
+
+  <!-- Editable hint -->
+  @if (editable && !hasLocation()) {
+  <div class="edit-hint">
+    <mat-icon>touch_app</mat-icon>
+    <span>Click on the map to set location</span>
+  </div>
+  } }
+</div>

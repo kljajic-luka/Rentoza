@@ -1,5 +1,5 @@
-import { HttpInterceptorFn, HttpResponse } from '@angular/common/http';
-import { tap } from 'rxjs';
+import { HttpInterceptorFn, HttpResponse, HttpErrorResponse } from '@angular/common/http';
+import { tap, catchError, of, throwError } from 'rxjs';
 
 /**
  * HTTP Cache Store
@@ -89,12 +89,20 @@ export const httpCacheInterceptor: HttpInterceptorFn = (req, next) => {
     return next(clonedReq).pipe(
       tap((event) => {
         if (event instanceof HttpResponse) {
-          // Update cache with new response (304 means cache is still valid)
-          if (event.status !== 304) {
-            const etag = event.headers.get('ETag');
-            cacheStore.set(cacheKey, event, etag);
-          }
+          // Update cache with new response
+          const etag = event.headers.get('ETag');
+          cacheStore.set(cacheKey, event, etag);
         }
+      }),
+      // Handle 304 Not Modified - return cached response
+      catchError((error: HttpErrorResponse) => {
+        if (error.status === 304 && cachedResponse?.response) {
+          // 304 means cache is still valid - return cached response
+          console.debug('[HttpCache] 304 Not Modified - using cached response for:', req.url);
+          return of(cachedResponse.response);
+        }
+        // Re-throw other errors
+        return throwError(() => error);
       })
     );
   }

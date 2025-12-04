@@ -5,6 +5,9 @@ import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.booking.checkin.dto.*;
+import org.example.rentoza.idempotency.IdempotencyService;
+import org.example.rentoza.idempotency.IdempotencyService.IdempotencyResult;
+import org.example.rentoza.idempotency.IdempotencyService.IdempotencyStatus;
 import org.example.rentoza.security.CurrentUser;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -17,6 +20,7 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * REST controller for check-in workflow endpoints.
@@ -33,6 +37,14 @@ import java.util.Map;
  * <h2>Security</h2>
  * <p>All endpoints require authentication. Additional role-based checks are performed
  * at the service layer (host vs guest access).
+ * 
+ * <h2>Idempotency (Phase 1 Critical Fix)</h2>
+ * <p>Mutation endpoints (POST) support idempotency via {@code X-Idempotency-Key} header:
+ * <ul>
+ *   <li>Client provides UUID v4 key on first request</li>
+ *   <li>Retries with same key return cached response (no duplicate execution)</li>
+ *   <li>Keys are scoped per-user (24h TTL)</li>
+ * </ul>
  */
 @RestController
 @RequestMapping("/api/bookings/{bookingId}/check-in")
@@ -40,19 +52,27 @@ import java.util.Map;
 @Slf4j
 public class CheckInController {
 
+    private static final String IDEMPOTENCY_HEADER = "X-Idempotency-Key";
+
     private final CheckInService checkInService;
     private final CheckInPhotoService photoService;
+    private final IdempotencyService idempotencyService;
     private final CurrentUser currentUser;
+    private final CheckInResponseOptimizer responseOptimizer;
     private final Counter photoUploadCounter;
 
     public CheckInController(
             CheckInService checkInService,
             CheckInPhotoService photoService,
+            IdempotencyService idempotencyService,
             CurrentUser currentUser,
+            CheckInResponseOptimizer responseOptimizer,
             MeterRegistry meterRegistry) {
         this.checkInService = checkInService;
         this.photoService = photoService;
+        this.idempotencyService = idempotencyService;
         this.currentUser = currentUser;
+        this.responseOptimizer = responseOptimizer;
         
         this.photoUploadCounter = Counter.builder("checkin.photo.upload")
                 .description("Check-in photo uploads")
@@ -71,16 +91,37 @@ public class CheckInController {
      *   <li>Odometer/fuel readings</li>
      *   <li>No-show deadline countdown</li>
      * </ul>
+     * 
+     * <h3>Phase 3: API Optimizations</h3>
+     * <ul>
+     *   <li><b>ETag:</b> Supports If-None-Match header for 304 Not Modified</li>
+     *   <li><b>Sparse Fieldsets:</b> ?fields=status,photos to reduce payload</li>
+     *   <li><b>Compression:</b> Supports gzip via Accept-Encoding</li>
+     * </ul>
+     * 
+     * @param bookingId The booking ID
+     * @param ifNoneMatch ETag from previous response for conditional GET
+     * @param fields Optional comma-separated list of fields to return
      */
     @GetMapping("/status")
     public ResponseEntity<CheckInStatusDTO> getCheckInStatus(
-            @PathVariable Long bookingId) {
+            @PathVariable Long bookingId,
+            @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch,
+            @RequestParam(value = "fields", required = false) String fields) {
         
         Long userId = currentUser.id();
-        log.debug("[CheckIn] Status request for booking {} by user {}", bookingId, userId);
+        log.debug("[CheckIn] Status request for booking {} by user {}, fields={}", 
+            bookingId, userId, fields);
         
         CheckInStatusDTO status = checkInService.getCheckInStatus(bookingId, userId);
-        return ResponseEntity.ok(status);
+        
+        // Apply sparse fieldset if requested
+        if (fields != null && !fields.isBlank()) {
+            status = responseOptimizer.applySparseFieldset(status, fields);
+        }
+        
+        // Return optimized response with ETag support
+        return responseOptimizer.buildOptimizedResponse(status, ifNoneMatch);
     }
 
     // ========== HOST WORKFLOW ==========
@@ -154,20 +195,53 @@ public class CheckInController {
      *   <li>Booking is in CHECK_IN_OPEN status</li>
      *   <li>Required photos are uploaded (8 minimum)</li>
      * </ul>
+     * 
+     * <h3>Idempotency</h3>
+     * <p>Supports {@code X-Idempotency-Key} header to prevent duplicate state transitions.
      */
     @PostMapping("/host/complete")
     public ResponseEntity<CheckInStatusDTO> completeHostCheckIn(
             @PathVariable Long bookingId,
-            @Valid @RequestBody HostCheckInSubmissionDTO submission) {
+            @Valid @RequestBody HostCheckInSubmissionDTO submission,
+            @RequestHeader(value = IDEMPOTENCY_HEADER, required = false) String idempotencyKey) {
         
         Long userId = currentUser.id();
         log.debug("[CheckIn] Host completing check-in for booking {} by user {}", bookingId, userId);
         
-        // Ensure bookingId matches
-        submission.setBookingId(bookingId);
+        // Idempotency check
+        Optional<IdempotencyResult> cached = idempotencyService.checkIdempotency(idempotencyKey, userId);
+        if (cached.isPresent()) {
+            IdempotencyResult result = cached.get();
+            if (result.getStatus() == IdempotencyStatus.PROCESSING) {
+                return ResponseEntity.status(HttpStatus.CONFLICT)
+                        .body(null); // Request is still processing
+            }
+            // Return cached successful response
+            log.info("[CheckIn] Returning cached host-complete response for key: {}", 
+                    idempotencyKey != null ? idempotencyKey.substring(0, 8) + "..." : "N/A");
+            return ResponseEntity.status(result.getHttpStatus()).build();
+        }
         
-        CheckInStatusDTO status = checkInService.completeHostCheckIn(submission, userId);
-        return ResponseEntity.ok(status);
+        // Mark as processing
+        if (!idempotencyService.markProcessing(idempotencyKey, userId, "HOST_CHECK_IN_COMPLETE")) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).build();
+        }
+        
+        try {
+            // Ensure bookingId matches
+            submission.setBookingId(bookingId);
+            
+            CheckInStatusDTO status = checkInService.completeHostCheckIn(submission, userId);
+            
+            // Store successful result
+            idempotencyService.storeSuccess(idempotencyKey, userId, HttpStatus.OK, status);
+            
+            return ResponseEntity.ok(status);
+        } catch (Exception e) {
+            // Remove idempotency record on transient errors to allow retry
+            idempotencyService.remove(idempotencyKey, userId);
+            throw e;
+        }
     }
 
     // ========== GUEST WORKFLOW ==========
@@ -177,21 +251,51 @@ public class CheckInController {
      * 
      * <p>Guest reviews host photos and confirms the vehicle condition.
      * Can optionally mark damage hotspots.
+     * 
+     * <h3>Idempotency</h3>
+     * <p>Supports {@code X-Idempotency-Key} header to prevent duplicate acknowledgments.
      */
     @PostMapping("/guest/condition-ack")
     public ResponseEntity<CheckInStatusDTO> acknowledgeCondition(
             @PathVariable Long bookingId,
-            @Valid @RequestBody GuestConditionAcknowledgmentDTO acknowledgment) {
+            @Valid @RequestBody GuestConditionAcknowledgmentDTO acknowledgment,
+            @RequestHeader(value = IDEMPOTENCY_HEADER, required = false) String idempotencyKey) {
         
         Long userId = currentUser.id();
         log.debug("[CheckIn] Guest acknowledging condition for booking {} by user {}", 
             bookingId, userId);
         
-        // Ensure bookingId matches
-        acknowledgment.setBookingId(bookingId);
+        // Idempotency check
+        Optional<IdempotencyResult> cached = idempotencyService.checkIdempotency(idempotencyKey, userId);
+        if (cached.isPresent()) {
+            IdempotencyResult result = cached.get();
+            if (result.getStatus() == IdempotencyStatus.PROCESSING) {
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(null);
+            }
+            log.info("[CheckIn] Returning cached condition-ack response for key: {}", 
+                    idempotencyKey != null ? idempotencyKey.substring(0, 8) + "..." : "N/A");
+            return ResponseEntity.status(result.getHttpStatus()).build();
+        }
         
-        CheckInStatusDTO status = checkInService.acknowledgeCondition(acknowledgment, userId);
-        return ResponseEntity.ok(status);
+        // Mark as processing
+        if (!idempotencyService.markProcessing(idempotencyKey, userId, "GUEST_CONDITION_ACK")) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).build();
+        }
+        
+        try {
+            // Ensure bookingId matches
+            acknowledgment.setBookingId(bookingId);
+            
+            CheckInStatusDTO status = checkInService.acknowledgeCondition(acknowledgment, userId);
+            
+            // Store successful result
+            idempotencyService.storeSuccess(idempotencyKey, userId, HttpStatus.OK, status);
+            
+            return ResponseEntity.ok(status);
+        } catch (Exception e) {
+            idempotencyService.remove(idempotencyKey, userId);
+            throw e;
+        }
     }
 
     // ========== HANDSHAKE ==========
@@ -201,21 +305,52 @@ public class CheckInController {
      * 
      * <p>Both host and guest must confirm. For remote handoff (lockbox),
      * guest must pass geofence validation (within 100m of car).
+     * 
+     * <h3>Idempotency (Critical)</h3>
+     * <p>Supports {@code X-Idempotency-Key} header. This is the most critical
+     * endpoint for idempotency as it triggers trip start and payment capture.
      */
     @PostMapping("/handshake")
     public ResponseEntity<CheckInStatusDTO> confirmHandshake(
             @PathVariable Long bookingId,
-            @Valid @RequestBody HandshakeConfirmationDTO confirmation) {
+            @Valid @RequestBody HandshakeConfirmationDTO confirmation,
+            @RequestHeader(value = IDEMPOTENCY_HEADER, required = false) String idempotencyKey) {
         
         Long userId = currentUser.id();
         log.debug("[CheckIn] Handshake confirmation for booking {} by user {}", 
             bookingId, userId);
         
-        // Ensure bookingId matches
-        confirmation.setBookingId(bookingId);
+        // Idempotency check - critical for handshake to prevent duplicate trip starts
+        Optional<IdempotencyResult> cached = idempotencyService.checkIdempotency(idempotencyKey, userId);
+        if (cached.isPresent()) {
+            IdempotencyResult result = cached.get();
+            if (result.getStatus() == IdempotencyStatus.PROCESSING) {
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(null);
+            }
+            log.info("[CheckIn] Returning cached handshake response for key: {}", 
+                    idempotencyKey != null ? idempotencyKey.substring(0, 8) + "..." : "N/A");
+            return ResponseEntity.status(result.getHttpStatus()).build();
+        }
         
-        CheckInStatusDTO status = checkInService.confirmHandshake(confirmation, userId);
-        return ResponseEntity.ok(status);
+        // Mark as processing
+        if (!idempotencyService.markProcessing(idempotencyKey, userId, "HANDSHAKE_CONFIRM")) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).build();
+        }
+        
+        try {
+            // Ensure bookingId matches
+            confirmation.setBookingId(bookingId);
+            
+            CheckInStatusDTO status = checkInService.confirmHandshake(confirmation, userId);
+            
+            // Store successful result
+            idempotencyService.storeSuccess(idempotencyKey, userId, HttpStatus.OK, status);
+            
+            return ResponseEntity.ok(status);
+        } catch (Exception e) {
+            idempotencyService.remove(idempotencyKey, userId);
+            throw e;
+        }
     }
 
     // ========== LOCKBOX (Remote Handoff) ==========
@@ -223,12 +358,27 @@ public class CheckInController {
     /**
      * Reveal lockbox code for remote key handoff.
      * 
-     * <p>Only available to guest after:
+     * <p><b>Security (D4 Fix):</b> Authorization is enforced in the service layer
+     * ({@link CheckInPhotoService#revealLockboxCode}) which validates:
+     * <ul>
+     *   <li>User must be the booking's renter (guest) - throws AccessDeniedException otherwise</li>
+     *   <li>Booking must have a lockbox code configured</li>
+     *   <li>Host must have completed check-in first</li>
+     * </ul>
+     * 
+     * <p><b>Prerequisites for guest to reveal code:</b>
      * <ul>
      *   <li>Host has completed check-in with lockbox code</li>
      *   <li>Guest has acknowledged condition</li>
      *   <li>Guest is within geofence radius (if strict mode enabled)</li>
      * </ul>
+     * 
+     * @param bookingId the booking ID
+     * @param latitude optional GPS latitude for geofence validation
+     * @param longitude optional GPS longitude for geofence validation
+     * @return lockbox code and reveal timestamp
+     * @throws AccessDeniedException if user is not the guest for this booking
+     * @throws IllegalStateException if booking is not in correct state
      */
     @GetMapping("/lockbox-code")
     public ResponseEntity<Map<String, Object>> revealLockboxCode(
@@ -254,6 +404,19 @@ public class CheckInController {
     }
 
     // ========== EXCEPTION HANDLERS ==========
+
+    @ExceptionHandler(IdempotencyService.InvalidIdempotencyKeyException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidIdempotencyKey(
+            IdempotencyService.InvalidIdempotencyKeyException ex) {
+        
+        log.warn("[CheckIn] Invalid idempotency key: {}", ex.getMessage());
+        
+        return ResponseEntity.badRequest().body(Map.of(
+            "error", "INVALID_IDEMPOTENCY_KEY",
+            "message", ex.getMessage(),
+            "hint", "X-Idempotency-Key must be a valid UUID v4 (e.g., 550e8400-e29b-41d4-a716-446655440000)"
+        ));
+    }
 
     @ExceptionHandler(CheckInService.GeofenceViolationException.class)
     public ResponseEntity<Map<String, Object>> handleGeofenceViolation(

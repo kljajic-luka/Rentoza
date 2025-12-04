@@ -1,7 +1,7 @@
 /**
  * Offline Queue Service
  *
- * Persists failed uploads to IndexedDB for retry when connectivity restores.
+ * Persists failed uploads and form submissions to IndexedDB for retry when connectivity restores.
  * Implements the "Basement Problem" solution - photos taken offline can be
  * uploaded later without data loss.
  *
@@ -9,12 +9,13 @@
  * Uses IndexedDB via idb-keyval pattern for simplicity.
  * Falls back to in-memory queue if IndexedDB is unavailable.
  *
- * ## Sync Strategy (Phase 2: Resilience)
+ * ## Sync Strategy (Phase 3: Real-time + Offline)
  * - **Exponential Backoff**: Prevents server flooding during spotty 4G
  *   - Base delay: 1s → 2s → 4s → 8s → 16s → max 32s
  *   - Jitter: ±20% randomization to prevent thundering herd
  * - Manual "Retry All" button in UI
  * - Background sync when online event fires (if supported)
+ * - Supports both photo uploads and form submissions
  *
  * ## Rate Limiting
  * - Max 3 concurrent uploads
@@ -27,7 +28,8 @@ import { generateUUID } from '../utils/uuid';
 
 const DB_NAME = 'rentoza-offline-queue';
 const STORE_NAME = 'pending-uploads';
-const DB_VERSION = 1;
+const FORM_STORE_NAME = 'pending-forms';
+const DB_VERSION = 2; // Bumped for new store
 
 // Exponential backoff configuration
 const BACKOFF_CONFIG = {
@@ -37,22 +39,43 @@ const BACKOFF_CONFIG = {
   jitterFactor: 0.2, // ±20% randomization
 };
 
+/**
+ * Queued form submission for offline processing.
+ */
+export interface QueuedFormSubmission {
+  id: string;
+  bookingId: number;
+  type: 'HOST_CHECK_IN' | 'GUEST_ACKNOWLEDGE' | 'HANDSHAKE';
+  payload: any;
+  retryCount: number;
+  createdAt: string;
+  lastAttempt?: string;
+  error?: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class OfflineQueueService implements OnDestroy {
-  // Reactive state
+  // Reactive state for photo uploads
   private readonly _queue = signal<QueuedUpload[]>([]);
   private readonly _isOnline = signal(navigator.onLine);
   private readonly _isSyncing = signal(false);
   private readonly _lastSyncError = signal<string | null>(null);
 
+  // Reactive state for form submissions
+  private readonly _formQueue = signal<QueuedFormSubmission[]>([]);
+
   readonly queue = this._queue.asReadonly();
+  readonly formQueue = this._formQueue.asReadonly();
   readonly isOnline = this._isOnline.asReadonly();
   readonly isSyncing = this._isSyncing.asReadonly();
   readonly lastSyncError = this._lastSyncError.asReadonly();
 
   readonly queueCount = computed(() => this._queue().length);
   readonly queueLength = computed(() => this._queue().length);
-  readonly hasQueuedItems = computed(() => this._queue().length > 0);
+  readonly formQueueLength = computed(() => this._formQueue().length);
+  readonly hasQueuedItems = computed(
+    () => this._queue().length > 0 || this._formQueue().length > 0
+  );
   readonly isProcessing = this._isSyncing.asReadonly();
 
   private db: IDBDatabase | null = null;
@@ -266,6 +289,157 @@ export class OfflineQueueService implements OnDestroy {
     };
   }
 
+  // ========== FORM SUBMISSION QUEUE METHODS ==========
+
+  /**
+   * Add a form submission to the offline queue.
+   * Used for host check-in completion, guest acknowledgment, and handshake.
+   */
+  async enqueueFormSubmission(
+    bookingId: number,
+    type: QueuedFormSubmission['type'],
+    payload: any
+  ): Promise<string> {
+    const id = generateUUID();
+
+    const item: QueuedFormSubmission = {
+      id,
+      bookingId,
+      type,
+      payload,
+      retryCount: 0,
+      createdAt: new Date().toISOString(),
+    };
+
+    await this.saveFormToDb(item);
+    this._formQueue.update((q) => [...q, item]);
+
+    console.log(`[OfflineQueue] Enqueued form: ${type} for booking ${bookingId}`);
+    return id;
+  }
+
+  /**
+   * Remove a form submission from the queue (after successful submission).
+   */
+  async dequeueForm(id: string): Promise<void> {
+    await this.removeFormFromDb(id);
+    this._formQueue.update((q) => q.filter((item) => item.id !== id));
+    console.log(`[OfflineQueue] Dequeued form: ${id}`);
+  }
+
+  /**
+   * Update a form submission (e.g., increment retry count).
+   */
+  async updateFormItem(id: string, updates: Partial<QueuedFormSubmission>): Promise<void> {
+    const item = this._formQueue().find((i) => i.id === id);
+    if (!item) return;
+
+    const updated = { ...item, ...updates };
+    await this.saveFormToDb(updated);
+    this._formQueue.update((q) => q.map((i) => (i.id === id ? updated : i)));
+  }
+
+  /**
+   * Get all queued form submissions for a specific booking.
+   */
+  getFormSubmissionsForBooking(bookingId: number): QueuedFormSubmission[] {
+    return this._formQueue().filter((item) => item.bookingId === bookingId);
+  }
+
+  /**
+   * Clear all form submissions for a booking.
+   */
+  async clearFormSubmissionsForBooking(bookingId: number): Promise<void> {
+    const items = this.getFormSubmissionsForBooking(bookingId);
+    for (const item of items) {
+      await this.dequeueForm(item.id);
+    }
+    console.log(`[OfflineQueue] Cleared all form submissions for booking ${bookingId}`);
+  }
+
+  /**
+   * Process the form submission queue with exponential backoff.
+   */
+  async processFormQueue(
+    submitFn: (item: QueuedFormSubmission) => Promise<boolean>
+  ): Promise<string[]> {
+    if (this._isSyncing()) {
+      console.log('[OfflineQueue] Sync already in progress');
+      return [];
+    }
+
+    if (!this._isOnline()) {
+      console.log('[OfflineQueue] Offline - skipping form sync');
+      return [];
+    }
+
+    this._isSyncing.set(true);
+    this._lastSyncError.set(null);
+    const synced: string[] = [];
+
+    try {
+      const items = [...this._formQueue()];
+
+      for (const item of items) {
+        if (item.retryCount >= BACKOFF_CONFIG.maxRetries) {
+          console.warn(`[OfflineQueue] Max retries exceeded for form ${item.id}, skipping`);
+          continue;
+        }
+
+        if (item.retryCount > 0) {
+          const delay = this.calculateBackoffDelay(item.retryCount);
+          console.log(
+            `[OfflineQueue] Waiting ${delay}ms before form retry #${item.retryCount + 1}`
+          );
+          await this.sleep(delay);
+
+          if (!this._isOnline()) {
+            console.log('[OfflineQueue] Lost connection during form backoff, stopping sync');
+            break;
+          }
+        }
+
+        try {
+          const success = await submitFn(item);
+
+          if (success) {
+            await this.dequeueForm(item.id);
+            synced.push(item.id);
+          } else {
+            await this.updateFormItem(item.id, {
+              retryCount: item.retryCount + 1,
+              lastAttempt: new Date().toISOString(),
+              error: 'Submission failed',
+            });
+          }
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+          if (this.isRateLimitError(error)) {
+            console.warn('[OfflineQueue] Rate limited on form submit, applying longer backoff');
+            await this.sleep(BACKOFF_CONFIG.maxDelayMs);
+          }
+
+          await this.updateFormItem(item.id, {
+            retryCount: item.retryCount + 1,
+            lastAttempt: new Date().toISOString(),
+            error: errorMessage,
+          });
+        }
+      }
+
+      console.log(`[OfflineQueue] Form sync complete: ${synced.length}/${items.length} successful`);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Form sync failed';
+      this._lastSyncError.set(errorMessage);
+      console.error('[OfflineQueue] Form sync error:', error);
+    } finally {
+      this._isSyncing.set(false);
+    }
+
+    return synced;
+  }
+
   // ========== PRIVATE METHODS ==========
 
   private async initDatabase(): Promise<void> {
@@ -290,16 +464,34 @@ export class OfflineQueueService implements OnDestroy {
       request.onupgradeneeded = (event) => {
         const db = (event.target as IDBOpenDBRequest).result;
 
+        // Photo uploads store
         if (!db.objectStoreNames.contains(STORE_NAME)) {
           const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
           store.createIndex('bookingId', 'bookingId', { unique: false });
           store.createIndex('createdAt', 'createdAt', { unique: false });
+        }
+
+        // Form submissions store (new in v2)
+        if (!db.objectStoreNames.contains(FORM_STORE_NAME)) {
+          const formStore = db.createObjectStore(FORM_STORE_NAME, { keyPath: 'id' });
+          formStore.createIndex('bookingId', 'bookingId', { unique: false });
+          formStore.createIndex('type', 'type', { unique: false });
+          formStore.createIndex('createdAt', 'createdAt', { unique: false });
         }
       };
     });
   }
 
   private async loadFromDb(): Promise<void> {
+    if (!this.db) return;
+
+    // Load photo uploads
+    await this.loadPhotoUploads();
+    // Load form submissions
+    await this.loadFormSubmissions();
+  }
+
+  private async loadPhotoUploads(): Promise<void> {
     if (!this.db) return;
 
     return new Promise((resolve, reject) => {
@@ -309,12 +501,37 @@ export class OfflineQueueService implements OnDestroy {
 
       request.onsuccess = () => {
         this._queue.set(request.result || []);
-        console.log(`[OfflineQueue] Loaded ${request.result?.length || 0} items from IndexedDB`);
+        console.log(
+          `[OfflineQueue] Loaded ${request.result?.length || 0} photo uploads from IndexedDB`
+        );
         resolve();
       };
 
       request.onerror = () => {
-        console.error('[OfflineQueue] Failed to load from database:', request.error);
+        console.error('[OfflineQueue] Failed to load photo uploads:', request.error);
+        reject(request.error);
+      };
+    });
+  }
+
+  private async loadFormSubmissions(): Promise<void> {
+    if (!this.db || !this.db.objectStoreNames.contains(FORM_STORE_NAME)) return;
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(FORM_STORE_NAME, 'readonly');
+      const store = transaction.objectStore(FORM_STORE_NAME);
+      const request = store.getAll();
+
+      request.onsuccess = () => {
+        this._formQueue.set(request.result || []);
+        console.log(
+          `[OfflineQueue] Loaded ${request.result?.length || 0} form submissions from IndexedDB`
+        );
+        resolve();
+      };
+
+      request.onerror = () => {
+        console.error('[OfflineQueue] Failed to load form submissions:', request.error);
         reject(request.error);
       };
     });
@@ -363,5 +580,35 @@ export class OfflineQueueService implements OnDestroy {
   private handleOffline(): void {
     this._isOnline.set(false);
     console.log('[OfflineQueue] Network lost');
+  }
+
+  // ========== FORM DATABASE METHODS ==========
+
+  private async saveFormToDb(item: QueuedFormSubmission): Promise<void> {
+    if (!this.db || !this.db.objectStoreNames.contains(FORM_STORE_NAME)) {
+      return; // Fallback: just keep in memory
+    }
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(FORM_STORE_NAME, 'readwrite');
+      const store = transaction.objectStore(FORM_STORE_NAME);
+      const request = store.put(item);
+
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  private async removeFormFromDb(id: string): Promise<void> {
+    if (!this.db || !this.db.objectStoreNames.contains(FORM_STORE_NAME)) return;
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(FORM_STORE_NAME, 'readwrite');
+      const store = transaction.objectStore(FORM_STORE_NAME);
+      const request = store.delete(id);
+
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
   }
 }

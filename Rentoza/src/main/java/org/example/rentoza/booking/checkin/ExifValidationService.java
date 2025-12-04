@@ -1,5 +1,7 @@
 package org.example.rentoza.booking.checkin;
 
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
 import lombok.Builder;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
@@ -45,6 +47,14 @@ import java.time.format.DateTimeParseException;
  * <h2>Regional Context: Serbia</h2>
  * <p>Timestamps are compared in {@code Europe/Belgrade} timezone.
  * GPS coordinates are validated against Serbia's bounding box.
+ * 
+ * <h2>Resilience (Phase 1 Critical Fix)</h2>
+ * <p>Protected by circuit breaker pattern:
+ * <ul>
+ *   <li>If EXIF parsing fails repeatedly, circuit opens</li>
+ *   <li>Fallback returns PENDING status (async re-validation)</li>
+ *   <li>Prevents single photo failures from crashing entire check-in</li>
+ * </ul>
  *
  * @see CheckInPhoto
  * @see ExifValidationStatus
@@ -94,12 +104,19 @@ public class ExifValidationService {
      * photos are taken in a garage (no signal), then uploaded when the user
      * gets connectivity. Without this, server receipt time would falsely reject
      * valid photos.
+     * 
+     * <h3>Circuit Breaker Protection</h3>
+     * <p>If EXIF parsing fails consistently (circuit breaker opens), fallback
+     * returns VALIDATION_PENDING status allowing check-in to proceed with
+     * async re-validation later.
      *
      * @param photoBytes          Raw photo bytes
      * @param clientUploadStarted When the client started the upload (from frontend)
      *                            If null, falls back to server time (less accurate)
      * @return Validation result with extracted metadata
      */
+    @CircuitBreaker(name = "exifValidation", fallbackMethod = "validateFallback")
+    @Retry(name = "exifValidation")
     public ExifValidationResult validate(byte[] photoBytes, Instant clientUploadStarted) {
         // Fall back to server time if client timestamp not provided
         Instant referenceTime = clientUploadStarted != null 
@@ -424,7 +441,35 @@ public class ExifValidationService {
         public boolean isAccepted() {
             return status == ExifValidationStatus.VALID || 
                    status == ExifValidationStatus.VALID_NO_GPS ||
-                   status == ExifValidationStatus.VALID_WITH_WARNINGS;
+                   status == ExifValidationStatus.VALID_WITH_WARNINGS ||
+                   status == ExifValidationStatus.VALIDATION_PENDING;
         }
+    }
+
+    // ========== CIRCUIT BREAKER FALLBACK ==========
+
+    /**
+     * Fallback method when circuit breaker is open or validation repeatedly fails.
+     * 
+     * <p>Returns VALIDATION_PENDING status, allowing the photo upload to succeed
+     * with async re-validation later. This prevents a failing EXIF library from
+     * blocking all check-ins.
+     * 
+     * @param photoBytes          Original photo bytes (unused in fallback)
+     * @param clientUploadStarted Client timestamp (preserved for later validation)
+     * @param throwable           Exception that triggered the fallback
+     * @return VALIDATION_PENDING result
+     */
+    @SuppressWarnings("unused")
+    private ExifValidationResult validateFallback(byte[] photoBytes, Instant clientUploadStarted, Throwable throwable) {
+        log.warn("[EXIF] Circuit breaker fallback triggered: {} - allowing upload with PENDING validation", 
+                throwable.getMessage());
+        
+        return ExifValidationResult.builder()
+                .status(ExifValidationStatus.VALIDATION_PENDING)
+                .message("EXIF validacija odložena - biće izvršena naknadno")
+                .photoTimestamp(clientUploadStarted) // Use client timestamp as best-effort
+                .clientTimestampUsed(clientUploadStarted != null)
+                .build();
     }
 }

@@ -30,6 +30,7 @@ import { routes } from './app/app.routes';
 import { authTokenInterceptor } from '@core/auth/token.interceptor';
 import { errorResponseInterceptor } from '@core/interceptors/error.interceptor';
 import { httpCacheInterceptor } from '@core/interceptors/http-cache.interceptor';
+import { idempotencyInterceptor } from '@core/interceptors/idempotency.interceptor';
 import { AuthService } from '@core/auth/auth.service';
 import { PerformanceMonitoringService } from '@core/services/performance-monitoring.service';
 import { OverlayThemeService } from '@core/services/overlay-theme.service';
@@ -94,7 +95,14 @@ bootstrapApplication(App, {
         cookieName: 'XSRF-TOKEN',
         headerName: 'X-XSRF-TOKEN',
       }),
-      withInterceptors([authTokenInterceptor, httpCacheInterceptor, errorResponseInterceptor])
+      // Interceptor order matters: auth → idempotency → cache → error
+      // Idempotency must run after auth (needs user context) but before error handling
+      withInterceptors([
+        authTokenInterceptor,
+        idempotencyInterceptor,
+        httpCacheInterceptor,
+        errorResponseInterceptor,
+      ])
     ),
     provideNativeDateAdapter(),
     provideToastr({

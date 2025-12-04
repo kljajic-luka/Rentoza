@@ -422,6 +422,19 @@ public class Booking {
     @Column(name = "late_fee_amount", precision = 19, scale = 2)
     private BigDecimal lateFeeAmount;
 
+    // ========== SECURITY DEPOSIT ==========
+
+    /**
+     * Security deposit amount held for this booking (in RSD).
+     * Set at check-in when deposit is authorized.
+     * Released at checkout after damage assessment.
+     * 
+     * <p><b>Set By:</b> CheckInService when deposit is authorized.
+     * <p><b>Released By:</b> CheckoutSagaOrchestrator at saga completion.
+     */
+    @Column(name = "security_deposit", precision = 19, scale = 2)
+    private BigDecimal securityDeposit;
+
     // ========== CHECK-IN RELATIONSHIPS ==========
 
     /**

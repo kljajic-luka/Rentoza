@@ -91,6 +91,10 @@ public class CheckInPhotoService {
             throw new IllegalArgumentException("Samo slike su dozvoljene");
         }
         
+        // D5 Security Fix: Validate file signature (magic bytes) to prevent malicious uploads
+        // Content-Type headers can be spoofed; magic bytes cannot
+        validateFileSignature(file);
+        
         // Get booking
         Booking booking = bookingRepository.findByIdWithRelations(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Rezervacija nije pronađena"));
@@ -404,5 +408,116 @@ public class CheckInPhotoService {
     private LocalDateTime toLocalDateTime(Instant instant) {
         if (instant == null) return null;
         return LocalDateTime.ofInstant(instant, SERBIA_ZONE);
+    }
+
+    // ========== SECURITY: File Signature Validation (D5 Fix) ==========
+
+    /**
+     * Validates file signature (magic bytes) to prevent malicious file uploads.
+     * 
+     * <p>This is a critical security measure because:
+     * <ul>
+     *   <li>Content-Type headers can be spoofed by malicious clients</li>
+     *   <li>File extensions can be manipulated</li>
+     *   <li>Magic bytes are embedded in the file and cannot be faked without corrupting the file</li>
+     * </ul>
+     * 
+     * <p>Supported formats:
+     * <ul>
+     *   <li>JPEG: FF D8 FF (first 3 bytes)</li>
+     *   <li>PNG: 89 50 4E 47 0D 0A 1A 0A (first 8 bytes)</li>
+     *   <li>HEIC/HEIF: ftyp marker at offset 4 with heic/heix/mif1 brand</li>
+     *   <li>WebP: RIFF....WEBP header</li>
+     * </ul>
+     * 
+     * @param file the uploaded file to validate
+     * @throws IllegalArgumentException if file signature doesn't match supported image formats
+     * @throws IOException if file cannot be read
+     */
+    private void validateFileSignature(MultipartFile file) throws IOException {
+        byte[] header = new byte[12];
+        int bytesRead;
+        
+        try (var inputStream = file.getInputStream()) {
+            bytesRead = inputStream.read(header);
+        }
+        
+        if (bytesRead < 12) {
+            throw new IllegalArgumentException("Datoteka je prekratka da bi bila validna slika");
+        }
+        
+        if (isJpeg(header) || isPng(header) || isHeic(header) || isWebP(header)) {
+            return; // Valid image signature
+        }
+        
+        log.warn("[Security] Invalid file signature detected. First 12 bytes: {}", 
+            bytesToHex(header));
+        throw new IllegalArgumentException(
+            "Nevalidna datoteka. Dozvoljen format: JPEG, PNG, HEIC, WebP");
+    }
+
+    /**
+     * Check for JPEG signature: FF D8 FF
+     */
+    private boolean isJpeg(byte[] header) {
+        return header[0] == (byte) 0xFF && 
+               header[1] == (byte) 0xD8 && 
+               header[2] == (byte) 0xFF;
+    }
+
+    /**
+     * Check for PNG signature: 89 50 4E 47 0D 0A 1A 0A
+     */
+    private boolean isPng(byte[] header) {
+        return header[0] == (byte) 0x89 &&
+               header[1] == (byte) 0x50 && // 'P'
+               header[2] == (byte) 0x4E && // 'N'
+               header[3] == (byte) 0x47 && // 'G'
+               header[4] == (byte) 0x0D &&
+               header[5] == (byte) 0x0A &&
+               header[6] == (byte) 0x1A &&
+               header[7] == (byte) 0x0A;
+    }
+
+    /**
+     * Check for HEIC/HEIF signature: ftyp at offset 4 with brand heic, heix, or mif1
+     * 
+     * <p>HEIC uses ISO Base Media File Format (ISO/IEC 14496-12).
+     * Structure: [4 bytes: box size][4 bytes: 'ftyp'][4 bytes: brand]
+     */
+    private boolean isHeic(byte[] header) {
+        // Check for 'ftyp' at offset 4-7
+        if (header[4] != 'f' || header[5] != 't' || 
+            header[6] != 'y' || header[7] != 'p') {
+            return false;
+        }
+        
+        // Check brand at offset 8-11 (heic, heix, mif1, msf1)
+        String brand = new String(header, 8, 4);
+        return brand.equals("heic") || brand.equals("heix") || 
+               brand.equals("mif1") || brand.equals("msf1") ||
+               brand.equals("avif"); // Also support AVIF (AV1 Image)
+    }
+
+    /**
+     * Check for WebP signature: RIFF....WEBP
+     * Structure: RIFF[4 bytes size]WEBP
+     */
+    private boolean isWebP(byte[] header) {
+        return header[0] == 'R' && header[1] == 'I' && 
+               header[2] == 'F' && header[3] == 'F' &&
+               header[8] == 'W' && header[9] == 'E' && 
+               header[10] == 'B' && header[11] == 'P';
+    }
+
+    /**
+     * Convert bytes to hex string for logging invalid signatures.
+     */
+    private String bytesToHex(byte[] bytes) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : bytes) {
+            sb.append(String.format("%02X ", b));
+        }
+        return sb.toString().trim();
     }
 }

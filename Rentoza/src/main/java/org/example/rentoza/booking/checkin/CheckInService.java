@@ -531,53 +531,58 @@ public class CheckInService {
     /**
      * Find bookings eligible for check-in window opening.
      * Uses exact timestamps for precise T-24h detection.
+     * 
+     * PERFORMANCE OPTIMIZATION (Phase 1 Critical Fix):
+     * Uses database-side filtering via JPQL query with JOIN FETCH,
+     * eliminating O(n) memory allocation from findAll().stream().
+     * 
+     * Query uses composite index: idx_booking_checkin_window(status, check_in_session_id, start_time)
      */
     @Transactional(readOnly = true)
     public List<Booking> findBookingsForCheckInWindowOpening(LocalDateTime startFrom, LocalDateTime startTo) {
-        return bookingRepository.findAll().stream()
-                .filter(b -> b.getStatus() == BookingStatus.ACTIVE)
-                .filter(b -> b.getCheckInSessionId() == null)
-                .filter(b -> !b.getStartTime().isBefore(startFrom) && !b.getStartTime().isAfter(startTo))
-                .collect(Collectors.toList());
+        return bookingRepository.findBookingsForCheckInWindowOpening(startFrom, startTo);
     }
 
     /**
      * Find bookings needing reminder notifications.
+     * 
+     * PERFORMANCE OPTIMIZATION (Phase 1 Critical Fix):
+     * Uses database-side filtering via JPQL query with JOIN FETCH,
+     * eliminating O(n) memory allocation from findAll().stream().
      */
     @Transactional(readOnly = true)
     public List<Booking> findBookingsNeedingReminder(BookingStatus status, Instant openedBefore) {
-        return bookingRepository.findAll().stream()
-                .filter(b -> b.getStatus() == status)
-                .filter(b -> b.getCheckInOpenedAt() != null && b.getCheckInOpenedAt().isBefore(openedBefore))
-                .collect(Collectors.toList());
+        return bookingRepository.findBookingsNeedingReminder(status, openedBefore);
     }
 
     /**
      * Find potential host no-shows.
      * Uses exact startTime for precise no-show detection.
+     * 
+     * PERFORMANCE OPTIMIZATION (Phase 1 Critical Fix):
+     * Uses database-side filtering via JPQL query with JOIN FETCH,
+     * eliminating O(n) memory allocation from findAll().stream().
      */
     @Transactional(readOnly = true)
     public List<Booking> findPotentialHostNoShows(BookingStatus status, LocalDateTime threshold) {
-        return bookingRepository.findAll().stream()
-                .filter(b -> b.getStatus() == status)
-                .filter(b -> b.getHostCheckInCompletedAt() == null)
-                .filter(b -> b.getStartTime().isBefore(threshold.minusMinutes(noShowGraceMinutes)))
-                .collect(Collectors.toList());
+        // Adjust threshold to include grace period in query
+        LocalDateTime thresholdWithGrace = threshold.minusMinutes(noShowGraceMinutes);
+        return bookingRepository.findPotentialHostNoShows(status, thresholdWithGrace);
     }
 
     /**
      * Find potential guest no-shows.
+     * 
+     * PERFORMANCE OPTIMIZATION (Phase 1 Critical Fix):
+     * Uses database-side filtering via JPQL query with JOIN FETCH,
+     * eliminating O(n) memory allocation from findAll().stream().
      */
     @Transactional(readOnly = true)
     public List<Booking> findPotentialGuestNoShows(BookingStatus status, LocalDateTime threshold) {
-        Instant noShowInstant = threshold.atZone(SERBIA_ZONE).toInstant();
-        
-        return bookingRepository.findAll().stream()
-                .filter(b -> b.getStatus() == status)
-                .filter(b -> b.getGuestCheckInCompletedAt() == null)
-                .filter(b -> b.getHostCheckInCompletedAt() != null)
-                .filter(b -> b.getHostCheckInCompletedAt().plus(noShowGraceMinutes, ChronoUnit.MINUTES).isBefore(noShowInstant))
-                .collect(Collectors.toList());
+        // Calculate threshold: host must have completed more than grace period ago
+        Instant hostCompletedBefore = threshold.atZone(SERBIA_ZONE).toInstant()
+                .minus(noShowGraceMinutes, ChronoUnit.MINUTES);
+        return bookingRepository.findPotentialGuestNoShows(status, hostCompletedBefore);
     }
 
     // ========== NOTIFICATION METHODS ==========

@@ -13,6 +13,7 @@
  * - Signal-based state for reactive UI (OnPush compatible)
  * - Coordinates PhotoCompressionService, GeolocationService, OfflineQueueService
  * - Implements clientTimestamp injection for basement problem fix
+ * - WebSocket real-time updates (replaces 30s polling)
  */
 
 import { Injectable, signal, computed, inject, OnDestroy } from '@angular/core';
@@ -39,6 +40,7 @@ import {
 import { PhotoCompressionService } from './photo-compression.service';
 import { GeolocationService } from './geolocation.service';
 import { OfflineQueueService } from './offline-queue.service';
+import { WebSocketService, WebSocketConnectionStatus } from './websocket.service';
 
 /**
  * Check-in phase for the wizard component
@@ -76,10 +78,13 @@ export class CheckInService implements OnDestroy {
   private readonly compressionService = inject(PhotoCompressionService);
   private readonly geolocationService = inject(GeolocationService);
   private readonly offlineQueueService = inject(OfflineQueueService);
+  private readonly webSocketService = inject(WebSocketService);
 
   private readonly baseUrl = `${environment.baseApiUrl}/bookings`;
   private readonly destroy$ = new Subject<void>();
   private pollingInterval: any = null;
+  private wsSubscriptionDestination: string | null = null;
+  private currentBookingId: number | null = null;
 
   // ========== REACTIVE STATE ==========
 
@@ -225,11 +230,22 @@ export class CheckInService implements OnDestroy {
     this.destroy$.next();
     this.destroy$.complete();
     this.stopPolling();
+    this.unsubscribeFromWebSocket();
     // Cancel all in-flight uploads
     this._activeUploads.forEach((sub) => sub.unsubscribe());
     this._activeUploads.clear();
     // Clean up blob URLs
     this.compressionService.revokeAllObjectUrls();
+  }
+
+  /**
+   * Unsubscribe from WebSocket check-in updates.
+   */
+  private unsubscribeFromWebSocket(): void {
+    if (this.wsSubscriptionDestination) {
+      this.webSocketService.unsubscribe(this.wsSubscriptionDestination);
+      this.wsSubscriptionDestination = null;
+    }
   }
 
   /**
@@ -243,7 +259,97 @@ export class CheckInService implements OnDestroy {
   }
 
   /**
+   * Start real-time updates via WebSocket with polling fallback.
+   *
+   * Subscribes to WebSocket topic for instant push notifications.
+   * Falls back to polling when WebSocket is disconnected.
+   *
+   * @param bookingId Booking to monitor
+   * @param pollingIntervalMs Fallback polling interval (default: 10s when WS disconnected)
+   */
+  startRealTimeUpdates(bookingId: number, pollingIntervalMs: number = 10000): void {
+    this.stopPolling();
+    this.unsubscribeFromWebSocket();
+    this.currentBookingId = bookingId;
+
+    // Subscribe to WebSocket for real-time updates
+    this.subscribeToWebSocket(bookingId);
+
+    // Monitor WebSocket connection status for fallback
+    this.webSocketService.status$.pipe(takeUntil(this.destroy$)).subscribe((status) => {
+      if (
+        status === WebSocketConnectionStatus.DISCONNECTED ||
+        status === WebSocketConnectionStatus.ERROR
+      ) {
+        // WebSocket down - start polling as fallback
+        if (!this.pollingInterval && this.currentBookingId) {
+          console.log('[CheckIn] WebSocket disconnected, starting polling fallback');
+          this.startPolling(this.currentBookingId, pollingIntervalMs);
+        }
+      } else if (status === WebSocketConnectionStatus.CONNECTED) {
+        // WebSocket connected - stop polling
+        if (this.pollingInterval) {
+          console.log('[CheckIn] WebSocket connected, stopping polling');
+          this.stopPolling();
+        }
+        // Re-subscribe if needed
+        if (this.currentBookingId && !this.wsSubscriptionDestination) {
+          this.subscribeToWebSocket(this.currentBookingId);
+        }
+      }
+    });
+  }
+
+  /**
+   * Subscribe to WebSocket check-in updates for a booking.
+   */
+  private subscribeToWebSocket(bookingId: number): void {
+    if (!this.webSocketService.isConnected()) {
+      // WebSocket not ready - will subscribe when connected via status$ subscription
+      return;
+    }
+
+    const destination = `/user/queue/check-in/${bookingId}`;
+    this.wsSubscriptionDestination = destination;
+
+    this.webSocketService.subscribe(destination, (message) => {
+      try {
+        const status = JSON.parse(message.body) as CheckInStatusDTO;
+        console.log('[CheckIn] WebSocket update received:', status.status);
+
+        // Update state with fresh status from WebSocket
+        this._status.set(status);
+        this.updateStepFromStatus(status);
+        this.updatePhaseFromStatus(status);
+
+        // Update photos if present
+        if (status.vehiclePhotos) {
+          const ids = status.vehiclePhotos.map((p) => p.photoId);
+          this._uploadedPhotoIds.set(ids);
+
+          const progress = new Map(this._uploadProgress());
+          status.vehiclePhotos.forEach((photo) => {
+            progress.set(photo.photoType, {
+              slotId: photo.photoType,
+              photoType: photo.photoType,
+              state: 'complete',
+              progress: 100,
+              result: photo,
+            });
+          });
+          this._uploadProgress.set(progress);
+        }
+      } catch (error) {
+        console.error('[CheckIn] Error processing WebSocket message:', error);
+      }
+    });
+
+    console.log('[CheckIn] Subscribed to WebSocket:', destination);
+  }
+
+  /**
    * Start periodic polling for status updates.
+   * @deprecated Use startRealTimeUpdates() instead for WebSocket + polling fallback
    */
   startPolling(bookingId: number, intervalMs: number = 30000): void {
     this.stopPolling();
@@ -389,7 +495,14 @@ export class CheckInService implements OnDestroy {
   }
 
   /**
-   * Complete host check-in submission.
+   * Complete host check-in submission with optimistic UI update.
+   *
+   * Pattern:
+   * 1. Store previous state for rollback
+   * 2. Apply optimistic update immediately
+   * 3. Submit to backend
+   * 4. On success: backend response overwrites optimistic state
+   * 5. On error: rollback to previous state
    */
   submitHostCheckIn(
     bookingId: number,
@@ -399,6 +512,23 @@ export class CheckInService implements OnDestroy {
   ): Observable<CheckInStatusDTO> {
     this._isLoading.set(true);
     this._error.set(null);
+
+    // Store previous state for rollback
+    const previousStatus = this._status();
+
+    // Optimistic update: immediately show host as completed
+    if (previousStatus) {
+      const optimisticStatus: CheckInStatusDTO = {
+        ...previousStatus,
+        hostCheckInComplete: true,
+        status: 'HOST_SUBMITTED',
+        odometerReading,
+        fuelLevelPercent,
+      };
+      this._status.set(optimisticStatus);
+      this.updateStepFromStatus(optimisticStatus);
+      this.updatePhaseFromStatus(optimisticStatus);
+    }
 
     // Get current position
     const position = this.geolocationService.position();
@@ -421,10 +551,17 @@ export class CheckInService implements OnDestroy {
       })
       .pipe(
         tap((status) => {
+          // Server response overwrites optimistic state
           this._status.set(status);
           this.updateStepFromStatus(status);
         }),
         catchError((error) => {
+          // Rollback on error
+          if (previousStatus) {
+            this._status.set(previousStatus);
+            this.updateStepFromStatus(previousStatus);
+            this.updatePhaseFromStatus(previousStatus);
+          }
           this._error.set(this.extractErrorMessage(error));
           return throwError(() => error);
         }),
@@ -434,7 +571,7 @@ export class CheckInService implements OnDestroy {
   }
 
   /**
-   * Guest acknowledges vehicle condition.
+   * Guest acknowledges vehicle condition with optimistic UI update.
    */
   acknowledgeCondition(
     bookingId: number,
@@ -445,12 +582,34 @@ export class CheckInService implements OnDestroy {
     this._isLoading.set(true);
     this._error.set(null);
 
+    // Store previous state for rollback
+    const previousStatus = this._status();
+
+    // Optimistic update: immediately show guest as acknowledged
+    if (previousStatus && conditionAccepted) {
+      const optimisticStatus: CheckInStatusDTO = {
+        ...previousStatus,
+        guestCheckInComplete: true,
+        status: 'GUEST_ACKNOWLEDGED',
+        handshakeReady: true,
+      };
+      this._status.set(optimisticStatus);
+      this.updateStepFromStatus(optimisticStatus);
+      this.updatePhaseFromStatus(optimisticStatus);
+    }
+
     // Check if location is required (bypass in development if configured)
     const locationRequired = environment.checkIn?.requireLocation !== false;
 
     // Get current position (required for guest in production)
     const position = this.geolocationService.position();
     if (locationRequired && !position) {
+      // Rollback optimistic update
+      if (previousStatus) {
+        this._status.set(previousStatus);
+        this.updateStepFromStatus(previousStatus);
+        this.updatePhaseFromStatus(previousStatus);
+      }
       this._error.set('Lokacija je obavezna za potvrdu stanja vozila');
       this._isLoading.set(false);
       return throwError(() => new Error('Location required'));
@@ -474,10 +633,17 @@ export class CheckInService implements OnDestroy {
       )
       .pipe(
         tap((status) => {
+          // Server response overwrites optimistic state
           this._status.set(status);
           this.updateStepFromStatus(status);
         }),
         catchError((error) => {
+          // Rollback on error
+          if (previousStatus) {
+            this._status.set(previousStatus);
+            this.updateStepFromStatus(previousStatus);
+            this.updatePhaseFromStatus(previousStatus);
+          }
           this._error.set(this.extractErrorMessage(error));
           return throwError(() => error);
         }),
@@ -487,7 +653,7 @@ export class CheckInService implements OnDestroy {
   }
 
   /**
-   * Confirm handshake (both host and guest call this).
+   * Confirm handshake (both host and guest call this) with optimistic UI update.
    */
   confirmHandshake(
     bookingId: number,
@@ -495,6 +661,21 @@ export class CheckInService implements OnDestroy {
   ): Observable<CheckInStatusDTO> {
     this._isLoading.set(true);
     this._error.set(null);
+
+    // Store previous state for rollback
+    const previousStatus = this._status();
+
+    // Optimistic update: if both parties ready, show trip as started
+    if (previousStatus && previousStatus.handshakeReady) {
+      const optimisticStatus: CheckInStatusDTO = {
+        ...previousStatus,
+        status: 'IN_TRIP',
+        handshakeCompletedAt: new Date().toISOString() as any,
+      };
+      this._status.set(optimisticStatus);
+      this.updateStepFromStatus(optimisticStatus);
+      this.updatePhaseFromStatus(optimisticStatus);
+    }
 
     const position = this.geolocationService.position();
 
@@ -513,10 +694,17 @@ export class CheckInService implements OnDestroy {
       })
       .pipe(
         tap((status) => {
+          // Server response overwrites optimistic state
           this._status.set(status);
           this.updateStepFromStatus(status);
         }),
         catchError((error) => {
+          // Rollback on error
+          if (previousStatus) {
+            this._status.set(previousStatus);
+            this.updateStepFromStatus(previousStatus);
+            this.updatePhaseFromStatus(previousStatus);
+          }
           this._error.set(this.extractErrorMessage(error));
           return throwError(() => error);
         }),
@@ -609,6 +797,9 @@ export class CheckInService implements OnDestroy {
     this._currentStep.set('loading');
     this._uploadProgress.set(new Map());
     this._uploadedPhotoIds.set([]);
+    this.stopPolling();
+    this.unsubscribeFromWebSocket();
+    this.currentBookingId = null;
     this.geolocationService.reset();
     this.compressionService.revokeAllObjectUrls();
   }

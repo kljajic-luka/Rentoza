@@ -20,6 +20,26 @@
   ],
   "dataGroups": [
     {
+      "name": "api-checkin-status",
+      "urls": ["/api/bookings/*/check-in/status"],
+      "cacheConfig": {
+        "strategy": "freshness",
+        "maxSize": 20,
+        "maxAge": "5m",
+        "timeout": "5s"
+      }
+    },
+    {
+      "name": "api-checkin-photos",
+      "urls": ["/api/bookings/*/check-in/host/photos", "/api/bookings/*/check-in/photos/*"],
+      "cacheConfig": {
+        "strategy": "freshness",
+        "maxSize": 100,
+        "maxAge": "30m",
+        "timeout": "10s"
+      }
+    },
+    {
       "name": "api-cars-fresh",
       "urls": ["/api/cars/search", "/api/cars/*/availability"],
       "cacheConfig": {

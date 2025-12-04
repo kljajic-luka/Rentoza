@@ -24,6 +24,17 @@ public enum ExifValidationStatus {
     PENDING,
     
     /**
+     * Validation deferred due to circuit breaker or service unavailability.
+     * Photo accepted temporarily, async re-validation scheduled.
+     * 
+     * <p>Phase 1 Critical Fix: Circuit Breaker Integration
+     * When EXIF parsing service repeatedly fails, photos are accepted with
+     * this status to prevent blocking check-ins. Background job will
+     * re-attempt validation when service recovers.
+     */
+    VALIDATION_PENDING,
+    
+    /**
      * Photo passed all EXIF validation checks.
      * - Timestamp within allowed window
      * - GPS within allowed radius
@@ -84,10 +95,11 @@ public enum ExifValidationStatus {
     
     /**
      * Check if this status allows the photo to be used in check-in.
-     * @return true if photo is usable (VALID, VALID_NO_GPS, VALID_WITH_WARNINGS, or OVERRIDE_APPROVED)
+     * @return true if photo is usable (VALID, VALID_NO_GPS, VALID_WITH_WARNINGS, VALIDATION_PENDING, or OVERRIDE_APPROVED)
      */
     public boolean isAccepted() {
-        return this == VALID || this == VALID_NO_GPS || this == VALID_WITH_WARNINGS || this == OVERRIDE_APPROVED;
+        return this == VALID || this == VALID_NO_GPS || this == VALID_WITH_WARNINGS || 
+               this == VALIDATION_PENDING || this == OVERRIDE_APPROVED;
     }
     
     /**

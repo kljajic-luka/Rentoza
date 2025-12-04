@@ -105,6 +105,9 @@ public class CheckOutScheduler {
      * <p>Runs every 4 hours. Finds bookings in CHECKOUT_OPEN status
      * where checkout was opened more than 2 hours ago.
      * 
+     * PERFORMANCE OPTIMIZATION (Phase 1 Critical Fix):
+     * Uses optimized database query instead of findAll().stream() pattern.
+     * 
      * <p>Cron: {@code 0 0 0/4 * * *} (every 4 hours)
      */
     @Scheduled(cron = "${app.checkout.scheduler.reminder-cron:0 0 0/4 * * *}")
@@ -113,23 +116,18 @@ public class CheckOutScheduler {
         log.debug("[CheckOutScheduler] Running checkout reminder check");
         
         try {
-            List<Booking> bookingsNeedingReminder = bookingRepository.findAll().stream()
-                .filter(b -> b.getStatus() == BookingStatus.CHECKOUT_OPEN)
-                .filter(b -> b.getCheckoutOpenedAt() != null)
-                .filter(b -> {
-                    // Opened more than 2 hours ago
-                    long hoursOpen = java.time.Duration.between(
-                        b.getCheckoutOpenedAt(), 
-                        java.time.Instant.now()
-                    ).toHours();
-                    return hoursOpen >= 2;
-                })
-                .toList();
+            // Calculate threshold: checkout opened at least 2 hours ago
+            java.time.LocalDateTime thresholdTime = java.time.LocalDateTime.now(SERBIA_ZONE).minusHours(2);
+            
+            // Use optimized query that handles overdue checkouts
+            List<Booking> bookingsNeedingReminder = bookingRepository.findOverdueCheckouts(thresholdTime);
             
             for (Booking booking : bookingsNeedingReminder) {
-                // TODO: Send reminder notification
-                log.info("[CheckOutScheduler] Would send checkout reminder for booking {}", booking.getId());
-                checkoutReminderSentCounter.increment();
+                if (booking.getStatus() == BookingStatus.CHECKOUT_OPEN) {
+                    // TODO: Send reminder notification
+                    log.info("[CheckOutScheduler] Would send checkout reminder for booking {}", booking.getId());
+                    checkoutReminderSentCounter.increment();
+                }
             }
         } catch (Exception e) {
             log.error("[CheckOutScheduler] Failed to send checkout reminders", e);
@@ -145,6 +143,9 @@ public class CheckOutScheduler {
      *   <li>Guest still hasn't completed checkout</li>
      * </ul>
      * 
+     * PERFORMANCE OPTIMIZATION (Phase 1 Critical Fix):
+     * Uses optimized database query instead of findAll().stream() pattern.
+     * 
      * <p>Cron: {@code 0 0 0/6 * * *} (every 6 hours)
      */
     @Scheduled(cron = "${app.checkout.scheduler.escalation-cron:0 0 0/6 * * *}")
@@ -153,32 +154,29 @@ public class CheckOutScheduler {
         log.debug("[CheckOutScheduler] Running overdue return escalation check");
         
         try {
-            List<Booking> overdueBookings = bookingRepository.findAll().stream()
-                .filter(b -> b.getStatus() == BookingStatus.CHECKOUT_OPEN)
-                .filter(b -> b.getCheckoutOpenedAt() != null)
-                .filter(b -> {
-                    // Opened more than 24 hours ago
-                    long hoursOpen = java.time.Duration.between(
-                        b.getCheckoutOpenedAt(), 
-                        java.time.Instant.now()
-                    ).toHours();
-                    return hoursOpen >= 24;
-                })
-                .toList();
+            // Calculate threshold: checkout opened at least 24 hours ago
+            java.time.LocalDateTime thresholdTime = java.time.LocalDateTime.now(SERBIA_ZONE).minusHours(24);
+            
+            // Use optimized query for overdue checkouts
+            List<Booking> overdueBookings = bookingRepository.findOverdueCheckouts(thresholdTime);
             
             for (Booking booking : overdueBookings) {
-                // TODO: Escalate to admin, calculate significant late fees
-                log.warn("[CheckOutScheduler] OVERDUE RETURN: Booking {} is {} hours overdue!",
-                    booking.getId(),
-                    java.time.Duration.between(
+                if (booking.getStatus() == BookingStatus.CHECKOUT_OPEN && 
+                    booking.getCheckoutOpenedAt() != null) {
+                    long hoursOverdue = java.time.Duration.between(
                         booking.getCheckoutOpenedAt(), 
                         java.time.Instant.now()
-                    ).toHours());
+                    ).toHours();
+                    
+                    if (hoursOverdue >= 24) {
+                        // TODO: Escalate to admin, calculate significant late fees
+                        log.warn("[CheckOutScheduler] OVERDUE RETURN: Booking {} is {} hours overdue!",
+                            booking.getId(), hoursOverdue);
+                    }
+                }
             }
         } catch (Exception e) {
             log.error("[CheckOutScheduler] Failed to escalate overdue returns", e);
         }
     }
 }
-
-

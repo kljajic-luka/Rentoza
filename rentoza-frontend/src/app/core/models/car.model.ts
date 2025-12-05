@@ -89,6 +89,25 @@ export interface Car {
   rating?: number;
   reviews?: Review[];
 
+  // Geospatial location fields (Phase 2.4)
+  locationLatitude?: number;
+  locationLongitude?: number;
+  locationAddress?: string;
+  locationCity?: string;
+  locationZipCode?: string;
+
+  /**
+   * Privacy flag: true if viewer has access to exact location.
+   * - true: Owner or active booker → show exact pin on map
+   * - false: Public view → show fuzzy circle (~500m radius)
+   */
+  isExactLocation?: boolean;
+
+  // Delivery options (Phase 2.4)
+  deliveryAvailable?: boolean;
+  deliveryMaxRadiusKm?: number;
+  deliveryFeePerKm?: number;
+
   // New production-ready fields
   seats?: number;
   fuelType?: FuelType;

@@ -138,6 +138,92 @@
       transform: translateX(-50%) scale(1);
     }
   }
+
+  // Radius slider container
+  .radius-slider-container {
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 12px 20px;
+    background-color: rgba(255, 255, 255, 0.95);
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+    z-index: 5;
+    min-width: 200px;
+
+    .radius-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: #333;
+      font-weight: 500;
+
+      mat-icon {
+        font-size: 18px;
+        width: 18px;
+        height: 18px;
+        color: #1976d2;
+      }
+    }
+
+    .radius-slider {
+      width: 100%;
+    }
+  }
+
+  // Radius indicator (when slider is hidden)
+  .radius-indicator {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background-color: rgba(255, 255, 255, 0.95);
+    border-radius: 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    font-size: 12px;
+    color: #666;
+    z-index: 5;
+
+    mat-icon {
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
+      color: #1976d2;
+    }
+  }
+
+  // Marker count indicator
+  .marker-count {
+    position: absolute;
+    bottom: 16px;
+    right: 16px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    background-color: rgba(25, 118, 210, 0.95);
+    color: white;
+    border-radius: 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    font-size: 13px;
+    font-weight: 500;
+    z-index: 5;
+
+    mat-icon {
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+    }
+  }
 }
 
 // Dark mode support
@@ -154,9 +240,18 @@
       }
     }
 
-    .privacy-indicator {
+    .privacy-indicator,
+    .radius-indicator {
       background-color: rgba(48, 48, 48, 0.95);
       color: #bbb;
+    }
+
+    .radius-slider-container {
+      background-color: rgba(48, 48, 48, 0.95);
+
+      .radius-label {
+        color: #ddd;
+      }
     }
   }
 }
@@ -164,7 +259,8 @@
 // Responsive adjustments
 @media (max-width: 600px) {
   .location-picker {
-    .privacy-indicator {
+    .privacy-indicator,
+    .radius-indicator {
       font-size: 11px;
       padding: 4px 10px;
     }
@@ -177,6 +273,22 @@
     .controls-overlay {
       bottom: 12px;
       left: 12px;
+    }
+
+    .radius-slider-container {
+      min-width: 160px;
+      padding: 10px 16px;
+
+      .radius-label {
+        font-size: 12px;
+      }
+    }
+
+    .marker-count {
+      bottom: 12px;
+      right: 12px;
+      font-size: 12px;
+      padding: 6px 12px;
     }
   }
 }

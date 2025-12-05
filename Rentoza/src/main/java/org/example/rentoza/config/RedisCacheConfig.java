@@ -188,6 +188,17 @@ public class RedisCacheConfig implements CachingConfigurer {
         // Idempotency keys
         configs.put("idempotency", defaultConfig.entryTtl(Duration.ofHours(24)));
         
+        // ========== GEOCODING CACHES (Phase 2.4) ==========
+        
+        // Geocode results - address to coordinates (24h TTL - addresses rarely change)
+        configs.put("geocodeCache", defaultConfig.entryTtl(TTL_STATIC));
+        
+        // Reverse geocode results - coordinates to address (24h TTL)
+        configs.put("reverseGeocodeCache", defaultConfig.entryTtl(TTL_STATIC));
+        
+        // OSRM routing results - distance/duration (1h TTL - traffic patterns change)
+        configs.put("osrmRouting", defaultConfig.entryTtl(TTL_LONG));
+        
         return configs;
     }
 

@@ -1,0 +1,142 @@
+<div class="location-step">
+  <div class="step-header">
+    <h3>Gde se nalazi Vaše vozilo?</h3>
+    <p class="step-description">Unesite tačnu lokaciju kako bi gosti lako pronašli Vaše vozilo.</p>
+  </div>
+
+  <!-- Quick Actions -->
+  <div class="quick-actions">
+    <button
+      type="button"
+      mat-stroked-button
+      (click)="useCurrentLocation()"
+      [disabled]="isGeolocating()"
+      class="action-button"
+    >
+      @if (isGeolocating()) {
+      <mat-spinner diameter="18"></mat-spinner>
+      } @else {
+      <mat-icon>my_location</mat-icon>
+      }
+      <span>Koristi trenutnu lokaciju</span>
+    </button>
+
+    <button type="button" mat-stroked-button (click)="toggleMap()" class="action-button">
+      <mat-icon>{{ showMap() ? 'visibility_off' : 'map' }}</mat-icon>
+      <span>{{ showMap() ? 'Sakrij mapu' : 'Izaberi na mapi' }}</span>
+    </button>
+  </div>
+
+  <form [formGroup]="locationForm">
+    <!-- Address Input with Autocomplete -->
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Adresa</mat-label>
+      <input
+        matInput
+        formControlName="address"
+        placeholder="npr. Terazije 26"
+        [matAutocomplete]="addressAuto"
+      />
+      <mat-icon matSuffix>
+        @if (isGeocoding()) {
+        <mat-spinner diameter="18"></mat-spinner>
+        } @else { search }
+      </mat-icon>
+      @if (locationForm.get('address')?.hasError('required')) {
+      <mat-error>Adresa je obavezna</mat-error>
+      } @if (locationForm.get('address')?.hasError('minlength')) {
+      <mat-error>Unesite najmanje 5 karaktera</mat-error>
+      }
+
+      <!-- Autocomplete Suggestions -->
+      <mat-autocomplete
+        #addressAuto="matAutocomplete"
+        [displayWith]="displayFn"
+        (optionSelected)="selectSuggestion($event.option.value)"
+      >
+        @for (suggestion of geocodeSuggestions(); track suggestion.id) {
+        <mat-option [value]="suggestion">
+          <div class="suggestion-option">
+            <span class="suggestion-address">{{ suggestion.address }}</span>
+            <span class="suggestion-city">{{ suggestion.city }}</span>
+          </div>
+        </mat-option>
+        }
+      </mat-autocomplete>
+    </mat-form-field>
+
+    <!-- City & Zip Code Row -->
+    <div class="form-row">
+      <mat-form-field appearance="outline" class="flex-1">
+        <mat-label>Grad</mat-label>
+        <input matInput formControlName="city" readonly />
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="flex-1">
+        <mat-label>Poštanski broj</mat-label>
+        <input matInput formControlName="zipCode" placeholder="npr. 11000" />
+      </mat-form-field>
+    </div>
+
+    <!-- Coordinates Display -->
+    @if (selectedLocation()) {
+    <div class="coordinates-display">
+      <div class="coord-item">
+        <span class="coord-label">Geografska širina</span>
+        <span class="coord-value">{{ selectedLocation()!.latitude | number : '1.6-6' }}</span>
+      </div>
+      <div class="coord-item">
+        <span class="coord-label">Geografska dužina</span>
+        <span class="coord-value">{{ selectedLocation()!.longitude | number : '1.6-6' }}</span>
+      </div>
+    </div>
+    }
+  </form>
+
+  <!-- Location Preview Map -->
+  @if (showMap() && selectedLocation()) {
+  <div class="location-preview">
+    <app-location-picker
+      [latitude]="selectedLocation()!.latitude"
+      [longitude]="selectedLocation()!.longitude"
+      [editable]="true"
+      [showGeolocationButton]="true"
+      (locationChanged)="onMapLocationChanged($event)"
+      height="350px"
+    ></app-location-picker>
+
+    <!-- Location Info & Validation -->
+    <div class="location-info">
+      <!-- Accuracy Badge -->
+      <div class="accuracy-badge" [class]="locationAccuracy()">
+        @switch (locationAccuracy()) { @case ('PRECISE') {
+        <mat-icon>check_circle</mat-icon>
+        <span>Precizna lokacija</span>
+        } @case ('APPROXIMATE') {
+        <mat-icon>info</mat-icon>
+        <span>Približna lokacija</span>
+        } @default {
+        <mat-icon>help_outline</mat-icon>
+        <span>Nepoznata tačnost</span>
+        } }
+      </div>
+
+      <!-- Serbia Bounds Warning -->
+      @if (!isWithinSerbia()) {
+      <div class="bounds-warning" role="alert">
+        <mat-icon>warning</mat-icon>
+        <span> Lokacija je van granica Srbije. Gosti možda neće moći da pronađu Vaše vozilo. </span>
+      </div>
+      }
+    </div>
+  </div>
+  }
+
+  <!-- Instructions when no location is selected -->
+  @if (!selectedLocation()) {
+  <div class="empty-state">
+    <mat-icon>place</mat-icon>
+    <p>Unesite adresu ili koristite GPS da biste odabrali lokaciju vozila</p>
+  </div>
+  }
+</div>

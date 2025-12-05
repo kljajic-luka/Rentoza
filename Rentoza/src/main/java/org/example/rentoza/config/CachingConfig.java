@@ -52,7 +52,12 @@ public class CachingConfig implements WebMvcConfigurer {
             new ConcurrentMapCache("bookings"),
             
             // Review data caches
-            new ConcurrentMapCache("reviews")
+            new ConcurrentMapCache("reviews"),
+            
+            // Geocoding caches (Phase 2.4)
+            new ConcurrentMapCache("geocodeCache"),
+            new ConcurrentMapCache("reverseGeocodeCache"),
+            new ConcurrentMapCache("osrmRouting")
         ));
         return cacheManager;
     }

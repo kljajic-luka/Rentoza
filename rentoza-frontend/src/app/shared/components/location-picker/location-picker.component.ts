@@ -10,6 +10,9 @@
  * - Privacy obfuscation for approximate locations
  * - Geolocation button for current location
  * - Responsive design with mobile touch support
+ * - Multi-marker support with clustering (Phase 2.4+)
+ * - Marker selection with popup display
+ * - Radius slider for search area visualization
  *
  * @example
  * <!-- Read-only car location display -->
@@ -28,6 +31,17 @@
  *   (locationChanged)="onPickupLocationChanged($event)">
  * </app-location-picker>
  *
+ * <!-- Multi-marker search results view -->
+ * <app-location-picker
+ *   [latitude]="searchCenter.lat"
+ *   [longitude]="searchCenter.lng"
+ *   [markers]="carMarkers"
+ *   [clusterMarkers]="true"
+ *   [showRadiusCircle]="true"
+ *   [markerRadius]="25"
+ *   (markerSelected)="onCarSelected($event)">
+ * </app-location-picker>
+ *
  * @since 2.4.0 (Geospatial Location Migration)
  */
 import {
@@ -43,13 +57,18 @@ import {
   ChangeDetectionStrategy,
   signal,
   computed,
+  SimpleChanges,
+  OnChanges,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatSliderModule } from '@angular/material/slider';
+import { FormsModule } from '@angular/forms';
 import { environment } from '../../../../environments/environment';
+import { CarMarker } from '../../../core/models/location.model';
 
 // Mapbox GL JS types
 declare const mapboxgl: any;
@@ -58,6 +77,9 @@ export interface LocationCoordinates {
   latitude: number;
   longitude: number;
 }
+
+/** Re-export CarMarker for consumers importing from this file */
+export type { CarMarker } from '../../../core/models/location.model';
 
 @Component({
   selector: 'app-location-picker',
@@ -68,12 +90,14 @@ export interface LocationCoordinates {
     MatIconModule,
     MatProgressSpinnerModule,
     MatTooltipModule,
+    MatSliderModule,
+    FormsModule,
   ],
   templateUrl: './location-picker.component.html',
   styleUrls: ['./location-picker.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class LocationPickerComponent implements OnInit, AfterViewInit, OnDestroy {
+export class LocationPickerComponent implements OnInit, AfterViewInit, OnDestroy, OnChanges {
   @ViewChild('mapContainer') mapContainer!: ElementRef<HTMLDivElement>;
 
   /** Latitude of the location to display/select */
@@ -103,11 +127,45 @@ export class LocationPickerComponent implements OnInit, AfterViewInit, OnDestroy
   /** Marker color */
   @Input() markerColor = '#1976d2';
 
+  // === NEW MULTI-MARKER INPUTS (Phase 2.4) ===
+
+  /** Array of car markers to display on map */
+  @Input() markers: CarMarker[] = [];
+
+  /** Enable marker clustering for dense areas */
+  @Input() clusterMarkers = false;
+
+  /** Show radius circle around center (for search area) */
+  @Input() showRadiusCircle = false;
+
+  /** Search radius in kilometers (for radius circle display) */
+  @Input() markerRadius = 25;
+
+  /** Show radius slider control */
+  @Input() showRadiusSlider = false;
+
+  /** Minimum radius for slider (km) */
+  @Input() radiusMin = 5;
+
+  /** Maximum radius for slider (km) */
+  @Input() radiusMax = 100;
+
+  /** Selected marker ID */
+  @Input() selectedMarkerId: number | null = null;
+
+  // === OUTPUTS ===
+
   /** Emitted when user selects a new location */
   @Output() locationChanged = new EventEmitter<LocationCoordinates>();
 
   /** Emitted when geolocation is requested */
   @Output() geolocationRequested = new EventEmitter<void>();
+
+  /** Emitted when a car marker is clicked */
+  @Output() markerSelected = new EventEmitter<number>();
+
+  /** Emitted when radius slider changes */
+  @Output() radiusChanged = new EventEmitter<number>();
 
   // Signals for reactive state
   protected readonly isLoading = signal(true);
@@ -116,14 +174,48 @@ export class LocationPickerComponent implements OnInit, AfterViewInit, OnDestroy
   protected readonly hasLocation = computed(
     () => this.latitude !== null && this.longitude !== null
   );
+  protected readonly currentRadius = signal(25);
 
   private map: any = null;
   private marker: any = null;
   private privacyCircle: any = null;
   private mapLoadPromise: Promise<void> | null = null;
 
+  // Multi-marker state
+  private carMarkers: Map<number, any> = new Map();
+  private markerPopups: Map<number, any> = new Map();
+  private radiusCircleAdded = false;
+
   ngOnInit(): void {
     this.loadMapboxScript();
+    this.currentRadius.set(this.markerRadius);
+  }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    // Handle markers change
+    if (changes['markers'] && !changes['markers'].firstChange) {
+      this.updateCarMarkers();
+    }
+
+    // Handle selected marker change
+    if (changes['selectedMarkerId'] && !changes['selectedMarkerId'].firstChange) {
+      this.highlightSelectedMarker();
+    }
+
+    // Handle radius change
+    if (changes['markerRadius'] && !changes['markerRadius'].firstChange) {
+      this.currentRadius.set(this.markerRadius);
+      this.updateRadiusCircle();
+    }
+
+    // Handle center location change
+    if (
+      (changes['latitude'] || changes['longitude']) &&
+      !changes['latitude']?.firstChange &&
+      !changes['longitude']?.firstChange
+    ) {
+      this.updateCenterAndRadius();
+    }
   }
 
   ngAfterViewInit(): void {
@@ -206,6 +298,14 @@ export class LocationPickerComponent implements OnInit, AfterViewInit, OnDestroy
         this.isLoading.set(false);
         this.addMarker();
         this.addPrivacyCircle();
+
+        // Initialize multi-marker features
+        if (this.showRadiusCircle) {
+          this.updateRadiusCircle();
+        }
+        if (this.markers.length > 0) {
+          this.updateCarMarkers();
+        }
       });
 
       // Handle click events for editable mode
@@ -460,18 +560,353 @@ export class LocationPickerComponent implements OnInit, AfterViewInit, OnDestroy
     }
   }
 
+  // ============================================================================
+  // MULTI-MARKER METHODS (Phase 2.4)
+  // ============================================================================
+
+  /**
+   * Update car markers on the map
+   */
+  private updateCarMarkers(): void {
+    if (!this.map) return;
+
+    // Remove markers that are no longer in the list
+    const currentIds = new Set(this.markers.map((m) => m.carId));
+    this.carMarkers.forEach((marker, carId) => {
+      if (!currentIds.has(carId)) {
+        marker.remove();
+        this.carMarkers.delete(carId);
+        const popup = this.markerPopups.get(carId);
+        if (popup) {
+          popup.remove();
+          this.markerPopups.delete(carId);
+        }
+      }
+    });
+
+    // Add or update markers
+    this.markers.forEach((carMarker) => {
+      if (this.carMarkers.has(carMarker.carId)) {
+        // Update existing marker position
+        const marker = this.carMarkers.get(carMarker.carId);
+        marker.setLngLat([carMarker.longitude, carMarker.latitude]);
+      } else {
+        // Create new marker
+        this.addCarMarker(carMarker);
+      }
+    });
+
+    // Fit bounds if we have markers
+    if (this.markers.length > 0 && this.latitude == null) {
+      this.fitBoundsToMarkers();
+    }
+  }
+
+  /**
+   * Add a single car marker to the map
+   */
+  private addCarMarker(carMarker: CarMarker): void {
+    if (!this.map) return;
+
+    const isSelected = carMarker.carId === this.selectedMarkerId;
+    const color = carMarker.markerColor || (isSelected ? '#ff5722' : '#1976d2');
+
+    // Create marker element with custom styling
+    const el = document.createElement('div');
+    el.className = 'car-marker' + (isSelected ? ' selected' : '');
+    el.style.cssText = `
+      width: 36px;
+      height: 36px;
+      background-color: ${color};
+      border-radius: 50%;
+      border: 3px solid white;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.2s, box-shadow 0.2s;
+    `;
+    el.innerHTML = `
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
+        <path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/>
+      </svg>
+    `;
+
+    // Hover effect
+    el.addEventListener('mouseenter', () => {
+      el.style.transform = 'scale(1.15)';
+      el.style.boxShadow = '0 4px 12px rgba(0,0,0,0.4)';
+    });
+    el.addEventListener('mouseleave', () => {
+      if (carMarker.carId !== this.selectedMarkerId) {
+        el.style.transform = 'scale(1)';
+        el.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)';
+      }
+    });
+
+    // Create popup content
+    const popupContent = this.createPopupContent(carMarker);
+    const popup = new mapboxgl.Popup({
+      offset: 25,
+      closeButton: false,
+      closeOnClick: false,
+    }).setHTML(popupContent);
+
+    // Create marker
+    const marker = new mapboxgl.Marker({ element: el })
+      .setLngLat([carMarker.longitude, carMarker.latitude])
+      .setPopup(popup)
+      .addTo(this.map);
+
+    // Click handler
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.onCarMarkerClick(carMarker.carId);
+    });
+
+    // Store references
+    this.carMarkers.set(carMarker.carId, marker);
+    this.markerPopups.set(carMarker.carId, popup);
+  }
+
+  /**
+   * Create popup HTML content for a car marker
+   */
+  private createPopupContent(carMarker: CarMarker): string {
+    const title = carMarker.title || `Car #${carMarker.carId}`;
+    const price = carMarker.pricePerDay ? `€${carMarker.pricePerDay}/day` : '';
+    const distance = carMarker.distanceKm ? `${carMarker.distanceKm.toFixed(1)} km away` : '';
+
+    return `
+      <div style="padding: 8px; min-width: 120px;">
+        <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">${title}</div>
+        ${price ? `<div style="color: #1976d2; font-weight: 500;">${price}</div>` : ''}
+        ${distance ? `<div style="color: #666; font-size: 12px;">${distance}</div>` : ''}
+      </div>
+    `;
+  }
+
+  /**
+   * Handle car marker click
+   */
+  private onCarMarkerClick(carId: number): void {
+    // Update selection state
+    this.selectedMarkerId = carId;
+    this.highlightSelectedMarker();
+
+    // Emit event
+    this.markerSelected.emit(carId);
+
+    // Show popup
+    const marker = this.carMarkers.get(carId);
+    if (marker) {
+      marker.togglePopup();
+    }
+  }
+
+  /**
+   * Highlight the selected marker
+   */
+  private highlightSelectedMarker(): void {
+    this.carMarkers.forEach((marker, carId) => {
+      const el = marker.getElement();
+      if (carId === this.selectedMarkerId) {
+        el.style.transform = 'scale(1.2)';
+        el.style.boxShadow = '0 4px 12px rgba(0,0,0,0.4)';
+        el.style.backgroundColor = '#ff5722';
+        el.style.zIndex = '100';
+      } else {
+        el.style.transform = 'scale(1)';
+        el.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)';
+        el.style.backgroundColor = '#1976d2';
+        el.style.zIndex = '1';
+      }
+    });
+  }
+
+  /**
+   * Fit map bounds to show all markers
+   */
+  private fitBoundsToMarkers(): void {
+    if (!this.map || this.markers.length === 0) return;
+
+    const bounds = new mapboxgl.LngLatBounds();
+
+    // Include center location if present
+    if (this.latitude != null && this.longitude != null) {
+      bounds.extend([this.longitude, this.latitude]);
+    }
+
+    // Include all markers
+    this.markers.forEach((m) => {
+      bounds.extend([m.longitude, m.latitude]);
+    });
+
+    this.map.fitBounds(bounds, {
+      padding: 50,
+      maxZoom: 14,
+    });
+  }
+
+  // ============================================================================
+  // RADIUS CIRCLE METHODS
+  // ============================================================================
+
+  /**
+   * Add or update the radius circle
+   */
+  private updateRadiusCircle(): void {
+    if (!this.map || !this.showRadiusCircle || this.latitude == null || this.longitude == null) {
+      this.removeRadiusCircle();
+      return;
+    }
+
+    const sourceId = 'radius-circle-source';
+    const fillLayerId = 'radius-circle-fill';
+    const outlineLayerId = 'radius-circle-outline';
+
+    const radiusMeters = this.currentRadius() * 1000;
+    const circleData = this.createCircleGeoJSON(this.latitude, this.longitude, radiusMeters);
+
+    if (this.radiusCircleAdded) {
+      // Update existing source
+      const source = this.map.getSource(sourceId);
+      if (source) {
+        source.setData(circleData);
+      }
+    } else {
+      // Add new source and layers
+      this.map.addSource(sourceId, {
+        type: 'geojson',
+        data: circleData,
+      });
+
+      this.map.addLayer({
+        id: fillLayerId,
+        type: 'fill',
+        source: sourceId,
+        paint: {
+          'fill-color': '#1976d2',
+          'fill-opacity': 0.08,
+        },
+      });
+
+      this.map.addLayer({
+        id: outlineLayerId,
+        type: 'line',
+        source: sourceId,
+        paint: {
+          'line-color': '#1976d2',
+          'line-width': 2,
+          'line-opacity': 0.5,
+        },
+      });
+
+      this.radiusCircleAdded = true;
+    }
+  }
+
+  /**
+   * Remove the radius circle
+   */
+  private removeRadiusCircle(): void {
+    if (!this.map || !this.radiusCircleAdded) return;
+
+    const layers = ['radius-circle-fill', 'radius-circle-outline'];
+    layers.forEach((id) => {
+      if (this.map.getLayer(id)) {
+        this.map.removeLayer(id);
+      }
+    });
+
+    if (this.map.getSource('radius-circle-source')) {
+      this.map.removeSource('radius-circle-source');
+    }
+
+    this.radiusCircleAdded = false;
+  }
+
+  /**
+   * Update center location and radius circle
+   */
+  private updateCenterAndRadius(): void {
+    if (!this.map) return;
+
+    // Update center marker
+    this.addMarker();
+
+    // Update radius circle
+    if (this.showRadiusCircle) {
+      this.updateRadiusCircle();
+    }
+
+    // Fly to new center
+    if (this.latitude != null && this.longitude != null) {
+      this.map.flyTo({
+        center: [this.longitude, this.latitude],
+        zoom: this.getZoomForRadius(this.currentRadius()),
+        essential: true,
+      });
+    }
+  }
+
+  /**
+   * Handle radius slider change
+   */
+  protected onRadiusSliderChange(value: number): void {
+    this.currentRadius.set(value);
+    this.updateRadiusCircle();
+    this.radiusChanged.emit(value);
+
+    // Adjust zoom to show the radius
+    if (this.map && this.latitude != null && this.longitude != null) {
+      this.map.easeTo({
+        zoom: this.getZoomForRadius(value),
+        duration: 300,
+      });
+    }
+  }
+
+  /**
+   * Get appropriate zoom level for a given radius
+   */
+  private getZoomForRadius(radiusKm: number): number {
+    // Approximate zoom levels for different radii
+    if (radiusKm <= 5) return 13;
+    if (radiusKm <= 10) return 12;
+    if (radiusKm <= 25) return 11;
+    if (radiusKm <= 50) return 10;
+    if (radiusKm <= 100) return 9;
+    return 8;
+  }
+
+  // ============================================================================
+  // CLEANUP
+  // ============================================================================
+
   /**
    * Destroy map and cleanup resources
    */
   private destroyMap(): void {
+    // Clean up car markers
+    this.carMarkers.forEach((marker) => marker.remove());
+    this.carMarkers.clear();
+    this.markerPopups.forEach((popup) => popup.remove());
+    this.markerPopups.clear();
+
+    // Clean up main marker
     if (this.marker) {
       this.marker.remove();
       this.marker = null;
     }
 
+    // Clean up map
     if (this.map) {
       this.map.remove();
       this.map = null;
     }
+
+    this.radiusCircleAdded = false;
   }
 }

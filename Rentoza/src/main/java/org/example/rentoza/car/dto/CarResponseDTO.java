@@ -4,24 +4,37 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.Setter;
 import org.example.rentoza.car.*;
+import org.example.rentoza.common.GeoPoint;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 
 @Getter
 @Setter
 @AllArgsConstructor
 public class CarResponseDTO {
 
+    // Privacy obfuscation radius in meters (±500m)
+    private static final int OBFUSCATION_RADIUS_METERS = 500;
+    private static final Random OBFUSCATION_RANDOM = new Random();
+
     private Long id;
     private String brand;
     private String model;
     private Integer year;
     private BigDecimal pricePerDay;
-    private String location;
+    private String location;  // City name only for non-owners/non-bookers
     private String imageUrl;
     private boolean available;
+
+    // Geospatial location fields (Phase 2.4 - Privacy Controlled)
+    private BigDecimal locationLatitude;   // Fuzzy or exact based on isExactLocation
+    private BigDecimal locationLongitude;  // Fuzzy or exact based on isExactLocation
+    private String locationAddress;        // null for non-owners/non-bookers, exact for owners
+    private String locationCity;           // Always visible (city name)
+    private boolean isExactLocation;       // Frontend uses this to render exact pin vs fuzzy circle
     
     // Owner Info (Privacy Safe)
     private Long ownerId;
@@ -47,14 +60,64 @@ public class CarResponseDTO {
     private List<String> imageUrls;
 
     public CarResponseDTO(Car car) {
+        this(car, false, null); // Default: no exact location access
+    }
+
+    /**
+     * Constructor with privacy control.
+     * 
+     * @param car The car entity
+     * @param isOwnerOrActiveBooker True if viewer is the car owner or has an active booking
+     * @param currentUserId The ID of the current user (null if anonymous)
+     */
+    public CarResponseDTO(Car car, boolean isOwnerOrActiveBooker, Long currentUserId) {
         this.id = car.getId();
         this.brand = car.getBrand();
         this.model = car.getModel();
         this.year = car.getYear();
         this.pricePerDay = car.getPricePerDay();
-        this.location = capitalizeLocation(car.getLocation());
         this.imageUrl = car.getImageUrl();
         this.available = car.isAvailable();
+
+        // Check if current user is the owner
+        boolean isOwner = currentUserId != null && 
+                          car.getOwner() != null && 
+                          car.getOwner().getId().equals(currentUserId);
+
+        // Privacy Logic: Owner or active booker sees exact location, others see fuzzy
+        this.isExactLocation = isOwner || isOwnerOrActiveBooker;
+
+        GeoPoint geoPoint = car.getLocationGeoPoint();
+        if (geoPoint != null) {
+            this.locationCity = geoPoint.getCity();
+            
+            if (this.isExactLocation) {
+                // EXACT: Owner or active booker - show precise location
+                this.locationLatitude = geoPoint.getLatitude();
+                this.locationLongitude = geoPoint.getLongitude();
+                this.locationAddress = geoPoint.getAddress();
+                this.location = geoPoint.getAddress() != null 
+                    ? geoPoint.getAddress() 
+                    : capitalizeLocation(car.getLocation());
+            } else {
+                // FUZZY: Public view - obfuscate coordinates, show city only
+                GeoPoint fuzzy = geoPoint.obfuscate(OBFUSCATION_RANDOM, OBFUSCATION_RADIUS_METERS);
+                this.locationLatitude = fuzzy.getLatitude();
+                this.locationLongitude = fuzzy.getLongitude();
+                this.locationAddress = null;  // Hide exact address
+                this.location = this.locationCity != null 
+                    ? capitalizeLocation(this.locationCity) 
+                    : capitalizeLocation(car.getLocation());
+            }
+        } else {
+            // Fallback to legacy location field (city name)
+            this.location = capitalizeLocation(car.getLocation());
+            this.locationCity = car.getLocation();
+            this.locationLatitude = null;
+            this.locationLongitude = null;
+            this.locationAddress = null;
+            this.isExactLocation = false;
+        }
 
         // New fields
         // License plate is NOT exposed in public DTO for security

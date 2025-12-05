@@ -1,0 +1,251 @@
+.geospatial-search-panel {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  margin-bottom: 16px;
+
+  // Panel Header (always visible)
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+
+    &:hover {
+      background-color: #f5f5f5;
+    }
+
+    .header-content {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+
+      .location-icon {
+        color: #1976d2;
+        font-size: 24px;
+        width: 24px;
+        height: 24px;
+      }
+
+      .header-text {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+
+        .location-address {
+          font-weight: 500;
+          color: #333;
+          font-size: 0.95rem;
+        }
+
+        .location-radius {
+          font-size: 0.8rem;
+          color: #666;
+        }
+
+        .location-placeholder {
+          color: #666;
+          font-size: 0.95rem;
+        }
+      }
+    }
+
+    .expand-icon {
+      color: #666;
+      transition: transform 0.3s;
+    }
+  }
+
+  // Expanded Content
+  .panel-content {
+    padding: 0 16px 16px;
+    border-top: 1px solid #e0e0e0;
+  }
+
+  // Quick Actions
+  .quick-actions {
+    display: flex;
+    gap: 12px;
+    padding: 16px 0;
+    flex-wrap: wrap;
+
+    .action-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+
+      mat-icon {
+        font-size: 20px;
+        width: 20px;
+        height: 20px;
+      }
+
+      mat-spinner {
+        margin-right: 4px;
+      }
+    }
+  }
+
+  // Address Field
+  .address-field {
+    width: 100%;
+    margin-bottom: 8px;
+  }
+
+  .suggestion-item {
+    display: flex;
+    flex-direction: column;
+    padding: 4px 0;
+
+    .suggestion-address {
+      font-weight: 500;
+    }
+
+    .suggestion-city {
+      font-size: 0.85rem;
+      color: #666;
+    }
+  }
+
+  // Radius Control
+  .radius-control {
+    margin: 16px 0;
+    padding: 12px 16px;
+    background: #f8f9fa;
+    border-radius: 8px;
+
+    .radius-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+
+      mat-icon {
+        font-size: 20px;
+        width: 20px;
+        height: 20px;
+        color: #1976d2;
+      }
+
+      strong {
+        color: #1976d2;
+      }
+    }
+
+    .radius-slider {
+      width: 100%;
+    }
+
+    .radius-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.75rem;
+      color: #666;
+      margin-top: 4px;
+    }
+  }
+
+  // Map Container
+  .map-container {
+    margin: 16px 0;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  }
+
+  // Action Buttons
+  .panel-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    padding-top: 16px;
+    border-top: 1px solid #e0e0e0;
+    margin-top: 8px;
+
+    .clear-btn {
+      color: #666;
+    }
+
+    .search-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 24px;
+
+      mat-spinner {
+        margin-right: 4px;
+      }
+    }
+  }
+}
+
+// Dark Mode
+:host-context(.dark-theme) {
+  .geospatial-search-panel {
+    background: #1e1e1e;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+
+    .panel-header {
+      &:hover {
+        background-color: #2d2d2d;
+      }
+
+      .header-content {
+        .header-text {
+          .location-address {
+            color: #fff;
+          }
+
+          .location-radius,
+          .location-placeholder {
+            color: #aaa;
+          }
+        }
+      }
+
+      .expand-icon {
+        color: #aaa;
+      }
+    }
+
+    .panel-content {
+      border-top-color: #444;
+    }
+
+    .radius-control {
+      background: #2d2d2d;
+    }
+
+    .panel-actions {
+      border-top-color: #444;
+    }
+  }
+}
+
+// Responsive
+@media (max-width: 600px) {
+  .geospatial-search-panel {
+    .quick-actions {
+      flex-direction: column;
+
+      .action-btn {
+        width: 100%;
+        justify-content: center;
+      }
+    }
+
+    .panel-actions {
+      flex-direction: column;
+
+      button {
+        width: 100%;
+      }
+    }
+  }
+}

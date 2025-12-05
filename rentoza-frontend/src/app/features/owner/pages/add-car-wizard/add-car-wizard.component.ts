@@ -19,6 +19,10 @@ import { STEPPER_GLOBAL_OPTIONS } from '@angular/cdk/stepper';
 import { FuelType, TransmissionType, Feature, CAR_RENTAL_RULES, Car } from '@core/models/car.model';
 import { CarService } from '@core/services/car.service';
 import { AuthService } from '@core/auth/auth.service';
+import {
+  LocationStepComponent,
+  LocationStepData,
+} from './steps/location-step/location-step.component';
 
 @Component({
   selector: 'app-add-car-wizard',
@@ -39,6 +43,7 @@ import { AuthService } from '@core/auth/auth.service';
     MatCardModule,
     MatProgressSpinnerModule,
     MatSnackBarModule,
+    LocationStepComponent,
   ],
   providers: [
     {
@@ -57,11 +62,14 @@ export class AddCarWizardComponent implements OnInit {
   private readonly authService = inject(AuthService);
 
   @ViewChild('stepper') stepper!: MatStepper;
+  @ViewChild('locationStep') locationStepComponent!: LocationStepComponent;
 
   protected readonly isSubmitting = signal(false);
   protected readonly selectedFeatures = signal<Feature[]>([]);
   protected readonly addOns = signal<string[]>([]);
   protected readonly imageUrls = signal<string[]>([]);
+  protected readonly locationData = signal<LocationStepData | null>(null);
+  protected readonly isLocationValid = signal(false);
 
   // Enums for templates
   protected readonly FuelType = FuelType;
@@ -119,7 +127,7 @@ export class AddCarWizardComponent implements OnInit {
     ],
   };
 
-  // Step 1: Basic Information
+  // Step 1: Basic Information (location moved to separate step)
   protected readonly basicInfoForm = this.fb.nonNullable.group({
     brand: ['', [Validators.required, Validators.minLength(2)]],
     model: ['', [Validators.required, Validators.minLength(2)]],
@@ -128,7 +136,6 @@ export class AddCarWizardComponent implements OnInit {
       [Validators.required, Validators.min(1950), Validators.max(2050)],
     ],
     licensePlate: ['', [Validators.required, Validators.pattern('^[A-Z]{2}-[0-9]{3,4}-[A-Z]{2}$')]],
-    location: ['', [Validators.required, Validators.minLength(2)]],
     pricePerDay: [0, [Validators.required, Validators.min(10)]],
     description: ['', [Validators.maxLength(1000)]],
   });
@@ -151,6 +158,22 @@ export class AddCarWizardComponent implements OnInit {
   ngOnInit(): void {
     // Initialize with default values
   }
+
+  // ============================================================================
+  // LOCATION STEP HANDLERS (Phase 2.4 Geospatial)
+  // ============================================================================
+
+  protected onLocationSelected(location: LocationStepData): void {
+    this.locationData.set(location);
+  }
+
+  protected onLocationValidityChanged(isValid: boolean): void {
+    this.isLocationValid.set(isValid);
+  }
+
+  // ============================================================================
+  // FEATURE SELECTION
+  // ============================================================================
 
   // Feature Selection
   protected toggleFeature(feature: Feature): void {
@@ -217,7 +240,8 @@ export class AddCarWizardComponent implements OnInit {
     if (
       this.basicInfoForm.invalid ||
       this.specificationsForm.invalid ||
-      this.policiesForm.invalid
+      this.policiesForm.invalid ||
+      !this.isLocationValid()
     ) {
       this.snackBar.open('Molimo popunite sva obavezna polja', 'Zatvori', { duration: 3000 });
       return;
@@ -229,6 +253,13 @@ export class AddCarWizardComponent implements OnInit {
       return;
     }
 
+    // Validate location data
+    const location = this.locationData();
+    if (!location) {
+      this.snackBar.open('Molimo unesite lokaciju vozila', 'Zatvori', { duration: 3000 });
+      return;
+    }
+
     this.isSubmitting.set(true);
 
     const carData: Partial<Car> = {
@@ -236,7 +267,12 @@ export class AddCarWizardComponent implements OnInit {
       model: this.basicInfoForm.value.model!,
       year: this.basicInfoForm.value.year!,
       licensePlate: this.basicInfoForm.value.licensePlate!,
-      location: this.basicInfoForm.value.location!,
+      // Geospatial location data (Phase 2.4)
+      location: location.address, // Legacy string field for backward compatibility
+      locationLatitude: location.latitude,
+      locationLongitude: location.longitude,
+      locationCity: location.city,
+      locationZipCode: location.zipCode,
       pricePerDay: this.basicInfoForm.value.pricePerDay!,
       description: this.basicInfoForm.value.description,
       seats: this.specificationsForm.value.seats!,

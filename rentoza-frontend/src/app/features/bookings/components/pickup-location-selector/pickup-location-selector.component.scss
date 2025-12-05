@@ -1,0 +1,387 @@
+/**
+ * Pickup Location Selector Styles
+ *
+ * @since 2.4.0 (Geospatial Location Migration)
+ */
+
+.pickup-location-selector {
+  padding: 16px;
+  border-radius: 8px;
+  background: var(--mat-app-surface, #fafafa);
+  border: 1px solid var(--mat-app-outline-variant, #e0e0e0);
+}
+
+// Section title
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 16px 0;
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--mat-app-on-surface, #333);
+
+  mat-icon {
+    color: var(--mat-app-primary, #3f51b5);
+  }
+}
+
+// Pickup options
+.pickup-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+
+  mat-radio-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+}
+
+.pickup-radio {
+  display: block;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--mat-app-background, #fff);
+  border: 1px solid var(--mat-app-outline-variant, #e0e0e0);
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+
+  &:hover {
+    border-color: var(--mat-app-primary, #3f51b5);
+    background: rgba(63, 81, 181, 0.04);
+  }
+
+  &.mat-mdc-radio-checked {
+    border-color: var(--mat-app-primary, #3f51b5);
+    background: rgba(63, 81, 181, 0.08);
+  }
+
+  ::ng-deep {
+    .mdc-form-field {
+      width: 100%;
+    }
+
+    .mdc-label {
+      width: 100%;
+      padding-left: 8px;
+    }
+  }
+}
+
+.option-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.option-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+
+  mat-icon {
+    font-size: 20px;
+    width: 20px;
+    height: 20px;
+    color: var(--mat-app-on-surface-variant, #666);
+  }
+}
+
+.option-address {
+  font-size: 0.85rem;
+  color: var(--mat-app-on-surface-variant, #666);
+  padding-left: 28px;
+}
+
+.option-hint {
+  font-size: 0.8rem;
+  color: var(--mat-app-on-surface-variant, #888);
+  padding-left: 28px;
+}
+
+.option-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  margin-left: 28px;
+  width: fit-content;
+
+  &.free {
+    background: rgba(76, 175, 80, 0.1);
+    color: #2e7d32;
+  }
+}
+
+// Custom location section
+.custom-location-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--mat-app-outline-variant, #e0e0e0);
+}
+
+.map-instruction {
+  margin: 0 0 12px 0;
+  font-size: 0.9rem;
+  color: var(--mat-app-on-surface-variant, #666);
+}
+
+// Selected location info
+.selected-location-info {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--mat-app-background, #fff);
+  border-radius: 8px;
+  border: 1px solid var(--mat-app-outline-variant, #e0e0e0);
+
+  mat-icon {
+    color: var(--mat-app-primary, #3f51b5);
+    flex-shrink: 0;
+  }
+}
+
+.location-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  .address {
+    font-weight: 500;
+    color: var(--mat-app-on-surface, #333);
+  }
+
+  .distance {
+    font-size: 0.85rem;
+    color: var(--mat-app-on-surface-variant, #666);
+  }
+}
+
+// Fee calculating spinner
+.fee-calculating {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 12px;
+  background: rgba(63, 81, 181, 0.05);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  color: var(--mat-app-on-surface-variant, #666);
+}
+
+// Delivery fee display
+.delivery-fee-display {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 8px;
+
+  &.available {
+    background: rgba(76, 175, 80, 0.08);
+    border: 1px solid rgba(76, 175, 80, 0.3);
+  }
+
+  &.unavailable {
+    background: rgba(244, 67, 54, 0.08);
+    border: 1px solid rgba(244, 67, 54, 0.3);
+  }
+}
+
+.fee-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.success-icon {
+  color: #2e7d32;
+}
+
+.fee-label {
+  font-size: 0.9rem;
+  color: var(--mat-app-on-surface, #333);
+}
+
+.fee-amount {
+  font-weight: 600;
+  font-size: 1rem;
+  color: #2e7d32;
+}
+
+.delivery-time {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.85rem;
+  color: var(--mat-app-on-surface-variant, #666);
+  padding-left: 32px;
+}
+
+.fee-unavailable {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.error-icon {
+  color: #c62828;
+}
+
+// Validation message
+.validation-message {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 12px;
+  background: rgba(255, 152, 0, 0.1);
+  border: 1px solid rgba(255, 152, 0, 0.3);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  color: #e65100;
+
+  mat-icon {
+    color: #ff9800;
+  }
+}
+
+// Mobile responsive
+@media (max-width: 600px) {
+  .pickup-location-selector {
+    padding: 12px;
+  }
+
+  .pickup-radio {
+    padding: 10px;
+  }
+
+  .option-label {
+    font-size: 0.9rem;
+  }
+
+  .option-address,
+  .option-hint {
+    padding-left: 0;
+  }
+
+  .option-badge {
+    margin-left: 0;
+  }
+}
+
+// =====================================================
+// Dark Mode Styles
+// =====================================================
+:host-context(.theme-dark) {
+  .pickup-location-selector {
+    background: #1e1e1e;
+    border-color: #424242;
+  }
+
+  .section-title {
+    color: rgba(255, 255, 255, 0.87);
+  }
+
+  .pickup-radio {
+    background: #2d2d2d;
+    border-color: #424242;
+
+    &:hover {
+      background: rgba(63, 81, 181, 0.15);
+      border-color: #7986cb;
+    }
+
+    &.mat-mdc-radio-checked {
+      background: rgba(63, 81, 181, 0.2);
+      border-color: #7986cb;
+    }
+  }
+
+  .option-label {
+    color: rgba(255, 255, 255, 0.87);
+
+    mat-icon {
+      color: rgba(255, 255, 255, 0.7);
+    }
+  }
+
+  .option-address,
+  .option-hint {
+    color: rgba(255, 255, 255, 0.6);
+  }
+
+  .option-badge {
+    &.free {
+      background: rgba(76, 175, 80, 0.2);
+      color: #81c784;
+    }
+  }
+
+  .custom-location-section {
+    border-top-color: #424242;
+  }
+
+  .map-instruction {
+    color: rgba(255, 255, 255, 0.6);
+  }
+
+  .selected-location-info {
+    background: #2d2d2d;
+    border-color: #424242;
+  }
+
+  .location-details {
+    .address {
+      color: rgba(255, 255, 255, 0.87);
+    }
+
+    .distance {
+      color: rgba(255, 255, 255, 0.6);
+    }
+  }
+
+  .fee-calculating {
+    background: rgba(63, 81, 181, 0.15);
+    color: rgba(255, 255, 255, 0.6);
+  }
+
+  .delivery-fee-display {
+    &.available {
+      background: rgba(76, 175, 80, 0.15);
+      border-color: rgba(76, 175, 80, 0.4);
+    }
+
+    &.unavailable {
+      background: rgba(244, 67, 54, 0.15);
+      border-color: rgba(244, 67, 54, 0.4);
+    }
+  }
+
+  .fee-label {
+    color: rgba(255, 255, 255, 0.87);
+  }
+
+  .fee-amount {
+    color: #81c784;
+  }
+
+  .delivery-time {
+    color: rgba(255, 255, 255, 0.6);
+  }
+
+  .validation-message {
+    background: rgba(255, 152, 0, 0.15);
+    border-color: rgba(255, 152, 0, 0.4);
+    color: #ffb74d;
+
+    mat-icon {
+      color: #ffb74d;
+    }
+  }
+}

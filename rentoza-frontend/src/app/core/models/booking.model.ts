@@ -3,7 +3,7 @@ import { User } from './user.model';
 
 /**
  * Booking status enum values.
- * 
+ *
  * <h2>Exact Timestamp Architecture</h2>
  * Statuses remain the same, but timing-related behavior
  * is now based on exact timestamps instead of date + time windows.
@@ -39,7 +39,7 @@ export type CheckInStatus =
 
 /**
  * Booking interface.
- * 
+ *
  * <h2>Exact Timestamp Architecture</h2>
  * Uses precise start/end timestamps instead of date + time window.
  * All times are in Europe/Belgrade timezone.
@@ -90,7 +90,7 @@ export interface Booking {
 
 /**
  * Booking request interface.
- * 
+ *
  * <h2>Exact Timestamp Architecture</h2>
  * Uses precise start/end timestamps.
  * Times should be on 30-minute boundaries.
@@ -110,6 +110,19 @@ export interface BookingRequest {
   endTime: string;
   insuranceType?: string; // BASIC, STANDARD, PREMIUM
   prepaidRefuel?: boolean;
+
+  // Driver information
+  driverName?: string;
+  driverSurname?: string;
+  driverAge?: number;
+  driverPhone?: string;
+
+  // Pickup location (Phase 2.4 - Geospatial)
+  pickupLatitude?: number;
+  pickupLongitude?: number;
+  pickupAddress?: string;
+  isCarLocationPickup?: boolean;
+  deliveryFee?: number;
 }
 
 /**
@@ -204,7 +217,10 @@ export function combineDateTime(date: Date, time: string): string {
  */
 export function parseDateTime(dateTimeStr: string): { date: Date; time: string } {
   const dt = new Date(dateTimeStr);
-  const time = `${dt.getHours().toString().padStart(2, '0')}:${dt.getMinutes().toString().padStart(2, '0')}`;
+  const time = `${dt.getHours().toString().padStart(2, '0')}:${dt
+    .getMinutes()
+    .toString()
+    .padStart(2, '0')}`;
   return { date: dt, time };
 }
 
@@ -215,11 +231,11 @@ export function formatDuration(startTime: string, endTime: string): string {
   const start = new Date(startTime);
   const end = new Date(endTime);
   const hours = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60));
-  
+
   if (hours < 24) {
     return `${hours} sat${hours === 1 ? '' : hours < 5 ? 'a' : 'i'}`;
   }
-  
+
   const days = Math.ceil(hours / 24);
   return `${days} dan${days === 1 ? '' : days < 5 ? 'a' : 'a'}`;
 }

@@ -19,6 +19,13 @@ public class CarRequestDTO {
     private List<String> imageUrls;
     private String ownerEmail;
 
+    // Geospatial location fields (Phase 2.4) - REQUIRED for new cars
+    private BigDecimal locationLatitude;
+    private BigDecimal locationLongitude;
+    private String locationAddress;
+    private String locationCity;
+    private String locationZipCode;
+
     // New production-ready fields
     private String licensePlate;
     private String description;

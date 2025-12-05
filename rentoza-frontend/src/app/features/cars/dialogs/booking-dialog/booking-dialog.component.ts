@@ -6,6 +6,7 @@ import {
   signal,
   DestroyRef,
   ChangeDetectorRef,
+  ViewChild,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -28,8 +29,19 @@ import { BookingService } from '@core/services/booking.service';
 import { CarService } from '@core/services/car.service';
 import { AuthService } from '@core/auth/auth.service';
 import { take, finalize } from 'rxjs';
-import { Booking, generateTimeSlots, TimeSlot, combineDateTime, calculatePeriods } from '@core/models/booking.model';
+import {
+  Booking,
+  generateTimeSlots,
+  TimeSlot,
+  combineDateTime,
+  calculatePeriods,
+} from '@core/models/booking.model';
 import { BlockedDate } from '@core/models/blocked-date.model';
+import {
+  PickupLocationSelectorComponent,
+  PickupLocationData,
+} from '@features/bookings/components/pickup-location-selector';
+import { DeliveryFeeResult } from '@core/services/location.service';
 
 export interface BookingDialogData {
   car: Car;
@@ -39,7 +51,7 @@ export interface BookingDialogData {
 
 /**
  * BookingDialogComponent - Exact Timestamp Architecture
- * 
+ *
  * Uses precise start/end timestamps instead of date + time window.
  * - Time slots are in 30-minute intervals
  * - Minimum rental duration: 24 hours
@@ -63,6 +75,7 @@ export interface BookingDialogData {
     MatProgressSpinnerModule,
     MatSnackBarModule,
     MatSelectModule,
+    PickupLocationSelectorComponent,
   ],
   templateUrl: './booking-dialog.component.html',
   styleUrls: ['./booking-dialog.component.scss'],
@@ -76,6 +89,9 @@ export class BookingDialogComponent implements OnInit {
   private readonly dialogRef = inject(MatDialogRef<BookingDialogComponent>);
   private readonly destroyRef = inject(DestroyRef);
   private readonly cdr = inject(ChangeDetectorRef);
+
+  // ViewChild for pickup location selector
+  @ViewChild(PickupLocationSelectorComponent) pickupSelector?: PickupLocationSelectorComponent;
 
   // Booking constraints
   private readonly BUFFER_DAYS = 1;
@@ -112,12 +128,44 @@ export class BookingDialogComponent implements OnInit {
   protected readonly rentalDays = signal(0);
   protected readonly rentalHours = signal(0);
 
+  // Pickup location state (Phase 2.4)
+  protected readonly pickupLocation = signal<PickupLocationData | null>(null);
+  protected readonly deliveryFee = signal<DeliveryFeeResult | null>(null);
+  protected readonly pickupLocationValid = signal(true);
+
   protected readonly startDateMin = new Date();
   protected endDateMin = new Date();
 
   // Unavailable ranges from backend (includes bookings, blocked dates, and gaps)
   private readonly unavailableRanges = signal<UnavailableRange[]>([]);
   private readonly isLoadingAvailability = signal(false);
+
+  // Delivery fee cost for total price (Phase 2.4)
+  protected readonly deliveryFeeCost = signal(0);
+
+  // Computed car location GeoPoint (Phase 2.4)
+  protected get carGeoPoint() {
+    const car = this.data.car;
+    if (car.locationLatitude && car.locationLongitude) {
+      return {
+        latitude: car.locationLatitude,
+        longitude: car.locationLongitude,
+        address: car.locationAddress,
+        city: car.locationCity,
+      };
+    }
+    return null;
+  }
+
+  // Whether car offers delivery option (Phase 2.4)
+  protected get deliveryAvailable(): boolean {
+    return this.data.car.deliveryAvailable ?? false;
+  }
+
+  // Maximum delivery radius (Phase 2.4)
+  protected get deliveryMaxRadius(): number {
+    return this.data.car.deliveryMaxRadiusKm ?? 25;
+  }
 
   protected readonly bookingForm = this.fb.nonNullable.group({
     startDate: [null as Date | null, Validators.required],
@@ -203,7 +251,7 @@ export class BookingDialogComponent implements OnInit {
   /**
    * Filter for start date - excludes unavailable dates and past dates.
    * Uses unavailable ranges from backend for accurate filtering.
-   * 
+   *
    * PERFORMANCE NOTE: This is O(N) per calendar cell render.
    * For MVP with < 100 bookings/year, acceptable. For optimization:
    * - Convert ranges to Set<string> of disabled dates (YYYY-MM-DD) for O(1) lookup
@@ -270,7 +318,10 @@ export class BookingDialogComponent implements OnInit {
       start,
       this.bookingForm.value.startTime || this.defaultStartTime
     );
-    const endDateTime = combineDateTime(date, this.bookingForm.value.endTime || this.defaultEndTime);
+    const endDateTime = combineDateTime(
+      date,
+      this.bookingForm.value.endTime || this.defaultEndTime
+    );
 
     return !this.isRangeUnavailable(startDateTime, endDateTime);
   };
@@ -344,9 +395,38 @@ export class BookingDialogComponent implements OnInit {
     }
     this.refuelCost.set(refuel);
 
-    // Total
-    const total = base * insuranceMultiplier + refuel;
+    // Total (includes delivery fee if applicable)
+    const deliveryCost = this.deliveryFeeCost();
+    const total = base * insuranceMultiplier + refuel + deliveryCost;
     this.totalPrice.set(total);
+  }
+
+  /**
+   * Handle pickup location change from selector (Phase 2.4)
+   */
+  protected onPickupLocationChanged(location: PickupLocationData): void {
+    this.pickupLocation.set(location);
+  }
+
+  /**
+   * Handle delivery fee calculation result (Phase 2.4)
+   */
+  protected onDeliveryFeeCalculated(fee: DeliveryFeeResult): void {
+    this.deliveryFee.set(fee);
+    if (fee.available && fee.fee) {
+      this.deliveryFeeCost.set(fee.fee);
+    } else {
+      this.deliveryFeeCost.set(0);
+    }
+    // Recalculate total price with delivery fee
+    this.calculatePrice();
+  }
+
+  /**
+   * Handle pickup location validity change (Phase 2.4)
+   */
+  protected onPickupValidityChanged(valid: boolean): void {
+    this.pickupLocationValid.set(valid);
   }
 
   private getInsuranceMultiplier(type: string): number {
@@ -421,19 +501,41 @@ export class BookingDialogComponent implements OnInit {
       return;
     }
 
+    // Validate pickup location if delivery was selected (Phase 2.4)
+    if (!this.pickupLocationValid()) {
+      this.snackBar.open(
+        'Molimo izaberite validnu lokaciju preuzimanja unutar dozvoljenog radijusa.',
+        'Zatvori',
+        { duration: 5000, panelClass: ['snackbar-error'] }
+      );
+      return;
+    }
+
     this.isSubmitting.set(true);
 
     // Build payload with exact timestamps (reuse endDateTime from above)
+    // Include pickup location data if available (Phase 2.4)
+    const pickup = this.pickupLocation();
     const payload = {
       carId: this.data.car.id.toString(),
       startTime: startDateTime,
       endTime: endDateTime,
       driverName: formValues.driverName,
       driverSurname: formValues.driverSurname,
-      driverAge: formValues.driverAge,
+      driverAge: formValues.driverAge ?? undefined,
       driverPhone: formValues.driverPhone,
       insuranceType: formValues.insuranceType || 'BASIC',
       prepaidRefuel: formValues.prepaidRefuel || false,
+      // Pickup location fields (Phase 2.4)
+      pickupLatitude: pickup?.latitude,
+      pickupLongitude: pickup?.longitude,
+      pickupAddress: pickup?.address,
+      isCarLocationPickup: pickup?.isCarLocation,
+      // Delivery fee if applicable
+      deliveryFee:
+        this.deliveryFee()?.available && this.deliveryFee()?.fee
+          ? this.deliveryFee()?.fee
+          : undefined,
     };
 
     // Validate availability before creating booking

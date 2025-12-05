@@ -53,6 +53,20 @@ public class CurrentUser {
     }
 
     /**
+     * Gets the authenticated user's database ID, or null if not authenticated.
+     * 
+     * <p>Use this method when anonymous access is allowed and you need to
+     * conditionally apply logic based on authentication status (e.g., privacy filtering).
+     * 
+     * @return User ID from SecurityContext, or null if not authenticated
+     */
+    public Long idOrNull() {
+        return getPrincipal()
+                .map(JwtUserPrincipal::id)
+                .orElse(null);
+    }
+
+    /**
      * Gets the authenticated user's email.
      * 
      * @return User email from SecurityContext

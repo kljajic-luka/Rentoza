@@ -5,6 +5,7 @@ import org.example.rentoza.booking.BookingStatus;
 import org.example.rentoza.car.dto.CarRequestDTO;
 import org.example.rentoza.car.dto.CarResponseDTO;
 import org.example.rentoza.car.dto.CarSearchCriteria;
+import org.example.rentoza.common.GeoPoint;
 import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.review.ReviewDirection;
 import org.example.rentoza.review.ReviewRepository;
@@ -54,6 +55,10 @@ public class CarService {
         if (dto.getPricePerDay() == null || dto.getPricePerDay().compareTo(BigDecimal.TEN) < 0) {
             throw new RuntimeException("Price per day must be at least 10 RSD");
         }
+        // Geospatial coordinates are REQUIRED (Phase 2.4)
+        if (dto.getLocationLatitude() == null || dto.getLocationLongitude() == null) {
+            throw new RuntimeException("Location coordinates (latitude/longitude) are required");
+        }
 
         // Create new car entity with default values
         Car car = new Car();
@@ -66,6 +71,15 @@ public class CarService {
         car.setLocation(dto.getLocation().trim().toLowerCase());
         car.setOwner(owner);
         car.setAvailable(true);
+
+        // Set geospatial location (Phase 2.4 - REQUIRED)
+        GeoPoint geoPoint = new GeoPoint();
+        geoPoint.setLatitude(dto.getLocationLatitude());
+        geoPoint.setLongitude(dto.getLocationLongitude());
+        geoPoint.setAddress(dto.getLocationAddress() != null ? dto.getLocationAddress() : dto.getLocation());
+        geoPoint.setCity(dto.getLocationCity());
+        geoPoint.setZipCode(dto.getLocationZipCode());
+        car.setLocationGeoPoint(geoPoint);
 
         // Map optional license plate
         if (dto.getLicensePlate() != null && !dto.getLicensePlate().isBlank()) {
@@ -137,18 +151,22 @@ public class CarService {
     @Transactional(readOnly = true)
     public List<CarResponseDTO> getAllCars() {
         // Public listing - only show available cars to users
+        // Privacy: Use fuzzy locations for non-owners
+        Long currentUserId = currentUser.idOrNull();
         return repo.findByAvailableTrue()
                 .stream()
-                .map(this::mapToResponse)
+                .map(car -> mapToResponseWithPrivacy(car, currentUserId))
                 .collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
     public List<CarResponseDTO> getCarsByLocation(String location) {
         // Public listing - only show available cars to users
+        // Privacy: Use fuzzy locations for non-owners
+        Long currentUserId = currentUser.idOrNull();
         return repo.findByLocationIgnoreCaseAndAvailableTrue(location)
                 .stream()
-                .map(this::mapToResponse)
+                .map(car -> mapToResponseWithPrivacy(car, currentUserId))
                 .collect(Collectors.toList());
     }
 
@@ -171,9 +189,10 @@ public class CarService {
             );
         }
         
+        Long currentUserId = currentUser.idOrNull();
         return repo.findByOwnerEmailIgnoreCase(email)
                 .stream()
-                .map(this::mapToResponse)
+                .map(car -> mapToResponseWithPrivacy(car, currentUserId)) // Owners will see exact location
                 .collect(Collectors.toList());
     }
 
@@ -200,8 +219,21 @@ public class CarService {
                 });
 
         log.debug("[CarService] Found car: {} {} (ID={})", car.getBrand(), car.getModel(), car.getId());
+
+        // Privacy check: Is current user the owner or has an active booking?
+        Long currentUserId = currentUser.idOrNull();
+        boolean hasActiveBooking = false;
         
-        CarResponseDTO dto = mapToResponse(car);
+        if (currentUserId != null) {
+            // Check for active booking (APPROVED, IN_TRIP, etc.)
+            hasActiveBooking = bookingRepo.findByCarIdAndRenterEmailIgnoreCaseAndStatusIn(
+                car.getId(),
+                currentUser.email(),
+                List.of(BookingStatus.ACTIVE, BookingStatus.IN_TRIP)
+            ).stream().findAny().isPresent();
+        }
+        
+        CarResponseDTO dto = new CarResponseDTO(car, hasActiveBooking, currentUserId);
         
         // Populate owner stats for detailed view
         if (car.getOwner() != null) {
@@ -292,8 +324,8 @@ public class CarService {
         }
 
         Car savedCar = repo.save(car);
-        // Return DTO to avoid lazy initialization issues
-        return mapToResponse(savedCar);
+        // Return DTO with exact location for owner
+        return new CarResponseDTO(savedCar, true, requester.getId());
     }
 
     @Transactional
@@ -308,8 +340,8 @@ public class CarService {
 
         car.setAvailable(available);
         Car savedCar = repo.save(car);
-        // Return DTO to avoid lazy initialization issues
-        return mapToResponse(savedCar);
+        // Return DTO with exact location for owner
+        return new CarResponseDTO(savedCar, true, requester.getId());
     }
 
     /**
@@ -344,8 +376,9 @@ public class CarService {
         // Execute query
         Page<Car> carPage = repo.findAll(spec, pageable);
 
-        // Map to DTOs
-        return carPage.map(this::mapToResponse);
+        // Map to DTOs with privacy-aware location
+        Long currentUserId = currentUser.idOrNull();
+        return carPage.map(car -> mapToResponseWithPrivacy(car, currentUserId));
     }
 
     /**
@@ -389,6 +422,24 @@ public class CarService {
                 field.equals("model") ||
                 field.equals("seats") ||
                 field.equals("id");
+    }
+
+    /**
+     * Map Car to CarResponseDTO with privacy-aware location handling.
+     * 
+     * Privacy Logic:
+     * - Owner sees exact location (isOwner check in DTO constructor)
+     * - Active booker sees exact location (passed via hasActiveBooking parameter)
+     * - Others see fuzzy coordinates (±500m) and city-only address
+     * 
+     * @param car The car entity
+     * @param currentUserId The current user's ID (null if anonymous)
+     * @return CarResponseDTO with appropriate location privacy
+     */
+    private CarResponseDTO mapToResponseWithPrivacy(Car car, Long currentUserId) {
+        // For list views, we don't check active bookings (performance)
+        // Active booking check is done in getCarById for detail views
+        return new CarResponseDTO(car, false, currentUserId);
     }
 
     private CarResponseDTO mapToResponse(Car car) {

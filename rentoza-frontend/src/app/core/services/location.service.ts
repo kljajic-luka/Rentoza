@@ -1,18 +1,61 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, signal, computed } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { Observable, of, shareReplay, catchError, map } from 'rxjs';
+import {
+  Observable,
+  of,
+  shareReplay,
+  catchError,
+  map,
+  Subject,
+  debounceTime,
+  distinctUntilChanged,
+  switchMap,
+  tap,
+  BehaviorSubject,
+} from 'rxjs';
 import { environment } from '../../../environments/environment';
+import {
+  GeoCoordinates,
+  GeoPointDTO,
+  GeocodeSuggestion,
+  ReverseGeocodeResult,
+  GeospatialSearchFilters,
+  CarSearchResult,
+  CarSearchResponse,
+  DeliveryFeeResult,
+  DeliveryAvailability,
+  DeliveryPoi,
+  CarMarker,
+  LocationValidation,
+  SERBIA_BOUNDS,
+  DEFAULT_MAP_CENTER,
+  validateLocation,
+  isWithinSerbia,
+  ObfuscatedGeoPointDTO,
+} from '../models/location.model';
+
+// Re-export types for consumers that import from the service
+export type {
+  GeoCoordinates,
+  GeoPointDTO,
+  GeocodeSuggestion,
+  ReverseGeocodeResult,
+  GeospatialSearchFilters,
+  CarSearchResult,
+  CarSearchResponse,
+  DeliveryFeeResult,
+  DeliveryAvailability,
+  DeliveryPoi,
+  CarMarker,
+  LocationValidation,
+  ObfuscatedGeoPointDTO,
+} from '../models/location.model';
+
+export { SERBIA_BOUNDS, DEFAULT_MAP_CENTER } from '../models/location.model';
 
 /**
- * Represents a geographic coordinate pair
- */
-export interface GeoCoordinates {
-  latitude: number;
-  longitude: number;
-}
-
-/**
- * Car location for map display
+ * Car location for map display (legacy interface, use CarMarker for new code)
+ * @deprecated Use CarMarker from location.model.ts instead
  */
 export interface CarLocation {
   id: number;
@@ -22,37 +65,6 @@ export interface CarLocation {
   pricePerDay: number;
   available: boolean;
   distanceKm?: number;
-}
-
-/**
- * Delivery fee calculation result
- */
-export interface DeliveryFeeResult {
-  available: boolean;
-  fee?: number;
-  calculatedFee?: number;
-  distanceKm?: number;
-  estimatedMinutes?: number;
-  routingSource?: 'OSRM' | 'HAVERSINE_FALLBACK';
-  appliedPoiCode?: string;
-  unavailableReason?: string;
-  maxRadiusKm?: number;
-}
-
-/**
- * Point of Interest for delivery
- */
-export interface DeliveryPoi {
-  id: number;
-  name: string;
-  code: string;
-  latitude: number;
-  longitude: number;
-  radiusKm: number;
-  poiType: string;
-  fixedFee?: number;
-  minimumFee?: number;
-  surcharge?: number;
 }
 
 /**
@@ -75,6 +87,197 @@ export class LocationService {
 
   // Cache for POIs (rarely changes)
   private poisCache$: Observable<DeliveryPoi[]> | null = null;
+
+  // Geocoding autocomplete state
+  private readonly geocodeSearchSubject = new Subject<string>();
+  readonly geocodeSuggestions$ = this.geocodeSearchSubject.pipe(
+    debounceTime(300),
+    distinctUntilChanged(),
+    switchMap((query) => (query.length >= 2 ? this.geocodeAddress(query) : of([])))
+  );
+
+  /**
+   * Geocode an address string to coordinates
+   * Uses backend proxy to Mapbox/Nominatim API
+   *
+   * @param address Address or place name to geocode
+   * @returns Observable of geocode suggestions
+   */
+  geocodeAddress(address: string): Observable<GeocodeSuggestion[]> {
+    if (!address || address.trim().length < 2) {
+      return of([]);
+    }
+
+    const params = new HttpParams().set('query', address.trim()).set('limit', '5');
+
+    return this.http.get<GeocodeSuggestion[]>(`${this.baseUrl}/locations/geocode`, { params }).pipe(
+      catchError((error) => {
+        console.error('Geocoding failed:', error);
+        return of([]);
+      })
+    );
+  }
+
+  /**
+   * Trigger geocode search (for autocomplete)
+   *
+   * @param query Search query
+   */
+  searchAddress(query: string): void {
+    this.geocodeSearchSubject.next(query);
+  }
+
+  /**
+   * Reverse geocode coordinates to address
+   *
+   * @param latitude Latitude
+   * @param longitude Longitude
+   * @returns Observable of reverse geocode result
+   */
+  reverseGeocode(latitude: number, longitude: number): Observable<ReverseGeocodeResult> {
+    const params = new HttpParams()
+      .set('latitude', latitude.toString())
+      .set('longitude', longitude.toString());
+
+    return this.http
+      .get<ReverseGeocodeResult>(`${this.baseUrl}/locations/reverse-geocode`, { params })
+      .pipe(
+        catchError((error) => {
+          console.error('Reverse geocoding failed:', error);
+          return of({
+            formattedAddress: 'Unknown location',
+            address: 'Unknown',
+            city: 'Unknown',
+            zipCode: undefined,
+            country: 'Serbia',
+            placeType: 'address',
+          });
+        })
+      );
+  }
+
+  /**
+   * Search cars near a location with filters
+   *
+   * @param filters Search filters including location and radius
+   * @returns Observable of car search response
+   */
+  searchCars(filters: GeospatialSearchFilters): Observable<CarSearchResponse> {
+    let params = new HttpParams();
+
+    // Location filters (required for geospatial search)
+    if (filters.latitude != null) {
+      params = params.set('latitude', filters.latitude.toString());
+    }
+    if (filters.longitude != null) {
+      params = params.set('longitude', filters.longitude.toString());
+    }
+    if (filters.radiusKm != null) {
+      params = params.set('radiusKm', filters.radiusKm.toString());
+    }
+    if (filters.distanceMaxKm != null) {
+      params = params.set('distanceMaxKm', filters.distanceMaxKm.toString());
+    }
+
+    // Price filters
+    if (filters.pricePerDayMin != null) {
+      params = params.set('priceMin', filters.pricePerDayMin.toString());
+    }
+    if (filters.pricePerDayMax != null) {
+      params = params.set('priceMax', filters.pricePerDayMax.toString());
+    }
+
+    // Vehicle filters
+    if (filters.fuelType) {
+      params = params.set('fuelType', filters.fuelType);
+    }
+    if (filters.transmission) {
+      params = params.set('transmission', filters.transmission);
+    }
+    if (filters.carType && filters.carType.length > 0) {
+      params = params.set('carType', filters.carType.join(','));
+    }
+
+    // Delivery filter
+    if (filters.deliveryAvailable != null) {
+      params = params.set('deliveryAvailable', filters.deliveryAvailable.toString());
+    }
+
+    // Rating filter
+    if (filters.minRating != null) {
+      params = params.set('minRating', filters.minRating.toString());
+    }
+
+    // Pagination
+    params = params.set('page', (filters.page ?? 0).toString());
+    params = params.set('size', (filters.pageSize ?? 20).toString());
+
+    return this.http.get<CarSearchResponse>(`${this.baseUrl}/cars/search`, { params }).pipe(
+      catchError((error) => {
+        console.error('Car search failed:', error);
+        return of({
+          data: [],
+          pagination: {
+            total: 0,
+            page: filters.page ?? 0,
+            pageSize: filters.pageSize ?? 20,
+            totalPages: 0,
+          },
+        });
+      })
+    );
+  }
+
+  /**
+   * Get obfuscated location for a car (privacy protection)
+   *
+   * @param carId Car ID
+   * @param hasBookingHistory Whether user has booking history with this car
+   * @returns Observable of obfuscated location
+   */
+  getObfuscatedLocation(
+    carId: number,
+    hasBookingHistory = false
+  ): Observable<ObfuscatedGeoPointDTO> {
+    const params = new HttpParams().set('hasBookingHistory', hasBookingHistory.toString());
+
+    return this.http
+      .get<ObfuscatedGeoPointDTO>(`${this.baseUrl}/cars/${carId}/location`, { params })
+      .pipe(
+        catchError((error) => {
+          console.error('Failed to get car location:', error);
+          return of({
+            latitude: DEFAULT_MAP_CENTER.latitude,
+            longitude: DEFAULT_MAP_CENTER.longitude,
+            city: 'Unknown',
+            obfuscationRadiusMeters: 500,
+            obfuscationApplied: true,
+          });
+        })
+      );
+  }
+
+  /**
+   * Validate if coordinates are within Serbia bounds
+   *
+   * @param latitude Latitude
+   * @param longitude Longitude
+   * @returns Validation result
+   */
+  validateCoordinates(latitude: number, longitude: number): LocationValidation {
+    return validateLocation(latitude, longitude);
+  }
+
+  /**
+   * Check if coordinates are within Serbia
+   *
+   * @param latitude Latitude
+   * @param longitude Longitude
+   * @returns True if within Serbia bounds
+   */
+  isWithinSerbiaBounds(latitude: number, longitude: number): boolean {
+    return isWithinSerbia(latitude, longitude);
+  }
 
   /**
    * Find cars near a location

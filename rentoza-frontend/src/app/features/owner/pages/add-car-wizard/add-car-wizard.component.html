@@ -63,15 +63,6 @@
           </mat-form-field>
 
           <mat-form-field appearance="outline" class="form-field">
-            <mat-label>Lokacija</mat-label>
-            <input matInput formControlName="location" required />
-            <mat-icon matPrefix>location_on</mat-icon>
-            <ng-container *ngIf="basicInfoForm.controls.location.hasError('required')">
-              <mat-error>Lokacija je obavezna</mat-error>
-            </ng-container>
-          </mat-form-field>
-
-          <mat-form-field appearance="outline" class="form-field">
             <mat-label>Cena po danu (RSD)</mat-label>
             <input matInput type="number" formControlName="pricePerDay" required />
             <mat-icon matPrefix>payments</mat-icon>
@@ -102,7 +93,25 @@
       </form>
     </mat-step>
 
-    <!-- Step 2: Specifications -->
+    <!-- Step 2: Location (NEW - Geospatial Phase 2.4) -->
+    <mat-step label="Lokacija" [completed]="isLocationValid()">
+      <div class="step-form">
+        <app-location-step
+          #locationStep
+          (locationSelected)="onLocationSelected($event)"
+          (validityChanged)="onLocationValidityChanged($event)"
+        ></app-location-step>
+
+        <div class="step-actions">
+          <button mat-button matStepperPrevious><mat-icon>arrow_back</mat-icon> Nazad</button>
+          <button mat-raised-button color="primary" matStepperNext [disabled]="!isLocationValid()">
+            Dalje <mat-icon>arrow_forward</mat-icon>
+          </button>
+        </div>
+      </div>
+    </mat-step>
+
+    <!-- Step 3: Specifications -->
     <mat-step [stepControl]="specificationsForm" label="Specifikacije">
       <form [formGroup]="specificationsForm" class="step-form">
         <h2 class="step-title">Tehničke specifikacije</h2>
@@ -406,11 +415,24 @@
             >
             <mat-card-subtitle
               >{{ basicInfoForm.value.year }} •
-              {{ basicInfoForm.value.location }}</mat-card-subtitle
+              {{
+                locationData()?.city || locationData()?.address || 'Lokacija nije uneta'
+              }}</mat-card-subtitle
             >
           </mat-card-header>
 
           <mat-card-content>
+            <div class="summary-section">
+              <h4>Lokacija</h4>
+              <p>{{ locationData()?.address || 'Nije uneta' }}</p>
+              @if (locationData()) {
+              <p class="coordinates-hint">
+                ({{ locationData()!.latitude | number : '1.4-4' }},
+                {{ locationData()!.longitude | number : '1.4-4' }})
+              </p>
+              }
+            </div>
+
             <div class="summary-section">
               <h4>Cena</h4>
               <p class="price">

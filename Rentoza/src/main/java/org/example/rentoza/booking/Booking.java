@@ -130,7 +130,13 @@ public class Booking {
      * 
      * <p>This is a quick-access copy of {@link CancellationRecord#getCancelledBy()}.
      * Null if booking is not cancelled.
+     * 
+     * @deprecated Denormalized field duplicates CancellationRecord.cancelledBy.
+     *             Use {@link #getCancellationRecord()}.getCancelledBy() as the source of truth.
+     *             This field is kept for backwards compatibility with existing queries.
+     *             Must be updated transactionally with CancellationRecord.
      */
+    @Deprecated(since = "2.0", forRemoval = false)
     @Enumerated(EnumType.STRING)
     @Column(name = "cancelled_by", length = 20)
     private CancelledBy cancelledBy;
@@ -140,7 +146,13 @@ public class Booking {
      * 
      * <p>This is a quick-access copy of {@link CancellationRecord#getInitiatedAt()}.
      * Null if booking is not cancelled.
+     * 
+     * @deprecated Denormalized field duplicates CancellationRecord.initiatedAt.
+     *             Use {@link #getCancellationRecord()}.getInitiatedAt() as the source of truth.
+     *             This field is kept for backwards compatibility with existing queries.
+     *             Must be updated transactionally with CancellationRecord.
      */
+    @Deprecated(since = "2.0", forRemoval = false)
     @Column(name = "cancelled_at")
     private LocalDateTime cancelledAt;
 
@@ -316,19 +328,9 @@ public class Booking {
     @Column(name = "pickup_location_variance_meters")
     private Integer pickupLocationVarianceMeters;
 
-    /**
-     * Host who refined the pickup location at check-in.
-     * Null if location was not refined (exact match).
-     */
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "execution_location_updated_by")
-    private User executionLocationUpdatedBy;
-
-    /**
-     * When the host refined the pickup location.
-     */
-    @Column(name = "execution_location_updated_at")
-    private LocalDateTime executionLocationUpdatedAt;
+    // NOTE: executionLocationUpdatedBy and executionLocationUpdatedAt columns were removed
+    // as dead code - pickup location refinement UI was never implemented.
+    // Database migration V20251206__remove_dead_booking_columns.sql should drop these columns.
 
     // ========== DELIVERY TRACKING ==========
 

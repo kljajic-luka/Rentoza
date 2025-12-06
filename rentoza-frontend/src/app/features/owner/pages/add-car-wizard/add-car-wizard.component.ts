@@ -263,7 +263,7 @@ export class AddCarWizardComponent implements OnInit {
     this.isSubmitting.set(true);
 
     const carData: Partial<Car> = {
-      make: this.basicInfoForm.value.brand!, // Frontend 'make' = backend 'brand'
+      make: this.basicInfoForm.value.brand!,
       model: this.basicInfoForm.value.model!,
       year: this.basicInfoForm.value.year!,
       licensePlate: this.basicInfoForm.value.licensePlate!,

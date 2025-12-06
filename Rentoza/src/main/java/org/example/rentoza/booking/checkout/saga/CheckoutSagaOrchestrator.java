@@ -288,8 +288,17 @@ public class CheckoutSagaOrchestrator {
         Booking booking = loadBooking(saga.getBookingId());
 
         // TODO: Integrate with payment gateway to capture from held deposit
-        // For now, simulate capture
-        BigDecimal depositAmount = booking.getSecurityDeposit();
+        // Treat null securityDeposit as ZERO - allows checkout to proceed without deposit feature
+        BigDecimal depositAmount = booking.getSecurityDeposit() != null 
+                ? booking.getSecurityDeposit() 
+                : BigDecimal.ZERO;
+        
+        if (depositAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            log.warn("[Saga] No security deposit held for booking {} - skipping capture", saga.getBookingId());
+            saga.setCapturedAmount(BigDecimal.ZERO);
+            return;
+        }
+        
         BigDecimal captureAmount = saga.getTotalCharges().min(depositAmount);
 
         saga.setCapturedAmount(captureAmount);
@@ -302,8 +311,18 @@ public class CheckoutSagaOrchestrator {
     private void executeReleaseDeposit(CheckoutSagaState saga) {
         Booking booking = loadBooking(saga.getBookingId());
 
-        BigDecimal depositAmount = booking.getSecurityDeposit();
+        // Treat null securityDeposit as ZERO - allows checkout to proceed without deposit feature
+        BigDecimal depositAmount = booking.getSecurityDeposit() != null 
+                ? booking.getSecurityDeposit() 
+                : BigDecimal.ZERO;
         BigDecimal capturedAmount = saga.getCapturedAmount() != null ? saga.getCapturedAmount() : BigDecimal.ZERO;
+        
+        if (depositAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            log.debug("[Saga] No security deposit to release for booking {}", saga.getBookingId());
+            saga.setReleasedAmount(BigDecimal.ZERO);
+            return;
+        }
+        
         BigDecimal releaseAmount = depositAmount.subtract(capturedAmount);
 
         if (releaseAmount.compareTo(BigDecimal.ZERO) > 0) {

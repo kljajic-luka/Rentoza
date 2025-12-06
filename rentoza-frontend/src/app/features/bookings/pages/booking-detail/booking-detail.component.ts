@@ -202,7 +202,7 @@ import { BookingService } from '../../../../core/services/booking.service';
       }
 
       .status-active,
-      .status-in_progress {
+      .status-in_trip {
         background: var(--info-bg, #e3f2fd) !important;
         color: var(--info-color, #1976d2) !important;
       }
@@ -343,14 +343,25 @@ export class BookingDetailComponent implements OnInit {
   getStatusLabel(status: string | undefined): string {
     const labels: Record<string, string> = {
       PENDING: 'Na čekanju',
+      PENDING_APPROVAL: 'Na čekanju',
       CONFIRMED: 'Potvrđeno',
       ACTIVE: 'Aktivno',
-      IN_PROGRESS: 'U toku',
+      IN_TRIP: 'U toku',
       COMPLETED: 'Završeno',
       CANCELLED: 'Otkazano',
+      DECLINED: 'Odbijeno',
       CHECK_IN_OPEN: 'Čeka check-in',
+      CHECK_IN_HOST_COMPLETE: 'Čeka gosta',
+      CHECK_IN_COMPLETE: 'Spremno za preuzimanje',
+      CHECKOUT_OPEN: 'Čeka povratak',
+      CHECKOUT_GUEST_COMPLETE: 'Čeka domaćina',
+      CHECKOUT_HOST_COMPLETE: 'Završava se',
       HOST_SUBMITTED: 'Čeka gosta',
       GUEST_ACKNOWLEDGED: 'Potvrđeno',
+      NO_SHOW_HOST: 'Domaćin nije došao',
+      NO_SHOW_GUEST: 'Gost nije došao',
+      EXPIRED: 'Isteklo',
+      EXPIRED_SYSTEM: 'Isteklo',
     };
     return labels[status || ''] || status || 'Nepoznato';
   }

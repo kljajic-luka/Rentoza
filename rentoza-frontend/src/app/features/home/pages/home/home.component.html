@@ -20,18 +20,37 @@
             <input
               matInput
               placeholder="Grad, aerodrom, adresa ili hotel"
-              [matAutocomplete]="cityAuto"
+              [matAutocomplete]="locationAuto"
               autocomplete="off"
               [(ngModel)]="searchLocation"
+              (input)="onLocationInput($event)"
               (blur)="validateField('location')"
               (keyup.enter)="searchCars()"
             />
-            <mat-autocomplete
-              #cityAuto="matAutocomplete"
-              (optionSelected)="onCitySelected($event.option.value)"
+            <button
+              *ngIf="!isLoadingGeocode && !isGettingLocation"
+              mat-icon-button
+              matSuffix
+              type="button"
+              (click)="useCurrentLocation()"
+              matTooltip="Koristi moju lokaciju"
+              class="geolocation-btn"
             >
-              <mat-option *ngFor="let city of filteredCities" [value]="city">
-                {{ city }}
+              <mat-icon>my_location</mat-icon>
+            </button>
+            <mat-spinner
+              *ngIf="isLoadingGeocode || isGettingLocation"
+              diameter="20"
+              matSuffix
+            ></mat-spinner>
+            <mat-autocomplete
+              #locationAuto="matAutocomplete"
+              (optionSelected)="onGeocodeSuggestionSelected($event.option.value)"
+              [displayWith]="displayGeocodeSuggestion"
+            >
+              <mat-option *ngFor="let suggestion of geocodeSuggestions" [value]="suggestion">
+                <mat-icon>place</mat-icon>
+                <span>{{ suggestion.formattedAddress }}</span>
               </mat-option>
             </mat-autocomplete>
           </mat-form-field>
@@ -153,6 +172,136 @@
         </div>
       </div>
     </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     🗺️ GEOSPATIAL SEARCH RESULTS (Phase 2.4)
+     Shows search results on map or as list after user performs search
+     ═══════════════════════════════════════════════════════════════════════════ -->
+<section class="search-results" *ngIf="hasSearched">
+  <div class="search-results__header">
+    <div class="search-results__info">
+      <h2 *ngIf="!isSearching && searchResults.length > 0">
+        {{ searchResults.length }} vozila u krugu od {{ searchRadius }} km
+      </h2>
+      <h2 *ngIf="!isSearching && searchResults.length === 0">
+        Nema dostupnih vozila u ovom području
+      </h2>
+      <h2 *ngIf="isSearching">Pretraga u toku...</h2>
+      <p class="search-results__location" *ngIf="selectedGeocodeSuggestion">
+        <mat-icon>place</mat-icon>
+        {{ selectedGeocodeSuggestion.formattedAddress }}
+      </p>
+    </div>
+    <div class="search-results__controls">
+      <!-- Radius slider -->
+      <div class="radius-control">
+        <mat-icon>radar</mat-icon>
+        <mat-slider [min]="5" [max]="100" [step]="5" [displayWith]="formatRadius" discrete>
+          <input matSliderThumb [(ngModel)]="searchRadius" (valueChange)="onRadiusChange($event)" />
+        </mat-slider>
+        <span class="radius-label">{{ searchRadius }} km</span>
+      </div>
+      <!-- View toggle -->
+      <mat-button-toggle-group [value]="viewMode" (change)="viewMode = $event.value">
+        <mat-button-toggle value="list" aria-label="Lista">
+          <mat-icon>view_list</mat-icon>
+        </mat-button-toggle>
+        <mat-button-toggle value="map" aria-label="Mapa">
+          <mat-icon>map</mat-icon>
+        </mat-button-toggle>
+      </mat-button-toggle-group>
+    </div>
+  </div>
+
+  <!-- Loading spinner -->
+  <div class="search-results__loading" *ngIf="isSearching">
+    <mat-spinner diameter="48"></mat-spinner>
+    <p>Tražimo vozila u vašoj blizini...</p>
+  </div>
+
+  <!-- Map View -->
+  <div class="search-results__map" *ngIf="!isSearching && viewMode === 'map'">
+    <app-location-picker
+      [latitude]="searchCenter.latitude"
+      [longitude]="searchCenter.longitude"
+      [markers]="carMarkers"
+      [clusterMarkers]="true"
+      [showRadiusCircle]="true"
+      [markerRadius]="searchRadius"
+      [editable]="true"
+      [height]="'500px'"
+      [zoom]="11"
+      (locationChanged)="onMapLocationSelected($event)"
+      (markerSelected)="onCarMarkerSelected($event)"
+    >
+    </app-location-picker>
+  </div>
+
+  <!-- List View -->
+  <div
+    class="search-results__list"
+    *ngIf="!isSearching && viewMode === 'list' && searchResults.length > 0"
+  >
+    <div class="search-results__grid">
+      <mat-card
+        *ngFor="let car of searchResults"
+        class="search-result-card"
+        [routerLink]="['/cars', car.id]"
+      >
+        <div class="search-result-card__media">
+          <img
+            *ngIf="car.imageUrl; else placeholderImg"
+            [src]="car.imageUrl"
+            [alt]="car.brand + ' ' + car.model"
+            loading="lazy"
+          />
+          <ng-template #placeholderImg>
+            <div class="image-placeholder">
+              <mat-icon>directions_car</mat-icon>
+            </div>
+          </ng-template>
+          <span class="chip">{{ car.year }}</span>
+          <div class="distance-badge" *ngIf="car.distanceKm">
+            <mat-icon>near_me</mat-icon>
+            {{ car.distanceKm | number : '1.1-1' }} km
+          </div>
+        </div>
+        <div class="search-result-card__body">
+          <h3>{{ car.brand }} {{ car.model }}</h3>
+          <p class="meta">
+            <mat-icon class="meta-icon">place</mat-icon>
+            {{ car.locationGeoPoint?.city || 'Srbija' }}
+            <span *ngIf="car.locationGeoPoint?.obfuscationApplied" class="approx-location">
+              (približna lokacija)
+            </span>
+          </p>
+          <div class="search-result-card__features" *ngIf="car.features?.length">
+            <span *ngFor="let feature of car.features?.slice(0, 3)" class="feature-chip">
+              {{ feature }}
+            </span>
+          </div>
+        </div>
+        <div class="search-result-card__footer">
+          <span class="price">{{ car.pricePerDay | number : '1.0-0' }} RSD/dan</span>
+          <span class="delivery-badge" *ngIf="car.deliveryAvailable">
+            <mat-icon>local_shipping</mat-icon>
+            Dostava
+          </span>
+        </div>
+      </mat-card>
+    </div>
+  </div>
+
+  <!-- No results -->
+  <div class="search-results__empty" *ngIf="!isSearching && searchResults.length === 0">
+    <mat-icon>search_off</mat-icon>
+    <h3>Nema vozila u ovom području</h3>
+    <p>Pokušajte da povećate radijus pretrage ili promenite lokaciju.</p>
+    <button mat-stroked-button color="primary" (click)="searchRadius = 50; onRadiusChange(50)">
+      Povećaj radijus na 50 km
+    </button>
   </div>
 </section>
 

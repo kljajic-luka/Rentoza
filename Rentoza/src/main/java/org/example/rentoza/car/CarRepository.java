@@ -58,9 +58,12 @@ public interface CarRepository extends JpaRepository<Car, Long>, JpaSpecificatio
      * to avoid LazyInitializationException outside the transaction.
      * 
      * NOTE: For search results, we load features for filtering but NOT addOns.
+     * 
+     * Uses locationGeoPoint.city (mapped to location_city column) for city-based search.
+     * This leverages the idx_car_location_city_available index for optimal performance.
      */
     @EntityGraph(attributePaths = {"owner", "features"})
-    @Query("SELECT DISTINCT c FROM Car c WHERE LOWER(c.location) = LOWER(:location) AND c.available = true")
+    @Query("SELECT DISTINCT c FROM Car c WHERE LOWER(c.locationGeoPoint.city) = LOWER(:location) AND c.available = true")
     List<Car> findAvailableWithDetailsByLocation(@Param("location") String location);
 
     // ========== RLS-ENFORCED QUERIES (Enterprise Security Enhancement) ==========

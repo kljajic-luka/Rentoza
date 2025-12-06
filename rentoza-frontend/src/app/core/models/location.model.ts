@@ -104,6 +104,8 @@ export interface ReverseGeocodeResult {
  */
 export interface GeospatialSearchFilters {
   // === LOCATION FILTERS ===
+  /** Location string (city name) for backend search */
+  location?: string;
   /** Center latitude for proximity search */
   latitude?: number;
   /** Center longitude for proximity search */

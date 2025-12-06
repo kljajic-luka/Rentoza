@@ -13,6 +13,9 @@ import org.example.rentoza.booking.dto.UserBookingResponseDTO;
 import org.example.rentoza.car.Car;
 import org.example.rentoza.car.CarRepository;
 import org.example.rentoza.chat.ChatServiceClient;
+import org.example.rentoza.common.GeoPoint;
+import org.example.rentoza.delivery.DeliveryFeeCalculator;
+import org.example.rentoza.delivery.DeliveryFeeCalculator.DeliveryFeeResult;
 import org.example.rentoza.exception.BookingConflictException;
 import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.exception.UserOverlapException;
@@ -49,6 +52,7 @@ public class BookingService {
     private final NotificationService notificationService;
     private final org.example.rentoza.security.CurrentUser currentUser;
     private final CancellationPolicyService cancellationPolicyService;
+    private final DeliveryFeeCalculator deliveryFeeCalculator;
 
     @org.springframework.beans.factory.annotation.Value("${app.booking.host-approval.enabled:false}")
     private boolean approvalEnabled;
@@ -62,7 +66,8 @@ public class BookingService {
     public BookingService(BookingRepository repo, CarRepository carRepo, UserRepository userRepo,
                           ReviewRepository reviewRepo, ChatServiceClient chatServiceClient,
                           NotificationService notificationService, org.example.rentoza.security.CurrentUser currentUser,
-                          CancellationPolicyService cancellationPolicyService) {
+                          CancellationPolicyService cancellationPolicyService,
+                          DeliveryFeeCalculator deliveryFeeCalculator) {
         this.repo = repo;
         this.carRepo = carRepo;
         this.userRepo = userRepo;
@@ -71,6 +76,7 @@ public class BookingService {
         this.notificationService = notificationService;
         this.currentUser = currentUser;
         this.cancellationPolicyService = cancellationPolicyService;
+        this.deliveryFeeCalculator = deliveryFeeCalculator;
     }
 
     @Transactional
@@ -205,6 +211,92 @@ public class BookingService {
         booking.setPrepaidRefuel(dto.isPrepaidRefuel());
 
         // ========================================================================
+        // GEOSPATIAL PICKUP LOCATION SNAPSHOT (Phase 2.4)
+        // ========================================================================
+        // Capture the agreed pickup location at booking time. This is IMMUTABLE
+        // and represents the contractual handover point.
+        //
+        // Priority:
+        // 1. If custom coordinates provided → use custom location
+        // 2. Otherwise → use car's home location (default self-pickup)
+        //
+        // This snapshot enables:
+        // - Check-in geofence validation against agreed location (not current car position)
+        // - Delivery fee calculation based on distance from car's home
+        // - Audit trail for dispute resolution if car is moved
+        
+        GeoPoint pickupLocation;
+        BigDecimal deliveryFee = BigDecimal.ZERO;
+        BigDecimal deliveryDistanceKm = null;
+        
+        if (dto.hasCustomPickupLocation()) {
+            // Custom pickup location provided (delivery or specific pickup point)
+            pickupLocation = new GeoPoint(
+                    dto.getPickupLatitude(),
+                    dto.getPickupLongitude(),
+                    dto.getPickupAddress(),
+                    dto.getPickupCity(),
+                    dto.getPickupZipCode(),
+                    null // accuracy not applicable for user-selected locations
+            );
+            
+            // Calculate delivery fee if delivery is requested
+            if (dto.isDeliveryRequested() && car.hasGeoLocation()) {
+                DeliveryFeeResult feeResult = deliveryFeeCalculator.calculateDeliveryFee(car, pickupLocation);
+                
+                if (feeResult.available()) {
+                    deliveryFee = feeResult.fee();
+                    deliveryDistanceKm = BigDecimal.valueOf(feeResult.distanceKm())
+                            .setScale(2, RoundingMode.HALF_UP);
+                    
+                    log.debug("Delivery fee calculated: distance={}km, fee={}, source={}, poi={}",
+                            feeResult.distanceKm(), feeResult.fee(),
+                            feeResult.routingSource(), feeResult.appliedPoiCode());
+                } else if (feeResult.maxRadiusKm() != null) {
+                    // Destination outside car's delivery radius
+                    throw new org.example.rentoza.exception.ValidationException(
+                            String.format("Delivery location is outside the car's delivery radius. " +
+                                    "Maximum delivery distance: %.1f km, your distance: %.1f km",
+                                    feeResult.maxRadiusKm(), feeResult.distanceKm())
+                    );
+                } else {
+                    // Delivery not available for other reasons (car doesn't offer delivery, etc.)
+                    throw new org.example.rentoza.exception.ValidationException(
+                            "Delivery is not available for this car: " + feeResult.unavailableReason()
+                    );
+                }
+            }
+            
+            log.debug("Custom pickup location set: lat={}, lon={}, address={}, deliveryRequested={}",
+                    dto.getPickupLatitude(), dto.getPickupLongitude(), 
+                    dto.getPickupAddress(), dto.isDeliveryRequested());
+        } else {
+            // Default to car's home location (self-pickup)
+            if (car.hasGeoLocation()) {
+                GeoPoint carLocation = car.getLocationGeoPoint();
+                pickupLocation = new GeoPoint(
+                        carLocation.getLatitude(),
+                        carLocation.getLongitude(),
+                        carLocation.getAddress(),
+                        carLocation.getCity(),
+                        carLocation.getZipCode(),
+                        carLocation.getAccuracyMeters()
+                );
+                log.debug("Using car's home location for pickup: lat={}, lon={}, city={}",
+                        carLocation.getLatitude(), carLocation.getLongitude(), carLocation.getCity());
+            } else {
+                // Car has no geolocation yet (legacy data) - pickup location will be null
+                pickupLocation = null;
+                log.warn("Car {} has no geolocation. Pickup location not set for booking.", car.getId());
+            }
+        }
+        
+        // Set pickup location and delivery fields on booking
+        booking.setPickupLocation(pickupLocation);
+        booking.setDeliveryDistanceKm(deliveryDistanceKm);
+        booking.setDeliveryFeeCalculated(deliveryFee);
+
+        // ========================================================================
         // PRICE CALCULATION WITH BigDecimal (Financial Precision)
         // ========================================================================
         // Uses BigDecimal.multiply() and .add() instead of * and + operators.
@@ -236,13 +328,17 @@ public class BookingService {
                     .setScale(2, RoundingMode.HALF_UP);
         }
 
-        // Final calculation with proper rounding
+        // Final calculation with proper rounding (includes delivery fee)
         BigDecimal totalPrice = basePrice
                 .multiply(insuranceMultiplier)
                 .add(refuelCost)
+                .add(deliveryFee)
                 .setScale(2, RoundingMode.HALF_UP);
         
         booking.setTotalPrice(totalPrice);
+        
+        log.debug("Price calculated: hours={}, periods={}, basePrice={}, multiplier={}, refuel={}, delivery={}, total={}",
+                hours, periods, basePrice, insuranceMultiplier, refuelCost, deliveryFee, totalPrice);
 
         // ========================================================================
         // CANCELLATION POLICY: Snapshot Daily Rate at Booking Time
@@ -254,9 +350,6 @@ public class BookingService {
         // Used by: TuroCancellationPolicyService.calculateGuestCancellation()
         // Immutable: This value should NEVER be updated after booking creation.
         booking.setSnapshotDailyRate(car.getPricePerDay());
-        
-        log.debug("Price calculated: hours={}, periods={}, basePrice={}, multiplier={}, refuel={}, total={}, snapshotDailyRate={}",
-                hours, periods, basePrice, insuranceMultiplier, refuelCost, totalPrice, car.getPricePerDay());
 
         Booking savedBooking = repo.save(booking);
 

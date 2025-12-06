@@ -8,4 +8,5 @@ public enum FuelType {
     DIZEL,       // Diesel
     ELEKTRIČNI,  // Electric
     HIBRID,      // Hybrid
+    PLUG_IN_HIBRID,
 }

@@ -27,6 +27,14 @@
     </button>
   </div>
 
+  <!-- Location Error Message -->
+  @if (locationError()) {
+  <div class="location-error" role="alert">
+    <mat-icon>error_outline</mat-icon>
+    <span>{{ locationError() }}</span>
+  </div>
+  }
+
   <form [formGroup]="locationForm">
     <!-- Address Input with Autocomplete -->
     <mat-form-field appearance="outline" class="full-width">

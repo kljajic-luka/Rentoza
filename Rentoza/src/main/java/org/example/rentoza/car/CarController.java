@@ -155,6 +155,7 @@ public class CarController {
      * Purpose:
      * - Time-aware availability search
      * - Filters out cars with overlapping bookings
+     * - UPGRADED: Now supports geospatial search and server-side filtering
      * - Supports pagination
      *
      * Example Request:
@@ -162,6 +163,11 @@ public class CarController {
      *   ?location=beograd
      *   &startTime=2025-01-15T09:00:00
      *   &endTime=2025-01-17T18:00:00
+     *   &latitude=44.8176
+     *   &longitude=20.4633
+     *   &radiusKm=20
+     *   &minPrice=50
+     *   &make=BMW
      *   &page=0&size=20
      *
      * Security:
@@ -179,6 +185,18 @@ public class CarController {
      * @param location Location string (city/region, case-insensitive)
      * @param startTime Rental start timestamp (ISO 8601: YYYY-MM-DDTHH:mm:ss)
      * @param endTime Rental end timestamp (ISO 8601: YYYY-MM-DDTHH:mm:ss)
+     * @param latitude Center point latitude for geospatial search (optional)
+     * @param longitude Center point longitude for geospatial search (optional)
+     * @param radiusKm Search radius in kilometers (default: 20)
+     * @param minPrice Minimum price per day filter (optional)
+     * @param maxPrice Maximum price per day filter (optional)
+     * @param make Car make/brand filter (optional)
+     * @param model Car model filter (optional)
+     * @param minYear Minimum year filter (optional)
+     * @param maxYear Maximum year filter (optional)
+     * @param minSeats Minimum seats filter (optional)
+     * @param transmission Transmission type filter (optional)
+     * @param features Required features filter, comma-separated (optional)
      * @param page Page number (0-indexed, default: 0)
      * @param size Page size (default: 20, max: 100)
      * @param sort Sort order (optional, format: "field,direction")
@@ -187,22 +205,75 @@ public class CarController {
     @GetMapping("/availability-search")
     @PreAuthorize("permitAll()")
     public ResponseEntity<?> searchAvailableCars(
+            // Core availability params
             @RequestParam String location,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startTime,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime,
+            // Geospatial params
+            @RequestParam(required = false) Double latitude,
+            @RequestParam(required = false) Double longitude,
+            @RequestParam(required = false, defaultValue = "20") Double radiusKm,
+            // Filter params
+            @RequestParam(required = false) Double minPrice,
+            @RequestParam(required = false) Double maxPrice,
+            @RequestParam(required = false) String make,
+            @RequestParam(required = false) String model,
+            @RequestParam(required = false) Integer minYear,
+            @RequestParam(required = false) Integer maxYear,
+            @RequestParam(required = false) Integer minSeats,
+            @RequestParam(required = false) TransmissionType transmission,
+            @RequestParam(required = false) String features,  // Comma-separated: "BLUETOOTH,USB,GPS"
+            // Pagination params
             @RequestParam(required = false, defaultValue = "0") Integer page,
             @RequestParam(required = false, defaultValue = "20") Integer size,
             @RequestParam(required = false) String sort
     ) {
         try {
-            log.info("[AvailabilitySearch] Request: location={}, startTime={}, endTime={}, page={}, size={}",
-                location, startTime, endTime, page, size);
+            log.info("[AvailabilitySearch] Request: location={}, startTime={}, endTime={}, lat={}, lng={}, radius={}, " +
+                    "minPrice={}, maxPrice={}, make={}, transmission={}, page={}, size={}",
+                location, startTime, endTime, latitude, longitude, radiusKm,
+                minPrice, maxPrice, make, transmission, page, size);
 
-            // Build request DTO
+            // Parse features from comma-separated string
+            List<Feature> featureList = null;
+            if (features != null && !features.isBlank()) {
+                featureList = Arrays.stream(features.split(","))
+                        .map(String::trim)
+                        .map(String::toUpperCase)
+                        .filter(f -> !f.isEmpty())
+                        .map(f -> {
+                            try {
+                                return Feature.valueOf(f);
+                            } catch (IllegalArgumentException e) {
+                                // Ignore invalid feature values
+                                return null;
+                            }
+                        })
+                        .filter(f -> f != null)
+                        .collect(Collectors.toList());
+            }
+
+            // Build request DTO with all params
             AvailabilitySearchRequestDTO request = AvailabilitySearchRequestDTO.builder()
+                // Core availability
                 .location(location)
                 .startTime(startTime)
                 .endTime(endTime)
+                // Geospatial
+                .latitude(latitude)
+                .longitude(longitude)
+                .radiusKm(radiusKm)
+                // Filters
+                .minPrice(minPrice)
+                .maxPrice(maxPrice)
+                .make(make)
+                .model(model)
+                .minYear(minYear)
+                .maxYear(maxYear)
+                .minSeats(minSeats)
+                .transmission(transmission)
+                .features(featureList)
+                // Pagination
                 .page(page)
                 .size(size)
                 .sort(sort)
@@ -211,7 +282,7 @@ public class CarController {
             // Validate request
             request.validate();
 
-            // Execute search
+            // Execute search (with geospatial + filters)
             Page<Car> results = availabilityService.searchAvailableCars(request);
 
             // Map to response DTOs (public-safe)
@@ -228,10 +299,11 @@ public class CarController {
                 "hasPrevious", responseDTOs.hasPrevious()
             );
 
-            log.info("[AvailabilitySearch] Success: {} results (page {}/{})",
+            log.info("[AvailabilitySearch] Success: {} results (page {}/{}){}",
                 responseDTOs.getNumberOfElements(),
                 responseDTOs.getNumber() + 1,
-                responseDTOs.getTotalPages()
+                responseDTOs.getTotalPages(),
+                request.hasFilters() ? " [FILTERED]" : ""
             );
 
             return ResponseEntity.ok(response);

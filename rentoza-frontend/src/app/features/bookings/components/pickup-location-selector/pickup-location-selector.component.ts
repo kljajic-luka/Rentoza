@@ -43,12 +43,9 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatRadioModule } from '@angular/material/radio';
 import { FormsModule } from '@angular/forms';
-import { HttpClient } from '@angular/common/http';
-import { catchError, of } from 'rxjs';
 
 import { LocationService, GeoPointDTO, DeliveryFeeResult } from '@core/services/location.service';
 import { LocationPickerComponent, LocationCoordinates } from '@shared/components/location-picker';
-import { environment } from '../../../../../environments/environment';
 
 /** Pickup option type */
 export type PickupOption = 'car-location' | 'custom-location';
@@ -82,7 +79,6 @@ export interface PickupLocationData {
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class PickupLocationSelectorComponent implements OnInit, OnChanges {
-  private readonly http = inject(HttpClient);
   private readonly locationService = inject(LocationService);
 
   // === INPUTS ===
@@ -235,28 +231,27 @@ export class PickupLocationSelectorComponent implements OnInit, OnChanges {
 
     this.isCalculatingFee.set(true);
 
-    this.http
-      .get<DeliveryFeeResult>(`${environment.baseApiUrl}/delivery/calculate`, {
-        params: {
-          carId: this.carId.toString(),
-          pickupLatitude: custom.latitude.toString(),
-          pickupLongitude: custom.longitude.toString(),
-        },
+    this.locationService
+      .calculateDeliveryFee(Number(this.carId), {
+        latitude: custom.latitude,
+        longitude: custom.longitude,
       })
-      .pipe(
-        catchError((error) => {
-          console.error('Delivery fee calculation failed:', error);
-          return of<DeliveryFeeResult>({
-            available: false,
-            unavailableReason: 'Greška pri izračunu naknade za dostavu',
-          });
-        })
-      )
       .subscribe({
         next: (result) => {
           this.deliveryFee.set(result);
           this.deliveryFeeCalculated.emit(result);
           this.validityChanged.emit(result.available ?? false);
+          this.isCalculatingFee.set(false);
+        },
+        error: (error) => {
+          console.error('Delivery fee calculation failed:', error);
+          const errorResult: DeliveryFeeResult = {
+            available: false,
+            unavailableReason: 'Greška pri izračunu naknade za dostavu',
+          };
+          this.deliveryFee.set(errorResult);
+          this.deliveryFeeCalculated.emit(errorResult);
+          this.validityChanged.emit(false);
           this.isCalculatingFee.set(false);
         },
       });

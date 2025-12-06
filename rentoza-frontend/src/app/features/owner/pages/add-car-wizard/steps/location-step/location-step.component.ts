@@ -47,6 +47,7 @@ import {
   GeoPointDTO,
   GeocodeSuggestion,
   SERBIA_BOUNDS,
+  DEFAULT_MAP_CENTER,
 } from '@core/services/location.service';
 import { LocationPickerComponent, LocationCoordinates } from '@shared/components/location-picker';
 
@@ -107,6 +108,13 @@ export class LocationStepComponent implements OnInit, OnDestroy {
   protected readonly isGeocoding = signal(false);
   protected readonly isGeolocating = signal(false);
   protected readonly showMap = signal(false);
+  protected readonly locationError = signal<string | null>(null);
+
+  // Default map center (Belgrade) for when no location is selected
+  protected readonly mapDefaultCenter = {
+    latitude: DEFAULT_MAP_CENTER.latitude,
+    longitude: DEFAULT_MAP_CENTER.longitude,
+  };
 
   protected readonly locationAccuracy = computed<LocationAccuracy>(() => {
     const loc = this.selectedLocation();
@@ -237,11 +245,12 @@ export class LocationStepComponent implements OnInit, OnDestroy {
    */
   protected async useCurrentLocation(): Promise<void> {
     if (!navigator.geolocation) {
-      console.error('Geolocation not supported');
+      this.locationError.set('Geolokacija nije podržana u vašem pregledaču');
       return;
     }
 
     this.isGeolocating.set(true);
+    this.locationError.set(null);
 
     try {
       const position = await new Promise<GeolocationPosition>((resolve, reject) => {
@@ -257,8 +266,11 @@ export class LocationStepComponent implements OnInit, OnDestroy {
       // Reverse geocode to get address
       this.locationService.reverseGeocode(latitude, longitude).subscribe({
         next: (result) => {
-          // Use address field (backend returns 'address', not 'formattedAddress')
-          const addressValue = result.address || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+          // Use formattedAddress (mapped from backend 'address' by LocationService)
+          const addressValue =
+            result.formattedAddress ||
+            result.address ||
+            `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
 
           this.selectedLocation.set({
             latitude,
@@ -276,6 +288,7 @@ export class LocationStepComponent implements OnInit, OnDestroy {
           });
 
           this.showMap.set(true);
+          this.locationError.set(null);
           this.emitLocation();
         },
         error: (error) => {
@@ -284,21 +297,24 @@ export class LocationStepComponent implements OnInit, OnDestroy {
           this.selectedLocation.set({
             latitude,
             longitude,
-            address: 'Unknown address',
+            address: 'Nepoznata adresa',
             city: '',
             accuracyMeters: accuracy,
           });
           this.showMap.set(true);
+          this.emitLocation();
         },
       });
     } catch (error: any) {
       console.error('Geolocation error:', error);
       if (error.code === 1) {
-        alert('Pristup lokaciji je odbijen. Molimo omogućite GPS.');
+        this.locationError.set(
+          'Pristup lokaciji je odbijen. Molimo omogućite lokaciju u podešavanjima pregledača.'
+        );
       } else if (error.code === 2) {
-        alert('Nije moguće odrediti lokaciju.');
+        this.locationError.set('Lokacija nije dostupna. Proverite GPS i mrežne postavke.');
       } else {
-        alert('Zahtev za lokaciju je istekao.');
+        this.locationError.set('Isteklo vreme za dobijanje lokacije. Pokušajte ponovo.');
       }
     } finally {
       this.isGeolocating.set(false);
@@ -307,9 +323,22 @@ export class LocationStepComponent implements OnInit, OnDestroy {
 
   /**
    * Toggle map visibility
+   * When showing map without a selected location, use default Serbia center
    */
   protected toggleMap(): void {
-    this.showMap.update((show) => !show);
+    const willShowMap = !this.showMap();
+
+    // If showing map and no location selected, set default center for Serbia
+    if (willShowMap && !this.selectedLocation()) {
+      this.selectedLocation.set({
+        latitude: this.mapDefaultCenter.latitude,
+        longitude: this.mapDefaultCenter.longitude,
+        address: '',
+        city: 'Beograd',
+      });
+    }
+
+    this.showMap.set(willShowMap);
   }
 
   /**

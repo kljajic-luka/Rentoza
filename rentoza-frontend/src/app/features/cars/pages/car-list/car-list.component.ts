@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import {
   ChangeDetectionStrategy,
+  ChangeDetectorRef,
   Component,
   inject,
   OnInit,
@@ -19,9 +20,14 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
-import { MatDatepickerModule, MatDatepicker, MatDatepickerInputEvent } from '@angular/material/datepicker';
+import {
+  MatDatepickerModule,
+  MatDatepicker,
+  MatDatepickerInputEvent,
+} from '@angular/material/datepicker';
 import { MatNativeDateModule } from '@angular/material/core';
 import { MatAutocompleteModule } from '@angular/material/autocomplete';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { FlexLayoutModule } from '@ngbracket/ngx-layout';
 import {
   BehaviorSubject,
@@ -39,8 +45,19 @@ import {
 } from 'rxjs';
 
 import { Car, Feature, TransmissionType } from '@core/models/car.model';
-import { CarSearchCriteria, PagedResponse } from '@core/models/car-search.model';
+import {
+  AvailabilitySearchParams,
+  CarSearchCriteria,
+  PagedResponse,
+  mergeFiltersIntoAvailabilityParams,
+  extractFiltersFromAvailabilityParams,
+} from '@core/models/car-search.model';
 import { CarService } from '@core/services/car.service';
+import {
+  LocationService,
+  GeocodeSuggestion,
+  DEFAULT_MAP_CENTER,
+} from '@core/services/location.service';
 import { FavoriteButtonComponent } from '@shared/components/favorite-button/favorite-button.component';
 import { CarFiltersComponent } from '../../components/car-filters/car-filters.component';
 import { TranslateEnumPipe } from '@shared/pipes/translate-enum.pipe';
@@ -65,6 +82,7 @@ import { TranslateEnumPipe } from '@shared/pipes/translate-enum.pipe';
     MatNativeDateModule,
     MatAutocompleteModule,
     MatSnackBarModule,
+    MatTooltipModule,
     FlexLayoutModule,
     FavoriteButtonComponent,
     CarFiltersComponent,
@@ -76,6 +94,8 @@ import { TranslateEnumPipe } from '@shared/pipes/translate-enum.pipe';
 })
 export class CarListComponent implements OnInit, OnDestroy {
   private readonly carService = inject(CarService);
+  private readonly locationService = inject(LocationService);
+  private readonly cdr = inject(ChangeDetectorRef);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly snackBar = inject(MatSnackBar);
@@ -96,43 +116,17 @@ export class CarListComponent implements OnInit, OnDestroy {
   startTimeError = '';
   endTimeError = '';
   dateRangeError = '';
-  readonly cities = [
-    'Beograd',
-    'Novi Sad',
-    'Niš',
-    'Kragujevac',
-    'Subotica',
-    'Zrenjanin',
-    'Pančevo',
-    'Čačak',
-    'Kraljevo',
-    'Novi Pazar',
-    'Leskovac',
-    'Šabac',
-    'Sombor',
-    'Užice',
-    'Smederevo',
-    'Valjevo',
-    'Vranje',
-    'Loznica',
-    'Požarevac',
-    'Pirot',
-    'Kruševac',
-    'Prokuplje',
-    'Jagodina',
-    'Bor',
-    'Kikinda',
-    'Vrbas',
-    'Zaječar',
-    'Sremska Mitrovica',
-    'Vršac',
-    'Paraćin',
-    'Negotin',
-    'Ćuprija',
-    'Priboj',
-    'Aranđelovac',
-    'Gornji Milanovac'
-  ];
+
+  // Geospatial location state
+  readonly locationInput$ = new Subject<string>();
+  geocodeSuggestions: GeocodeSuggestion[] = [];
+  selectedGeocodeSuggestion: GeocodeSuggestion | null = null;
+  isLoadingGeocoding = false;
+  isLoadingCurrentLocation = false;
+  searchCenter = {
+    latitude: DEFAULT_MAP_CENTER.latitude,
+    longitude: DEFAULT_MAP_CENTER.longitude,
+  };
 
   // Search state
   readonly searchCriteria$ = new BehaviorSubject<CarSearchCriteria>({
@@ -140,16 +134,17 @@ export class CarListComponent implements OnInit, OnDestroy {
     size: 20,
   });
 
-  // Availability search state
-  readonly availabilityParams$ = new BehaviorSubject<{
-    location: string;
-    startDate: string;
-    startTime: string;
-    endDate: string;
-    endTime: string;
-    page: number;
-    size: number;
-  } | null>(null);
+  /**
+   * Unified availability search state combining:
+   * - Time-based availability (location + date/time range)
+   * - Geospatial coordinates (latitude, longitude, radius)
+   * - All filter criteria (price, make, transmission, features, etc.)
+   * - Pagination and sorting
+   *
+   * This is the SINGLE SOURCE OF TRUTH for availability mode.
+   * Filters are MERGED into this state, not stored separately.
+   */
+  readonly availabilityParams$ = new BehaviorSubject<AvailabilitySearchParams | null>(null);
 
   // Flag to track if we're in availability search mode
   readonly isAvailabilityMode$ = new BehaviorSubject<boolean>(false);
@@ -160,36 +155,39 @@ export class CarListComponent implements OnInit, OnDestroy {
   // REMOVED: resetForm$ - no longer broadcast reset commands to child
   // Parent will call child.resetFilters() directly via ViewChild reference
 
-  // Search results - conditionally uses availability or standard search
+  /**
+   * Search results - conditionally uses availability or standard search.
+   *
+   * UPGRADED: In availability mode, all filters are now included in availabilityParams$
+   * and sent to the backend for server-side filtering. This eliminates client-side
+   * filtering in availability mode, improving performance significantly.
+   *
+   * Data Flow:
+   * - Availability Mode: availabilityParams$ → CarService.searchAvailableCars() → server-side filtering
+   * - Standard Mode: searchCriteria$ → CarService.searchCars() → server-side filtering
+   */
   readonly searchResults$: Observable<PagedResponse<Car>> = combineLatest([
     this.isAvailabilityMode$,
     this.availabilityParams$,
-    this.searchCriteria$
+    this.searchCriteria$,
   ]).pipe(
     debounceTime(100),
     distinctUntilChanged((prev, curr) => JSON.stringify(prev) === JSON.stringify(curr)),
     tap(() => this.isLoading$.next(true)),
     switchMap(([isAvailability, availParams, criteria]) => {
       if (isAvailability && availParams) {
-        // Availability search mode
-        return this.carService
-          .searchAvailableCars(
-            availParams.location,
-            availParams.startDate,
-            availParams.startTime,
-            availParams.endDate,
-            availParams.endTime,
-            availParams.page,
-            availParams.size
-          )
-          .pipe(map((results) => this.applyFilters(results, criteria, true)));
+        // UPGRADED: Availability search with unified params (includes filters)
+        // Server-side filtering - no client-side applyFilters needed
+        return this.carService.searchAvailableCars(availParams);
       } else {
-        // Standard search mode (client-side filtering to keep consistency with availability path)
-        return this.carService.searchCars(criteria).pipe(map((results) => this.applyFilters(results, criteria, false)));
+        // Standard search mode (server-side filtering)
+        return this.carService
+          .searchCars(criteria)
+          .pipe(map((results) => this.applyFilters(results, criteria, false)));
       }
     }),
     tap((results) => {
-      // Update URL with current filters (instant sync)
+      // Update URL with current state (instant sync)
       if (this.isAvailabilityMode$.value && this.availabilityParams$.value) {
         this.updateUrlParamsForAvailability(this.availabilityParams$.value);
       } else {
@@ -242,33 +240,39 @@ export class CarListComponent implements OnInit, OnDestroy {
 
   readonly timeOptions = [
     '06:00',
+    '06:30',
     '07:00',
+    '07:30',
     '08:00',
+    '08:30',
     '09:00',
+    '09:30',
     '10:00',
+    '10:30',
     '11:00',
+    '11:30',
     '12:00',
+    '12:30',
     '13:00',
+    '13:30',
     '14:00',
+    '14:30',
     '15:00',
+    '15:30',
     '16:00',
+    '16:30',
     '17:00',
+    '17:30',
     '18:00',
+    '18:30',
     '19:00',
+    '19:30',
     '20:00',
+    '20:30',
     '21:00',
+    '21:30',
     '22:00',
   ];
-
-  get filteredCities(): string[] {
-    const query = this.toCanonical(this.searchLocation.trim());
-
-    if (!query) {
-      return this.cities;
-    }
-
-    return this.cities.filter((city) => this.toCanonical(city).includes(query));
-  }
 
   get datesSelected(): boolean {
     return !!(this.searchStartDate && this.searchEndDate);
@@ -276,7 +280,8 @@ export class CarListComponent implements OnInit, OnDestroy {
 
   get hasActiveState(): boolean {
     const criteria = this.searchCriteria$.value;
-    const hasFilters = !this.isCriteriaDefault(criteria) || (this.activeFilterChips$.value?.length ?? 0) > 0;
+    const hasFilters =
+      !this.isCriteriaDefault(criteria) || (this.activeFilterChips$.value?.length ?? 0) > 0;
     const hasSearch =
       !!this.searchLocation.trim() ||
       !!this.searchStartDate ||
@@ -328,6 +333,7 @@ export class CarListComponent implements OnInit, OnDestroy {
     this.route.queryParamMap.pipe(takeUntil(this.destroy$)).subscribe((params) => {
       const isAvailabilitySearch = params.get('availabilitySearch') === 'true';
 
+      // Parse common filter params (used in both modes)
       const parsedFilters: CarSearchCriteria = {
         minPrice: params.get('minPrice') ? Number(params.get('minPrice')) : undefined,
         maxPrice: params.get('maxPrice') ? Number(params.get('maxPrice')) : undefined,
@@ -345,12 +351,17 @@ export class CarListComponent implements OnInit, OnDestroy {
 
       if (isAvailabilitySearch) {
         // AVAILABILITY SEARCH MODE
-        // Home component sends startTime/endTime as ISO-8601 strings (e.g., "2025-12-02T09:00:00")
+        // Parse core availability params
         const location = params.get('location') || '';
         const startTimeISO = params.get('startTime') || '';
         const endTimeISO = params.get('endTime') || '';
         const page = params.get('page') ? Number(params.get('page')) : 0;
         const size = params.get('size') ? Number(params.get('size')) : 20;
+
+        // Parse geospatial params (for page refresh recovery)
+        const latitude = params.get('lat') ? Number(params.get('lat')) : undefined;
+        const longitude = params.get('lng') ? Number(params.get('lng')) : undefined;
+        const radiusKm = params.get('radiusKm') ? Number(params.get('radiusKm')) : 20;
 
         // Parse ISO strings to extract date and time for UI display
         let searchStartDate: Date | null = null;
@@ -362,7 +373,7 @@ export class CarListComponent implements OnInit, OnDestroy {
           const startDateObj = new Date(startTimeISO);
           if (!isNaN(startDateObj.getTime())) {
             searchStartDate = startDateObj;
-            const [datePart, timePart] = startTimeISO.split('T');
+            const [, timePart] = startTimeISO.split('T');
             searchStartTime = timePart.substring(0, 5); // Extract HH:mm
           }
         }
@@ -371,27 +382,65 @@ export class CarListComponent implements OnInit, OnDestroy {
           const endDateObj = new Date(endTimeISO);
           if (!isNaN(endDateObj.getTime())) {
             searchEndDate = endDateObj;
-            const [datePart, timePart] = endTimeISO.split('T');
+            const [, timePart] = endTimeISO.split('T');
             searchEndTime = timePart.substring(0, 5); // Extract HH:mm
           }
         }
 
-        // Update availability params (pass ISO strings directly to service)
-        this.availabilityParams$.next({
+        // Build unified AvailabilitySearchParams (SINGLE SOURCE OF TRUTH)
+        const availParams: AvailabilitySearchParams = {
+          // Core availability
           location,
-          startDate: '', // Not used, kept for compatibility
-          startTime: startTimeISO, // ISO string: 2025-12-02T09:00:00
-          endDate: '', // Not used, kept for compatibility
-          endTime: endTimeISO, // ISO string: 2025-12-02T18:00:00
+          startTime: startTimeISO,
+          endTime: endTimeISO,
+
+          // Geospatial (if available from URL)
+          latitude,
+          longitude,
+          radiusKm,
+
+          // Filters from URL
+          minPrice: parsedFilters.minPrice,
+          maxPrice: parsedFilters.maxPrice,
+          make: parsedFilters.make,
+          model: parsedFilters.model,
+          minYear: parsedFilters.minYear,
+          maxYear: parsedFilters.maxYear,
+          minSeats: parsedFilters.minSeats,
+          transmission: parsedFilters.transmission,
+          features: parsedFilters.features ? [...parsedFilters.features] : undefined,
+          sort: parsedFilters.sort,
+
+          // Pagination
           page,
           size,
-        });
+        };
 
+        // Update unified availability state
+        this.availabilityParams$.next(availParams);
+
+        // Update UI state for display
         this.searchLocation = location;
         this.searchStartDate = searchStartDate;
         this.searchStartTime = searchStartTime;
         this.searchEndDate = searchEndDate;
         this.searchEndTime = searchEndTime;
+
+        // Restore geospatial state if coordinates were in URL
+        if (latitude !== undefined && longitude !== undefined) {
+          this.searchCenter = { latitude, longitude };
+          // Reconstruct a minimal GeocodeSuggestion for state consistency
+          this.selectedGeocodeSuggestion = {
+            id: 'restored-from-url',
+            latitude,
+            longitude,
+            formattedAddress: location,
+            address: location,
+            city: location,
+            country: 'Srbija',
+            placeType: 'place',
+          };
+        }
 
         // Enable availability mode
         this.isAvailabilityMode$.next(true);
@@ -399,11 +448,19 @@ export class CarListComponent implements OnInit, OnDestroy {
         // Update availability filter display (use extracted date/time for display)
         const displayStartDate = searchStartDate ? this.formatDate(searchStartDate) : '';
         const displayEndDate = searchEndDate ? this.formatDate(searchEndDate) : '';
-        this.updateAvailabilityFilterDisplay(location, displayStartDate, searchStartTime, displayEndDate, searchEndTime);
+        this.updateAvailabilityFilterDisplay(
+          location,
+          displayStartDate,
+          searchStartTime,
+          displayEndDate,
+          searchEndTime
+        );
 
-        // Apply filter criteria parsed from URL alongside availability
+        // Update active filter chips from the unified params
+        this.updateActiveFilterChips(extractFiltersFromAvailabilityParams(availParams));
+
+        // Keep searchCriteria$ in sync (for filter component initialCriteria)
         this.searchCriteria$.next(parsedFilters);
-        this.updateActiveFilterChips(parsedFilters);
       } else {
         // STANDARD SEARCH MODE
         // Disable availability mode
@@ -421,6 +478,9 @@ export class CarListComponent implements OnInit, OnDestroy {
         this.updateActiveFilterChips(parsedFilters);
       }
     });
+
+    // Setup geocoding autocomplete
+    this.setupGeocodeAutocomplete();
   }
 
   ngOnDestroy(): void {
@@ -428,10 +488,146 @@ export class CarListComponent implements OnInit, OnDestroy {
     this.destroy$.complete();
   }
 
-  onCitySelected(city: string): void {
-    this.searchLocation = city;
-    this.validateField('location');
+  // ====== Geocoding Autocomplete Methods ======
+
+  private setupGeocodeAutocomplete(): void {
+    this.locationInput$
+      .pipe(
+        debounceTime(300),
+        distinctUntilChanged(),
+        tap((query) => {
+          if (!query || query.length < 2) {
+            this.geocodeSuggestions = [];
+            this.isLoadingGeocoding = false;
+            this.cdr.markForCheck();
+          } else {
+            this.isLoadingGeocoding = true;
+            this.cdr.markForCheck();
+          }
+        }),
+        switchMap((query) => {
+          if (!query || query.length < 2) {
+            return of([]);
+          }
+          return this.locationService.geocodeAddress(query).pipe(
+            catchError((err) => {
+              console.error('Geocoding error:', err);
+              return of([]);
+            })
+          );
+        }),
+        takeUntil(this.destroy$)
+      )
+      .subscribe((suggestions) => {
+        this.geocodeSuggestions = suggestions;
+        this.isLoadingGeocoding = false;
+        this.cdr.markForCheck();
+      });
   }
+
+  onLocationInput(event: Event): void {
+    const value = (event.target as HTMLInputElement).value;
+    this.searchLocation = value;
+    this.selectedGeocodeSuggestion = null;
+    this.locationError = '';
+    this.locationInput$.next(value);
+  }
+
+  onGeocodeSuggestionSelected(suggestion: GeocodeSuggestion): void {
+    this.selectedGeocodeSuggestion = suggestion;
+    this.searchLocation = suggestion.formattedAddress;
+    this.searchCenter = {
+      latitude: suggestion.latitude,
+      longitude: suggestion.longitude,
+    };
+    this.geocodeSuggestions = [];
+    this.locationError = '';
+    this.cdr.markForCheck();
+  }
+
+  displayGeocodeSuggestion(suggestion: GeocodeSuggestion | null): string {
+    return suggestion?.formattedAddress ?? '';
+  }
+
+  useCurrentLocation(): void {
+    if (!navigator.geolocation) {
+      this.snackBar.open('Geolokacija nije podržana u vašem pretraživaču', 'Zatvori', {
+        duration: 3000,
+      });
+      return;
+    }
+
+    this.isLoadingCurrentLocation = true;
+    this.cdr.markForCheck();
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+
+        this.searchCenter = { latitude: lat, longitude: lng };
+
+        this.locationService.reverseGeocode(lat, lng).subscribe({
+          next: (result) => {
+            this.searchLocation = result.formattedAddress;
+            // Construct GeocodeSuggestion from ReverseGeocodeResult + coordinates
+            this.selectedGeocodeSuggestion = {
+              id: 'current-location',
+              latitude: lat,
+              longitude: lng,
+              formattedAddress: result.formattedAddress,
+              address: result.address,
+              city: result.city,
+              zipCode: result.zipCode,
+              country: result.country,
+              placeType: result.placeType as any,
+            };
+            this.locationError = '';
+            this.isLoadingCurrentLocation = false;
+            this.cdr.markForCheck();
+          },
+          error: () => {
+            // Use coordinates even without address
+            this.searchLocation = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+            this.selectedGeocodeSuggestion = {
+              id: 'current-location',
+              latitude: lat,
+              longitude: lng,
+              formattedAddress: `${lat.toFixed(4)}, ${lng.toFixed(4)}`,
+              address: 'Trenutna lokacija',
+              city: 'Nepoznato',
+              country: 'Srbija',
+              placeType: 'address',
+            };
+            this.locationError = '';
+            this.isLoadingCurrentLocation = false;
+            this.cdr.markForCheck();
+          },
+        });
+      },
+      (error) => {
+        this.isLoadingCurrentLocation = false;
+        let errorMessage = 'Nije moguće odrediti vašu lokaciju';
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            errorMessage =
+              'Pristup lokaciji je odbijen. Omogućite pristup u podešavanjima pretraživača.';
+            break;
+          case error.POSITION_UNAVAILABLE:
+            errorMessage = 'Informacije o lokaciji nisu dostupne.';
+            break;
+          case error.TIMEOUT:
+            errorMessage = 'Zahtev za lokaciju je istekao.';
+            break;
+        }
+        this.snackBar.open(errorMessage, 'Zatvori', { duration: 5000 });
+        this.cdr.markForCheck();
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  }
+
+  // ====== Date/Time Change Handlers ======
 
   onStartDateChange(event: MatDatepickerInputEvent<Date>, endPicker: MatDatepicker<Date>): void {
     this.searchStartDate = event.value ?? null;
@@ -466,10 +662,9 @@ export class CarListComponent implements OnInit, OnDestroy {
       this.locationError = 'Unesite lokaciju';
     }
 
-    const locationCanonical = this.toCanonical(location);
-    const cityMatch = this.cities.some((city) => this.toCanonical(city) === locationCanonical);
-    if (location && !cityMatch) {
-      this.locationError = 'Odaberite grad iz liste';
+    // Geospatial validation: require selected geocode suggestion
+    if (location && !this.selectedGeocodeSuggestion) {
+      this.locationError = 'Odaberite lokaciju iz predloga';
     }
 
     if (!this.searchStartDate) {
@@ -495,9 +690,13 @@ export class CarListComponent implements OnInit, OnDestroy {
       return;
     }
 
-    const normalizedLocation = this.cities.find(
-      (city) => this.toCanonical(city) === locationCanonical
-    ) ?? location;
+    // Use the selected suggestion's city/address for search
+    // Skip 'Nepoznato' city fallback - prefer formattedAddress in that case
+    const city = this.selectedGeocodeSuggestion?.city;
+    const searchLocationValue =
+      city && city !== 'Nepoznato'
+        ? city
+        : this.selectedGeocodeSuggestion?.formattedAddress || location;
 
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
@@ -524,37 +723,83 @@ export class CarListComponent implements OnInit, OnDestroy {
     const endTimeISO = this.combineDateTime(this.searchEndDate as Date, this.searchEndTime);
     const pageSize = this.searchCriteria$.value.size ?? 20;
 
-    const params = {
-      location: normalizedLocation,
-      startDate: '', // Not used, kept for compatibility
-      startTime: startTimeISO, // ISO string: 2025-12-02T09:00:00
-      endDate: '', // Not used, kept for compatibility
-      endTime: endTimeISO, // ISO string: 2025-12-02T18:00:00
+    // UPGRADED: Build unified AvailabilitySearchParams with geospatial coordinates
+    // This passes coordinates from geocoding directly to backend for spatial search
+    const availParams: AvailabilitySearchParams = {
+      // Core availability
+      location: searchLocationValue,
+      startTime: startTimeISO,
+      endTime: endTimeISO,
+
+      // Geospatial coordinates from geocoding (CRITICAL for spatial index search)
+      latitude: this.selectedGeocodeSuggestion?.latitude ?? this.searchCenter.latitude,
+      longitude: this.selectedGeocodeSuggestion?.longitude ?? this.searchCenter.longitude,
+      radiusKm: 20, // Default 20km radius
+
+      // No filters on initial search (user hasn't applied any yet)
+      // Filters will be merged in via onFiltersChanged()
+
+      // Pagination
       page: 0,
       size: pageSize,
     };
 
-    this.availabilityParams$.next(params);
+    // Set unified state
+    this.availabilityParams$.next(availParams);
     this.isAvailabilityMode$.next(true);
+
+    // Update display state
     this.availabilityFilterDisplay$.next(null);
     const startDate = this.formatDate(this.searchStartDate as Date);
     const endDate = this.formatDate(this.searchEndDate as Date);
     this.updateAvailabilityFilterDisplay(
-      normalizedLocation,
+      searchLocationValue,
       startDate,
       this.searchStartTime,
       endDate,
       this.searchEndTime
     );
+
+    // Clear filter chips (new search starts with no filters)
     this.activeFilterChips$.next([]);
-    this.searchCriteria$.next({ ...this.searchCriteria$.value, page: 0, size: pageSize });
+
+    // Keep searchCriteria$ in sync (for filter component)
+    this.searchCriteria$.next({ page: 0, size: pageSize });
   }
 
+  /**
+   * Handle filter changes from the filter component.
+   *
+   * UPGRADED: In availability mode, filters are MERGED into availabilityParams$
+   * instead of being stored separately in searchCriteria$. This ensures:
+   * 1. Server-side filtering via unified DTO
+   * 2. URL persistence of all state
+   * 3. Single source of truth for availability searches
+   */
   onFiltersChanged(criteria: CarSearchCriteria): void {
-    // Reset to page 0 when filters change
-    const updated = { ...criteria, page: 0, size: this.searchCriteria$.value.size };
-    this.searchCriteria$.next(updated);
-    this.updateActiveFilterChips(updated);
+    if (this.isAvailabilityMode$.value && this.availabilityParams$.value) {
+      // AVAILABILITY MODE: Merge filters into unified availabilityParams$
+      const mergedParams = mergeFiltersIntoAvailabilityParams(
+        this.availabilityParams$.value,
+        criteria
+      );
+      this.availabilityParams$.next(mergedParams);
+
+      // Update filter chips from merged params
+      this.updateActiveFilterChips(extractFiltersFromAvailabilityParams(mergedParams));
+
+      // Keep searchCriteria$ in sync for filter component state
+      this.searchCriteria$.next({
+        ...criteria,
+        page: 0,
+        size: mergedParams.size,
+      });
+    } else {
+      // STANDARD MODE: Update searchCriteria$ as before
+      const updated = { ...criteria, page: 0, size: this.searchCriteria$.value.size };
+      this.searchCriteria$.next(updated);
+      this.updateActiveFilterChips(updated);
+    }
   }
 
   onPageChange(event: PageEvent): void {
@@ -579,6 +824,11 @@ export class CarListComponent implements OnInit, OnDestroy {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
+  /**
+   * Remove a filter chip.
+   *
+   * UPGRADED: In availability mode, also removes the filter from availabilityParams$.
+   */
   removeFilterChip(key: keyof CarSearchCriteria): void {
     const currentCriteria = { ...this.searchCriteria$.value };
 
@@ -597,14 +847,44 @@ export class CarListComponent implements OnInit, OnDestroy {
     // Reset to page 0
     currentCriteria.page = 0;
 
-    // Update criteria and trigger search
+    // Update criteria
     this.searchCriteria$.next(currentCriteria);
 
-    // Update active filter chips
-    this.updateActiveFilterChips(currentCriteria);
+    // UPGRADED: Also update availabilityParams$ in availability mode
+    if (this.isAvailabilityMode$.value && this.availabilityParams$.value) {
+      const currentAvailParams = this.availabilityParams$.value;
+      const updatedAvailParams: AvailabilitySearchParams = {
+        ...currentAvailParams,
+        page: 0,
+      };
 
-    // Immediately sync URL to reflect removed filter
-    this.syncUrlToActiveCriteria(currentCriteria);
+      // Remove the filter from availability params
+      if (key === 'minPrice') {
+        updatedAvailParams.minPrice = undefined;
+        updatedAvailParams.maxPrice = undefined;
+      } else if (key === 'minYear') {
+        updatedAvailParams.minYear = undefined;
+        updatedAvailParams.maxYear = undefined;
+      } else if (key === 'make') {
+        updatedAvailParams.make = undefined;
+      } else if (key === 'model') {
+        updatedAvailParams.model = undefined;
+      } else if (key === 'minSeats') {
+        updatedAvailParams.minSeats = undefined;
+      } else if (key === 'transmission') {
+        updatedAvailParams.transmission = undefined;
+      } else if (key === 'features') {
+        updatedAvailParams.features = undefined;
+      }
+
+      this.availabilityParams$.next(updatedAvailParams);
+      this.updateActiveFilterChips(extractFiltersFromAvailabilityParams(updatedAvailParams));
+    } else {
+      // Update active filter chips for standard mode
+      this.updateActiveFilterChips(currentCriteria);
+      // Immediately sync URL to reflect removed filter
+      this.syncUrlToActiveCriteria(currentCriteria);
+    }
   }
 
   clearAllFilters(): void {
@@ -762,6 +1042,12 @@ export class CarListComponent implements OnInit, OnDestroy {
     );
   }
 
+  /**
+   * Reset only filter criteria while preserving availability search state.
+   *
+   * UPGRADED: In availability mode, clears filter fields from availabilityParams$
+   * while preserving location, time range, and geospatial coordinates.
+   */
   private filtersOnlyReset(): void {
     const defaultCriteria: CarSearchCriteria = {
       page: 0,
@@ -771,9 +1057,41 @@ export class CarListComponent implements OnInit, OnDestroy {
     this.searchCriteria$.next(defaultCriteria);
     this.updateActiveFilterChips(defaultCriteria);
 
-    // Keep availability/search params intact; just sync filter params portion
+    // UPGRADED: Also clear filter fields from availabilityParams$ in availability mode
     if (this.isAvailabilityMode$.value && this.availabilityParams$.value) {
-      this.updateUrlParamsForAvailability(this.availabilityParams$.value);
+      const currentAvailParams = this.availabilityParams$.value;
+
+      // Create new params with filters cleared but core params preserved
+      const clearedAvailParams: AvailabilitySearchParams = {
+        // Preserve core availability params
+        location: currentAvailParams.location,
+        startTime: currentAvailParams.startTime,
+        endTime: currentAvailParams.endTime,
+
+        // Preserve geospatial params
+        latitude: currentAvailParams.latitude,
+        longitude: currentAvailParams.longitude,
+        radiusKm: currentAvailParams.radiusKm,
+
+        // Clear all filter params
+        minPrice: undefined,
+        maxPrice: undefined,
+        make: undefined,
+        model: undefined,
+        minYear: undefined,
+        maxYear: undefined,
+        minSeats: undefined,
+        transmission: undefined,
+        features: undefined,
+        sort: undefined,
+
+        // Reset pagination
+        page: 0,
+        size: currentAvailParams.size,
+      };
+
+      this.availabilityParams$.next(clearedAvailParams);
+      // URL will be updated by the search pipeline tap()
     } else {
       this.updateUrlParams(defaultCriteria);
     }
@@ -786,6 +1104,13 @@ export class CarListComponent implements OnInit, OnDestroy {
     this.searchEndDate = null;
     this.searchEndTime = '';
     this.clearSearchErrors();
+
+    // Clear geospatial state
+    this.selectedGeocodeSuggestion = null;
+    this.searchCenter = {
+      latitude: DEFAULT_MAP_CENTER.latitude,
+      longitude: DEFAULT_MAP_CENTER.longitude,
+    };
 
     const defaultCriteria: CarSearchCriteria = { page: 0, size: 20 };
     this.searchCriteria$.next(defaultCriteria);
@@ -801,7 +1126,11 @@ export class CarListComponent implements OnInit, OnDestroy {
     this.router.navigate(['/cars'], { replaceUrl: true });
   }
 
-  private applyFilters(results: PagedResponse<Car>, criteria: CarSearchCriteria, isAvailability: boolean): PagedResponse<Car> {
+  private applyFilters(
+    results: PagedResponse<Car>,
+    criteria: CarSearchCriteria,
+    isAvailability: boolean
+  ): PagedResponse<Car> {
     const hasFilters =
       (criteria.minPrice ?? null) !== null ||
       (criteria.maxPrice ?? null) !== null ||
@@ -981,41 +1310,74 @@ export class CarListComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Update URL params for availability search mode
+   * Update URL params for availability search mode.
+   *
+   * UPGRADED: Now serializes the unified AvailabilitySearchParams including:
+   * - Core availability: location, startTime, endTime
+   * - Geospatial: lat, lng, radiusKm
+   * - All filter params: minPrice, maxPrice, make, model, year, seats, transmission, features
+   * - Pagination: page, size
+   *
+   * This enables full page refresh recovery with all state intact.
    */
-  private updateUrlParamsForAvailability(params: {
-    location: string;
-    startDate: string;
-    startTime: string;
-    endDate: string;
-    endTime: string;
-    page: number;
-    size: number;
-  }): void {
-    const queryParams: any = {
+  private updateUrlParamsForAvailability(params: AvailabilitySearchParams): void {
+    const queryParams: Record<string, string | number | boolean> = {
       availabilitySearch: 'true',
       location: params.location,
-      startDate: params.startDate,
       startTime: params.startTime,
-      endDate: params.endDate,
       endTime: params.endTime,
     };
 
-    // Only add page/size if non-default
+    // Geospatial params (preserve coordinates for page refresh)
+    if (params.latitude !== undefined) {
+      queryParams['lat'] = params.latitude;
+    }
+    if (params.longitude !== undefined) {
+      queryParams['lng'] = params.longitude;
+    }
+    if (params.radiusKm !== undefined) {
+      queryParams['radiusKm'] = params.radiusKm;
+    }
+
+    // Filter params (only non-default values)
+    if (params.minPrice !== undefined && params.minPrice > 0) {
+      queryParams['minPrice'] = params.minPrice;
+    }
+    if (params.maxPrice !== undefined) {
+      queryParams['maxPrice'] = params.maxPrice;
+    }
+    if (params.make) {
+      queryParams['make'] = params.make;
+    }
+    if (params.model) {
+      queryParams['model'] = params.model;
+    }
+    if (params.minYear !== undefined) {
+      queryParams['minYear'] = params.minYear;
+    }
+    if (params.maxYear !== undefined) {
+      queryParams['maxYear'] = params.maxYear;
+    }
+    if (params.minSeats !== undefined) {
+      queryParams['minSeats'] = params.minSeats;
+    }
+    if (params.transmission) {
+      queryParams['transmission'] = params.transmission;
+    }
+    if (params.features && params.features.length > 0) {
+      queryParams['features'] = params.features.join(',');
+    }
+    if (params.sort) {
+      queryParams['sort'] = params.sort;
+    }
+
+    // Pagination (only non-default values)
     if (params.page > 0) {
-      queryParams.page = params.page;
+      queryParams['page'] = params.page;
     }
     if (params.size !== 20) {
-      queryParams.size = params.size;
+      queryParams['size'] = params.size;
     }
-
-    const filterParams = this.buildQueryParamsFromCriteria({
-      ...this.searchCriteria$.value,
-      page: undefined,
-      size: undefined,
-    });
-
-    Object.assign(queryParams, filterParams);
 
     this.router.navigate([], {
       relativeTo: this.route,

@@ -110,7 +110,25 @@ export class LocationService {
 
     const params = new HttpParams().set('query', address.trim()).set('limit', '5');
 
-    return this.http.get<GeocodeSuggestion[]>(`${this.baseUrl}/locations/geocode`, { params }).pipe(
+    return this.http.get<any[]>(`${this.baseUrl}/locations/geocode`, { params }).pipe(
+      map((responses) => {
+        // Backend returns: { displayName, latitude, longitude, city, zipCode, type }
+        // Frontend expects: { id, latitude, longitude, formattedAddress, address, city, zipCode, country, placeType }
+        return responses.map(
+          (response, index) =>
+            ({
+              id: `geocode-${index}-${response.latitude}-${response.longitude}`,
+              latitude: response.latitude,
+              longitude: response.longitude,
+              formattedAddress: response.displayName || 'Nepoznata lokacija',
+              address: response.displayName || 'Nepoznata adresa',
+              city: response.city || undefined,
+              zipCode: response.zipCode,
+              country: 'Srbija',
+              placeType: (response.type || 'address') as GeocodeSuggestion['placeType'],
+            } as GeocodeSuggestion)
+        );
+      }),
       catchError((error) => {
         console.error('Geocoding failed:', error);
         return of([]);
@@ -139,21 +157,31 @@ export class LocationService {
       .set('latitude', latitude.toString())
       .set('longitude', longitude.toString());
 
-    return this.http
-      .get<ReverseGeocodeResult>(`${this.baseUrl}/locations/reverse-geocode`, { params })
-      .pipe(
-        catchError((error) => {
-          console.error('Reverse geocoding failed:', error);
-          return of({
-            formattedAddress: 'Unknown location',
-            address: 'Unknown',
-            city: 'Unknown',
-            zipCode: undefined,
-            country: 'Serbia',
-            placeType: 'address',
-          });
-        })
-      );
+    return this.http.get<any>(`${this.baseUrl}/locations/reverse-geocode`, { params }).pipe(
+      map((response) => {
+        // Backend returns: { address, city, zipCode, latitude, longitude }
+        // Frontend expects: { formattedAddress, address, city, zipCode, country, placeType }
+        return {
+          formattedAddress: response.address || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
+          address: response.address || 'Nepoznata adresa',
+          city: response.city || undefined,
+          zipCode: response.zipCode,
+          country: 'Srbija',
+          placeType: 'address',
+        } as ReverseGeocodeResult;
+      }),
+      catchError((error) => {
+        console.error('Reverse geocoding failed:', error);
+        return of({
+          formattedAddress: 'Unknown location',
+          address: 'Unknown',
+          city: 'Unknown',
+          zipCode: undefined,
+          country: 'Serbia',
+          placeType: 'address',
+        });
+      })
+    );
   }
 
   /**
@@ -165,26 +193,17 @@ export class LocationService {
   searchCars(filters: GeospatialSearchFilters): Observable<CarSearchResponse> {
     let params = new HttpParams();
 
-    // Location filters (required for geospatial search)
-    if (filters.latitude != null) {
-      params = params.set('latitude', filters.latitude.toString());
-    }
-    if (filters.longitude != null) {
-      params = params.set('longitude', filters.longitude.toString());
-    }
-    if (filters.radiusKm != null) {
-      params = params.set('radiusKm', filters.radiusKm.toString());
-    }
-    if (filters.distanceMaxKm != null) {
-      params = params.set('distanceMaxKm', filters.distanceMaxKm.toString());
+    // Location filter (backend uses string-based location search)
+    if (filters.location) {
+      params = params.set('location', filters.location);
     }
 
     // Price filters
     if (filters.pricePerDayMin != null) {
-      params = params.set('priceMin', filters.pricePerDayMin.toString());
+      params = params.set('minPrice', filters.pricePerDayMin.toString());
     }
     if (filters.pricePerDayMax != null) {
-      params = params.set('priceMax', filters.pricePerDayMax.toString());
+      params = params.set('maxPrice', filters.pricePerDayMax.toString());
     }
 
     // Vehicle filters
@@ -195,24 +214,79 @@ export class LocationService {
       params = params.set('transmission', filters.transmission);
     }
     if (filters.carType && filters.carType.length > 0) {
-      params = params.set('carType', filters.carType.join(','));
-    }
-
-    // Delivery filter
-    if (filters.deliveryAvailable != null) {
-      params = params.set('deliveryAvailable', filters.deliveryAvailable.toString());
-    }
-
-    // Rating filter
-    if (filters.minRating != null) {
-      params = params.set('minRating', filters.minRating.toString());
+      params = params.set('vehicleType', filters.carType.join(','));
     }
 
     // Pagination
     params = params.set('page', (filters.page ?? 0).toString());
     params = params.set('size', (filters.pageSize ?? 20).toString());
 
-    return this.http.get<CarSearchResponse>(`${this.baseUrl}/cars/search`, { params }).pipe(
+    // Store search center for distance calculation
+    const searchLat = filters.latitude;
+    const searchLng = filters.longitude;
+
+    return this.http.get<any>(`${this.baseUrl}/cars/search`, { params }).pipe(
+      map((response) => {
+        // Backend returns: { content, totalElements, totalPages, currentPage, pageSize, hasNext, hasPrevious }
+        // Frontend expects: { data, pagination }
+        const cars = response.content || [];
+
+        // Transform each car to CarSearchResult format
+        const data: CarSearchResult[] = cars.map((car: any) => {
+          // Calculate distance if we have search coordinates and car coordinates
+          let distanceKm: number | undefined;
+          if (
+            searchLat != null &&
+            searchLng != null &&
+            car.locationLatitude != null &&
+            car.locationLongitude != null
+          ) {
+            distanceKm = this.calculateDistance(
+              { latitude: searchLat, longitude: searchLng },
+              {
+                latitude: parseFloat(car.locationLatitude),
+                longitude: parseFloat(car.locationLongitude),
+              }
+            );
+            distanceKm = Math.round(distanceKm * 10) / 10; // Round to 1 decimal
+          }
+
+          return {
+            id: car.id,
+            brand: car.brand,
+            model: car.model,
+            year: car.year,
+            pricePerDay: parseFloat(car.pricePerDay) || 0,
+            locationGeoPoint: {
+              latitude: car.locationLatitude ? parseFloat(car.locationLatitude) : 0,
+              longitude: car.locationLongitude ? parseFloat(car.locationLongitude) : 0,
+              city: car.locationCity || car.location || 'Nepoznato',
+              obfuscationRadiusMeters: car.isExactLocation ? 0 : 500,
+              obfuscationApplied: !car.isExactLocation,
+            },
+            distanceKm,
+            imageUrl: car.imageUrl,
+            imageUrls: car.imageUrls,
+            rating: car.ownerRating,
+            reviewCount: car.ownerTripCount,
+            features: car.features,
+            transmission: car.transmissionType,
+            fuelType: car.fuelType,
+            seats: car.seats,
+            available: car.available,
+          } as CarSearchResult;
+        });
+
+        return {
+          data,
+          pagination: {
+            total: response.totalElements || 0,
+            page: response.currentPage ?? filters.page ?? 0,
+            pageSize: response.pageSize ?? filters.pageSize ?? 20,
+            totalPages: response.totalPages || 0,
+          },
+        } as CarSearchResponse;
+      }),
       catchError((error) => {
         console.error('Car search failed:', error);
         return of({

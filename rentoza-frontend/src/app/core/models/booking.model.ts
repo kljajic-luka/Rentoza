@@ -118,11 +118,18 @@ export interface BookingRequest {
   driverPhone?: string;
 
   // Pickup location (Phase 2.4 - Geospatial)
+  /** Pickup latitude (WGS84), must be within Serbia bounds (42.2-46.2) */
   pickupLatitude?: number;
+  /** Pickup longitude (WGS84), must be within Serbia bounds (18.8-23.0) */
   pickupLongitude?: number;
+  /** Human-readable pickup address (reverse-geocoded or user-provided) */
   pickupAddress?: string;
-  isCarLocationPickup?: boolean;
-  deliveryFee?: number;
+  /** City name (e.g., "Belgrade", "Novi Sad") */
+  pickupCity?: string;
+  /** Postal code (e.g., "11000") */
+  pickupZipCode?: string;
+  /** Whether guest requests delivery to a custom location (triggers fee calculation) */
+  deliveryRequested?: boolean;
 }
 
 /**

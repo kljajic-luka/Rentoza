@@ -159,6 +159,69 @@ public class CheckInService {
         if (dto.getCarLatitude() != null && dto.getCarLongitude() != null) {
             booking.setCarLatitude(BigDecimal.valueOf(dto.getCarLatitude()));
             booking.setCarLongitude(BigDecimal.valueOf(dto.getCarLongitude()));
+            
+            // ========================================================================
+            // LOCATION VARIANCE CHECK (Phase 2.4 - Geospatial Migration)
+            // ========================================================================
+            // Calculate and validate distance between car's current location (at check-in)
+            // and the agreed pickup location (snapshot from booking time).
+            //
+            // This prevents hosts from moving cars to inconvenient locations after booking.
+            //
+            // Thresholds:
+            // - WARNING (>500m): Log event, continue check-in
+            // - BLOCKING (>2km): Reject check-in, require location resolution
+            
+            Integer varianceMeters = booking.calculatePickupLocationVariance();
+            if (varianceMeters != null) {
+                booking.setPickupLocationVarianceMeters(varianceMeters);
+                
+                if (booking.hasBlockingLocationVariance()) {
+                    // > 2km variance - BLOCK check-in
+                    eventService.recordEvent(
+                        booking,
+                        booking.getCheckInSessionId(),
+                        CheckInEventType.LOCATION_VARIANCE_BLOCKING,
+                        userId,
+                        CheckInActorRole.HOST,
+                        Map.of(
+                            "varianceMeters", varianceMeters,
+                            "threshold", 2000,
+                            "action", "BLOCKED"
+                        )
+                    );
+                    
+                    log.warn("[CheckIn] BLOCKING: Car location variance {} meters exceeds 2km threshold for booking {}",
+                            varianceMeters, booking.getId());
+                    
+                    throw new IllegalStateException(String.format(
+                        "Vozilo je udaljeno %.1f km od dogovorene lokacije preuzimanja. " +
+                        "Maksimalna dozvoljena udaljenost je 2 km. " +
+                        "Molimo premestite vozilo bliže dogovorenoj lokaciji ili kontaktirajte gosta.",
+                        varianceMeters / 1000.0
+                    ));
+                } else if (booking.hasSignificantLocationVariance()) {
+                    // > 500m variance - WARNING only, allow check-in
+                    eventService.recordEvent(
+                        booking,
+                        booking.getCheckInSessionId(),
+                        CheckInEventType.LOCATION_VARIANCE_WARNING,
+                        userId,
+                        CheckInActorRole.HOST,
+                        Map.of(
+                            "varianceMeters", varianceMeters,
+                            "threshold", 500,
+                            "action", "WARNING"
+                        )
+                    );
+                    
+                    log.warn("[CheckIn] WARNING: Car location variance {} meters exceeds 500m threshold for booking {}",
+                            varianceMeters, booking.getId());
+                } else {
+                    log.debug("[CheckIn] Car location variance {} meters within acceptable range for booking {}",
+                            varianceMeters, booking.getId());
+                }
+            }
         }
         
         // Set host location

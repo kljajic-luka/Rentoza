@@ -6,6 +6,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingStatus;
+import org.example.rentoza.common.GeoPoint;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -16,6 +17,9 @@ import java.time.LocalDateTime;
  * <h2>Exact Timestamp Architecture</h2>
  * Returns precise start/end timestamps for frontend display.
  * Times are in Europe/Belgrade timezone.
+ * 
+ * <h2>Geospatial Location (Phase 2.4)</h2>
+ * Includes pickup location snapshot and delivery fee details.
  */
 @Getter
 @Setter
@@ -49,6 +53,48 @@ public class BookingResponseDTO {
 
     // Renter details
     private RenterDetailsDTO renter;
+    
+    // ========== GEOSPATIAL PICKUP LOCATION (Phase 2.4) ==========
+    
+    /**
+     * Agreed pickup location snapshot (immutable after booking creation).
+     */
+    private PickupLocationDTO pickupLocation;
+    
+    /**
+     * Delivery distance in kilometers (null if self-pickup).
+     */
+    private BigDecimal deliveryDistanceKm;
+    
+    /**
+     * Calculated delivery fee (0 if self-pickup or free delivery).
+     */
+    private BigDecimal deliveryFee;
+    
+    /**
+     * Nested DTO for pickup location details.
+     */
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class PickupLocationDTO {
+        private BigDecimal latitude;
+        private BigDecimal longitude;
+        private String address;
+        private String city;
+        private String zipCode;
+        
+        public PickupLocationDTO(GeoPoint geoPoint) {
+            if (geoPoint != null) {
+                this.latitude = geoPoint.getLatitude();
+                this.longitude = geoPoint.getLongitude();
+                this.address = geoPoint.getAddress();
+                this.city = geoPoint.getCity();
+                this.zipCode = geoPoint.getZipCode();
+            }
+        }
+    }
 
     @Getter
     @Setter
@@ -99,5 +145,12 @@ public class BookingResponseDTO {
                     booking.getRenter().getLastName()
             );
         }
+        
+        // Map geospatial pickup location (Phase 2.4)
+        if (booking.getPickupLocation() != null) {
+            this.pickupLocation = new PickupLocationDTO(booking.getPickupLocation());
+        }
+        this.deliveryDistanceKm = booking.getDeliveryDistanceKm();
+        this.deliveryFee = booking.getDeliveryFeeCalculated();
     }
 }

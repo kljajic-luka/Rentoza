@@ -17,20 +17,40 @@
           <input
             matInput
             placeholder="Grad, aerodrom, adresa ili hotel"
-            [matAutocomplete]="cityAuto"
+            [matAutocomplete]="locationAuto"
             autocomplete="off"
-            [(ngModel)]="searchLocation"
-            (blur)="validateField('location')"
+            [value]="searchLocation"
+            (input)="onLocationInput($event)"
             (keyup.enter)="searchAvailability()"
           />
           <mat-autocomplete
-            #cityAuto="matAutocomplete"
-            (optionSelected)="onCitySelected($event.option.value)"
+            #locationAuto="matAutocomplete"
+            [displayWith]="displayGeocodeSuggestion"
+            (optionSelected)="onGeocodeSuggestionSelected($event.option.value)"
           >
-            <mat-option *ngFor="let city of filteredCities" [value]="city">
-              {{ city }}
+            <mat-option *ngIf="isLoadingGeocoding" disabled class="geocode-loading-option">
+              <mat-spinner diameter="20"></mat-spinner>
+              <span style="margin-left: 8px">Pretraga...</span>
+            </mat-option>
+            <mat-option *ngFor="let suggestion of geocodeSuggestions" [value]="suggestion">
+              <div class="geocode-suggestion">
+                <mat-icon class="suggestion-icon">place</mat-icon>
+                <span class="suggestion-text">{{ suggestion.formattedAddress }}</span>
+              </div>
             </mat-option>
           </mat-autocomplete>
+          <button
+            mat-icon-button
+            matSuffix
+            type="button"
+            (click)="useCurrentLocation()"
+            [disabled]="isLoadingCurrentLocation"
+            matTooltip="Koristi trenutnu lokaciju"
+            class="geolocation-btn"
+          >
+            <mat-icon *ngIf="!isLoadingCurrentLocation">my_location</mat-icon>
+            <mat-spinner *ngIf="isLoadingCurrentLocation" diameter="20"></mat-spinner>
+          </button>
         </mat-form-field>
         <span class="validation-hint" *ngIf="locationError">{{ locationError }}</span>
       </div>

@@ -1,12 +1,16 @@
 package org.example.rentoza.booking.dto;
 
 import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Future;
 import jakarta.validation.constraints.FutureOrPresent;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 
@@ -54,6 +58,60 @@ public class BookingRequestDTO {
     private String insuranceType = "BASIC"; // BASIC, STANDARD, PREMIUM
     private boolean prepaidRefuel = false;
 
+    // ========================================================================
+    // GEOSPATIAL LOCATION FIELDS (Phase 2.4 - Pickup Location Snapshot)
+    // ========================================================================
+    // These fields capture the agreed pickup location at booking time.
+    // The location is immutable after booking creation to prevent hosts
+    // from moving the car without guest consent.
+    //
+    // If pickupLatitude and pickupLongitude are null, the car's home location
+    // is used as the default pickup point.
+
+    /**
+     * Pickup location latitude (WGS84).
+     * Must be within Serbia bounds: 42.2°N to 46.2°N
+     */
+    @DecimalMin(value = "42.2", message = "Latitude must be within Serbia bounds (minimum 42.2°N)")
+    @DecimalMax(value = "46.2", message = "Latitude must be within Serbia bounds (maximum 46.2°N)")
+    private BigDecimal pickupLatitude;
+
+    /**
+     * Pickup location longitude (WGS84).
+     * Must be within Serbia bounds: 18.8°E to 23.0°E
+     */
+    @DecimalMin(value = "18.8", message = "Longitude must be within Serbia bounds (minimum 18.8°E)")
+    @DecimalMax(value = "23.0", message = "Longitude must be within Serbia bounds (maximum 23.0°E)")
+    private BigDecimal pickupLongitude;
+
+    /**
+     * Human-readable pickup address (reverse-geocoded or user-provided).
+     * Example: "Terazije 26, Beograd"
+     */
+    @Size(max = 255, message = "Pickup address must not exceed 255 characters")
+    private String pickupAddress;
+
+    /**
+     * City name for UI grouping and search.
+     * Example: "Belgrade", "Novi Sad", "Niš"
+     */
+    @Size(max = 50, message = "City must not exceed 50 characters")
+    private String pickupCity;
+
+    /**
+     * Postal code (optional).
+     * Example: "11000"
+     */
+    @Size(max = 10, message = "Zip code must not exceed 10 characters")
+    private String pickupZipCode;
+
+    /**
+     * Whether guest requests delivery to a custom location.
+     * If true and pickupLatitude/pickupLongitude are provided,
+     * a delivery fee will be calculated.
+     */
+    private boolean deliveryRequested = false;
+
     /**
      * Validates that end time is after start time.
      */
@@ -90,6 +148,27 @@ public class BookingRequestDTO {
         return startValid && endValid;
     }
 
+    /**
+     * Validates that if delivery is requested, pickup coordinates are provided.
+     */
+    @AssertTrue(message = "Pickup coordinates are required when delivery is requested")
+    private boolean isDeliveryCoordinatesValid() {
+        if (!deliveryRequested) {
+            return true; // No delivery = no coordinate requirement
+        }
+        return pickupLatitude != null && pickupLongitude != null;
+    }
+
+    /**
+     * Validates that both latitude and longitude are provided together (or neither).
+     */
+    @AssertTrue(message = "Both latitude and longitude must be provided together")
+    private boolean isCoordinatesPairValid() {
+        boolean hasLat = pickupLatitude != null;
+        boolean hasLon = pickupLongitude != null;
+        return hasLat == hasLon; // Both present or both absent
+    }
+
     // ========== CONVENIENCE METHODS ==========
 
     /**
@@ -109,5 +188,12 @@ public class BookingRequestDTO {
     public int getDurationDays() {
         long hours = getDurationHours();
         return Math.max(1, (int) Math.ceil(hours / 24.0));
+    }
+
+    /**
+     * Check if a custom pickup location is provided.
+     */
+    public boolean hasCustomPickupLocation() {
+        return pickupLatitude != null && pickupLongitude != null;
     }
 }

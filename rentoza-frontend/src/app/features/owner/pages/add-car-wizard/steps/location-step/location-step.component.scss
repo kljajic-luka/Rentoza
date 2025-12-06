@@ -44,6 +44,27 @@
     }
   }
 
+  // Location Error Message
+  .location-error {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    background: #ffebee;
+    border: 1px solid #ffcdd2;
+    border-radius: 8px;
+    color: #c62828;
+    font-size: 0.9rem;
+    margin-bottom: 16px;
+
+    mat-icon {
+      font-size: 20px;
+      width: 20px;
+      height: 20px;
+      color: #e53935;
+    }
+  }
+
   // Form Styles
   .full-width {
     width: 100%;
@@ -214,6 +235,16 @@
 
       .step-description {
         color: #aaa;
+      }
+    }
+
+    .location-error {
+      background: rgba(198, 40, 40, 0.15);
+      border-color: rgba(229, 57, 53, 0.3);
+      color: #ef5350;
+
+      mat-icon {
+        color: #ef5350;
       }
     }
 

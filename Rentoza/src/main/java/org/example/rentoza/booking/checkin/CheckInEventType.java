@@ -144,6 +144,24 @@ public enum CheckInEventType {
      */
     GEOFENCE_CHECK_FAILED,
     
+    // ========== LOCATION VARIANCE (Phase 2.4 - Geospatial Migration) ==========
+    
+    /**
+     * Car location variance exceeds WARNING threshold (500m).
+     * Host moved the car more than 500m from agreed pickup location.
+     * Check-in continues but event logged for audit.
+     * Metadata: {@code {"varianceMeters": 750, "threshold": 500, "action": "WARNING"}}
+     */
+    LOCATION_VARIANCE_WARNING,
+    
+    /**
+     * Car location variance exceeds BLOCKING threshold (2km).
+     * Host moved the car more than 2km from agreed pickup location.
+     * Check-in is blocked until car is moved closer.
+     * Metadata: {@code {"varianceMeters": 2500, "threshold": 2000, "action": "BLOCKED"}}
+     */
+    LOCATION_VARIANCE_BLOCKING,
+    
     // ========== NO-SHOW FLOW ==========
     
     /**

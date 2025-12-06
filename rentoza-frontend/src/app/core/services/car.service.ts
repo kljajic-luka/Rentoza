@@ -5,7 +5,11 @@ import { Observable, map, shareReplay } from 'rxjs';
 import { environment } from '@environments/environment';
 import { Car, UnavailableRange } from '@core/models/car.model';
 import { Review } from '@core/models/review.model';
-import { CarSearchCriteria, PagedResponse } from '@core/models/car-search.model';
+import {
+  AvailabilitySearchParams,
+  CarSearchCriteria,
+  PagedResponse,
+} from '@core/models/car-search.model';
 import { isWithinRadius } from '@core/utils/distance.util';
 import { normalizeSearchString } from '@core/utils/string-normalization.util';
 import { clearHttpCacheByPattern } from '@core/interceptors/http-cache.interceptor';
@@ -71,45 +75,73 @@ export class CarService {
   }
 
   /**
-   * Search cars by availability (location + time range).
+   * Search cars by availability (location + time range + geospatial + filters).
    * Uses exact timestamp architecture for precise availability filtering.
-   * 
-   * @param location Location string (city/region)
-   * @param startDateTime ISO-8601 timestamp OR YYYY-MM-DD date
-   * @param startTimeOfDay Time of day (HH:mm) - combines with date if not ISO
-   * @param endDateTime ISO-8601 timestamp OR YYYY-MM-DD date
-   * @param endTimeOfDay Time of day (HH:mm) - combines with date if not ISO
-   * @param page Page number (0-indexed, default: 0)
-   * @param size Page size (default: 20)
-   * @param sort Sort order (optional)
+   *
+   * UPGRADED: Now accepts unified AvailabilitySearchParams DTO that includes:
+   * - Core availability: location, startTime, endTime
+   * - Geospatial: latitude, longitude, radiusKm (optional)
+   * - Filters: minPrice, maxPrice, make, model, year, seats, transmission, features
+   * - Pagination: page, size, sort
+   *
+   * When geospatial coordinates are provided, backend uses spatial index for
+   * proximity-based search. Otherwise, falls back to location-string search.
+   *
+   * @param params Unified availability search parameters
    * @returns Paginated response with available cars
    */
-  searchAvailableCars(
-    location: string,
-    startDateTime: string,
-    startTimeOfDay: string,
-    endDateTime: string,
-    endTimeOfDay: string,
-    page: number = 0,
-    size: number = 20,
-    sort?: string
-  ): Observable<PagedResponse<Car>> {
-    // Combine date + time if needed, or use as-is if already ISO timestamp
-    const startTime = this.toISOTimestamp(startDateTime, startTimeOfDay);
-    const endTime = this.toISOTimestamp(endDateTime, endTimeOfDay);
+  searchAvailableCars(params: AvailabilitySearchParams): Observable<PagedResponse<Car>> {
+    let httpParams = new HttpParams()
+      .set('location', params.location)
+      .set('startTime', params.startTime)
+      .set('endTime', params.endTime)
+      .set('page', params.page.toString())
+      .set('size', params.size.toString());
 
-    let params = new HttpParams()
-      .set('location', location)
-      .set('startTime', startTime)
-      .set('endTime', endTime)
-      .set('page', page.toString())
-      .set('size', size.toString());
+    // Geospatial params (when coordinates available from geocoding)
+    if (params.latitude !== undefined && params.longitude !== undefined) {
+      httpParams = httpParams
+        .set('latitude', params.latitude.toString())
+        .set('longitude', params.longitude.toString());
 
-    if (sort) {
-      params = params.set('sort', sort);
+      if (params.radiusKm !== undefined) {
+        httpParams = httpParams.set('radiusKm', params.radiusKm.toString());
+      }
     }
 
-    return this.http.get<any>(`${this.baseUrl}/availability-search`, { params }).pipe(
+    // Filter params
+    if (params.minPrice !== undefined) {
+      httpParams = httpParams.set('minPrice', params.minPrice.toString());
+    }
+    if (params.maxPrice !== undefined) {
+      httpParams = httpParams.set('maxPrice', params.maxPrice.toString());
+    }
+    if (params.make) {
+      httpParams = httpParams.set('make', normalizeSearchString(params.make));
+    }
+    if (params.model) {
+      httpParams = httpParams.set('model', normalizeSearchString(params.model));
+    }
+    if (params.minYear !== undefined) {
+      httpParams = httpParams.set('minYear', params.minYear.toString());
+    }
+    if (params.maxYear !== undefined) {
+      httpParams = httpParams.set('maxYear', params.maxYear.toString());
+    }
+    if (params.minSeats !== undefined) {
+      httpParams = httpParams.set('minSeats', params.minSeats.toString());
+    }
+    if (params.transmission) {
+      httpParams = httpParams.set('transmission', params.transmission);
+    }
+    if (params.features && params.features.length > 0) {
+      httpParams = httpParams.set('features', params.features.join(','));
+    }
+    if (params.sort) {
+      httpParams = httpParams.set('sort', params.sort);
+    }
+
+    return this.http.get<any>(`${this.baseUrl}/availability-search`, { params: httpParams }).pipe(
       map((response) => ({
         content: response.content.map((car: any) => this.mapBackendCarToFrontend(car)),
         totalElements: response.totalElements,
@@ -123,9 +155,39 @@ export class CarService {
   }
 
   /**
+   * @deprecated Use searchAvailableCars(AvailabilitySearchParams) instead.
+   * Legacy overload kept for backward compatibility during migration.
+   */
+  searchAvailableCarsLegacy(
+    location: string,
+    startDateTime: string,
+    startTimeOfDay: string,
+    endDateTime: string,
+    endTimeOfDay: string,
+    page: number = 0,
+    size: number = 20,
+    sort?: string
+  ): Observable<PagedResponse<Car>> {
+    // Combine date + time if needed, or use as-is if already ISO timestamp
+    const startTime = this.toISOTimestamp(startDateTime, startTimeOfDay);
+    const endTime = this.toISOTimestamp(endDateTime, endTimeOfDay);
+
+    const params: AvailabilitySearchParams = {
+      location,
+      startTime,
+      endTime,
+      page,
+      size,
+      sort,
+    };
+
+    return this.searchAvailableCars(params);
+  }
+
+  /**
    * Get unavailable time ranges for a specific car.
    * Used by the booking calendar to disable invalid date/time selections.
-   * 
+   *
    * @param carId Car ID
    * @param start Optional start of query window (ISO-8601 datetime, default: now)
    * @param end Optional end of query window (ISO-8601 datetime, default: start + 1 year)
@@ -133,17 +195,14 @@ export class CarService {
    */
   getCarAvailability(
     carId: number,
-    start?: string,  // ISO-8601 datetime
-    end?: string     // ISO-8601 datetime
+    start?: string, // ISO-8601 datetime
+    end?: string // ISO-8601 datetime
   ): Observable<UnavailableRange[]> {
     let params = new HttpParams();
     if (start) params = params.set('start', start);
     if (end) params = params.set('end', end);
-    
-    return this.http.get<UnavailableRange[]>(
-      `${this.baseUrl}/${carId}/availability`,
-      { params }
-    );
+
+    return this.http.get<UnavailableRange[]>(`${this.baseUrl}/${carId}/availability`, { params });
   }
 
   /**

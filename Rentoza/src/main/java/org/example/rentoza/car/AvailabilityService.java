@@ -18,12 +18,14 @@ import org.springframework.data.support.PageableExecutionUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -64,10 +66,12 @@ public class AvailabilityService {
     /**
      * Search for cars available in a specific location and time range.
      *
-     * Algorithm:
-     * 1. Fetch all cars in the requested location (filtered by available=true)
+     * UPGRADED Algorithm:
+     * 1. Fetch candidate cars:
+     *    - If geospatial coordinates provided: use findNearby() spatial query
+     *    - Otherwise: use findAvailableWithDetailsByLocation() string query
      * 2. For each car, check if it's available in the requested time range
-     * 3. Filter out cars with overlapping bookings
+     * 3. Apply in-memory filters (price, make, transmission, features, etc.)
      * 4. Apply pagination to results
      *
      * @param request Validated AvailabilitySearchRequestDTO
@@ -75,20 +79,21 @@ public class AvailabilityService {
      */
     @Transactional(readOnly = true)
     public Page<Car> searchAvailableCars(AvailabilitySearchRequestDTO request) {
-        log.debug("[AvailabilityService] Searching cars: location={}, startDateTime={}, endDateTime={}",
+        log.debug("[AvailabilityService] Searching cars: location={}, startDateTime={}, endDateTime={}, " +
+                "hasGeo={}, hasFilters={}",
             request.getNormalizedLocation(),
             request.getStartDateTime(),
-            request.getEndDateTime()
+            request.getEndDateTime(),
+            request.hasGeospatialCoordinates(),
+            request.hasFilters()
         );
 
-        // Step 1: Find all cars in location (available=true)
-        String normalizedLocation = request.getNormalizedLocation();
-        List<Car> carsInLocation = carRepository.findAvailableWithDetailsByLocation(normalizedLocation);
-
-        log.debug("[AvailabilityService] Found {} cars in location '{}'", carsInLocation.size(), normalizedLocation);
+        // Step 1: Find candidate cars (geospatial or location-string based)
+        List<Car> candidateCars = fetchCandidateCars(request);
+        log.debug("[AvailabilityService] Found {} candidate cars", candidateCars.size());
 
         // Initialize additional bags to avoid lazy loading outside the transaction
-        carsInLocation.forEach(car -> {
+        candidateCars.forEach(car -> {
             Hibernate.initialize(car.getAddOns());
             Hibernate.initialize(car.getImageUrls());
         });
@@ -97,13 +102,19 @@ public class AvailabilityService {
         LocalDateTime requestedStart = request.getStartDateTime();
         LocalDateTime requestedEnd = request.getEndDateTime();
 
-        List<Car> availableCars = carsInLocation.stream()
+        List<Car> availableCars = candidateCars.stream()
             .filter(car -> isCarAvailableInTimeRange(car, requestedStart, requestedEnd))
             .toList();
 
         log.debug("[AvailabilityService] After time filtering: {} available cars", availableCars.size());
 
-        // Step 3: Apply pagination
+        // Step 3: Apply in-memory filters (price, make, features, etc.)
+        if (request.hasFilters()) {
+            availableCars = applyFilters(availableCars, request);
+            log.debug("[AvailabilityService] After filter application: {} cars", availableCars.size());
+        }
+
+        // Step 4: Apply pagination
         Pageable pageable = PageRequest.of(request.getPage(), request.getSize());
 
         // Calculate pagination indices
@@ -116,19 +127,149 @@ public class AvailabilityService {
             : List.of();
 
         // Create Page object with total count supplier
+        final List<Car> finalAvailableCars = availableCars;
         Page<Car> resultPage = PageableExecutionUtils.getPage(
             pageContent,
             pageable,
-            availableCars::size
+            finalAvailableCars::size
         );
 
-        log.info("[AvailabilityService] Returning page {}/{} with {} cars",
+        log.info("[AvailabilityService] Returning page {}/{} with {} cars{}",
             resultPage.getNumber() + 1,
             resultPage.getTotalPages(),
-            resultPage.getNumberOfElements()
+            resultPage.getNumberOfElements(),
+            request.hasFilters() ? " [FILTERED]" : ""
         );
 
         return resultPage;
+    }
+
+    /**
+     * Fetch candidate cars based on search mode:
+     * - Geospatial mode: Uses spatial index query (findNearby)
+     * - Location-string mode: Uses city-based text query
+     *
+     * @param request Search request with location and optional coordinates
+     * @return List of candidate cars to filter
+     */
+    private List<Car> fetchCandidateCars(AvailabilitySearchRequestDTO request) {
+        if (request.hasGeospatialCoordinates()) {
+            // GEOSPATIAL MODE: Use spatial index for proximity search
+            log.debug("[AvailabilityService] Using geospatial search: lat={}, lng={}, radius={}km",
+                request.getLatitude(), request.getLongitude(), request.getRadiusKm());
+
+            List<Car> nearbyCars = carRepository.findNearby(
+                request.getLatitude(),
+                request.getLongitude(),
+                request.getRadiusKm()
+            );
+
+            // Eagerly load features for filtering (native query doesn't use EntityGraph)
+            nearbyCars.forEach(car -> {
+                Hibernate.initialize(car.getOwner());
+                Hibernate.initialize(car.getFeatures());
+            });
+
+            return nearbyCars;
+        } else {
+            // LOCATION-STRING MODE: Use city-based text query (fallback)
+            String normalizedLocation = request.getNormalizedLocation();
+            log.debug("[AvailabilityService] Using location-string search: '{}'", normalizedLocation);
+
+            return carRepository.findAvailableWithDetailsByLocation(normalizedLocation);
+        }
+    }
+
+    /**
+     * Apply in-memory filters to candidate cars.
+     * 
+     * This is efficient for typical availability search result sizes (< 100 cars).
+     * Filters are applied after geospatial/location and time-based filtering
+     * have already reduced the candidate set.
+     *
+     * @param cars List of candidate cars
+     * @param request Request containing filter criteria
+     * @return Filtered list of cars
+     */
+    private List<Car> applyFilters(List<Car> cars, AvailabilitySearchRequestDTO request) {
+        return cars.stream()
+            .filter(car -> matchesFilters(car, request))
+            .toList();
+    }
+
+    /**
+     * Check if a car matches all active filter criteria.
+     *
+     * @param car Car to check
+     * @param request Request containing filter criteria
+     * @return true if car matches all filters (or no filters are active)
+     */
+    private boolean matchesFilters(Car car, AvailabilitySearchRequestDTO request) {
+        // Price filters
+        if (request.getMinPrice() != null && 
+            car.getPricePerDay().compareTo(BigDecimal.valueOf(request.getMinPrice())) < 0) {
+            return false;
+        }
+        if (request.getMaxPrice() != null && 
+            car.getPricePerDay().compareTo(BigDecimal.valueOf(request.getMaxPrice())) > 0) {
+            return false;
+        }
+
+        // Make/Brand filter (case-insensitive contains match)
+        if (request.getMake() != null && !request.getMake().isBlank()) {
+            String carBrand = car.getBrand() != null ? car.getBrand().toLowerCase() : "";
+            String filterMake = request.getMake().toLowerCase().trim();
+            if (!carBrand.contains(filterMake)) {
+                return false;
+            }
+        }
+
+        // Model filter (case-insensitive contains match)
+        if (request.getModel() != null && !request.getModel().isBlank()) {
+            String carModel = car.getModel() != null ? car.getModel().toLowerCase() : "";
+            String filterModel = request.getModel().toLowerCase().trim();
+            if (!carModel.contains(filterModel)) {
+                return false;
+            }
+        }
+
+        // Year filters
+        if (request.getMinYear() != null && car.getYear() < request.getMinYear()) {
+            return false;
+        }
+        if (request.getMaxYear() != null && car.getYear() > request.getMaxYear()) {
+            return false;
+        }
+
+        // Seats filter
+        if (request.getMinSeats() != null) {
+            Integer carSeats = car.getSeats();
+            if (carSeats == null || carSeats < request.getMinSeats()) {
+                return false;
+            }
+        }
+
+        // Transmission filter
+        if (request.getTransmission() != null) {
+            if (car.getTransmissionType() != request.getTransmission()) {
+                return false;
+            }
+        }
+
+        // Features filter (car must have ALL requested features)
+        if (request.getFeatures() != null && !request.getFeatures().isEmpty()) {
+            Set<Feature> carFeatures = car.getFeatures();
+            if (carFeatures == null || carFeatures.isEmpty()) {
+                return false;
+            }
+            for (Feature requiredFeature : request.getFeatures()) {
+                if (!carFeatures.contains(requiredFeature)) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 
     /**

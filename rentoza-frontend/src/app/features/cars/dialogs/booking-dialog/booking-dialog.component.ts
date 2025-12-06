@@ -526,16 +526,13 @@ export class BookingDialogComponent implements OnInit {
       driverPhone: formValues.driverPhone,
       insuranceType: formValues.insuranceType || 'BASIC',
       prepaidRefuel: formValues.prepaidRefuel || false,
-      // Pickup location fields (Phase 2.4)
+      // Pickup location fields (Phase 2.4) - matching backend BookingRequestDTO
       pickupLatitude: pickup?.latitude,
       pickupLongitude: pickup?.longitude,
       pickupAddress: pickup?.address,
-      isCarLocationPickup: pickup?.isCarLocation,
-      // Delivery fee if applicable
-      deliveryFee:
-        this.deliveryFee()?.available && this.deliveryFee()?.fee
-          ? this.deliveryFee()?.fee
-          : undefined,
+      pickupCity: pickup?.city,
+      // deliveryRequested is true when user selects custom location (not car's home)
+      deliveryRequested: pickup ? !pickup.isCarLocation : false,
     };
 
     // Validate availability before creating booking

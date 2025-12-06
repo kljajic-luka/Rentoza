@@ -21,6 +21,8 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatChipsModule } from '@angular/material/chips';
 
 import { BookingService } from '../../../../core/services/booking.service';
+import { BookingDetails, PickupLocationData } from '../../../../core/models/booking-details.model';
+import { ReadOnlyPickupLocationComponent } from '../../components/readonly-pickup-location';
 
 @Component({
   selector: 'app-booking-detail',
@@ -34,6 +36,7 @@ import { BookingService } from '../../../../core/services/booking.service';
     MatDividerModule,
     MatProgressSpinnerModule,
     MatChipsModule,
+    ReadOnlyPickupLocationComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -74,14 +77,14 @@ import { BookingService } from '../../../../core/services/booking.service';
 
       <!-- Car info -->
       <mat-card class="car-card">
-        @if (booking()?.car?.imageUrl) {
-        <img [src]="booking()?.car?.imageUrl" [alt]="carTitle()" class="car-image" />
+        @if (booking()?.primaryImageUrl) {
+        <img [src]="booking()?.primaryImageUrl" [alt]="carTitle()" class="car-image" />
         }
         <mat-card-content>
           <h3>{{ carTitle() }}</h3>
           <p class="car-owner">
             <mat-icon>person</mat-icon>
-            {{ booking()?.car?.ownerName || 'Domaćin' }}
+            {{ booking()?.hostName || 'Domaćin' }}
           </p>
         </mat-card-content>
       </mat-card>
@@ -106,6 +109,19 @@ import { BookingService } from '../../../../core/services/booking.service';
           </div>
         </mat-card-content>
       </mat-card>
+
+      <!-- Pickup Location -->
+      @if (pickupLocationData()) {
+      <div class="pickup-location-section">
+        <app-readonly-pickup-location
+          [pickupLocation]="pickupLocationData()"
+          [showDeliveryInfo]="hasDeliveryInfo()"
+          [deliveryDistance]="booking()?.deliveryDistanceKm ?? null"
+          [deliveryFee]="booking()?.deliveryFeeCalculated ?? null"
+          mode="standard"
+        />
+      </div>
+      }
 
       <!-- Pricing -->
       <mat-card class="pricing-card">
@@ -300,14 +316,44 @@ export class BookingDetailComponent implements OnInit {
   private router = inject(Router);
   private bookingService = inject(BookingService);
 
-  booking = signal<any>(null);
+  booking = signal<BookingDetails | null>(null);
   isLoading = signal(false);
   error = signal<string | null>(null);
 
   carTitle = computed(() => {
-    const car = this.booking()?.car;
-    if (!car) return 'Vozilo';
-    return `${car.brand} ${car.model}${car.year ? ` (${car.year})` : ''}`;
+    const b = this.booking();
+    if (!b) return 'Vozilo';
+    return `${b.brand} ${b.model}${b.year ? ` (${b.year})` : ''}`;
+  });
+
+  /**
+   * Computed: Pickup location data for display component.
+   */
+  pickupLocationData = computed<PickupLocationData | null>(() => {
+    const b = this.booking();
+    if (!b || !b.pickupLatitude || !b.pickupLongitude) return null;
+
+    return {
+      latitude: b.pickupLatitude,
+      longitude: b.pickupLongitude,
+      address: b.pickupAddress,
+      city: b.pickupCity,
+      zipCode: b.pickupZipCode,
+      isEstimated: b.pickupLocationEstimated,
+    };
+  });
+
+  /**
+   * Computed: Whether booking has delivery info.
+   */
+  hasDeliveryInfo = computed(() => {
+    const b = this.booking();
+    return (
+      b !== null &&
+      b.deliveryDistanceKm !== null &&
+      b.deliveryDistanceKm !== undefined &&
+      b.deliveryDistanceKm > 0
+    );
   });
 
   ngOnInit(): void {
@@ -324,7 +370,8 @@ export class BookingDetailComponent implements OnInit {
     this.isLoading.set(true);
     this.error.set(null);
 
-    this.bookingService.getBookingById(parseInt(id, 10)).subscribe({
+    // Use getBookingDetails for full pickup location data
+    this.bookingService.getBookingDetails(parseInt(id, 10)).subscribe({
       next: (booking) => {
         this.booking.set(booking);
         this.isLoading.set(false);
@@ -368,10 +415,13 @@ export class BookingDetailComponent implements OnInit {
 
   canCheckIn(): boolean {
     const status = this.booking()?.status;
-    return ['CONFIRMED', 'CHECK_IN_OPEN', 'HOST_SUBMITTED', 'GUEST_ACKNOWLEDGED'].includes(status);
+    return status
+      ? ['CONFIRMED', 'CHECK_IN_OPEN', 'HOST_SUBMITTED', 'GUEST_ACKNOWLEDGED'].includes(status)
+      : false;
   }
 
   canReview(): boolean {
-    return this.booking()?.status === 'COMPLETED' && !this.booking()?.hasReview;
+    const booking = this.booking();
+    return booking?.status === 'COMPLETED' && !booking?.reviewSubmitted;
   }
 }

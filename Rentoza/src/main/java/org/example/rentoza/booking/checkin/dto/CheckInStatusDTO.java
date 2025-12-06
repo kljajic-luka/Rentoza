@@ -1,5 +1,6 @@
 package org.example.rentoza.booking.checkin.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -82,8 +83,10 @@ public class CheckInStatusDTO {
     private LocalDateTime noShowDeadline;
     private Long minutesUntilNoShow;
 
-    // Role-specific flags
+    // Role-specific flags (explicitly named for Jackson serialization)
+    @JsonProperty("host")
     private boolean isHost;
+    @JsonProperty("guest")
     private boolean isGuest;
 
     // Action availability flags (computed from status)
@@ -96,6 +99,29 @@ public class CheckInStatusDTO {
 
     // Car info (for display)
     private CarSummaryDTO car;
+
+    // =========================================================================
+    // Pickup Location (Phase 4: Pickup Location Display Feature)
+    // =========================================================================
+    /** Pickup location latitude (from booking.pickupLocation or car.locationGeoPoint fallback) */
+    private Double pickupLatitude;
+    /** Pickup location longitude */
+    private Double pickupLongitude;
+    /** Pickup address (street + number) */
+    private String pickupAddress;
+    /** Pickup city */
+    private String pickupCity;
+    /** Pickup zip code */
+    private String pickupZipCode;
+    /** Variance from car's home location in meters (null if pickup == car location) */
+    private Integer pickupLocationVarianceMeters;
+    /** Variance status for UI badging: NONE, WARNING, BLOCKING */
+    private String varianceStatus;
+    /** True if pickup location is an estimate (fell back to car home location) */
+    @JsonProperty("estimatedLocation")
+    private boolean isEstimatedLocation;
+    /** Source of estimate: "CAR_HOME_LOCATION" when fallback used, null otherwise */
+    private String estimatedLocationSource;
 
     /**
      * Get photos list (alias for vehiclePhotos for CheckInResponseOptimizer compatibility).

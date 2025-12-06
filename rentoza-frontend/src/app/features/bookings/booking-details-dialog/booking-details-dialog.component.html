@@ -51,11 +51,11 @@
         <div class="info-grid">
           <div class="info-item">
             <span class="label">Početak</span>
-            <span class="value">{{ b.startTime | date:'dd.MM.yyyy HH:mm' }}</span>
+            <span class="value">{{ b.startTime | date : 'dd.MM.yyyy HH:mm' }}</span>
           </div>
           <div class="info-item">
             <span class="label">Kraj</span>
-            <span class="value">{{ b.endTime | date:'dd.MM.yyyy HH:mm' }}</span>
+            <span class="value">{{ b.endTime | date : 'dd.MM.yyyy HH:mm' }}</span>
           </div>
           <div class="info-item">
             <span class="label">Trajanje</span>
@@ -63,6 +63,21 @@
           </div>
         </div>
       </div>
+
+      <!-- Pickup Location Section -->
+      @if (pickupLocationData()) {
+      <div class="section-card pickup-section">
+        <app-readonly-pickup-location
+          [pickupLocation]="pickupLocationData()"
+          [showDeliveryInfo]="hasDeliveryInfo()"
+          [deliveryDistance]="b.deliveryDistanceKm ?? null"
+          [deliveryFee]="b.deliveryFeeCalculated ?? null"
+          [varianceStatus]="b.varianceStatus ?? null"
+          [varianceMeters]="b.pickupLocationVarianceMeters ?? null"
+          mode="standard"
+        />
+      </div>
+      }
 
       <!-- Cost & Protection -->
       <div class="section-card">

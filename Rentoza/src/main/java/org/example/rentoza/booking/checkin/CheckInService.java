@@ -10,6 +10,8 @@ import org.example.rentoza.booking.BookingRepository;
 import org.example.rentoza.booking.BookingStatus;
 import org.example.rentoza.booking.checkin.dto.*;
 import org.example.rentoza.booking.checkin.GeofenceService.GeofenceResult;
+import org.example.rentoza.car.Car;
+import org.example.rentoza.common.GeoPoint;
 import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.notification.NotificationService;
 import org.example.rentoza.notification.NotificationType;
@@ -773,6 +775,15 @@ public class CheckInService {
         boolean isHost = isHost(booking, userId);
         boolean isGuest = isGuest(booking, userId);
         
+        // DIAGNOSTIC: Log role calculation inputs and outputs
+        log.info("[CheckIn] DIAGNOSTIC: mapToStatusDTO - bookingId={}, userId={}, ownerId={}, renterId={}, isHost={}, isGuest={}",
+            booking.getId(),
+            userId,
+            booking.getCar().getOwner().getId(),
+            booking.getRenter().getId(),
+            isHost,
+            isGuest);
+        
         List<CheckInPhotoDTO> photos = null;
         // Only show photos to guest after host completes, or always to host
         if (isHost || booking.getStatus().ordinal() >= BookingStatus.CHECK_IN_HOST_COMPLETE.ordinal()) {
@@ -791,6 +802,13 @@ public class CheckInService {
             minutesUntilNoShow = ChronoUnit.MINUTES.between(LocalDateTime.now(SERBIA_ZONE), noShowDeadline);
             if (minutesUntilNoShow < 0) minutesUntilNoShow = 0L;
         }
+        
+        // Calculate pickup location with fallback to car home location
+        GeoPoint pickupLocation = getPickupLocationWithFallback(booking, booking.getCar());
+        boolean isEstimated = booking.getPickupLocation() == null && pickupLocation != null;
+        String estimatedSource = isEstimated ? "CAR_HOME_LOCATION" : null;
+        Integer varianceMeters = booking.getPickupLocationVarianceMeters();
+        String varianceStatus = calculateVarianceStatus(varianceMeters);
         
         return CheckInStatusDTO.builder()
                 .bookingId(booking.getId())
@@ -815,6 +833,16 @@ public class CheckInService {
                 .minutesUntilNoShow(minutesUntilNoShow)
                 .isHost(isHost)
                 .isGuest(isGuest)
+                // Pickup location fields
+                .pickupLatitude(pickupLocation != null ? pickupLocation.getLatitude().doubleValue() : null)
+                .pickupLongitude(pickupLocation != null ? pickupLocation.getLongitude().doubleValue() : null)
+                .pickupAddress(pickupLocation != null ? pickupLocation.getAddress() : null)
+                .pickupCity(pickupLocation != null ? pickupLocation.getCity() : null)
+                .pickupZipCode(pickupLocation != null ? pickupLocation.getZipCode() : null)
+                .pickupLocationVarianceMeters(varianceMeters)
+                .varianceStatus(varianceStatus)
+                .isEstimatedLocation(isEstimated)
+                .estimatedLocationSource(estimatedSource)
                 .car(CheckInStatusDTO.CarSummaryDTO.builder()
                         .id(booking.getCar().getId())
                         .brand(booking.getCar().getBrand())
@@ -846,6 +874,39 @@ public class CheckInService {
     private LocalDateTime toLocalDateTime(Instant instant) {
         if (instant == null) return null;
         return LocalDateTime.ofInstant(instant, SERBIA_ZONE);
+    }
+
+    /**
+     * Get pickup location with fallback to car's home location.
+     * 
+     * @param booking The booking (may have pickupLocation null)
+     * @param car The car (should have locationGeoPoint)
+     * @return GeoPoint for pickup, or null if both are unavailable
+     */
+    private GeoPoint getPickupLocationWithFallback(Booking booking, Car car) {
+        if (booking.getPickupLocation() != null) {
+            return booking.getPickupLocation();
+        }
+        if (car != null && car.getLocationGeoPoint() != null) {
+            return car.getLocationGeoPoint();
+        }
+        return null;
+    }
+
+    /**
+     * Calculate variance status from meters for UI badging.
+     * 
+     * @param varianceMeters Distance variance in meters (null = no variance)
+     * @return "NONE", "WARNING", or "BLOCKING"
+     */
+    private String calculateVarianceStatus(Integer varianceMeters) {
+        if (varianceMeters == null || varianceMeters < 100) {
+            return "NONE";
+        } else if (varianceMeters < 1000) {
+            return "WARNING";
+        } else {
+            return "BLOCKING";
+        }
     }
 
     /**

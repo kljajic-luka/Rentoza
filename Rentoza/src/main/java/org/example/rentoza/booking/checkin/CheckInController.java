@@ -110,7 +110,7 @@ public class CheckInController {
             @RequestParam(value = "fields", required = false) String fields) {
         
         Long userId = currentUser.id();
-        log.debug("[CheckIn] Status request for booking {} by user {}, fields={}", 
+        log.info("[CheckIn] DIAGNOSTIC: Controller status request - bookingId={}, userId={}, fields={}", 
             bookingId, userId, fields);
         
         CheckInStatusDTO status = checkInService.getCheckInStatus(bookingId, userId);

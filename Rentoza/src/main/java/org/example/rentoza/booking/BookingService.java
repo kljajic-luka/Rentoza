@@ -1085,6 +1085,35 @@ public class BookingService {
         boolean showLicensePlate = (booking.getStatus() == BookingStatus.ACTIVE) || isOwner || isAdmin;
         String licensePlate = showLicensePlate ? car.getLicensePlate() : null;
 
+        // 5. Resolve Pickup Location (with car home fallback for legacy bookings)
+        Double pickupLat = null;
+        Double pickupLon = null;
+        String pickupAddress = null;
+        String pickupCity = null;
+        String pickupZipCode = null;
+        boolean pickupEstimated = false;
+
+        if (booking.getPickupLocation() != null && booking.getPickupLocation().hasCoordinates()) {
+            // Use agreed pickup location from booking
+            pickupLat = booking.getPickupLocation().getLatitude().doubleValue();
+            pickupLon = booking.getPickupLocation().getLongitude().doubleValue();
+            pickupAddress = booking.getPickupLocation().getAddress();
+            pickupCity = booking.getPickupLocation().getCity();
+            pickupZipCode = booking.getPickupLocation().getZipCode();
+        } else if (car.getLocationGeoPoint() != null && car.getLocationGeoPoint().hasCoordinates()) {
+            // Fallback to car's home location for legacy bookings
+            pickupLat = car.getLocationGeoPoint().getLatitude().doubleValue();
+            pickupLon = car.getLocationGeoPoint().getLongitude().doubleValue();
+            pickupAddress = car.getLocationGeoPoint().getAddress();
+            pickupCity = car.getLocationGeoPoint().getCity();
+            pickupZipCode = car.getLocationGeoPoint().getZipCode();
+            pickupEstimated = true; // Mark as estimate for UI indication
+        }
+
+        // 6. Calculate variance status for check-in phase
+        org.example.rentoza.booking.dto.BookingDetailsDTO.LocationVarianceStatus varianceStatus = 
+            calculateVarianceStatus(booking.getPickupLocationVarianceMeters());
+
         return org.example.rentoza.booking.dto.BookingDetailsDTO.builder()
                 // Trip
                 .id(booking.getId())
@@ -1118,7 +1147,43 @@ public class BookingService {
                 .hostTotalTrips((int) hostTotalTrips)
                 .hostJoinedDate(host.getCreatedAt().toString()) // ISO format
                 .hostAvatarUrl(host.getAvatarUrl())
+
+                // Pickup Location (Phase 2.4)
+                .pickupLatitude(pickupLat)
+                .pickupLongitude(pickupLon)
+                .pickupAddress(pickupAddress)
+                .pickupCity(pickupCity)
+                .pickupZipCode(pickupZipCode)
+                .pickupLocationEstimated(pickupEstimated)
+                
+                // Variance (Check-in phase)
+                .pickupLocationVarianceMeters(booking.getPickupLocationVarianceMeters())
+                .varianceStatus(varianceStatus)
+                
+                // Delivery Info
+                .deliveryDistanceKm(booking.getDeliveryDistanceKm())
+                .deliveryFeeCalculated(booking.getDeliveryFeeCalculated())
                 .build();
+    }
+
+    /**
+     * Calculate location variance status for check-in display.
+     * 
+     * @param varianceMeters Distance between agreed pickup and actual car position
+     * @return LocationVarianceStatus enum (NONE, WARNING, BLOCKING)
+     */
+    private org.example.rentoza.booking.dto.BookingDetailsDTO.LocationVarianceStatus calculateVarianceStatus(
+            Integer varianceMeters) {
+        if (varianceMeters == null) {
+            return org.example.rentoza.booking.dto.BookingDetailsDTO.LocationVarianceStatus.NONE;
+        }
+        if (varianceMeters > 2000) {
+            return org.example.rentoza.booking.dto.BookingDetailsDTO.LocationVarianceStatus.BLOCKING;
+        }
+        if (varianceMeters > 500) {
+            return org.example.rentoza.booking.dto.BookingDetailsDTO.LocationVarianceStatus.WARNING;
+        }
+        return org.example.rentoza.booking.dto.BookingDetailsDTO.LocationVarianceStatus.NONE;
     }
 
     /**

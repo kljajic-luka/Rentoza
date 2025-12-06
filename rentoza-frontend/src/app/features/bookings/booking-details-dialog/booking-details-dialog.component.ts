@@ -13,13 +13,14 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { BookingService } from '@core/services/booking.service';
-import { BookingDetails } from '@core/models/booking-details.model';
+import { BookingDetails, PickupLocationData } from '@core/models/booking-details.model';
 import { CarRules } from '@app/core/models/car-rules.model';
 import {
   CancellationPreviewDialogComponent,
   CancellationPreviewDialogData,
   CancellationPreviewDialogResult,
 } from '@shared/components/cancellation-preview-dialog/cancellation-preview-dialog.component';
+import { ReadOnlyPickupLocationComponent } from '../components/readonly-pickup-location';
 
 @Component({
   selector: 'app-booking-details-dialog',
@@ -33,6 +34,7 @@ import {
     MatProgressSpinnerModule,
     MatChipsModule,
     MatTooltipModule,
+    ReadOnlyPickupLocationComponent,
   ],
   templateUrl: './booking-details-dialog.component.html',
   styleUrls: ['./booking-details-dialog.component.scss'],
@@ -54,6 +56,37 @@ export class BookingDetailsDialogComponent implements OnInit {
     const b = this.booking();
     if (!b) return false;
     return b.status === 'PENDING_APPROVAL' || b.status === 'ACTIVE';
+  });
+
+  /**
+   * Computed: Pickup location data for display component.
+   * Returns null if no pickup coordinates available.
+   */
+  protected readonly pickupLocationData = computed<PickupLocationData | null>(() => {
+    const b = this.booking();
+    if (!b || !b.pickupLatitude || !b.pickupLongitude) return null;
+
+    return {
+      latitude: b.pickupLatitude,
+      longitude: b.pickupLongitude,
+      address: b.pickupAddress,
+      city: b.pickupCity,
+      zipCode: b.pickupZipCode,
+      isEstimated: b.pickupLocationEstimated,
+    };
+  });
+
+  /**
+   * Computed: Whether booking has delivery info to display.
+   */
+  protected readonly hasDeliveryInfo = computed(() => {
+    const b = this.booking();
+    return (
+      b !== null &&
+      b.deliveryDistanceKm !== null &&
+      b.deliveryDistanceKm !== undefined &&
+      b.deliveryDistanceKm > 0
+    );
   });
 
   constructor(@Inject(MAT_DIALOG_DATA) public data: { bookingId: number }) {}

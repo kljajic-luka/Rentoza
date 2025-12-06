@@ -41,6 +41,8 @@ import { VehicleWireframeComponent } from './vehicle-wireframe.component';
 import { PhotoViewerDialogComponent } from '../../../shared/components/photo-viewer-dialog/photo-viewer-dialog.component';
 import { LazyImgDirective } from '../../../shared/directives/lazy-img.directive';
 import { environment } from '../../../../environments/environment';
+import { ReadOnlyPickupLocationComponent } from '../components/readonly-pickup-location/readonly-pickup-location.component';
+import { PickupLocationData } from '../../../core/models/booking-details.model';
 
 @Component({
   selector: 'app-guest-check-in',
@@ -60,6 +62,7 @@ import { environment } from '../../../../environments/environment';
     MatProgressSpinnerModule,
     VehicleWireframeComponent,
     LazyImgDirective,
+    ReadOnlyPickupLocationComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -78,6 +81,25 @@ import { environment } from '../../../../environments/environment';
           </div>
         </mat-card-content>
       </mat-card>
+      }
+
+      <!-- Pickup Location Section (shows where to meet the host) -->
+      @if (pickupLocationData()) {
+      <div class="pickup-location-section">
+        <div class="section-header small">
+          <mat-icon>location_on</mat-icon>
+          <div>
+            <h3>Lokacija preuzimanja</h3>
+            <p>Ovde preuzimate vozilo</p>
+          </div>
+        </div>
+        <app-readonly-pickup-location
+          [pickupLocation]="pickupLocationData()!"
+          [mode]="'standard'"
+          [varianceStatus]="status?.varianceStatus ?? null"
+          [varianceMeters]="status?.pickupLocationVarianceMeters ?? null"
+        />
+      </div>
       }
 
       <!-- Host photos section -->
@@ -283,6 +305,29 @@ import { environment } from '../../../../environments/environment';
         font-size: 18px;
         width: 18px;
         height: 18px;
+      }
+
+      /* Pickup Location Section */
+      .pickup-location-section {
+        margin-bottom: 24px;
+        padding: 16px;
+        background: var(--color-surface-muted, #f5f5f5);
+        border-radius: 12px;
+        border: 1px solid var(--color-border-subtle, #e0e0e0);
+      }
+
+      .pickup-location-section .section-header.small {
+        margin-bottom: 12px;
+      }
+
+      .pickup-location-section .section-header.small h3 {
+        margin: 0;
+        font-size: 16px;
+      }
+
+      .pickup-location-section .section-header.small p {
+        margin: 2px 0 0;
+        font-size: 13px;
       }
 
       /* Section header */
@@ -537,6 +582,25 @@ export class GuestCheckInComponent {
     const car = this.status?.car;
     if (!car) return 'Vozilo';
     return `${car.brand} ${car.model} (${car.year})`;
+  });
+
+  /**
+   * Computed signal for pickup location data.
+   * Maps CheckInStatusDTO fields to PickupLocationData interface.
+   */
+  pickupLocationData = computed<PickupLocationData | null>(() => {
+    const s = this.status;
+    if (!s?.pickupLatitude || !s?.pickupLongitude) {
+      return null;
+    }
+    return {
+      latitude: s.pickupLatitude,
+      longitude: s.pickupLongitude,
+      address: s.pickupAddress,
+      city: s.pickupCity,
+      zipCode: s.pickupZipCode,
+      isEstimated: s.estimatedLocation,
+    };
   });
 
   /**

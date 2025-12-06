@@ -49,6 +49,8 @@ import {
 } from '../../../core/models/check-in.model';
 import { LazyImgDirective } from '../../../shared/directives/lazy-img.directive';
 import { generateUUID } from '../../../core/utils/uuid';
+import { ReadOnlyPickupLocationComponent } from '../components/readonly-pickup-location/readonly-pickup-location.component';
+import { PickupLocationData } from '../../../core/models/booking-details.model';
 
 interface PhotoSlot {
   type: CheckInPhotoType;
@@ -85,6 +87,7 @@ const PHOTO_SLOTS: PhotoSlot[] = [
     MatSliderModule,
     MatSnackBarModule,
     LazyImgDirective,
+    ReadOnlyPickupLocationComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -96,6 +99,26 @@ const PHOTO_SLOTS: PhotoSlot[] = [
         <span>Pregled unetih podataka (samo za čitanje)</span>
       </div>
       }
+
+      <!-- Pickup Location Section (shows where car should be picked up) -->
+      @if (pickupLocationData()) {
+      <div class="pickup-location-section">
+        <div class="section-header small">
+          <mat-icon>location_on</mat-icon>
+          <div>
+            <h3>Lokacija preuzimanja</h3>
+            <p>Mesto gde gost preuzima vozilo</p>
+          </div>
+        </div>
+        <app-readonly-pickup-location
+          [pickupLocation]="pickupLocationData()!"
+          [mode]="'compact'"
+          [varianceStatus]="status?.varianceStatus ?? null"
+          [varianceMeters]="status?.pickupLocationVarianceMeters ?? null"
+        />
+      </div>
+      }
+
       <!-- Header -->
       <div class="section-header">
         <mat-icon>camera_alt</mat-icon>
@@ -474,8 +497,32 @@ const PHOTO_SLOTS: PhotoSlot[] = [
   `,
   styles: [
     `
+      /* ============================================
+         DARK MODE SUPPORT - Theme-aware CSS variables
+         ============================================ */
+      :host {
+        --checkin-text-primary: var(--mat-app-text-color, var(--mdc-theme-on-surface, #212121));
+        --checkin-text-secondary: var(--mat-app-on-surface-variant, rgba(0, 0, 0, 0.6));
+        --checkin-surface: var(--mat-app-surface, var(--mdc-theme-surface, #ffffff));
+        --checkin-surface-muted: var(
+          --mat-app-surface-variant,
+          var(--mdc-theme-surface-variant, #fafafa)
+        );
+        --checkin-border: var(--mat-app-outline-variant, var(--mdc-theme-outline, #e0e0e0));
+        --checkin-primary: var(--mat-app-primary, var(--mdc-theme-primary, #1976d2));
+      }
+
       .host-check-in {
         padding: 16px;
+      }
+
+      /* Pickup Location Section */
+      .pickup-location-section {
+        margin-bottom: 24px;
+        padding: 16px;
+        background: var(--checkin-surface-muted);
+        border-radius: 12px;
+        border: 1px solid var(--checkin-border);
       }
 
       .section-header {
@@ -492,29 +539,32 @@ const PHOTO_SLOTS: PhotoSlot[] = [
       .section-header.small h3 {
         margin: 0;
         font-size: 16px;
+        color: var(--checkin-text-primary);
       }
 
       .section-header.small p {
         margin: 2px 0 0;
         font-size: 13px;
+        color: var(--checkin-text-secondary);
       }
 
       .section-header mat-icon {
         font-size: 32px;
         width: 32px;
         height: 32px;
-        color: var(--primary-color, #1976d2);
+        color: var(--checkin-primary);
       }
 
       .section-header h2 {
         margin: 0;
         font-size: 18px;
+        color: var(--checkin-text-primary);
       }
 
       .section-header p {
         margin: 4px 0 0;
         font-size: 14px;
-        color: var(--color-text-muted, #757575);
+        color: var(--checkin-text-secondary);
       }
 
       /* Photo grid */
@@ -528,7 +578,7 @@ const PHOTO_SLOTS: PhotoSlot[] = [
       .photo-slot {
         aspect-ratio: 4/3;
         border-radius: 12px;
-        border: 2px dashed var(--color-border-subtle, #ccc);
+        border: 2px dashed var(--checkin-border);
         overflow: hidden;
         position: relative;
         cursor: pointer;
@@ -545,7 +595,7 @@ const PHOTO_SLOTS: PhotoSlot[] = [
       }
 
       .photo-slot.uploading {
-        border-color: var(--primary-color, #1976d2);
+        border-color: var(--checkin-primary);
       }
 
       .photo-slot.error {
@@ -559,8 +609,8 @@ const PHOTO_SLOTS: PhotoSlot[] = [
         justify-content: center;
         height: 100%;
         gap: 4px;
-        color: var(--color-text-muted, #757575);
-        background: var(--color-surface-muted, #fafafa);
+        color: var(--checkin-text-secondary);
+        background: var(--checkin-surface-muted);
       }
 
       .photo-placeholder mat-icon {
@@ -577,7 +627,7 @@ const PHOTO_SLOTS: PhotoSlot[] = [
       .required-badge {
         font-size: 10px;
         padding: 2px 6px;
-        background: var(--primary-color, #1976d2);
+        background: var(--checkin-primary);
         color: white;
         border-radius: 8px;
       }
@@ -688,23 +738,23 @@ const PHOTO_SLOTS: PhotoSlot[] = [
         gap: 8px;
         margin-bottom: 20px;
         padding: 12px;
-        background: var(--color-surface-muted, #f5f5f5);
+        background: var(--checkin-surface-muted);
         border-radius: 8px;
       }
 
       .progress-summary span {
         font-size: 14px;
         font-weight: 500;
-        color: var(--color-text-primary, #212121);
+        color: var(--checkin-text-primary);
       }
 
       /* Damage section */
       .damage-section {
         margin-bottom: 20px;
         padding: 16px;
-        background: var(--color-surface-muted, #fafafa);
+        background: var(--checkin-surface-muted);
         border-radius: 12px;
-        border: 1px dashed var(--color-border-subtle, #ddd);
+        border: 1px dashed var(--checkin-border);
       }
 
       .damage-grid {
@@ -724,7 +774,7 @@ const PHOTO_SLOTS: PhotoSlot[] = [
         position: absolute;
         top: 4px;
         right: 4px;
-        color: var(--color-text-muted, #757575);
+        color: var(--checkin-text-secondary);
       }
 
       .add-damage-btn {
@@ -786,7 +836,7 @@ const PHOTO_SLOTS: PhotoSlot[] = [
 
       .damage-limit-hint {
         font-size: 12px;
-        color: var(--color-text-muted, #757575);
+        color: var(--checkin-text-secondary);
         text-align: center;
         margin: 0;
       }
@@ -827,14 +877,14 @@ const PHOTO_SLOTS: PhotoSlot[] = [
         min-width: 40px;
         text-align: right;
         font-weight: 500;
-        color: var(--color-text-primary, #212121);
+        color: var(--checkin-text-primary);
       }
 
       .fuel-markers {
         display: flex;
         justify-content: space-between;
         font-size: 11px;
-        color: var(--color-text-muted, #757575);
+        color: var(--checkin-text-secondary);
       }
 
       /* Submit */
@@ -858,7 +908,7 @@ const PHOTO_SLOTS: PhotoSlot[] = [
 
       .submit-hint {
         font-size: 13px;
-        color: var(--color-text-muted, #757575);
+        color: var(--checkin-text-secondary);
         text-align: center;
         margin: 0;
       }
@@ -881,8 +931,8 @@ const PHOTO_SLOTS: PhotoSlot[] = [
         gap: 8px;
         padding: 12px 16px;
         margin-bottom: 16px;
-        background: var(--info-bg, rgba(25, 118, 210, 0.12));
-        color: var(--info-color, #1565c0);
+        background: color-mix(in srgb, var(--checkin-primary) 12%, var(--checkin-surface));
+        color: var(--checkin-primary);
         border-radius: 8px;
         font-size: 14px;
         font-weight: 500;
@@ -914,9 +964,9 @@ const PHOTO_SLOTS: PhotoSlot[] = [
       .review-section {
         margin-bottom: 20px;
         padding: 16px;
-        background: var(--color-surface, white);
+        background: var(--checkin-surface);
         border-radius: 12px;
-        border: 1px solid var(--color-border-subtle, #e0e0e0);
+        border: 1px solid var(--checkin-border);
       }
 
       .review-data-grid {
@@ -930,7 +980,7 @@ const PHOTO_SLOTS: PhotoSlot[] = [
         align-items: center;
         gap: 16px;
         padding: 12px;
-        background: var(--color-surface-muted, #fafafa);
+        background: var(--checkin-surface-muted);
         border-radius: 8px;
       }
 
@@ -938,7 +988,7 @@ const PHOTO_SLOTS: PhotoSlot[] = [
         font-size: 28px;
         width: 28px;
         height: 28px;
-        color: var(--primary-color, #1976d2);
+        color: var(--checkin-primary);
         flex-shrink: 0;
       }
 
@@ -951,7 +1001,7 @@ const PHOTO_SLOTS: PhotoSlot[] = [
 
       .review-data-label {
         font-size: 12px;
-        color: var(--color-text-muted, #757575);
+        color: var(--checkin-text-secondary);
         text-transform: uppercase;
         letter-spacing: 0.5px;
       }
@@ -959,7 +1009,7 @@ const PHOTO_SLOTS: PhotoSlot[] = [
       .review-data-value {
         font-size: 20px;
         font-weight: 600;
-        color: var(--color-text-primary, #212121);
+        color: var(--checkin-text-primary);
       }
 
       /* Fuel display in review mode */
@@ -972,7 +1022,7 @@ const PHOTO_SLOTS: PhotoSlot[] = [
       .fuel-bar {
         flex: 1;
         height: 12px;
-        background: var(--color-border-subtle, #e0e0e0);
+        background: var(--checkin-border);
         border-radius: 6px;
         overflow: hidden;
       }
@@ -1016,6 +1066,25 @@ export class HostCheckInComponent implements OnInit, OnChanges {
 
   // Form validity as a signal for reactive computed properties
   private formValidSignal = signal(false);
+
+  /**
+   * Computed signal for pickup location data.
+   * Maps CheckInStatusDTO fields to PickupLocationData interface.
+   */
+  pickupLocationData = computed<PickupLocationData | null>(() => {
+    const s = this.status;
+    if (!s?.pickupLatitude || !s?.pickupLongitude) {
+      return null;
+    }
+    return {
+      latitude: s.pickupLatitude,
+      longitude: s.pickupLongitude,
+      address: s.pickupAddress,
+      city: s.pickupCity,
+      zipCode: s.pickupZipCode,
+      isEstimated: s.estimatedLocation,
+    };
+  });
 
   // Form
   detailsForm: FormGroup = this.fb.group({

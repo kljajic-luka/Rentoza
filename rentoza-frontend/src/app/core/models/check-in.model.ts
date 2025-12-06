@@ -142,6 +142,28 @@ export interface CheckInStatusDTO {
 
   // Car info
   car: CarSummaryDTO;
+
+  // =========================================================================
+  // Pickup Location (Phase 4: Pickup Location Display Feature)
+  // =========================================================================
+  /** Pickup location latitude (from booking or car home fallback) */
+  pickupLatitude?: number;
+  /** Pickup location longitude */
+  pickupLongitude?: number;
+  /** Pickup address (street + number) */
+  pickupAddress?: string;
+  /** Pickup city */
+  pickupCity?: string;
+  /** Pickup zip code */
+  pickupZipCode?: string;
+  /** Variance from car's home location in meters */
+  pickupLocationVarianceMeters?: number;
+  /** Variance status for UI badging: NONE, WARNING, BLOCKING */
+  varianceStatus?: 'NONE' | 'WARNING' | 'BLOCKING';
+  /** True if pickup location is an estimate (fell back to car home location) */
+  estimatedLocation?: boolean;
+  /** Source of estimate: "CAR_HOME_LOCATION" when fallback used */
+  estimatedLocationSource?: string;
 }
 
 export interface CarSummaryDTO {

@@ -379,4 +379,128 @@ mat-dialog-actions {
   ::ng-deep .spec-value {
     color: rgba(255, 255, 255, 0.85) !important;
   }
+
+  /* ============================================
+     PICKUP LOCATION SECTION - Dark Mode Fix
+     Turo-style component with proper dark theming
+     ============================================ */
+  .pickup-section {
+    padding: 16px 24px !important;
+    border-bottom-color: rgba(255, 255, 255, 0.08) !important;
+    
+    ::ng-deep {
+      /* Section header */
+      .section-header {
+        .header-icon {
+          background: rgba(89, 60, 251, 0.15) !important;
+          
+          mat-icon {
+            color: #a794ff !important;
+          }
+        }
+        
+        .section-title {
+          color: #ffffff !important;
+        }
+        
+        .section-subtitle {
+          color: rgba(255, 255, 255, 0.6) !important;
+        }
+        
+        .estimated-chip {
+          background: rgba(255, 152, 0, 0.12) !important;
+          color: #ffb74d !important;
+        }
+      }
+      
+      /* Location content card */
+      .location-content {
+        background: rgba(40, 40, 40, 0.95) !important;
+        border-color: rgba(255, 255, 255, 0.1) !important;
+        
+        &:hover {
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+        }
+      }
+      
+      /* Address display */
+      .address-display {
+        border-bottom-color: rgba(255, 255, 255, 0.08) !important;
+        
+        .address-icon {
+          background: rgba(255, 255, 255, 0.08) !important;
+          
+          mat-icon {
+            color: #a794ff !important;
+          }
+        }
+        
+        .address-main {
+          color: #ffffff !important;
+        }
+        
+        .address-secondary {
+          color: rgba(255, 255, 255, 0.6) !important;
+        }
+        
+        .directions-btn {
+          color: #a794ff !important;
+          background: rgba(89, 60, 251, 0.15) !important;
+          
+          &:hover {
+            background: #593CFB !important;
+            color: white !important;
+          }
+        }
+      }
+      
+      /* Map preview */
+      .map-preview {
+        background: rgba(50, 50, 50, 0.95) !important;
+        
+        &:hover {
+          background: rgba(60, 60, 60, 0.95) !important;
+        }
+        
+        .map-preview-content {
+          color: rgba(255, 255, 255, 0.7) !important;
+          
+          mat-icon {
+            color: #a794ff !important;
+          }
+        }
+        
+        .expand-icon {
+          color: rgba(255, 255, 255, 0.5) !important;
+        }
+      }
+      
+      /* Delivery pills */
+      .delivery-pills {
+        background: rgba(50, 50, 50, 0.95) !important;
+        
+        .pill {
+          &.delivery-distance {
+            background: rgba(30, 30, 30, 0.95) !important;
+            color: #ffffff !important;
+            border-color: rgba(255, 255, 255, 0.15) !important;
+            
+            mat-icon {
+              color: #a794ff !important;
+            }
+          }
+          
+          &.delivery-fee {
+            background: rgba(89, 60, 251, 0.15) !important;
+            color: #a794ff !important;
+          }
+          
+          &.delivery-free {
+            background: rgba(0, 166, 153, 0.15) !important;
+            color: #4dd0c7 !important;
+          }
+        }
+      }
+    }
+  }
 }

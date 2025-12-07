@@ -140,9 +140,15 @@ public class CheckInController {
      * fallback for location verification when EXIF GPS is missing (e.g., Canvas
      * compression scenarios). This is defense-in-depth; piexifjs should preserve
      * EXIF in the frontend.
+     * 
+     * <h3>Zero-Storage Policy (Phase 1)</h3>
+     * <p>Rejected photos return HTTP 400 with rejection details. They are NOT stored
+     * to the database or filesystem. Only an audit event is logged.
+     * 
+     * @return HTTP 201 for accepted photos, HTTP 400 for rejected photos
      */
     @PostMapping(value = "/host/photos", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<CheckInPhotoDTO> uploadHostPhoto(
+    public ResponseEntity<PhotoUploadResponse> uploadHostPhoto(
             @PathVariable Long bookingId,
             @RequestPart("file") MultipartFile file,
             @RequestParam("photoType") CheckInPhotoType photoType,
@@ -171,7 +177,7 @@ public class CheckInController {
             }
         }
         
-        CheckInPhotoDTO photo = photoService.uploadPhoto(
+        PhotoUploadResponse response = photoService.uploadPhoto(
             bookingId, 
             userId, 
             file, 
@@ -183,7 +189,13 @@ public class CheckInController {
         
         photoUploadCounter.increment();
         
-        return ResponseEntity.status(HttpStatus.CREATED).body(photo);
+        // Return appropriate HTTP status based on acceptance
+        if (response.isAccepted()) {
+            return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        } else {
+            // Rejected photo - return HTTP 400 with rejection details
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+        }
     }
 
     /**

@@ -38,6 +38,8 @@ import {
   EventEmitter,
   OnInit,
   OnDestroy,
+  OnChanges,
+  SimpleChanges,
   inject,
   PLATFORM_ID,
 } from '@angular/core';
@@ -47,7 +49,7 @@ import { isPlatformBrowser } from '@angular/common';
   selector: 'img[appLazyImg]',
   standalone: true,
 })
-export class LazyImgDirective implements OnInit, OnDestroy {
+export class LazyImgDirective implements OnInit, OnDestroy, OnChanges {
   private readonly elementRef = inject(ElementRef<HTMLImageElement>);
   private readonly platformId = inject(PLATFORM_ID);
 
@@ -105,12 +107,59 @@ export class LazyImgDirective implements OnInit, OnDestroy {
     // Set placeholder immediately
     img.src = this.placeholder;
 
+    // Blob URLs and data URLs are already in memory - load immediately
+    // No point lazy-loading data that's not fetched from network
+    if (this.isBlobOrDataUrl(this.lazySrc)) {
+      this.loadImage();
+      return;
+    }
+
     // Check for IntersectionObserver support
     if ('IntersectionObserver' in window) {
       this.initializeObserver();
     } else {
       // Fallback: load immediately for unsupported browsers
       this.loadImage();
+    }
+  }
+
+  /**
+   * Check if URL is a blob: or data: URL (already in memory).
+   */
+  private isBlobOrDataUrl(url: string): boolean {
+    return url?.startsWith('blob:') || url?.startsWith('data:');
+  }
+
+  /**
+   * Handle lazySrc changes - reload image if URL changes.
+   * Critical for blob: URLs which change on every new photo selection.
+   */
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['lazySrc'] && !changes['lazySrc'].firstChange) {
+      const newUrl = changes['lazySrc'].currentValue;
+      const oldUrl = changes['lazySrc'].previousValue;
+
+      // Only reload if URL actually changed and we have a new URL
+      if (newUrl && newUrl !== oldUrl) {
+        // Reset state to allow re-loading
+        this.hasLoaded = false;
+
+        // Blob/data URLs load immediately (already in memory)
+        if (this.isBlobOrDataUrl(newUrl)) {
+          this.loadImage();
+          return;
+        }
+
+        // If already visible (no observer), load immediately
+        // Otherwise, the observer will trigger load when visible
+        if (!this.observer) {
+          this.loadImage();
+        } else {
+          // Re-observe in case the element is already in viewport
+          this.disconnectObserver();
+          this.initializeObserver();
+        }
+      }
     }
   }
 

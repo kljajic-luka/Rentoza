@@ -11,6 +11,18 @@ import java.time.LocalDateTime;
 
 /**
  * Response DTO for check-in photos.
+ * 
+ * <p>Extended with rejection fields to support the zero-storage policy:
+ * <ul>
+ *   <li>{@code accepted} - whether the photo passed EXIF validation</li>
+ *   <li>{@code rejectionReason} - user-friendly rejection message (Serbian)</li>
+ *   <li>{@code remediationHint} - actionable hint to fix the issue</li>
+ * </ul>
+ * 
+ * <p>For rejected photos, only photoType, exifValidationStatus, and rejection fields are populated.
+ * The photoId and url will be null since rejected photos are not stored.
+ * 
+ * @see org.example.rentoza.booking.checkin.PhotoRejectionService
  */
 @Data
 @Builder
@@ -24,6 +36,7 @@ public class CheckInPhotoDTO {
     /**
      * Pre-signed URL for photo access (expires in 1 hour).
      * In current implementation, returns direct storage path.
+     * Will be null for rejected photos (zero-storage policy).
      */
     private String url;
     
@@ -41,4 +54,27 @@ public class CheckInPhotoDTO {
     private Double exifLatitude;
     private Double exifLongitude;
     private String deviceModel;
+    
+    // ========== Rejection Fields (Phase 1: Rejected Photo Infrastructure) ==========
+    
+    /**
+     * Whether the photo was accepted by EXIF validation.
+     * false = rejected (not stored), true = accepted (stored to DB).
+     */
+    @Builder.Default
+    private boolean accepted = true;
+    
+    /**
+     * User-friendly rejection reason in Serbian.
+     * Only populated when accepted=false.
+     * Example: "Fotografija je prestara. Mora biti snimljena u poslednjih 30 minuta."
+     */
+    private String rejectionReason;
+    
+    /**
+     * Actionable hint for the user to fix the rejection issue.
+     * Only populated when accepted=false.
+     * Example: "Otvorite kameru na telefonu i napravite novu fotografiju."
+     */
+    private String remediationHint;
 }

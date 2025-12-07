@@ -86,19 +86,27 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
       <!-- Pickup Location Section (shows where to meet the host) -->
       @if (pickupLocationData()) {
       <div class="pickup-location-section">
-        <div class="section-header small">
-          <mat-icon>location_on</mat-icon>
-          <div>
-            <h3>Lokacija preuzimanja</h3>
-            <p>Ovde preuzimate vozilo</p>
-          </div>
-        </div>
+        <div class="section-header small"></div>
         <app-readonly-pickup-location
           [pickupLocation]="pickupLocationData()!"
           [mode]="'standard'"
           [varianceStatus]="status?.varianceStatus ?? null"
           [varianceMeters]="status?.pickupLocationVarianceMeters ?? null"
         />
+      </div>
+      }
+
+      <!-- Warning banner: Host photos incomplete or have rejections -->
+      @if (hasPhotosWithIssues()) {
+      <div class="photo-issues-warning">
+        <mat-icon>warning</mat-icon>
+        <div class="warning-content">
+          <span class="warning-title">Nepotpune fotografije</span>
+          <span class="warning-message">
+            Neke fotografije od domaćina imaju probleme sa validacijom. Pregledajte pažljivo pre
+            potvrde.
+          </span>
+        </div>
       </div>
       }
 
@@ -541,6 +549,43 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
         color: var(--warn-color, #ff9800);
         margin: 0;
       }
+
+      /* Photo Issues Warning Banner */
+      .photo-issues-warning {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 12px 16px;
+        margin: 0 0 16px;
+        background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
+        border: 1px solid #ffb74d;
+        border-radius: 8px;
+        border-left: 4px solid #ff9800;
+      }
+
+      .photo-issues-warning mat-icon {
+        color: #f57c00;
+        flex-shrink: 0;
+        margin-top: 2px;
+      }
+
+      .photo-issues-warning .warning-content {
+        flex: 1;
+      }
+
+      .photo-issues-warning .warning-content strong {
+        display: block;
+        color: #e65100;
+        margin-bottom: 4px;
+        font-size: 14px;
+      }
+
+      .photo-issues-warning .warning-content p {
+        margin: 0;
+        font-size: 13px;
+        color: #bf360c;
+        line-height: 1.4;
+      }
     `,
   ],
 })
@@ -602,6 +647,19 @@ export class GuestCheckInComponent {
       isEstimated: s.estimatedLocation,
     };
   });
+
+  /**
+   * Check if any host photos have validation issues (rejected status).
+   * Used to show warning banner to guest about incomplete documentation.
+   */
+  hasPhotosWithIssues(): boolean {
+    const photos = this.status?.vehiclePhotos;
+    if (!photos || photos.length === 0) return false;
+    return photos.some(
+      (photo: CheckInPhotoDTO) =>
+        photo.exifValidationStatus?.startsWith('REJECTED') || photo.accepted === false
+    );
+  }
 
   /**
    * Check if location requirement is bypassed in development.

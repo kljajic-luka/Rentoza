@@ -46,18 +46,14 @@ import {
   PhotoUploadProgress,
   DamagePhotoSlot,
   MAX_DAMAGE_PHOTOS,
+  PhotoSlotViewModel,
+  PhotoStatsViewModel,
+  PhotoSlot,
 } from '../../../core/models/check-in.model';
 import { LazyImgDirective } from '../../../shared/directives/lazy-img.directive';
 import { generateUUID } from '../../../core/utils/uuid';
 import { ReadOnlyPickupLocationComponent } from '../components/readonly-pickup-location/readonly-pickup-location.component';
 import { PickupLocationData } from '../../../core/models/booking-details.model';
-
-interface PhotoSlot {
-  type: CheckInPhotoType;
-  label: string;
-  icon: string;
-  required: boolean;
-}
 
 const PHOTO_SLOTS: PhotoSlot[] = [
   { type: 'HOST_EXTERIOR_FRONT', label: 'Prednja strana', icon: 'directions_car', required: true },
@@ -130,23 +126,20 @@ const PHOTO_SLOTS: PhotoSlot[] = [
 
       <!-- Required Photo grid -->
       <div class="photo-grid">
-        @for (slot of photoSlots; track slot.type) {
+        @for (vm of photoSlotViewModels(); track vm.slot.type) {
         <div
           class="photo-slot"
-          [class.completed]="isPhotoCompleted(slot.type)"
-          [class.uploading]="isPhotoUploading(slot.type)"
-          [class.error]="isPhotoError(slot.type)"
+          [class.completed]="vm.isCompleted"
+          [class.uploading]="vm.isUploading"
+          [class.error]="false"
+          [class.rejected]="vm.isRejected"
+          [class.location-mismatch]="vm.locationMismatch"
           [class.readonly]="readOnly"
-          (click)="readOnly ? null : triggerFileInput(slot.type)"
+          (click)="readOnly ? null : triggerFileInput(vm.slot.type)"
         >
           <!-- Thumbnail or placeholder -->
-          @if (getPhotoPreview(slot.type)) {
-          <img
-            appLazyImg
-            [lazySrc]="getPhotoPreview(slot.type)!"
-            [alt]="slot.label"
-            class="photo-preview"
-          />
+          @if (vm.previewUrl) {
+          <img appLazyImg [lazySrc]="vm.previewUrl" [alt]="vm.slot.label" class="photo-preview" />
           <!-- Minimal success badge (replaces full overlay) -->
           <div class="success-badge">
             <mat-icon>check_circle</mat-icon>
@@ -157,39 +150,44 @@ const PHOTO_SLOTS: PhotoSlot[] = [
             mat-mini-fab
             color="warn"
             class="remove-photo-btn"
-            (click)="removePhoto($event, slot.type)"
+            (click)="removePhoto($event, vm.slot.type)"
             aria-label="Ukloni fotografiju"
           >
             <mat-icon>close</mat-icon>
           </button>
           } } @else {
           <div class="photo-placeholder">
-            <mat-icon>{{ slot.icon }}</mat-icon>
-            <span>{{ slot.label }}</span>
-            @if (slot.required) {
+            <mat-icon>{{ vm.slot.icon }}</mat-icon>
+            <span>{{ vm.slot.label }}</span>
+            @if (vm.slot.required) {
             <span class="required-badge">Obavezno</span>
             }
           </div>
           }
 
           <!-- Upload progress -->
-          @if (isPhotoUploading(slot.type)) {
+          @if (vm.isUploading) {
           <div class="upload-progress">
-            <mat-progress-bar
-              mode="determinate"
-              [value]="getUploadProgress(slot.type)"
-            ></mat-progress-bar>
-            <span>{{ getUploadProgress(slot.type) }}%</span>
+            <mat-progress-bar mode="determinate" [value]="vm.progress"></mat-progress-bar>
+            <span>{{ vm.progress }}%</span>
           </div>
           }
 
-          <!-- Error state with retry button -->
-          @if (isPhotoError(slot.type)) {
-          <div class="error-overlay">
-            <mat-icon>error</mat-icon>
-            <span class="error-message">{{ getPhotoError(slot.type) }}</span>
-            <button mat-button class="retry-btn" (click)="retryUpload($event, slot.type)">
-              <mat-icon>refresh</mat-icon>
+          <!-- Rejection state with retry button (EXIF validation failure - ORANGE) -->
+          @if (vm.isRejected) {
+          <div class="rejection-overlay" [class.location-fraud]="vm.locationMismatch">
+            <mat-icon>{{ vm.locationMismatch ? 'location_off' : 'warning' }}</mat-icon>
+            <span class="rejection-reason">{{ vm.rejectionReason }}</span>
+            @if (vm.distanceMeters) {
+            <span class="distance-badge">{{ vm.distanceMeters }}m od automobila</span>
+            }
+            <span class="rejection-hint">{{ vm.remediationHint }}</span>
+            <button
+              mat-button
+              class="retry-btn rejection-retry"
+              (click)="retryUpload($event, vm.slot.type)"
+            >
+              <mat-icon>camera_alt</mat-icon>
               Pokušaj ponovo
             </button>
           </div>
@@ -200,8 +198,8 @@ const PHOTO_SLOTS: PhotoSlot[] = [
             type="file"
             accept="image/*"
             capture="environment"
-            [id]="'file-' + slot.type"
-            (change)="onFileSelected($event, slot.type, slot.type)"
+            [id]="'file-' + vm.slot.type"
+            (change)="onFileSelected($event, vm.slot.type, vm.slot.type)"
             hidden
           />
         </div>
@@ -210,10 +208,16 @@ const PHOTO_SLOTS: PhotoSlot[] = [
 
       <!-- Progress summary -->
       <div class="progress-summary">
-        <span>{{ completedPhotosCount() }}/{{ requiredPhotosCount }} fotografija</span>
+        <span>{{ photoStats().completed }}/{{ photoStats().total }} fotografija</span>
+        @if (photoStats().locationMismatchCount > 0) {
+        <span class="location-warning">
+          <mat-icon>location_off</mat-icon>
+          {{ photoStats().locationMismatchCount }} lokacijska neslaganja
+        </span>
+        }
         <mat-progress-bar
           mode="determinate"
-          [value]="(completedPhotosCount() / requiredPhotosCount) * 100"
+          [value]="(photoStats().completed / photoStats().total) * 100"
         >
         </mat-progress-bar>
       </div>
@@ -236,24 +240,21 @@ const PHOTO_SLOTS: PhotoSlot[] = [
         </div>
 
         <!-- Damage photo grid -->
-        @if (damagePhotos().length > 0) {
+        @if (damageSlotViewModels().length > 0) {
         <div class="photo-grid damage-grid">
-          @for (slot of damagePhotos(); track slot.id) {
+          @for (vm of damageSlotViewModels(); track $index) {
           <div
             class="photo-slot damage-slot"
-            [class.completed]="isPhotoCompleted(slot.id)"
-            [class.uploading]="isPhotoUploading(slot.id)"
-            [class.error]="isPhotoError(slot.id)"
+            [class.completed]="vm.isCompleted"
+            [class.uploading]="vm.isUploading"
+            [class.error]="false"
+            [class.rejected]="vm.isRejected"
+            [class.location-mismatch]="vm.locationMismatch"
             [class.readonly]="readOnly"
-            (click)="readOnly ? null : triggerFileInput(slot.id)"
+            (click)="readOnly ? null : triggerFileInput(damagePhotos()[$index].id)"
           >
-            @if (getPhotoPreview(slot.id)) {
-            <img
-              appLazyImg
-              [lazySrc]="getPhotoPreview(slot.id)!"
-              alt="Oštećenje"
-              class="photo-preview"
-            />
+            @if (vm.previewUrl) {
+            <img appLazyImg [lazySrc]="vm.previewUrl" alt="Oštećenje" class="photo-preview" />
             <div class="success-badge">
               <mat-icon>check_circle</mat-icon>
             </div>
@@ -262,7 +263,7 @@ const PHOTO_SLOTS: PhotoSlot[] = [
               mat-mini-fab
               color="warn"
               class="remove-photo-btn"
-              (click)="removeDamagePhoto($event, slot.id)"
+              (click)="removeDamagePhoto($event, damagePhotos()[$index].id)"
               aria-label="Ukloni fotografiju"
             >
               <mat-icon>close</mat-icon>
@@ -274,26 +275,31 @@ const PHOTO_SLOTS: PhotoSlot[] = [
               <button
                 mat-icon-button
                 class="delete-slot-btn"
-                (click)="removeDamagePhoto($event, slot.id)"
+                (click)="removeDamagePhoto($event, damagePhotos()[$index].id)"
                 aria-label="Ukloni slot"
               >
                 <mat-icon>delete</mat-icon>
               </button>
             </div>
-            } @if (isPhotoUploading(slot.id)) {
+            } @if (vm.isUploading) {
             <div class="upload-progress">
-              <mat-progress-bar
-                mode="determinate"
-                [value]="getUploadProgress(slot.id)"
-              ></mat-progress-bar>
-              <span>{{ getUploadProgress(slot.id) }}%</span>
+              <mat-progress-bar mode="determinate" [value]="vm.progress"></mat-progress-bar>
+              <span>{{ vm.progress }}%</span>
             </div>
-            } @if (isPhotoError(slot.id)) {
-            <div class="error-overlay">
-              <mat-icon>error</mat-icon>
-              <span class="error-message">{{ getPhotoError(slot.id) }}</span>
-              <button mat-button class="retry-btn" (click)="retryUpload($event, slot.id)">
-                <mat-icon>refresh</mat-icon>
+            } @if (vm.isRejected) {
+            <div class="rejection-overlay" [class.location-fraud]="vm.locationMismatch">
+              <mat-icon>{{ vm.locationMismatch ? 'location_off' : 'warning' }}</mat-icon>
+              <span class="rejection-reason">{{ vm.rejectionReason }}</span>
+              @if (vm.distanceMeters) {
+              <span class="distance-badge">{{ vm.distanceMeters }}m od automobila</span>
+              }
+              <span class="rejection-hint">{{ vm.remediationHint }}</span>
+              <button
+                mat-button
+                class="retry-btn rejection-retry"
+                (click)="retryUpload($event, damagePhotos()[$index].id)"
+              >
+                <mat-icon>camera_alt</mat-icon>
                 Ponovo
               </button>
             </div>
@@ -303,8 +309,10 @@ const PHOTO_SLOTS: PhotoSlot[] = [
               type="file"
               accept="image/*"
               capture="environment"
-              [id]="'file-' + slot.id"
-              (change)="onFileSelected($event, slot.id, slot.photoType)"
+              [id]="'file-' + damagePhotos()[$index].id"
+              (change)="
+                onFileSelected($event, damagePhotos()[$index].id, damagePhotos()[$index].photoType)
+              "
               hidden
             />
           </div>
@@ -389,7 +397,7 @@ const PHOTO_SLOTS: PhotoSlot[] = [
       </div>
       } @else {
       <!-- Edit mode (form) -->
-      <mat-expansion-panel [expanded]="allRequiredPhotosUploaded()">
+      <mat-expansion-panel [expanded]="photoStats().allRequiredComplete">
         <mat-expansion-panel-header>
           <mat-panel-title>
             <mat-icon>edit</mat-icon>
@@ -470,9 +478,9 @@ const PHOTO_SLOTS: PhotoSlot[] = [
 
         @if (!canSubmit()) {
         <p class="submit-hint">
-          @if (!allRequiredPhotosUploaded()) { Slikajte sve obavezne fotografije ({{
-            completedPhotosCount()
-          }}/{{ requiredPhotosCount }}) } @else if (detailsForm.invalid) { Popunite podatke o vozilu
+          @if (!photoStats().allRequiredComplete) { Slikajte sve obavezne fotografije ({{
+            photoStats().completed
+          }}/{{ photoStats().total }}) } @else if (detailsForm.invalid) { Popunite podatke o vozilu
           (kilometraža je obavezna) } @else if (checkInService.isLoading()) {
           <mat-icon class="spin">sync</mat-icon>
           Učitavanje u toku... }
@@ -501,15 +509,72 @@ const PHOTO_SLOTS: PhotoSlot[] = [
          DARK MODE SUPPORT - Theme-aware CSS variables
          ============================================ */
       :host {
+        /* Text colors */
         --checkin-text-primary: var(--mat-app-text-color, var(--mdc-theme-on-surface, #212121));
         --checkin-text-secondary: var(--mat-app-on-surface-variant, rgba(0, 0, 0, 0.6));
+
+        /* Surface colors */
         --checkin-surface: var(--mat-app-surface, var(--mdc-theme-surface, #ffffff));
         --checkin-surface-muted: var(
           --mat-app-surface-variant,
           var(--mdc-theme-surface-variant, #fafafa)
         );
         --checkin-border: var(--mat-app-outline-variant, var(--mdc-theme-outline, #e0e0e0));
+
+        /* Brand colors */
         --checkin-primary: var(--mat-app-primary, var(--mdc-theme-primary, #1976d2));
+
+        /* Status colors - light mode */
+        --checkin-success: #4caf50;
+        --checkin-warn: #ff9800;
+        --checkin-error: #f44336;
+
+        /* Legacy variable aliases (backward compatibility) */
+        --success-color: var(--checkin-success);
+        --warn-color: var(--checkin-warn);
+        --rejection-color: var(--checkin-warn);
+        --error-bg: rgba(244, 67, 54, 0.08);
+      }
+
+      /* Dark mode via system preference */
+      @media (prefers-color-scheme: dark) {
+        :host {
+          --checkin-text-primary: rgba(226, 232, 240, 0.92);
+          --checkin-text-secondary: rgba(148, 163, 184, 0.78);
+          --checkin-surface: rgba(19, 23, 34, 0.95);
+          --checkin-surface-muted: rgba(26, 33, 50, 0.78);
+          --checkin-border: rgba(94, 117, 168, 0.35);
+          --checkin-primary: #3b82f6;
+          --checkin-success: #4ade80;
+          --checkin-warn: #fbbf24;
+          --checkin-error: #f87171;
+
+          /* Legacy variable aliases - dark mode */
+          --success-color: var(--checkin-success);
+          --warn-color: var(--checkin-warn);
+          --rejection-color: var(--checkin-warn);
+          --error-bg: rgba(248, 113, 113, 0.12);
+        }
+      }
+
+      /* Dark mode via class (Angular theme toggle) */
+      :host-context(.dark-theme),
+      :host-context(.theme-dark) {
+        --checkin-text-primary: rgba(226, 232, 240, 0.92);
+        --checkin-text-secondary: rgba(148, 163, 184, 0.78);
+        --checkin-surface: rgba(19, 23, 34, 0.95);
+        --checkin-surface-muted: rgba(26, 33, 50, 0.78);
+        --checkin-border: rgba(94, 117, 168, 0.35);
+        --checkin-primary: #3b82f6;
+        --checkin-success: #4ade80;
+        --checkin-warn: #fbbf24;
+        --checkin-error: #f87171;
+
+        /* Legacy variable aliases - dark mode */
+        --success-color: var(--checkin-success);
+        --warn-color: var(--checkin-warn);
+        --rejection-color: var(--checkin-warn);
+        --error-bg: rgba(248, 113, 113, 0.12);
       }
 
       .host-check-in {
@@ -600,6 +665,13 @@ const PHOTO_SLOTS: PhotoSlot[] = [
 
       .photo-slot.error {
         border-color: var(--warn-color, #f44336);
+      }
+
+      /* Rejection state (EXIF validation failure - ORANGE, distinct from red error) */
+      .photo-slot.rejected {
+        border-color: var(--rejection-color, #ff9800);
+        border-style: dashed;
+        border-width: 2px;
       }
 
       .photo-placeholder {
@@ -729,6 +801,138 @@ const PHOTO_SLOTS: PhotoSlot[] = [
         width: 16px;
         height: 16px;
         margin-right: 4px;
+      }
+
+      /* Rejection overlay (EXIF validation failure - ORANGE gradient) */
+      .rejection-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(
+          135deg,
+          rgba(255, 152, 0, 0.95) 0%,
+          rgba(255, 167, 38, 0.95) 100%
+        );
+        color: white;
+        padding: 8px;
+        text-align: center;
+        gap: 4px;
+        border-radius: 10px;
+      }
+
+      .rejection-overlay mat-icon {
+        font-size: 28px;
+        width: 28px;
+        height: 28px;
+        margin-bottom: 4px;
+      }
+
+      .rejection-reason {
+        font-size: 11px;
+        font-weight: 600;
+        line-height: 1.3;
+        max-height: 32px;
+        overflow: hidden;
+      }
+
+      .rejection-hint {
+        font-size: 10px;
+        line-height: 1.2;
+        opacity: 0.9;
+        max-height: 24px;
+        overflow: hidden;
+      }
+
+      .rejection-retry {
+        background: rgba(255, 255, 255, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.4);
+        margin-top: 4px;
+      }
+
+      .rejection-retry:hover {
+        background: rgba(255, 255, 255, 0.3);
+      }
+
+      .retry-counter {
+        font-size: 10px;
+        opacity: 0.8;
+        margin-left: 4px;
+      }
+
+      /* ============================================
+         CRITICAL FIX #1: Location Mismatch Styling
+         ============================================ */
+
+      /* Photo slot with location mismatch (red border indicator) */
+      .photo-slot.location-mismatch {
+        border: 3px solid var(--checkin-error);
+        box-shadow: 0 0 12px rgba(244, 67, 54, 0.3);
+      }
+
+      /* Location fraud overlay (distinct from generic rejection) */
+      .rejection-overlay.location-fraud {
+        background: linear-gradient(
+          135deg,
+          rgba(244, 67, 54, 0.95) 0%,
+          rgba(239, 83, 80, 0.95) 100%
+        );
+      }
+
+      .rejection-overlay.location-fraud mat-icon {
+        font-size: 32px;
+        width: 32px;
+        height: 32px;
+        animation: pulse-location 2s ease-in-out infinite;
+      }
+
+      @keyframes pulse-location {
+        0%,
+        100% {
+          transform: scale(1);
+          opacity: 1;
+        }
+        50% {
+          transform: scale(1.1);
+          opacity: 0.8;
+        }
+      }
+
+      /* Distance badge (shows meters from car location) */
+      .distance-badge {
+        display: inline-block;
+        padding: 2px 8px;
+        background: rgba(255, 255, 255, 0.25);
+        border: 1px solid rgba(255, 255, 255, 0.4);
+        border-radius: 12px;
+        font-size: 10px;
+        font-weight: 700;
+        margin: 4px 0;
+      }
+
+      /* Location warning in progress summary */
+      .progress-summary .location-warning {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--checkin-error);
+        font-size: 13px;
+        font-weight: 600;
+        padding: 8px;
+        background: var(--error-bg);
+        border-radius: 6px;
+        border: 1px solid var(--checkin-error);
+      }
+
+      .progress-summary .location-warning mat-icon {
+        font-size: 18px;
+        width: 18px;
+        height: 18px;
       }
 
       /* Progress summary */
@@ -1054,15 +1258,120 @@ export class HostCheckInComponent implements OnInit, OnChanges {
   private compressionService = inject(PhotoCompressionService);
   private geolocationService = inject(GeolocationService);
 
-  photoSlots = PHOTO_SLOTS;
-  requiredPhotosCount = REQUIRED_HOST_PHOTOS.length;
-
   // Local photo previews (blob URLs or hydrated backend URLs) keyed by slotId
   private localPreviews = signal<Map<string, string>>(new Map());
 
   // Dynamic damage photo slots
   readonly damagePhotos = signal<DamagePhotoSlot[]>([]);
   readonly maxDamagePhotos = MAX_DAMAGE_PHOTOS;
+
+  // ========== SVELTE-INSPIRED VIEW MODELS ==========
+  // Single-pass derivation pattern: compute all photo state once per change
+  // Eliminates 48+ redundant Map lookups (8 photos × 6 checks per render)
+
+  /**
+   * Svelte $derived pattern: Flattened view models for required photos.
+   * Computes all derived state (isCompleted, isUploading, previewUrl, etc.) in one pass.
+   * Includes Critical Fix #1: Location validation tracking.
+   */
+  readonly photoSlotViewModels = computed<PhotoSlotViewModel[]>(() => {
+    const progress = this.checkInService.uploadProgress();
+    const previews = this.localPreviews();
+    const isReadOnly = this.readOnly;
+
+    return PHOTO_SLOTS.map((slot) => {
+      const slotProgress = progress.get(slot.type);
+      const previewUrl = this.normalizePhotoUrl(slot.type, previews, slotProgress);
+
+      // Parse location mismatch from Serbian rejection reason
+      const isLocationMismatch = slotProgress?.rejectionReason?.includes('drugog mesta') ?? false;
+      const distanceMeters = isLocationMismatch
+        ? this.extractDistanceFromRejection(slotProgress?.rejectionReason)
+        : null;
+
+      return {
+        slot,
+        isCompleted: isReadOnly ? previews.has(slot.type) : slotProgress?.state === 'complete',
+        isUploading:
+          slotProgress?.state === 'uploading' ||
+          slotProgress?.state === 'compressing' ||
+          slotProgress?.state === 'validating',
+        isValidationPending: slotProgress?.state === 'validating',
+        isRejected: slotProgress?.state === 'rejected',
+        progress: slotProgress?.progress ?? 0,
+        previewUrl,
+        rejectionReason: slotProgress?.rejectionReason ?? null,
+        remediationHint: slotProgress?.remediationHint ?? null,
+        locationMismatch: isLocationMismatch,
+        distanceMeters,
+      };
+    });
+  });
+
+  /**
+   * Svelte $derived pattern: View models for damage photos.
+   * Same single-pass derivation as required photos.
+   */
+  readonly damageSlotViewModels = computed<PhotoSlotViewModel[]>(() => {
+    const progress = this.checkInService.uploadProgress();
+    const previews = this.localPreviews();
+    const isReadOnly = this.readOnly;
+
+    return this.damagePhotos().map((damageSlot) => {
+      const slotProgress = progress.get(damageSlot.id);
+      const previewUrl = this.normalizePhotoUrl(damageSlot.id, previews, slotProgress);
+
+      const isLocationMismatch = slotProgress?.rejectionReason?.includes('drugog mesta') ?? false;
+      const distanceMeters = isLocationMismatch
+        ? this.extractDistanceFromRejection(slotProgress?.rejectionReason)
+        : null;
+
+      return {
+        slot: {
+          type: damageSlot.photoType,
+          label: 'Oštećenje',
+          icon: 'add_a_photo',
+          required: false,
+        },
+        isCompleted: isReadOnly ? previews.has(damageSlot.id) : slotProgress?.state === 'complete',
+        isUploading:
+          slotProgress?.state === 'uploading' ||
+          slotProgress?.state === 'compressing' ||
+          slotProgress?.state === 'validating',
+        isValidationPending: slotProgress?.state === 'validating',
+        isRejected: slotProgress?.state === 'rejected',
+        progress: slotProgress?.progress ?? 0,
+        previewUrl,
+        rejectionReason: slotProgress?.rejectionReason ?? null,
+        remediationHint: slotProgress?.remediationHint ?? null,
+        locationMismatch: isLocationMismatch,
+        distanceMeters,
+      };
+    });
+  });
+
+  /**
+   * Svelte $derived pattern: Aggregate stats computed once.
+   * Replaces multiple individual computed signals (completedPhotosCount, allRequiredPhotosUploaded).
+   */
+  readonly photoStats = computed<PhotoStatsViewModel>(() => {
+    const viewModels = this.photoSlotViewModels();
+    const completed = viewModels.filter((vm) => vm.isCompleted).length;
+    const anyUploading = viewModels.some((vm) => vm.isUploading);
+    const validationPendingCount = viewModels.filter((vm) => vm.isValidationPending).length;
+    const rejectedCount = viewModels.filter((vm) => vm.isRejected).length;
+    const locationMismatchCount = viewModels.filter((vm) => vm.locationMismatch).length;
+
+    return {
+      completed,
+      total: REQUIRED_HOST_PHOTOS.length,
+      allRequiredComplete: completed === REQUIRED_HOST_PHOTOS.length,
+      anyUploading,
+      validationPendingCount,
+      rejectedCount,
+      locationMismatchCount,
+    };
+  });
 
   // Form validity as a signal for reactive computed properties
   private formValidSignal = signal(false);
@@ -1152,42 +1461,14 @@ export class HostCheckInComponent implements OnInit, OnChanges {
   }
 
   // Computed
-  completedPhotosCount = computed(() => {
-    // In read-only mode, count from hydrated previews
-    if (this.readOnly) {
-      return this.localPreviews().size;
-    }
-    // In edit mode, count from upload progress
-    const progress = this.checkInService.uploadProgress();
-    let count = 0;
-    progress.forEach((p) => {
-      if (p.state === 'complete') count++;
-    });
-    return count;
-  });
-
-  allRequiredPhotosUploaded = computed(() => {
-    // In read-only mode, check hydrated previews
-    if (this.readOnly) {
-      const previews = this.localPreviews();
-      return REQUIRED_HOST_PHOTOS.every((type) => previews.has(type));
-    }
-    // In edit mode, check upload progress
-    const progress = this.checkInService.uploadProgress();
-    return REQUIRED_HOST_PHOTOS.every((type) => {
-      const p = progress.get(type);
-      return p?.state === 'complete';
-    });
-  });
-
   canSubmit = computed(() => {
-    const allPhotos = this.allRequiredPhotosUploaded();
+    const stats = this.photoStats();
     const formValid = this.formValidSignal();
     const loading = this.checkInService.isLoading();
 
     // Debug logging
     console.log('[HostCheckIn] canSubmit check:', {
-      allPhotosUploaded: allPhotos,
+      allPhotosUploaded: stats.allRequiredComplete,
       formValid,
       formErrors: {
         odometerReading: this.detailsForm.get('odometerReading')?.errors,
@@ -1195,10 +1476,11 @@ export class HostCheckInComponent implements OnInit, OnChanges {
         fuelLevelPercent: this.detailsForm.get('fuelLevelPercent')?.value,
       },
       isLoading: loading,
-      completedCount: this.completedPhotosCount(),
+      completedCount: stats.completed,
+      locationMismatches: stats.locationMismatchCount,
     });
 
-    return allPhotos && formValid && !loading;
+    return stats.allRequiredComplete && formValid && !loading;
   });
 
   ngOnInit(): void {
@@ -1320,49 +1602,26 @@ export class HostCheckInComponent implements OnInit, OnChanges {
     this.damagePhotos.update((slots) => slots.filter((s) => s.id !== slotId));
   }
 
-  isPhotoCompleted(slotId: string): boolean {
-    // In read-only mode, check if we have a hydrated preview
-    if (this.readOnly) {
-      return this.localPreviews().has(slotId);
-    }
-    // In edit mode, check upload progress
-    const progress = this.checkInService.uploadProgress().get(slotId);
-    return progress?.state === 'complete';
-  }
+  // ========== SVELTE-INSPIRED HELPER METHODS ==========
+  // Pure functions for view model derivation (called only during computed signal evaluation)
 
-  isPhotoUploading(slotId: string): boolean {
-    const progress = this.checkInService.uploadProgress().get(slotId);
-    return (
-      progress?.state === 'uploading' ||
-      progress?.state === 'compressing' ||
-      progress?.state === 'validating'
-    );
-  }
-
-  isPhotoError(slotId: string): boolean {
-    const progress = this.checkInService.uploadProgress().get(slotId);
-    return progress?.state === 'error';
-  }
-
-  getUploadProgress(slotId: string): number {
-    return this.checkInService.uploadProgress().get(slotId)?.progress ?? 0;
-  }
-
-  getPhotoError(slotId: string): string {
-    return this.checkInService.uploadProgress().get(slotId)?.error ?? '';
-  }
-
-  getPhotoPreview(slotId: string): string | null {
-    // Always prefer local blob preview (backend URL may not be accessible from dev server)
-    const localPreview = this.localPreviews().get(slotId);
+  /**
+   * Normalize photo URL for preview display.
+   * Prefers local blob URLs, falls back to backend URLs.
+   */
+  private normalizePhotoUrl(
+    slotId: string,
+    previews: Map<string, string>,
+    slotProgress: PhotoUploadProgress | undefined
+  ): string | null {
+    // Always prefer local blob preview
+    const localPreview = previews.get(slotId);
     if (localPreview) {
       return localPreview;
     }
-    // Fallback to backend URL only if no local preview (e.g., page reload)
-    const progress = this.checkInService.uploadProgress().get(slotId);
-    if (progress?.result?.url) {
-      // Prepend API base URL if relative path
-      const url = progress.result.url;
+    // Fallback to backend URL
+    if (slotProgress?.result?.url) {
+      const url = slotProgress.result.url;
       if (url.startsWith('/')) {
         return `${environment.baseApiUrl}${url}`;
       }
@@ -1371,8 +1630,15 @@ export class HostCheckInComponent implements OnInit, OnChanges {
     return null;
   }
 
-  private getSlotLabel(slotId: string): string {
-    return PHOTO_SLOTS.find((s) => s.type === slotId)?.label ?? slotId;
+  /**
+   * Extract distance in meters from Serbian rejection reason.
+   * Example: "Fotografija je napravljena na drugom mestu (1234m od automobila)"
+   * Returns: 1234
+   */
+  private extractDistanceFromRejection(rejectionReason?: string): number | null {
+    if (!rejectionReason) return null;
+    const match = rejectionReason.match(/(\d+)m od automobila/);
+    return match ? parseInt(match[1], 10) : null;
   }
 
   submitHostCheckIn(): void {

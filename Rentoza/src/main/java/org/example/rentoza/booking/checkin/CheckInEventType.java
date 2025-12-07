@@ -51,6 +51,16 @@ public enum CheckInEventType {
     HOST_PHOTO_UPLOADED,
     
     /**
+     * Host photo was rejected due to EXIF validation failure.
+     * Photo is NOT stored (zero-storage policy). Only event logged for audit.
+     * Metadata: {@code {"photoType": "HOST_EXTERIOR_FRONT", "exifStatus": "REJECTED_TOO_OLD", 
+     *                   "errorCode": "PHOTO_TOO_OLD", "rejectionReason": "...", "fileSize": 2048000}}
+     * 
+     * @since Phase 1: Rejected Photo Infrastructure
+     */
+    HOST_PHOTO_REJECTED,
+    
+    /**
      * Host submitted odometer reading.
      * Metadata: {@code {"reading": 45678, "extractedFromPhoto": true}}
      */

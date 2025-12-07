@@ -153,10 +153,18 @@ public class PhotoValidationWorker {
                 // Load photo bytes from storage
                 byte[] photoBytes = loadPhotoBytes(photo.getStorageKey());
 
-                // Perform validation
+                // Convert car coordinates to BigDecimal for validation
+                java.math.BigDecimal carLat = message.getCarLatitude() != null 
+                    ? java.math.BigDecimal.valueOf(message.getCarLatitude()) : null;
+                java.math.BigDecimal carLon = message.getCarLongitude() != null 
+                    ? java.math.BigDecimal.valueOf(message.getCarLongitude()) : null;
+
+                // Perform validation with location check
                 ExifValidationResult result = exifValidationService.validate(
                         photoBytes,
-                        message.getClientUploadStartedAt()
+                        message.getClientUploadStartedAt(),
+                        carLat,
+                        carLon
                 );
 
                 // Update photo with results

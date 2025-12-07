@@ -12,7 +12,7 @@
  * ## Architecture
  * - Signal-based state for reactive UI (OnPush compatible)
  * - Coordinates PhotoCompressionService, GeolocationService, OfflineQueueService
- * - Implements clientTimestamp injection for basement problem fix
+ * - Sends photo creation timestamp (File.lastModified) for server-side age validation
  * - WebSocket real-time updates (replaces 30s polling)
  */
 
@@ -30,6 +30,7 @@ import {
   HandshakeConfirmationDTO,
   CheckInPhotoType,
   PhotoUploadProgress,
+  PhotoUploadResponse,
   CheckInState,
   WizardStep,
   REQUIRED_HOST_PHOTOS,
@@ -41,6 +42,22 @@ import { PhotoCompressionService } from './photo-compression.service';
 import { GeolocationService } from './geolocation.service';
 import { OfflineQueueService } from './offline-queue.service';
 import { WebSocketService, WebSocketConnectionStatus } from './websocket.service';
+
+/**
+ * Custom error class for photo rejection (EXIF validation failure).
+ * Distinguishes validation rejection from network/server errors.
+ */
+export class PhotoRejectionError extends Error {
+  constructor(
+    public readonly rejectionReason: string,
+    public readonly remediationHint: string,
+    public readonly errorCode: string,
+    public readonly photo: CheckInPhotoDTO
+  ) {
+    super(rejectionReason);
+    this.name = 'PhotoRejectionError';
+  }
+}
 
 /**
  * Check-in phase for the wizard component
@@ -442,8 +459,11 @@ export class CheckInService implements OnDestroy {
       return;
     }
 
-    // Capture client timestamp and GPS BEFORE upload starts (basement problem fix)
-    const clientTimestamp = new Date().toISOString();
+    // ========== CRITICAL FIX: Use photo creation time, not upload start time ==========
+    // File.lastModified gives us when the photo was taken/created on device
+    // This is what backend validates against (max 120 minutes old)
+    // Previously used new Date() which always showed 0 seconds old (bypassing validation)
+    const photoCreationTime = new Date(file.lastModified).toISOString();
     const position = this.geolocationService.position();
 
     // Fire-and-forget Observable chain: compress → upload
@@ -458,7 +478,7 @@ export class CheckInService implements OnDestroy {
               bookingId,
               photoType,
               compressed.blob,
-              clientTimestamp
+              photoCreationTime
             );
             throw new Error('Nema internet konekcije. Fotografija je sačuvana za kasnije.');
           }
@@ -468,7 +488,7 @@ export class CheckInService implements OnDestroy {
             compressed.blob,
             slotId,
             photoType,
-            clientTimestamp,
+            photoCreationTime,
             position?.latitude,
             position?.longitude
           );
@@ -485,8 +505,31 @@ export class CheckInService implements OnDestroy {
           this._uploadedPhotoIds.update((ids) => [...ids, result.photoId]);
         },
         error: (error) => {
-          const errorMessage = this.extractPhotoErrorMessage(error);
-          this.updateUploadProgress(slotId, photoType, 'error', 0, errorMessage);
+          // Check if this is a rejection (validation failure) vs network error
+          if (this.isPhotoRejectionError(error)) {
+            const rejectionError = error as PhotoRejectionError;
+            // Get current retry count and increment
+            const currentProgress = this._uploadProgress().get(slotId);
+            const retryCount = (currentProgress?.retryCount || 0) + 1;
+
+            this.updateUploadProgressWithRejection(
+              slotId,
+              photoType,
+              rejectionError.rejectionReason,
+              rejectionError.remediationHint,
+              rejectionError.errorCode,
+              retryCount
+            );
+
+            // Log rejection for debugging
+            console.warn(
+              `[CheckIn] Photo REJECTED: ${photoType}, code=${rejectionError.errorCode}, attempt=${retryCount}`
+            );
+          } else {
+            // Network/server error - show red error overlay
+            const errorMessage = this.extractPhotoErrorMessage(error);
+            this.updateUploadProgress(slotId, photoType, 'error', 0, errorMessage);
+          }
         },
       });
 
@@ -864,6 +907,10 @@ export class CheckInService implements OnDestroy {
 
   /**
    * Upload with progress tracking (Observable-based for fire-and-forget pattern).
+   *
+   * ## Rejection Handling (Phase 1)
+   * Backend now returns PhotoUploadResponse envelope. HTTP 400 indicates rejection
+   * (not network error). Rejected photos are NOT stored (zero-storage policy).
    */
   private uploadWithProgressObservable(
     bookingId: number,
@@ -912,10 +959,53 @@ export class CheckInService implements OnDestroy {
       filter((event: HttpEvent<any>) => event.type === HttpEventType.Response),
       map((event) => {
         this.updateUploadProgress(slotId, photoType, 'validating', 100);
-        // HttpResponse has body property
-        return (event as any).body as CheckInPhotoDTO;
+        // Parse PhotoUploadResponse envelope
+        const response = (event as any).body as PhotoUploadResponse;
+
+        // Check for rejection (accepted=false) - for HTTP 201 with accepted=false
+        if (!response.accepted) {
+          throw this.createPhotoRejectionError(response);
+        }
+
+        return response.photo;
+      }),
+      // Intercept HTTP 400 (Bad Request) which contains PhotoUploadResponse for rejections
+      catchError((httpError) => {
+        // Check if this is an HTTP 400 with PhotoUploadResponse body
+        if (httpError.status === 400 && httpError.error) {
+          const response = httpError.error as PhotoUploadResponse;
+
+          // Verify it's actually a rejection response (has photo with rejection info)
+          if (response.photo && response.accepted === false) {
+            throw this.createPhotoRejectionError(response);
+          }
+        }
+
+        // Not a rejection - rethrow as generic error for standard error handling
+        throw httpError;
       })
     );
+  }
+
+  /**
+   * Create PhotoRejectionError from PhotoUploadResponse.
+   * Centralized factory for consistent rejection error creation.
+   */
+  private createPhotoRejectionError(response: PhotoUploadResponse): PhotoRejectionError {
+    return new PhotoRejectionError(
+      response.photo.rejectionReason || 'Fotografija nije prihvaćena.',
+      response.photo.remediationHint || 'Pokušajte ponovo sa novom fotografijom.',
+      response.errorCodes?.[0] || 'UNKNOWN_REJECTION',
+      response.photo
+    );
+  }
+
+  /**
+   * Check if an error is a photo rejection (not a network error).
+   * Rejection errors should show orange UI, network errors show red UI.
+   */
+  private isPhotoRejectionError(error: any): boolean {
+    return error instanceof PhotoRejectionError;
   }
 
   /**
@@ -957,7 +1047,42 @@ export class CheckInService implements OnDestroy {
     result?: CheckInPhotoDTO
   ): void {
     const current = new Map(this._uploadProgress());
-    current.set(slotId, { slotId, photoType, state, progress, error, result });
+    const existing = current.get(slotId);
+    current.set(slotId, {
+      slotId,
+      photoType,
+      state,
+      progress,
+      error,
+      result,
+      retryCount: existing?.retryCount,
+    });
+    this._uploadProgress.set(current);
+  }
+
+  /**
+   * Update upload progress specifically for rejection state.
+   * Includes rejection reason, remediation hint, and retry count.
+   */
+  private updateUploadProgressWithRejection(
+    slotId: string,
+    photoType: CheckInPhotoType,
+    rejectionReason: string,
+    remediationHint: string,
+    errorCode: string,
+    retryCount: number
+  ): void {
+    const current = new Map(this._uploadProgress());
+    current.set(slotId, {
+      slotId,
+      photoType,
+      state: 'rejected',
+      progress: 0,
+      rejectionReason,
+      remediationHint,
+      errorCode,
+      retryCount,
+    });
     this._uploadProgress.set(current);
   }
 

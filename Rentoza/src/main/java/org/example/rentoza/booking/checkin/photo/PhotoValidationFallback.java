@@ -77,36 +77,17 @@ public class PhotoValidationFallback {
             // Read photo file from storage
             byte[] photoBytes = readPhotoFromStorage(freshPhoto);
             
-            // Validate EXIF data
+            // Convert car coordinates to BigDecimal for validation
+            BigDecimal carLatBd = carLatitude != null ? BigDecimal.valueOf(carLatitude) : null;
+            BigDecimal carLonBd = carLongitude != null ? BigDecimal.valueOf(carLongitude) : null;
+            
+            // Validate EXIF data with location check
             ExifValidationService.ExifValidationResult result = exifValidationService.validate(
                     photoBytes,
-                    clientUploadStartedAt
+                    clientUploadStartedAt,
+                    carLatBd,
+                    carLonBd
             );
-            
-            // Validate location if car coordinates provided
-            if (carLatitude != null && carLongitude != null && 
-                result.getLatitude() != null && result.getLongitude() != null) {
-                boolean locationValid = exifValidationService.validateLocation(
-                        result.getLatitude(),
-                        result.getLongitude(),
-                        BigDecimal.valueOf(carLatitude),
-                        BigDecimal.valueOf(carLongitude)
-                );
-                if (!locationValid) {
-                    // Update result to reflect location validation failure
-                    result = ExifValidationService.ExifValidationResult.builder()
-                            .status(ExifValidationStatus.VALID_WITH_WARNINGS)
-                            .message("Lokacija fotografije je daleko od vozila")
-                            .photoTimestamp(result.getPhotoTimestamp())
-                            .latitude(result.getLatitude())
-                            .longitude(result.getLongitude())
-                            .deviceMake(result.getDeviceMake())
-                            .deviceModel(result.getDeviceModel())
-                            .photoAgeMinutes(result.getPhotoAgeMinutes())
-                            .clientTimestampUsed(result.isClientTimestampUsed())
-                            .build();
-                }
-            }
 
             // Update photo with results
             freshPhoto.setExifValidationStatus(result.getStatus());

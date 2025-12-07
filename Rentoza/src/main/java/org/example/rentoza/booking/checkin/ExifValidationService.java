@@ -88,6 +88,9 @@ public class ExifValidationService {
     @Value("${app.checkin.exif.max-distance-meters:1000}")
     private int maxDistanceMeters;
 
+    @Value("${app.checkin.exif.client-timestamp-max-age-minutes:5}")
+    private int clientTimestampMaxAgeMinutes;
+
     /**
      * Validate EXIF metadata for a photo.
      * 
@@ -96,6 +99,7 @@ public class ExifValidationService {
      *   <li>EXIF data exists (rejects screenshots, downloaded images)</li>
      *   <li>Photo timestamp is within allowed age relative to client upload start</li>
      *   <li>GPS coordinates are plausible (if present)</li>
+     *   <li>Photo location is within allowed radius of car (if car coordinates provided)</li>
      * </ol>
      * 
      * <h3>Basement Problem Handling</h3>
@@ -105,6 +109,11 @@ public class ExifValidationService {
      * gets connectivity. Without this, server receipt time would falsely reject
      * valid photos.
      * 
+     * <h3>Location Validation (Fraud Prevention)</h3>
+     * <p>If {@code carLatitude} and {@code carLongitude} are provided, validates
+     * that the photo GPS is within {@code maxDistanceMeters} of the car location
+     * (default 1km). Rejects photos taken at different locations to prevent fraud.
+     * 
      * <h3>Circuit Breaker Protection</h3>
      * <p>If EXIF parsing fails consistently (circuit breaker opens), fallback
      * returns VALIDATION_PENDING status allowing check-in to proceed with
@@ -113,11 +122,14 @@ public class ExifValidationService {
      * @param photoBytes          Raw photo bytes
      * @param clientUploadStarted When the client started the upload (from frontend)
      *                            If null, falls back to server time (less accurate)
+     * @param carLatitude         Expected car latitude (nullable - if null, location not validated)
+     * @param carLongitude        Expected car longitude (nullable - if null, location not validated)
      * @return Validation result with extracted metadata
      */
     @CircuitBreaker(name = "exifValidation", fallbackMethod = "validateFallback")
     @Retry(name = "exifValidation")
-    public ExifValidationResult validate(byte[] photoBytes, Instant clientUploadStarted) {
+    public ExifValidationResult validate(byte[] photoBytes, Instant clientUploadStarted, 
+            BigDecimal carLatitude, BigDecimal carLongitude) {
         // Fall back to server time if client timestamp not provided
         Instant referenceTime = clientUploadStarted != null 
             ? clientUploadStarted 
@@ -193,6 +205,30 @@ public class ExifValidationService {
                     if (!isWithinSerbia(latitude.doubleValue(), longitude.doubleValue())) {
                         log.warn("[EXIF] GPS coordinates outside Serbia: {}, {}", latitude, longitude);
                         // Don't reject, just flag - could be border areas or GPS drift
+                    }
+                    
+                    // ========== LOCATION VALIDATION (Fraud Prevention) ==========
+                    // If car coordinates provided, validate photo location is within allowed radius
+                    if (carLatitude != null && carLongitude != null) {
+                        boolean locationValid = validateLocation(latitude, longitude, carLatitude, carLongitude);
+                        
+                        if (!locationValid) {
+                            double distance = haversineDistance(
+                                latitude.doubleValue(), longitude.doubleValue(),
+                                carLatitude.doubleValue(), carLongitude.doubleValue()
+                            );
+                            int distanceMeters = (int) Math.round(distance);
+                            
+                            log.warn("[EXIF] Location mismatch: photo taken {}m from car (max {}m). Photo GPS: {},{} Car GPS: {},{}",
+                                distanceMeters, maxDistanceMeters, latitude, longitude, carLatitude, carLongitude);
+                            
+                            return ExifValidationResult.rejected(
+                                ExifValidationStatus.REJECTED_LOCATION_MISMATCH,
+                                String.format("Fotografija je napravljena na drugom mestu (%dm od automobila)", distanceMeters)
+                            );
+                        }
+                        
+                        log.info("[EXIF] Location validation passed: photo within {}m of car", maxDistanceMeters);
                     }
                 } catch (Exception e) {
                     log.debug("[EXIF] Could not parse GPS info", e);
@@ -347,18 +383,52 @@ public class ExifValidationService {
      * Handle HEIC or other unsupported image formats that Apache Commons Imaging cannot read.
      * Falls back to client sidecar timestamp if available.
      * 
+     * <p><b>SECURITY FIX:</b> Validates client timestamp age to prevent photo validation bypass.
+     * Without this check, users could upload old HEIC photos by manipulating client timestamp.
+     * 
      * @param clientUploadStarted Client-provided timestamp from sidecar data
      * @param errorDetail         Technical error details for logging
-     * @return VALID_WITH_WARNINGS if sidecar available, REJECTED otherwise
+     * @return VALID_WITH_WARNINGS if sidecar available and fresh, REJECTED otherwise
      */
     private ExifValidationResult handleUnsupportedImageFormat(Instant clientUploadStarted, String errorDetail) {
         if (clientUploadStarted != null) {
-            log.info("[EXIF] HEIC/unsupported format detected - APPROVED via sidecar fallback. Error was: {}", errorDetail);
+            // ========== CRITICAL SECURITY FIX: Validate client timestamp freshness ==========
+            // Client timestamp should be very recent (within last 5 minutes by default)
+            // If upload started long ago, either network issues or fraud attempt
+            Instant now = Instant.now();
+            Duration timeSinceUploadStarted = Duration.between(clientUploadStarted, now);
+            
+            // Reject if client timestamp is too old
+            if (timeSinceUploadStarted.toMinutes() > clientTimestampMaxAgeMinutes) {
+                log.warn("[EXIF] HEIC fallback REJECTED - client timestamp too old: {} minutes ago. "
+                        + "This prevents uploading old photos in HEIC format to bypass age validation.", 
+                        timeSinceUploadStarted.toMinutes());
+                return ExifValidationResult.rejected(
+                    ExifValidationStatus.REJECTED_TOO_OLD,
+                    String.format("Vreme otpremanja je previše staro (%d minuta). Pokušajte ponovo sa novom fotografijom.",
+                        timeSinceUploadStarted.toMinutes())
+                );
+            }
+            
+            // Reject if client timestamp is in the future (clock manipulation)
+            if (timeSinceUploadStarted.isNegative() && 
+                timeSinceUploadStarted.abs().getSeconds() > clientTimestampToleranceSeconds) {
+                log.warn("[EXIF] HEIC fallback REJECTED - client timestamp is in future: {} seconds", 
+                        timeSinceUploadStarted.abs().getSeconds());
+                return ExifValidationResult.rejected(
+                    ExifValidationStatus.REJECTED_FUTURE_TIMESTAMP,
+                    "Vreme otpremanja je u budućnosti. Proverite podešavanja sata na uređaju."
+                );
+            }
+            
+            log.info("[EXIF] HEIC/unsupported format - APPROVED via sidecar with timestamp validation. "
+                    + "Client timestamp age: {} seconds", timeSinceUploadStarted.getSeconds());
             return ExifValidationResult.builder()
                 .status(ExifValidationStatus.VALID_WITH_WARNINGS)
-                .message("Format slike (HEIC/moderni format) nije podržan za EXIF čitanje - prihvaćeno na osnovu vremena prijave klijenta")
+                .message("Format slike (HEIC/moderni format) - prihvaćeno bez EXIF validacije")
                 .photoTimestamp(clientUploadStarted)
                 .clientTimestampUsed(true)
+                .photoAgeMinutes((int) timeSinceUploadStarted.toMinutes())
                 .build();
         }
         
@@ -372,18 +442,51 @@ public class ExifValidationService {
     /**
      * Handle missing or unreadable EXIF metadata with sidecar fallback.
      * 
+     * <p><b>SECURITY FIX:</b> Validates client timestamp age to prevent photo validation bypass.
+     * Without this check, users could upload old photos without EXIF by manipulating client timestamp.
+     * 
      * @param clientUploadStarted Client-provided timestamp from sidecar data
      * @param userMessage         User-facing error message
-     * @return VALID_WITH_WARNINGS if sidecar available, REJECTED otherwise
+     * @return VALID_WITH_WARNINGS if sidecar available and fresh, REJECTED otherwise
      */
     private ExifValidationResult handleMissingOrUnreadableExif(Instant clientUploadStarted, String userMessage) {
         if (clientUploadStarted != null) {
-            log.info("[EXIF] Missing EXIF - APPROVED via sidecar fallback");
+            // ========== CRITICAL SECURITY FIX: Validate client timestamp freshness ==========
+            // Same validation as HEIC fallback - prevent uploading old photos without EXIF
+            Instant now = Instant.now();
+            Duration timeSinceUploadStarted = Duration.between(clientUploadStarted, now);
+            
+            // Reject if client timestamp is too old
+            if (timeSinceUploadStarted.toMinutes() > clientTimestampMaxAgeMinutes) {
+                log.warn("[EXIF] Missing EXIF fallback REJECTED - client timestamp too old: {} minutes ago. "
+                        + "This prevents uploading old photos without EXIF to bypass age validation.", 
+                        timeSinceUploadStarted.toMinutes());
+                return ExifValidationResult.rejected(
+                    ExifValidationStatus.REJECTED_TOO_OLD,
+                    String.format("Vreme otpremanja je previše staro (%d minuta). Pokušajte ponovo sa novom fotografijom.",
+                        timeSinceUploadStarted.toMinutes())
+                );
+            }
+            
+            // Reject if client timestamp is in the future (clock manipulation)
+            if (timeSinceUploadStarted.isNegative() && 
+                timeSinceUploadStarted.abs().getSeconds() > clientTimestampToleranceSeconds) {
+                log.warn("[EXIF] Missing EXIF fallback REJECTED - client timestamp is in future: {} seconds", 
+                        timeSinceUploadStarted.abs().getSeconds());
+                return ExifValidationResult.rejected(
+                    ExifValidationStatus.REJECTED_FUTURE_TIMESTAMP,
+                    "Vreme otpremanja je u budućnosti. Proverite podešavanja sata na uređaju."
+                );
+            }
+            
+            log.info("[EXIF] Missing EXIF - APPROVED via sidecar with timestamp validation. "
+                    + "Client timestamp age: {} seconds", timeSinceUploadStarted.getSeconds());
             return ExifValidationResult.builder()
                 .status(ExifValidationStatus.VALID_WITH_WARNINGS)
                 .message("EXIF podaci nedostaju - prihvaćeno na osnovu vremena prijave klijenta")
                 .photoTimestamp(clientUploadStarted)
                 .clientTimestampUsed(true)
+                .photoAgeMinutes((int) timeSinceUploadStarted.toMinutes())
                 .build();
         }
         
@@ -457,11 +560,14 @@ public class ExifValidationService {
      * 
      * @param photoBytes          Original photo bytes (unused in fallback)
      * @param clientUploadStarted Client timestamp (preserved for later validation)
+     * @param carLatitude         Car latitude (unused in fallback)
+     * @param carLongitude        Car longitude (unused in fallback)
      * @param throwable           Exception that triggered the fallback
      * @return VALIDATION_PENDING result
      */
     @SuppressWarnings("unused")
-    private ExifValidationResult validateFallback(byte[] photoBytes, Instant clientUploadStarted, Throwable throwable) {
+    private ExifValidationResult validateFallback(byte[] photoBytes, Instant clientUploadStarted, 
+            BigDecimal carLatitude, BigDecimal carLongitude, Throwable throwable) {
         log.warn("[EXIF] Circuit breaker fallback triggered: {} - allowing upload with PENDING validation", 
                 throwable.getMessage());
         

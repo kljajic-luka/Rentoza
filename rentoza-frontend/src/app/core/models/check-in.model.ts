@@ -188,6 +188,117 @@ export interface CheckInPhotoDTO {
   exifLatitude: number | null;
   exifLongitude: number | null;
   deviceModel: string | null;
+
+  // ========== Rejection Fields (Phase 1: Rejected Photo Infrastructure) ==========
+
+  /**
+   * Whether the photo was accepted by EXIF validation.
+   * false = rejected (not stored), true = accepted (stored to DB).
+   */
+  accepted?: boolean;
+
+  /**
+   * User-friendly rejection reason in Serbian.
+   * Only populated when accepted=false.
+   */
+  rejectionReason?: string;
+
+  /**
+   * Actionable hint for the user to fix the rejection issue.
+   * Only populated when accepted=false.
+   */
+  remediationHint?: string;
+}
+
+// ============================================================================
+// VIEW MODELS (Svelte-Inspired Reactive Patterns)
+// ============================================================================
+
+/**
+ * Photo slot configuration (type, label, icon).
+ * Defines the metadata for each required photo in the check-in flow.
+ */
+export interface PhotoSlot {
+  type: CheckInPhotoType;
+  label: string;
+  icon: string;
+  required: boolean;
+}
+
+/**
+ * Svelte-inspired flattened view model for photo slots.
+ * Eliminates template method calls and redundant Map lookups by computing
+ * all derived state in a single pass using Angular computed signals.
+ *
+ * Pattern: Single-pass derivation from CheckInService.uploadProgress() Map.
+ * Includes Critical Fix #1: Location validation tracking (locationMismatch, distanceMeters).
+ *
+ * @see host-check-in.component.ts photoSlotViewModels computed signal
+ */
+export interface PhotoSlotViewModel {
+  /** Photo slot configuration (type, label, icon) */
+  slot: PhotoSlot;
+
+  /** Upload completion status */
+  isCompleted: boolean;
+
+  /** Upload in progress (>0% and <100%) */
+  isUploading: boolean;
+
+  /** Backend validation pending */
+  isValidationPending: boolean;
+
+  /** Photo rejected by backend validation */
+  isRejected: boolean;
+
+  /** Upload progress percentage (0-100) */
+  progress: number;
+
+  /** Preview URL (either local blob or server URL) */
+  previewUrl: string | null;
+
+  /** Rejection reason in Serbian (if rejected) */
+  rejectionReason: string | null;
+
+  /** Actionable remediation hint (if rejected) */
+  remediationHint: string | null;
+
+  // Critical Fix #1: Location validation tracking
+  /** Photo taken at different location than car (fraud detection) */
+  locationMismatch: boolean;
+
+  /** Distance in meters between photo GPS and car location (if location mismatch) */
+  distanceMeters: number | null;
+}
+
+/**
+ * Svelte-inspired aggregate stats view model.
+ * Replaces individual computed signals (completedPhotosCount, allRequiredPhotosUploaded, etc.)
+ * with a single stats object computed once per state change.
+ *
+ * Pattern: Aggregate derivation eliminates multiple iterations over photo state.
+ */
+export interface PhotoStatsViewModel {
+  /** Number of required photos completed */
+  completed: number;
+
+  /** Total number of required photos */
+  total: number;
+
+  /** All required photos uploaded and validated */
+  allRequiredComplete: boolean;
+
+  /** Any upload currently in progress */
+  anyUploading: boolean;
+
+  /** Number of photos pending backend validation */
+  validationPendingCount: number;
+
+  /** Number of rejected photos requiring re-upload */
+  rejectedCount: number;
+
+  /** Number of location mismatch detections (Critical Fix #1) */
+  locationMismatchCount: number;
 }
 
 // ============================================================================
@@ -248,14 +359,62 @@ export interface PhotoUploadRequest {
  *
  * NOTE: When a user re-uploads to the same slot, the previous backend photo becomes orphaned.
  * This minor storage cost is accepted for UX speed; backend cleanup deferred to Phase 4.
+ *
+ * ## Rejection Handling (Phase 1: Rejected Photo Infrastructure)
+ * - State 'rejected' indicates EXIF validation failure
+ * - Rejected photos are NOT stored (zero-storage policy)
+ * - User receives rejectionReason and remediationHint for guidance
+ * - retryCount tracks number of attempts for soft retry limit (3)
  */
 export interface PhotoUploadProgress {
   slotId: string; // UUID for damage photos, enum string for required photos
   photoType: CheckInPhotoType;
-  state: 'compressing' | 'uploading' | 'validating' | 'complete' | 'error';
+  /** Upload state. 'rejected' = EXIF validation failed, photo not stored */
+  state: 'compressing' | 'uploading' | 'validating' | 'complete' | 'error' | 'rejected';
   progress: number; // 0-100
   error?: string;
   result?: CheckInPhotoDTO;
+
+  // ========== Rejection Fields (Phase 1: Rejected Photo Infrastructure) ==========
+
+  /**
+   * User-friendly rejection reason in Serbian.
+   * Only populated when state='rejected'.
+   * Example: "Fotografija je prestara. Mora biti snimljena u poslednjih 30 minuta."
+   */
+  rejectionReason?: string;
+
+  /**
+   * Actionable hint for the user to fix the rejection issue.
+   * Only populated when state='rejected'.
+   * Example: "Otvorite kameru na telefonu i napravite novu fotografiju."
+   */
+  remediationHint?: string;
+
+  /**
+   * Machine-readable error code for analytics/debugging.
+   * Only populated when state='rejected'.
+   * Example: "PHOTO_TOO_OLD", "NO_EXIF_DATA"
+   */
+  errorCode?: string;
+
+  /**
+   * Number of upload attempts for this slot (including rejections).
+   * Used for soft retry limit (3 attempts with warning).
+   */
+  retryCount?: number;
+}
+
+/**
+ * Backend response envelope for photo uploads.
+ * Maps to PhotoUploadResponse.java on the backend.
+ */
+export interface PhotoUploadResponse {
+  accepted: boolean;
+  photo: CheckInPhotoDTO;
+  httpStatus: number;
+  userMessage: string;
+  errorCodes?: string[];
 }
 
 /**

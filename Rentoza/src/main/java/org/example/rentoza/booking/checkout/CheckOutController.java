@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.booking.checkin.CheckInPhotoService;
 import org.example.rentoza.booking.checkin.CheckInPhotoType;
 import org.example.rentoza.booking.checkin.dto.CheckInPhotoDTO;
+import org.example.rentoza.booking.checkin.dto.PhotoUploadResponse;
 import org.example.rentoza.booking.checkout.dto.*;
 import org.example.rentoza.security.CurrentUser;
 import org.springframework.http.HttpStatus;
@@ -119,7 +120,7 @@ public class CheckOutController {
      * Photos are validated for EXIF metadata just like check-in photos.
      */
     @PostMapping(value = "/guest/photos", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<CheckInPhotoDTO> uploadGuestCheckoutPhoto(
+    public ResponseEntity<PhotoUploadResponse> uploadGuestCheckoutPhoto(
             @PathVariable Long bookingId,
             @RequestPart("file") MultipartFile file,
             @RequestParam("photoType") CheckInPhotoType photoType,
@@ -136,7 +137,7 @@ public class CheckOutController {
         log.debug("[CheckOut] Guest photo upload for booking {} by user {}, type: {}",
             bookingId, userId, photoType);
         
-        CheckInPhotoDTO photo = photoService.uploadPhoto(
+        PhotoUploadResponse response = photoService.uploadPhoto(
             bookingId,
             userId,
             file,
@@ -148,7 +149,8 @@ public class CheckOutController {
         
         photoUploadCounter.increment();
         
-        return ResponseEntity.status(HttpStatus.CREATED).body(photo);
+        HttpStatus status = response.isAccepted() ? HttpStatus.CREATED : HttpStatus.BAD_REQUEST;
+        return ResponseEntity.status(status).body(response);
     }
 
     /**
@@ -184,7 +186,7 @@ public class CheckOutController {
      * <p>Host can upload photos documenting damage or confirming return condition.
      */
     @PostMapping(value = "/host/photos", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<CheckInPhotoDTO> uploadHostCheckoutPhoto(
+    public ResponseEntity<PhotoUploadResponse> uploadHostCheckoutPhoto(
             @PathVariable Long bookingId,
             @RequestPart("file") MultipartFile file,
             @RequestParam("photoType") CheckInPhotoType photoType,
@@ -201,7 +203,7 @@ public class CheckOutController {
         log.debug("[CheckOut] Host photo upload for booking {} by user {}, type: {}",
             bookingId, userId, photoType);
         
-        CheckInPhotoDTO photo = photoService.uploadPhoto(
+        PhotoUploadResponse response = photoService.uploadPhoto(
             bookingId,
             userId,
             file,
@@ -213,7 +215,8 @@ public class CheckOutController {
         
         photoUploadCounter.increment();
         
-        return ResponseEntity.status(HttpStatus.CREATED).body(photo);
+        HttpStatus status = response.isAccepted() ? HttpStatus.CREATED : HttpStatus.BAD_REQUEST;
+        return ResponseEntity.status(status).body(response);
     }
 
     /**

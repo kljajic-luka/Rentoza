@@ -7,6 +7,8 @@ import org.example.rentoza.booking.BookingRepository;
 import org.example.rentoza.booking.BookingStatus;
 import org.example.rentoza.booking.checkin.ExifValidationService.ExifValidationResult;
 import org.example.rentoza.booking.checkin.dto.CheckInPhotoDTO;
+import org.example.rentoza.booking.checkin.dto.PhotoRejectionInfo;
+import org.example.rentoza.booking.checkin.dto.PhotoUploadResponse;
 import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.security.LockboxEncryptionService;
 import org.example.rentoza.user.User;
@@ -30,6 +32,15 @@ import java.util.UUID;
 
 /**
  * Service for handling check-in photo uploads and storage.
+ * 
+ * <p>Implements zero-storage policy for rejected photos:
+ * <ul>
+ *   <li>Accepted photos: stored to DB and filesystem</li>
+ *   <li>Rejected photos: NOT stored, only event logged for audit</li>
+ * </ul>
+ * 
+ * @see PhotoRejectionService
+ * @see PhotoUploadResponse
  */
 @Service
 @RequiredArgsConstructor
@@ -44,6 +55,7 @@ public class CheckInPhotoService {
     private final CheckInEventService eventService;
     private final ExifValidationService exifValidationService;
     private final LockboxEncryptionService lockboxEncryptionService;
+    private final PhotoRejectionService photoRejectionService;
 
     @Value("${app.checkin.photo.upload-dir:uploads/checkin}")
     private String uploadDir;
@@ -52,7 +64,10 @@ public class CheckInPhotoService {
     private int maxSizeMb;
 
     /**
-     * Upload a check-in photo with EXIF validation.
+     * Upload a check-in photo with EXIF validation and zero-storage policy.
+     * 
+     * <p><b>Zero-Storage Policy:</b> Rejected photos are NOT stored to the database or filesystem.
+     * Only an audit event is logged. This prevents data pollution and storage waste.
      * 
      * <p>GPS coordinates can come from two sources (in order of preference):
      * <ol>
@@ -64,9 +79,10 @@ public class CheckInPhotoService {
      * 
      * @param clientLatitude  Client-provided latitude (fallback)
      * @param clientLongitude Client-provided longitude (fallback)
+     * @return PhotoUploadResponse with accepted=true (HTTP 201) or accepted=false (HTTP 400)
      */
     @Transactional
-    public CheckInPhotoDTO uploadPhoto(
+    public PhotoUploadResponse uploadPhoto(
             Long bookingId,
             Long userId,
             MultipartFile file,
@@ -151,10 +167,98 @@ public class CheckInPhotoService {
         // We must pass clientTimestamp to allow the service to:
         // 1. Calculate photo age relative to when the user actually took/uploaded it
         // 2. Enable "sidecar fallback" for HEIC/no-EXIF images (requires non-null timestamp)
+        // We also pass car coordinates for location validation (fraud prevention)
         ExifValidationResult exifResult = exifValidationService.validate(
             photoBytes, 
-            clientTimestamp
+            clientTimestamp,
+            booking.getCarLatitude(),
+            booking.getCarLongitude()
         );
+        
+        // ========== ZERO-STORAGE POLICY: Check for rejection ==========
+        if (photoRejectionService.shouldReject(exifResult.getStatus())) {
+            return handleRejectedPhoto(booking, userId, photoType, exifResult, file.getSize(), clientTimestamp);
+        }
+        
+        // ========== ACCEPTED PHOTO: Proceed with storage ==========
+        return handleAcceptedPhoto(
+            booking, user, file, photoBytes, photoType, 
+            exifResult, clientLatitude, clientLongitude, clientTimestamp
+        );
+    }
+    
+    /**
+     * Handle a rejected photo - log event but do NOT store to DB.
+     * 
+     * @return PhotoUploadResponse with accepted=false for HTTP 400 response
+     */
+    private PhotoUploadResponse handleRejectedPhoto(
+            Booking booking,
+            Long userId,
+            CheckInPhotoType photoType,
+            ExifValidationResult exifResult,
+            long fileSize,
+            Instant clientTimestamp) {
+        
+        PhotoRejectionInfo rejectionInfo = photoRejectionService.getRejectionInfo(exifResult.getStatus());
+        
+        String sessionId = photoType.isCheckoutPhoto() 
+            ? booking.getCheckoutSessionId() 
+            : booking.getCheckInSessionId();
+        
+        // Determine actor role
+        CheckInActorRole actorRole = photoType.isCheckoutPhoto() 
+            ? (photoType.isHostCheckoutPhoto() ? CheckInActorRole.HOST : CheckInActorRole.GUEST)
+            : CheckInActorRole.HOST;
+        
+        // Log rejection event for audit trail (immutable)
+        eventService.recordEvent(
+            booking,
+            sessionId,
+            CheckInEventType.HOST_PHOTO_REJECTED,
+            userId,
+            actorRole,
+            clientTimestamp,
+            photoRejectionService.createRejectionEventMetadata(
+                exifResult.getStatus(), photoType, fileSize
+            )
+        );
+        
+        log.info("[CheckIn] Photo REJECTED (zero-storage): booking={}, type={}, status={}, reason={}",
+            booking.getId(), photoType, exifResult.getStatus(), 
+            rejectionInfo != null ? rejectionInfo.getErrorCode() : "UNKNOWN");
+        
+        // Build rejection DTO (no photoId, no url - not stored)
+        CheckInPhotoDTO rejectionDTO = CheckInPhotoDTO.builder()
+            .photoType(photoType)
+            .exifValidationStatus(exifResult.getStatus())
+            .exifValidationMessage(exifResult.getMessage())
+            .accepted(false)
+            .rejectionReason(rejectionInfo != null ? rejectionInfo.getRejectionReason() : "Fotografija nije prihvaćena.")
+            .remediationHint(rejectionInfo != null ? rejectionInfo.getRemediationHint() : "Pokušajte ponovo sa novom fotografijom.")
+            .build();
+        
+        return PhotoUploadResponse.rejected(
+            rejectionDTO, 
+            rejectionInfo != null ? rejectionInfo.getErrorCode() : "UNKNOWN_REJECTION"
+        );
+    }
+    
+    /**
+     * Handle an accepted photo - store to filesystem and database.
+     * 
+     * @return PhotoUploadResponse with accepted=true for HTTP 201 response
+     */
+    private PhotoUploadResponse handleAcceptedPhoto(
+            Booking booking,
+            User user,
+            MultipartFile file,
+            byte[] photoBytes,
+            CheckInPhotoType photoType,
+            ExifValidationResult exifResult,
+            BigDecimal clientLatitude,
+            BigDecimal clientLongitude,
+            Instant clientTimestamp) throws IOException {
         
         // Use client GPS as fallback when EXIF GPS is missing
         // (defense-in-depth for canvas compression scenarios)
@@ -179,10 +283,10 @@ public class CheckInPhotoService {
             sessionId = UUID.randomUUID().toString();
             if (photoType.isCheckoutPhoto()) {
                 booking.setCheckoutSessionId(sessionId);
-                log.info("[CheckIn] Auto-generated missing checkoutSessionId for booking {}", bookingId);
+                log.info("[CheckIn] Auto-generated missing checkoutSessionId for booking {}", booking.getId());
             } else {
                 booking.setCheckInSessionId(sessionId);
-                log.info("[CheckIn] Auto-generated missing checkInSessionId for booking {}", bookingId);
+                log.info("[CheckIn] Auto-generated missing checkInSessionId for booking {}", booking.getId());
             }
             bookingRepository.save(booking);
         }
@@ -216,6 +320,8 @@ public class CheckInPhotoService {
         } else {
             bucket = CheckInPhoto.StorageBucket.CHECKIN_STANDARD;
         }
+        
+        String contentType = file.getContentType();
         
         // Create photo entity
         CheckInPhoto photo = CheckInPhoto.builder()
@@ -263,7 +369,7 @@ public class CheckInPhotoService {
             booking,
             sessionId,
             eventType,
-            userId,
+            user.getId(),
             actorRole,
             clientTimestamp,
             Map.of(
@@ -276,13 +382,17 @@ public class CheckInPhotoService {
             )
         );
         
-        log.info("[CheckIn] Photo uploaded: booking={}, type={}, exifStatus={}", 
-            bookingId, photoType, exifResult.getStatus());
+        log.info("[CheckIn] Photo ACCEPTED: booking={}, type={}, photoId={}, exifStatus={}", 
+            booking.getId(), photoType, photo.getId(), exifResult.getStatus());
         
         // Add to booking's photo collection
         booking.getCheckInPhotos().add(photo);
         
-        return mapToDTO(photo);
+        // Build accepted DTO
+        CheckInPhotoDTO acceptedDTO = mapToDTO(photo);
+        acceptedDTO.setAccepted(true);
+        
+        return PhotoUploadResponse.accepted(acceptedDTO);
     }
 
     /**

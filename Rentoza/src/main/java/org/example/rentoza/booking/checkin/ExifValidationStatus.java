@@ -71,7 +71,12 @@ public enum ExifValidationStatus {
     /**
      * Photo rejected: GPS location doesn't match car/pickup location.
      * User may have taken photo at a different location (fraud indicator).
+     * 
+     * @deprecated Since Phase 2 - Location variance validation removed.
+     *             Car location is now derived from first valid photo EXIF.
+     *             Will be removed in Phase 3.
      */
+    @Deprecated(since = "Phase2", forRemoval = true)
     REJECTED_LOCATION_MISMATCH,
     
     /**

@@ -259,31 +259,6 @@ public class ExifValidationService {
         }
     }
 
-    /**
-     * Validate photo location against expected car location.
-     * 
-     * @param photoLat    Photo GPS latitude
-     * @param photoLon    Photo GPS longitude
-     * @param carLat      Expected car latitude
-     * @param carLon      Expected car longitude
-     * @return true if within allowed radius
-     */
-    public boolean validateLocation(
-            BigDecimal photoLat, BigDecimal photoLon,
-            BigDecimal carLat, BigDecimal carLon) {
-        
-        if (photoLat == null || photoLon == null || carLat == null || carLon == null) {
-            return true; // Can't validate without coordinates
-        }
-        
-        double distance = haversineDistance(
-            photoLat.doubleValue(), photoLon.doubleValue(),
-            carLat.doubleValue(), carLon.doubleValue()
-        );
-        
-        return distance <= maxDistanceMeters;
-    }
-
     // ========== HELPER METHODS ==========
 
     private LocalDateTime extractPhotoTimestamp(TiffImageMetadata metadata) {

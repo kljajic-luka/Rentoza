@@ -10,7 +10,9 @@ import org.example.rentoza.booking.BookingStatus;
 import org.example.rentoza.booking.checkin.CheckInActorRole;
 import org.example.rentoza.booking.checkin.CheckInEventService;
 import org.example.rentoza.booking.checkin.CheckInEventType;
+import org.example.rentoza.booking.checkin.CheckInPhoto;
 import org.example.rentoza.booking.checkin.CheckInPhotoRepository;
+import org.example.rentoza.booking.checkin.ExifValidationStatus;
 import org.example.rentoza.booking.checkin.GeofenceService;
 import org.example.rentoza.booking.checkin.GeofenceService.GeofenceResult;
 import org.example.rentoza.booking.checkin.dto.GuestConditionAcknowledgmentDTO;
@@ -34,6 +36,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -169,11 +172,85 @@ public class CheckInCommandService {
         booking.setHostCheckInCompletedAt(Instant.now());
         booking.setStatus(BookingStatus.CHECK_IN_HOST_COMPLETE);
 
-        // Set car location if provided
-        if (dto.getCarLatitude() != null && dto.getCarLongitude() != null) {
-            booking.setCarLatitude(BigDecimal.valueOf(dto.getCarLatitude()));
-            booking.setCarLongitude(BigDecimal.valueOf(dto.getCarLongitude()));
+        // ========================================================================
+        // PHASE 2: DERIVE CAR LOCATION FROM FIRST VALID PHOTO EXIF GPS
+        // ========================================================================
+        // CQRS Command Handler: Identical logic to CheckInService (maintains consistency)
+        // Turo-style simplification: Car location derived from photos, not submitted.
+        //
+        // GPS Fallback Strategy (Option A - Recommended):
+        // - Accept missing GPS with audit flag (trust model)
+        // - Check-in proceeds even without GPS (photos are evidence)
+        // - CAR_LOCATION_MISSING event flags for admin review
+        // - No blocking - matches Turo's operational model
+        //
+        // Alternative strategies (not implemented):
+        // - Option B: Fallback to host GPS if all photos lack EXIF GPS
+        // - Option C: Block check-in without GPS (adds friction, not recommended)
+        
+        Optional<CheckInPhoto> firstPhotoWithGps = photoRepository
+                .findByBookingId(booking.getId())
+                .stream()
+                .filter(photo -> !photo.isDeleted())
+                .filter(photo -> photo.getExifLatitude() != null && photo.getExifLongitude() != null)
+                .filter(photo -> photo.getExifValidationStatus() == ExifValidationStatus.VALID ||
+                               photo.getExifValidationStatus() == ExifValidationStatus.VALID_WITH_WARNINGS)
+                .sorted((p1, p2) -> p1.getUploadedAt().compareTo(p2.getUploadedAt())) // First chronologically
+                .findFirst();
+        
+        if (firstPhotoWithGps.isPresent()) {
+            CheckInPhoto photo = firstPhotoWithGps.get();
+            booking.setCarLatitude(photo.getExifLatitude());
+            booking.setCarLongitude(photo.getExifLongitude());
+            
+            // Log derivation event for audit trail
+            eventService.recordEvent(
+                booking,
+                booking.getCheckInSessionId(),
+                CheckInEventType.CAR_LOCATION_DERIVED,
+                userId,
+                CheckInActorRole.HOST,
+                Map.of(
+                    "photoId", photo.getId(),
+                    "photoType", photo.getPhotoType().name(),
+                    "latitude", photo.getExifLatitude().doubleValue(),
+                    "longitude", photo.getExifLongitude().doubleValue(),
+                    "photoTimestamp", photo.getExifTimestamp() != null ? photo.getExifTimestamp().toString() : "UNKNOWN",
+                    "derivationMethod", "FIRST_VALID_EXIF",
+                    "handlerType", "CQRS_COMMAND"
+                )
+            );
+            
+            log.info("[CheckIn-Command-Phase2] Car location derived from photo ID {} (type: {}) for booking {}",
+                    photo.getId(), photo.getPhotoType(), booking.getId());
+        } else {
+            // No photo with GPS found - log warning but allow check-in (trust model)
+            long photoCount = photoRepository.findByBookingId(booking.getId()).stream()
+                    .filter(p -> !p.isDeleted())
+                    .count();
+            
+            eventService.recordEvent(
+                booking,
+                booking.getCheckInSessionId(),
+                CheckInEventType.CAR_LOCATION_MISSING,
+                userId,
+                CheckInActorRole.HOST,
+                Map.of(
+                    "reason", "NO_GPS_IN_PHOTOS",
+                    "photoCount", photoCount,
+                    "photosChecked", photoCount,
+                    "photosWithoutGps", photoCount,
+                    "fallbackStrategy", "OPTION_A_ACCEPT_WITH_AUDIT",
+                    "handlerType", "CQRS_COMMAND"
+                )
+            );
+            
+            log.warn("[CheckIn-Command-Phase2] No photo with EXIF GPS found for booking {}. Check-in proceeds without car location (trust model).",
+                    booking.getId());
         }
+        
+        // PHASE 2: Location variance validation REMOVED (matches CheckInService)
+        // See CheckInEventType.CAR_LOCATION_DERIVED for complete audit data.
 
         // Set host location
         if (dto.getHostLatitude() != null && dto.getHostLongitude() != null) {

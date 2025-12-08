@@ -197,6 +197,46 @@ public enum CheckInEventType {
      */
     LOCKBOX_CODE_REVEALED,
     
+    // ========== PHASE 2: CAR LOCATION DERIVATION ==========
+    
+    /**
+     * Car location derived from first valid photo EXIF GPS.
+     * 
+     * <p>Phase 2 implementation: Car location is no longer submitted by host.
+     * Instead, we derive it from the first uploaded photo with valid EXIF GPS data.
+     * This simplifies the check-in flow (Turo-style) and fixes the orphaned
+     * carLatitude/carLongitude problem.
+     * 
+     * <p>Metadata: {@code {"photoId": 123, "photoType": "HOST_EXTERIOR_FRONT", 
+     *                       "latitude": 44.8176, "longitude": 20.4624, "photoTimestamp": "...", 
+     *                       "derivationMethod": "FIRST_VALID_EXIF"}}
+     * 
+     * @since Phase 2 - Turo-Style Simplification
+     */
+    CAR_LOCATION_DERIVED,
+    
+    /**
+     * Car location could not be derived (no photo with EXIF GPS found).
+     * 
+     * <p>Phase 2 warning event: Logged when host completes check-in but none of the
+     * uploaded photos contain GPS coordinates. Check-in proceeds anyway (trust model),
+     * but this flags potential issues for admin review.
+     * 
+     * <p>Causes:
+     * <ul>
+     *   <li>Device has GPS disabled in camera settings</li>
+     *   <li>Photos taken indoors with no GPS signal</li>
+     *   <li>Photos edited/compressed after capture (EXIF stripped)</li>
+     *   <li>Host used screenshots instead of camera</li>
+     * </ul>
+     * 
+     * <p>Metadata: {@code {"reason": "NO_GPS_IN_PHOTOS", "photoCount": 8, 
+     *                       "photosChecked": 8, "photosWithoutGps": 8}}
+     * 
+     * @since Phase 2 - Turo-Style Simplification
+     */
+    CAR_LOCATION_MISSING,
+    
     // ========== CHECKOUT ==========
     
     /**

@@ -29,6 +29,7 @@ import java.time.*;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -157,74 +158,83 @@ public class CheckInService {
         booking.setHostCheckInCompletedAt(Instant.now());
         booking.setStatus(BookingStatus.CHECK_IN_HOST_COMPLETE);
         
-        // Set car location if provided
-        if (dto.getCarLatitude() != null && dto.getCarLongitude() != null) {
-            booking.setCarLatitude(BigDecimal.valueOf(dto.getCarLatitude()));
-            booking.setCarLongitude(BigDecimal.valueOf(dto.getCarLongitude()));
+        // ========================================================================
+        // PHASE 2: DERIVE CAR LOCATION FROM FIRST VALID PHOTO EXIF GPS
+        // ========================================================================
+        // Turo-style simplification: Car location is no longer submitted by host.
+        // Instead, we derive it from the first uploaded photo with valid EXIF GPS.
+        //
+        // Benefits:
+        // - Fixes orphaned carLatitude/carLongitude problem
+        // - Eliminates GPS permission friction for host
+        // - Photos are evidence (trust model)
+        // - Simpler UX (matches industry standard)
+        //
+        // Fallback: If no photo has GPS, check-in proceeds anyway (CAR_LOCATION_MISSING event logged)
+        
+        Optional<CheckInPhoto> firstPhotoWithGps = photoRepository
+                .findByBookingId(booking.getId())
+                .stream()
+                .filter(photo -> !photo.isDeleted())
+                .filter(photo -> photo.getExifLatitude() != null && photo.getExifLongitude() != null)
+                .filter(photo -> photo.getExifValidationStatus() == ExifValidationStatus.VALID ||
+                               photo.getExifValidationStatus() == ExifValidationStatus.VALID_WITH_WARNINGS)
+                .sorted((p1, p2) -> p1.getUploadedAt().compareTo(p2.getUploadedAt())) // First chronologically
+                .findFirst();
+        
+        if (firstPhotoWithGps.isPresent()) {
+            CheckInPhoto photo = firstPhotoWithGps.get();
+            booking.setCarLatitude(photo.getExifLatitude());
+            booking.setCarLongitude(photo.getExifLongitude());
             
-            // ========================================================================
-            // LOCATION VARIANCE CHECK (Phase 2.4 - Geospatial Migration)
-            // ========================================================================
-            // Calculate and validate distance between car's current location (at check-in)
-            // and the agreed pickup location (snapshot from booking time).
-            //
-            // This prevents hosts from moving cars to inconvenient locations after booking.
-            //
-            // Thresholds:
-            // - WARNING (>500m): Log event, continue check-in
-            // - BLOCKING (>2km): Reject check-in, require location resolution
+            // Log derivation event for audit trail
+            eventService.recordEvent(
+                booking,
+                booking.getCheckInSessionId(),
+                CheckInEventType.CAR_LOCATION_DERIVED,
+                userId,
+                CheckInActorRole.HOST,
+                Map.of(
+                    "photoId", photo.getId(),
+                    "photoType", photo.getPhotoType().name(),
+                    "latitude", photo.getExifLatitude().doubleValue(),
+                    "longitude", photo.getExifLongitude().doubleValue(),
+                    "photoTimestamp", photo.getExifTimestamp() != null ? photo.getExifTimestamp().toString() : "UNKNOWN",
+                    "derivationMethod", "FIRST_VALID_EXIF"
+                )
+            );
             
-            Integer varianceMeters = booking.calculatePickupLocationVariance();
-            if (varianceMeters != null) {
-                booking.setPickupLocationVarianceMeters(varianceMeters);
-                
-                if (booking.hasBlockingLocationVariance()) {
-                    // > 2km variance - BLOCK check-in
-                    eventService.recordEvent(
-                        booking,
-                        booking.getCheckInSessionId(),
-                        CheckInEventType.LOCATION_VARIANCE_BLOCKING,
-                        userId,
-                        CheckInActorRole.HOST,
-                        Map.of(
-                            "varianceMeters", varianceMeters,
-                            "threshold", 2000,
-                            "action", "BLOCKED"
-                        )
-                    );
-                    
-                    log.warn("[CheckIn] BLOCKING: Car location variance {} meters exceeds 2km threshold for booking {}",
-                            varianceMeters, booking.getId());
-                    
-                    throw new IllegalStateException(String.format(
-                        "Vozilo je udaljeno %.1f km od dogovorene lokacije preuzimanja. " +
-                        "Maksimalna dozvoljena udaljenost je 2 km. " +
-                        "Molimo premestite vozilo bliže dogovorenoj lokaciji ili kontaktirajte gosta.",
-                        varianceMeters / 1000.0
-                    ));
-                } else if (booking.hasSignificantLocationVariance()) {
-                    // > 500m variance - WARNING only, allow check-in
-                    eventService.recordEvent(
-                        booking,
-                        booking.getCheckInSessionId(),
-                        CheckInEventType.LOCATION_VARIANCE_WARNING,
-                        userId,
-                        CheckInActorRole.HOST,
-                        Map.of(
-                            "varianceMeters", varianceMeters,
-                            "threshold", 500,
-                            "action", "WARNING"
-                        )
-                    );
-                    
-                    log.warn("[CheckIn] WARNING: Car location variance {} meters exceeds 500m threshold for booking {}",
-                            varianceMeters, booking.getId());
-                } else {
-                    log.debug("[CheckIn] Car location variance {} meters within acceptable range for booking {}",
-                            varianceMeters, booking.getId());
-                }
-            }
+            log.info("[CheckIn-Phase2] Car location derived from photo ID {} (type: {}) for booking {}",
+                    photo.getId(), photo.getPhotoType(), booking.getId());
+        } else {
+            // No photo with GPS found - log warning but allow check-in (trust model)
+            long photoCount = photoRepository.findByBookingId(booking.getId()).stream()
+                    .filter(p -> !p.isDeleted())
+                    .count();
+            
+            eventService.recordEvent(
+                booking,
+                booking.getCheckInSessionId(),
+                CheckInEventType.CAR_LOCATION_MISSING,
+                userId,
+                CheckInActorRole.HOST,
+                Map.of(
+                    "reason", "NO_GPS_IN_PHOTOS",
+                    "photoCount", photoCount,
+                    "photosChecked", photoCount,
+                    "photosWithoutGps", photoCount
+                )
+            );
+            
+            log.warn("[CheckIn-Phase2] No photo with EXIF GPS found for booking {}. Check-in proceeds without car location (trust model).",
+                    booking.getId());
         }
+        
+        // PHASE 2: Location variance validation REMOVED
+        // Old logic calculated distance between car location and pickup location,
+        // blocking check-in if >2km variance. This added complexity without clear benefit.
+        // Now we trust photos by default and use audit trail for dispute resolution.
+        // See CheckInEventType.CAR_LOCATION_DERIVED for complete audit data.
         
         // Set host location
         if (dto.getHostLatitude() != null && dto.getHostLongitude() != null) {

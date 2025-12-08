@@ -156,9 +156,16 @@ export interface CheckInStatusDTO {
   pickupCity?: string;
   /** Pickup zip code */
   pickupZipCode?: string;
-  /** Variance from car's home location in meters */
+  /**
+   * @deprecated Phase 2 - Location variance validation removed.
+   * Kept for backward compatibility with pre-Phase2 status objects.
+   * Will be removed in Phase 3.
+   */
   pickupLocationVarianceMeters?: number;
-  /** Variance status for UI badging: NONE, WARNING, BLOCKING */
+  /**
+   * @deprecated Phase 2 - Variance badges removed from UI.
+   * Backend no longer calculates variance. Use audit trail instead.
+   */
   varianceStatus?: 'NONE' | 'WARNING' | 'BLOCKING';
   /** True if pickup location is an estimate (fell back to car home location) */
   estimatedLocation?: boolean;
@@ -305,14 +312,20 @@ export interface PhotoStatsViewModel {
 // REQUEST DTOs
 // ============================================================================
 
+/**
+ * Phase 2 Simplification (Turo-Style): Car location removed from submission.
+ * Backend derives car location from first photo's EXIF GPS metadata.
+ *
+ * @see CheckInService.submitHostCheckIn() - Car position no longer submitted
+ * @see Backend: CheckInService.completeHostCheckIn() - Location derived from photos
+ */
 export interface HostCheckInSubmissionDTO {
   bookingId: number;
   odometerReading: number;
   fuelLevelPercent: number;
   photoIds: number[];
   lockboxCode?: string;
-  carLatitude?: number;
-  carLongitude?: number;
+  /** Host's GPS position at submission (optional for audit trail) */
   hostLatitude?: number;
   hostLongitude?: number;
 }

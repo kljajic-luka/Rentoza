@@ -163,16 +163,19 @@ public class CheckInPhotoService {
         // Read file bytes
         byte[] photoBytes = file.getBytes();
         
-        // EXIF validation
-        // We must pass clientTimestamp to allow the service to:
-        // 1. Calculate photo age relative to when the user actually took/uploaded it
+        // EXIF validation (Phase 2: Simplified)
+        // We pass clientTimestamp to:
+        // 1. Calculate photo age relative to when user actually took/uploaded it (basement problem fix)
         // 2. Enable "sidecar fallback" for HEIC/no-EXIF images (requires non-null timestamp)
-        // We also pass car coordinates for location validation (fraud prevention)
+        //
+        // PHASE 2 CHANGE: Car location params REMOVED from validation
+        // - Old: Validated photo GPS against car location during upload (chicken-and-egg problem)
+        // - New: GPS extracted but not validated. Car location derived post-upload from first valid photo.
+        // - See CheckInService.completeHostCheckIn() for derivation logic
         ExifValidationResult exifResult = exifValidationService.validate(
             photoBytes, 
-            clientTimestamp,
-            booking.getCarLatitude(),
-            booking.getCarLongitude()
+            clientTimestamp
+            // REMOVED Phase 2: booking.getCarLatitude(), booking.getCarLongitude()
         );
         
         // ========== ZERO-STORAGE POLICY: Check for rejection ==========

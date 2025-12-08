@@ -77,16 +77,11 @@ public class PhotoValidationFallback {
             // Read photo file from storage
             byte[] photoBytes = readPhotoFromStorage(freshPhoto);
             
-            // Convert car coordinates to BigDecimal for validation
-            BigDecimal carLatBd = carLatitude != null ? BigDecimal.valueOf(carLatitude) : null;
-            BigDecimal carLonBd = carLongitude != null ? BigDecimal.valueOf(carLongitude) : null;
-            
-            // Validate EXIF data with location check
+            // Phase 2: Car location validation removed from EXIF validation.
+            // Location is now derived from photos AFTER upload (at check-in submission).
             ExifValidationService.ExifValidationResult result = exifValidationService.validate(
                     photoBytes,
-                    clientUploadStartedAt,
-                    carLatBd,
-                    carLonBd
+                    clientUploadStartedAt
             );
 
             // Update photo with results

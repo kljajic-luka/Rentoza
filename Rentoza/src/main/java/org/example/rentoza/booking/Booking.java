@@ -674,8 +674,20 @@ public class Booking {
     /**
      * Calculate variance between agreed pickup location and actual car location at check-in.
      * 
+     * <p><b>DEPRECATED (Phase 2):</b> This method is no longer used in business logic.
+     * Kept for backward compatibility only. In Phase 2, we've simplified to trust photos
+     * by default (Turo-style). Location variance is no longer calculated or validated.
+     * 
+     * <p>Use audit trail ({@code check_in_events} table with {@code CAR_LOCATION_DERIVED}
+     * event type) for dispute resolution instead of pre-validation.
+     * 
+     * <p><b>Migration Path:</b> This method will be removed in Phase 3 (12 weeks after V27).
+     * See {@code schema_deprecations} table for scheduled removal date.
+     * 
      * @return Distance in meters, or null if locations unavailable
+     * @deprecated Since Phase 2 - Location variance validation removed (Turo simplification)
      */
+    @Deprecated(since = "Phase2", forRemoval = false)
     public Integer calculatePickupLocationVariance() {
         if (pickupLocation == null || !pickupLocation.hasCoordinates()) {
             return null;
@@ -691,14 +703,26 @@ public class Booking {
 
     /**
      * Check if car location variance exceeds warning threshold (500m).
+     * 
+     * <p><b>DEPRECATED (Phase 2):</b> No longer used. See {@link #calculatePickupLocationVariance()}.
+     * 
+     * @return true if variance > 500m
+     * @deprecated Since Phase 2 - Location variance validation removed
      */
+    @Deprecated(since = "Phase2", forRemoval = false)
     public boolean hasSignificantLocationVariance() {
         return pickupLocationVarianceMeters != null && pickupLocationVarianceMeters > 500;
     }
 
     /**
      * Check if car location variance exceeds blocking threshold (2km).
+     * 
+     * <p><b>DEPRECATED (Phase 2):</b> No longer used. See {@link #calculatePickupLocationVariance()}.
+     * 
+     * @return true if variance > 2km
+     * @deprecated Since Phase 2 - Location variance validation removed
      */
+    @Deprecated(since = "Phase2", forRemoval = false)
     public boolean hasBlockingLocationVariance() {
         return pickupLocationVarianceMeters != null && pickupLocationVarianceMeters > 2000;
     }

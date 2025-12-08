@@ -66,7 +66,7 @@ export class CheckoutService {
   renderDecision = computed((): CheckoutRenderDecision => {
     const status = this._currentStatus();
     console.log('[CheckoutService] renderDecision - status:', status);
-    
+
     if (this._isLoading() && !status) return 'LOADING';
     if (!status) {
       console.log('[CheckoutService] renderDecision -> NOT_READY (no status)');
@@ -118,7 +118,14 @@ export class CheckoutService {
     }
 
     console.log('[CheckoutService] renderDecision -> NOT_READY (no matching condition)');
-    console.log('[CheckoutService] Unhandled status:', bookingStatus, 'isHost:', isHost, 'isGuest:', isGuest);
+    console.log(
+      '[CheckoutService] Unhandled status:',
+      bookingStatus,
+      'isHost:',
+      isHost,
+      'isGuest:',
+      isGuest
+    );
     return 'NOT_READY';
   });
 
@@ -204,12 +211,16 @@ export class CheckoutService {
    * Upload a checkout photo with compression and progress tracking.
    */
   uploadPhoto(bookingId: number, file: File, slotId: string, photoType: CheckInPhotoType): void {
-    // Initialize progress
+    // Create client-side preview URL for immediate display
+    const previewUrl = URL.createObjectURL(file);
+
+    // Initialize progress with preview
     this.updateProgress(slotId, {
       slotId,
       photoType,
       state: 'compressing',
       progress: 0,
+      previewUrl,
     });
 
     // Compress the photo

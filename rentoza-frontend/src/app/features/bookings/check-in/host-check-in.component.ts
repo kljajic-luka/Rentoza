@@ -112,6 +112,10 @@ const PHOTO_SLOTS: PhotoSlot[] = [
           [varianceStatus]="status?.varianceStatus ?? null"
           [varianceMeters]="status?.pickupLocationVarianceMeters ?? null"
         />
+        <p class="gps-helper-text">
+          <mat-icon>info</mat-icon>
+          <span>GPS iz fotografija nam pomaže da održimo revizijski trag lokacije vozila</span>
+        </p>
       </div>
       }
 

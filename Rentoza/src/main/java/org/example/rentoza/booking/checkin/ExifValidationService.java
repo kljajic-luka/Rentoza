@@ -94,12 +94,17 @@ public class ExifValidationService {
     /**
      * Validate EXIF metadata for a photo.
      * 
-     * <p>Validation checks:
+     * <h2>Phase 2 Migration: Location Validation Removed</h2>
+     * <p>Car location parameters removed. Location is now derived from photos AFTER upload,
+     * not validated DURING upload. This fixes the chicken-and-egg problem where car location
+     * was required for validation but wasn't available until after host submission.
+     * 
+     * <p>Validation checks (Phase 2):
      * <ol>
      *   <li>EXIF data exists (rejects screenshots, downloaded images)</li>
      *   <li>Photo timestamp is within allowed age relative to client upload start</li>
-     *   <li>GPS coordinates are plausible (if present)</li>
-     *   <li>Photo location is within allowed radius of car (if car coordinates provided)</li>
+     *   <li>GPS coordinates are plausible (if present) - Serbia bounds check only</li>
+     *   <li>~~Photo location within radius of car~~ REMOVED in Phase 2</li>
      * </ol>
      * 
      * <h3>Basement Problem Handling</h3>
@@ -109,11 +114,6 @@ public class ExifValidationService {
      * gets connectivity. Without this, server receipt time would falsely reject
      * valid photos.
      * 
-     * <h3>Location Validation (Fraud Prevention)</h3>
-     * <p>If {@code carLatitude} and {@code carLongitude} are provided, validates
-     * that the photo GPS is within {@code maxDistanceMeters} of the car location
-     * (default 1km). Rejects photos taken at different locations to prevent fraud.
-     * 
      * <h3>Circuit Breaker Protection</h3>
      * <p>If EXIF parsing fails consistently (circuit breaker opens), fallback
      * returns VALIDATION_PENDING status allowing check-in to proceed with
@@ -122,14 +122,11 @@ public class ExifValidationService {
      * @param photoBytes          Raw photo bytes
      * @param clientUploadStarted When the client started the upload (from frontend)
      *                            If null, falls back to server time (less accurate)
-     * @param carLatitude         Expected car latitude (nullable - if null, location not validated)
-     * @param carLongitude        Expected car longitude (nullable - if null, location not validated)
      * @return Validation result with extracted metadata
      */
     @CircuitBreaker(name = "exifValidation", fallbackMethod = "validateFallback")
     @Retry(name = "exifValidation")
-    public ExifValidationResult validate(byte[] photoBytes, Instant clientUploadStarted, 
-            BigDecimal carLatitude, BigDecimal carLongitude) {
+    public ExifValidationResult validate(byte[] photoBytes, Instant clientUploadStarted) {
         // Fall back to server time if client timestamp not provided
         Instant referenceTime = clientUploadStarted != null 
             ? clientUploadStarted 
@@ -203,33 +200,19 @@ public class ExifValidationService {
                     
                     // Plausibility check - is it within Serbia?
                     if (!isWithinSerbia(latitude.doubleValue(), longitude.doubleValue())) {
-                        log.warn("[EXIF] GPS coordinates outside Serbia: {}, {}", latitude, longitude);
+                        log.warn("[EXIF-Phase2] GPS coordinates outside Serbia: {}, {} (photo may be from border area or GPS drift)",
+                                latitude, longitude);
                         // Don't reject, just flag - could be border areas or GPS drift
                     }
                     
-                    // ========== LOCATION VALIDATION (Fraud Prevention) ==========
-                    // If car coordinates provided, validate photo location is within allowed radius
-                    if (carLatitude != null && carLongitude != null) {
-                        boolean locationValid = validateLocation(latitude, longitude, carLatitude, carLongitude);
-                        
-                        if (!locationValid) {
-                            double distance = haversineDistance(
-                                latitude.doubleValue(), longitude.doubleValue(),
-                                carLatitude.doubleValue(), carLongitude.doubleValue()
-                            );
-                            int distanceMeters = (int) Math.round(distance);
-                            
-                            log.warn("[EXIF] Location mismatch: photo taken {}m from car (max {}m). Photo GPS: {},{} Car GPS: {},{}",
-                                distanceMeters, maxDistanceMeters, latitude, longitude, carLatitude, carLongitude);
-                            
-                            return ExifValidationResult.rejected(
-                                ExifValidationStatus.REJECTED_LOCATION_MISMATCH,
-                                String.format("Fotografija je napravljena na drugom mestu (%dm od automobila)", distanceMeters)
-                            );
-                        }
-                        
-                        log.info("[EXIF] Location validation passed: photo within {}m of car", maxDistanceMeters);
-                    }
+                    // PHASE 2: Location validation REMOVED
+                    // Old logic validated photo GPS against car location during upload.
+                    // Problem: Car location unknown at upload time (chicken-and-egg).
+                    // Solution: Derive car location from first valid photo AFTER all uploads complete.
+                    // See CheckInService.completeHostCheckIn() for derivation logic.
+                    
+                    log.debug("[EXIF-Phase2] GPS extracted: {}, {} (validation deferred to post-upload)",
+                            latitude, longitude);
                 } catch (Exception e) {
                     log.debug("[EXIF] Could not parse GPS info", e);
                 }
@@ -565,9 +548,18 @@ public class ExifValidationService {
      * @param throwable           Exception that triggered the fallback
      * @return VALIDATION_PENDING result
      */
+    /**
+     * Circuit breaker fallback for EXIF validation.
+     * Returns VALIDATION_PENDING status to allow check-in to proceed with async re-validation.
+     * 
+     * @param photoBytes Raw photo bytes (unused in fallback)
+     * @param clientUploadStarted Client upload timestamp
+     * @param throwable The exception that triggered fallback
+     * @return Pending validation result
+     */
     @SuppressWarnings("unused")
-    private ExifValidationResult validateFallback(byte[] photoBytes, Instant clientUploadStarted, 
-            BigDecimal carLatitude, BigDecimal carLongitude, Throwable throwable) {
+    private ExifValidationResult validateFallback(byte[] photoBytes, Instant clientUploadStarted,
+            Throwable throwable) {
         log.warn("[EXIF] Circuit breaker fallback triggered: {} - allowing upload with PENDING validation", 
                 throwable.getMessage());
         

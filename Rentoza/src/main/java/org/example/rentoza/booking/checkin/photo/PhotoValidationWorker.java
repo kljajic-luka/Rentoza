@@ -153,18 +153,13 @@ public class PhotoValidationWorker {
                 // Load photo bytes from storage
                 byte[] photoBytes = loadPhotoBytes(photo.getStorageKey());
 
-                // Convert car coordinates to BigDecimal for validation
-                java.math.BigDecimal carLat = message.getCarLatitude() != null 
-                    ? java.math.BigDecimal.valueOf(message.getCarLatitude()) : null;
-                java.math.BigDecimal carLon = message.getCarLongitude() != null 
-                    ? java.math.BigDecimal.valueOf(message.getCarLongitude()) : null;
-
-                // Perform validation with location check
+                // Phase 2: Car location validation removed from EXIF validation.
+                // Location is now derived from photos AFTER upload (at check-in submission).
+                // This fixes the chicken-and-egg problem: we can't validate GPS against car location
+                // when car location isn't known until photos are uploaded.
                 ExifValidationResult result = exifValidationService.validate(
                         photoBytes,
-                        message.getClientUploadStartedAt(),
-                        carLat,
-                        carLon
+                        message.getClientUploadStartedAt()
                 );
 
                 // Update photo with results

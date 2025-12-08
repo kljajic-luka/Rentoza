@@ -13,6 +13,20 @@ import java.util.List;
  * 
  * <p>Contains odometer/fuel readings and references to uploaded photos.
  * Photos must be uploaded separately via the photo upload endpoint.
+ * 
+ * <h2>Phase 2 Simplification (Turo-Style)</h2>
+ * <p>Removed car location submission - car location is now <b>derived from
+ * the first valid photo's EXIF GPS</b> during {@code CheckInService.completeHostCheckIn()}.
+ * 
+ * <p>This simplifies the flow:
+ * <ul>
+ *   <li>Host uploads 8 photos (EXIF GPS auto-captured by device camera)</li>
+ *   <li>Host enters odometer/fuel (no GPS permission required)</li>
+ *   <li>System derives car location from photo #1 with valid EXIF</li>
+ *   <li>Location variance check removed (Turo doesn't do this)</li>
+ * </ul>
+ * 
+ * <p>Host GPS is now <b>optional</b> (audit trail only, not required for submission).
  */
 @Data
 @Builder
@@ -39,11 +53,19 @@ public class HostCheckInSubmissionDTO {
     @Size(max = 10, message = "Šifra lokota može imati maksimum 10 karaktera")
     private String lockboxCode;
 
-    // Car location for geofence
-    private Double carLatitude;
-    private Double carLongitude;
+    // PHASE 2 REMOVED: carLatitude, carLongitude
+    // Car location is now derived from first photo's EXIF GPS
+    // No longer submitted by host (simplifies UX, fixes orphaned fields)
 
-    // Host location
+    /**
+     * Host's GPS location at submission (optional, for audit trail only).
+     * <p>Used for dispute resolution - shows where host was standing when submitting.
+     * NOT used for location validation (that comes from photo EXIF GPS).
+     */
     private Double hostLatitude;
+
+    /**
+     * Host's GPS longitude at submission (optional, for audit trail only).
+     */
     private Double hostLongitude;
 }

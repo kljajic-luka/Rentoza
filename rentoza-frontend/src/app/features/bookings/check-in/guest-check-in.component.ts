@@ -90,9 +90,13 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
         <app-readonly-pickup-location
           [pickupLocation]="pickupLocationData()!"
           [mode]="'standard'"
-          [varianceStatus]="status?.varianceStatus ?? null"
-          [varianceMeters]="status?.pickupLocationVarianceMeters ?? null"
         />
+        <p class="gps-helper-text">
+          <mat-icon>info</mat-icon>
+          <span
+            >GPS lokacija vozila se automatski određuje iz fotografija radi revizijskog traga</span
+          >
+        </p>
       </div>
       }
 

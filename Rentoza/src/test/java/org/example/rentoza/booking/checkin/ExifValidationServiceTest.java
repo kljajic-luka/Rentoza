@@ -423,7 +423,7 @@ class ExifValidationServiceTest {
             Instant staleTimestamp = Instant.now().minusSeconds(600);
             
             ExifValidationService.ExifValidationResult result = service.validate(
-                mockHeicBytes, staleTimestamp, null, null
+                mockHeicBytes, staleTimestamp
             );
             
             assertThat(result.getStatus())
@@ -446,7 +446,7 @@ class ExifValidationServiceTest {
             Instant freshTimestamp = Instant.now().minusSeconds(30);
             
             ExifValidationService.ExifValidationResult result = service.validate(
-                mockHeicBytes, freshTimestamp, null, null
+                mockHeicBytes, freshTimestamp
             );
             
             assertThat(result.getStatus())
@@ -472,7 +472,7 @@ class ExifValidationServiceTest {
             Instant futureTimestamp = Instant.now().plusSeconds(600);
             
             ExifValidationService.ExifValidationResult result = service.validate(
-                mockHeicBytes, futureTimestamp, null, null
+                mockHeicBytes, futureTimestamp
             );
             
             assertThat(result.getStatus())
@@ -495,7 +495,7 @@ class ExifValidationServiceTest {
             Instant yesterdayTimestamp = Instant.now().minusSeconds(27 * 3600);
             
             ExifValidationService.ExifValidationResult result = service.validate(
-                mockHeicBytes, yesterdayTimestamp, null, null
+                mockHeicBytes, yesterdayTimestamp
             );
             
             assertThat(result.getStatus())
@@ -515,7 +515,7 @@ class ExifValidationServiceTest {
             
             // No client timestamp provided
             ExifValidationService.ExifValidationResult result = service.validate(
-                mockHeicBytes, null, null, null
+                mockHeicBytes, null
             );
             
             assertThat(result.getStatus())
@@ -537,7 +537,7 @@ class ExifValidationServiceTest {
             Instant boundaryTimestamp = Instant.now().minusSeconds(300);
             
             ExifValidationService.ExifValidationResult result = service.validate(
-                mockHeicBytes, boundaryTimestamp, null, null
+                mockHeicBytes, boundaryTimestamp
             );
             
             assertThat(result.getStatus())
@@ -555,7 +555,7 @@ class ExifValidationServiceTest {
             Instant overBoundaryTimestamp = Instant.now().minusSeconds(360);
             
             ExifValidationService.ExifValidationResult result = service.validate(
-                mockHeicBytes, overBoundaryTimestamp, null, null
+                mockHeicBytes, overBoundaryTimestamp
             );
             
             assertThat(result.getStatus())

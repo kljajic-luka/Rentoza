@@ -15,11 +15,11 @@ import { CheckInPhotoDTO, CarSummaryDTO, CheckInPhotoType } from './check-in.mod
  * Checkout workflow states (mirrors backend BookingStatus for checkout flow)
  */
 export type CheckoutState =
-  | 'IN_TRIP'           // Trip in progress, checkout not started
-  | 'CHECKOUT_OPEN'     // Checkout window opened
-  | 'GUEST_COMPLETE'    // Guest submitted return condition
-  | 'HOST_CONFIRMED'    // Host confirmed vehicle return
-  | 'COMPLETED';        // Trip fully completed
+  | 'IN_TRIP' // Trip in progress, checkout not started
+  | 'CHECKOUT_OPEN' // Checkout window opened
+  | 'GUEST_COMPLETE' // Guest submitted return condition
+  | 'HOST_CONFIRMED' // Host confirmed vehicle return
+  | 'COMPLETED'; // Trip fully completed
 
 // ============================================================================
 // RESPONSE DTOs
@@ -115,14 +115,14 @@ export interface CheckoutWizardState {
 
 export type CheckoutWizardStep =
   | 'loading'
-  | 'review-checkin'      // Guest reviews check-in photos
-  | 'checkout-photos'     // Guest uploads return photos
-  | 'odometer-fuel'       // Guest enters end readings
-  | 'submit'              // Guest submits checkout
-  | 'waiting-host'        // Guest waiting for host confirmation
-  | 'host-confirm'        // Host reviews and confirms
-  | 'damage-report'       // Host reports damage
-  | 'complete';           // Checkout done
+  | 'review-checkin' // Guest reviews check-in photos
+  | 'checkout-photos' // Guest uploads return photos
+  | 'odometer-fuel' // Guest enters end readings
+  | 'submit' // Guest submits checkout
+  | 'waiting-host' // Guest waiting for host confirmation
+  | 'host-confirm' // Host reviews and confirms
+  | 'damage-report' // Host reports damage
+  | 'complete'; // Checkout done
 
 export interface PhotoUploadProgress {
   slotId: string;
@@ -131,6 +131,7 @@ export interface PhotoUploadProgress {
   progress: number;
   error?: string;
   result?: CheckInPhotoDTO;
+  previewUrl?: string; // Client-side blob URL for immediate preview
 }
 
 // ============================================================================
@@ -145,16 +146,36 @@ export interface CheckoutPhotoSlot {
 }
 
 export const CHECKOUT_PHOTO_SLOTS: CheckoutPhotoSlot[] = [
-  { type: 'CHECKOUT_EXTERIOR_FRONT', label: 'Prednja strana', icon: 'directions_car', required: true },
-  { type: 'CHECKOUT_EXTERIOR_REAR', label: 'Zadnja strana', icon: 'directions_car', required: true },
+  {
+    type: 'CHECKOUT_EXTERIOR_FRONT',
+    label: 'Prednja strana',
+    icon: 'directions_car',
+    required: true,
+  },
+  {
+    type: 'CHECKOUT_EXTERIOR_REAR',
+    label: 'Zadnja strana',
+    icon: 'directions_car',
+    required: true,
+  },
   { type: 'CHECKOUT_EXTERIOR_LEFT', label: 'Leva strana', icon: 'directions_car', required: true },
-  { type: 'CHECKOUT_EXTERIOR_RIGHT', label: 'Desna strana', icon: 'directions_car', required: true },
+  {
+    type: 'CHECKOUT_EXTERIOR_RIGHT',
+    label: 'Desna strana',
+    icon: 'directions_car',
+    required: true,
+  },
   { type: 'CHECKOUT_ODOMETER', label: 'Kilometraža', icon: 'speed', required: true },
   { type: 'CHECKOUT_FUEL_GAUGE', label: 'Nivo goriva', icon: 'local_gas_station', required: true },
 ];
 
 export const OPTIONAL_CHECKOUT_PHOTO_SLOTS: CheckoutPhotoSlot[] = [
-  { type: 'CHECKOUT_INTERIOR_DASHBOARD', label: 'Instrument tabla', icon: 'dashboard', required: false },
+  {
+    type: 'CHECKOUT_INTERIOR_DASHBOARD',
+    label: 'Instrument tabla',
+    icon: 'dashboard',
+    required: false,
+  },
   { type: 'CHECKOUT_INTERIOR_REAR', label: 'Zadnja sedišta', icon: 'event_seat', required: false },
   { type: 'CHECKOUT_DAMAGE_NEW', label: 'Nova oštećenja', icon: 'report_problem', required: false },
   { type: 'CHECKOUT_CUSTOM', label: 'Dodatna fotografija', icon: 'add_a_photo', required: false },
@@ -172,5 +193,3 @@ export const DAMAGE_CLAIM_STATUS_LABELS: Record<DamageClaimStatus, string> = {
   REJECTED: 'Odbijeno',
   PAID: 'Plaćeno',
 };
-
-

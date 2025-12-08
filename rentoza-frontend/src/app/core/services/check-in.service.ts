@@ -576,6 +576,8 @@ export class CheckInService implements OnDestroy {
     // Get current position
     const position = this.geolocationService.position();
 
+    // Phase 2 Simplification: Car location derived by backend from EXIF GPS metadata.
+    // We only send host's optional GPS position for audit trail.
     const payload: HostCheckInSubmissionDTO = {
       bookingId,
       odometerReading,
@@ -584,8 +586,6 @@ export class CheckInService implements OnDestroy {
       lockboxCode,
       hostLatitude: position?.latitude,
       hostLongitude: position?.longitude,
-      carLatitude: position?.latitude, // Host position = car position
-      carLongitude: position?.longitude,
     };
 
     return this.http

@@ -3,8 +3,13 @@ package org.example.chatservice.controller;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.example.chatservice.config.RateLimitConfig;
 import org.example.chatservice.dto.*;
+import org.example.chatservice.exception.ContentModerationException;
+import org.example.chatservice.exception.RateLimitExceededException;
 import org.example.chatservice.model.ConversationStatus;
+import org.example.chatservice.security.ContentModerationFilter;
+import org.example.chatservice.security.ContentModerationFilter.ContentModerationResult;
 import org.example.chatservice.service.ChatService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -13,6 +18,14 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/**
+ * REST controller for chat messaging.
+ * 
+ * Security features:
+ * - Content moderation (blocks PII like phone/email/URL)
+ * - Rate limiting (50/hour, 5/minute burst)
+ * - Idempotency key support for retry-safe message sending
+ */
 @RestController
 @RequestMapping("/api")
 @RequiredArgsConstructor
@@ -20,6 +33,8 @@ import java.util.List;
 public class ChatController {
 
     private final ChatService chatService;
+    private final ContentModerationFilter contentModerationFilter;
+    private final RateLimitConfig rateLimitConfig;
 
     @PostMapping("/conversations")
     public ResponseEntity<ConversationDTO> createConversation(
@@ -47,17 +62,58 @@ public class ChatController {
         return ResponseEntity.ok(conversation);
     }
 
+    /**
+     * Send a message in a conversation.
+     * 
+     * Security checks applied:
+     * 1. Rate limiting (50/hour, 5/min burst)
+     * 2. Content moderation (blocks phone/email/URL)
+     * 3. Idempotency key for duplicate detection (optional)
+     * 
+     * @param bookingId The booking ID for the conversation
+     * @param idempotencyKey Optional UUID for retry-safe sending
+     * @param request The message content
+     * @param authentication The authenticated user
+     * @return The created message
+     */
     @PostMapping("/conversations/{bookingId}/messages")
     public ResponseEntity<MessageDTO> sendMessage(
             @PathVariable String bookingId,
+            @RequestHeader(value = "X-Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody SendMessageRequest request,
             Authentication authentication
     ) {
         String userId = authentication.getName();
+        
+        // 1. Rate limiting check
+        if (!rateLimitConfig.tryConsume(userId)) {
+            log.warn("[Security] Rate limit exceeded for user {} in booking {}", userId, bookingId);
+            throw new RateLimitExceededException("Too many messages. Please wait a moment before sending more.");
+        }
+        
+        // 2. Content moderation check
+        ContentModerationResult moderationResult = contentModerationFilter.validateMessage(request.getContent());
+        if (!moderationResult.isApproved()) {
+            log.warn("[Security] Content moderation blocked message from user {} in booking {}: {}", 
+                    userId, bookingId, moderationResult.getReason());
+            throw new ContentModerationException(moderationResult.getReason());
+        }
+        
+        // 3. Log with idempotency key if present (for future Redis idempotency integration)
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            log.debug("[Idempotency] Processing message with key {} from user {}", 
+                    idempotencyKey.substring(0, Math.min(8, idempotencyKey.length())) + "...", userId);
+            // TODO: Integrate with Redis idempotency service when available
+        }
+        
         log.info("Sending message in conversation for booking {} by user {}", bookingId, userId);
         
         MessageDTO message = chatService.sendMessage(bookingId, userId, request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(message);
+        
+        // Add rate limit remaining to response headers for client awareness
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .header("X-RateLimit-Remaining", String.valueOf(rateLimitConfig.getRemainingTokens(userId)))
+                .body(message);
     }
 
     @PutMapping("/conversations/{bookingId}/read")

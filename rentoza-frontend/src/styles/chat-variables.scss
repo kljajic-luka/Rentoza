@@ -1,0 +1,142 @@
+// =============================================================================
+// Chat Variables - Design Tokens
+// =============================================================================
+// Chat-specific design tokens. System font stack per approval.
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// Typography (System Font Stack)
+// -----------------------------------------------------------------------------
+
+$chat-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+$chat-font-size-base: 15px;
+$chat-font-size-small: 13px;
+$chat-font-size-xs: 11px;
+$chat-font-size-lg: 17px;
+$chat-line-height: 1.4;
+
+// -----------------------------------------------------------------------------
+// Colors
+// -----------------------------------------------------------------------------
+
+// Primary (Blue)
+$chat-primary: #2196f3;
+$chat-primary-light: #e3f2fd;
+$chat-primary-dark: #1976d2;
+
+// Accent (Red - for badges, CTAs)
+$chat-accent: #ff6b6b;
+
+// Neutral
+$chat-surface: #ffffff;
+$chat-surface-dark: #121212;
+$chat-on-surface: #1a1a1a;
+$chat-on-surface-muted: #666666;
+$chat-on-surface-subtle: #888888;
+$chat-on-surface-disabled: #999999;
+$chat-border: #e0e0e0;
+$chat-border-light: #f0f0f0;
+
+// Message Bubbles
+$chat-bubble-own: linear-gradient(135deg, #2196f3 0%, #1976d2 100%);
+$chat-bubble-own-text: #ffffff;
+$chat-bubble-other: #f0f0f0;
+$chat-bubble-other-text: #1a1a1a;
+
+// Status
+$chat-status-online: #4caf50;
+$chat-status-sent: rgba(255, 255, 255, 0.6);
+$chat-status-delivered: rgba(255, 255, 255, 0.7);
+$chat-status-read: #ffffff;
+
+// -----------------------------------------------------------------------------
+// Spacing
+// -----------------------------------------------------------------------------
+
+$chat-spacing-xs: 4px;
+$chat-spacing-sm: 8px;
+$chat-spacing-md: 12px;
+$chat-spacing-lg: 16px;
+$chat-spacing-xl: 24px;
+
+// -----------------------------------------------------------------------------
+// Border Radius
+// -----------------------------------------------------------------------------
+
+$chat-radius-sm: 4px;
+$chat-radius-md: 8px;
+$chat-radius-lg: 12px;
+$chat-radius-xl: 18px;
+$chat-radius-full: 50%;
+
+// -----------------------------------------------------------------------------
+// Shadows
+// -----------------------------------------------------------------------------
+
+$chat-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.05);
+$chat-shadow-2: 0 2px 8px rgba(0, 0, 0, 0.1);
+$chat-shadow-bubble: 0 2px 4px rgba(33, 150, 243, 0.3);
+
+// -----------------------------------------------------------------------------
+// Transitions
+// -----------------------------------------------------------------------------
+
+$chat-transition-fast: 0.15s ease;
+$chat-transition-normal: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+$chat-transition-slow: 0.3s ease-out;
+
+// -----------------------------------------------------------------------------
+// Breakpoints
+// -----------------------------------------------------------------------------
+
+$chat-breakpoint-mobile: 767px;
+$chat-breakpoint-tablet: 1024px;
+
+// -----------------------------------------------------------------------------
+// Component Sizes
+// -----------------------------------------------------------------------------
+
+$chat-avatar-size: 56px;
+$chat-avatar-size-sm: 40px;
+$chat-conversation-item-height: 92px;
+$chat-message-max-width: 70%;
+$chat-input-min-height: 48px;
+$chat-touch-target: 48px;
+
+// -----------------------------------------------------------------------------
+// Z-Index Scale
+// -----------------------------------------------------------------------------
+
+$chat-z-header: 100;
+$chat-z-input: 100;
+$chat-z-modal: 200;
+$chat-z-tooltip: 300;
+
+// -----------------------------------------------------------------------------
+// Dark Mode Variables
+// -----------------------------------------------------------------------------
+
+@mixin chat-dark-mode {
+  --chat-surface: #{$chat-surface-dark};
+  --chat-on-surface: #ffffff;
+  --chat-on-surface-muted: #aaaaaa;
+  --chat-border: #333333;
+  --chat-bubble-other: #2a2a2a;
+  --chat-bubble-other-text: #ffffff;
+}
+
+// -----------------------------------------------------------------------------
+// CSS Custom Properties Export
+// -----------------------------------------------------------------------------
+
+:root {
+  --chat-font-family: #{$chat-font-family};
+  --chat-primary: #{$chat-primary};
+  --chat-primary-light: #{$chat-primary-light};
+  --chat-primary-dark: #{$chat-primary-dark};
+  --chat-accent: #{$chat-accent};
+  --chat-surface: #{$chat-surface};
+  --chat-on-surface: #{$chat-on-surface};
+  --chat-on-surface-muted: #{$chat-on-surface-muted};
+  --chat-border: #{$chat-border};
+}

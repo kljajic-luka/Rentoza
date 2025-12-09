@@ -4,142 +4,178 @@ import {
   OnDestroy,
   inject,
   signal,
+  computed,
   effect,
   ViewChild,
-  ElementRef,
-  AfterViewChecked,
   ChangeDetectorRef,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
 import { Router, ActivatedRoute } from '@angular/router';
+import { BreakpointObserver } from '@angular/cdk/layout';
 import { MatSidenavModule } from '@angular/material/sidenav';
-import { MatListModule } from '@angular/material/list';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
-import { MatFormFieldModule } from '@angular/material/form-field';
-import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { MatBadgeModule } from '@angular/material/badge';
-import { MatDividerModule } from '@angular/material/divider';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { MatCardModule } from '@angular/material/card';
-import { Subject, takeUntil } from 'rxjs';
+import { Subject, takeUntil, filter, skip } from 'rxjs';
 
-import { ChatService } from '@core/services/chat.service';
+import { ChatService, AuthenticationError } from '@core/services/chat.service';
 import { AuthService } from '@core/auth/auth.service';
 import { ThemeService } from '@core/services/theme.service';
 import { ConversationDTO, MessageDTO, MessageStatusUpdate } from '@core/models/chat.model';
-import { ChatUiHelper } from '@core/helpers/chat-ui.helper';
 
+// Import new components
+import { ConversationListComponent } from '../../components/conversation-list/conversation-list.component';
+import { ChatHeaderComponent } from '../../components/chat-header/chat-header.component';
+import { MessageViewComponent } from '../../components/message-view/message-view.component';
+import { MessageInputComponent } from '../../components/message-input/message-input.component';
+
+/**
+ * MessagesComponent - Page Orchestrator
+ *
+ * Enterprise-grade chat interface following Turo/Airbnb design patterns.
+ * Orchestrates child components and manages page-level state.
+ *
+ * Architecture:
+ * - Smart component: manages state, API calls, WebSocket subscriptions
+ * - Delegates presentation to child components
+ * - Uses Angular signals for reactive state management
+ */
 @Component({
   selector: 'app-messages',
   standalone: true,
   imports: [
     CommonModule,
-    FormsModule,
     MatSidenavModule,
-    MatListModule,
     MatIconModule,
     MatButtonModule,
-    MatFormFieldModule,
-    MatInputModule,
     MatProgressSpinnerModule,
-    MatBadgeModule,
-    MatDividerModule,
     MatTooltipModule,
-    MatCardModule,
+    // Child components
+    ConversationListComponent,
+    ChatHeaderComponent,
+    MessageViewComponent,
+    MessageInputComponent,
   ],
   templateUrl: './messages.component.html',
   styleUrls: ['./messages.component.scss'],
 })
-export class MessagesComponent implements OnInit, OnDestroy, AfterViewChecked {
+export class MessagesComponent implements OnInit, OnDestroy {
+  // Injected services
   private readonly chatService = inject(ChatService);
   private readonly authService = inject(AuthService);
   readonly themeService = inject(ThemeService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly cdr = inject(ChangeDetectorRef);
+  private readonly breakpointObserver = inject(BreakpointObserver);
   private readonly destroy$ = new Subject<void>();
 
-  @ViewChild('messagesContainer') messagesContainer?: ElementRef<HTMLDivElement>;
+  // ============================================================================
+  // STATE - Using Angular Signals for reactive updates
+  // ============================================================================
 
+  // Data signals
   conversations = signal<ConversationDTO[]>([]);
-  selectedConversation = signal<ConversationDTO | null>(null);
+  selectedConversationId = signal<number | null>(null);
   messages = signal<MessageDTO[]>([]);
-  messageContent = signal('');
   currentUserId = signal('');
+
+  // UI state signals
   isLoading = signal(true);
   isLoadingMessages = signal(false);
   isSendingMessage = signal(false);
   wsConnected = signal(false);
+  isMobileView = signal(false);
+  showSidebar = signal(true);
 
-  private shouldScrollToBottom = false;
-  private lastMessageCount = 0;
+  // Typing indicator state
+  isTyping = signal(false);
+  typingUserName = signal('');
+
+  // ============================================================================
+  // DERIVED SIGNALS (Computed)
+  // ============================================================================
+
+  selectedConversation = computed(() => {
+    const id = this.selectedConversationId();
+    return this.conversations().find((c) => c.id === id) || null;
+  });
+
+  hasConversations = computed(() => this.conversations().length > 0);
+
+  isMessagingAllowed = computed(() => this.selectedConversation()?.messagingAllowed ?? false);
+
+  totalUnreadCount = computed(() => {
+    return this.conversations().reduce((sum, c) => sum + (c.unreadCount || 0), 0);
+  });
+
+  // ============================================================================
+  // EFFECTS (Reactive side effects)
+  // ============================================================================
 
   constructor() {
-    // React to active conversation changes
+    // Effect: When selected conversation changes, load messages
     effect(() => {
       const conv = this.selectedConversation();
       if (conv) {
-        this.messages.set(conv.messages || []);
-        this.shouldScrollToBottom = true;
-        this.markAsRead();
+        this.loadMessagesForConversation(conv);
+      }
+    });
+
+    // Effect: Hide sidebar on mobile when conversation is selected
+    effect(() => {
+      const isMobile = this.isMobileView();
+      const hasSelection = this.selectedConversationId() !== null;
+      if (isMobile && hasSelection) {
+        this.showSidebar.set(false);
       }
     });
   }
 
+  // ============================================================================
+  // LIFECYCLE HOOKS
+  // ============================================================================
+
   async ngOnInit(): Promise<void> {
     // Get current user
-    this.authService.currentUser$.pipe(takeUntil(this.destroy$)).subscribe((user) => {
-      if (user?.id) {
-        this.currentUserId.set(user.id);
-      }
-    });
-
-    // Initialize WebSocket
-    try {
-      await this.chatService.initializeWebSocket();
-      this.wsConnected.set(true);
-    } catch (error) {
-      this.wsConnected.set(false);
-    }
-
-    // Subscribe to WebSocket messages
-    this.chatService.messages$.pipe(takeUntil(this.destroy$)).subscribe((message) => {
-      this.handleNewMessage(message);
-    });
-
-    // Subscribe to message status updates (sent, delivered, read)
-    this.chatService.messageStatusUpdates$
+    this.authService.currentUser$
       .pipe(takeUntil(this.destroy$))
-      .subscribe((statusUpdate) => {
-        this.handleMessageStatusUpdate(statusUpdate);
+      .subscribe((user) => {
+        if (user?.id) {
+          this.currentUserId.set(user.id);
+        }
       });
 
-    // Subscribe to conversations updates
-    this.chatService.conversations$.pipe(takeUntil(this.destroy$)).subscribe((convs) => {
-      this.conversations.set(convs);
-      this.cdr.detectChanges(); // Trigger change detection
-    });
+    // Monitor breakpoint for responsive layout
+    this.breakpointObserver
+      .observe(['(max-width: 768px)'])
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((result) => {
+        this.isMobileView.set(result.matches);
+        if (!result.matches) {
+          this.showSidebar.set(true);
+        }
+      });
 
-    // Subscribe to active conversation updates
-    this.chatService.activeConversation$.pipe(takeUntil(this.destroy$)).subscribe((conv) => {
-      if (conv) {
-        this.selectedConversation.set(conv);
-      }
-    });
+    // Initialize WebSocket
+    await this.initializeWebSocket();
 
-    // Load user conversations
+    // Subscribe to WebSocket events
+    this.subscribeToWebSocketEvents();
+
+    // Load conversations
     await this.loadConversations();
 
-    // Check for bookingId in query params (for auto-redirect after booking)
-    this.route.queryParams.pipe(takeUntil(this.destroy$)).subscribe((params) => {
-      const bookingId = params['bookingId'];
-      if (bookingId) {
-        this.selectConversationByBookingId(bookingId);
-      }
-    });
+    // Handle query params (for deep linking from booking)
+    this.route.queryParams
+      .pipe(
+        filter((params) => params['bookingId']),
+        takeUntil(this.destroy$)
+      )
+      .subscribe((params) => {
+        this.selectConversationByBookingId(params['bookingId']);
+      });
   }
 
   ngOnDestroy(): void {
@@ -147,125 +183,218 @@ export class MessagesComponent implements OnInit, OnDestroy, AfterViewChecked {
     this.destroy$.complete();
   }
 
-  ngAfterViewChecked(): void {
-    if (this.shouldScrollToBottom) {
-      this.scrollToBottom();
-      this.shouldScrollToBottom = false;
+  // ============================================================================
+  // INITIALIZATION
+  // ============================================================================
+
+  private async initializeWebSocket(): Promise<void> {
+    try {
+      await this.chatService.initializeWebSocket();
+      this.wsConnected.set(true);
+    } catch (error) {
+      // Handle authentication errors - redirect to login
+      if (error instanceof AuthenticationError) {
+        console.error('Authentication required, redirecting to login');
+        this.router.navigate(['/auth/login']);
+        return;
+      }
+      
+      // Handle other errors - show message
+      console.error('WebSocket initialization failed:', error);
+      this.wsConnected.set(false);
     }
   }
+
+  private subscribeToWebSocketEvents(): void {
+    // New messages
+    this.chatService.messages$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((message) => this.handleNewMessage(message));
+
+    // Message status updates
+    this.chatService.messageStatusUpdates$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((update) => this.handleMessageStatusUpdate(update));
+
+    // Conversation list updates from WebSocket (skip initial BehaviorSubject emission)
+    this.chatService.conversations$
+      .pipe(
+        skip(1), // Skip the initial BehaviorSubject value - API call provides initial data
+        takeUntil(this.destroy$)
+      )
+      .subscribe((convs) => {
+        this.conversations.set(convs);
+      });
+
+    // Active conversation updates
+    this.chatService.activeConversation$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((conv) => {
+        if (conv) {
+          this.selectedConversationId.set(conv.id);
+          this.messages.set(conv.messages || []);
+        }
+      });
+
+    // Subscribe to typing indicators
+    this.chatService.typingIndicators$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((typing) => {
+        if (typing.conversationId === this.selectedConversationId()) {
+          this.isTyping.set(typing.isTyping);
+          this.typingUserName.set(typing.userName);
+        }
+      });
+  }
+
+  // ============================================================================
+  // DATA LOADING
+  // ============================================================================
 
   private async loadConversations(): Promise<void> {
     this.isLoading.set(true);
 
     try {
-      const conversations = await this.chatService.getUserConversations().toPromise();
+      // Use subscription to ensure signal update completes before setting isLoading to false
+      return await new Promise<void>((resolve, reject) => {
+        this.chatService.getUserConversations().subscribe({
+          next: (conversations) => {
+            if (!conversations || conversations.length === 0) {
+              this.conversations.set([]);
+              this.isLoading.set(false);
+              resolve();
+              return;
+            }
 
-      // Conversations are now enriched by the backend
-      this.conversations.set(conversations || []);
-      this.isLoading.set(false);
+            // Service already sorts, but re-sort to ensure consistency
+            const sorted = [...conversations].sort((a, b) => {
+              const timeA = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+              const timeB = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+              return timeB - timeA;
+            });
 
-      // Manually trigger change detection after loading
-      this.cdr.detectChanges();
+            this.conversations.set(sorted);
+            this.isLoading.set(false);
 
-      // Auto-select first conversation if none selected
-      if (!this.selectedConversation() && this.conversations().length > 0) {
-        this.selectConversation(this.conversations()[0]);
-      }
+            // Auto-select first conversation if none selected
+            if (!this.selectedConversationId() && sorted.length > 0) {
+              this.selectConversation(sorted[0]);
+            }
+
+            resolve();
+          },
+          error: (error) => {
+            console.error('Failed to load conversations:', error);
+            this.isLoading.set(false);
+            reject(error);
+          },
+        });
+      });
     } catch (error) {
+      console.error('Failed to load conversations:', error);
       this.isLoading.set(false);
-      this.cdr.detectChanges();
     }
   }
 
-  selectConversation(conversation: ConversationDTO): void {
-    if (this.selectedConversation()?.id === conversation.id) {
-      return; // Already selected
-    }
-
+  private loadMessagesForConversation(conv: ConversationDTO): void {
     this.isLoadingMessages.set(true);
-    this.selectedConversation.set(conversation);
-    this.chatService.setActiveConversation(conversation);
 
-    // Load conversation messages
-    this.chatService.getConversation(conversation.bookingId).subscribe({
-      next: (conv) => {
-        this.selectedConversation.set(conv);
-        this.messages.set(conv.messages || []);
+    this.chatService.getConversation(conv.bookingId).subscribe({
+      next: (updatedConv) => {
+        this.messages.set(updatedConv.messages || []);
         this.isLoadingMessages.set(false);
-        this.shouldScrollToBottom = true;
-        this.lastMessageCount = conv.messages?.length || 0;
+        this.markAsRead();
       },
       error: (err) => {
+        console.error('Failed to load messages:', err);
         this.isLoadingMessages.set(false);
       },
     });
   }
 
-  selectConversationByBookingId(bookingId: string): void {
-    const conversation = this.conversations().find((c) => c.bookingId === bookingId);
-    if (conversation) {
-      this.selectConversation(conversation);
+  // ============================================================================
+  // CONVERSATION SELECTION
+  // ============================================================================
+
+  selectConversation(conv: ConversationDTO): void {
+    if (this.selectedConversationId() === conv.id) {
+      return; // Already selected
+    }
+
+    this.selectedConversationId.set(conv.id);
+    this.chatService.setActiveConversation(conv);
+
+    // On mobile, hide sidebar
+    if (this.isMobileView()) {
+      this.showSidebar.set(false);
     }
   }
 
-  sendMessage(): void {
-    const content = this.messageContent().trim();
-    const conv = this.selectedConversation();
+  selectConversationByBookingId(bookingId: string): void {
+    const conv = this.conversations().find((c) => c.bookingId === bookingId);
+    if (conv) {
+      this.selectConversation(conv);
+    }
+  }
 
-    if (!content || !conv || !conv.messagingAllowed) {
+  // ============================================================================
+  // MESSAGE SENDING
+  // ============================================================================
+
+  onSendMessage(content: string): void {
+    const conv = this.selectedConversation();
+    if (!content.trim() || !conv || !conv.messagingAllowed) {
       return;
     }
 
     this.isSendingMessage.set(true);
 
-    // Send via HTTP (WebSocket can be added later for real-time)
-    this.chatService.sendMessage(conv.bookingId, { content }).subscribe({
-      next: (message) => {
-        // Message is handled by WebSocket or optimistic update in service
-        this.messageContent.set('');
+    // Use optimistic update with offline queue fallback
+    this.chatService.sendMessageOptimistic(conv.bookingId, content.trim(), conv.id).subscribe({
+      next: () => {
         this.isSendingMessage.set(false);
-        this.shouldScrollToBottom = true;
       },
       error: (err) => {
+        console.error('Failed to send message:', err);
         this.isSendingMessage.set(false);
+        // Message is queued offline for retry
       },
     });
   }
 
+  // ============================================================================
+  // WEBSOCKET HANDLERS
+  // ============================================================================
+
   private handleNewMessage(message: MessageDTO): void {
     const currentMessages = this.messages();
-    const selectedConv = this.selectedConversation();
+    const selectedId = this.selectedConversationId();
 
     // Only add if for current conversation and not duplicate
-    if (selectedConv && selectedConv.id === message.conversationId) {
+    if (selectedId && message.conversationId === selectedId) {
       if (!currentMessages.find((m) => m.id === message.id)) {
         this.messages.set([...currentMessages, message]);
-        this.shouldScrollToBottom = true;
-        this.lastMessageCount = this.messages().length;
-
-        // Mark as read if conversation is active
         this.markAsRead();
       }
     }
+
+    // Update conversation list (bump to top, update unread count)
+    this.updateConversationWithMessage(message);
   }
 
-  /**
-   * Handle real-time message status updates (sent, delivered, read)
-   */
-  private handleMessageStatusUpdate(statusUpdate: MessageStatusUpdate): void {
+  private handleMessageStatusUpdate(update: MessageStatusUpdate): void {
     const currentMessages = this.messages();
-    const selectedConv = this.selectedConversation();
+    const selectedId = this.selectedConversationId();
 
-    // Only update if for current conversation
-    if (selectedConv && selectedConv.id === statusUpdate.conversationId) {
+    if (selectedId && update.conversationId === selectedId) {
       const updatedMessages = currentMessages.map((msg) => {
-        if (msg.id === statusUpdate.messageId) {
+        if (msg.id === update.messageId) {
           return {
             ...msg,
-            sentAt: statusUpdate.sentAt || msg.sentAt,
-            deliveredAt: statusUpdate.deliveredAt || msg.deliveredAt,
-            readAt: statusUpdate.readAt || msg.readAt,
-            readBy: statusUpdate.readBy || msg.readBy,
+            sentAt: update.sentAt || msg.sentAt,
+            deliveredAt: update.deliveredAt || msg.deliveredAt,
+            readAt: update.readAt || msg.readAt,
+            readBy: update.readBy || msg.readBy,
           };
         }
         return msg;
@@ -276,263 +405,89 @@ export class MessagesComponent implements OnInit, OnDestroy, AfterViewChecked {
     }
   }
 
+  private updateConversationWithMessage(message: MessageDTO): void {
+    const conversations = this.conversations();
+    const updated = conversations.map((c) => {
+      if (c.id === message.conversationId) {
+        return {
+          ...c,
+          lastMessageAt: message.timestamp,
+          unreadCount:
+            message.senderId !== this.currentUserId()
+              ? (c.unreadCount || 0) + 1
+              : c.unreadCount,
+        };
+      }
+      return c;
+    });
+
+    // Re-sort by last message time
+    updated.sort((a, b) => {
+      const timeA = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+      const timeB = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+      return timeB - timeA;
+    });
+
+    this.conversations.set(updated);
+  }
+
+  // ============================================================================
+  // READ RECEIPTS
+  // ============================================================================
+
   private markAsRead(): void {
     const conv = this.selectedConversation();
     if (conv && conv.unreadCount > 0) {
-      this.chatService.markMessagesAsRead(conv.bookingId).subscribe();
+      this.chatService.markMessagesAsRead(conv.bookingId).subscribe({
+        next: () => {
+          // Update local unread count
+          this.conversations.update((convs) =>
+            convs.map((c) => (c.id === conv.id ? { ...c, unreadCount: 0 } : c))
+          );
+        },
+        error: (err) => console.error('Failed to mark messages as read:', err),
+      });
     }
   }
 
-  private scrollToBottom(): void {
-    try {
-      if (this.messagesContainer) {
-        const container = this.messagesContainer.nativeElement;
-        container.scrollTop = container.scrollHeight;
-      }
-    } catch (err) {
-      // Silent error handling
+  // ============================================================================
+  // NAVIGATION
+  // ============================================================================
+
+  onGoBack(): void {
+    if (this.isMobileView()) {
+      this.showSidebar.set(true);
+      this.selectedConversationId.set(null);
     }
   }
 
-  isOwnMessage(message: MessageDTO): boolean {
-    return message.senderId === this.currentUserId();
-  }
-
-  formatTime(timestamp: string | undefined): string {
-    if (!timestamp) return 'Nedavno';
-
-    try {
-      const date = new Date(timestamp);
-      if (isNaN(date.getTime())) return 'Nedavno';
-
-      const now = new Date();
-      const diffMs = now.getTime() - date.getTime();
-      const diffMins = Math.floor(diffMs / 60000);
-      const diffHours = Math.floor(diffMs / 3600000);
-      const diffDays = Math.floor(diffMs / 86400000);
-
-      if (diffMins < 1) return 'Upravo sada';
-      if (diffMins < 60) return `pre ${diffMins} min`;
-      if (diffHours < 24) return `pre ${diffHours} h`;
-      if (diffDays < 7) return `pre ${diffDays} d`;
-
-      return date.toLocaleDateString('sr-RS');
-    } catch (e) {
-      return 'Nedavno';
-    }
-  }
-
-  formatMessageTime(timestamp: string | undefined): string {
-    if (!timestamp) return '';
-
-    try {
-      const date = new Date(timestamp);
-      if (isNaN(date.getTime())) return '';
-
-      return date.toLocaleTimeString('sr-RS', { hour: '2-digit', minute: '2-digit' });
-    } catch (e) {
-      return '';
-    }
-  }
-
-  /**
-   * Get the other participant's name for display
-   */
-  getOtherParticipantName(conv: ConversationDTO): string {
-    const isOwner = conv.ownerId === this.currentUserId();
-
-    // Use enriched data if available and not default values
-    if (isOwner && conv.renterName && conv.renterName !== 'Renter') {
-      return conv.renterName;
-    } else if (!isOwner && conv.ownerName && conv.ownerName !== 'Owner') {
-      return conv.ownerName;
-    }
-
-    // Fallback to generic name
-    return isOwner ? 'Vozač' : 'Vlasnik';
-  }
-
-  /**
-   * Determine trip status based on booking dates or backend-provided value
-   */
-  getTripStatus(conv: ConversationDTO): 'current' | 'future' | 'past' | 'unknown' | 'unavailable' {
-    // Use backend-provided tripStatus if available
-    if (conv.tripStatus) {
-      const status = conv.tripStatus.toLowerCase();
-      if (status === 'unavailable') {
-        return 'unavailable';
-      }
-      if (status === 'current' || status === 'future' || status === 'past') {
-        return status as 'current' | 'future' | 'past';
-      }
-    }
-
-    // Fallback to client-side calculation if not provided
-    // Using startTime/endTime for exact timestamp architecture
-    if (!conv.startTime || !conv.endTime) {
-      return 'unknown';
-    }
-
-    const now = new Date();
-
-    const startTime = new Date(conv.startTime);
-    const endTime = new Date(conv.endTime);
-
-    if (now < startTime) {
-      return 'future';
-    } else if (now > endTime) {
-      return 'past';
-    } else {
-      return 'current';
-    }
-  }
-
-  /**
-   * Get formatted conversation title
-   */
-  getConversationTitle(conv: ConversationDTO): string {
-    return this.getOtherParticipantName(conv);
-  }
-
-  /**
-   * Get formatted conversation subtitle with trip context
-   */
-  getConversationSubtitle(conv: ConversationDTO): string {
-    const displayInfo = ChatUiHelper.getDisplayInfo(conv, this.currentUserId());
-    return displayInfo.title;
-  }
-
-  /**
-   * Get car information string
-   */
-  getCarInfo(conv: ConversationDTO): string {
-    // Skip if car brand/model are "Unknown" (backend default)
-    if (
-      !conv.carBrand ||
-      !conv.carModel ||
-      conv.carBrand === 'Unknown' ||
-      conv.carModel === 'Unknown'
-    ) {
-      return '';
-    }
-
-    const year = conv.carYear && conv.carYear > 0 ? `${conv.carYear} ` : '';
-    return `${year}${conv.carBrand} ${conv.carModel}`;
-  }
-
-  /**
-   * Get status badge color based on trip status
-   */
-  getStatusBadgeColor(conv: ConversationDTO): string {
-    const displayInfo = ChatUiHelper.getDisplayInfo(conv, this.currentUserId());
-    return displayInfo.statusColor;
-  }
-
-  /**
-   * Get empty state text for conversation
-   */
-  getEmptyStateText(conv: ConversationDTO): string {
-    const displayInfo = ChatUiHelper.getDisplayInfo(conv, this.currentUserId());
-    return displayInfo.emptyStateText;
-  }
-
-  /**
-   * Get status label for conversation
-   */
-  getStatusLabel(conv: ConversationDTO): string {
-    const displayInfo = ChatUiHelper.getDisplayInfo(conv, this.currentUserId());
-    return displayInfo.statusLabel;
-  }
-
-  get hasConversations(): boolean {
-    return this.conversations().length > 0;
-  }
-
-  get isMessagingAllowed(): boolean {
-    return this.selectedConversation()?.messagingAllowed ?? false;
-  }
-
-  get statusMessage(): string {
+  onViewBookingDetails(): void {
     const conv = this.selectedConversation();
-    if (!conv) return '';
-
-    const displayInfo = ChatUiHelper.getDisplayInfo(conv, this.currentUserId());
-    return displayInfo.subtitle;
+    if (conv?.bookingId) {
+      this.router.navigate(['/bookings/' + conv.bookingId]);
+    }
   }
 
-  /**
-   * Get message delivery status icon
-   */
-  getMessageStatusIcon(message: MessageDTO): string {
-    // Only show status for own messages
-    if (!this.isOwnMessage(message)) {
-      return '';
-    }
-
-    // If message was read (has readAt timestamp or is in readBy array)
-    if (message.readAt || (message.readBy && message.readBy.length > 1)) {
-      return 'done_all'; // Double check (read)
-    }
-
-    // If message was delivered (has deliveredAt)
-    if (message.deliveredAt) {
-      return 'done_all'; // Double check (delivered)
-    }
-
-    // If message was sent (has sentAt or timestamp)
-    if (message.sentAt || message.timestamp) {
-      return 'done'; // Single check (sent)
-    }
-
-    return 'schedule'; // Sending
+  onReportUser(): void {
+    // TODO Phase 5+: Implement user reporting
+    console.log('Report user clicked');
   }
 
-  /**
-   * Get message status class for styling
-   */
-  getMessageStatusClass(message: MessageDTO): string {
-    if (!this.isOwnMessage(message)) {
-      return '';
-    }
+  // ============================================================================
+  // TYPING INDICATORS
+  // ============================================================================
 
-    // If message was read
-    if (message.readAt || (message.readBy && message.readBy.length > 1)) {
-      return 'read'; // Blue double check
+  onTypingStarted(): void {
+    const conv = this.selectedConversation();
+    if (conv) {
+      this.chatService.sendTypingIndicator(conv.bookingId, true);
     }
-
-    // If message was delivered
-    if (message.deliveredAt) {
-      return 'delivered'; // Gray double check
-    }
-
-    // If message was sent
-    if (message.sentAt || message.timestamp) {
-      return 'sent'; // Gray single check
-    }
-
-    return 'sending'; // Gray clock
   }
 
-  /**
-   * Get message status tooltip text
-   */
-  getMessageStatusTooltip(message: MessageDTO): string {
-    if (!this.isOwnMessage(message)) {
-      return '';
+  onTypingStopped(): void {
+    const conv = this.selectedConversation();
+    if (conv) {
+      this.chatService.sendTypingIndicator(conv.bookingId, false);
     }
-
-    if (message.readAt || (message.readBy && message.readBy.length > 1)) {
-      return 'Pročitano';
-    }
-
-    if (message.deliveredAt) {
-      return 'Isporučeno';
-    }
-
-    if (message.sentAt || message.timestamp) {
-      return 'Poslato';
-    }
-
-    return 'Šalje se...';
   }
 }

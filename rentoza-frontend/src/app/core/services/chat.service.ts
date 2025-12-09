@@ -9,11 +9,50 @@ import {
   SendMessageRequest,
   CreateConversationRequest,
   MessageStatusUpdate,
+  TypingIndicatorDTO,
+  OfflineQueueItem,
 } from '@core/models/chat.model';
 import { WebSocketService, WebSocketConnectionStatus } from './websocket.service';
 import { AuthService } from '@core/auth/auth.service';
 import { ToastService } from './toast.service';
 
+/**
+ * Custom error for authentication failures.
+ * Used to distinguish auth errors from connection errors.
+ */
+export class AuthenticationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AuthenticationError';
+    Object.setPrototypeOf(this, AuthenticationError.prototype);
+  }
+}
+
+/**
+ * Custom error for connection failures.
+ * Used to trigger retry logic with exponential backoff.
+ */
+export class ConnectionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ConnectionError';
+    Object.setPrototypeOf(this, ConnectionError.prototype);
+  }
+}
+
+const OFFLINE_QUEUE_KEY = 'rentoza_chat_offline_queue';
+const MAX_RETRY_COUNT = 3;
+
+/**
+ * ChatService - Enterprise-grade messaging service
+ *
+ * Features:
+ * - WebSocket real-time messaging
+ * - Typing indicators
+ * - Optimistic updates
+ * - Offline queue with localStorage persistence
+ * - Read receipts
+ */
 @Injectable({
   providedIn: 'root',
 })
@@ -24,28 +63,36 @@ export class ChatService implements OnDestroy {
   private readonly toast = inject(ToastService);
   private readonly chatApiUrl = environment.chatApiUrl || 'http://localhost:8081/api';
 
+  // Subjects for reactive streams
   private messageSubject = new Subject<MessageDTO>();
   private messageStatusUpdateSubject = new Subject<MessageStatusUpdate>();
+  private typingIndicatorSubject = new Subject<TypingIndicatorDTO>();
   private conversationsSubject = new BehaviorSubject<ConversationDTO[]>([]);
   private activeConversationSubject = new BehaviorSubject<ConversationDTO | null>(null);
+  private offlineQueueSubject = new BehaviorSubject<OfflineQueueItem[]>([]);
   private destroy$ = new Subject<void>();
 
   private isWebSocketInitialized = false;
   private webSocketInitPromise: Promise<void> | null = null;
+  private typingTimeouts = new Map<number, ReturnType<typeof setTimeout>>();
 
+  // Public observables
   public messages$ = this.messageSubject.asObservable();
   public messageStatusUpdates$ = this.messageStatusUpdateSubject.asObservable();
+  public typingIndicators$ = this.typingIndicatorSubject.asObservable();
   public conversations$ = this.conversationsSubject.asObservable();
   public activeConversation$ = this.activeConversationSubject.asObservable();
+  public offlineQueue$ = this.offlineQueueSubject.asObservable();
 
   constructor() {
+    // Load offline queue from localStorage
+    this.loadOfflineQueue();
+
     // Subscribe to WebSocket status changes
     this.webSocketService.status$.pipe(takeUntil(this.destroy$)).subscribe((status) => {
-      if (
-        status === WebSocketConnectionStatus.DISCONNECTED ||
-        status === WebSocketConnectionStatus.ERROR
-      ) {
-        // Handle disconnection - could reload conversations when reconnected
+      if (status === WebSocketConnectionStatus.CONNECTED) {
+        // WebSocket reconnected - flush offline queue
+        this.flushOfflineQueue();
       }
     });
   }
@@ -54,23 +101,23 @@ export class ChatService implements OnDestroy {
     this.destroy$.next();
     this.destroy$.complete();
     this.disconnectWebSocket();
+    this.typingTimeouts.forEach((timeout) => clearTimeout(timeout));
+    this.typingTimeouts.clear();
   }
 
-  /**
-   * Initialize WebSocket connection and subscriptions (idempotent)
-   */
+  // ===========================================================================
+  // WebSocket Initialization
+  // ===========================================================================
+
   async initializeWebSocket(): Promise<void> {
-    // If already initialized, return immediately
     if (this.isWebSocketInitialized && this.webSocketService.isConnected()) {
       return;
     }
 
-    // If initialization is in progress, return the existing promise
     if (this.webSocketInitPromise) {
       return this.webSocketInitPromise;
     }
 
-    // Start new initialization
     this.webSocketInitPromise = this._initializeWebSocket();
 
     try {
@@ -82,13 +129,11 @@ export class ChatService implements OnDestroy {
 
   private async _initializeWebSocket(): Promise<void> {
     try {
-      // Check if user is authenticated
       const user = this.authService.getCurrentUser();
       if (!user) {
-        throw new Error('User not authenticated');
+        throw new AuthenticationError('Molimo vas da se prijavite.');
       }
 
-      // Connect to WebSocket
       await this.webSocketService.connect();
 
       // Subscribe to user's personal queue for messages
@@ -111,11 +156,21 @@ export class ChatService implements OnDestroy {
         }
       });
 
-      // Subscribe to message status updates (delivered, read receipts)
+      // Subscribe to message status updates
       this.webSocketService.subscribe('/user/queue/message-status', (message) => {
         try {
           const statusUpdate: MessageStatusUpdate = JSON.parse(message.body);
           this.handleMessageStatusUpdate(statusUpdate);
+        } catch (error) {
+          // Silent error handling
+        }
+      });
+
+      // Subscribe to typing indicators
+      this.webSocketService.subscribe('/user/queue/typing', (message) => {
+        try {
+          const typing: TypingIndicatorDTO = JSON.parse(message.body);
+          this.handleTypingIndicator(typing);
         } catch (error) {
           // Silent error handling
         }
@@ -128,22 +183,230 @@ export class ChatService implements OnDestroy {
     }
   }
 
-  /**
-   * Disconnect WebSocket
-   */
   disconnectWebSocket(): void {
     this.webSocketService.disconnect(true);
     this.isWebSocketInitialized = false;
     this.webSocketInitPromise = null;
   }
 
+  // ===========================================================================
+  // Typing Indicators
+  // ===========================================================================
+
   /**
-   * Create a new conversation
+   * Send typing indicator via WebSocket
    */
+  sendTypingIndicator(bookingId: string, isTyping: boolean): void {
+    if (!this.webSocketService.isConnected()) {
+      return;
+    }
+
+    const user = this.authService.getCurrentUser();
+    if (!user) {
+      return;
+    }
+
+    this.webSocketService.send(`/app/chat/${bookingId}/typing`, {
+      isTyping,
+      userId: user.id,
+      userName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'User',
+    });
+  }
+
+  private handleTypingIndicator(typing: TypingIndicatorDTO): void {
+    // Clear existing timeout for this conversation
+    const existingTimeout = this.typingTimeouts.get(typing.conversationId);
+    if (existingTimeout) {
+      clearTimeout(existingTimeout);
+      this.typingTimeouts.delete(typing.conversationId);
+    }
+
+    // Emit typing indicator
+    this.typingIndicatorSubject.next(typing);
+
+    // Auto-clear typing after 5 seconds if isTyping is true
+    if (typing.isTyping) {
+      const timeout = setTimeout(() => {
+        this.typingIndicatorSubject.next({
+          ...typing,
+          isTyping: false,
+        });
+        this.typingTimeouts.delete(typing.conversationId);
+      }, 5000);
+      this.typingTimeouts.set(typing.conversationId, timeout);
+    }
+  }
+
+  // ===========================================================================
+  // Optimistic Updates
+  // ===========================================================================
+
+  /**
+   * Create an optimistic message for immediate UI feedback
+   */
+  createOptimisticMessage(content: string, conversationId: number): MessageDTO {
+    const user = this.authService.getCurrentUser();
+    const optimisticId = `opt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    return {
+      id: -Date.now(), // Negative ID to distinguish from server IDs
+      conversationId,
+      senderId: user?.id || '',
+      senderName: `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || 'You',
+      content,
+      timestamp: new Date().toISOString(),
+      readBy: [],
+      isRead: false,
+      optimisticId,
+      status: 'sending',
+    };
+  }
+
+  /**
+   * Replace optimistic message with server response
+   */
+  replaceOptimisticMessage(optimisticId: string, serverMessage: MessageDTO): void {
+    const activeConv = this.activeConversationSubject.value;
+    if (!activeConv) return;
+
+    const messages = activeConv.messages || [];
+    const updatedMessages = messages.map((msg) =>
+      msg.optimisticId === optimisticId ? { ...serverMessage, status: 'sent' as const } : msg
+    );
+
+    this.activeConversationSubject.next({
+      ...activeConv,
+      messages: updatedMessages,
+    });
+  }
+
+  /**
+   * Mark optimistic message as failed
+   */
+  markOptimisticMessageFailed(optimisticId: string): void {
+    const activeConv = this.activeConversationSubject.value;
+    if (!activeConv) return;
+
+    const messages = activeConv.messages || [];
+    const updatedMessages = messages.map((msg) =>
+      msg.optimisticId === optimisticId ? { ...msg, status: 'failed' as const } : msg
+    );
+
+    this.activeConversationSubject.next({
+      ...activeConv,
+      messages: updatedMessages,
+    });
+  }
+
+  // ===========================================================================
+  // Offline Queue (localStorage MVP)
+  // ===========================================================================
+
+  private loadOfflineQueue(): void {
+    try {
+      const stored = localStorage.getItem(OFFLINE_QUEUE_KEY);
+      if (stored) {
+        const queue: OfflineQueueItem[] = JSON.parse(stored);
+        this.offlineQueueSubject.next(queue);
+      }
+    } catch (error) {
+      console.error('Failed to load offline queue:', error);
+      localStorage.removeItem(OFFLINE_QUEUE_KEY);
+    }
+  }
+
+  private saveOfflineQueue(): void {
+    try {
+      const queue = this.offlineQueueSubject.value;
+      localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
+    } catch (error) {
+      console.error('Failed to save offline queue:', error);
+    }
+  }
+
+  /**
+   * Add message to offline queue
+   */
+  queueOfflineMessage(bookingId: string, content: string): OfflineQueueItem {
+    const item: OfflineQueueItem = {
+      id: `offline_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      bookingId,
+      content,
+      timestamp: new Date().toISOString(),
+      retryCount: 0,
+      status: 'queued',
+    };
+
+    const queue = [...this.offlineQueueSubject.value, item];
+    this.offlineQueueSubject.next(queue);
+    this.saveOfflineQueue();
+
+    return item;
+  }
+
+  /**
+   * Flush offline queue - send all queued messages
+   */
+  async flushOfflineQueue(): Promise<void> {
+    const queue = this.offlineQueueSubject.value;
+    if (queue.length === 0) return;
+
+    for (const item of queue) {
+      if (item.status === 'sending') continue;
+      if (item.retryCount >= MAX_RETRY_COUNT) {
+        this.removeFromOfflineQueue(item.id);
+        continue;
+      }
+
+      try {
+        // Mark as sending
+        this.updateOfflineQueueItem(item.id, { status: 'sending' });
+
+        // Attempt to send
+        await firstValueFrom(
+          this.sendMessage(item.bookingId, { content: item.content })
+        );
+
+        // Success - remove from queue
+        this.removeFromOfflineQueue(item.id);
+      } catch (error) {
+        // Failed - increment retry count
+        this.updateOfflineQueueItem(item.id, {
+          status: 'failed',
+          retryCount: item.retryCount + 1,
+        });
+      }
+    }
+  }
+
+  private updateOfflineQueueItem(id: string, updates: Partial<OfflineQueueItem>): void {
+    const queue = this.offlineQueueSubject.value.map((item) =>
+      item.id === id ? { ...item, ...updates } : item
+    );
+    this.offlineQueueSubject.next(queue);
+    this.saveOfflineQueue();
+  }
+
+  private removeFromOfflineQueue(id: string): void {
+    const queue = this.offlineQueueSubject.value.filter((item) => item.id !== id);
+    this.offlineQueueSubject.next(queue);
+    this.saveOfflineQueue();
+  }
+
+  /**
+   * Get offline queue count
+   */
+  getOfflineQueueCount(): number {
+    return this.offlineQueueSubject.value.length;
+  }
+
+  // ===========================================================================
+  // Conversation CRUD
+  // ===========================================================================
+
   createConversation(request: CreateConversationRequest): Observable<ConversationDTO> {
     return this.http.post<ConversationDTO>(`${this.chatApiUrl}/conversations`, request).pipe(
       tap((conversation) => {
-        // Add to conversations list
         const conversations = this.conversationsSubject.value;
         this.conversationsSubject.next([conversation, ...conversations]);
       }),
@@ -151,15 +414,10 @@ export class ChatService implements OnDestroy {
     );
   }
 
-  /**
-   * Get a specific conversation by booking ID
-   */
   getConversation(bookingId: string, page = 0, size = 50): Observable<ConversationDTO> {
     const params = new HttpParams().set('page', page.toString()).set('size', size.toString());
     return this.http
-      .get<ConversationDTO>(`${this.chatApiUrl}/conversations/${bookingId}`, {
-        params,
-      })
+      .get<ConversationDTO>(`${this.chatApiUrl}/conversations/${bookingId}`, { params })
       .pipe(
         tap((conversation) => {
           this.activeConversationSubject.next(conversation);
@@ -170,14 +428,13 @@ export class ChatService implements OnDestroy {
   }
 
   /**
-   * Send a message via REST API
+   * Send a message via REST API with optimistic update
    */
   sendMessage(bookingId: string, request: SendMessageRequest): Observable<MessageDTO> {
     return this.http
       .post<MessageDTO>(`${this.chatApiUrl}/conversations/${bookingId}/messages`, request)
       .pipe(
         tap((message) => {
-          // Optimistically add to active conversation
           this.addMessageToActiveConversation(message);
         }),
         catchError((error) => {
@@ -188,8 +445,44 @@ export class ChatService implements OnDestroy {
   }
 
   /**
-   * Send a message via WebSocket (faster)
+   * Send message with optimistic update and offline fallback
    */
+  sendMessageOptimistic(bookingId: string, content: string, conversationId: number): Observable<MessageDTO> {
+    // Create optimistic message
+    const optimisticMsg = this.createOptimisticMessage(content, conversationId);
+
+    // Add to UI immediately
+    const activeConv = this.activeConversationSubject.value;
+    if (activeConv && activeConv.id === conversationId) {
+      const messages = activeConv.messages || [];
+      this.activeConversationSubject.next({
+        ...activeConv,
+        messages: [...messages, optimisticMsg],
+        lastMessageAt: optimisticMsg.timestamp,
+      });
+    }
+
+    // Check if online
+    if (!navigator.onLine || !this.webSocketService.isConnected()) {
+      // Offline - queue message
+      this.queueOfflineMessage(bookingId, content);
+      this.markOptimisticMessageFailed(optimisticMsg.optimisticId!);
+      return throwError(() => new Error('Offline - message queued'));
+    }
+
+    // Send message
+    return this.sendMessage(bookingId, { content }).pipe(
+      tap((serverMessage) => {
+        this.replaceOptimisticMessage(optimisticMsg.optimisticId!, serverMessage);
+      }),
+      catchError((error) => {
+        this.markOptimisticMessageFailed(optimisticMsg.optimisticId!);
+        this.queueOfflineMessage(bookingId, content);
+        return throwError(() => error);
+      })
+    );
+  }
+
   sendMessageViaWebSocket(bookingId: string, content: string): void {
     if (!this.webSocketService.isConnected()) {
       this.sendMessage(bookingId, { content }).subscribe();
@@ -202,20 +495,15 @@ export class ChatService implements OnDestroy {
     });
   }
 
-  /**
-   * Mark messages as read
-   */
   markMessagesAsRead(bookingId: string): Observable<void> {
     return this.http.put<void>(`${this.chatApiUrl}/conversations/${bookingId}/read`, {}).pipe(
       tap(() => {
-        // Update unread count in conversations list
         const conversations = this.conversationsSubject.value;
         const updated = conversations.map((conv) =>
           conv.bookingId === bookingId ? { ...conv, unreadCount: 0 } : conv
         );
         this.conversationsSubject.next(updated);
 
-        // Update active conversation
         const activeConv = this.activeConversationSubject.value;
         if (activeConv && activeConv.bookingId === bookingId) {
           this.activeConversationSubject.next({ ...activeConv, unreadCount: 0 });
@@ -225,27 +513,51 @@ export class ChatService implements OnDestroy {
     );
   }
 
-  /**
-   * Get all conversations for the authenticated user
-   */
   getUserConversations(): Observable<ConversationDTO[]> {
+    const currentUser = this.authService.getCurrentUser();
+    // Ensure userId is a string for comparison (API returns string IDs)
+    const userId = currentUser?.id?.toString();
+
     return this.http.get<ConversationDTO[]>(`${this.chatApiUrl}/conversations`).pipe(
       map((conversations) => {
-        // Sort by lastMessageAt (most recent first)
-        const sorted = conversations.sort((a, b) => {
+        // RBAC: Verify ownership before accepting conversations
+        const validated = conversations.filter(conv => {
+          // Convert all IDs to strings for reliable comparison
+          const convOwnerId = conv.ownerId?.toString();
+          const convRenterId = conv.renterId?.toString();
+          
+          const isOwner = convOwnerId === userId;
+          const isRenter = convRenterId === userId;
+          
+          if (!isOwner && !isRenter) {
+            console.warn(`[SECURITY] User ${userId} received unauthorized conversation ${conv.id} (owner: ${convOwnerId}, renter: ${convRenterId})`);
+            return false; // Filter out unauthorized conversations
+          }
+          return true;
+        });
+
+        // Remove any duplicates (defensive)
+        const uniqueIds = new Set<number>();
+        const deduplicated = validated.filter(conv => {
+          if (uniqueIds.has(conv.id)) {
+            console.warn(`[SECURITY] Duplicate conversation ${conv.id} received`);
+            return false;
+          }
+          uniqueIds.add(conv.id);
+          return true;
+        });
+
+        // Sort by recency
+        return deduplicated.sort((a, b) => {
           const dateA = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
           const dateB = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
           return dateB - dateA;
         });
-        return sorted;
       }),
       tap((conversations) => {
         this.conversationsSubject.next(conversations);
       }),
-      retry({
-        count: 2,
-        delay: 1000,
-      }),
+      retry({ count: 2, delay: 1000 }),
       catchError((error) => {
         this.toast.error('Neuspešno učitavanje konverzacija. Pokušajte ponovo.');
         return this.handleError(error);
@@ -253,9 +565,6 @@ export class ChatService implements OnDestroy {
     );
   }
 
-  /**
-   * Get or create conversation for a booking
-   */
   async getOrCreateConversation(
     bookingId: string,
     renterId: string,
@@ -263,10 +572,8 @@ export class ChatService implements OnDestroy {
     initialMessage?: string
   ): Promise<ConversationDTO> {
     try {
-      // Try to fetch existing conversation
       return await firstValueFrom(this.getConversation(bookingId));
     } catch (error: any) {
-      // If 404, create new conversation
       if (error.status === 404) {
         const request: CreateConversationRequest = {
           bookingId,
@@ -280,49 +587,61 @@ export class ChatService implements OnDestroy {
     }
   }
 
-  /**
-   * Set active conversation
-   */
   setActiveConversation(conversation: ConversationDTO | null): void {
     this.activeConversationSubject.next(conversation);
   }
 
-  /**
-   * Get current user ID
-   */
   getCurrentUserId(): string {
     return this.authService.getCurrentUser()?.id || '';
   }
 
-  /**
-   * Check if WebSocket is connected
-   */
   isWebSocketConnected(): boolean {
     return this.webSocketService.isConnected();
   }
 
-  /**
-   * Handle incoming message from WebSocket
-   */
+  // ===========================================================================
+  // Message Handlers
+  // ===========================================================================
+
   private handleIncomingMessage(message: MessageDTO): void {
-    // Emit to message stream
     this.messageSubject.next(message);
-
-    // Update conversation with new message
     this.updateConversationWithNewMessage(message);
-
-    // Add to active conversation if it matches
+    
+    // Check if this is our own message that was sent optimistically
+    const currentUser = this.authService.getCurrentUser();
+    const isOwnMessage = message.senderId?.toString() === currentUser?.id?.toString();
+    
+    if (isOwnMessage) {
+      // For own messages, try to find and replace the optimistic version
+      const activeConv = this.activeConversationSubject.value;
+      if (activeConv && activeConv.id === message.conversationId) {
+        const messages = activeConv.messages || [];
+        // Find optimistic message by content match (since optimistic has negative ID)
+        const optimisticIdx = messages.findIndex(
+          (m) => m.id < 0 && m.content === message.content && m.optimisticId
+        );
+        
+        if (optimisticIdx >= 0) {
+          // Replace the optimistic message with the server message
+          const updatedMessages = [...messages];
+          updatedMessages[optimisticIdx] = { ...message, status: 'sent' as const };
+          this.activeConversationSubject.next({
+            ...activeConv,
+            messages: updatedMessages,
+            lastMessageAt: message.timestamp,
+          });
+          return; // Don't add duplicate
+        }
+      }
+    }
+    
+    // For other people's messages or if no optimistic found, add normally
     this.addMessageToActiveConversation(message);
   }
 
-  /**
-   * Handle message status updates (sent, delivered, read)
-   */
   private handleMessageStatusUpdate(statusUpdate: MessageStatusUpdate): void {
-    // Emit to status update stream
     this.messageStatusUpdateSubject.next(statusUpdate);
 
-    // Update message in active conversation
     const activeConv = this.activeConversationSubject.value;
     if (activeConv && activeConv.id === statusUpdate.conversationId) {
       const messages = activeConv.messages || [];
@@ -346,9 +665,6 @@ export class ChatService implements OnDestroy {
     }
   }
 
-  /**
-   * Update conversation with new message from WebSocket
-   */
   private updateConversationWithNewMessage(message: MessageDTO): void {
     const conversations = this.conversationsSubject.value;
     let conversationFound = false;
@@ -365,7 +681,6 @@ export class ChatService implements OnDestroy {
       return conv;
     });
 
-    // Sort by lastMessageAt
     updated.sort((a, b) => {
       const dateA = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
       const dateB = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
@@ -374,21 +689,32 @@ export class ChatService implements OnDestroy {
 
     this.conversationsSubject.next(updated);
 
-    // If conversation not found, it might be new - reload conversations
     if (!conversationFound) {
       this.getUserConversations().subscribe();
     }
   }
 
-  /**
-   * Add message to active conversation
-   */
   private addMessageToActiveConversation(message: MessageDTO): void {
     const activeConv = this.activeConversationSubject.value;
     if (activeConv && activeConv.id === message.conversationId) {
       const messages = activeConv.messages || [];
-      // Avoid duplicates
-      if (!messages.find((m) => m.id === message.id)) {
+      
+      // Check for duplicate by ID or by optimisticId match
+      // This prevents duplicates when:
+      // 1. WebSocket delivers a message that was already added optimistically
+      // 2. Server response arrives both via HTTP and WebSocket
+      const isDuplicate = messages.some((m) => {
+        // Direct ID match
+        if (m.id === message.id && message.id > 0) return true;
+        // Check if this is the server version of an optimistic message
+        if (m.optimisticId && message.content === m.content && m.id < 0) {
+          // Replace the optimistic message instead of adding duplicate
+          return true;
+        }
+        return false;
+      });
+      
+      if (!isDuplicate) {
         this.activeConversationSubject.next({
           ...activeConv,
           messages: [...messages, message],
@@ -398,19 +724,11 @@ export class ChatService implements OnDestroy {
     }
   }
 
-  /**
-   * Centralized error handling
-   */
   private handleError(error: HttpErrorResponse): Observable<never> {
     return throwError(() => error);
   }
 
-  // Keep legacy polling methods for backward compatibility
-  startPolling(bookingId: string, intervalMs = 3000): void {
-    // Polling is deprecated - no-op
-  }
-
-  stopPolling(): void {
-    // No-op - polling is deprecated
-  }
+  // Legacy polling methods (deprecated)
+  startPolling(bookingId: string, intervalMs = 3000): void {}
+  stopPolling(): void {}
 }

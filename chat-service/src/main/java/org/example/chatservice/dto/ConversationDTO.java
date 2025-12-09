@@ -33,7 +33,10 @@ public class ConversationDTO {
     private String carImageUrl;
     private String renterName;
     private String ownerName;
+    private String renterProfilePicUrl;
+    private String ownerProfilePicUrl;
     private String startDate;
     private String endDate;
+    private String lastMessageContent; // Preview of the last message for conversation list
     private String tripStatus; // "FUTURE", "CURRENT", "PAST", "UNAVAILABLE"
 }

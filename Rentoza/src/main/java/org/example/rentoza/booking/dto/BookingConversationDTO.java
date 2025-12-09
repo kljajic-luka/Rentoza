@@ -94,7 +94,27 @@ public record BookingConversationDTO(
      * Whether messaging is allowed for this booking.
      * Derived from bookingStatus: true only if ACTIVE or in check-in/trip phase
      */
-    boolean messagingAllowed
+    boolean messagingAllowed,
+    
+    /**
+     * Renter's display name (first name + last name initial)
+     */
+    String renterName,
+    
+    /**
+     * Owner's display name (first name + last name initial)
+     */
+    String ownerName,
+    
+    /**
+     * Renter's profile picture URL (nullable)
+     */
+    String renterProfilePicUrl,
+    
+    /**
+     * Owner's profile picture URL (nullable)
+     */
+    String ownerProfilePicUrl
 ) {
     /**
      * Constructor from Booking entity (server-side mapping).
@@ -114,8 +134,34 @@ public record BookingConversationDTO(
             booking.getEndTime(),
             booking.getStatus().name(),
             computeTripStatus(booking.getStartTime(), booking.getEndTime()),
-            computeMessagingAllowed(booking.getStatus())
+            computeMessagingAllowed(booking.getStatus()),
+            extractUserDisplayName(booking.getRenter()),
+            extractUserDisplayName(booking.getCar().getOwner()),
+            extractProfilePicUrl(booking.getRenter()),
+            extractProfilePicUrl(booking.getCar().getOwner())
         );
+    }
+    
+    /**
+     * Extract user display name (first name + last initial).
+     * Falls back to "User" if name is unavailable.
+     */
+    private static String extractUserDisplayName(org.example.rentoza.user.User user) {
+        if (user == null) return "User";
+        String firstName = user.getFirstName();
+        String lastName = user.getLastName();
+        if (firstName == null || firstName.isBlank()) return "User";
+        if (lastName == null || lastName.isBlank()) return firstName;
+        return firstName + " " + lastName.charAt(0) + ".";
+    }
+    
+    /**
+     * Extract user profile picture URL.
+     * Returns null if unavailable.
+     */
+    private static String extractProfilePicUrl(org.example.rentoza.user.User user) {
+        if (user == null) return null;
+        return user.getAvatarUrl();
     }
     
     /**

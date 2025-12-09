@@ -1,169 +1,123 @@
+<!-- 
+  MessagesComponent Template - Turo/Airbnb-style Chat Interface
+  
+  Layout:
+  ┌─────────────────────────────────────────────────────────────────┐
+  │ ┌─────────────┐ ┌─────────────────────────────────────────────┐ │
+  │ │  Sidebar    │ │ ChatHeader                                  │ │
+  │ │             │ ├─────────────────────────────────────────────┤ │
+  │ │ Conversation│ │ MessageView                                 │ │
+  │ │ List        │ │ (Messages)                                  │ │
+  │ │             │ │                                             │ │
+  │ │             │ ├─────────────────────────────────────────────┤ │
+  │ │             │ │ MessageInput                                │ │
+  │ └─────────────┘ └─────────────────────────────────────────────┘ │
+  └─────────────────────────────────────────────────────────────────┘
+-->
+
 <mat-sidenav-container
   class="messages-container"
   [class.dark-theme]="themeService.theme() === 'dark'"
+  [class.mobile-view]="isMobileView()"
 >
   <!-- Sidebar with conversation list -->
-  <mat-sidenav mode="side" opened class="conversations-sidebar">
+  <mat-sidenav
+    mode="side"
+    [opened]="showSidebar()"
+    class="conversations-sidebar"
+    [class.mobile-sidebar]="isMobileView()"
+  >
+    <!-- Sidebar Header -->
     <div class="sidebar-header">
-      <h2>Poruke</h2>
-      <mat-icon *ngIf="wsConnected()" class="ws-status connected" matTooltip="Povezano"
-        >fiber_manual_record</mat-icon
-      >
-      <mat-icon *ngIf="!wsConnected()" class="ws-status disconnected" matTooltip="Nije povezano"
-        >fiber_manual_record</mat-icon
-      >
+      <h2>Messages</h2>
+      <div class="header-actions">
+        @if (wsConnected()) {
+          <mat-icon class="ws-status connected" matTooltip="Connected">
+            fiber_manual_record
+          </mat-icon>
+        } @else {
+          <mat-icon class="ws-status disconnected" matTooltip="Disconnected">
+            fiber_manual_record
+          </mat-icon>
+        }
+        @if (totalUnreadCount() > 0) {
+          <span class="unread-total">{{ totalUnreadCount() }}</span>
+        }
+      </div>
     </div>
 
-    <!-- Loading state -->
-    <div *ngIf="isLoading()" class="loading-container">
-      <mat-spinner diameter="40"></mat-spinner>
-      <p>Učitavanje razgovora...</p>
-    </div>
-
-    <!-- Empty state -->
-    <div *ngIf="!isLoading() && !hasConversations" class="empty-state">
-      <mat-icon>chat_bubble_outline</mat-icon>
-      <p>Nemate aktivnih razgovora</p>
-      <small>Rezervišite automobil da biste započeli razgovor.</small>
-    </div>
-
-    <!-- Conversation list -->
-    <mat-list *ngIf="!isLoading() && hasConversations">
-      <mat-list-item
-        *ngFor="let conv of conversations()"
-        [class.selected]="selectedConversation()?.id === conv.id"
-        (click)="selectConversation(conv)"
-        class="conversation-item"
-      >
-        <div class="conversation-content">
-          <div class="conversation-header">
-            <h3>{{ getConversationTitle(conv) }}</h3>
-            <span class="time" *ngIf="conv.lastMessageAt">
-              {{ formatTime(conv.lastMessageAt) }}
-            </span>
-          </div>
-
-          <div class="conversation-details">
-            <span class="subtitle">
-              {{ getConversationSubtitle(conv) }}
-            </span>
-            <mat-icon
-              *ngIf="conv.unreadCount > 0"
-              [matBadge]="conv.unreadCount"
-              matBadgeColor="warn"
-              matBadgeSize="small"
-              class="unread-badge"
-            >
-              notifications
-            </mat-icon>
-          </div>
-        </div>
-
-        <mat-divider></mat-divider>
-      </mat-list-item>
-    </mat-list>
+    <!-- Conversation List Component -->
+    <app-conversation-list
+      [conversations]="conversations()"
+      [selectedConversationId]="selectedConversationId()"
+      [currentUserId]="currentUserId()"
+      [isLoading]="isLoading()"
+      (selectConversation)="selectConversation($event)"
+    ></app-conversation-list>
   </mat-sidenav>
 
   <!-- Main chat window -->
   <mat-sidenav-content class="chat-content">
     <!-- No conversation selected -->
-    <div *ngIf="!selectedConversation()" class="no-selection">
-      <mat-icon>chat</mat-icon>
-      <h2>Izaberite razgovor</h2>
-      <p>Izaberite konverzaciju sa leve strane da biste videli poruke.</p>
-    </div>
+    @if (!selectedConversation()) {
+      <div class="no-selection">
+        <mat-icon>chat</mat-icon>
+        <h2>Select a conversation</h2>
+        <p>Choose a conversation from the left to view messages.</p>
+      </div>
+    }
 
     <!-- Chat window -->
-    <div *ngIf="selectedConversation()" class="chat-window">
-      <!-- Chat header -->
-      <div class="chat-header">
-        <div class="chat-info">
-          <div class="participant-info">
-            <h2>{{ getConversationTitle(selectedConversation()!) }}</h2>
-            <span class="trip-subtitle">
-              {{ getConversationSubtitle(selectedConversation()!) }}
-            </span>
-          </div>
-          <span class="status-badge" [class]="'badge-' + getTripStatus(selectedConversation()!)">
-            {{ getStatusLabel(selectedConversation()!) }}
-          </span>
-        </div>
-        <p class="status-message" *ngIf="statusMessage">{{ statusMessage }}</p>
-      </div>
+    @if (selectedConversation()) {
+      <div class="chat-window">
+        <!-- Chat Header Component -->
+        <app-chat-header
+          [conversation]="selectedConversation()"
+          [currentUserId]="currentUserId()"
+          [isMobile]="isMobileView()"
+          (goBack)="onGoBack()"
+          (viewBookingDetails)="onViewBookingDetails()"
+          (reportUser)="onReportUser()"
+        ></app-chat-header>
 
-      <!-- Messages container -->
-      <div class="messages-wrapper">
-        <!-- Loading messages -->
-        <div *ngIf="isLoadingMessages()" class="loading-messages">
-          <mat-spinner diameter="40"></mat-spinner>
-        </div>
-
-        <!-- Messages list -->
-        <div #messagesContainer class="messages-list" *ngIf="!isLoadingMessages()">
-          <div
-            *ngFor="let message of messages()"
-            class="message-wrapper"
-            [class.own-message]="isOwnMessage(message)"
-            [class.other-message]="!isOwnMessage(message)"
-          >
-            <div class="message-bubble">
-              <p class="message-content">{{ message.content }}</p>
-              <div class="message-meta">
-                <span class="message-time">{{ formatMessageTime(message.timestamp) }}</span>
-                <mat-icon
-                  *ngIf="isOwnMessage(message)"
-                  class="message-status"
-                  [class]="getMessageStatusClass(message)"
-                  [matTooltip]="getMessageStatusTooltip(message)"
-                >
-                  {{ getMessageStatusIcon(message) }}
-                </mat-icon>
-              </div>
+        <!-- Messages Area -->
+        <div class="messages-wrapper">
+          <!-- Loading messages -->
+          @if (isLoadingMessages()) {
+            <div class="loading-messages">
+              <mat-spinner diameter="40"></mat-spinner>
             </div>
-          </div>
+          }
 
-          <!-- Empty messages state -->
-          <div *ngIf="messages().length === 0" class="empty-messages">
-            <mat-icon>chat_bubble_outline</mat-icon>
-            <p>Još nema poruka</p>
-            <small>{{ getEmptyStateText(selectedConversation()!) }}</small>
-          </div>
+          <!-- Message View Component -->
+          @if (!isLoadingMessages()) {
+            <app-message-view
+              [conversation]="selectedConversation()"
+              [currentUserId]="currentUserId()"
+              [messages]="messages()"
+              [isTyping]="isTyping()"
+              [typingUserName]="typingUserName()"
+            ></app-message-view>
+          }
         </div>
-      </div>
 
-      <!-- Message input area -->
-      <div class="message-input-area">
-        <mat-card class="input-card" [class.disabled]="!isMessagingAllowed">
-          <div class="input-wrapper">
-            <mat-form-field appearance="outline" class="message-input">
-              <input
-                matInput
-                placeholder="Napišite poruku..."
-                [(ngModel)]="messageContent"
-                [disabled]="!isMessagingAllowed || isSendingMessage()"
-                (keydown.enter)="sendMessage()"
-                maxlength="1000"
-              />
-            </mat-form-field>
+        <!-- Message Input Component -->
+        <app-message-input
+          [disabled]="!isMessagingAllowed() || isSendingMessage()"
+          [placeholder]="isMessagingAllowed() ? 'Type a message...' : 'Messaging not allowed'"
+          (messageSent)="onSendMessage($event)"
+          (typingStarted)="onTypingStarted()"
+          (typingStopped)="onTypingStopped()"
+        ></app-message-input>
 
-            <button
-              mat-fab
-              color="primary"
-              class="send-button"
-              [disabled]="!messageContent().trim() || !isMessagingAllowed || isSendingMessage()"
-              (click)="sendMessage()"
-            >
-              <mat-icon *ngIf="!isSendingMessage()">send</mat-icon>
-              <mat-spinner *ngIf="isSendingMessage()" diameter="24"></mat-spinner>
-            </button>
-          </div>
-
-          <div *ngIf="!isMessagingAllowed" class="messaging-disabled">
+        <!-- Messaging disabled warning -->
+        @if (!isMessagingAllowed()) {
+          <div class="messaging-disabled-warning">
             <mat-icon>lock</mat-icon>
-            <span>Slanje poruka nije dozvoljeno za ovu konverzaciju.</span>
+            <span>Messaging is not allowed for this conversation.</span>
           </div>
-        </mat-card>
+        }
       </div>
-    </div>
+    }
   </mat-sidenav-content>
 </mat-sidenav-container>

@@ -191,6 +191,17 @@ public class ChatService {
                 .map(conv -> {
                     ConversationDTO dto = toDTO(conv, userId);
                     dto.setUnreadCount(messageRepository.countUnreadMessages(conv.getId(), userId));
+                    
+                    // Fetch last message for preview
+                    Message lastMessage = messageRepository.findFirstByConversationIdOrderByTimestampDesc(conv.getId());
+                    if (lastMessage != null) {
+                        String content = lastMessage.getContent();
+                        // Truncate to 100 chars for preview
+                        dto.setLastMessageContent(content != null && content.length() > 100 
+                                ? content.substring(0, 100) + "..." 
+                                : content);
+                    }
+                    
                     return enrichDtoWithBackendData(dto, userId);
                 })
                 .collect(Collectors.toList());
@@ -261,6 +272,22 @@ public class ChatService {
 
                             // Update messaging allowed from BookingConversationDTO
                             dto.setMessagingAllowed(bookingConv.isMessagingAllowed());
+                            
+                            // Set profile picture URLs from BookingConversationDTO
+                            if (bookingConv.getRenterProfilePicUrl() != null) {
+                                dto.setRenterProfilePicUrl(bookingConv.getRenterProfilePicUrl());
+                            }
+                            if (bookingConv.getOwnerProfilePicUrl() != null) {
+                                dto.setOwnerProfilePicUrl(bookingConv.getOwnerProfilePicUrl());
+                            }
+                            
+                            // Set user names from BookingConversationDTO if available
+                            if (bookingConv.getRenterName() != null) {
+                                dto.setRenterName(bookingConv.getRenterName());
+                            }
+                            if (bookingConv.getOwnerName() != null) {
+                                dto.setOwnerName(bookingConv.getOwnerName());
+                            }
                         } else {
                             // Booking not found or is fallback - mark as unavailable
                             dto.setCarBrand("Unknown");

@@ -97,6 +97,26 @@ public class BookingConversationDTO {
     private boolean messagingAllowed;
     
     /**
+     * Renter's display name (first name + last initial)
+     */
+    private String renterName;
+    
+    /**
+     * Owner's display name (first name + last initial)
+     */
+    private String ownerName;
+    
+    /**
+     * Renter's profile picture URL (nullable)
+     */
+    private String renterProfilePicUrl;
+    
+    /**
+     * Owner's profile picture URL (nullable)
+     */
+    private String ownerProfilePicUrl;
+    
+    /**
      * Create a fallback DTO for failed enrichment attempts.
      * Shows "Unknown car" with disabled messaging.
      * 
@@ -116,6 +136,10 @@ public class BookingConversationDTO {
         fallback.setBookingStatus("UNAVAILABLE");
         fallback.setTripStatus("UNAVAILABLE");
         fallback.setMessagingAllowed(false);
+        fallback.setRenterName("User");
+        fallback.setOwnerName("Owner");
+        fallback.setRenterProfilePicUrl(null);
+        fallback.setOwnerProfilePicUrl(null);
         return fallback;
     }
     

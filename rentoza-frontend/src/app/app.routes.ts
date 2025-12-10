@@ -12,6 +12,12 @@ export const routes: Routes = [
       import('@features/home/pages/home/home.component').then((m) => m.HomeComponent),
   },
   {
+    path: 'admin',
+    canActivate: [RoleGuard, RoleRedirectGuard],
+    data: { roles: ['ADMIN'] },
+    loadChildren: () => import('@features/admin/admin.routes').then(m => m.ADMIN_ROUTES),
+  },
+  {
     path: 'auth',
     children: [
       {

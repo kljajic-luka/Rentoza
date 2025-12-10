@@ -1,0 +1,8 @@
+.section-block {
+  display: grid;
+  gap: 20px;
+}
+
+.inline-actions button + button {
+  margin-left: 8px;
+}

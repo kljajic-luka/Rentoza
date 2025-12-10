@@ -20,8 +20,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import org.example.rentoza.booking.dispute.DamageClaim;
 
 /**
  * Core service for notification management and multi-channel delivery.
@@ -242,6 +244,45 @@ public class NotificationService {
     }
 
     /**
+     * Notify users about a dispute resolution.
+     * Sends notifications to both guest (renter) and host (owner).
+     *
+     * @param claim Resolved damage claim
+     * @param admin Admin who resolved the dispute
+     */
+    @Transactional
+    public void notifyDisputeResolved(DamageClaim claim, User admin) {
+       try {
+           // Notify guest (renter)
+           if (claim.getBooking() != null && claim.getBooking().getRenter() != null) {
+               createNotification(CreateNotificationRequestDTO.builder()
+                       .recipientId(claim.getBooking().getRenter().getId())
+                       .type(NotificationType.DISPUTE_RESOLVED)
+                       .message("Your dispute for booking " + claim.getBooking().getId() + " has been resolved.")
+                       .relatedEntityId(String.valueOf(claim.getId()))
+                       .build());
+           }
+
+           // Notify host (owner)
+           if (claim.getBooking() != null && claim.getBooking().getCar() != null && 
+               claim.getBooking().getCar().getOwner() != null) {
+               createNotification(CreateNotificationRequestDTO.builder()
+                       .recipientId(claim.getBooking().getCar().getOwner().getId())
+                       .type(NotificationType.DISPUTE_RESOLVED)
+                       .message("The dispute for your car booking " + claim.getBooking().getId() + " has been resolved.")
+                       .relatedEntityId(String.valueOf(claim.getId()))
+                       .build());
+           }
+
+           log.info("Dispute resolved notification sent for claim: {}", claim.getId());
+       } catch (Exception e) {
+           log.error("Failed to send dispute resolution notification for claim {}: {}", 
+                   claim.getId(), e.getMessage(), e);
+           // Don't rethrow - notification failure shouldn't fail the main operation
+       }
+    }
+
+    /**
      * Scheduled cleanup of expired notifications (older than 30 days).
      * Runs daily at 2 AM.
      */
@@ -255,4 +296,4 @@ public class NotificationService {
             log.info("Cleaned up {} expired notifications", deleted);
         }
     }
-}
+    }

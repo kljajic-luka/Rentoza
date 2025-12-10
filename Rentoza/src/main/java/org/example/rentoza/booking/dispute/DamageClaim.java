@@ -128,6 +128,14 @@ public class DamageClaim {
     @UpdateTimestamp
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+    
+    /**
+     * Version field for optimistic locking.
+     * Prevents concurrent updates causing data corruption.
+     */
+    @Version
+    @Column(name = "version")
+    private Long version;
 
     // ========== HELPER METHODS ==========
 

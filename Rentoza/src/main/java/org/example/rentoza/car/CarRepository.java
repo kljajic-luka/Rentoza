@@ -37,6 +37,9 @@ public interface CarRepository extends JpaRepository<Car, Long>, JpaSpecificatio
     @EntityGraph(attributePaths = {"owner"})
     List<Car> findByLocationIgnoreCaseAndAvailableTrue(String location);
 
+    @EntityGraph(attributePaths = {"owner"})
+    List<Car> findByAvailableFalse();
+
     // ========== DETAIL VIEWS (WITH features/addOns - Full Data) ==========
     // These methods eagerly load collections for single-car views
     
@@ -293,4 +296,36 @@ public interface CarRepository extends JpaRepository<Car, Long>, JpaSpecificatio
         LIMIT :limit
         """, nativeQuery = true)
     List<Car> findCarsNeedingGeocoding(@Param("limit") int limit);
+
+    // ========== ADMIN MANAGEMENT QUERIES ==========
+
+    /**
+     * Find all cars owned by a specific user.
+     * Used by admin for user profile view and cascade operations.
+     * 
+     * @param ownerId Owner's user ID
+     * @return List of all cars for the owner
+     */
+    @EntityGraph(attributePaths = {"owner"})
+    @Query("SELECT c FROM Car c WHERE c.owner.id = :ownerId ORDER BY c.id DESC")
+    List<Car> findByOwnerId(@Param("ownerId") Long ownerId);
+
+    /**
+     * Count total cars for an owner.
+     * Used for admin user profile statistics.
+     * 
+     * @param ownerId Owner's user ID
+     * @return Total car count
+     */
+    @Query("SELECT COUNT(c) FROM Car c WHERE c.owner.id = :ownerId")
+    Integer countByOwnerId(@Param("ownerId") Long ownerId);
+
+    /**
+     * Count available cars (for admin dashboard).
+     * 
+     * @return Total available car count
+     */
+    @Query("SELECT COUNT(c) FROM Car c WHERE c.available = true")
+    Long countAvailableCars();
 }
+

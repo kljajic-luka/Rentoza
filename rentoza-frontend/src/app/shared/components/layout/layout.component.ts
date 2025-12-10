@@ -113,29 +113,42 @@ export class LayoutComponent implements OnInit {
     map((user) => user !== null)
   );
 
+  protected isAdminRoute = false;
+
   ngOnInit(): void {
+    // Initial check
+    this.checkAdminRoute();
+
+    this.router.events
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => {
+        this.checkAdminRoute();
+        
+        // Mobile sidenav logic (only if not admin route, theoretically)
+        if (this.isMobile && this.sidenav?.opened) {
+           this.sidenav.close();
+        }
+      });
+
     this.breakpointObserver
       .observe([Breakpoints.Handset])
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((result) => {
         this.isMobile = result.matches;
-        if (!this.isMobile) {
+        if (!this.isMobile && !this.isAdminRoute) {
           this.sidenav?.open();
         }
       });
-
-    this.router.events
-      .pipe(
-        filter(() => this.isMobile && !!this.sidenav?.opened),
-        takeUntilDestroyed(this.destroyRef)
-      )
-      .subscribe(() => this.sidenav?.close());
 
     // Handle session expiration gracefully
     this.authService.sessionExpired$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
       this.toast.sessionExpired();
       void this.router.navigate(['/pocetna']);
     });
+  }
+
+  private checkAdminRoute() {
+    this.isAdminRoute = this.router.url.startsWith('/admin');
   }
 
   /**

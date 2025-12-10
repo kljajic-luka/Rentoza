@@ -1,0 +1,156 @@
+.dispute-list-container {
+  padding: 24px;
+  max-width: 1400px;
+  margin: 0 auto;
+
+  mat-card {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+
+  mat-card-header {
+    mat-card-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 24px;
+      font-weight: 500;
+      color: #1a237e;
+
+      mat-icon {
+        font-size: 28px;
+        width: 28px;
+        height: 28px;
+      }
+    }
+  }
+
+  mat-card-content {
+    padding-top: 24px;
+  }
+}
+
+// Filters
+.filters {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 24px;
+
+  mat-form-field {
+    min-width: 250px;
+  }
+
+  button {
+    height: 40px;
+  }
+}
+
+// Loading State
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  gap: 16px;
+
+  p {
+    color: #666;
+    margin: 0;
+  }
+}
+
+// Table
+.table-container {
+  overflow-x: auto;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+}
+
+.dispute-table {
+  width: 100%;
+  background: white;
+
+  th {
+    background: #f5f5f5;
+    font-weight: 600;
+    color: #333;
+    padding: 16px;
+  }
+
+  td {
+    padding: 16px;
+    color: #555;
+  }
+
+  .amount-cell {
+    font-weight: 600;
+    color: #1a237e;
+  }
+
+  mat-chip {
+    font-size: 12px;
+    min-height: 28px;
+  }
+}
+
+.dispute-row {
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+
+  &:hover {
+    background-color: #f5f5f5;
+  }
+}
+
+// Empty State
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: #666;
+
+  mat-icon {
+    font-size: 64px;
+    width: 64px;
+    height: 64px;
+    color: #4caf50;
+    margin-bottom: 16px;
+  }
+
+  h3 {
+    margin: 16px 0 8px;
+    color: #333;
+    font-size: 20px;
+    font-weight: 500;
+  }
+
+  p {
+    margin: 0;
+    color: #666;
+    font-size: 14px;
+  }
+}
+
+// Responsive
+@media (max-width: 768px) {
+  .dispute-list-container {
+    padding: 16px;
+  }
+
+  .filters {
+    flex-direction: column;
+    align-items: stretch;
+
+    mat-form-field {
+      width: 100%;
+    }
+  }
+
+  .dispute-table {
+    th,
+    td {
+      padding: 12px 8px;
+      font-size: 13px;
+    }
+  }
+}

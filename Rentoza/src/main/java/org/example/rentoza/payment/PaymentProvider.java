@@ -75,6 +75,7 @@ public interface PaymentProvider {
         private String transactionId;
         private String authorizationId;
         private BigDecimal amount;
+        private String currency;
         private String errorCode;
         private String errorMessage;
         private PaymentStatus status;
@@ -95,7 +96,8 @@ public interface PaymentProvider {
         CAPTURED,
         REFUNDED,
         FAILED,
-        CANCELLED
+        CANCELLED,
+        SUCCESS
     }
 }
 

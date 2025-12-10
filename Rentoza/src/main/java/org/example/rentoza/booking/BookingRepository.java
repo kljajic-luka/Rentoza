@@ -89,6 +89,20 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     java.util.Optional<Booking> findByIdWithRelations(@Param("id") Long id);
 
     /**
+     * Sum total revenue from completed bookings within a time period.
+     * Used for admin dashboard revenue calculations.
+     * 
+     * @param start Period start (inclusive)
+     * @param end Period end (exclusive)
+     * @return Total revenue in BigDecimal, or 0 if no bookings
+     */
+    @Query("SELECT COALESCE(SUM(b.totalPrice), 0) FROM Booking b " +
+           "WHERE b.status = 'COMPLETED' AND b.updatedAt BETWEEN :start AND :end")
+    java.math.BigDecimal sumTotalAmountByCompletedBookingsInPeriod(
+        @Param("start") java.time.Instant start, 
+        @Param("end") java.time.Instant end);
+
+    /**
      * Check if there are any active/pending bookings overlapping with the given time range for a car.
      * Used for validation when blocking dates or creating new bookings.
      * 
@@ -567,4 +581,144 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     List<Booking> findOverdueCheckouts(
             @Param("thresholdTime") LocalDateTime thresholdTime
     );
+
+    // ========== ADMIN MANAGEMENT QUERIES ==========
+
+    /**
+     * Find all bookings for a renter by user ID.
+     * Used by admin for user profile view and cascade delete.
+     * 
+     * @param renterId Renter's user ID
+     * @return List of all bookings for the renter
+     */
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.car c " +
+           "WHERE b.renter.id = :renterId " +
+           "ORDER BY b.startTime DESC")
+    List<Booking> findByRenterId(@Param("renterId") Long renterId);
+
+    /**
+     * Find bookings by renter ID and specific statuses.
+     * Used for cascade operations (e.g., cancel active bookings on user delete).
+     * 
+     * @param renterId Renter's user ID
+     * @param statuses List of statuses to filter by
+     * @return Matching bookings
+     */
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.car c " +
+           "WHERE b.renter.id = :renterId " +
+           "AND b.status IN :statuses")
+    List<Booking> findByRenterIdAndStatusIn(
+            @Param("renterId") Long renterId,
+            @Param("statuses") List<BookingStatus> statuses
+    );
+
+    /**
+     * Count total bookings for a renter.
+     * Used for admin user profile statistics.
+     * 
+     * @param renterId Renter's user ID
+     * @return Total booking count
+     */
+    @Query("SELECT COUNT(b) FROM Booking b WHERE b.renter.id = :renterId")
+    Integer countByRenterId(@Param("renterId") Long renterId);
+
+    /**
+     * Count active trips (IN_TRIP status) for admin dashboard.
+     * 
+     * @return Number of currently active trips
+     */
+    @Query("SELECT COUNT(b) FROM Booking b WHERE b.status = 'IN_TRIP'")
+    Long countActiveTrips();
+
+    /**
+     * Count bookings by status for admin dashboard.
+     * 
+     * @param status Booking status
+     * @return Count of bookings with that status
+     */
+    @Query("SELECT COUNT(b) FROM Booking b WHERE b.status = :status")
+    Long countByStatus(@Param("status") BookingStatus status);
+    
+    /**
+     * Find bookings by status and updated before a certain date.
+     * Used for payout queue (completed bookings past holding period).
+     * 
+     * @param status Booking status
+     * @param cutoffDate Only bookings updated before this date
+     * @param pageable Pagination
+     * @return Page of bookings
+     */
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.car c " +
+           "JOIN FETCH c.owner " +
+           "JOIN FETCH b.renter " +
+           "WHERE b.status = :status AND b.updatedAt < :cutoffDate " +
+           "ORDER BY b.updatedAt ASC")
+    org.springframework.data.domain.Page<Booking> findByStatusAndUpdatedAtBefore(
+        @Param("status") BookingStatus status,
+        @Param("cutoffDate") java.time.Instant cutoffDate,
+        org.springframework.data.domain.Pageable pageable
+    );
+    
+    /**
+     * Find bookings by status and updated before date (non-paginated).
+     */
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.car c " +
+           "JOIN FETCH c.owner " +
+           "WHERE b.status = :status AND b.updatedAt < :cutoffDate")
+    List<Booking> findByStatusAndUpdatedAtBefore(
+        @Param("status") BookingStatus status,
+        @Param("cutoffDate") java.time.Instant cutoffDate
+    );
+    
+    /**
+     * Find bookings with multiple statuses (for escrow calculations).
+     */
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.car c " +
+           "WHERE b.status IN :statuses")
+    List<Booking> findByStatusIn(@Param("statuses") List<BookingStatus> statuses);
+    
+    /**
+     * Find bookings by status and updated between dates (for analytics).
+     */
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.car c " +
+           "JOIN FETCH b.renter r " +
+           "WHERE b.status = :status AND b.updatedAt BETWEEN :start AND :end")
+    List<Booking> findByStatusAndUpdatedAtBetween(
+        @Param("status") BookingStatus status,
+        @Param("start") java.time.Instant start,
+        @Param("end") java.time.Instant end
+    );
+    
+    /**
+     * Find bookings created between dates (for cohort analysis).
+     */
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.car c " +
+           "JOIN FETCH b.renter r " +
+           "WHERE b.createdAt BETWEEN :start AND :end")
+    List<Booking> findByCreatedAtBetween(
+        @Param("start") java.time.Instant start,
+        @Param("end") java.time.Instant end
+    );
+    
+    /**
+     * Find bookings by status and approvedAt between dates (for analytics).
+     */
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.car c " +
+           "JOIN FETCH b.renter r " +
+           "WHERE b.status = :status AND b.approvedAt BETWEEN :start AND :end")
+    List<Booking> findByStatusAndApprovedAtBetween(
+        @Param("status") BookingStatus status,
+        @Param("start") java.time.Instant start,
+        @Param("end") java.time.Instant end
+    );
 }
+
+

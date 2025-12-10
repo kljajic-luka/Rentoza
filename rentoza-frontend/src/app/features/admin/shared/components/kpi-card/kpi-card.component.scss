@@ -1,0 +1,25 @@
+.kpi-card {
+  height: 100%;
+  border-radius: 18px;
+  box-shadow: var(--shadow-elevated);
+}
+
+.metric-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  justify-content: center;
+  align-items: center;
+  display: inline-flex;
+}
+
+.icon-info { background: rgba(59, 130, 246, 0.14); color: #1d4ed8; }
+.icon-success { background: rgba(16, 185, 129, 0.16); color: #047857; }
+.icon-warn { background: rgba(249, 115, 22, 0.16); color: #c2410c; }
+.icon-accent { background: rgba(129, 140, 248, 0.18); color: #4338ca; }
+.icon-neutral { background: rgba(148, 163, 184, 0.16); color: #475569; }
+
+.trend-icon { font-size: 16px; vertical-align: middle; }
+.trend-up { color: #047857; display: inline-flex; align-items: center; gap: 4px; }
+.trend-down { color: #b91c1c; display: inline-flex; align-items: center; gap: 4px; }
+.trend-neutral { color: var(--color-text-muted); display: inline-flex; align-items: center; gap: 4px; }

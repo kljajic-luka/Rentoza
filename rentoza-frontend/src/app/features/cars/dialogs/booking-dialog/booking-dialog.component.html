@@ -330,13 +330,16 @@
         !pickupLocationValid()
       "
     >
-      @if (isSubmitting()) {
-      <mat-spinner diameter="20"></mat-spinner>
-      <span>Slanje zahteva...</span>
-      } @else {
-      <mat-icon>send</mat-icon>
-      <span>Pošalji zahtev za rezervaciju</span>
-      }
+      <ng-container matButtonIcon>
+        @if (isSubmitting()) {
+        <mat-spinner diameter="20"></mat-spinner>
+        } @else {
+        <mat-icon>send</mat-icon>
+        }
+      </ng-container>
+      <span
+        >@if (isSubmitting()) { Slanje zahteva... } @else { Pošalji zahtev za rezervaciju }</span
+      >
     </button>
   </mat-dialog-actions>
 </div>

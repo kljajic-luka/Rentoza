@@ -54,6 +54,9 @@ public class CachingConfig implements WebMvcConfigurer {
             // Review data caches
             new ConcurrentMapCache("reviews"),
             
+            // Admin data caches
+            new ConcurrentMapCache("adminMetrics"),   // Dashboard KPIs (5min TTL)
+            
             // Geocoding caches (Phase 2.4)
             new ConcurrentMapCache("geocodeCache"),
             new ConcurrentMapCache("reverseGeocodeCache"),

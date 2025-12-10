@@ -1,0 +1,92 @@
+<div class="admin-page">
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">Hello, Admin 👋</h1>
+      <p class="page-subtitle">Here's what's happening with Rentoza today.</p>
+    </div>
+    <div class="inline-actions">
+      <button mat-stroked-button color="primary" (click)="refresh()">
+        <mat-icon>refresh</mat-icon>
+        Refresh
+      </button>
+      <button mat-flat-button color="primary">
+        <mat-icon>download</mat-icon>
+        Export Snapshot
+      </button>
+    </div>
+  </div>
+
+  <div *ngIf="loading$ | async" class="surface-card surface-roomy row between">
+    <span class="muted">Loading dashboard data…</span>
+    <mat-progress-spinner mode="indeterminate" diameter="32"></mat-progress-spinner>
+  </div>
+
+  <div *ngIf="error$ | async as err" class="surface-card surface-roomy error-block">
+    <span class="muted">{{ err }}</span>
+    <button mat-icon-button color="primary" (click)="refresh()" aria-label="Retry">
+      <mat-icon>refresh</mat-icon>
+    </button>
+  </div>
+
+  <div *ngIf="kpis$ | async as kpis" class="grid-auto" style="margin-bottom: 20px">
+    <app-kpi-card
+      title="Total Revenue"
+      [value]="(kpis.totalRevenueThisMonth | currency : 'RSD' : 'symbol' : '1.0-0') || '0'"
+      icon="payments"
+      iconTint="success"
+      [trend]="kpis.revenueGrowthPercent + '% vs last month'"
+      [trendDirection]="kpis.revenueGrowthPercent >= 0 ? 'up' : 'down'"
+    >
+    </app-kpi-card>
+
+    <app-kpi-card
+      title="Active Trips"
+      [value]="kpis.activeTripsCount"
+      icon="directions_car"
+      iconTint="info"
+      trend="Live rentals"
+      trendDirection="neutral"
+    >
+    </app-kpi-card>
+
+    <app-kpi-card
+      title="Pending Approvals"
+      [value]="kpis.pendingApprovalsCount"
+      icon="pending_actions"
+      iconTint="warn"
+      trend="Requires attention"
+      trendDirection="neutral"
+    >
+    </app-kpi-card>
+
+    <app-kpi-card
+      title="Platform Health"
+      [value]="kpis.platformHealthScore + '%'"
+      icon="health_and_safety"
+      iconTint="accent"
+      trend="System uptime"
+      trendDirection="neutral"
+    >
+    </app-kpi-card>
+  </div>
+
+  <section class="section-block">
+    <app-dashboard-charts></app-dashboard-charts>
+
+    <div class="surface-card surface-wide">
+      <div class="card-toolbar">
+        <div>
+          <p class="section-heading">Recent Bookings</p>
+          <p class="muted">Fast glance at the latest activity</p>
+        </div>
+        <button mat-button color="primary">View all</button>
+      </div>
+      <div class="card-banner">
+        <div class="row between">
+          <span class="muted">Data pipeline is not yet connected.</span>
+          <button mat-stroked-button color="primary" disabled>Coming soon</button>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>

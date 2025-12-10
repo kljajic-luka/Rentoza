@@ -1,121 +1,127 @@
-<mat-sidenav-container class="layout-container" autosize>
-  <mat-sidenav
-    #sidenav
-    class="layout-sidenav"
-    [mode]="isMobile ? 'over' : 'side'"
-    [opened]="!isMobile"
-  >
-    <div class="sidenav-shell">
-      <div class="logo">
-        <img src="assets/zora_logo.png" alt="Rentoza Logo" class="logo__image" />
-        <div class="logo__copy">
-          <span class="logo__title">Rentoza</span>
-          <small class="logo__subtitle">Doživite vožnju na viši način</small>
-        </div>
-      </div>
-
-      <mat-nav-list class="sidenav-nav">
-        <ng-container *ngIf="currentUser$ | async as user; else guestLinks">
-          <a
-            mat-list-item
-            *ngFor="let link of getNavigationLinks(user)"
-            [routerLink]="link.route"
-            routerLinkActive="active"
-            (click)="navigate(link.route)"
-            [class.hidden]="!canShowLink(link, user)"
-          >
-            <mat-icon matListItemIcon>{{ link.icon }}</mat-icon>
-            <span matListItemTitle>{{ link.label }}</span>
-          </a>
-        </ng-container>
-        <ng-template #guestLinks>
-          <a mat-list-item (click)="navigate('/pocetna')">
-            <mat-icon matListItemIcon>home</mat-icon>
-            <span matListItemTitle>Početna</span>
-          </a>
-          <a mat-list-item (click)="navigate('/vozila')">
-            <mat-icon matListItemIcon>directions_car</mat-icon>
-            <span matListItemTitle>Vozila</span>
-          </a>
-        </ng-template>
-      </mat-nav-list>
-
-      <div class="sidenav-footer">
-        <div class="theme-toggle-row">
-          <app-theme-toggle />
-          <span>{{ themeService.theme() === 'light' ? 'Tamna tema' : 'Svetla tema' }}</span>
+<ng-container *ngIf="!isAdminRoute; else adminLayout">
+  <mat-sidenav-container class="layout-container" autosize>
+    <mat-sidenav
+      #sidenav
+      class="layout-sidenav"
+      [mode]="isMobile ? 'over' : 'side'"
+      [opened]="!isMobile"
+    >
+      <div class="sidenav-shell">
+        <div class="logo">
+          <img src="assets/zora_logo.png" alt="Rentoza Logo" class="logo__image" />
+          <div class="logo__copy">
+            <span class="logo__title">Rentoza</span>
+            <small class="logo__subtitle">Doživite vožnju na viši način</small>
+          </div>
         </div>
 
-        <ng-container *ngIf="isAuthenticated$ | async; else guestFooter">
-          <div class="footer-actions">
-            <button mat-flat-button color="primary" (click)="navigate('/users/profile')">
-              <span>Profil</span>
-            </button>
-            <button mat-stroked-button color="warn" (click)="logout()">
-              <span>Odjavi se</span>
-            </button>
-          </div>
-        </ng-container>
-
-        <ng-template #guestFooter>
-          <div class="footer-actions">
-            <button
-              mat-flat-button
-              color="primary"
-              class="footer-actions__btn"
-              (click)="navigate('/auth/login')"
+        <mat-nav-list class="sidenav-nav">
+          <ng-container *ngIf="currentUser$ | async as user; else guestLinks">
+            <a
+              mat-list-item
+              *ngFor="let link of getNavigationLinks(user)"
+              [routerLink]="link.route"
+              routerLinkActive="active"
+              (click)="navigate(link.route)"
+              [class.hidden]="!canShowLink(link, user)"
             >
-              <span>Prijavi se</span>
-            </button>
-            <button
-              mat-stroked-button
-              color="primary"
-              class="footer-actions__btn"
-              (click)="navigate('/auth/register')"
-            >
-              <span>Registruj se</span>
-            </button>
-          </div>
-        </ng-template>
-      </div>
-    </div>
-  </mat-sidenav>
+              <mat-icon matListItemIcon>{{ link.icon }}</mat-icon>
+              <span matListItemTitle>{{ link.label }}</span>
+            </a>
+          </ng-container>
+          <ng-template #guestLinks>
+            <a mat-list-item (click)="navigate('/pocetna')">
+              <mat-icon matListItemIcon>home</mat-icon>
+              <span matListItemTitle>Početna</span>
+            </a>
+            <a mat-list-item (click)="navigate('/vozila')">
+              <mat-icon matListItemIcon>directions_car</mat-icon>
+              <span matListItemTitle>Vozila</span>
+            </a>
+          </ng-template>
+        </mat-nav-list>
 
-  <mat-sidenav-content class="layout-content">
-    <mat-toolbar color="primary" class="layout-toolbar elevation">
-      <button
-        mat-icon-button
-        type="button"
-        *ngIf="isMobile"
-        (click)="sidenav.toggle()"
-        aria-label="Uključi meni navigacije"
-      >
-        <mat-icon>menu</mat-icon>
-      </button>
-      <div class="toolbar-title" (click)="navigate('/')">
-        <span>Rentoza Rent a Car</span>
+        <div class="sidenav-footer">
+          <div class="theme-toggle-row">
+            <app-theme-toggle />
+            <span>{{ themeService.theme() === 'light' ? 'Tamna tema' : 'Svetla tema' }}</span>
+          </div>
+
+          <ng-container *ngIf="isAuthenticated$ | async; else guestFooter">
+            <div class="footer-actions">
+              <button mat-flat-button color="primary" (click)="navigate('/users/profile')">
+                <span>Profil</span>
+              </button>
+              <button mat-stroked-button color="warn" (click)="logout()">
+                <span>Odjavi se</span>
+              </button>
+            </div>
+          </ng-container>
+
+          <ng-template #guestFooter>
+            <div class="footer-actions">
+              <button
+                mat-flat-button
+                color="primary"
+                class="footer-actions__btn"
+                (click)="navigate('/auth/login')"
+              >
+                <span>Prijavi se</span>
+              </button>
+              <button
+                mat-stroked-button
+                color="primary"
+                class="footer-actions__btn"
+                (click)="navigate('/auth/register')"
+              >
+                <span>Registruj se</span>
+              </button>
+            </div>
+          </ng-template>
+        </div>
       </div>
-      <span class="spacer"></span>
-      <ng-container *ngIf="currentUser$ | async as user; else guestSearchBtn">
+    </mat-sidenav>
+
+    <mat-sidenav-content class="layout-content">
+      <mat-toolbar color="primary" class="layout-toolbar elevation">
         <button
-          *ngIf="canShowSearchButton(user)"
-          mat-stroked-button
-          color="accent"
-          class="toolbar-cta"
-          (click)="navigate('/cars')"
+          mat-icon-button
+          type="button"
+          *ngIf="isMobile"
+          (click)="sidenav.toggle()"
+          aria-label="Uključi meni navigacije"
         >
-          <span>Pretraži vozila</span>
+          <mat-icon>menu</mat-icon>
         </button>
-      </ng-container>
-      <ng-template #guestSearchBtn>
-        <button mat-stroked-button color="accent" class="toolbar-cta" (click)="navigate('/cars')">
-          <span>Pretraži vozila</span>
-        </button>
-      </ng-template>
-    </mat-toolbar>
+        <div class="toolbar-title" (click)="navigate('/')">
+          <span>Rentoza Rent a Car</span>
+        </div>
+        <span class="spacer"></span>
+        <ng-container *ngIf="currentUser$ | async as user; else guestSearchBtn">
+          <button
+            *ngIf="canShowSearchButton(user)"
+            mat-stroked-button
+            color="accent"
+            class="toolbar-cta"
+            (click)="navigate('/cars')"
+          >
+            <span>Pretraži vozila</span>
+          </button>
+        </ng-container>
+        <ng-template #guestSearchBtn>
+          <button mat-stroked-button color="accent" class="toolbar-cta" (click)="navigate('/cars')">
+            <span>Pretraži vozila</span>
+          </button>
+        </ng-template>
+      </mat-toolbar>
 
-    <section class="layout-router">
-      <router-outlet />
-    </section>
-  </mat-sidenav-content>
-</mat-sidenav-container>
+      <section class="layout-router">
+        <router-outlet />
+      </section>
+    </mat-sidenav-content>
+  </mat-sidenav-container>
+</ng-container>
+
+<ng-template #adminLayout>
+    <router-outlet />
+</ng-template>

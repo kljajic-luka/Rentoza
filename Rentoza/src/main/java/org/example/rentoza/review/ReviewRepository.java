@@ -148,4 +148,31 @@ public interface ReviewRepository extends JpaRepository<Review, Long> {
             @Param("requesterId") Long requesterId,
             @Param("direction") ReviewDirection direction
     );
+
+    // ========== ADMIN MANAGEMENT QUERIES ==========
+
+    /**
+     * Anonymize reviews given by a user.
+     * Sets reviewer to null for GDPR compliance on user deletion.
+     * Review content is preserved but no longer linked to the deleted user.
+     * 
+     * @param reviewerId ID of the reviewer being deleted
+     * @return Number of reviews anonymized
+     */
+    @org.springframework.data.jpa.repository.Modifying
+    @Query("UPDATE Review r SET r.reviewer = NULL WHERE r.reviewer.id = :reviewerId")
+    int anonymizeReviewsByReviewerId(@Param("reviewerId") Long reviewerId);
+
+    /**
+     * Anonymize reviews received by a user.
+     * Sets reviewee to null for GDPR compliance on user deletion.
+     * Review content is preserved but no longer linked to the deleted user.
+     * 
+     * @param revieweeId ID of the reviewee being deleted
+     * @return Number of reviews anonymized
+     */
+    @org.springframework.data.jpa.repository.Modifying
+    @Query("UPDATE Review r SET r.reviewee = NULL WHERE r.reviewee.id = :revieweeId")
+    int anonymizeReviewsByRevieweeId(@Param("revieweeId") Long revieweeId);
 }
+

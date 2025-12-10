@@ -26,11 +26,13 @@
         [disabled]="isGeolocating()"
         class="action-btn"
       >
-        @if (isGeolocating()) {
-        <mat-spinner diameter="18"></mat-spinner>
-        } @else {
-        <mat-icon>my_location</mat-icon>
-        }
+        <ng-container matButtonIcon>
+          @if (isGeolocating()) {
+          <mat-spinner diameter="18"></mat-spinner>
+          } @else {
+          <mat-icon>my_location</mat-icon>
+          }
+        </ng-container>
         <span>Moja lokacija</span>
       </button>
 
@@ -119,13 +121,14 @@
         [disabled]="!hasValidLocation() || isSearching()"
         class="search-btn"
       >
-        @if (isSearching()) {
-        <mat-spinner diameter="20"></mat-spinner>
-        <span>Pretraga...</span>
-        } @else {
-        <mat-icon>search</mat-icon>
-        <span>Pretraži</span>
-        }
+        <ng-container matButtonIcon>
+          @if (isSearching()) {
+          <mat-spinner diameter="20"></mat-spinner>
+          } @else {
+          <mat-icon>search</mat-icon>
+          }
+        </ng-container>
+        <span>@if (isSearching()) { Pretraga... } @else { Pretraži }</span>
       </button>
     </div>
   </div>

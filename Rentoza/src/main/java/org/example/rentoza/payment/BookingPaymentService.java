@@ -328,6 +328,75 @@ public class BookingPaymentService {
 
         return result;
     }
+    
+    // ========== HOST PAYOUT (Admin-triggered) ==========
+    
+    /**
+     * Process host payout after booking completion.
+     * Called by AdminFinancialService for batch payouts.
+     * 
+     * @param booking Completed booking
+     * @param batchReference Batch payout reference for tracking
+     * @return Payment result
+     */
+    @Transactional
+    public PaymentResult processHostPayout(Booking booking, String batchReference) {
+        log.info("[Payment] Processing host payout for booking {}, batch: {}", 
+                 booking.getId(), batchReference);
+        
+        // Calculate host payout (total - platform fee)
+        BigDecimal platformFeeRate = new BigDecimal("0.15"); // 15% platform fee
+        BigDecimal platformFee = booking.getTotalAmount().multiply(platformFeeRate);
+        BigDecimal hostPayout = booking.getTotalAmount().subtract(platformFee);
+        
+        // For now, simulate payout (in production, integrate with payment gateway)
+        PaymentResult result = PaymentResult.builder()
+            .success(true)
+            .transactionId(batchReference + "_" + booking.getId())
+            .amount(hostPayout)
+            .currency(DEFAULT_CURRENCY)
+            .status(PaymentStatus.SUCCESS)
+            .build();
+        
+        // Update booking with payout reference
+        booking.setPaymentReference(batchReference);
+        bookingRepository.save(booking);
+        
+        paymentSuccessCounter.increment();
+        log.info("[Payment] Host payout processed: {} RSD to host {}", 
+                 hostPayout, booking.getCar().getOwner().getId());
+        
+        return result;
+    }
+    
+    /**
+     * Process dispute payment after admin approval.
+     * Called by AdminDisputeService when damage claim is approved.
+     * 
+     * @param claim Approved damage claim
+     * @return Payment result
+     */
+    @Transactional
+    public PaymentResult processDisputePayment(DamageClaim claim) {
+        log.info("[Payment] Processing dispute payment for claim {}", claim.getId());
+        
+        BigDecimal amount = claim.getApprovedAmount();
+        
+        // Charge guest for approved damage amount
+        // In production, integrate with payment gateway
+        PaymentResult result = PaymentResult.builder()
+            .success(true)
+            .transactionId("DISPUTE_" + claim.getId() + "_" + System.currentTimeMillis())
+            .amount(amount)
+            .currency(DEFAULT_CURRENCY)
+            .status(PaymentStatus.SUCCESS)
+            .build();
+        
+        paymentSuccessCounter.increment();
+        log.info("[Payment] Dispute payment processed: {} RSD for claim {}", amount, claim.getId());
+        
+        return result;
+    }
 
     // ========== HELPERS ==========
 
@@ -336,5 +405,7 @@ public class BookingPaymentService {
                 .orElseThrow(() -> new ResourceNotFoundException("Rezervacija nije pronađena"));
     }
 }
+
+
 
 

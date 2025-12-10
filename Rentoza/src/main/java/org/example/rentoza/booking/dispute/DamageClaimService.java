@@ -372,11 +372,14 @@ public class DamageClaimService {
             case PENDING -> "Na čekanju";
             case ACCEPTED_BY_GUEST -> "Prihvaćeno";
             case DISPUTED -> "Osporeno - čeka pregled";
+            case ESCALATED -> "Eskaliran - čeka pregled viših nadležnih";
             case AUTO_APPROVED -> "Automatski odobreno";
             case ADMIN_APPROVED -> "Odobreno";
             case ADMIN_REJECTED -> "Odbijeno";
             case PAID -> "Plaćeno";
             case CANCELLED -> "Otkazano";
+            case REQUIRES_MANUAL_REVIEW -> "Zahteva ručni pregled";
+            case ARCHIVED -> "Arhivirano";
         };
 
         return DamageClaimDTO.builder()

@@ -60,6 +60,19 @@ export class RoleRedirectGuard implements CanActivate {
           return this.router.createUrlTree(['/pocetna']);
         }
 
+        // ✅ CHECK ADMIN ROLE FIRST - ADMIN users should always access /admin routes
+        const isAdmin = user.roles?.includes('ADMIN') ?? false;
+        if (isAdmin && currentPath.startsWith('/admin')) {
+          console.log('✅ RoleRedirectGuard: ADMIN user accessing /admin - allowing access');
+          return true;  // Allow ADMIN access to admin routes
+        }
+
+        // ✅ Deny non-admin access to /admin routes
+        if (!isAdmin && currentPath.startsWith('/admin')) {
+          console.log('🚫 RoleRedirectGuard: Non-admin user accessing /admin - redirecting to /pocetna');
+          return this.router.createUrlTree(['/pocetna']);
+        }
+
         // ✅ Check backend-verified roles
         const isOwner = user.roles?.includes('OWNER') ?? false;
         const isUser = user.roles?.includes('USER') ?? false;

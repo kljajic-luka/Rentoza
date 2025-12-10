@@ -90,6 +90,9 @@ public class Booking {
 
     @Column(name = "approved_at")
     private LocalDateTime approvedAt;
+    
+    @Column(name = "updated_at")
+    private Instant updatedAt;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "declined_by")
@@ -107,6 +110,9 @@ public class Booking {
     // Payment simulation placeholders
     @Column(name = "payment_verification_ref", length = 100)
     private String paymentVerificationRef;
+    
+    @Column(name = "payment_reference", length = 100)
+    private String paymentReference;
 
     @Column(name = "payment_status", length = 20)
     private String paymentStatus = "PENDING"; // PENDING, AUTHORIZED, RELEASED
@@ -565,9 +571,17 @@ public class Booking {
     }
 
     /**
-     * Calculate total mileage driven during the trip.
-     * Returns null if odometer readings are not available.
-     */
+      * Get the total amount for this booking.
+      * Alias for totalPrice to maintain compatibility.
+      */
+    public BigDecimal getTotalAmount() {
+        return totalPrice;
+    }
+
+    /**
+      * Calculate total mileage driven during the trip.
+      * Returns null if odometer readings are not available.
+      */
     public Integer getTotalMileage() {
         if (startOdometer == null || endOdometer == null) {
             return null;
@@ -583,8 +597,15 @@ public class Booking {
     }
 
     /**
-     * Check if the checkout window is currently open.
-     */
+      * Get the updated timestamp for this booking.
+      */
+    public Instant getUpdatedAt() {
+        return updatedAt;
+    }
+
+    /**
+      * Check if the checkout window is currently open.
+      */
     public boolean isCheckoutWindowOpen() {
         return status == BookingStatus.CHECKOUT_OPEN
             || status == BookingStatus.CHECKOUT_GUEST_COMPLETE

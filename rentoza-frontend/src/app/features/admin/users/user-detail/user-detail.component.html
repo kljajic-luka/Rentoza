@@ -1,0 +1,136 @@
+<div class="admin-page">
+  <button mat-button color="primary" class="back-btn" (click)="goBack()">
+    <mat-icon>arrow_back</mat-icon>
+    Back to Users
+  </button>
+
+  <div *ngIf="loading$ | async" class="loading-block">
+    <mat-spinner diameter="48"></mat-spinner>
+  </div>
+
+  <div *ngIf="!(loading$ | async) && (user$ | async) as user" class="detail-grid">
+    <div class="profile-column">
+      <mat-card class="surface-card surface-wide profile-card">
+        <div class="profile-hero"></div>
+        <div class="profile-body">
+          <div class="avatar-large">{{ user.firstName[0] }}{{ user.lastName[0] }}</div>
+          <div class="stack" style="gap: 4px">
+            <h2 class="section-heading">{{ user.firstName }} {{ user.lastName }}</h2>
+            <span class="muted">{{ user.email }}</span>
+            <span class="muted" *ngIf="user.phone">{{ user.phone }}</span>
+          </div>
+
+          <div class="row wrap">
+            <span class="chip-pill" [ngClass]="user.role === 'ADMIN' ? 'warn' : 'primary'">{{
+              user.role
+            }}</span>
+            <span *ngIf="user.banned" class="badge badge-error">Banned</span>
+            <span *ngIf="!user.banned" class="badge badge-success">Active</span>
+          </div>
+
+          <div class="risk-panel">
+            <div class="row between">
+              <span class="mini-label">Risk score</span>
+              <span
+                class="risk-score"
+                [ngClass]="user.riskScore && user.riskScore > 60 ? 'risk-high' : 'risk-low'"
+                >{{ user.riskScore }}/100</span
+              >
+            </div>
+            <div class="risk-bar">
+              <div
+                class="risk-fill"
+                [style.width.%]="user.riskScore || 0"
+                [ngClass]="{
+                  'risk-low': (user.riskScore || 0) < 30,
+                  'risk-med': (user.riskScore || 0) >= 30 && (user.riskScore || 0) < 70,
+                  'risk-high': (user.riskScore || 0) >= 70
+                }"
+              ></div>
+            </div>
+          </div>
+
+          <div class="stack" style="margin-top: 12px">
+            <button *ngIf="!user.banned" mat-flat-button color="warn" (click)="openBanDialog()">
+              <mat-icon>block</mat-icon>
+              Ban User
+            </button>
+            <button *ngIf="user.banned" mat-flat-button color="primary" (click)="unbanUser()">
+              <mat-icon>check_circle</mat-icon>
+              Unban User
+            </button>
+            <button mat-stroked-button color="warn">
+              <mat-icon>delete_forever</mat-icon>
+              Delete Account
+            </button>
+          </div>
+        </div>
+      </mat-card>
+
+      <mat-card class="surface-card surface-roomy">
+        <mat-card-header>
+          <mat-icon mat-card-avatar>info</mat-icon>
+          <mat-card-title>Details</mat-card-title>
+        </mat-card-header>
+        <mat-card-content class="stack">
+          <div class="row between">
+            <span class="muted">Member Since</span>
+            <span class="strong">Dec 2024</span>
+          </div>
+          <div class="row between">
+            <span class="muted">Last Login</span>
+            <span class="strong">Yesterday</span>
+          </div>
+          <div class="row between">
+            <span class="muted">ID Verification</span>
+            <span class="badge badge-success">Verified</span>
+          </div>
+        </mat-card-content>
+      </mat-card>
+    </div>
+
+    <div class="content-column">
+      <div class="stat-grid">
+        <div class="stat-tile">
+          <div class="stat-value">{{ user.totalBookings || 0 }}</div>
+          <div class="stat-label">Bookings</div>
+        </div>
+        <div class="stat-tile">
+          <div class="stat-value">{{ user.completedBookings || 0 }}</div>
+          <div class="stat-label">Completed</div>
+        </div>
+        <div class="stat-tile">
+          <div class="stat-value">{{ user.cancelledBookings || 0 }}</div>
+          <div class="stat-label">Cancelled</div>
+        </div>
+        <div class="stat-tile">
+          <div class="stat-value">0</div>
+          <div class="stat-label">Disputes</div>
+        </div>
+      </div>
+
+      <mat-card class="surface-card surface-wide">
+        <mat-tab-group>
+          <mat-tab label="Recent Bookings">
+            <div class="empty-tab">
+              <mat-icon>event_note</mat-icon>
+              <p>No recent bookings found.</p>
+            </div>
+          </mat-tab>
+          <mat-tab label="Cars (Owner)" *ngIf="user.role !== 'USER'">
+            <div class="empty-tab">
+              <mat-icon>directions_car</mat-icon>
+              <p>No cars listed.</p>
+            </div>
+          </mat-tab>
+          <mat-tab label="Audit Log">
+            <div class="empty-tab">
+              <mat-icon>history</mat-icon>
+              <p>No audit history available.</p>
+            </div>
+          </mat-tab>
+        </mat-tab-group>
+      </mat-card>
+    </div>
+  </div>
+</div>

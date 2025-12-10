@@ -272,8 +272,8 @@
           <h3>{{ car.brand }} {{ car.model }}</h3>
           <p class="meta">
             <mat-icon class="meta-icon">place</mat-icon>
-            {{ car.locationGeoPoint?.city || 'Srbija' }}
-            <span *ngIf="car.locationGeoPoint?.obfuscationApplied" class="approx-location">
+            {{ car.locationGeoPoint.city || 'Srbija' }}
+            <span *ngIf="car.locationGeoPoint.obfuscationApplied" class="approx-location">
               (približna lokacija)
             </span>
           </p>

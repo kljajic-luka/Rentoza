@@ -11,7 +11,7 @@ import java.util.Optional;
 /**
  * Repository for damage claims.
  */
-public interface DamageClaimRepository extends JpaRepository<DamageClaim, Long> {
+public interface DamageClaimRepository extends JpaRepository<DamageClaim, Long>, org.springframework.data.jpa.repository.JpaSpecificationExecutor<DamageClaim> {
 
     /**
      * Find claim by booking ID.
@@ -64,6 +64,27 @@ public interface DamageClaimRepository extends JpaRepository<DamageClaim, Long> 
      */
     @Query("SELECT COUNT(c) FROM DamageClaim c WHERE c.status = 'DISPUTED'")
     long countAwaitingReview();
+
+    // ========== ADMIN MANAGEMENT QUERIES ==========
+
+    /**
+     * Count claims filed against a guest (renter).
+     * Used for admin user risk scoring.
+     * 
+     * @param guestId Guest's user ID
+     * @return Total claim count against the guest
+     */
+    @Query("SELECT COUNT(c) FROM DamageClaim c WHERE c.guest.id = :guestId")
+    long countByGuestId(@Param("guestId") Long guestId);
+
+    /**
+     * Count open disputes requiring admin attention.
+     * Used for admin dashboard KPI.
+     * 
+     * @return Number of open disputes
+     */
+    @Query("SELECT COUNT(c) FROM DamageClaim c WHERE c.status IN ('PENDING', 'DISPUTED')")
+    Long countOpenDisputes();
 }
 
 

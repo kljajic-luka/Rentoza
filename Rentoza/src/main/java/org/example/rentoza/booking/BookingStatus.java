@@ -42,6 +42,12 @@ public enum BookingStatus {
     /** Host approved, trip is scheduled (waiting for T-24h check-in window) */
     ACTIVE,
     
+    /** Booking approved by host (legacy/alternative status name) */
+    APPROVED,
+    
+    /** Booking awaiting guest checkout payment */
+    PENDING_CHECKOUT,
+    
     /** Host declined the booking request */
     DECLINED,
     

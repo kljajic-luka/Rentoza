@@ -40,6 +40,11 @@ public enum DamageClaimStatus {
     AUTO_APPROVED,
     
     /**
+     * Claim has been escalated to senior admin review.
+     */
+    ESCALATED,
+    
+    /**
      * Admin reviewed and approved the claim.
      */
     ADMIN_APPROVED,
@@ -55,13 +60,23 @@ public enum DamageClaimStatus {
     PAID,
     
     /**
-     * Claim was cancelled by the host.
-     */
-    CANCELLED;
+      * Claim was cancelled by the host.
+      */
+    CANCELLED,
     
     /**
-     * Check if the claim is still open (awaiting action).
-     */
+      * Claim requires manual review by senior admin.
+      */
+    REQUIRES_MANUAL_REVIEW,
+    
+    /**
+      * Claim has been archived (historical record).
+      */
+    ARCHIVED;
+    
+    /**
+      * Check if the claim is still open (awaiting action).
+      */
     public boolean isOpen() {
         return this == PENDING || this == DISPUTED;
     }

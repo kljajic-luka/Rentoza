@@ -29,6 +29,11 @@ export class RedirectService {
       return '/';
     }
 
+    // Admins have highest priority
+    if (user.roles.includes('ADMIN')) {
+      return '/admin/dashboard';
+    }
+
     // Owners (hosts) have priority - they go to owner dashboard
     if (user.roles.includes('OWNER')) {
       return '/owner';

@@ -24,6 +24,7 @@ import { provideNativeDateAdapter } from '@angular/material/core';
 import { provideServiceWorker } from '@angular/service-worker';
 import { JwtModule } from '@auth0/angular-jwt';
 import { provideToastr } from 'ngx-toastr';
+import { provideCharts, withDefaultRegisterables } from 'ng2-charts';
 
 import { App } from './app/app';
 import { routes } from './app/app.routes';
@@ -113,5 +114,6 @@ bootstrapApplication(App, {
       enabled: !isDevMode(),
       registrationStrategy: 'registerWhenStable:30000',
     }),
+    provideCharts(withDefaultRegisterables()),
   ],
 }).catch((err) => console.error(err));

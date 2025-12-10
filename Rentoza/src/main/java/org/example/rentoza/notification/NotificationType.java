@@ -137,8 +137,18 @@ public enum NotificationType {
     LATE_RETURN_DETECTED,
 
     /**
-     * Triggered as a reminder to complete checkout.
-     * Sent to guest who hasn't returned the vehicle.
+      * Triggered as a reminder to complete checkout.
+      * Sent to guest who hasn't returned the vehicle.
+      */
+    CHECKOUT_REMINDER,
+
+    // ==========================================================================
+    // DISPUTE & DAMAGE CLAIM NOTIFICATIONS
+    // ==========================================================================
+
+    /**
+     * Triggered when a dispute/damage claim is resolved by admin.
+     * Sent to both guest (renter) and host (owner).
      */
-    CHECKOUT_REMINDER
-}
+    DISPUTE_RESOLVED
+    }

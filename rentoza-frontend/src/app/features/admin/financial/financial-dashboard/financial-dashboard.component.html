@@ -1,0 +1,197 @@
+<div class="financial-dashboard">
+  <!-- Escrow Balance Cards -->
+  @if (escrowBalance()) {
+  <div class="balance-cards">
+    <mat-card class="balance-card">
+      <mat-card-content>
+        <div class="card-icon total">
+          <mat-icon>account_balance</mat-icon>
+        </div>
+        <div class="card-info">
+          <h3>Total Escrow</h3>
+          <p class="amount">R {{ escrowBalance()!.totalEscrowBalance.toFixed(2) }}</p>
+          <small>{{ escrowBalance()!.activeBookingsCount }} active bookings</small>
+        </div>
+      </mat-card-content>
+    </mat-card>
+
+    <mat-card class="balance-card">
+      <mat-card-content>
+        <div class="card-icon pending">
+          <mat-icon>schedule</mat-icon>
+        </div>
+        <div class="card-info">
+          <h3>Pending Payouts</h3>
+          <p class="amount">R {{ escrowBalance()!.pendingPayouts.toFixed(2) }}</p>
+          <small>{{ escrowBalance()!.pendingPayoutsCount }} pending</small>
+        </div>
+      </mat-card-content>
+    </mat-card>
+
+    <mat-card class="balance-card">
+      <mat-card-content>
+        <div class="card-icon available">
+          <mat-icon>check_circle</mat-icon>
+        </div>
+        <div class="card-info">
+          <h3>Available Balance</h3>
+          <p class="amount">R {{ escrowBalance()!.availableBalance.toFixed(2) }}</p>
+          <small>Ready to process</small>
+        </div>
+      </mat-card-content>
+    </mat-card>
+  </div>
+  }
+
+  <!-- Payout Queue -->
+  <mat-card class="payout-queue-card">
+    <mat-card-header>
+      <mat-card-title>
+        <mat-icon>payments</mat-icon>
+        Payout Queue
+      </mat-card-title>
+    </mat-card-header>
+
+    <mat-card-content>
+      <!-- Batch Actions -->
+      @if (hasSelection()) {
+      <div class="batch-actions">
+        <span class="selection-info">
+          {{ selection.selected.length }} selected (R {{ selectedAmount().toFixed(2) }})
+        </span>
+        <button
+          mat-raised-button
+          color="accent"
+          (click)="processBatchPayouts(true)"
+          [disabled]="processing()"
+          matTooltip="Validate without processing"
+        >
+          <mat-icon>verified</mat-icon>
+          Dry Run
+        </button>
+        <button
+          mat-raised-button
+          color="primary"
+          (click)="processBatchPayouts(false)"
+          [disabled]="processing()"
+        >
+          <mat-icon>send</mat-icon>
+          Process Payouts
+        </button>
+      </div>
+      }
+
+      <!-- Loading -->
+      @if (loading()) {
+      <div class="loading-container">
+        <mat-spinner diameter="40"></mat-spinner>
+        <p>Loading payouts...</p>
+      </div>
+      }
+
+      <!-- Table -->
+      @if (!loading() && payouts().length > 0) {
+      <div class="table-container">
+        <table mat-table [dataSource]="payouts()">
+          <!-- Checkbox Column -->
+          <ng-container matColumnDef="select">
+            <th mat-header-cell *matHeaderCellDef>
+              <mat-checkbox
+                (change)="$event ? toggleAllRows() : null"
+                [checked]="selection.hasValue() && isAllSelected()"
+                [indeterminate]="selection.hasValue() && !isAllSelected()"
+              ></mat-checkbox>
+            </th>
+            <td mat-cell *matCellDef="let row">
+              <mat-checkbox
+                (click)="$event.stopPropagation()"
+                (change)="$event ? selection.toggle(row) : null"
+                [checked]="selection.isSelected(row)"
+              ></mat-checkbox>
+            </td>
+          </ng-container>
+
+          <!-- Booking ID -->
+          <ng-container matColumnDef="bookingId">
+            <th mat-header-cell *matHeaderCellDef>Booking</th>
+            <td mat-cell *matCellDef="let payout">#{{ payout.bookingId }}</td>
+          </ng-container>
+
+          <!-- Host Name -->
+          <ng-container matColumnDef="hostName">
+            <th mat-header-cell *matHeaderCellDef>Host</th>
+            <td mat-cell *matCellDef="let payout">
+              <div class="host-info">
+                <strong>{{ payout.hostName }}</strong>
+                <small>{{ payout.hostEmail }}</small>
+              </div>
+            </td>
+          </ng-container>
+
+          <!-- Amount -->
+          <ng-container matColumnDef="amount">
+            <th mat-header-cell *matHeaderCellDef>Amount</th>
+            <td mat-cell *matCellDef="let payout" class="amount-cell">
+              {{ formatCurrency(payout.amountCents) }}
+            </td>
+          </ng-container>
+
+          <!-- Scheduled For -->
+          <ng-container matColumnDef="scheduledFor">
+            <th mat-header-cell *matHeaderCellDef>Scheduled</th>
+            <td mat-cell *matCellDef="let payout">{{ formatDate(payout.payoutScheduledFor) }}</td>
+          </ng-container>
+
+          <!-- Status -->
+          <ng-container matColumnDef="status">
+            <th mat-header-cell *matHeaderCellDef>Status</th>
+            <td mat-cell *matCellDef="let payout">
+              <mat-chip [color]="payout.status === 'PENDING' ? 'accent' : 'warn'" highlighted>
+                {{ payout.status }}
+              </mat-chip>
+            </td>
+          </ng-container>
+
+          <!-- Actions -->
+          <ng-container matColumnDef="actions">
+            <th mat-header-cell *matHeaderCellDef>Actions</th>
+            <td mat-cell *matCellDef="let payout">
+              @if (payout.failureReason) {
+              <button
+                mat-icon-button
+                color="warn"
+                (click)="retryPayout(payout)"
+                matTooltip="Retry failed payout"
+              >
+                <mat-icon>refresh</mat-icon>
+              </button>
+              }
+            </td>
+          </ng-container>
+
+          <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+          <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
+        </table>
+
+        <mat-paginator
+          [length]="totalElements()"
+          [pageSize]="pageSize()"
+          [pageIndex]="pageIndex()"
+          [pageSizeOptions]="[10, 20, 50]"
+          (page)="onPageChange($event)"
+          showFirstLastButtons
+        ></mat-paginator>
+      </div>
+      }
+
+      <!-- Empty State -->
+      @if (!loading() && payouts().length === 0) {
+      <div class="empty-state">
+        <mat-icon>check_circle</mat-icon>
+        <h3>No Pending Payouts</h3>
+        <p>All payouts have been processed.</p>
+      </div>
+      }
+    </mat-card-content>
+  </mat-card>
+</div>

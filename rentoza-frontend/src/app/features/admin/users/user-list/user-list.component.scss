@@ -1,0 +1,37 @@
+.search-field {
+  width: min(480px, 100%);
+}
+
+.table-shell {
+  overflow-x: auto;
+}
+
+.risk-bar {
+  width: 120px;
+  height: 8px;
+  border-radius: 10px;
+  background: var(--color-surface-muted);
+  overflow: hidden;
+}
+
+.risk-fill {
+  height: 100%;
+  border-radius: 10px;
+  transition: width 160ms ease;
+}
+
+.risk-low { background: #10b981; }
+.risk-med { background: #f59e0b; }
+.risk-high { background: #ef4444; }
+
+.strong { font-weight: 700; }
+
+.mat-mdc-header-row, .mat-mdc-row { height: 56px; }
+.mat-mdc-row { cursor: pointer; }
+.mat-mdc-row:hover { background: rgba(59, 130, 246, 0.04); }
+
+.badge { text-transform: uppercase; }
+
+.chip-pill.primary { background: rgba(59, 130, 246, 0.14); color: #1d4ed8; }
+.chip-pill.warn { background: rgba(239, 68, 68, 0.14); color: #b91c1c; }
+.chip-pill.accent { background: rgba(99, 102, 241, 0.14); color: #4338ca; }

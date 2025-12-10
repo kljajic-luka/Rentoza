@@ -1,0 +1,163 @@
+<div class="admin-page">
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">User Management</h1>
+      <p class="page-subtitle">Monitor identities, risk, and actions in one place.</p>
+    </div>
+    <div class="inline-actions">
+      <button mat-stroked-button color="primary" (click)="exportUsers()">
+        <mat-icon>file_download</mat-icon>
+        Export CSV
+      </button>
+    </div>
+  </div>
+
+  <div class="surface-card surface-wide table-shell">
+    <div class="card-toolbar">
+      <mat-form-field appearance="outline" class="search-field">
+        <mat-icon matPrefix>search</mat-icon>
+        <input
+          matInput
+          placeholder="Search by name, email or phone"
+          [ngModel]="searchTerm"
+          (ngModelChange)="onSearch($event)"
+        />
+        <button
+          *ngIf="searchTerm"
+          matSuffix
+          mat-icon-button
+          (click)="onSearch('')"
+          aria-label="Clear search"
+        >
+          <mat-icon>close</mat-icon>
+        </button>
+      </mat-form-field>
+    </div>
+
+    <div *ngIf="loading$ | async" class="row between" style="padding: 14px 0">
+      <span class="muted">Fetching users…</span>
+      <mat-progress-spinner diameter="28" mode="indeterminate"></mat-progress-spinner>
+    </div>
+
+    <div *ngIf="!(loading$ | async)">
+      <ng-container *ngIf="users$ | async as users">
+        <table mat-table [dataSource]="users">
+          <ng-container matColumnDef="name">
+            <th mat-header-cell *matHeaderCellDef>User</th>
+            <td mat-cell *matCellDef="let user" (click)="viewUser(user.id)">
+              <div class="row">
+                <div class="avatar">{{ user.firstName[0] }}{{ user.lastName[0] }}</div>
+                <div class="stack" style="gap: 2px">
+                  <span class="strong">{{ user.firstName }} {{ user.lastName }}</span>
+                  <span class="muted mini-label">ID: {{ user.id }}</span>
+                </div>
+              </div>
+            </td>
+          </ng-container>
+
+          <ng-container matColumnDef="email">
+            <th mat-header-cell *matHeaderCellDef>Email</th>
+            <td mat-cell *matCellDef="let user">{{ user.email }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="role">
+            <th mat-header-cell *matHeaderCellDef>Role</th>
+            <td mat-cell *matCellDef="let user">
+              <span class="chip-pill" [ngClass]="getRoleColor(user.role)">{{ user.role }}</span>
+            </td>
+          </ng-container>
+
+          <ng-container matColumnDef="status">
+            <th mat-header-cell *matHeaderCellDef>Status</th>
+            <td mat-cell *matCellDef="let user">
+              <span *ngIf="user.banned" class="badge badge-error">Banned</span>
+              <span *ngIf="!user.banned" class="badge badge-success">Active</span>
+            </td>
+          </ng-container>
+
+          <ng-container matColumnDef="riskScore">
+            <th mat-header-cell *matHeaderCellDef>Risk</th>
+            <td mat-cell *matCellDef="let user">
+              <div class="row" *ngIf="user.riskScore !== undefined">
+                <div class="risk-bar">
+                  <div
+                    class="risk-fill"
+                    [style.width.%]="user.riskScore"
+                    [ngClass]="{
+                      'risk-low': user.riskScore < 30,
+                      'risk-med': user.riskScore >= 30 && user.riskScore < 70,
+                      'risk-high': user.riskScore >= 70
+                    }"
+                  ></div>
+                </div>
+                <span class="mini-label">{{ user.riskScore }}</span>
+              </div>
+            </td>
+          </ng-container>
+
+          <ng-container matColumnDef="actions">
+            <th mat-header-cell *matHeaderCellDef class="table-actions"></th>
+            <td mat-cell *matCellDef="let user">
+              <button
+                mat-icon-button
+                [matMenuTriggerFor]="menu"
+                (click)="$event.stopPropagation()"
+                aria-label="More actions"
+              >
+                <mat-icon>more_vert</mat-icon>
+              </button>
+              <mat-menu #menu="matMenu">
+                <button mat-menu-item (click)="viewUser(user.id)">
+                  <mat-icon>visibility</mat-icon>
+                  <span>View Details</span>
+                </button>
+                <button
+                  mat-menu-item
+                  *ngIf="!user.banned"
+                  (click)="banUser(user); $event.stopPropagation()"
+                >
+                  <mat-icon>block</mat-icon>
+                  <span>Ban User</span>
+                </button>
+                <button
+                  mat-menu-item
+                  *ngIf="user.banned"
+                  (click)="unbanUser(user); $event.stopPropagation()"
+                >
+                  <mat-icon>check_circle</mat-icon>
+                  <span>Unban User</span>
+                </button>
+              </mat-menu>
+            </td>
+          </ng-container>
+
+          <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+          <tr
+            mat-row
+            *matRowDef="let row; columns: displayedColumns"
+            (click)="viewUser(row.id)"
+          ></tr>
+
+          <tr class="mat-row" *matNoDataRow>
+            <td class="mat-cell" colspan="6">
+              <div class="row" style="justify-content: center; padding: 20px">
+                <mat-icon>search_off</mat-icon>
+                <span>No users found matching "{{ searchTerm }}"</span>
+              </div>
+            </td>
+          </tr>
+        </table>
+      </ng-container>
+    </div>
+
+    <mat-paginator
+      [length]="(totalElements$ | async) || 0"
+      [pageSize]="pageSize"
+      [pageIndex]="pageIndex"
+      [pageSizeOptions]="[5, 10, 20, 50]"
+      (page)="onPageChange($event)"
+      showFirstLastButtons
+    >
+    </mat-paginator>
+  </div>
+</div>

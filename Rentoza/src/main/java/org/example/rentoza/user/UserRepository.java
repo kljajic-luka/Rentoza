@@ -6,6 +6,8 @@ import org.springframework.data.jpa.repository.Query;
 import java.util.List;
 import java.util.Optional;
 
+@org.springframework.context.annotation.Primary
+@org.springframework.stereotype.Repository
 public interface UserRepository extends JpaRepository<User,Long> {
     Optional<User> findByEmail(String email);
     Optional<User> findByPhone(String phone);
@@ -31,4 +33,14 @@ public interface UserRepository extends JpaRepository<User,Long> {
      */
     @Query("SELECT u.banned FROM User u WHERE u.email = :email")
     Optional<Boolean> isUserBanned(String email);
+    
+    /**
+     * Find users created between dates (for cohort analysis).
+     */
+    @Query("SELECT u FROM User u WHERE u.createdAt BETWEEN :start AND :end")
+    List<User> findByCreatedAtBetween(
+        @org.springframework.data.repository.query.Param("start") java.time.Instant start,
+        @org.springframework.data.repository.query.Param("end") java.time.Instant end
+    );
 }
+

@@ -1,0 +1,94 @@
+.back-btn {
+  margin-bottom: 16px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.loading-block {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 320px;
+  background: radial-gradient(circle at 50% 50%, rgba(59, 130, 246, 0.06), transparent 55%);
+}
+
+.car-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+@media (min-width: 1024px) {
+  .car-grid {
+    grid-template-columns: 1.6fr 1fr;
+  }
+}
+
+.hero {
+  height: 360px;
+  border-radius: 18px;
+  background-size: cover;
+  background-position: center;
+  position: relative;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.9), rgba(30, 41, 59, 0.85)),
+    var(--color-surface-muted);
+  overflow: hidden;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 12px 36px -12px rgba(0, 0, 0, 0.25);
+}
+
+.hero-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 50% 40%, rgba(255, 255, 255, 0.08), transparent 60%);
+  color: rgba(255, 255, 255, 0.38);
+  font-size: 64px;
+}
+
+.car-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 16px 0 14px;
+}
+
+.spec-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.spec-grid > div {
+  padding: 12px;
+  border-radius: 10px;
+  background: rgba(59, 130, 246, 0.04);
+  border: 1px solid rgba(59, 130, 246, 0.12);
+  transition: all 160ms ease;
+}
+
+.spec-grid > div:hover {
+  background: rgba(59, 130, 246, 0.08);
+  border-color: rgba(59, 130, 246, 0.18);
+  transform: translateY(-1px);
+}
+
+.car-main,
+.car-side {
+  display: grid;
+  gap: 18px;
+  align-content: start;
+}
+
+.car-side mat-card {
+  position: sticky;
+  top: 20px;
+}
+
+mat-card-header .mat-mdc-card-avatar {
+  color: var(--icon-color);
+  opacity: 0.85;
+}

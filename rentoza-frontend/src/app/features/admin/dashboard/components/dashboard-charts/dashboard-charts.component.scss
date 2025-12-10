@@ -1,0 +1,18 @@
+.charts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.chart-card {
+  height: 100%;
+}
+
+.chart-card mat-card-content {
+  height: 260px;
+  position: relative;
+}
+
+.mat-mdc-card-header-text .mat-mdc-card-title {
+  font-weight: 700;
+}

@@ -86,7 +86,7 @@ public class AdminCarService {
      */
     @Transactional(readOnly = true)
     public List<AdminCarDto> getPendingCars() {
-        List<Car> pendingCars = carRepo.findByAvailableFalse();
+        List<Car> pendingCars = carRepo.findByApprovalStatus(org.example.rentoza.car.ApprovalStatus.PENDING);
         return pendingCars.stream()
                 .map(AdminCarDto::fromEntity)
                 .toList();
@@ -109,11 +109,16 @@ public class AdminCarService {
         String beforeState = auditService.toJson(AdminCarDto.fromEntity(car));
         
         // Approve (make available)
+        car.setApprovalStatus(org.example.rentoza.car.ApprovalStatus.APPROVED);
+        car.setApprovedBy(admin);
+        car.setApprovedAt(java.time.Instant.now());
         car.setAvailable(true);
-        carRepo.save(car);
+        car.setRejectionReason(null);
+        
+        Car saved = carRepo.save(car);
         
         // Capture after state
-        String afterState = auditService.toJson(AdminCarDto.fromEntity(car));
+        String afterState = auditService.toJson(AdminCarDto.fromEntity(saved));
         
         // Audit log
         auditService.logAction(
@@ -128,7 +133,7 @@ public class AdminCarService {
         
         log.info("Car {} approved by admin {}", carId, admin.getId());
         
-        return AdminCarDto.fromEntity(car);
+        return AdminCarDto.fromEntity(saved);
     }
     
     /**
@@ -153,11 +158,16 @@ public class AdminCarService {
         String beforeState = auditService.toJson(AdminCarDto.fromEntity(car));
         
         // Reject (keep unavailable)
+        car.setApprovalStatus(org.example.rentoza.car.ApprovalStatus.REJECTED);
+        car.setApprovedBy(admin);
+        car.setApprovedAt(java.time.Instant.now());
+        car.setRejectionReason(reason.trim());
         car.setAvailable(false);
-        carRepo.save(car);
+        
+        Car saved = carRepo.save(car);
         
         // Capture after state
-        String afterState = auditService.toJson(AdminCarDto.fromEntity(car));
+        String afterState = auditService.toJson(AdminCarDto.fromEntity(saved));
         
         // Audit log with reason
         auditService.logAction(
@@ -172,7 +182,7 @@ public class AdminCarService {
         
         log.info("Car {} rejected by admin {}. Reason: {}", carId, admin.getId(), reason);
         
-        return AdminCarDto.fromEntity(car);
+        return AdminCarDto.fromEntity(saved);
     }
     
     /**
@@ -198,16 +208,19 @@ public class AdminCarService {
         String beforeState = auditService.toJson(AdminCarDto.fromEntity(car));
         
         // Suspend (make unavailable)
+        car.setApprovalStatus(org.example.rentoza.car.ApprovalStatus.SUSPENDED);
+        car.setRejectionReason(reason.trim());
         car.setAvailable(false);
-        carRepo.save(car);
+        
+        Car saved = carRepo.save(car);
         
         // Capture after state
-        String afterState = auditService.toJson(AdminCarDto.fromEntity(car));
+        String afterState = auditService.toJson(AdminCarDto.fromEntity(saved));
         
         // Audit log with reason
         auditService.logAction(
             admin,
-            AdminAction.CAR_REMOVED,
+            org.example.rentoza.admin.entity.AdminAction.CAR_SUSPENDED,
             ResourceType.CAR,
             carId,
             beforeState,
@@ -217,7 +230,7 @@ public class AdminCarService {
         
         log.info("Car {} suspended by admin {}. Reason: {}", carId, admin.getId(), reason);
         
-        return AdminCarDto.fromEntity(car);
+        return AdminCarDto.fromEntity(saved);
     }
     
     /**
@@ -235,16 +248,19 @@ public class AdminCarService {
         String beforeState = auditService.toJson(AdminCarDto.fromEntity(car));
         
         // Reactivate
+        car.setApprovalStatus(org.example.rentoza.car.ApprovalStatus.APPROVED);
+        car.setRejectionReason(null);
         car.setAvailable(true);
-        carRepo.save(car);
+        
+        Car saved = carRepo.save(car);
         
         // Capture after state
-        String afterState = auditService.toJson(AdminCarDto.fromEntity(car));
+        String afterState = auditService.toJson(AdminCarDto.fromEntity(saved));
         
         // Audit log
         auditService.logAction(
             admin,
-            AdminAction.CAR_APPROVED,
+            org.example.rentoza.admin.entity.AdminAction.CAR_REACTIVATED,
             ResourceType.CAR,
             carId,
             beforeState,
@@ -254,7 +270,7 @@ public class AdminCarService {
         
         log.info("Car {} reactivated by admin {}", carId, admin.getId());
         
-        return AdminCarDto.fromEntity(car);
+        return AdminCarDto.fromEntity(saved);
     }
     
     /**

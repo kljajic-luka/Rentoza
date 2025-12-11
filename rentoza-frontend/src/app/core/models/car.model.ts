@@ -128,6 +128,22 @@ export interface Car {
   ownerJoinDate?: string;
   ownerRating?: number;
   ownerTripCount?: number;
+
+  // ✅ ADDED FOR APPROVAL WORKFLOW
+  approvalStatus?: ApprovalStatus;
+  rejectionReason?: string;
+  approvedAt?: string;
+  approvedBy?: string;
+}
+
+/**
+ * Approval status for car listings
+ */
+export enum ApprovalStatus {
+  PENDING = 'PENDING',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
+  SUSPENDED = 'SUSPENDED',
 }
 
 export interface CarSummary extends Car {

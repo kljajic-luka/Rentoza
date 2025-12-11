@@ -31,6 +31,10 @@ public enum AdminAction {
     CAR_FLAGGED,
     /** Car removed from platform */
     CAR_REMOVED,
+    /** Car suspended for policy violation */
+    CAR_SUSPENDED,
+    /** Car reactivated from suspension */
+    CAR_REACTIVATED,
     
     // ==================== BOOKINGS ====================
     /** Booking force-cancelled by admin */

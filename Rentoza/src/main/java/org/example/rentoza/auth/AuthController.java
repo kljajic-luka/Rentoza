@@ -186,18 +186,18 @@ public class AuthController {
         
         // SECURITY: Constant-time validation to prevent username enumeration via timing attacks
         // Always perform password check (even with dummy hash) to prevent timing differences
-//        String dummyHash = "$2a$10$dummyHashToPreventTimingAttacks1234567890123456789012345678901234";
-//        String passwordHash = (user != null) ? user.getPassword() : dummyHash;
-//
-//        // Always perform password check (constant time)
-//        boolean passwordMatches = passwordEncoder.matches(dto.getPassword(), passwordHash);
-//
-//        // SECURITY: Generic error message prevents email enumeration
-//        // Throw BadCredentialsException for both "user not found" and "wrong password"
-//        if (user == null || !passwordMatches) {
-//            log.warn("Failed login attempt: email={}", dto.getEmail());
-//            throw new BadCredentialsException("Invalid email or password");
-//        }
+
+        
+        // SECURITY: Check if user is banned BEFORE issuing any tokens
+        // This prevents banned users from getting cookies stored
+        if (user.isBanned()) {
+            log.warn("Banned user attempted login: email={}", dto.getEmail());
+            String banReason = user.getBanReason() != null ? user.getBanReason() : "Contact support for details.";
+            return ResponseEntity.status(403).body(Map.of(
+                "error", "ACCOUNT_BANNED",
+                "message", "Razlog: " + banReason
+            ));
+        }
         
         String accessToken = jwtUtil.generateToken(user.getEmail(), user.getRole().name(), user.getId());
 
@@ -252,6 +252,28 @@ public class AuthController {
             }
 
             User user = userOpt.get();
+            
+            // SECURITY: Check if user was banned AFTER their last login
+            // If banned, clear cookies and reject refresh
+            if (user.isBanned()) {
+                log.warn("Banned user attempted token refresh: email={}", user.getEmail());
+                
+                // Clear all cookies
+                ResponseCookie clearedRefresh = clearRefreshTokenCookie();
+                ResponseCookie clearedAccess = clearAccessTokenCookie();
+                res.addHeader("Set-Cookie", clearedRefresh.toString());
+                res.addHeader("Set-Cookie", clearedAccess.toString());
+                
+                // Revoke all their tokens
+                refreshTokenService.revokeAll(user.getEmail(), "USER_BANNED");
+                
+                String banReason = user.getBanReason() != null ? user.getBanReason() : "Contact support for details.";
+                return ResponseEntity.status(403).body(Map.of(
+                    "error", "ACCOUNT_BANNED",
+                    "message", "Your account has been suspended. Reason: " + banReason
+                ));
+            }
+            
             String role = user.getRole().name();
             var accessToken = jwtUtil.generateToken(result.email(), role, user.getId());
 

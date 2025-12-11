@@ -53,9 +53,27 @@
                   <mat-icon>calendar_today</mat-icon>
                   <span>Upravljaj kalendarom</span>
                 </button>
-                <button mat-menu-item (click)="toggleAvailability(car)">
-                  <mat-icon>{{ car.available ? 'visibility_off' : 'visibility' }}</mat-icon>
-                  <span>{{ car.available ? 'Deaktiviraj' : 'Aktiviraj' }}</span>
+                <button mat-menu-item 
+                  (click)="toggleAvailability(car)" 
+                  [disabled]="!car.available && car.approvalStatus !== ApprovalStatus.APPROVED">
+                  <mat-icon>
+                    @if (car.available) {
+                      visibility_off
+                    } @else if (car.approvalStatus === ApprovalStatus.APPROVED) {
+                      visibility
+                    } @else {
+                      hourglass_empty
+                    }
+                  </mat-icon>
+                  <span>
+                    @if (car.available) {
+                      Deaktiviraj
+                    } @else if (car.approvalStatus === ApprovalStatus.APPROVED) {
+                      Aktiviraj
+                    } @else {
+                      Čeka odobrenje
+                    }
+                  </span>
                 </button>
                 <button mat-menu-item (click)="previewCar(car)">
                   <mat-icon>open_in_new</mat-icon>

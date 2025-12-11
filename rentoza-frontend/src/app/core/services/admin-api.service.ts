@@ -52,6 +52,14 @@ export interface AdminCarDto {
   available: boolean;
   active: boolean; // Computed from available
   imageUrl?: string;
+
+  // ✅ ADDED FOR APPROVAL WORKFLOW
+  approvalStatus?: string;
+  rejectionReason?: string;
+  approvedAt?: string;
+  approvedBy?: string;
+  pricePerDay?: number;
+  ownerName?: string;
 }
 
 export interface CarApprovalRequest {

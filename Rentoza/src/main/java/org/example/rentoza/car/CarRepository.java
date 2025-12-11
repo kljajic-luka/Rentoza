@@ -11,8 +11,12 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
+import org.example.rentoza.car.ApprovalStatus;
 
 public interface CarRepository extends JpaRepository<Car, Long>, JpaSpecificationExecutor<Car> {
+
+    @Query("SELECT c FROM Car c WHERE c.approvalStatus = :status")
+    List<Car> findByApprovalStatus(@Param("status") ApprovalStatus status);
     
     // ========== LIST VIEWS (NO features/addOns - Performance Optimized) ==========
     // These methods only load owner, keeping list views lightweight

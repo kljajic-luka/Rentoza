@@ -16,7 +16,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { STEPPER_GLOBAL_OPTIONS } from '@angular/cdk/stepper';
 
-import { FuelType, TransmissionType, Feature, CAR_RENTAL_RULES, Car } from '@core/models/car.model';
+import { FuelType, TransmissionType, Feature, CAR_RENTAL_RULES, Car, ApprovalStatus } from '@core/models/car.model';
 import { CarService } from '@core/services/car.service';
 import { AuthService } from '@core/auth/auth.service';
 import {
@@ -286,16 +286,19 @@ export class AddCarWizardComponent implements OnInit {
       maxRentalDays: this.policiesForm.value.maxRentalDays!,
       imageUrls: this.imageUrls(),
       imageUrl: this.imageUrls()[0], // Primary image
-      available: true, // New cars are available by default
+      // Backend handles available/status (defaults to false/PENDING)
+      available: false,
+      approvalStatus: ApprovalStatus.PENDING,
     };
 
     this.carService.addCar(carData).subscribe({
       next: (car) => {
         this.carService.clearSearchCache(); // Clear cache to ensure fresh results
-        this.snackBar.open('Vozilo uspešno dodato! Na čekanju je za odobrenje.', 'Zatvori', {
-          duration: 4000,
-          panelClass: ['snackbar-success'],
-        });
+        this.snackBar.open(
+          'Vozilo uspešno dodato! Na čekanju je odobrenja administratora.',
+          'Zatvori',
+          { duration: 5000, panelClass: ['snackbar-success'] }
+        );
         this.router.navigate(['/owner/cars']);
       },
       error: (error) => {

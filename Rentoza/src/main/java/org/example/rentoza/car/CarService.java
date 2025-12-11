@@ -70,7 +70,8 @@ public class CarService {
         car.setPricePerDay(dto.getPricePerDay());
         car.setLocation(dto.getLocation().trim().toLowerCase());
         car.setOwner(owner);
-        car.setAvailable(true);
+        car.setApprovalStatus(ApprovalStatus.PENDING);
+        car.setAvailable(false);
 
         // Set geospatial location (Phase 2.4 - REQUIRED)
         GeoPoint geoPoint = new GeoPoint();
@@ -338,6 +339,11 @@ public class CarService {
             throw new RuntimeException("You do not have permission to modify this car");
         }
 
+        // CRITICAL: Prevent activation if car is not approved
+        if (available && car.getApprovalStatus() != ApprovalStatus.APPROVED) {
+            throw new RuntimeException("Cannot activate car that is not approved by admin. Current status: " + car.getApprovalStatus());
+        }
+
         car.setAvailable(available);
         Car savedCar = repo.save(car);
         // Return DTO with exact location for owner
@@ -369,6 +375,10 @@ public class CarService {
 
         // Build specification from criteria
         Specification<Car> spec = CarSpecification.fromCriteriaWithAnyFeature(criteria);
+        
+        // CRITICAL: Only show APPROVED cars in public search
+        spec = spec.and((root, query, cb) -> 
+            cb.equal(root.get("approvalStatus"), ApprovalStatus.APPROVED));
 
         // Build pageable with sorting
         Pageable pageable = buildPageable(criteria);

@@ -75,8 +75,23 @@ export class LoginComponent {
         finalize(() => this.isSubmitting.set(false))
       )
       .subscribe({
-        error: () => {
-          this.toast.error('Pogrešan email ili lozinka. Pokušajte ponovo.');
+        error: (error: any) => {
+          // Handle banned users specifically (403 with ACCOUNT_BANNED)
+          if (error?.status === 403 && error?.error?.error === 'ACCOUNT_BANNED') {
+            const reason = error?.error?.message || 'Vaš nalog je suspendovan.';
+            this.toast.error(`Nalog je blokiran. ${reason}`);
+            return;
+          }
+          
+          // Handle wrong credentials (401 or bad password)
+          if (error?.status === 401 || error?.status === 400) {
+            this.toast.error('Pogrešan email ili lozinka. Pokušajte ponovo.');
+            return;
+          }
+          
+          // For server errors (500, network issues, etc.) - don't show anything
+          // Users don't need to see technical errors, just silently fail
+          console.error('Login failed with server error:', error?.status);
         },
       });
   }

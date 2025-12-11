@@ -1,7 +1,7 @@
-import { Component, OnInit, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterModule } from '@angular/router';
+import { Router, RouterModule, NavigationEnd } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
@@ -12,9 +12,14 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSortModule } from '@angular/material/sort';
 import { MatTableModule } from '@angular/material/table';
 import { MatTabsModule } from '@angular/material/tabs';
-import { debounceTime, distinctUntilChanged, Subject } from 'rxjs';
+import { debounceTime, distinctUntilChanged, Subject, filter, takeUntil } from 'rxjs';
 import { AdminApiService, AdminCarDto } from '../../../../core/services/admin-api.service';
 import { AdminNotificationService } from '../../../../core/services/admin-notification.service';
+import { MatChipsModule } from '@angular/material/chips';
+import { MatDialogModule, MatDialog } from '@angular/material/dialog';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { ApprovalStatus } from '@core/models/car.model';
+import { CarApprovalDialogComponent } from '../dialogs/car-approval-dialog.component';
 
 @Component({
   selector: 'app-car-list',
@@ -33,6 +38,9 @@ import { AdminNotificationService } from '../../../../core/services/admin-notifi
     MatMenuModule,
     MatTabsModule,
     MatProgressSpinnerModule,
+    MatChipsModule,
+    MatDialogModule,
+    MatTooltipModule,
   ],
   template: `
     <div class="admin-page">
@@ -66,8 +74,9 @@ import { AdminNotificationService } from '../../../../core/services/admin-notifi
                 mat-table
                 [dataSource]="pendingCars"
               >
+                <!-- Car column -->
                 <ng-container matColumnDef="car">
-                  <th mat-header-cell *matHeaderCellDef>Car</th>
+                  <th mat-header-cell *matHeaderCellDef>Vozilo</th>
                   <td mat-cell *matCellDef="let car">
                     <div class="row">
                       <div
@@ -75,7 +84,6 @@ import { AdminNotificationService } from '../../../../core/services/admin-notifi
                         [style.backgroundImage]="
                           'url(' + (car.imageUrl || 'assets/images/car-placeholder.png') + ')'
                         "
-                        aria-hidden="true"
                       ></div>
                       <div class="stack" style="gap:2px;">
                         <span class="strong">{{ car.brand }} {{ car.model }}</span>
@@ -85,22 +93,53 @@ import { AdminNotificationService } from '../../../../core/services/admin-notifi
                   </td>
                 </ng-container>
 
+                <!-- Owner column -->
                 <ng-container matColumnDef="owner">
-                  <th mat-header-cell *matHeaderCellDef>Owner</th>
+                  <th mat-header-cell *matHeaderCellDef>Vlasnik</th>
                   <td mat-cell *matCellDef="let car">{{ car.ownerEmail }}</td>
                 </ng-container>
 
-                <ng-container matColumnDef="actions">
-                  <th mat-header-cell *matHeaderCellDef></th>
+                <!-- NEW: Status column -->
+                <ng-container matColumnDef="status">
+                  <th mat-header-cell *matHeaderCellDef>Status</th>
                   <td mat-cell *matCellDef="let car">
-                    <button mat-stroked-button color="primary" (click)="viewCar(car.id)">
-                      Review
-                    </button>
+                    <span 
+                      class="badge" 
+                      [ngClass]="getStatusBadgeClass(car.approvalStatus)" 
+                      [matTooltip]="car.rejectionReason">
+                      {{ getStatusLabel(car.approvalStatus) }}
+                    </span>
                   </td>
                 </ng-container>
 
-                <tr mat-header-row *matHeaderRowDef="['car', 'owner', 'actions']"></tr>
-                <tr mat-row *matRowDef="let row; columns: ['car', 'owner', 'actions']"></tr>
+                <!-- Actions column -->
+                <ng-container matColumnDef="actions">
+                  <th mat-header-cell *matHeaderCellDef></th>
+                  <td mat-cell *matCellDef="let car">
+                    <div class="action-buttons">
+                      <button 
+                        mat-stroked-button 
+                        color="primary" 
+                        (click)="openApprovalDialog(car)" 
+                        matTooltip="Pregledaj i odobri/odbij">
+                        <mat-icon>assessment</mat-icon> Pregledaj
+                      </button>
+                      
+                      <!-- Quick Approve Action -->
+                      <button 
+                        mat-icon-button 
+                        color="accent" 
+                        *ngIf="car.approvalStatus === ApprovalStatus.PENDING"
+                        (click)="approveCar(car, $event)" 
+                        matTooltip="Brzo odobrenje">
+                        <mat-icon>check_circle</mat-icon>
+                      </button>
+                    </div>
+                  </td>
+                </ng-container>
+
+                <tr mat-header-row *matHeaderRowDef="['car', 'owner', 'status', 'actions']"></tr>
+                <tr mat-row *matRowDef="let row; columns: ['car', 'owner', 'status', 'actions']"></tr>
               </table>
             </div>
           </mat-tab>
@@ -143,9 +182,9 @@ import { AdminNotificationService } from '../../../../core/services/admin-notifi
                   <td mat-cell *matCellDef="let car">
                     <span
                       class="badge"
-                      [ngClass]="car.available ? 'badge-success' : 'badge-neutral'"
+                      [ngClass]="getStatusBadgeClass(car.approvalStatus)"
                     >
-                      {{ car.available ? 'Available' : 'Unavailable' }}
+                      {{ getStatusLabel(car.approvalStatus) }}
                     </span>
                   </td>
                 </ng-container>
@@ -157,7 +196,14 @@ import { AdminNotificationService } from '../../../../core/services/admin-notifi
                       <mat-icon>more_vert</mat-icon>
                     </button>
                     <mat-menu #menu="matMenu">
-                      <button mat-menu-item (click)="viewCar(car.id)">View Details</button>
+                      <button mat-menu-item (click)="openApprovalDialog(car)">
+                        <mat-icon>gavel</mat-icon>
+                        <span>Upravljaj statusom</span>
+                      </button>
+                      <button mat-menu-item (click)="viewCar(car.id)">
+                        <mat-icon>visibility</mat-icon>
+                        <span>Pregledaj detalje</span>
+                      </button>
                     </mat-menu>
                   </td>
                 </ng-container>
@@ -188,7 +234,7 @@ import { AdminNotificationService } from '../../../../core/services/admin-notifi
   `,
   styleUrls: ['../../admin-shared.styles.scss', './car-list.component.scss'],
 })
-export class CarListComponent implements OnInit {
+export class CarListComponent implements OnInit, OnDestroy {
   private adminApi = inject(AdminApiService);
   private router = inject(Router);
   private notification = inject(AdminNotificationService);
@@ -208,13 +254,36 @@ export class CarListComponent implements OnInit {
   searchTerm = '';
   private searchSubject = new Subject<string>();
 
-  ngOnInit() {
-    this.loadPendingCars();
+  private cdr = inject(ChangeDetectorRef);
+  private destroy$ = new Subject<void>();
 
-    this.searchSubject.pipe(debounceTime(400), distinctUntilChanged()).subscribe((term) => {
+  ngOnInit() {
+    // Initial load
+    this.refreshView();
+
+    // Listen for navigation end to ensure data refreshes when navigating to this page
+    // even if the component is reused.
+    // IMPORTANT: Use takeUntil to prevent memory leaks and post-destroy API calls
+    this.router.events.pipe(
+      filter(event => event instanceof NavigationEnd),
+      takeUntil(this.destroy$)
+    ).subscribe(() => {
+      this.refreshView();
+    });
+
+    this.searchSubject.pipe(
+      debounceTime(400), 
+      distinctUntilChanged(),
+      takeUntil(this.destroy$)
+    ).subscribe((term) => {
       this.pageIndex = 0;
       this.loadAllCars(term);
     });
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 
   onTabChange(event: any) {
@@ -268,9 +337,77 @@ export class CarListComponent implements OnInit {
     this.loadAllCars(this.searchTerm);
   }
 
+  // Helpers
+  protected readonly ApprovalStatus = ApprovalStatus;
+  private dialog = inject(MatDialog);
+
+  getStatusBadgeClass(status?: string): string {
+    switch (status) {
+      case ApprovalStatus.PENDING:
+        return 'badge-warning';
+      case ApprovalStatus.APPROVED:
+        return 'badge-success';
+      case ApprovalStatus.REJECTED:
+        return 'badge-error';
+      case ApprovalStatus.SUSPENDED:
+        return 'badge-danger';
+      default:
+        return 'badge-neutral';
+    }
+  }
+
+  getStatusLabel(status?: string): string {
+    switch (status) {
+      case ApprovalStatus.PENDING:
+        return 'Na čekanju';
+      case ApprovalStatus.APPROVED:
+        return 'Odobreno';
+      case ApprovalStatus.REJECTED:
+        return 'Odbijeno';
+      case ApprovalStatus.SUSPENDED:
+        return 'Suspendirano';
+      default:
+        return 'Nepoznato';
+    }
+  }
+
+  refreshView(): void {
+    // Reload both lists to keep "All Cars" in sync with "Pending" changes
+    this.loadPendingCars();
+    this.loadAllCars(this.searchTerm);
+    this.cdr.detectChanges();
+  }
+
+  openApprovalDialog(car: AdminCarDto): void {
+    const dialogRef = this.dialog.open(CarApprovalDialogComponent, {
+      width: '600px',
+      data: { car },
+    });
+
+    dialogRef.afterClosed().subscribe((result) => {
+      if (result) {
+        this.notification.showSuccess('Status vozila ažuriran');
+        this.refreshView();
+      }
+    });
+  }
+
+  approveCar(car: AdminCarDto, event: Event): void {
+    event.stopPropagation();
+    if (confirm(`Odobrite vozilo ${car.brand} ${car.model}?`)) {
+      this.adminApi.approveCar(car.id).subscribe({
+        next: () => {
+          this.notification.showSuccess('Vozilo odobreno');
+          this.refreshView();
+        },
+        error: () => {
+          this.notification.showError('Greška pri odobravanju');
+        },
+      });
+    }
+  }
+
   viewCar(carId: number) {
-    // Navigate to detail page (to be implemented)
-    // this.router.navigate(['/admin/cars', carId]);
     this.notification.showInfo(`Car detail view for ID ${carId} coming soon`);
   }
 }

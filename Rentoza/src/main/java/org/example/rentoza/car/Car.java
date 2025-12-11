@@ -149,6 +149,23 @@ public class Car {
     @Column(nullable = false)
     private boolean available = true;
 
+    // ========== APPROVAL WORKFLOW FIELDS ==========
+
+    @NotNull
+    @Enumerated(EnumType.STRING)
+    @Column(name = "approval_status", nullable = false, columnDefinition = "VARCHAR(20)")
+    private ApprovalStatus approvalStatus = ApprovalStatus.PENDING;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "approved_by")
+    private User approvedBy;
+
+    @Column(name = "approved_at")
+    private Instant approvedAt;
+
+    @Column(name = "rejection_reason", length = 500)
+    private String rejectionReason;
+
     // ========== NEW PRODUCTION-READY FIELDS ==========
 
     @Column(name = "license_plate", length = 20, columnDefinition = "VARCHAR(20) COLLATE utf8mb4_unicode_ci")

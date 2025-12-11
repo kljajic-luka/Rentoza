@@ -171,6 +171,10 @@ public class SecurityConfig {
                         // ============ PUBLIC OWNER PROFILES ============
                         .requestMatchers(HttpMethod.GET, "/api/owners/*/public-profile").permitAll()
 
+                        // ============ PUBLIC LOCATION SEARCH (Mapbox Geocoding) ============
+                        // Location search must be public for guest users browsing cars/homepage
+                        .requestMatchers(HttpMethod.GET, "/api/locations/**").permitAll()
+
                         // User endpoints - must come before catch-all rules
                         .requestMatchers("/api/users/me").authenticated()
                         .requestMatchers(HttpMethod.PATCH, "/api/users/me").authenticated()

@@ -72,7 +72,15 @@ public class AdminCarDto {
             .transmissionType(car.getTransmissionType())
             .available(car.isAvailable())
             .createdAt(car.getCreatedAt())
-            .updatedAt(car.getUpdatedAt());
+            .updatedAt(car.getUpdatedAt())
+            // Approval status fields
+            .approvalStatus(car.getApprovalStatus() != null ? car.getApprovalStatus().name() : null)
+            .rejectionReason(car.getRejectionReason())
+            .approvedAt(car.getApprovedAt())
+            .approvedById(car.getApprovedBy() != null ? car.getApprovedBy().getId() : null)
+            .approvedByName(car.getApprovedBy() != null 
+                ? car.getApprovedBy().getFirstName() + " " + car.getApprovedBy().getLastName() 
+                : null);
         
         if (car.getOwner() != null) {
             builder.ownerId(car.getOwner().getId());

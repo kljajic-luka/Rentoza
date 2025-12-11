@@ -12,7 +12,7 @@ import { MatDividerModule } from '@angular/material/divider';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 
-import { Car } from '@core/models/car.model';
+import { Car, ApprovalStatus } from '@core/models/car.model';
 import { CarService } from '@core/services/car.service';
 import { AuthService } from '@core/auth/auth.service';
 import { EditCarDialogComponent } from '../../dialogs/edit-car-dialog/edit-car-dialog.component';
@@ -45,6 +45,7 @@ export class MyCarsComponent implements OnInit {
 
   protected readonly isLoading = signal(false);
   protected readonly cars = signal<Car[]>([]);
+  protected readonly ApprovalStatus = ApprovalStatus;
 
   ngOnInit(): void {
     this.loadMyCars();
@@ -97,6 +98,15 @@ export class MyCarsComponent implements OnInit {
 
   protected toggleAvailability(car: Car): void {
     const newAvailability = !car.available;
+
+    if (newAvailability && car.approvalStatus !== ApprovalStatus.APPROVED) {
+      this.snackBar.open(
+        'Vozilo mora biti odobreno od strane administratora pre aktivacije.',
+        'Zatvori',
+        { duration: 4000, panelClass: ['snackbar-warning'] }
+      );
+      return;
+    }
 
     this.carService.toggleAvailability(car.id, newAvailability).subscribe({
       next: (updatedCar) => {

@@ -98,7 +98,7 @@ public class LocationController {
      * @return List of geocoding suggestions
      */
     @GetMapping("/geocode")
-    @PreAuthorize("isAuthenticated()")
+    // Public endpoint - no authentication required for location search
     public ResponseEntity<List<GeocodeSuggestion>> geocodeAddress(
             @RequestParam String query,
             @RequestParam(defaultValue = "5") int limit,
@@ -149,7 +149,7 @@ public class LocationController {
      * @return Address information for the coordinates
      */
     @GetMapping("/reverse-geocode")
-    @PreAuthorize("isAuthenticated()")
+    // Public endpoint - no authentication required for location search
     public ResponseEntity<ReverseGeocodeResult> reverseGeocode(
             @RequestParam double latitude,
             @RequestParam double longitude,

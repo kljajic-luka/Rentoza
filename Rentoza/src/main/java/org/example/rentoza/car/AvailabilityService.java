@@ -98,6 +98,17 @@ public class AvailabilityService {
             Hibernate.initialize(car.getImageUrls());
         });
 
+        // Initialize additional bags to avoid lazy loading outside the transaction
+        candidateCars.forEach(car -> {
+            Hibernate.initialize(car.getAddOns());
+            Hibernate.initialize(car.getImageUrls());
+        });
+        
+        // CRITICAL: Filter out non-approved cars (e.g. legacy data or pending approval)
+        candidateCars = candidateCars.stream()
+            .filter(car -> car.getApprovalStatus() == org.example.rentoza.car.ApprovalStatus.APPROVED)
+            .collect(Collectors.toList());
+
         // Step 2: Filter by time-based availability
         LocalDateTime requestedStart = request.getStartDateTime();
         LocalDateTime requestedEnd = request.getEndDateTime();

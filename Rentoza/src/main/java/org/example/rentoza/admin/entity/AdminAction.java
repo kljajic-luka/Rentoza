@@ -21,6 +21,8 @@ public enum AdminAction {
     USER_SUSPENDED,
     /** User identity verified by admin */
     USER_VERIFIED_ID,
+    /** User identity verification rejected by admin (with reason) */
+    USER_VERIFICATION_REJECTED,
     
     // ==================== CAR APPROVALS ====================
     /** Car listing approved for marketplace */
@@ -33,8 +35,22 @@ public enum AdminAction {
     CAR_REMOVED,
     /** Car suspended for policy violation */
     CAR_SUSPENDED,
+    /** Car suspended automatically due to expired documents */
+    CAR_SUSPENDED_AUTO,
     /** Car reactivated from suspension */
     CAR_REACTIVATED,
+    
+    // ==================== DOCUMENT VERIFICATION ====================
+    /** Document verified by admin as valid/current */
+    DOCUMENT_VERIFIED,
+    /** Document rejected by admin with reason */
+    DOCUMENT_REJECTED,
+    /** Document viewed/downloaded by admin */
+    DOCUMENT_VIEWED,
+    /** Owner identity verified by admin */
+    OWNER_VERIFIED,
+    /** Owner identity verification rejected by admin */
+    OWNER_VERIFICATION_REJECTED,
     
     // ==================== BOOKINGS ====================
     /** Booking force-cancelled by admin */

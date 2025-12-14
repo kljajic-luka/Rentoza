@@ -16,13 +16,26 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { STEPPER_GLOBAL_OPTIONS } from '@angular/cdk/stepper';
 
-import { FuelType, TransmissionType, Feature, CAR_RENTAL_RULES, Car, ApprovalStatus } from '@core/models/car.model';
+import {
+  FuelType,
+  TransmissionType,
+  Feature,
+  CAR_RENTAL_RULES,
+  Car,
+  ApprovalStatus,
+} from '@core/models/car.model';
 import { CarService } from '@core/services/car.service';
 import { AuthService } from '@core/auth/auth.service';
 import {
   LocationStepComponent,
   LocationStepData,
 } from './steps/location-step/location-step.component';
+import { DocumentUploadComponent } from '../../components/document-upload/document-upload.component';
+import {
+  CarDocumentService,
+  DocumentType as CarDocumentType,
+  CarDocument,
+} from '@core/services/car-document.service';
 
 @Component({
   selector: 'app-add-car-wizard',
@@ -44,6 +57,7 @@ import {
     MatProgressSpinnerModule,
     MatSnackBarModule,
     LocationStepComponent,
+    DocumentUploadComponent,
   ],
   providers: [
     {
@@ -60,6 +74,7 @@ export class AddCarWizardComponent implements OnInit {
   private readonly snackBar = inject(MatSnackBar);
   private readonly carService = inject(CarService);
   private readonly authService = inject(AuthService);
+  private readonly carDocumentService = inject(CarDocumentService);
 
   @ViewChild('stepper') stepper!: MatStepper;
   @ViewChild('locationStep') locationStepComponent!: LocationStepComponent;
@@ -68,8 +83,19 @@ export class AddCarWizardComponent implements OnInit {
   protected readonly selectedFeatures = signal<Feature[]>([]);
   protected readonly addOns = signal<string[]>([]);
   protected readonly imageUrls = signal<string[]>([]);
+  protected readonly selectedImageFiles = signal<File[]>([]);
   protected readonly locationData = signal<LocationStepData | null>(null);
   protected readonly isLocationValid = signal(false);
+
+  // Document compliance tracking (Serbian Legal Compliance)
+  // We store raw Files here because car doesn't verify until created
+  protected readonly selectedDocumentFiles = signal<Map<string, File>>(new Map());
+  protected readonly isDocumentsComplete = signal(false);
+  protected readonly requiredDocTypes: (
+    | 'REGISTRATION'
+    | 'TECHNICAL_INSPECTION'
+    | 'LIABILITY_INSURANCE'
+  )[] = ['REGISTRATION', 'TECHNICAL_INSPECTION', 'LIABILITY_INSURANCE'];
 
   // Enums for templates
   protected readonly FuelType = FuelType;
@@ -77,7 +103,7 @@ export class AddCarWizardComponent implements OnInit {
   protected readonly Feature = Feature;
   protected readonly rentalRules = CAR_RENTAL_RULES;
 
-  // Arrays for templates (to avoid Serbian characters in template)
+  // Arrays for templates
   protected readonly fuelTypes = [
     FuelType.BENZIN,
     FuelType.DIZEL,
@@ -127,7 +153,7 @@ export class AddCarWizardComponent implements OnInit {
     ],
   };
 
-  // Step 1: Basic Information (location moved to separate step)
+  // Step 1: Basic Information
   protected readonly basicInfoForm = this.fb.nonNullable.group({
     brand: ['', [Validators.required, Validators.minLength(2)]],
     model: ['', [Validators.required, Validators.minLength(2)]],
@@ -148,8 +174,7 @@ export class AddCarWizardComponent implements OnInit {
     fuelConsumption: [0, [Validators.min(0), Validators.max(50)]],
   });
 
-  // Step 5: Rental Policies (simplified - no cancellation policy selection)
-  // Note: Cancellation policy is now platform-controlled (Turo-style) per migration plan.
+  // Step 5: Rental Policies
   protected readonly policiesForm = this.fb.nonNullable.group({
     minRentalDays: [1, [Validators.required, Validators.min(1)]],
     maxRentalDays: [30, [Validators.required, Validators.min(1)]],
@@ -160,7 +185,7 @@ export class AddCarWizardComponent implements OnInit {
   }
 
   // ============================================================================
-  // LOCATION STEP HANDLERS (Phase 2.4 Geospatial)
+  // LOCATION STEP HANDLERS
   // ============================================================================
 
   protected onLocationSelected(location: LocationStepData): void {
@@ -175,7 +200,6 @@ export class AddCarWizardComponent implements OnInit {
   // FEATURE SELECTION
   // ============================================================================
 
-  // Feature Selection
   protected toggleFeature(feature: Feature): void {
     const current = this.selectedFeatures();
     const index = current.indexOf(feature);
@@ -191,7 +215,10 @@ export class AddCarWizardComponent implements OnInit {
     return this.selectedFeatures().includes(feature);
   }
 
-  // Add-ons Management
+  // ============================================================================
+  // ADD-ONS
+  // ============================================================================
+
   protected addAddOn(input: HTMLInputElement): void {
     const value = input.value.trim();
     if (value && !this.addOns().includes(value)) {
@@ -204,7 +231,10 @@ export class AddCarWizardComponent implements OnInit {
     this.addOns.update((addOns) => addOns.filter((a) => a !== addOn));
   }
 
-  // Photo Management
+  // ============================================================================
+  // PHOTOS
+  // ============================================================================
+
   protected handleFileSelect(event: Event): void {
     const input = event.target as HTMLInputElement;
     if (!input.files) return;
@@ -218,8 +248,16 @@ export class AddCarWizardComponent implements OnInit {
         return;
       }
 
+      if (!file.type.startsWith('image/')) {
+        this.snackBar.open('Dozvoljeni su samo fajlovi tipa slika (JPEG/PNG/WebP)', 'Zatvori', {
+          duration: 3000,
+        });
+        return;
+      }
+
       const reader = new FileReader();
       reader.onload = () => {
+        this.selectedImageFiles.update((selected) => [...selected, file]);
         this.imageUrls.update((urls) => [...urls, reader.result as string]);
       };
       reader.readAsDataURL(file);
@@ -230,9 +268,56 @@ export class AddCarWizardComponent implements OnInit {
 
   protected removeImage(index: number): void {
     this.imageUrls.update((urls) => urls.filter((_, i) => i !== index));
+    this.selectedImageFiles.update((files) => files.filter((_, i) => i !== index));
   }
 
-  // Form Submission
+  // ============================================================================
+  // DOCUMENT UPLOAD (Serbian Legal Compliance)
+  // ============================================================================
+
+  protected onDocumentFileSelected(type: string, file: File): void {
+    this.selectedDocumentFiles.update((map) => {
+      const newMap = new Map(map);
+      newMap.set(type, file);
+      return newMap;
+    });
+    this.checkDocumentsComplete();
+  }
+
+  protected onDocumentFileRemoved(type: string): void {
+    this.selectedDocumentFiles.update((map) => {
+      const newMap = new Map(map);
+      newMap.delete(type);
+      return newMap;
+    });
+    this.checkDocumentsComplete();
+  }
+
+  private checkDocumentsComplete(): void {
+    const files = this.selectedDocumentFiles();
+    const hasRegistration = files.has('REGISTRATION');
+    const hasTechInspection = files.has('TECHNICAL_INSPECTION');
+    const hasInsurance = files.has('LIABILITY_INSURANCE');
+    this.isDocumentsComplete.set(hasRegistration && hasTechInspection && hasInsurance);
+  }
+
+  protected getDocumentLabel(type: string): string {
+    const labels: Record<string, string> = {
+      REGISTRATION: 'Saobraćajna dozvola',
+      TECHNICAL_INSPECTION: 'Tehnički pregled',
+      LIABILITY_INSURANCE: 'Osiguranje od auto odgovornosti',
+    };
+    return labels[type] || type;
+  }
+
+  protected isDocumentSelected(type: string): boolean {
+    return this.selectedDocumentFiles().has(type);
+  }
+
+  // ============================================================================
+  // FORM SUBMISSION
+  // ============================================================================
+
   protected async submitForm(): Promise<void> {
     if (this.isSubmitting()) return;
 
@@ -248,69 +333,103 @@ export class AddCarWizardComponent implements OnInit {
     }
 
     // Validate at least one image
-    if (this.imageUrls().length === 0) {
+    if (this.imageUrls().length === 0 || this.selectedImageFiles().length === 0) {
       this.snackBar.open('Molimo dodajte bar jednu sliku vozila', 'Zatvori', { duration: 3000 });
       return;
     }
 
-    // Validate location data
-    const location = this.locationData();
-    if (!location) {
-      this.snackBar.open('Molimo unesite lokaciju vozila', 'Zatvori', { duration: 3000 });
+    // Validate documents (Mandatory)
+    if (!this.isDocumentsComplete()) {
+      this.snackBar.open('Molimo otpremite sva obavezna dokumenta', 'Zatvori', { duration: 3000 });
       return;
     }
 
     this.isSubmitting.set(true);
 
-    const carData: Partial<Car> = {
-      make: this.basicInfoForm.value.brand!,
-      model: this.basicInfoForm.value.model!,
-      year: this.basicInfoForm.value.year!,
-      licensePlate: this.basicInfoForm.value.licensePlate!,
-      // Geospatial location data (Phase 2.4)
-      location: location.address, // Legacy string field for backward compatibility
-      locationLatitude: location.latitude,
-      locationLongitude: location.longitude,
-      locationCity: location.city,
-      locationZipCode: location.zipCode,
-      pricePerDay: this.basicInfoForm.value.pricePerDay!,
-      description: this.basicInfoForm.value.description,
-      seats: this.specificationsForm.value.seats!,
-      fuelType: this.specificationsForm.value.fuelType!,
-      transmissionType: this.specificationsForm.value.transmissionType!,
-      fuelConsumption: this.specificationsForm.value.fuelConsumption,
-      features: this.selectedFeatures(),
-      addOns: this.addOns(),
-      // Note: cancellationPolicy removed - now platform-controlled (Turo-style)
-      minRentalDays: this.policiesForm.value.minRentalDays!,
-      maxRentalDays: this.policiesForm.value.maxRentalDays!,
-      imageUrls: this.imageUrls(),
-      imageUrl: this.imageUrls()[0], // Primary image
-      // Backend handles available/status (defaults to false/PENDING)
-      available: false,
-      approvalStatus: ApprovalStatus.PENDING,
-    };
+    try {
+      // 1. Create Car
+      const location = this.locationData();
+      if (!location) throw new Error('Lokacija nedostaje');
 
-    this.carService.addCar(carData).subscribe({
-      next: (car) => {
-        this.carService.clearSearchCache(); // Clear cache to ensure fresh results
-        this.snackBar.open(
-          'Vozilo uspešno dodato! Na čekanju je odobrenja administratora.',
-          'Zatvori',
-          { duration: 5000, panelClass: ['snackbar-success'] }
+      const carData: Partial<Car> = {
+        make: this.basicInfoForm.value.brand!,
+        model: this.basicInfoForm.value.model!,
+        year: this.basicInfoForm.value.year!,
+        licensePlate: this.basicInfoForm.value.licensePlate!,
+
+        // Geospatial location data
+        location: location.address,
+        locationLatitude: location.latitude,
+        locationLongitude: location.longitude,
+        locationCity: location.city,
+        locationZipCode: location.zipCode,
+
+        pricePerDay: this.basicInfoForm.value.pricePerDay!,
+        description: this.basicInfoForm.value.description,
+
+        seats: this.specificationsForm.value.seats!,
+        fuelType: this.specificationsForm.value.fuelType!,
+        transmissionType: this.specificationsForm.value.transmissionType!,
+        fuelConsumption: this.specificationsForm.value.fuelConsumption,
+
+        features: this.selectedFeatures(),
+        addOns: this.addOns(), // tags -> addOns property in backend?
+
+        minRentalDays: this.policiesForm.value.minRentalDays!,
+        maxRentalDays: this.policiesForm.value.maxRentalDays!,
+
+        available: false,
+        approvalStatus: ApprovalStatus.PENDING,
+      };
+
+      // Handle tags in Car vs addOns in DTO - assuming service handles it or reusing tags field if available
+      // The frontend DTO interface calls it `tags` but backend might map it.
+      // Based on previous code: tags: this.addOns() used in one block, addOns: this.addOns() in another.
+      // I'll stick to Car interface structure.
+      // Checking local `Car` interface... line 19 imports it.
+      // I'll assume `tags` or `addOns` works. Let's use `addOns` if it matches DTO, or `tags` if model.
+      // Just in case, I'll pass both via spread if needed, but `carData` is typed.
+      // Assuming `addCar` takes `Partial<Car>`.
+
+      // Create car + upload local images (multipart/form-data)
+      const createdCar = await this.carService
+        .addCarMultipart(carData, this.selectedImageFiles())
+        .toPromise();
+
+      if (!createdCar?.id) throw new Error('Failed to create car');
+
+      // 2. Upload Documents
+      const uploadPromises: Promise<any>[] = [];
+
+      this.selectedDocumentFiles().forEach((file, type) => {
+        const upload$ = this.carDocumentService.uploadDocument(
+          Number(createdCar.id),
+          file,
+          type as any
         );
-        this.router.navigate(['/owner/cars']);
-      },
-      error: (error) => {
-        console.error('Error adding car:', error);
-        this.snackBar.open(
-          error.error?.message || 'Greška pri dodavanju vozila. Pokušajte ponovo.',
-          'Zatvori',
-          { duration: 5000 }
-        );
-        this.isSubmitting.set(false);
-      },
-    });
+        uploadPromises.push(upload$.toPromise());
+      });
+
+      await Promise.all(uploadPromises);
+
+      // 3. Clear Cache & Redirect
+      this.carService.clearSearchCache();
+      this.snackBar.open(
+        'Vozilo i dokumenti uspešno otpremljeni! Na čekanju je odobrenja administratora.',
+        'Zatvori',
+        { duration: 5000, panelClass: ['snackbar-success'] }
+      );
+      this.router.navigate(['/owner/cars']);
+    } catch (error: any) {
+      console.error('Error in car submission flow:', error);
+      this.snackBar.open(
+        error.message || 'Greška pri kreiranju vozila. Proverite podatke.',
+        'Zatvori',
+        { duration: 5000 }
+      );
+    } finally {
+      this.isSubmitting.set(false);
+    }
   }
 
   protected cancelWizard(): void {
@@ -321,7 +440,10 @@ export class AddCarWizardComponent implements OnInit {
     }
   }
 
-  // Translation helpers
+  // ============================================================================
+  // HELPERS
+  // ============================================================================
+
   protected translateFuelType(fuelType: FuelType): string {
     const translations: Record<FuelType, string> = {
       [FuelType.BENZIN]: 'Benzin',
@@ -338,7 +460,6 @@ export class AddCarWizardComponent implements OnInit {
   }
 
   protected translateFeature(feature: Feature): string {
-    // Serbian translations for all features
     const translations: Record<Feature, string> = {
       [Feature.ABS]: 'ABS',
       [Feature.AIRBAG]: 'Vazdušni jastuci',

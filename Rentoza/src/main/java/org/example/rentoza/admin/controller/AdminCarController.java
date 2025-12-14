@@ -1,13 +1,17 @@
 package org.example.rentoza.admin.controller;
 
+import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.admin.dto.AdminCarDto;
+import org.example.rentoza.admin.dto.AdminCarReviewDetailDto;
 import org.example.rentoza.admin.dto.CarApprovalRequestDto;
+import org.example.rentoza.admin.dto.CarSuspensionRequestDto;
 import org.example.rentoza.admin.service.AdminCarService;
 import org.example.rentoza.config.HateoasAssembler;
 import org.example.rentoza.exception.ResourceNotFoundException;
+import org.example.rentoza.idempotency.IdempotencyService;
 import org.example.rentoza.security.CurrentUser;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
@@ -17,25 +21,22 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.hateoas.EntityModel;
 import org.springframework.hateoas.PagedModel;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * Admin Car Management Controller.
  * 
- * <p>Provides endpoints for car moderation:
+ * <p>Provides endpoints for car moderation with enterprise-grade features:
  * <ul>
- *   <li>GET /api/admin/cars - List all cars</li>
- *   <li>GET /api/admin/cars/{id} - Car detail</li>
- *   <li>GET /api/admin/cars/pending - Pending approvals</li>
- *   <li>POST /api/admin/cars/{id}/approve - Approve car</li>
- *   <li>POST /api/admin/cars/{id}/reject - Reject car</li>
- *   <li>POST /api/admin/cars/{id}/suspend - Suspend car</li>
- *   <li>POST /api/admin/cars/{id}/reactivate - Reactivate car</li>
+ *   <li>Rate limiting via Resilience4j</li>
+ *   <li>Idempotency support via X-Idempotency-Key header</li>
+ *   <li>Proper DTO validation</li>
+ *   <li>Structured logging with MDC context</li>
  * </ul>
  * 
  * @see AdminCarService
@@ -51,6 +52,7 @@ public class AdminCarController {
     private final UserRepository userRepository;
     private final CurrentUser currentUser;
     private final HateoasAssembler hateoasAssembler;
+    private final IdempotencyService idempotencyService;
     
     /**
      * List all cars with pagination.
@@ -87,6 +89,27 @@ public class AdminCarController {
     }
     
     /**
+     * Get car review details for document verification workflow.
+     * 
+     * Includes:
+     * - Car overview with photos
+     * - All documents with verification status
+     * - Owner identity verification status
+     * - Pre-calculated approval state
+     * 
+     * @param id Car ID
+     * @return Car review details with documents
+     */
+    @GetMapping("/{id}/review-detail")
+    public ResponseEntity<AdminCarReviewDetailDto> getCarReviewDetail(@PathVariable Long id) {
+        AdminCarReviewDetailDto car = carService.getCarReviewDetail(id);
+        
+        log.debug("Admin {} requested car review details for carId={}", currentUser.id(), id);
+        
+        return ResponseEntity.ok(car);
+    }
+    
+    /**
      * List cars pending approval.
      * 
      * @return Pending approval list
@@ -103,32 +126,82 @@ public class AdminCarController {
     /**
      * Approve a car listing.
      * 
+     * <p>Features:
+     * <ul>
+     *   <li>Rate limited: 100 approvals per minute max</li>
+     *   <li>Idempotency: Supply X-Idempotency-Key header for safe retries</li>
+     * </ul>
+     * 
      * @param id Car ID
+     * @param idempotencyKey Optional idempotency key for safe retries
      * @return Updated car
      */
     @PostMapping("/{id}/approve")
-    public ResponseEntity<AdminCarDto> approveCar(@PathVariable Long id) {
-        User admin = getAdmin();
+    @RateLimiter(name = "admin-approval")
+    public ResponseEntity<AdminCarDto> approveCar(
+            @PathVariable Long id,
+            @RequestHeader(value = "X-Idempotency-Key", required = false) String idempotencyKey) {
         
-        AdminCarDto car = carService.approveCar(id, admin);
+        Long adminId = currentUser.id();
         
-        return ResponseEntity.ok(car);
+        // Check idempotency - return cached response if already processed
+        if (idempotencyKey != null) {
+            var cached = idempotencyService.checkIdempotency(idempotencyKey, adminId);
+            if (cached.isPresent() && cached.get().getStatus() == IdempotencyService.IdempotencyStatus.COMPLETED) {
+                log.info("Returning cached approval response for key={}", idempotencyKey.substring(0, 8));
+                return ResponseEntity.ok().build();
+            }
+            
+            // Try to acquire lock for processing
+            if (!idempotencyService.markProcessing(idempotencyKey, adminId, "CAR_APPROVE")) {
+                return ResponseEntity.status(HttpStatus.CONFLICT).build();
+            }
+        }
+        
+        try {
+            User admin = getAdmin();
+            AdminCarDto car = carService.approveCar(id, admin);
+            
+            // Store successful result for idempotency
+            if (idempotencyKey != null) {
+                idempotencyService.storeSuccess(idempotencyKey, adminId, HttpStatus.OK, car);
+            }
+            
+            return ResponseEntity.ok(car);
+        } catch (Exception e) {
+            // Remove idempotency lock on transient errors
+            if (idempotencyKey != null) {
+                idempotencyService.remove(idempotencyKey, adminId);
+            }
+            throw e;
+        }
     }
     
     /**
      * Reject a car listing.
      * 
+     * <p>Features:
+     * <ul>
+     *   <li>Rate limited: 100 rejections per minute max</li>
+     *   <li>Null validation: Reason is required (min 10 chars)</li>
+     * </ul>
+     * 
      * @param id Car ID
-     * @param request Rejection details
+     * @param request Rejection details with reason
      * @return Updated car
      */
     @PostMapping("/{id}/reject")
+    @RateLimiter(name = "admin-approval")
     public ResponseEntity<AdminCarDto> rejectCar(
             @PathVariable Long id,
             @Valid @RequestBody CarApprovalRequestDto request) {
         
-        User admin = getAdmin();
+        // Explicit null check (defense in depth - in addition to DTO validation)
+        if (request.getReason() == null || request.getReason().isBlank()) {
+            throw new IllegalArgumentException("Rejection reason is required");
+        }
         
+        User admin = getAdmin();
         AdminCarDto car = carService.rejectCar(id, request.getReason(), admin);
         
         return ResponseEntity.ok(car);
@@ -137,19 +210,24 @@ public class AdminCarController {
     /**
      * Suspend an active car listing.
      * 
+     * <p>Features:
+     * <ul>
+     *   <li>Rate limited: 100 suspensions per minute max</li>
+     *   <li>Proper DTO validation with required reason</li>
+     * </ul>
+     * 
      * @param id Car ID
-     * @param body Request with reason
+     * @param request Suspension details with reason
      * @return Updated car
      */
     @PostMapping("/{id}/suspend")
+    @RateLimiter(name = "admin-approval")
     public ResponseEntity<AdminCarDto> suspendCar(
             @PathVariable Long id,
-            @RequestBody Map<String, String> body) {
+            @Valid @RequestBody CarSuspensionRequestDto request) {
         
-        String reason = body.getOrDefault("reason", "Policy violation");
         User admin = getAdmin();
-        
-        AdminCarDto car = carService.suspendCar(id, reason, admin);
+        AdminCarDto car = carService.suspendCar(id, request.getReason(), admin);
         
         return ResponseEntity.ok(car);
     }
@@ -161,6 +239,7 @@ public class AdminCarController {
      * @return Updated car
      */
     @PostMapping("/{id}/reactivate")
+    @RateLimiter(name = "admin-approval")
     public ResponseEntity<AdminCarDto> reactivateCar(@PathVariable Long id) {
         User admin = getAdmin();
         
@@ -177,3 +256,4 @@ public class AdminCarController {
             .orElseThrow(() -> new ResourceNotFoundException("Admin user not found"));
     }
 }
+

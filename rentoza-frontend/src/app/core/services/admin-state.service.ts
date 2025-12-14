@@ -87,9 +87,9 @@ export class AdminStateService {
     });
   }
 
-  loadUsers(page = 0, size = 20, search?: string): void {
+  loadUsers(page = 0, size = 20, search?: string, sort?: string): void {
     this.updateState({ loading: true, error: null });
-    this.api.getUsers(page, size, search).subscribe({
+    this.api.getUsers(page, size, search, undefined, sort).subscribe({
       next: (response) =>
         this.updateState({
           users: response.content,
@@ -158,6 +158,38 @@ export class AdminStateService {
         },
         error: (err) => {
           this.updateState({ error: 'Failed to delete user' });
+          subscriber.error(err);
+        },
+      });
+    });
+  }
+
+  approveOwnerVerification(userId: number): Observable<void> {
+    return new Observable((subscriber) => {
+      this.api.approveOwnerVerification(userId).subscribe({
+        next: () => {
+          this.loadUserDetail(userId);
+          subscriber.next();
+          subscriber.complete();
+        },
+        error: (err) => {
+          this.updateState({ error: 'Failed to approve owner verification' });
+          subscriber.error(err);
+        },
+      });
+    });
+  }
+
+  rejectOwnerVerification(userId: number, reason: string): Observable<void> {
+    return new Observable((subscriber) => {
+      this.api.rejectOwnerVerification(userId, reason).subscribe({
+        next: () => {
+          this.loadUserDetail(userId);
+          subscriber.next();
+          subscriber.complete();
+        },
+        error: (err) => {
+          this.updateState({ error: 'Failed to reject owner verification' });
           subscriber.error(err);
         },
       });

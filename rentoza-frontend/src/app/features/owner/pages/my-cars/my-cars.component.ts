@@ -15,6 +15,7 @@ import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { Car, ApprovalStatus } from '@core/models/car.model';
 import { CarService } from '@core/services/car.service';
 import { AuthService } from '@core/auth/auth.service';
+import { environment } from '@environments/environment';
 import { EditCarDialogComponent } from '../../dialogs/edit-car-dialog/edit-car-dialog.component';
 import { CarAvailabilityDialogComponent } from '../../components/car-availability-dialog/car-availability-dialog.component';
 
@@ -47,6 +48,9 @@ export class MyCarsComponent implements OnInit {
   protected readonly cars = signal<Car[]>([]);
   protected readonly ApprovalStatus = ApprovalStatus;
 
+  private readonly loggedMissingImageForCarIds = new Set<string>();
+  private loggedSample = false;
+
   ngOnInit(): void {
     this.loadMyCars();
   }
@@ -68,6 +72,7 @@ export class MyCarsComponent implements OnInit {
           this.carService.getOwnerCars(email).subscribe({
             next: (cars) => {
               this.cars.set(cars);
+              this.debugLogCarImages(cars);
               this.isLoading.set(false);
             },
             error: (error) => {
@@ -78,6 +83,45 @@ export class MyCarsComponent implements OnInit {
           });
         },
       });
+  }
+
+  private debugLogCarImages(cars: Car[]): void {
+    if (environment.production) {
+      return;
+    }
+
+    if (!this.loggedSample && cars.length > 0) {
+      this.loggedSample = true;
+      const sample = cars[0];
+      console.info('[MyCars] Sample car image fields (runtime)', {
+        carId: sample.id,
+        imageUrlPrefix:
+          typeof sample.imageUrl === 'string' ? sample.imageUrl.slice(0, 32) : sample.imageUrl,
+        imageUrlsCount: Array.isArray(sample.imageUrls) ? sample.imageUrls.length : 0,
+        firstImageUrlPrefix:
+          Array.isArray(sample.imageUrls) && sample.imageUrls[0]
+            ? String(sample.imageUrls[0]).slice(0, 32)
+            : null,
+      });
+    }
+
+    for (const car of cars) {
+      const hasImageUrl = typeof car.imageUrl === 'string' && car.imageUrl.trim().length > 0;
+      const hasImageUrls = Array.isArray(car.imageUrls) && car.imageUrls.length > 0;
+
+      // This component shows the placeholder when car.imageUrl is falsy.
+      if (!hasImageUrl && !this.loggedMissingImageForCarIds.has(car.id)) {
+        this.loggedMissingImageForCarIds.add(car.id);
+        // Evidence: runtime values used by template.
+        // If imageUrls has data URLs but imageUrl is null, mapping/backfill is the issue.
+        console.warn('[MyCars] Missing car.imageUrl; rendering placeholder', {
+          carId: car.id,
+          imageUrl: car.imageUrl,
+          imageUrls: car.imageUrls,
+          hasImageUrls,
+        });
+      }
+    }
   }
 
   protected editCar(car: Car): void {

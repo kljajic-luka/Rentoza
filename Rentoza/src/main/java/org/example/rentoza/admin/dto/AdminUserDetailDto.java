@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.example.rentoza.user.Role;
 import org.example.rentoza.user.User;
+import org.example.rentoza.user.OwnerType;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -68,6 +69,20 @@ public class AdminUserDetailDto {
     
     /** Audit trail */
     private List<AdminAuditLogDto> recentAdminActions;
+
+    // ==================== OWNER VERIFICATION (Serbian Compliance) ====================
+    /** NOT_SUBMITTED | PENDING_REVIEW | VERIFIED (computed, to match list view) */
+    private String ownerVerificationStatus;
+
+    // ==================== OWNER VERIFICATION (Serbian Compliance) ====================
+    private OwnerType ownerType;
+    /** Masked only. Never return full values. */
+    private String maskedJmbg;
+    /** Masked only. Never return full values. */
+    private String maskedPib;
+    private Boolean isIdentityVerified;
+    private LocalDateTime ownerVerificationSubmittedAt;
+    private String maskedBankAccountNumber;
     
     /**
      * Convert User entity to detailed DTO.
@@ -89,7 +104,14 @@ public class AdminUserDetailDto {
             .banReason(user.getBanReason())
             .bannedAt(user.getBannedAt())
             .createdAt(user.getCreatedAt())
-            .updatedAt(user.getUpdatedAt());
+            .updatedAt(user.getUpdatedAt())
+            .ownerVerificationStatus(computeOwnerVerificationStatus(user))
+            .ownerType(user.getOwnerType())
+            .maskedJmbg(user.getMaskedJmbg())
+            .maskedPib(user.getMaskedPib())
+            .isIdentityVerified(user.getIsIdentityVerified())
+            .ownerVerificationSubmittedAt(user.getOwnerVerificationSubmittedAt())
+            .maskedBankAccountNumber(user.getMaskedBankAccountNumber());
         
         if (user.getBannedBy() != null) {
             builder.bannedById(user.getBannedBy().getId());
@@ -98,6 +120,12 @@ public class AdminUserDetailDto {
         }
         
         return builder.build();
+    }
+
+    private static String computeOwnerVerificationStatus(User user) {
+        if (Boolean.TRUE.equals(user.getIsIdentityVerified())) return "VERIFIED";
+        if (user.getOwnerVerificationSubmittedAt() != null) return "PENDING_REVIEW";
+        return "NOT_SUBMITTED";
     }
     
     /**

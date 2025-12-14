@@ -129,7 +129,7 @@ export class CarApprovalDialogComponent {
       if (action === 'APPROVE') {
         reasonControl?.clearValidators();
       } else {
-        reasonControl?.setValidators([Validators.required, Validators.minLength(5)]);
+        reasonControl?.setValidators([Validators.required, Validators.minLength(10)]);
       }
       reasonControl?.updateValueAndValidity();
     });
@@ -158,8 +158,20 @@ export class CarApprovalDialogComponent {
   submit(): void {
     if (this.form.invalid) return;
     
-    this.loading = true;
     const { action, reason } = this.form.value;
+    
+    // Confirmation for destructive actions (reject/suspend)
+    if (action !== 'APPROVE') {
+      const confirmMsg = action === 'REJECT' 
+        ? 'Da li ste sigurni da želite da odbijete ovo vozilo? Vlasnik će biti obavešten.'
+        : 'Da li ste sigurni da želite da suspendujete ovo vozilo? Vozilo će biti uklonjeno iz pretrage.';
+      
+      if (!confirm(confirmMsg)) {
+        return;
+      }
+    }
+    
+    this.loading = true;
     const carId = this.data.car.id;
     let request;
 

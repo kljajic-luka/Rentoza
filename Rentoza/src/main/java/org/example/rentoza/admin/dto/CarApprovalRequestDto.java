@@ -1,6 +1,5 @@
 package org.example.rentoza.admin.dto;
 
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -22,9 +21,10 @@ public class CarApprovalRequestDto {
     private boolean approved;
     
     /**
-     * Reason for rejection (required if rejected).
+     * Reason for rejection (required for reject/suspend actions).
+     * Validated at controller level since it's only required for non-approve actions.
      */
-    @Size(max = 500, message = "Reason must be at most 500 characters")
+    @Size(min = 10, max = 500, message = "Reason must be 10-500 characters")
     private String reason;
     
     /**

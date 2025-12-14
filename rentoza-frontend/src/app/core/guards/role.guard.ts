@@ -59,12 +59,19 @@ export class RoleGuard implements CanActivate {
           return true;
         }
 
-        // Insufficient permissions - redirect to home
+        // Insufficient permissions - redirect based on role
+        const isAdmin = user.roles?.includes('ADMIN') ?? false;
         console.log(
           `🚫 RoleGuard: User ${user.email} lacks required roles [${expectedRoles.join(
             ', '
           )}] - has [${user.roles?.join(', ')}]`
         );
+        
+        // Admin users should always go to admin dashboard
+        if (isAdmin) {
+          return this.router.createUrlTree(['/admin/dashboard']);
+        }
+        
         return this.router.createUrlTree(['/pocetna']);
       })
     );

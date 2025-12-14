@@ -402,7 +402,42 @@
       </div>
     </mat-step>
 
-    <!-- Step 7: Review & Submit -->
+    <!-- Step 7: Documents (Serbian Legal Compliance) -->
+    <mat-step label="Dokumenti" [completed]="isDocumentsComplete()">
+      <div class="step-form">
+        <h2 class="step-title">Zakonski dokumenti</h2>
+        <p class="step-description">
+          Otpremite obaveznu dokumentaciju za vozilo (srpski propisi).
+          Sva dokumenta su obavezna pre nastavka.
+        </p>
+
+        <div class="document-upload-grid">
+          <div class="document-upload-item" *ngFor="let docType of requiredDocTypes">
+            <app-document-upload
+              [documentType]="docType"
+              [label]="getDocumentLabel(docType)"
+              [required]="true"
+              (fileSelected)="onDocumentFileSelected(docType, $event)"
+              (removed)="onDocumentFileRemoved(docType)"
+            ></app-document-upload>
+          </div>
+        </div>
+
+        <div class="step-actions">
+          <button mat-button matStepperPrevious><mat-icon>arrow_back</mat-icon> Nazad</button>
+          <button 
+            mat-raised-button 
+            color="primary" 
+            matStepperNext 
+            [disabled]="!isDocumentsComplete()"
+          >
+            Dalje <mat-icon>arrow_forward</mat-icon>
+          </button>
+        </div>
+      </div>
+    </mat-step>
+
+    <!-- Step 8: Review & Submit -->
     <mat-step label="Pregled">
       <div class="step-form">
         <h2 class="step-title">Pregled i potvrda</h2>

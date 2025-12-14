@@ -13,6 +13,7 @@ import {
 import { isWithinRadius } from '@core/utils/distance.util';
 import { normalizeSearchString } from '@core/utils/string-normalization.util';
 import { clearHttpCacheByPattern } from '@core/interceptors/http-cache.interceptor';
+import { getPrimaryImageUrl, normalizeMediaUrlArray } from '@shared/utils/media-url.util';
 
 /**
  * Backend Car DTO interface (uses 'brand' instead of 'make')
@@ -60,11 +61,20 @@ export class CarService {
     // Handle swapped brand/model responses defensively: prefer brand, fallback to model
     const resolvedBrand = brand || make || model || '';
     const resolvedModel = model || brand || '';
+
+    const normalizedImageUrls = normalizeMediaUrlArray(rest.imageUrls);
+    const primaryImageUrl = getPrimaryImageUrl({
+      imageUrl: rest.imageUrl,
+      imageUrls: normalizedImageUrls,
+    });
+
     return {
       ...rest,
       make: resolvedBrand,
       brand: resolvedBrand,
       model: resolvedModel,
+      imageUrls: normalizedImageUrls.length > 0 ? normalizedImageUrls : undefined,
+      imageUrl: primaryImageUrl ?? undefined,
     } as Car;
   }
 
@@ -450,6 +460,32 @@ export class CarService {
 
     return this.http
       .post<any>(`${this.baseUrl}/add`, backendData, {
+        withCredentials: true,
+      })
+      .pipe(map((car) => this.mapBackendCarToFrontend(car)));
+  }
+
+  /**
+   * Add a new car using multipart/form-data (local image upload).
+   * Sends JSON metadata as a part named "car" and image files as parts named "images".
+   */
+  addCarMultipart(carData: Partial<Car>, images: File[]): Observable<Car> {
+    const { make, imageUrl, imageUrls, ...rest } = carData;
+
+    const backendData = {
+      ...rest,
+      brand: make,
+    };
+
+    const formData = new FormData();
+    formData.append('car', new Blob([JSON.stringify(backendData)], { type: 'application/json' }));
+
+    for (const file of images ?? []) {
+      formData.append('images', file);
+    }
+
+    return this.http
+      .post<any>(`${this.baseUrl}/add`, formData, {
         withCredentials: true,
       })
       .pipe(map((car) => this.mapBackendCarToFrontend(car)));

@@ -39,6 +39,14 @@ public class Car {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    /**
+     * Version for optimistic locking.
+     * Prevents concurrent modification race conditions in admin approval workflow.
+     */
+    @Version
+    @Column(name = "version")
+    private Long version;
+
     @NotBlank
     @Column(nullable = false)
     private String brand;
@@ -143,7 +151,8 @@ public class Car {
 
     // TODO: Long-term: Switch to cloud storage URLs (S3, Cloudinary, etc.)
     // Currently supports Base64-encoded images for MVP
-    @Column(name = "image_url", columnDefinition = "LONGTEXT")
+    @Lob
+    @Column(name = "image_url")
     private String imageUrl;
 
     @Column(nullable = false)
@@ -151,10 +160,23 @@ public class Car {
 
     // ========== APPROVAL WORKFLOW FIELDS ==========
 
+    /**
+     * @deprecated Use {@link #listingStatus} instead.
+     * Kept for backward compatibility during V30 migration.
+     */
+    @Deprecated(since = "2025-01", forRemoval = true)
     @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "approval_status", nullable = false, columnDefinition = "VARCHAR(20)")
     private ApprovalStatus approvalStatus = ApprovalStatus.PENDING;
+
+    /**
+     * Car listing lifecycle status (Serbian compliance).
+     * DRAFT → PENDING_APPROVAL → APPROVED (or REJECTED/SUSPENDED)
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "listing_status", nullable = false, length = 50)
+    private ListingStatus listingStatus = ListingStatus.PENDING_APPROVAL;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "approved_by")
@@ -166,12 +188,60 @@ public class Car {
     @Column(name = "rejection_reason", length = 500)
     private String rejectionReason;
 
+    // ========== DOCUMENT TRACKING FIELDS (Serbian Compliance) ==========
+
+    /**
+     * Date vehicle registration expires.
+     */
+    @Column(name = "registration_expiry_date")
+    private java.time.LocalDate registrationExpiryDate;
+
+    /**
+     * Date technical inspection was performed.
+     * Used to calculate expiry (date + 6 months).
+     */
+    @Column(name = "technical_inspection_date")
+    private java.time.LocalDate technicalInspectionDate;
+
+    /**
+     * Technical inspection expiry date (= date + 6 months).
+     * CRITICAL: Rent-a-car vehicles require 6-month inspection.
+     */
+    @Column(name = "technical_inspection_expiry_date")
+    private java.time.LocalDate technicalInspectionExpiryDate;
+
+    /**
+     * Insurance policy expiration date.
+     */
+    @Column(name = "insurance_expiry_date")
+    private java.time.LocalDate insuranceExpiryDate;
+
+    /**
+     * When documents were last verified by admin.
+     */
+    @Column(name = "documents_verified_at")
+    private java.time.LocalDateTime documentsVerifiedAt;
+
+    /**
+     * Admin who verified documents.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "documents_verified_by")
+    private User documentsVerifiedBy;
+
+    /**
+     * Uploaded documents for this car.
+     */
+    @OneToMany(mappedBy = "car", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @JsonIgnore
+    private List<CarDocument> documents = new ArrayList<>();
+
     // ========== NEW PRODUCTION-READY FIELDS ==========
 
-    @Column(name = "license_plate", length = 20, columnDefinition = "VARCHAR(20) COLLATE utf8mb4_unicode_ci")
+    @Column(name = "license_plate", length = 20)
     private String licensePlate;
 
-    @Column(length = 1000, columnDefinition = "VARCHAR(1000) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
+    @Column(length = 1000)
     private String description;
 
     @NotNull
@@ -271,7 +341,8 @@ public class Car {
     // Currently supports Base64-encoded images for MVP (up to 10 images)
     @ElementCollection
     @CollectionTable(name = "car_images", joinColumns = @JoinColumn(name = "car_id"))
-    @Column(name = "image_url", columnDefinition = "LONGTEXT")
+    @Lob
+    @Column(name = "image_url")
     private List<String> imageUrls = new ArrayList<>();
 
     // 🔗 Relations
@@ -323,5 +394,52 @@ public class Car {
             return locationGeoPoint.getCity();
         }
         return location;
+    }
+
+    // ========== DOCUMENT COMPLIANCE HELPER METHODS ==========
+
+    /**
+     * Check if technical inspection is expired (> 6 months old).
+     */
+    public boolean isTechnicalInspectionExpired() {
+        return technicalInspectionExpiryDate != null && 
+               technicalInspectionExpiryDate.isBefore(java.time.LocalDate.now());
+    }
+
+    /**
+     * Check if registration is expired.
+     */
+    public boolean isRegistrationExpired() {
+        return registrationExpiryDate != null && 
+               registrationExpiryDate.isBefore(java.time.LocalDate.now());
+    }
+
+    /**
+     * Check if insurance is expired.
+     */
+    public boolean isInsuranceExpired() {
+        return insuranceExpiryDate != null && 
+               insuranceExpiryDate.isBefore(java.time.LocalDate.now());
+    }
+
+    /**
+     * Check if car is legally rentable (all documents current + approved).
+     */
+    public boolean isLegallyRentable() {
+        return listingStatus == ListingStatus.APPROVED &&
+               !isTechnicalInspectionExpired() &&
+               !isRegistrationExpired() &&
+               !isInsuranceExpired();
+    }
+
+    /**
+     * Days until technical inspection expires (negative if expired).
+     */
+    public long getDaysUntilTechInspectionExpiry() {
+        if (technicalInspectionExpiryDate == null) return -1;
+        return java.time.temporal.ChronoUnit.DAYS.between(
+            java.time.LocalDate.now(), 
+            technicalInspectionExpiryDate
+        );
     }
 }

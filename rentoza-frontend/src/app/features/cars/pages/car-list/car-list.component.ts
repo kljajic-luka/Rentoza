@@ -61,6 +61,7 @@ import {
 import { FavoriteButtonComponent } from '@shared/components/favorite-button/favorite-button.component';
 import { CarFiltersComponent } from '../../components/car-filters/car-filters.component';
 import { TranslateEnumPipe } from '@shared/pipes/translate-enum.pipe';
+import { environment } from '@environments/environment';
 
 @Component({
   selector: 'app-car-list',
@@ -100,6 +101,9 @@ export class CarListComponent implements OnInit, OnDestroy {
   private readonly router = inject(Router);
   private readonly snackBar = inject(MatSnackBar);
   private readonly destroy$ = new Subject<void>();
+
+  private readonly loggedMissingImageForCarIds = new Set<string>();
+  private loggedSample = false;
 
   // Reference to child filter component for direct method calls
   @ViewChild(CarFiltersComponent) filtersComponent!: CarFiltersComponent;
@@ -187,6 +191,7 @@ export class CarListComponent implements OnInit, OnDestroy {
       }
     }),
     tap((results) => {
+      this.debugLogCarImages(results.content);
       // Update URL with current state (instant sync)
       if (this.isAvailabilityMode$.value && this.availabilityParams$.value) {
         this.updateUrlParamsForAvailability(this.availabilityParams$.value);
@@ -486,6 +491,59 @@ export class CarListComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.destroy$.next();
     this.destroy$.complete();
+  }
+
+  private debugLogCarImages(cars: Car[]): void {
+    if (environment.production) {
+      return;
+    }
+
+    if (!this.loggedSample && cars.length > 0) {
+      this.loggedSample = true;
+      const sample = cars[0];
+      console.info('[CarList] Sample car image fields (runtime)', {
+        carId: sample.id,
+        imageUrlPrefix:
+          typeof sample.imageUrl === 'string' ? sample.imageUrl.slice(0, 32) : sample.imageUrl,
+        imageUrlsCount: Array.isArray(sample.imageUrls) ? sample.imageUrls.length : 0,
+        firstImageUrlPrefix:
+          Array.isArray(sample.imageUrls) && sample.imageUrls[0]
+            ? String(sample.imageUrls[0]).slice(0, 32)
+            : null,
+      });
+    }
+
+    for (const car of cars) {
+      const hasImageUrl = typeof car.imageUrl === 'string' && car.imageUrl.trim().length > 0;
+      const hasImageUrls = Array.isArray(car.imageUrls) && car.imageUrls.length > 0;
+
+      // Car cards render placeholder when BOTH imageUrls is empty and imageUrl is falsy.
+      if (!hasImageUrl && !hasImageUrls && !this.loggedMissingImageForCarIds.has(car.id)) {
+        this.loggedMissingImageForCarIds.add(car.id);
+        console.warn('[CarList] Car has no images; placeholder expected', {
+          carId: car.id,
+          imageUrl: car.imageUrl,
+          imageUrls: car.imageUrls,
+        });
+      }
+
+      // If imageUrls exists but imageUrl is missing, some legacy templates still break.
+      if (
+        !hasImageUrl &&
+        hasImageUrls &&
+        !this.loggedMissingImageForCarIds.has(`${car.id}:missing-primary`)
+      ) {
+        this.loggedMissingImageForCarIds.add(`${car.id}:missing-primary`);
+        console.warn(
+          '[CarList] Missing car.imageUrl but imageUrls present (mapping/backfill issue)',
+          {
+            carId: car.id,
+            imageUrl: car.imageUrl,
+            imageUrls: car.imageUrls,
+          }
+        );
+      }
+    }
   }
 
   // ====== Geocoding Autocomplete Methods ======

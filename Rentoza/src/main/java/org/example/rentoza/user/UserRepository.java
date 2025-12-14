@@ -42,5 +42,27 @@ public interface UserRepository extends JpaRepository<User,Long> {
         @org.springframework.data.repository.query.Param("start") java.time.Instant start,
         @org.springframework.data.repository.query.Param("end") java.time.Instant end
     );
+    
+    // ========== OWNER VERIFICATION QUERIES (Serbian Compliance) ==========
+    
+    /**
+     * Check if JMBG is already registered (using Hash).
+     * Used by OwnerVerificationService to prevent duplicate registrations.
+     */
+    @Query("SELECT CASE WHEN COUNT(u) > 0 THEN true ELSE false END FROM User u WHERE u.jmbgHash = :jmbgHash")
+    boolean existsByJmbgHash(@org.springframework.data.repository.query.Param("jmbgHash") String jmbgHash);
+    
+    /**
+     * Check if PIB is already registered (using Hash).
+     * Used by OwnerVerificationService to prevent duplicate registrations.
+     */
+    @Query("SELECT CASE WHEN COUNT(u) > 0 THEN true ELSE false END FROM User u WHERE u.pibHash = :pibHash")
+    boolean existsByPibHash(@org.springframework.data.repository.query.Param("pibHash") String pibHash);
+    
+    /**
+     * Find unverified owners awaiting admin review.
+     */
+    @Query("SELECT u FROM User u WHERE u.isIdentityVerified = false AND (u.jmbg IS NOT NULL OR u.pib IS NOT NULL) ORDER BY u.ownerVerificationSubmittedAt DESC")
+    List<User> findPendingVerificationOwners();
 }
 

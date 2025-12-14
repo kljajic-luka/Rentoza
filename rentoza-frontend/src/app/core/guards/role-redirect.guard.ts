@@ -11,17 +11,16 @@ import { map, Observable } from 'rxjs';
 import { AuthService } from '@core/auth/auth.service';
 
 /**
- * Guard that redirects users to role-appropriate routes with backend-verified roles.
+ * Enterprise-grade guard that enforces strict role-based route separation.
  *
- * ✅ Backend synchronization: Uses currentUser$ from /api/users/me verification
- * ✅ Graceful 403 handling: Redirects unauthorized users to appropriate pages
- * ✅ Role-based routing:
- *   - OWNER users trying to access renter routes (/pocetna, /vozila, /bookings, /favorites)
- *     are redirected to /owner/dashboard
- *   - USER users trying to access owner routes (/owner/**)
- *     are redirected to /pocetna
- * ✅ Session awareness: Redirects to /pocetna on session expiration
- * ✅ Shared routes: /bookings/:id and /bookings/:id/check-in are accessible by both roles
+ * ✅ ADMIN ISOLATION: Admin users can ONLY access /admin/** routes.
+ *    Attempting to access any other route redirects to /admin/dashboard.
+ *    This is a security feature to prevent admins from accidentally
+ *    interacting with the platform as regular users.
+ *
+ * ✅ OWNER/USER separation: Owners see owner dashboard, users see homepage.
+ * ✅ Backend synchronization: Uses currentUser$ from verified /api/users/me
+ * ✅ Graceful fallback: Redirects unauthorized users appropriately
  */
 @Injectable({ providedIn: 'root' })
 export class RoleRedirectGuard implements CanActivate {
@@ -33,6 +32,9 @@ export class RoleRedirectGuard implements CanActivate {
 
   // Booking list route (renter-only, but detail/check-in are shared)
   private readonly bookingsListPath = '/bookings';
+
+  // Admin-only routes (admin can ONLY access these)
+  private readonly adminAllowedPrefixes = ['/admin', '/auth'];
 
   canActivate(
     route: ActivatedRouteSnapshot,
@@ -55,29 +57,51 @@ export class RoleRedirectGuard implements CanActivate {
             return true;
           }
 
-          // ✅ Redirect to home for protected routes when not authenticated (403 handling)
+          // Redirect to home for protected routes when not authenticated
           console.log('🔒 RoleRedirectGuard: User not authenticated - redirecting to /pocetna');
           return this.router.createUrlTree(['/pocetna']);
         }
 
-        // ✅ CHECK ADMIN ROLE FIRST - ADMIN users should always access /admin routes
+        // ============================================================
+        // ADMIN ISOLATION - Enterprise Security Feature
+        // Admin users can ONLY access /admin/** routes. This prevents:
+        // - Accidental data manipulation as a "regular user"
+        // - UI confusion between admin and user experiences
+        // - Security risks from admin accessing user-facing features
+        // ============================================================
         const isAdmin = user.roles?.includes('ADMIN') ?? false;
-        if (isAdmin && currentPath.startsWith('/admin')) {
-          console.log('✅ RoleRedirectGuard: ADMIN user accessing /admin - allowing access');
-          return true;  // Allow ADMIN access to admin routes
+
+        if (isAdmin) {
+          // Admin accessing allowed routes (admin panel, auth for logout)
+          const isAdminAllowedRoute = this.adminAllowedPrefixes.some(
+            prefix => currentPath === prefix || currentPath.startsWith(prefix + '/')
+          );
+
+          if (isAdminAllowedRoute) {
+            console.log('✅ RoleRedirectGuard: ADMIN accessing admin route - allowing');
+            return true;
+          }
+
+          // Admin trying to access ANY non-admin route - redirect to admin dashboard
+          console.log(`🚫 RoleRedirectGuard: ADMIN accessing non-admin route "${currentPath}" - forcing to /admin/dashboard`);
+          return this.router.createUrlTree(['/admin/dashboard']);
         }
 
-        // ✅ Deny non-admin access to /admin routes
+        // ============================================================
+        // NON-ADMIN users cannot access /admin routes
+        // ============================================================
         if (!isAdmin && currentPath.startsWith('/admin')) {
           console.log('🚫 RoleRedirectGuard: Non-admin user accessing /admin - redirecting to /pocetna');
           return this.router.createUrlTree(['/pocetna']);
         }
 
-        // ✅ Check backend-verified roles
+        // ============================================================
+        // OWNER/USER Role Separation
+        // ============================================================
         const isOwner = user.roles?.includes('OWNER') ?? false;
         const isUser = user.roles?.includes('USER') ?? false;
 
-        // ✅ Owner trying to access renter-only routes - redirect to owner dashboard
+        // Owner trying to access renter-only routes - redirect to owner dashboard
         if (isOwner && this.isRenterOnlyRoute(currentPath)) {
           console.log(
             '🚫 RoleRedirectGuard: OWNER accessing renter route - redirecting to /owner/dashboard'
@@ -85,7 +109,7 @@ export class RoleRedirectGuard implements CanActivate {
           return this.router.createUrlTree(['/owner/dashboard']);
         }
 
-        // ✅ Regular user trying to access owner routes - redirect to home
+        // Regular user trying to access owner routes - redirect to home
         if (isUser && !isOwner && currentPath.startsWith('/owner')) {
           console.log('🚫 RoleRedirectGuard: USER accessing owner route - redirecting to /pocetna');
           return this.router.createUrlTree(['/pocetna']);
@@ -102,8 +126,7 @@ export class RoleRedirectGuard implements CanActivate {
     // Pattern: /bookings/:id or /bookings/:id/check-in or /bookings/:id/anything
     const bookingDetailPattern = /^\/bookings\/\d+/;
     if (bookingDetailPattern.test(path)) {
-      // Booking detail and check-in routes are accessible by both roles
-      return false;
+      return false; // Booking detail and check-in routes are accessible by both roles
     }
 
     // /bookings (list) is renter-only

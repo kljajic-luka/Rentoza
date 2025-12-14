@@ -1,0 +1,328 @@
+package org.example.rentoza.car;
+
+import lombok.RequiredArgsConstructor;
+import org.example.rentoza.admin.dto.DocumentReviewDto;
+import org.example.rentoza.car.storage.DocumentStorageStrategy;
+import org.example.rentoza.exception.ResourceNotFoundException;
+import org.example.rentoza.exception.ValidationException;
+import org.example.rentoza.user.User;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.HexFormat;
+import java.util.List;
+import java.util.Set;
+
+/**
+ * Service for car document management (Serbian compliance).
+ * 
+ * <p>Handles:
+ * <ul>
+ *   <li>Document upload with validation</li>
+ *   <li>Admin verification workflow</li>
+ *   <li>Document expiry tracking</li>
+ * </ul>
+ */
+@Service
+@RequiredArgsConstructor
+public class CarDocumentService {
+    
+    private static final Logger log = LoggerFactory.getLogger(CarDocumentService.class);
+    
+    // 10 MB max file size
+    private static final long MAX_FILE_SIZE = 10 * 1024 * 1024;
+    
+    // Allowed MIME types
+    private static final Set<String> ALLOWED_MIME_TYPES = Set.of(
+        "application/pdf",
+        "image/jpeg",
+        "image/jpg",
+        "image/png"
+    );
+    
+    private final CarDocumentRepository documentRepository;
+    private final CarRepository carRepository;
+    private final DocumentStorageStrategy storageStrategy;
+    
+    // ==================== DOCUMENT UPLOAD ====================
+    
+    /**
+     * Upload document for car.
+     * 
+     * @param carId Car ID
+     * @param type Document type
+     * @param file Uploaded file
+     * @param expiryDate When document expires
+     * @param uploader Owner uploading document
+     * @return Created document DTO
+     */
+    @Transactional
+    public CarDocument uploadDocument(
+            Long carId, 
+            DocumentType type, 
+            MultipartFile file, 
+            LocalDate expiryDate,
+            User uploader) throws IOException {
+        
+        // Validate car exists and uploader is owner
+        Car car = carRepository.findById(carId)
+            .orElseThrow(() -> new ResourceNotFoundException("Car not found: " + carId));
+        
+        if (!car.getOwner().getId().equals(uploader.getId())) {
+            throw new ValidationException("Only car owner can upload documents");
+        }
+        
+        // Validate file
+        validateFile(file);
+        
+        // Calculate expiry for technical inspection (6 months from issue date)
+        LocalDate effectiveExpiry = expiryDate;
+        if (type == DocumentType.TECHNICAL_INSPECTION && expiryDate == null) {
+            // If no expiry provided, assume issued today + 6 months
+            effectiveExpiry = LocalDate.now().plusMonths(6);
+        }
+        
+        // Check if replacing existing document
+        DocumentVerificationStatus previousStatus = null;
+        documentRepository.findByCarIdAndType(carId, type)
+            .ifPresent(existing -> {
+                log.info("Replacing existing {} for carId={}", type, carId);
+                documentRepository.delete(existing);
+            });
+        
+        // Generate storage path
+        String storagePath = String.format("cars/%d/documents/%s_%d.%s",
+            carId, type.name().toLowerCase(), System.currentTimeMillis(),
+            getFileExtension(file.getOriginalFilename()));
+        
+        // Upload to storage
+        String documentUrl = storageStrategy.uploadFile(file, storagePath);
+        
+        // Calculate file hash for integrity
+        String hash = calculateSha256(file.getBytes());
+        
+        // Create document entity
+        CarDocument document = CarDocument.builder()
+            .car(car)
+            .type(type)
+            .documentUrl(documentUrl)
+            .originalFilename(file.getOriginalFilename())
+            .documentHash(hash)
+            .fileSize(file.getSize())
+            .mimeType(file.getContentType())
+            .uploadDate(LocalDateTime.now())
+            .expiryDate(effectiveExpiry)
+            .status(DocumentVerificationStatus.PENDING)
+            .build();
+        
+        document = documentRepository.save(document);
+        
+        // Update car expiry dates
+        updateCarExpiryDates(car, type, effectiveExpiry);
+        
+        log.info("Document uploaded: carId={}, type={}, docId={}", carId, type, document.getId());
+        
+        return document;
+    }
+    
+    // ==================== ADMIN VERIFICATION ====================
+    
+    /**
+     * Admin verifies document is valid.
+     * 
+     * @param documentId Document ID
+     * @param admin Admin performing verification
+     */
+    @Transactional
+    public void verifyDocument(Long documentId, User admin) {
+        CarDocument document = documentRepository.findById(documentId)
+            .orElseThrow(() -> new ResourceNotFoundException("Document not found: " + documentId));
+        
+        if (document.isExpired()) {
+            throw new ValidationException("Cannot verify expired document");
+        }
+        
+        document.setStatus(DocumentVerificationStatus.VERIFIED);
+        document.setVerifiedBy(admin);
+        document.setVerifiedAt(LocalDateTime.now());
+        document.setRejectionReason(null);
+        
+        documentRepository.save(document);
+        
+        // Update car document verification timestamp
+        Car car = document.getCar();
+        car.setDocumentsVerifiedAt(LocalDateTime.now());
+        car.setDocumentsVerifiedBy(admin);
+        carRepository.save(car);
+        
+        log.info("Document verified: docId={} by adminId={}", documentId, admin.getId());
+    }
+    
+    /**
+     * Admin rejects document with reason.
+     * 
+     * @param documentId Document ID
+     * @param reason Rejection reason
+     * @param admin Admin performing rejection
+     */
+    @Transactional
+    public void rejectDocument(Long documentId, String reason, User admin) {
+        CarDocument document = documentRepository.findById(documentId)
+            .orElseThrow(() -> new ResourceNotFoundException("Document not found: " + documentId));
+        
+        if (reason == null || reason.isBlank()) {
+            throw new ValidationException("Rejection reason is required");
+        }
+        
+        document.setStatus(DocumentVerificationStatus.REJECTED);
+        document.setVerifiedBy(admin);
+        document.setVerifiedAt(LocalDateTime.now());
+        document.setRejectionReason(reason);
+        
+        documentRepository.save(document);
+        
+        log.warn("Document rejected: docId={}, reason='{}', by adminId={}", 
+            documentId, reason, admin.getId());
+    }
+    
+    // ==================== QUERIES ====================
+    
+    /**
+     * Get document by ID.
+     * 
+     * @param documentId Document ID
+     * @return Document entity
+     */
+    @Transactional(readOnly = true)
+    public CarDocument getDocumentById(Long documentId) {
+        return documentRepository.findById(documentId)
+            .orElseThrow(() -> new ResourceNotFoundException("Document not found: " + documentId));
+    }
+
+    /**
+     * Get a document for admin review with all required associations initialized.
+     *
+     * <p>CRITICAL: Admin controllers must return DTOs and must not map detached
+     * entities that still contain lazy proxies.
+     */
+    @Transactional(readOnly = true)
+    public DocumentReviewDto getDocumentReview(Long documentId) {
+        CarDocument doc = documentRepository.findByIdWithVerifiedBy(documentId)
+            .orElseThrow(() -> new ResourceNotFoundException("Document not found: " + documentId));
+        return DocumentReviewDto.fromEntity(doc);
+    }
+
+    /**
+     * Get all documents for a car with verifier eagerly loaded.
+     *
+     * <p>Used by admin review-detail screens to avoid N+1 queries.
+     */
+    @Transactional(readOnly = true)
+    public List<CarDocument> getDocumentsForCarWithVerifiedBy(Long carId) {
+        return documentRepository.findByCarIdWithVerifiedBy(carId);
+    }
+
+    /**
+     * Read the stored document bytes.
+     *
+     * <p>Supports legacy rows where {@code documentUrl} may contain an absolute path.
+     * Never leaks filesystem paths in errors.
+     */
+    @Transactional(readOnly = true)
+    public byte[] getDocumentContent(CarDocument document) {
+        if (document == null) {
+            throw new ResourceNotFoundException("Document not found");
+        }
+        try {
+            return storageStrategy.getFile(document.getDocumentUrl());
+        } catch (IOException | RuntimeException e) {
+            throw new ResourceNotFoundException("Document file not found");
+        }
+    }
+    
+    /**
+     * Get all documents for a car.
+     */
+    @Transactional(readOnly = true)
+    public List<CarDocument> getDocumentsForCar(Long carId) {
+        return documentRepository.findByCarId(carId);
+    }
+    
+    /**
+     * Get all pending documents for admin review.
+     */
+    @Transactional(readOnly = true)
+    public List<CarDocument> getPendingDocuments() {
+        return documentRepository.findByStatus(DocumentVerificationStatus.PENDING);
+    }
+    
+    /**
+     * Check if car has all required documents verified.
+     */
+    @Transactional(readOnly = true)
+    public boolean hasAllRequiredDocumentsVerified(Long carId) {
+        // 3 required documents: REGISTRATION, TECHNICAL_INSPECTION, LIABILITY_INSURANCE
+        long count = documentRepository.countRequiredVerifiedDocuments(carId);
+        return count >= 3;
+    }
+    
+    // ==================== HELPER METHODS ====================
+    
+    private void validateFile(MultipartFile file) {
+        if (file.isEmpty()) {
+            throw new ValidationException("File is empty");
+        }
+        
+        if (file.getSize() > MAX_FILE_SIZE) {
+            throw new ValidationException("File too large. Maximum 10MB allowed.");
+        }
+        
+        String mimeType = file.getContentType();
+        if (mimeType == null || !ALLOWED_MIME_TYPES.contains(mimeType.toLowerCase())) {
+            throw new ValidationException("Invalid file type. Allowed: PDF, JPEG, PNG");
+        }
+    }
+    
+    private String getFileExtension(String filename) {
+        if (filename == null || !filename.contains(".")) {
+            return "bin";
+        }
+        return filename.substring(filename.lastIndexOf('.') + 1).toLowerCase();
+    }
+    
+    private String calculateSha256(byte[] data) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(data);
+            return HexFormat.of().formatHex(hash);
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException("SHA-256 not available", e);
+        }
+    }
+    
+    private void updateCarExpiryDates(Car car, DocumentType type, LocalDate expiryDate) {
+        switch (type) {
+            case REGISTRATION:
+                car.setRegistrationExpiryDate(expiryDate);
+                break;
+            case TECHNICAL_INSPECTION:
+                car.setTechnicalInspectionExpiryDate(expiryDate);
+                car.setTechnicalInspectionDate(LocalDate.now());
+                break;
+            case LIABILITY_INSURANCE:
+                car.setInsuranceExpiryDate(expiryDate);
+                break;
+            default:
+                break;
+        }
+        carRepository.save(car);
+    }
+}

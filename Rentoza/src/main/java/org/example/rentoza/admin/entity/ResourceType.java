@@ -25,5 +25,7 @@ public enum ResourceType {
     /** Review/rating */
     REVIEW,
     /** Platform configuration */
-    CONFIG
+    CONFIG,
+
+    DOCUMENT
 }

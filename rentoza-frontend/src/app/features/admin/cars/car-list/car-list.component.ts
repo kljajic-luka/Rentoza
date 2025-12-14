@@ -15,6 +15,7 @@ import { MatTabsModule } from '@angular/material/tabs';
 import { debounceTime, distinctUntilChanged, Subject, filter, takeUntil } from 'rxjs';
 import { AdminApiService, AdminCarDto } from '../../../../core/services/admin-api.service';
 import { AdminNotificationService } from '../../../../core/services/admin-notification.service';
+import { normalizeMediaUrl } from '@shared/utils/media-url.util';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatDialogModule, MatDialog } from '@angular/material/dialog';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -81,9 +82,7 @@ import { CarApprovalDialogComponent } from '../dialogs/car-approval-dialog.compo
                     <div class="row">
                       <div
                         class="car-thumb"
-                        [style.backgroundImage]="
-                          'url(' + (car.imageUrl || 'assets/images/car-placeholder.png') + ')'
-                        "
+                        [style.backgroundImage]="'url(' + getCarThumbUrl(car) + ')'"
                       ></div>
                       <div class="stack" style="gap:2px;">
                         <span class="strong">{{ car.brand }} {{ car.model }}</span>
@@ -103,10 +102,11 @@ import { CarApprovalDialogComponent } from '../dialogs/car-approval-dialog.compo
                 <ng-container matColumnDef="status">
                   <th mat-header-cell *matHeaderCellDef>Status</th>
                   <td mat-cell *matCellDef="let car">
-                    <span 
-                      class="badge" 
-                      [ngClass]="getStatusBadgeClass(car.approvalStatus)" 
-                      [matTooltip]="car.rejectionReason">
+                    <span
+                      class="badge"
+                      [ngClass]="getStatusBadgeClass(car.approvalStatus)"
+                      [matTooltip]="car.rejectionReason"
+                    >
                       {{ getStatusLabel(car.approvalStatus) }}
                     </span>
                   </td>
@@ -117,21 +117,23 @@ import { CarApprovalDialogComponent } from '../dialogs/car-approval-dialog.compo
                   <th mat-header-cell *matHeaderCellDef></th>
                   <td mat-cell *matCellDef="let car">
                     <div class="action-buttons">
-                      <button 
-                        mat-stroked-button 
-                        color="primary" 
-                        (click)="openApprovalDialog(car)" 
-                        matTooltip="Pregledaj i odobri/odbij">
+                      <button
+                        mat-stroked-button
+                        color="primary"
+                        (click)="openApprovalDialog(car)"
+                        matTooltip="Pregledaj i odobri/odbij"
+                      >
                         <mat-icon>assessment</mat-icon> Pregledaj
                       </button>
-                      
+
                       <!-- Quick Approve Action -->
-                      <button 
-                        mat-icon-button 
-                        color="accent" 
+                      <button
+                        mat-icon-button
+                        color="accent"
                         *ngIf="car.approvalStatus === ApprovalStatus.PENDING"
-                        (click)="approveCar(car, $event)" 
-                        matTooltip="Brzo odobrenje">
+                        (click)="approveCar(car, $event)"
+                        matTooltip="Brzo odobrenje"
+                      >
                         <mat-icon>check_circle</mat-icon>
                       </button>
                     </div>
@@ -139,7 +141,10 @@ import { CarApprovalDialogComponent } from '../dialogs/car-approval-dialog.compo
                 </ng-container>
 
                 <tr mat-header-row *matHeaderRowDef="['car', 'owner', 'status', 'actions']"></tr>
-                <tr mat-row *matRowDef="let row; columns: ['car', 'owner', 'status', 'actions']"></tr>
+                <tr
+                  mat-row
+                  *matRowDef="let row; columns: ['car', 'owner', 'status', 'actions']"
+                ></tr>
               </table>
             </div>
           </mat-tab>
@@ -180,10 +185,7 @@ import { CarApprovalDialogComponent } from '../dialogs/car-approval-dialog.compo
                 <ng-container matColumnDef="status">
                   <th mat-header-cell *matHeaderCellDef>Status</th>
                   <td mat-cell *matCellDef="let car">
-                    <span
-                      class="badge"
-                      [ngClass]="getStatusBadgeClass(car.approvalStatus)"
-                    >
+                    <span class="badge" [ngClass]="getStatusBadgeClass(car.approvalStatus)">
                       {{ getStatusLabel(car.approvalStatus) }}
                     </span>
                   </td>
@@ -239,6 +241,10 @@ export class CarListComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   private notification = inject(AdminNotificationService);
 
+  protected getCarThumbUrl(car: AdminCarDto): string {
+    return normalizeMediaUrl(car.imageUrl) ?? 'assets/images/car-placeholder.png';
+  }
+
   // Tab State
   selectedTabIndex = 0;
 
@@ -264,21 +270,21 @@ export class CarListComponent implements OnInit, OnDestroy {
     // Listen for navigation end to ensure data refreshes when navigating to this page
     // even if the component is reused.
     // IMPORTANT: Use takeUntil to prevent memory leaks and post-destroy API calls
-    this.router.events.pipe(
-      filter(event => event instanceof NavigationEnd),
-      takeUntil(this.destroy$)
-    ).subscribe(() => {
-      this.refreshView();
-    });
+    this.router.events
+      .pipe(
+        filter((event) => event instanceof NavigationEnd),
+        takeUntil(this.destroy$)
+      )
+      .subscribe(() => {
+        this.refreshView();
+      });
 
-    this.searchSubject.pipe(
-      debounceTime(400), 
-      distinctUntilChanged(),
-      takeUntil(this.destroy$)
-    ).subscribe((term) => {
-      this.pageIndex = 0;
-      this.loadAllCars(term);
-    });
+    this.searchSubject
+      .pipe(debounceTime(400), distinctUntilChanged(), takeUntil(this.destroy$))
+      .subscribe((term) => {
+        this.pageIndex = 0;
+        this.loadAllCars(term);
+      });
   }
 
   ngOnDestroy() {
@@ -379,17 +385,8 @@ export class CarListComponent implements OnInit, OnDestroy {
   }
 
   openApprovalDialog(car: AdminCarDto): void {
-    const dialogRef = this.dialog.open(CarApprovalDialogComponent, {
-      width: '600px',
-      data: { car },
-    });
-
-    dialogRef.afterClosed().subscribe((result) => {
-      if (result) {
-        this.notification.showSuccess('Status vozila ažuriran');
-        this.refreshView();
-      }
-    });
+    // Navigate to car review page instead of dialog
+    this.router.navigate([`/admin/cars/${car.id}/review`]);
   }
 
   approveCar(car: AdminCarDto, event: Event): void {

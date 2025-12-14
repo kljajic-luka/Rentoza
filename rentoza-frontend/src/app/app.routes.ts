@@ -207,8 +207,8 @@ export const routes: Routes = [
       {
         path: 'verification',
         loadComponent: () =>
-          import('@features/owner/pages/verification/verification.component').then(
-            (m) => m.VerificationComponent
+          import('@features/owner/pages/owner-verification-page/owner-verification-page.component').then(
+            (m) => m.OwnerVerificationPageComponent
           ),
       },
     ],

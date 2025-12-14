@@ -43,6 +43,10 @@ public class AdminUserDto {
     private Integer riskScore;
     private Integer bookingsCount;
     private Integer carsCount;
+
+    /** Owner verification (Serbian compliance) */
+    private String ownerVerificationStatus; // NOT_SUBMITTED | PENDING_REVIEW | VERIFIED
+    private LocalDateTime ownerVerificationSubmittedAt;
     
     /**
      * Convert User entity to summary DTO.
@@ -63,7 +67,15 @@ public class AdminUserDto {
             .bannedAt(user.getBannedAt())
             .createdAt(user.getCreatedAt())
             .updatedAt(user.getUpdatedAt())
+            .ownerVerificationStatus(computeOwnerVerificationStatus(user))
+            .ownerVerificationSubmittedAt(user.getOwnerVerificationSubmittedAt())
             .build();
+    }
+
+    private static String computeOwnerVerificationStatus(User user) {
+        if (Boolean.TRUE.equals(user.getIsIdentityVerified())) return "VERIFIED";
+        if (user.getOwnerVerificationSubmittedAt() != null) return "PENDING_REVIEW";
+        return "NOT_SUBMITTED";
     }
     
     /**

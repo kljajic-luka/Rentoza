@@ -2,7 +2,7 @@ import { Component, OnInit, ViewChild, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatTableModule } from '@angular/material/table';
 import { MatPaginatorModule, MatPaginator, PageEvent } from '@angular/material/paginator';
-import { MatSortModule, MatSort } from '@angular/material/sort';
+import { MatSortModule, MatSort, Sort } from '@angular/material/sort';
 import { MatInputModule } from '@angular/material/input';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatButtonModule } from '@angular/material/button';
@@ -49,7 +49,15 @@ export class UserListComponent implements OnInit {
   private dialog = inject(MatDialog);
   private adminState = inject(AdminStateService);
 
-  displayedColumns: string[] = ['name', 'email', 'role', 'status', 'riskScore', 'actions'];
+  displayedColumns: string[] = [
+    'name',
+    'email',
+    'role',
+    'ownerVerification',
+    'status',
+    'riskScore',
+    'actions',
+  ];
   users$ = this.adminState.users$;
   totalElements$ = this.adminState.totalUsers$;
   loading$ = this.adminState.loading$;
@@ -61,6 +69,9 @@ export class UserListComponent implements OnInit {
   // Pagination state
   pageIndex = 0;
   pageSize = 20;
+
+  // Sorting state (server-side)
+  sortParam?: string;
 
   @ViewChild(MatPaginator) paginator!: MatPaginator;
   @ViewChild(MatSort) sort!: MatSort;
@@ -76,7 +87,7 @@ export class UserListComponent implements OnInit {
   }
 
   loadUsers(search?: string) {
-    this.adminState.loadUsers(this.pageIndex, this.pageSize, search);
+    this.adminState.loadUsers(this.pageIndex, this.pageSize, search, this.sortParam);
   }
 
   onSearch(term: string) {
@@ -88,6 +99,46 @@ export class UserListComponent implements OnInit {
     this.pageIndex = event.pageIndex;
     this.pageSize = event.pageSize;
     this.loadUsers(this.searchTerm);
+  }
+
+  onSortChange(sort: Sort) {
+    if (!sort.direction) {
+      this.sortParam = undefined;
+      this.loadUsers(this.searchTerm);
+      return;
+    }
+
+    // Only enable sorting for known backend fields
+    if (sort.active === 'ownerVerificationSubmittedAt') {
+      this.sortParam = `${sort.active},${sort.direction}`;
+    } else {
+      this.sortParam = undefined;
+    }
+
+    this.pageIndex = 0;
+    this.loadUsers(this.searchTerm);
+  }
+
+  getOwnerVerificationBadge(status?: string): string {
+    switch (status) {
+      case 'PENDING_REVIEW':
+        return 'badge badge-warn';
+      case 'VERIFIED':
+        return 'badge badge-success';
+      default:
+        return 'badge badge-neutral';
+    }
+  }
+
+  getOwnerVerificationLabel(status?: string): string {
+    switch (status) {
+      case 'PENDING_REVIEW':
+        return 'Pending';
+      case 'VERIFIED':
+        return 'Verified';
+      default:
+        return 'Not submitted';
+    }
   }
 
   viewUser(userId: number) {

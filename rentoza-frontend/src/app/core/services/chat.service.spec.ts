@@ -6,6 +6,7 @@ import { AuthService } from '@core/auth/auth.service';
 import { ToastService } from './toast.service';
 import { BehaviorSubject, of } from 'rxjs';
 import { MessageDTO, ConversationDTO, TypingIndicatorDTO } from '@core/models/chat.model';
+import { UserRole } from '@core/models/user-role.type';
 
 /**
  * Unit tests for ChatService
@@ -24,20 +25,21 @@ describe('ChatService', () => {
     firstName: 'Test',
     lastName: 'User',
     email: 'test@example.com',
+    roles: ['USER'] as UserRole[],
   };
 
   beforeEach(() => {
-    wsStatus$ = new BehaviorSubject<WebSocketConnectionStatus>(WebSocketConnectionStatus.DISCONNECTED);
+    wsStatus$ = new BehaviorSubject<WebSocketConnectionStatus>(
+      WebSocketConnectionStatus.DISCONNECTED
+    );
 
-    webSocketServiceMock = jasmine.createSpyObj('WebSocketService', [
-      'connect',
-      'disconnect',
-      'subscribe',
-      'send',
-      'isConnected',
-    ], {
-      status$: wsStatus$.asObservable(),
-    });
+    webSocketServiceMock = jasmine.createSpyObj(
+      'WebSocketService',
+      ['connect', 'disconnect', 'subscribe', 'send', 'isConnected'],
+      {
+        status$: wsStatus$.asObservable(),
+      }
+    );
 
     authServiceMock = jasmine.createSpyObj('AuthService', ['getCurrentUser', 'getAccessToken'], {
       currentUser$: of(mockUser),
@@ -75,7 +77,14 @@ describe('ChatService', () => {
 
     it('should load offline queue from localStorage on init', () => {
       const queuedItems = [
-        { id: 'item-1', bookingId: 'booking-1', content: 'Test', timestamp: new Date().toISOString(), retryCount: 0, status: 'queued' as const },
+        {
+          id: 'item-1',
+          bookingId: 'booking-1',
+          content: 'Test',
+          timestamp: new Date().toISOString(),
+          retryCount: 0,
+          status: 'queued' as const,
+        },
       ];
       localStorage.setItem('rentoza_chat_offline_queue', JSON.stringify(queuedItems));
 

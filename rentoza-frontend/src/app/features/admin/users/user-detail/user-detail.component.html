@@ -83,7 +83,49 @@
           </div>
           <div class="row between">
             <span class="muted">ID Verification</span>
-            <span class="badge badge-success">Verified</span>
+            <span [class]="getOwnerVerificationBadge(user.ownerVerificationStatus)">
+              {{ getOwnerVerificationLabel(user.ownerVerificationStatus) }}
+            </span>
+          </div>
+
+          <div class="row between" *ngIf="user.ownerType">
+            <span class="muted">Owner Type</span>
+            <span class="strong">{{ user.ownerType }}</span>
+          </div>
+
+          <div class="row between" *ngIf="user.maskedJmbg">
+            <span class="muted">JMBG (masked)</span>
+            <span class="strong">{{ user.maskedJmbg }}</span>
+          </div>
+
+          <div class="row between" *ngIf="user.maskedPib">
+            <span class="muted">PIB (masked)</span>
+            <span class="strong">{{ user.maskedPib }}</span>
+          </div>
+
+          <div class="row between" *ngIf="user.ownerVerificationSubmittedAt">
+            <span class="muted">Submitted</span>
+            <span class="strong">{{ user.ownerVerificationSubmittedAt | date : 'medium' }}</span>
+          </div>
+
+          <div class="row between" *ngIf="user.maskedBankAccountNumber">
+            <span class="muted">Bank Account (masked)</span>
+            <span class="strong">{{ user.maskedBankAccountNumber }}</span>
+          </div>
+
+          <div
+            class="stack"
+            style="gap: 8px"
+            *ngIf="user.ownerVerificationStatus === 'PENDING_REVIEW'"
+          >
+            <button mat-flat-button color="primary" (click)="approveOwnerVerification()">
+              <mat-icon>verified</mat-icon>
+              Approve Verification
+            </button>
+            <button mat-stroked-button color="warn" (click)="rejectOwnerVerification()">
+              <mat-icon>cancel</mat-icon>
+              Reject Verification
+            </button>
           </div>
         </mat-card-content>
       </mat-card>

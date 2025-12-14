@@ -10,6 +10,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { AdminApiService, AdminCarDto } from '../../../../core/services/admin-api.service';
 import { AdminNotificationService } from '../../../../core/services/admin-notification.service';
 import { CarActionDialogComponent } from '../dialogs/car-action-dialog/car-action-dialog.component';
+import { normalizeMediaUrl } from '@shared/utils/media-url.util';
 
 @Component({
   selector: 'app-car-detail',
@@ -38,13 +39,8 @@ import { CarActionDialogComponent } from '../dialogs/car-action-dialog/car-actio
       <div *ngIf="!loading && car" class="car-grid">
         <div class="car-main">
           <mat-card class="surface-card surface-wide">
-            <div
-              class="hero"
-              [style.backgroundImage]="
-                'url(' + (car.imageUrl || 'assets/images/car-placeholder.png') + ')'
-              "
-            >
-              <div class="hero-overlay" *ngIf="!car.imageUrl">
+            <div class="hero" [style.backgroundImage]="'url(' + getCarHeroImageUrl(car) + ')'">
+              <div class="hero-overlay" *ngIf="!hasCarHeroImage(car)">
                 <mat-icon>directions_car</mat-icon>
               </div>
             </div>
@@ -129,6 +125,14 @@ export class CarDetailComponent implements OnInit {
   carId: number | null = null;
   car: AdminCarDto | null = null;
   loading = true;
+
+  protected getCarHeroImageUrl(car: AdminCarDto): string {
+    return normalizeMediaUrl(car.imageUrl) ?? 'assets/images/car-placeholder.png';
+  }
+
+  protected hasCarHeroImage(car: AdminCarDto): boolean {
+    return normalizeMediaUrl(car.imageUrl) !== null;
+  }
 
   ngOnInit() {
     const id = this.route.snapshot.paramMap.get('id');

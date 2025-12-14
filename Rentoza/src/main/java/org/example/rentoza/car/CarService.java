@@ -5,6 +5,7 @@ import org.example.rentoza.booking.BookingStatus;
 import org.example.rentoza.car.dto.CarRequestDTO;
 import org.example.rentoza.car.dto.CarResponseDTO;
 import org.example.rentoza.car.dto.CarSearchCriteria;
+import org.example.rentoza.car.storage.CarImageStorageService;
 import org.example.rentoza.common.GeoPoint;
 import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.review.ReviewDirection;
@@ -26,6 +27,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import org.springframework.web.multipart.MultipartFile;
+
 @Service
 public class CarService {
 
@@ -35,12 +38,39 @@ public class CarService {
     private final BookingRepository bookingRepo;
     private final ReviewRepository reviewRepo;
     private final org.example.rentoza.security.CurrentUser currentUser;
+    private final CarImageStorageService carImageStorageService;
 
-    public CarService(CarRepository repo, BookingRepository bookingRepo, ReviewRepository reviewRepo, org.example.rentoza.security.CurrentUser currentUser) {
+    public CarService(
+            CarRepository repo,
+            BookingRepository bookingRepo,
+            ReviewRepository reviewRepo,
+            org.example.rentoza.security.CurrentUser currentUser,
+            CarImageStorageService carImageStorageService
+    ) {
         this.repo = repo;
         this.bookingRepo = bookingRepo;
         this.reviewRepo = reviewRepo;
         this.currentUser = currentUser;
+        this.carImageStorageService = carImageStorageService;
+    }
+
+    @Transactional
+    public Car addCarWithLocalImages(CarRequestDTO dto, User owner, List<MultipartFile> images) {
+        // This path is used by multipart/form-data uploads.
+        // We intentionally DO NOT persist any base64 data into the database.
+        dto.setImageUrl(null);
+        dto.setImageUrls(null);
+
+        Car savedCar = addCar(dto, owner);
+
+        List<String> imageUrls = carImageStorageService.storeCarImages(savedCar.getId(), images);
+        if (!imageUrls.isEmpty()) {
+            savedCar.setImageUrl(imageUrls.get(0));
+            savedCar.setImageUrls(new ArrayList<>(imageUrls));
+            savedCar = repo.save(savedCar);
+        }
+
+        return savedCar;
     }
 
     public Car addCar(CarRequestDTO dto, User owner) {

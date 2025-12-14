@@ -41,7 +41,7 @@
 
     <div *ngIf="!(loading$ | async)">
       <ng-container *ngIf="users$ | async as users">
-        <table mat-table [dataSource]="users">
+        <table mat-table [dataSource]="users" matSort (matSortChange)="onSortChange($event)">
           <ng-container matColumnDef="name">
             <th mat-header-cell *matHeaderCellDef>User</th>
             <td mat-cell *matCellDef="let user" (click)="viewUser(user.id)">
@@ -64,6 +64,17 @@
             <th mat-header-cell *matHeaderCellDef>Role</th>
             <td mat-cell *matCellDef="let user">
               <span class="chip-pill" [ngClass]="getRoleColor(user.role)">{{ user.role }}</span>
+            </td>
+          </ng-container>
+
+          <ng-container matColumnDef="ownerVerification">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header="ownerVerificationSubmittedAt">
+              Owner Verification
+            </th>
+            <td mat-cell *matCellDef="let user">
+              <span [class]="getOwnerVerificationBadge(user.ownerVerificationStatus)">
+                {{ getOwnerVerificationLabel(user.ownerVerificationStatus) }}
+              </span>
             </td>
           </ng-container>
 
@@ -139,7 +150,7 @@
           ></tr>
 
           <tr class="mat-row" *matNoDataRow>
-            <td class="mat-cell" colspan="6">
+            <td class="mat-cell" colspan="7">
               <div class="row" style="justify-content: center; padding: 20px">
                 <mat-icon>search_off</mat-icon>
                 <span>No users found matching "{{ searchTerm }}"</span>

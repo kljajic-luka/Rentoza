@@ -42,6 +42,11 @@ export const ADMIN_ROUTES: Routes = [
               import('./cars/car-list/car-list.component').then((m) => m.CarListComponent),
           },
           {
+            path: ':carId/review',
+            loadComponent: () =>
+              import('./cars/car-review/car-review.component').then((m) => m.CarReviewComponent),
+          },
+          {
             path: ':id',
             loadComponent: () =>
               import('./cars/car-detail/car-detail.component').then((m) => m.CarDetailComponent),

@@ -273,10 +273,18 @@ public class ResilienceConfiguration {
                 .timeoutDuration(Duration.ofSeconds(3))
                 .build();
 
+        // Admin approval - generous for bulk approvals (100 req/min)
+        RateLimiterConfig adminApprovalConfig = RateLimiterConfig.custom()
+                .limitForPeriod(100)
+                .limitRefreshPeriod(Duration.ofMinutes(1))
+                .timeoutDuration(Duration.ofSeconds(0)) // Fail fast if exceeded
+                .build();
+
         RateLimiterRegistry registry = RateLimiterRegistry.of(defaultConfig);
         registry.rateLimiter("photoUpload", photoUploadConfig);
         registry.rateLimiter("checkInMutation", checkInMutationConfig);
         registry.rateLimiter("handshake", handshakeConfig);
+        registry.rateLimiter("admin-approval", adminApprovalConfig);
 
         log.info("[Resilience] RateLimiterRegistry initialized");
         

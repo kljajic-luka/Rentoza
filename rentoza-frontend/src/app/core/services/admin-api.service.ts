@@ -27,6 +27,10 @@ export interface AdminUserDto {
   role: string;
   banned: boolean;
   riskScore?: number;
+
+  // Owner verification (Serbian compliance)
+  ownerVerificationStatus?: 'NOT_SUBMITTED' | 'PENDING_REVIEW' | 'VERIFIED';
+  ownerVerificationSubmittedAt?: string; // ISO string from backend
 }
 
 export interface AdminUserDetailDto extends AdminUserDto {
@@ -37,6 +41,18 @@ export interface AdminUserDetailDto extends AdminUserDto {
   totalCars: number;
   riskFactors: string[];
   recentAdminActions: any[];
+
+  // Owner verification review fields (masked only)
+  ownerType?: 'INDIVIDUAL' | 'LEGAL_ENTITY';
+  maskedJmbg?: string;
+  maskedPib?: string;
+  isIdentityVerified?: boolean;
+  ownerVerificationSubmittedAt?: string;
+  maskedBankAccountNumber?: string;
+}
+
+export interface OwnerVerificationRejectRequest {
+  reason: string;
 }
 
 export interface BanUserRequest {
@@ -66,6 +82,72 @@ export interface CarApprovalRequest {
   reason: string;
   notes?: string;
   approved: boolean;
+}
+
+/**
+ * Detailed car review DTO for document verification workflow.
+ */
+export interface AdminCarReviewDetailDto {
+  carId: number;
+  brand: string;
+  model: string;
+  year: number;
+  location: string;
+  ownerName: string;
+  ownerEmail: string;
+  ownerIdentityVerified: boolean;
+  ownerType: string; // INDIVIDUAL or LEGAL_ENTITY
+  registrationExpiryDate: string; // LocalDate
+  technicalInspectionDate: string; // LocalDate
+  technicalInspectionExpiryDate: string; // LocalDate
+  insuranceExpiryDate: string; // LocalDate
+  documents: DocumentReviewDto[];
+  imageUrls: string[]; // Base64 or URLs
+  approvalState: ApprovalStateDto;
+  createdAt: string;
+}
+
+/**
+ * Single document in review workflow.
+ */
+export interface DocumentReviewDto {
+  id: number;
+  type: string; // REGISTRATION, TECHNICAL_INSPECTION, LIABILITY_INSURANCE, AUTHORIZATION
+  status: string; // PENDING, VERIFIED, REJECTED, EXPIRED_AUTO
+  uploadDate: string; // ISO datetime
+  expiryDate: string; // ISO date
+  isExpired: boolean;
+  daysUntilExpiry: number;
+  verifiedByName?: string;
+  verifiedAt?: string;
+  rejectionReason?: string;
+  documentUrl: string;
+  documentHash: string;
+  originalFilename: string;
+  mimeType: string;
+  fileSize: number;
+}
+
+/**
+ * Pre-calculated approval state for car.
+ */
+export interface ApprovalStateDto {
+  ownerVerified: boolean;
+  missingDocuments: string[];
+  unverifiedDocuments: string[];
+  expiredDocuments: string[];
+  registrationValid: boolean;
+  techInspectionValid: boolean;
+  insuranceValid: boolean;
+  canApprove: boolean;
+}
+
+/**
+ * Request to verify or reject a document.
+ */
+export interface DocumentVerificationRequestDto {
+  approved: boolean;
+  rejectionReason?: string; // Required if approved=false, min 20 chars
 }
 
 // ==================== DISPUTES ====================
@@ -252,7 +334,8 @@ export class AdminApiService {
     page: number = 0,
     size: number = 20,
     search?: string,
-    pageUrl?: string
+    pageUrl?: string,
+    sort?: string
   ): Observable<PaginatedResponse<AdminUserDto>> {
     const url = pageUrl ?? `${this.apiUrl}/users`;
     let options: { params?: HttpParams } = {};
@@ -262,6 +345,10 @@ export class AdminApiService {
 
       if (search) {
         params = params.set('search', search);
+      }
+
+      if (sort) {
+        params = params.append('sort', sort);
       }
 
       options = { params };
@@ -287,6 +374,18 @@ export class AdminApiService {
 
   unbanUser(userId: number): Observable<any> {
     return this.http.put(`${this.apiUrl}/users/${userId}/unban`, {});
+  }
+
+  // ==================== OWNER VERIFICATION (ADMIN) ====================
+
+  approveOwnerVerification(userId: number): Observable<void> {
+    return this.http.post<void>(`${this.apiUrl}/owners/${userId}/approve`, {});
+  }
+
+  rejectOwnerVerification(userId: number, reason: string): Observable<void> {
+    return this.http.post<void>(`${this.apiUrl}/owners/${userId}/reject`, {
+      reason,
+    } as OwnerVerificationRejectRequest);
   }
 
   // ==================== CAR MANAGEMENT ====================
@@ -340,6 +439,31 @@ export class AdminApiService {
 
   reactivateCar(carId: number): Observable<AdminCarDto> {
     return this.http.post<AdminCarDto>(`${this.apiUrl}/cars/${carId}/reactivate`, {});
+  }
+
+  /**
+   * Get car review details for document verification workflow.
+   * Includes car photos, documents, and owner info.
+   */
+  getCarReviewDetail(carId: number): Observable<AdminCarReviewDetailDto> {
+    return this.http.get<AdminCarReviewDetailDto>(`${this.apiUrl}/cars/${carId}/review-detail`);
+  }
+
+  /**
+   * Verify or reject a document.
+   * @param documentId Document ID
+   * @param approved true to verify, false to reject
+   * @param rejectionReason Reason if rejecting (min 20 chars)
+   */
+  verifyDocument(
+    documentId: number,
+    approved: boolean,
+    rejectionReason?: string
+  ): Observable<DocumentReviewDto> {
+    return this.http.post<DocumentReviewDto>(`${this.apiUrl}/documents/${documentId}/verify`, {
+      approved,
+      rejectionReason,
+    } as DocumentVerificationRequestDto);
   }
 
   // ==================== DISPUTE MANAGEMENT ====================

@@ -13,6 +13,7 @@ import org.hibernate.annotations.UpdateTimestamp;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
+import org.example.rentoza.util.AttributeEncryptor;
 
 @Entity
 @Table(
@@ -50,11 +51,8 @@ public class User {
     @Column(unique = true, nullable = false)
     private String email;
 
-    @Size(min = 8)
-    @Pattern(
-            regexp = "^(?=.*[A-Z])(?=.*[a-z])(?=.*\\d).+$",
-            message = "Password must contain at least one uppercase letter, one lowercase letter, and one number"
-    )
+    // Note: Password is stored as BCrypt hash, so don't validate regex pattern here.
+    // Pattern validation should be applied to the input DTO before hashing.
     @JsonIgnore
     @Column(nullable = false)
     private String password;
@@ -123,6 +121,90 @@ public class User {
     @JoinColumn(name = "banned_by")
     private User bannedBy;
 
+    // ========== OWNER VERIFICATION FIELDS (Serbian Compliance) ==========
+    
+    /**
+     * Owner type: INDIVIDUAL (requires JMBG) or LEGAL_ENTITY (requires PIB).
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "owner_type", nullable = false, length = 20)
+    private OwnerType ownerType = OwnerType.INDIVIDUAL;
+    
+    /**
+     * Poreski Identifikacioni Broj (Tax ID) - 9 digits.
+     * Required for LEGAL_ENTITY owners.
+     * Stored encrypted in database.
+     */
+    /**
+     * Poreski Identifikacioni Broj (Tax ID) - 9 digits.
+     * Required for LEGAL_ENTITY owners.
+     * Stored encrypted in database.
+     */
+    @Column(name = "pib_encrypted", length = 255)
+    @JsonIgnore
+    @Convert(converter = AttributeEncryptor.class)
+    private String pib;
+
+    /**
+     * Hash of PIB for uniqueness checks/searching (SHA-256).
+     */
+    @Column(name = "pib_hash", unique = true, length = 64)
+    @JsonIgnore
+    private String pibHash;
+    
+    /**
+     * Jedinstveni Matični Broj Građana (Personal ID) - 13 digits.
+     * Required for INDIVIDUAL owners.
+     * Stored encrypted in database.
+     */
+    @Column(name = "jmbg_encrypted", length = 255)
+    @JsonIgnore
+    @Convert(converter = AttributeEncryptor.class)
+    private String jmbg;
+
+    /**
+     * Hash of JMBG for uniqueness checks/searching (SHA-256).
+     */
+    @Column(name = "jmbg_hash", unique = true, length = 64)
+    @JsonIgnore
+    private String jmbgHash;
+    
+    /**
+     * Whether owner's identity has been verified by admin.
+     * REQUIRED: Must be true before car can be approved.
+     */
+    @Column(name = "is_identity_verified", nullable = false)
+    private Boolean isIdentityVerified = false;
+    
+    /**
+     * When owner identity was verified by admin.
+     */
+    @Column(name = "identity_verified_at")
+    private LocalDateTime identityVerifiedAt;
+    
+    /**
+     * Admin user who performed identity verification.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "identity_verified_by")
+    private User identityVerifiedBy;
+    
+    /**
+     * Bank account number for payouts (encrypted).
+     * Must match owner's name/company for compliance.
+     */
+    @Column(name = "bank_account_number_encrypted", length = 255)
+    @JsonIgnore
+    @Convert(converter = AttributeEncryptor.class)
+    private String bankAccountNumber;
+
+    /**
+     * When the owner submitted identity verification for admin review.
+     * Used for admin queue ordering (newest first).
+     */
+    @Column(name = "owner_verification_submitted_at")
+    private LocalDateTime ownerVerificationSubmittedAt;
+
     @CreationTimestamp
     private Instant createdAt;
 
@@ -150,5 +232,51 @@ public class User {
     public void normalize() {
         if (email != null) email = email.toLowerCase();
         if (phone != null) phone = phone.replaceAll("[^0-9]", "");
+    }
+    
+    // ========== HELPER METHODS ==========
+    
+    /**
+     * Check if this user is verified as car owner.
+     * Required before car can be approved.
+     */
+    public boolean isVerifiedOwner() {
+        return Boolean.TRUE.equals(isIdentityVerified) && (
+            (ownerType == OwnerType.INDIVIDUAL && jmbg != null) ||
+            (ownerType == OwnerType.LEGAL_ENTITY && pib != null)
+        );
+    }
+    
+    /**
+     * Get masked PIB for display (GDPR compliance).
+     * Example: "123456789" → "1234***89"
+     */
+    public String getMaskedPib() {
+        if (pib == null || pib.length() < 5) return "****";
+        return pib.substring(0, 4) + "***" + pib.substring(pib.length() - 2);
+    }
+    
+    /**
+     * Get masked JMBG for display (GDPR compliance).
+     * Example: "1234567890123" → "123***90123"
+     */
+    public String getMaskedJmbg() {
+        if (jmbg == null || jmbg.length() < 8) return "****";
+        return jmbg.substring(0, 3) + "***" + jmbg.substring(jmbg.length() - 5);
+    }
+
+    /**
+     * Get masked bank account for display.
+     * Example: "RS351050081231231231" -> "RS35**************1231"
+     */
+    public String getMaskedBankAccountNumber() {
+        if (bankAccountNumber == null || bankAccountNumber.isBlank()) return null;
+        String value = bankAccountNumber.trim();
+        if (value.length() <= 6) return "****";
+        int keepPrefix = Math.min(4, value.length());
+        int keepSuffix = Math.min(4, value.length() - keepPrefix);
+        String prefix = value.substring(0, keepPrefix);
+        String suffix = value.substring(value.length() - keepSuffix);
+        return prefix + "*".repeat(Math.max(0, value.length() - keepPrefix - keepSuffix)) + suffix;
     }
 }

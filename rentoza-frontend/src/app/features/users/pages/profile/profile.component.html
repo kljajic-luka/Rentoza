@@ -231,6 +231,31 @@
             </div>
           </mat-card-content>
         </mat-card>
+
+        <!-- Owner Verification Section (Serbian Compliance) -->
+        <mat-card class="profile__card profile__verification-card" *ngIf="profile.role === 'OWNER'">
+          <mat-card-title>
+            <mat-icon>verified_user</mat-icon>
+            Verifikacija vlasnika
+          </mat-card-title>
+          <mat-card-content>
+            <mat-divider></mat-divider>
+            <div class="verification-status">
+              <div class="status-badge" [class.verified]="false" [class.pending]="false">
+                <mat-icon>info</mat-icon>
+                <span>Potrebna verifikacija</span>
+              </div>
+              <p class="verification-hint">
+                Za iznajmljivanje vozila potrebna je verifikacija identiteta (JMBG/PIB) 
+                u skladu sa srpskim propisima.
+              </p>
+              <button mat-stroked-button color="primary" routerLink="/owner/verification">
+                <mat-icon>badge</mat-icon>
+                Verifikuj identitet
+              </button>
+            </div>
+          </mat-card-content>
+        </mat-card>
       </div>
       <div class="profile__reviews">
         <div class="profile__reviews-header">

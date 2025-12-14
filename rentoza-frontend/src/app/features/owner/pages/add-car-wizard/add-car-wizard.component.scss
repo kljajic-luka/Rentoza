@@ -515,3 +515,94 @@
     }
   }
 }
+
+// Document Upload Step (Serbian Legal Compliance)
+.document-upload-grid {
+  display: grid;
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.document-upload-item {
+  padding: 1.5rem;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 12px;
+  background: var(--color-surface-muted);
+}
+
+.document-status {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+
+  mat-icon {
+    color: var(--color-text-muted);
+  }
+
+  &.uploaded {
+    mat-icon {
+      color: #10b981;
+    }
+  }
+}
+
+.document-placeholder {
+  .placeholder-text {
+    color: var(--color-text-muted);
+    font-size: 0.875rem;
+    margin: 0 0 1rem;
+  }
+
+  button {
+    mat-icon {
+      margin-right: 0.5rem;
+    }
+  }
+}
+
+.document-success {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background: rgba(16, 185, 129, 0.1);
+  border-radius: 8px;
+  color: #065f46;
+  font-size: 0.875rem;
+
+  mat-icon {
+    font-size: 1.25rem;
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+}
+
+.document-info-box {
+  display: flex;
+  gap: 1rem;
+  padding: 1rem;
+  background: rgba(251, 191, 36, 0.1);
+  border-radius: 8px;
+  border-left: 4px solid #f59e0b;
+
+  mat-icon {
+    color: #f59e0b;
+    flex-shrink: 0;
+  }
+
+  strong {
+    display: block;
+    color: var(--color-text-primary);
+    margin-bottom: 0.25rem;
+  }
+
+  p {
+    margin: 0;
+    color: var(--color-text-muted);
+    font-size: 0.875rem;
+    line-height: 1.5;
+  }
+}

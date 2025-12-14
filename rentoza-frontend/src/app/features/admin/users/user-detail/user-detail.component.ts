@@ -11,6 +11,7 @@ import { MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { AdminNotificationService } from '../../../../core/services/admin-notification.service';
 import { BanUserDialogComponent } from '../../shared/dialogs/ban-user-dialog/ban-user-dialog.component';
+import { RejectOwnerVerificationDialogComponent } from '../../shared/dialogs/reject-owner-verification-dialog/reject-owner-verification-dialog.component';
 import { AdminStateService } from '../../../../core/services/admin-state.service';
 import { Observable, take } from 'rxjs';
 import { AdminUserDetailDto } from '../../../../core/services/admin-api.service';
@@ -108,5 +109,62 @@ export class UserDetailComponent implements OnInit {
     if (score < 30) return 'bg-green-500';
     if (score < 70) return 'bg-yellow-500';
     return 'bg-red-500';
+  }
+
+  getOwnerVerificationBadge(status?: string): string {
+    switch (status) {
+      case 'PENDING_REVIEW':
+        return 'badge badge-warn';
+      case 'VERIFIED':
+        return 'badge badge-success';
+      default:
+        return 'badge badge-neutral';
+    }
+  }
+
+  getOwnerVerificationLabel(status?: string): string {
+    switch (status) {
+      case 'PENDING_REVIEW':
+        return 'Pending review';
+      case 'VERIFIED':
+        return 'Verified';
+      default:
+        return 'Not submitted';
+    }
+  }
+
+  approveOwnerVerification() {
+    if (!this.userId) return;
+    this.adminState.approveOwnerVerification(this.userId).subscribe({
+      next: () => {
+        this.notification.showSuccess('Owner verification approved');
+        this.loadUserDetail();
+      },
+      error: () => this.notification.showError('Failed to approve owner verification'),
+    });
+  }
+
+  rejectOwnerVerification() {
+    if (!this.userId) return;
+
+    this.user$.pipe(take(1)).subscribe((user) => {
+      const displayName = user ? `${user.firstName} ${user.lastName}` : 'this user';
+      const dialogRef = this.dialog.open(RejectOwnerVerificationDialogComponent, {
+        width: '520px',
+        data: { displayName },
+      });
+
+      dialogRef.afterClosed().subscribe((reason) => {
+        if (reason) {
+          this.adminState.rejectOwnerVerification(this.userId!, reason).subscribe({
+            next: () => {
+              this.notification.showSuccess('Owner verification rejected');
+              this.loadUserDetail();
+            },
+            error: () => this.notification.showError('Failed to reject owner verification'),
+          });
+        }
+      });
+    });
   }
 }

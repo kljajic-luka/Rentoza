@@ -96,8 +96,7 @@ public interface AdminUserRepository extends UserRepository {
     @Query("SELECT u FROM User u WHERE " +
            "LOWER(u.email) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
            "OR LOWER(u.firstName) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
-           "OR LOWER(u.lastName) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
-           "ORDER BY u.createdAt DESC")
+           "OR LOWER(u.lastName) LIKE LOWER(CONCAT('%', :searchTerm, '%'))")
     Page<User> searchUsers(@Param("searchTerm") String searchTerm, Pageable pageable);
     
     /**
@@ -107,7 +106,7 @@ public interface AdminUserRepository extends UserRepository {
      * @param pageable Pagination parameters
      * @return Paginated user list
      */
-    @Query("SELECT u FROM User u ORDER BY u.createdAt DESC")
+       @Query("SELECT u FROM User u")
     Page<User> findAllUsers(Pageable pageable);
     
     // ==================== RISK ANALYSIS ====================

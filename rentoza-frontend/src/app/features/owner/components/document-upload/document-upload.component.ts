@@ -2,11 +2,15 @@ import { Component, Input, Output, EventEmitter, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpEventType } from '@angular/common/http';
-import { CarDocumentService, DocumentType, CarDocument } from '../../../../core/services/car-document.service';
+import {
+  CarDocumentService,
+  DocumentType,
+  CarDocument,
+} from '../../../../core/services/car-document.service';
 
 /**
  * Document upload component with drag-and-drop support.
- * 
+ *
  * Features:
  * - Drag-and-drop file upload
  * - File type validation (PDF, images)
@@ -18,16 +22,17 @@ import { CarDocumentService, DocumentType, CarDocument } from '../../../../core/
   standalone: true,
   imports: [CommonModule, FormsModule],
   templateUrl: './document-upload.component.html',
-  styleUrls: ['./document-upload.component.scss']
+  styleUrls: ['./document-upload.component.scss'],
 })
 export class DocumentUploadComponent {
   @Input() carId?: number;
   @Input() documentType: DocumentType = 'REGISTRATION';
   @Input() label: string = 'Otpremite dokument';
   @Input() required: boolean = true;
-  
+
   @Output() uploaded = new EventEmitter<CarDocument>();
   @Output() fileSelected = new EventEmitter<File>();
+  @Output() expiryDateSelected = new EventEmitter<string>();
   @Output() removed = new EventEmitter<void>();
 
   // State
@@ -39,15 +44,15 @@ export class DocumentUploadComponent {
   expiryDate = signal<string>('');
   dragOver = signal<boolean>(false);
 
-  private readonly allowedTypes = [
-    'application/pdf',
-    'image/png',
-    'image/jpeg',
-    'image/jpg'
-  ];
+  private readonly allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg'];
   private readonly maxSize = 10 * 1024 * 1024; // 10MB
 
   constructor(private documentService: CarDocumentService) {}
+
+  onExpiryDateChange(value: string): void {
+    this.expiryDate.set(value);
+    this.expiryDateSelected.emit(value);
+  }
 
   // ==================== DRAG & DROP ====================
 
@@ -110,7 +115,7 @@ export class DocumentUploadComponent {
       };
       reader.readAsDataURL(file);
     }
-    
+
     this.fileSelected.emit(file);
   }
 
@@ -124,32 +129,27 @@ export class DocumentUploadComponent {
     this.uploadProgress.set(0);
     this.error.set(null);
 
-    this.documentService.uploadDocument(
-      this.carId,
-      currentFile,
-      this.documentType,
-      this.expiryDate() || undefined
-    ).subscribe({
-      next: (event) => {
-        if (event.type === HttpEventType.UploadProgress) {
-          const progress = event.total
-            ? Math.round((100 * event.loaded) / event.total)
-            : 0;
-          this.uploadProgress.set(progress);
-        } else if (event.type === HttpEventType.Response) {
-          this.uploading.set(false);
-          this.uploadProgress.set(100);
-          if (event.body) {
-            this.uploaded.emit(event.body);
+    this.documentService
+      .uploadDocument(this.carId, currentFile, this.documentType, this.expiryDate() || undefined)
+      .subscribe({
+        next: (event) => {
+          if (event.type === HttpEventType.UploadProgress) {
+            const progress = event.total ? Math.round((100 * event.loaded) / event.total) : 0;
+            this.uploadProgress.set(progress);
+          } else if (event.type === HttpEventType.Response) {
+            this.uploading.set(false);
+            this.uploadProgress.set(100);
+            if (event.body) {
+              this.uploaded.emit(event.body);
+            }
           }
-        }
-      },
-      error: (err) => {
-        this.uploading.set(false);
-        this.error.set(err.error?.message || 'Greška pri otpremanju');
-        console.error('Upload error:', err);
-      }
-    });
+        },
+        error: (err) => {
+          this.uploading.set(false);
+          this.error.set(err.error?.message || 'Greška pri otpremanju');
+          console.error('Upload error:', err);
+        },
+      });
   }
 
   // ==================== HELPERS ====================
@@ -159,6 +159,8 @@ export class DocumentUploadComponent {
     this.previewUrl.set(null);
     this.error.set(null);
     this.uploadProgress.set(0);
+    this.expiryDate.set('');
+    this.expiryDateSelected.emit('');
     this.removed.emit();
   }
 

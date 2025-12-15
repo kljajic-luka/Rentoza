@@ -90,6 +90,7 @@ export class AddCarWizardComponent implements OnInit {
   // Document compliance tracking (Serbian Legal Compliance)
   // We store raw Files here because car doesn't verify until created
   protected readonly selectedDocumentFiles = signal<Map<string, File>>(new Map());
+  protected readonly documentExpiryDates = signal<Map<string, string>>(new Map());
   protected readonly isDocumentsComplete = signal(false);
   protected readonly requiredDocTypes: (
     | 'REGISTRATION'
@@ -290,14 +291,39 @@ export class AddCarWizardComponent implements OnInit {
       newMap.delete(type);
       return newMap;
     });
+
+    this.documentExpiryDates.update((map) => {
+      const newMap = new Map(map);
+      newMap.delete(type);
+      return newMap;
+    });
+
+    this.checkDocumentsComplete();
+  }
+
+  protected onDocumentExpiryDateSelected(type: string, date: string): void {
+    this.documentExpiryDates.update((map) => {
+      const newMap = new Map(map);
+      const trimmed = (date ?? '').trim();
+      if (trimmed) {
+        newMap.set(type, trimmed);
+      } else {
+        newMap.delete(type);
+      }
+      return newMap;
+    });
     this.checkDocumentsComplete();
   }
 
   private checkDocumentsComplete(): void {
     const files = this.selectedDocumentFiles();
-    const hasRegistration = files.has('REGISTRATION');
-    const hasTechInspection = files.has('TECHNICAL_INSPECTION');
-    const hasInsurance = files.has('LIABILITY_INSURANCE');
+    const dates = this.documentExpiryDates();
+
+    const hasRegistration = files.has('REGISTRATION') && dates.has('REGISTRATION');
+    const hasTechInspection =
+      files.has('TECHNICAL_INSPECTION') && dates.has('TECHNICAL_INSPECTION');
+    const hasInsurance = files.has('LIABILITY_INSURANCE') && dates.has('LIABILITY_INSURANCE');
+
     this.isDocumentsComplete.set(hasRegistration && hasTechInspection && hasInsurance);
   }
 
@@ -399,18 +425,19 @@ export class AddCarWizardComponent implements OnInit {
       if (!createdCar?.id) throw new Error('Failed to create car');
 
       // 2. Upload Documents
-      const uploadPromises: Promise<any>[] = [];
+      const expiryDates = this.documentExpiryDates();
 
-      this.selectedDocumentFiles().forEach((file, type) => {
+      // Enterprise-grade: serialize uploads to prevent DB deadlocks from concurrent
+      // updates to the same `cars` row (expiry dates/version) across multiple requests.
+      for (const [type, file] of this.selectedDocumentFiles().entries()) {
         const upload$ = this.carDocumentService.uploadDocument(
           Number(createdCar.id),
           file,
-          type as any
+          type as any,
+          expiryDates.get(type) || undefined
         );
-        uploadPromises.push(upload$.toPromise());
-      });
-
-      await Promise.all(uploadPromises);
+        await upload$.toPromise();
+      }
 
       // 3. Clear Cache & Redirect
       this.carService.clearSearchCache();

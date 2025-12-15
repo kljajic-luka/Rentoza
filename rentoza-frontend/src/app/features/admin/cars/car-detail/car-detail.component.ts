@@ -1,4 +1,4 @@
-import { Component, OnInit, inject } from '@angular/core';
+import { ChangeDetectorRef, Component, DestroyRef, OnInit, inject } from '@angular/core';
 import { CommonModule, Location } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
@@ -11,6 +11,7 @@ import { AdminApiService, AdminCarDto } from '../../../../core/services/admin-ap
 import { AdminNotificationService } from '../../../../core/services/admin-notification.service';
 import { CarActionDialogComponent } from '../dialogs/car-action-dialog/car-action-dialog.component';
 import { normalizeMediaUrl } from '@shared/utils/media-url.util';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 @Component({
   selector: 'app-car-detail',
@@ -121,6 +122,8 @@ export class CarDetailComponent implements OnInit {
   private adminApi = inject(AdminApiService);
   private notification = inject(AdminNotificationService);
   private dialog = inject(MatDialog);
+  private cdr = inject(ChangeDetectorRef);
+  private destroyRef = inject(DestroyRef);
 
   carId: number | null = null;
   car: AdminCarDto | null = null;
@@ -147,17 +150,25 @@ export class CarDetailComponent implements OnInit {
   loadCar() {
     if (!this.carId) return;
     this.loading = true;
-    this.adminApi.getCarDetail(this.carId).subscribe({
-      next: (data) => {
-        this.car = data;
-        this.loading = false;
-      },
-      error: (err) => {
-        console.error('Failed to load car', err);
-        this.notification.showError('Car not found');
-        this.loading = false;
-      },
-    });
+    this.cdr.detectChanges();
+
+    this.adminApi
+      .getCarDetail(this.carId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (data) => {
+          this.car = data;
+          this.loading = false;
+          this.cdr.detectChanges();
+        },
+        error: (err) => {
+          console.error('Failed to load car', err);
+          this.notification.showError('Car not found');
+          this.car = null;
+          this.loading = false;
+          this.cdr.detectChanges();
+        },
+      });
   }
 
   goBack() {

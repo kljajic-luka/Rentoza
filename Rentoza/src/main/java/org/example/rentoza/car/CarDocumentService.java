@@ -72,8 +72,10 @@ public class CarDocumentService {
             LocalDate expiryDate,
             User uploader) throws IOException {
         
-        // Validate car exists and uploader is owner
-        Car car = carRepository.findById(carId)
+        // Validate car exists and uploader is owner.
+        // Acquire a write lock on the car row to prevent concurrent document uploads
+        // from deadlocking while updating expiry dates / optimistic-lock version.
+        Car car = carRepository.findByIdForUpdate(carId)
             .orElseThrow(() -> new ResourceNotFoundException("Car not found: " + carId));
         
         if (!car.getOwner().getId().equals(uploader.getId())) {
@@ -82,13 +84,17 @@ public class CarDocumentService {
         
         // Validate file
         validateFile(file);
-        
-        // Calculate expiry for technical inspection (6 months from issue date)
-        LocalDate effectiveExpiry = expiryDate;
-        if (type == DocumentType.TECHNICAL_INSPECTION && expiryDate == null) {
-            // If no expiry provided, assume issued today + 6 months
-            effectiveExpiry = LocalDate.now().plusMonths(6);
+
+        // Serbian compliance: required documents MUST have an explicit expiry date
+        if (type == DocumentType.REGISTRATION
+                || type == DocumentType.TECHNICAL_INSPECTION
+                || type == DocumentType.LIABILITY_INSURANCE) {
+            if (expiryDate == null) {
+                throw new ValidationException("Expiry date is required for " + type);
+            }
         }
+        
+        LocalDate effectiveExpiry = expiryDate;
         
         // Check if replacing existing document
         DocumentVerificationStatus previousStatus = null;
@@ -315,7 +321,9 @@ public class CarDocumentService {
                 break;
             case TECHNICAL_INSPECTION:
                 car.setTechnicalInspectionExpiryDate(expiryDate);
-                car.setTechnicalInspectionDate(LocalDate.now());
+                if (expiryDate != null) {
+                    car.setTechnicalInspectionDate(expiryDate.minusMonths(6));
+                }
                 break;
             case LIABILITY_INSURANCE:
                 car.setInsuranceExpiryDate(expiryDate);

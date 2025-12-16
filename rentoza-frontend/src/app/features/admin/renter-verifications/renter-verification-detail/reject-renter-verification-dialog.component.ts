@@ -50,45 +50,41 @@ const REJECTION_REASONS = [
     <mat-dialog-content>
       <p class="dialog-description">
         Da li ste sigurni da želite da odbijete verifikaciju za
-        <strong>{{ data.displayName }}</strong>?
+        <strong>{{ data.displayName }}</strong
+        >?
       </p>
 
       <mat-form-field appearance="outline" class="full-width">
         <mat-label>Razlog odbijanja</mat-label>
         <mat-select [formControl]="selectedReason">
           @for (reason of rejectionReasons; track reason.value) {
-            <mat-option [value]="reason.value">
-              {{ reason.label }}
-            </mat-option>
+          <mat-option [value]="reason.value">
+            {{ reason.label }}
+          </mat-option>
           }
         </mat-select>
       </mat-form-field>
 
       @if (selectedReason.value === 'OTHER') {
-        <mat-form-field appearance="outline" class="full-width">
-          <mat-label>Dodatno objašnjenje</mat-label>
-          <textarea
-            matInput
-            [formControl]="customReason"
-            rows="3"
-            placeholder="Unesite razlog odbijanja..."></textarea>
-          <mat-error *ngIf="customReason.hasError('required')">
-            Razlog je obavezan
-          </mat-error>
-          <mat-error *ngIf="customReason.hasError('minlength')">
-            Razlog mora imati najmanje 10 karaktera
-          </mat-error>
-        </mat-form-field>
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>Dodatno objašnjenje</mat-label>
+        <textarea
+          matInput
+          [formControl]="customReason"
+          rows="3"
+          placeholder="Unesite razlog odbijanja..."
+        ></textarea>
+        <mat-error *ngIf="customReason.hasError('required')"> Razlog je obavezan </mat-error>
+        <mat-error *ngIf="customReason.hasError('minlength')">
+          Razlog mora imati najmanje 10 karaktera
+        </mat-error>
+      </mat-form-field>
       }
     </mat-dialog-content>
 
     <mat-dialog-actions align="end">
       <button mat-button mat-dialog-close>Otkaži</button>
-      <button
-        mat-raised-button
-        color="warn"
-        [disabled]="!isValid()"
-        (click)="onReject()">
+      <button mat-raised-button color="warn" [disabled]="!isValid()" (click)="onReject()">
         <mat-icon>block</mat-icon>
         Odbij verifikaciju
       </button>

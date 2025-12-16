@@ -54,7 +54,9 @@ export class AdminRenterVerificationService {
    * @param params - Query parameters for filtering/pagination
    * @returns Observable of paged results
    */
-  getPendingVerifications(params: VerificationQueueParams = {}): Observable<PagedRenterVerifications> {
+  getPendingVerifications(
+    params: VerificationQueueParams = {}
+  ): Observable<PagedRenterVerifications> {
     let httpParams = new HttpParams();
 
     if (params.page !== undefined) {
@@ -176,7 +178,9 @@ export class AdminRenterVerificationService {
    * @returns Observable completing on success
    */
   requestResubmission(userId: number, reason: string): Observable<void> {
-    return this.http.post<void>(`${this.API_BASE}/users/${userId}/request-resubmission`, { reason });
+    return this.http.post<void>(`${this.API_BASE}/users/${userId}/request-resubmission`, {
+      reason,
+    });
   }
 
   // ============================================================================

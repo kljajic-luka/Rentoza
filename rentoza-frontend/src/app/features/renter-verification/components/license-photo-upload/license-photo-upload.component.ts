@@ -137,9 +137,7 @@ export class LicensePhotoUploadComponent implements OnDestroy {
 
   /** Allowed types formatted for display */
   readonly allowedTypesDisplay = computed(() => {
-    return this.allowedTypes
-      .map((t) => t.replace('image/', '').toUpperCase())
-      .join(', ');
+    return this.allowedTypes.map((t) => t.replace('image/', '').toUpperCase()).join(', ');
   });
 
   /** Accept attribute for file input */

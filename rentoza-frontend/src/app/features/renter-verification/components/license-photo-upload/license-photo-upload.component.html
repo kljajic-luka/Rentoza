@@ -3,116 +3,108 @@
   <label class="upload-label" [class.required]="required">
     {{ label }}
     @if (required) {
-      <span class="required-indicator">*</span>
+    <span class="required-indicator">*</span>
     }
   </label>
 
   <!-- Upload Zone (shown when no file selected) -->
   @if (!hasFile()) {
-    <div
-      class="upload-zone"
-      [class.drag-over]="isDragOver()"
-      [class.has-error]="error()"
-      (dragover)="onDragOver($event)"
-      (dragleave)="onDragLeave($event)"
-      (drop)="onDrop($event)"
-      (click)="openFileDialog()"
-      (keydown.enter)="openFileDialog()"
-      (keydown.space)="openFileDialog()"
-      tabindex="0"
-      role="button"
-      [attr.aria-label]="ariaLabel()">
-      
-      <input
-        #fileInput
-        type="file"
-        [accept]="acceptTypes()"
-        (change)="onFileSelected($event)"
-        class="file-input"
-        [attr.aria-hidden]="true"
-        tabindex="-1" />
+  <div
+    class="upload-zone"
+    [class.drag-over]="isDragOver()"
+    [class.has-error]="error()"
+    (dragover)="onDragOver($event)"
+    (dragleave)="onDragLeave($event)"
+    (drop)="onDrop($event)"
+    (click)="openFileDialog()"
+    (keydown.enter)="openFileDialog()"
+    (keydown.space)="openFileDialog()"
+    tabindex="0"
+    role="button"
+    [attr.aria-label]="ariaLabel()"
+  >
+    <input
+      #fileInput
+      type="file"
+      [accept]="acceptTypes()"
+      (change)="onFileSelected($event)"
+      class="file-input"
+      [attr.aria-hidden]="true"
+      tabindex="-1"
+    />
 
-      <div class="upload-content">
-        <mat-icon class="upload-icon">cloud_upload</mat-icon>
-        
-        <p class="upload-text">
-          Prevucite sliku ovde ili
-          <span class="click-text">kliknite za izbor</span>
-        </p>
-        
-        <p class="upload-hint">
-          {{ allowedTypesDisplay() }} • Maks. {{ maxSizeMB() }}MB
-        </p>
-      </div>
+    <div class="upload-content">
+      <mat-icon class="upload-icon">cloud_upload</mat-icon>
+
+      <p class="upload-text">
+        Prevucite sliku ovde ili
+        <span class="click-text">kliknite za izbor</span>
+      </p>
+
+      <p class="upload-hint">{{ allowedTypesDisplay() }} • Maks. {{ maxSizeMB() }}MB</p>
     </div>
+  </div>
   }
 
   <!-- Preview (shown when file selected) -->
   @if (hasFile()) {
-    <div class="preview-container">
-      <!-- Image Preview -->
-      @if (previewUrl()) {
-        <div class="image-preview">
-          <img 
-            [src]="previewUrl()" 
-            [alt]="'Pregled ' + (side === 'front' ? 'prednje' : 'zadnje') + ' strane'"
-            class="preview-image" />
-          
-          <!-- Overlay with file info -->
-          <div class="preview-overlay">
-            <div class="file-info">
-              <mat-icon>insert_photo</mat-icon>
-              <span class="file-name">{{ file()?.name }}</span>
-              <span class="file-size">{{ formatFileSize(file()?.size || 0) }}</span>
-            </div>
-          </div>
-        </div>
-      }
+  <div class="preview-container">
+    <!-- Image Preview -->
+    @if (previewUrl()) {
+    <div class="image-preview">
+      <img
+        [src]="previewUrl()"
+        [alt]="'Pregled ' + (side === 'front' ? 'prednje' : 'zadnje') + ' strane'"
+        class="preview-image"
+      />
 
-      <!-- Actions -->
-      <div class="preview-actions">
-        <button
-          mat-stroked-button
-          color="primary"
-          (click)="openFileDialog()"
-          class="change-btn">
-          <mat-icon>refresh</mat-icon>
-          Promeni
-        </button>
-        
-        <button
-          mat-stroked-button
-          color="warn"
-          (click)="remove()"
-          class="remove-btn">
-          <mat-icon>delete_outline</mat-icon>
-          Ukloni
-        </button>
+      <!-- Overlay with file info -->
+      <div class="preview-overlay">
+        <div class="file-info">
+          <mat-icon>insert_photo</mat-icon>
+          <span class="file-name">{{ file()?.name }}</span>
+          <span class="file-size">{{ formatFileSize(file()?.size || 0) }}</span>
+        </div>
       </div>
     </div>
+    }
+
+    <!-- Actions -->
+    <div class="preview-actions">
+      <button mat-stroked-button color="primary" (click)="openFileDialog()" class="change-btn">
+        <mat-icon>refresh</mat-icon>
+        Promeni
+      </button>
+
+      <button mat-stroked-button color="warn" (click)="remove()" class="remove-btn">
+        <mat-icon>delete_outline</mat-icon>
+        Ukloni
+      </button>
+    </div>
+  </div>
   }
 
   <!-- Error Message -->
   @if (error()) {
-    <div class="error-message" role="alert">
-      <mat-icon>error_outline</mat-icon>
-      <span>{{ error() }}</span>
-    </div>
+  <div class="error-message" role="alert">
+    <mat-icon>error_outline</mat-icon>
+    <span>{{ error() }}</span>
+  </div>
   }
 
   <!-- Warning Message -->
   @if (warning() && !error()) {
-    <div class="warning-message" role="alert">
-      <mat-icon>warning_amber</mat-icon>
-      <span>{{ warning() }}</span>
-    </div>
+  <div class="warning-message" role="alert">
+    <mat-icon>warning_amber</mat-icon>
+    <span>{{ warning() }}</span>
+  </div>
   }
 
   <!-- Validating Indicator -->
   @if (isValidating()) {
-    <div class="validating-indicator">
-      <mat-spinner diameter="16"></mat-spinner>
-      <span>Provera kvaliteta slike...</span>
-    </div>
+  <div class="validating-indicator">
+    <mat-spinner diameter="16"></mat-spinner>
+    <span>Provera kvaliteta slike...</span>
+  </div>
   }
 </div>

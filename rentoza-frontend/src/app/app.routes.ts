@@ -15,7 +15,7 @@ export const routes: Routes = [
     path: 'admin',
     canActivate: [RoleGuard, RoleRedirectGuard],
     data: { roles: ['ADMIN'] },
-    loadChildren: () => import('@features/admin/admin.routes').then(m => m.ADMIN_ROUTES),
+    loadChildren: () => import('@features/admin/admin.routes').then((m) => m.ADMIN_ROUTES),
   },
   {
     path: 'auth',
@@ -216,9 +216,9 @@ export const routes: Routes = [
       {
         path: 'verification',
         loadComponent: () =>
-          import('@features/owner/pages/owner-verification-page/owner-verification-page.component').then(
-            (m) => m.OwnerVerificationPageComponent
-          ),
+          import(
+            '@features/owner/pages/owner-verification-page/owner-verification-page.component'
+          ).then((m) => m.OwnerVerificationPageComponent),
       },
     ],
   },

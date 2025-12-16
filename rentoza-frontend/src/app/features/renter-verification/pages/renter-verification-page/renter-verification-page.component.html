@@ -206,7 +206,7 @@
             Selfie fotografija poboljšava sigurnost verifikacije i može ubrzati odobrenje.
           </p>
         </div>
-        
+
         <app-selfie-capture
           label="Selfie za verifikaciju"
           [requireConsent]="true"
@@ -214,14 +214,15 @@
           (captured)="onSelfieCaptured($event)"
           (removed)="onSelfieRemoved()"
           (consentChanged)="onSelfieConsentChanged($event)"
-          (error)="onSelfieError($event)">
+          (error)="onSelfieError($event)"
+        >
         </app-selfie-capture>
 
         @if (hasSelfie()) {
-          <div class="selfie-status success">
-            <mat-icon>check_circle</mat-icon>
-            <span>Selfie je snimljen i biće otpremljen zajedno sa vozačkom dozvolom</span>
-          </div>
+        <div class="selfie-status success">
+          <mat-icon>check_circle</mat-icon>
+          <span>Selfie je snimljen i biće otpremljen zajedno sa vozačkom dozvolom</span>
+        </div>
         }
       </div>
 

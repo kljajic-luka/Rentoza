@@ -150,5 +150,33 @@ public enum NotificationType {
      * Triggered when a dispute/damage claim is resolved by admin.
      * Sent to both guest (renter) and host (owner).
      */
-    DISPUTE_RESOLVED
+    DISPUTE_RESOLVED,
+
+    // ==========================================================================
+    // RENTER VERIFICATION NOTIFICATIONS
+    // ==========================================================================
+
+    /**
+     * Triggered when a renter's driver license verification is approved.
+     * Sent to renter confirming they can now book vehicles.
+     */
+    LICENSE_VERIFICATION_APPROVED,
+
+    /**
+     * Triggered when a renter's driver license verification is rejected.
+     * Sent to renter with rejection reason and resubmission guidance.
+     */
+    LICENSE_VERIFICATION_REJECTED,
+
+    /**
+     * Triggered when a renter's driver license is expiring within 30 days.
+     * Sent as a warning to update license before expiry.
+     */
+    LICENSE_EXPIRING_SOON,
+
+    /**
+     * Triggered when a renter's driver license has expired.
+     * Sent to inform the renter they cannot book until license is updated.
+     */
+    LICENSE_EXPIRED
     }

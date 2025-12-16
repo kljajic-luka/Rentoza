@@ -117,12 +117,6 @@ public class AsyncConfig implements AsyncConfigurer {
         return executor;
     }
 
-    /**
-     * Saga executor for checkout saga orchestration.
-     * 
-     * <p>Moderate pool for saga step execution.
-     * Lower queue capacity to prevent saga backlog accumulation.
-     */
     @Bean(name = "sagaExecutor")
     public Executor sagaExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
@@ -139,6 +133,31 @@ public class AsyncConfig implements AsyncConfigurer {
         
         log.info("[Async] SagaExecutor initialized: core={}, max={}, queue={}",
                 executor.getCorePoolSize(), executor.getMaxPoolSize(), 100);
+        
+        return executor;
+    }
+
+    /**
+     * Renter verification executor for OCR and risk processing.
+     * 
+     * <p>Isolated pool to prevent document processing from starving other services.
+     */
+    @Bean(name = "renterVerificationExecutor")
+    public Executor renterVerificationExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(2); // Start small, dedicated
+        executor.setMaxPoolSize(10); // Cap burst
+        executor.setQueueCapacity(50); // Queue before rejection
+        executor.setThreadNamePrefix("renter-verif-");
+        executor.setRejectedExecutionHandler((r, e) -> {
+            log.warn("[Async] Renter verification task rejected - queue full");
+        });
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(60);
+        executor.initialize();
+        
+        log.info("[Async] RenterVerificationExecutor initialized: core={}, max={}, queue={}",
+                executor.getCorePoolSize(), executor.getMaxPoolSize(), 50);
         
         return executor;
     }

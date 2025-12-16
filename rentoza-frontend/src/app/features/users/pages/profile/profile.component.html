@@ -13,6 +13,12 @@
         ></app-profile-picture-uploader>
         <div class="profile__headline">
           <h1>{{ profile.firstName }} {{ profile.lastName }}</h1>
+
+          <!-- Driver License Verification Badge -->
+          <div class="profile__verification">
+            <app-verification-badge></app-verification-badge>
+          </div>
+
           <div class="profile__meta">
             <span class="profile__meta-item" *ngIf="profile.createdAt">
               <mat-icon>calendar_today</mat-icon>
@@ -172,6 +178,33 @@
                     Biografija ne može biti duža od 300 karaktera
                   </mat-error>
                 </mat-form-field>
+
+                <!-- Date of Birth Field -->
+                <mat-form-field appearance="outline" class="edit-form__field">
+                  <mat-label>Datum rođenja</mat-label>
+                  <input
+                    matInput
+                    type="date"
+                    formControlName="dateOfBirth"
+                    [max]="maxDateOfBirth"
+                  />
+                  <mat-icon matPrefix>cake</mat-icon>
+                  <mat-hint *ngIf="!profile.dobVerified">
+                    Koristite GGGG-MM-DD format (npr. 1990-05-15)
+                  </mat-hint>
+                  <mat-hint *ngIf="profile.dobVerified" class="verified-hint">
+                    <mat-icon class="verified-icon">verified</mat-icon>
+                    Verifikovano putem vozačke dozvole
+                  </mat-hint>
+                </mat-form-field>
+
+                <!-- Age Display (read-only) -->
+                <div class="age-display" *ngIf="profile.age">
+                  <mat-icon>person</mat-icon>
+                  <span class="age-label">Vaše godine:</span>
+                  <span class="age-value">{{ profile.age }}</span>
+                  <span class="age-suffix">godina</span>
+                </div>
               </div>
             </div>
           </form>
@@ -246,8 +279,8 @@
                 <span>Potrebna verifikacija</span>
               </div>
               <p class="verification-hint">
-                Za iznajmljivanje vozila potrebna je verifikacija identiteta (JMBG/PIB) 
-                u skladu sa srpskim propisima.
+                Za iznajmljivanje vozila potrebna je verifikacija identiteta (JMBG/PIB) u skladu sa
+                srpskim propisima.
               </p>
               <button mat-stroked-button color="primary" routerLink="/owner/verification">
                 <mat-icon>badge</mat-icon>

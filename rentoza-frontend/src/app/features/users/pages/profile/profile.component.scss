@@ -39,6 +39,10 @@
   font-size: clamp(1.8rem, 3vw, 2.4rem);
 }
 
+.profile__verification {
+  margin: 0.5rem 0;
+}
+
 .profile__meta {
   display: flex;
   flex-wrap: wrap;
@@ -444,6 +448,53 @@
 @media (max-width: 1024px) {
   .profile__body {
     grid-template-columns: 1fr;
+  }
+}
+
+// ========== Date of Birth & Age Display ==========
+.verified-hint {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--color-success, #22c55e);
+  
+  .verified-icon {
+    font-size: 1rem;
+    width: 1rem;
+    height: 1rem;
+  }
+}
+
+.age-display {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: var(--color-surface-muted);
+  border-radius: 12px;
+  margin-top: 0.5rem;
+  
+  mat-icon {
+    color: var(--color-text-muted);
+    font-size: 1.25rem;
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+  
+  .age-label {
+    color: var(--color-text-muted);
+    font-size: 0.875rem;
+  }
+  
+  .age-value {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+  }
+  
+  .age-suffix {
+    color: var(--color-text-muted);
+    font-size: 0.875rem;
   }
 }
 

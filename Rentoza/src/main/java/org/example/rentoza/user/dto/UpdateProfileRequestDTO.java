@@ -1,11 +1,14 @@
 package org.example.rentoza.user.dto;
 
+import jakarta.validation.constraints.Past;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
+
+import java.time.LocalDate;
 
 /**
  * DTO for secure partial profile updates.
@@ -46,6 +49,17 @@ public class UpdateProfileRequestDTO {
      */
     @Size(min = 3, max = 50, message = "Last name must be between 3 and 50 characters")
     private String lastName;
+    
+    /**
+     * Date of birth for age verification.
+     * RULES:
+     *   - Can only be set if not already verified via license OCR
+     *   - Must be in the past
+     *   - User must be at least 18 years old
+     *   - Once verified via license, cannot be changed by user
+     */
+    @Past(message = "Date of birth must be in the past")
+    private LocalDate dateOfBirth;
 
     /**
      * Future: notification preferences as JSON or boolean flags

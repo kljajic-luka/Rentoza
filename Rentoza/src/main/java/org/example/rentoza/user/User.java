@@ -11,7 +11,9 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.Period;
 import java.util.List;
 import org.example.rentoza.util.AttributeEncryptor;
 
@@ -68,6 +70,39 @@ public class User {
     @Column(unique = true)
     private String phone;
 
+    /**
+     * User's date of birth.
+     * ENTERPRISE-GRADE: Store DOB instead of age - age changes every birthday.
+     * 
+     * <p>Data sources (in priority order):
+     * <ol>
+     *   <li>Driver license OCR extraction (verified, trusted)</li>
+     *   <li>Manual entry during profile edit (self-reported)</li>
+     *   <li>Registration form (optional)</li>
+     * </ol>
+     * 
+     * <p>Used for:
+     * <ul>
+     *   <li>Booking eligibility (must be 21+ for most cars)</li>
+     *   <li>Insurance premium calculation</li>
+     *   <li>Risk scoring</li>
+     * </ul>
+     */
+    @Column(name = "date_of_birth")
+    private LocalDate dateOfBirth;
+    
+    /**
+     * Whether DOB was verified from official document (license OCR).
+     * Verified DOB cannot be changed by user, only by admin.
+     */
+    @Column(name = "dob_verified", nullable = false)
+    private boolean dobVerified = false;
+
+    /**
+     * @deprecated Use {@link #getAge()} instead which calculates from {@link #dateOfBirth}.
+     * Kept for backward compatibility during migration.
+     */
+    @Deprecated(since = "2.0", forRemoval = true)
     @Min(value = 18, message = "Age must be at least 18")
     @Max(value = 120, message = "Age must be less than 120")
     @Column(name = "age")
@@ -205,6 +240,97 @@ public class User {
     @Column(name = "owner_verification_submitted_at")
     private LocalDateTime ownerVerificationSubmittedAt;
 
+    // ========== RENTER DRIVER LICENSE VERIFICATION FIELDS ==========
+    
+    /**
+     * Driver license verification status (independent from owner verification).
+     * State machine: NOT_STARTED → PENDING_REVIEW → APPROVED/REJECTED
+     * Booking requires: APPROVED + non-expired license
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "driver_license_status", nullable = false, length = 20)
+    private DriverLicenseStatus driverLicenseStatus = DriverLicenseStatus.NOT_STARTED;
+    
+    /**
+     * Driver license number (encrypted, like JMBG/PIB).
+     * Extracted from OCR or entered manually.
+     */
+    @Column(name = "driver_license_number_encrypted", length = 255)
+    @JsonIgnore
+    @Convert(converter = AttributeEncryptor.class)
+    private String driverLicenseNumber;
+    
+    /**
+     * Hash of driver license number for uniqueness checks (SHA-256).
+     * Prevents same license being used by multiple accounts.
+     */
+    @Column(name = "driver_license_number_hash", unique = true, length = 64)
+    @JsonIgnore
+    private String driverLicenseNumberHash;
+    
+    /**
+     * Driver license expiry date.
+     * CRITICAL: Must be valid (future) for booking eligibility.
+     * Re-validated at booking creation AND at check-in.
+     */
+    @Column(name = "driver_license_expiry_date")
+    private java.time.LocalDate driverLicenseExpiryDate;
+    
+    /**
+     * Country that issued the driver license (ISO 3166-1 alpha-3).
+     * e.g., 'SRB' for Serbia, 'HRV' for Croatia, 'DEU' for Germany.
+     */
+    @Column(name = "driver_license_country", length = 3)
+    private String driverLicenseCountry;
+    
+    /**
+     * How long user has held a valid license (in months).
+     * Used for risk scoring (short tenure = higher risk).
+     */
+    @Column(name = "driver_license_tenure_months")
+    private Integer driverLicenseTenureMonths;
+    
+    /**
+     * When driver license was verified by admin/system.
+     */
+    @Column(name = "driver_license_verified_at")
+    private LocalDateTime driverLicenseVerifiedAt;
+    
+    /**
+     * Admin/system who verified the driver license.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "driver_license_verified_by")
+    private User driverLicenseVerifiedBy;
+    
+    /**
+     * Risk level for this user (impacts verification requirements).
+     * LOW = auto-approve at 95%, MEDIUM = 90% + liveness, HIGH = manual review.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "risk_level", nullable = false, length = 20)
+    private RiskLevel riskLevel = RiskLevel.MEDIUM;
+    
+    /**
+     * When risk level was last evaluated.
+     */
+    @Column(name = "last_risk_evaluation_at")
+    private LocalDateTime lastRiskEvaluationAt;
+    
+    /**
+     * When renter submitted driver license for verification.
+     * Used for admin queue ordering (oldest first).
+     */
+    @Column(name = "renter_verification_submitted_at")
+    private LocalDateTime renterVerificationSubmittedAt;
+    
+    /**
+     * Driver license categories (e.g., 'B', 'B,C', 'B+E').
+     * Extracted from OCR.
+     */
+    @Column(name = "driver_license_categories", length = 50)
+    private String driverLicenseCategories;
+
     @CreationTimestamp
     private Instant createdAt;
 
@@ -278,5 +404,140 @@ public class User {
         String prefix = value.substring(0, keepPrefix);
         String suffix = value.substring(value.length() - keepSuffix);
         return prefix + "*".repeat(Math.max(0, value.length() - keepPrefix - keepSuffix)) + suffix;
+    }
+    
+    // ========== RENTER VERIFICATION HELPER METHODS ==========
+    
+    /**
+     * Check if user is verified as renter for booking.
+     * Requires APPROVED status AND non-expired license.
+     */
+    public boolean isVerifiedRenter() {
+        return driverLicenseStatus == DriverLicenseStatus.APPROVED
+            && !isDriverLicenseExpired();
+    }
+    
+    /**
+     * Check if driver license is expired.
+     */
+    public boolean isDriverLicenseExpired() {
+        return driverLicenseExpiryDate != null 
+            && driverLicenseExpiryDate.isBefore(java.time.LocalDate.now());
+    }
+    
+    /**
+     * Check if driver license will expire within N days.
+     */
+    public boolean willDriverLicenseExpireWithin(int days) {
+        if (driverLicenseExpiryDate == null) return false;
+        java.time.LocalDate warningDate = java.time.LocalDate.now().plusDays(days);
+        return driverLicenseExpiryDate.isBefore(warningDate) 
+            && driverLicenseExpiryDate.isAfter(java.time.LocalDate.now());
+    }
+    
+    /**
+     * Check if user can submit/resubmit driver license documents.
+     */
+    public boolean canSubmitDriverLicense() {
+        return driverLicenseStatus.canResubmit();
+    }
+    
+    /**
+     * Get masked driver license number for display (GDPR compliance).
+     * Example: "AB123456" → "AB12****56"
+     */
+    public String getMaskedDriverLicenseNumber() {
+        if (driverLicenseNumber == null || driverLicenseNumber.length() < 5) return "****";
+        int len = driverLicenseNumber.length();
+        return driverLicenseNumber.substring(0, 4) + "****" + driverLicenseNumber.substring(len - 2);
+    }
+    
+    /**
+     * Get days until driver license expires (negative if expired).
+     */
+    public long getDaysUntilDriverLicenseExpiry() {
+        if (driverLicenseExpiryDate == null) return Long.MAX_VALUE;
+        return java.time.temporal.ChronoUnit.DAYS.between(
+            java.time.LocalDate.now(), driverLicenseExpiryDate);
+    }
+    
+    // ========== AGE CALCULATION METHODS (Enterprise-Grade) ==========
+    
+    /**
+     * Calculate user's current age from date of birth.
+     * 
+     * <p>This is the PREFERRED method for age checks. Unlike the deprecated
+     * {@link #age} field, this always returns the correct current age.
+     * 
+     * @return User's age in years, or null if DOB not set
+     */
+    public Integer getAge() {
+        if (dateOfBirth == null) {
+            // Fallback to legacy age field during migration period
+            return age;
+        }
+        return Period.between(dateOfBirth, LocalDate.now()).getYears();
+    }
+    
+    /**
+     * Check if user meets minimum age requirement.
+     * 
+     * <p>Standard car rentals require 21+, premium/luxury may require 25+.
+     * 
+     * @param minimumAge Minimum age requirement (e.g., 21, 25)
+     * @return true if user meets requirement or DOB is verified via license
+     */
+    public boolean meetsAgeRequirement(int minimumAge) {
+        Integer currentAge = getAge();
+        if (currentAge == null) {
+            // If DOB verified through license approval, trust the verification
+            // (admin verified license which checks DOB)
+            return dobVerified || driverLicenseStatus == DriverLicenseStatus.APPROVED;
+        }
+        return currentAge >= minimumAge;
+    }
+    
+    /**
+     * Check if user is old enough for standard car rentals (21+).
+     * 
+     * @return true if user is 21 or older
+     */
+    public boolean isEligibleForStandardRental() {
+        return meetsAgeRequirement(21);
+    }
+    
+    /**
+     * Check if user is old enough for premium/luxury rentals (25+).
+     * 
+     * @return true if user is 25 or older
+     */
+    public boolean isEligibleForPremiumRental() {
+        return meetsAgeRequirement(25);
+    }
+    
+    /**
+     * Check if date of birth is available (from any source).
+     */
+    public boolean hasDateOfBirth() {
+        return dateOfBirth != null;
+    }
+    
+    /**
+     * Check if age data is verified (from official document).
+     * Verified DOB should not be editable by user.
+     */
+    public boolean isAgeVerified() {
+        return dobVerified && dateOfBirth != null;
+    }
+    
+    /**
+     * Set date of birth from verified source (OCR extraction).
+     * Also marks as verified to prevent user tampering.
+     * 
+     * @param dob Date of birth extracted from official document
+     */
+    public void setVerifiedDateOfBirth(LocalDate dob) {
+        this.dateOfBirth = dob;
+        this.dobVerified = true;
     }
 }

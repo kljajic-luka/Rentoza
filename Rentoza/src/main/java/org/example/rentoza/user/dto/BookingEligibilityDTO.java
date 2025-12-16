@@ -1,0 +1,202 @@
+package org.example.rentoza.user.dto;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+import lombok.*;
+
+import java.time.LocalDate;
+
+/**
+ * Booking eligibility check response DTO.
+ * 
+ * <p>Quick check used by frontend before showing booking form.
+ * Returns simple yes/no with reason if blocked.
+ */
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class BookingEligibilityDTO {
+    
+    /**
+     * Whether user can book a car.
+     */
+    private boolean eligible;
+    
+    /**
+     * If not eligible, reason code for frontend handling.
+     */
+    private EligibilityBlockReason blockReason;
+    
+    /**
+     * Human-readable message for display.
+     */
+    private String message;
+    
+    /**
+     * Serbian message for UI.
+     */
+    private String messageSr;
+    
+    /**
+     * If license expiry is the issue, when it expires.
+     */
+    private LocalDate licenseExpiryDate;
+    
+    /**
+     * If verification pending, estimated wait time.
+     */
+    private String estimatedWaitTime;
+    
+    /**
+     * Action URL for remediation (e.g., /profile/verification).
+     */
+    private String actionUrl;
+    
+    /**
+     * Action button label.
+     */
+    private String actionLabel;
+    
+    // ==================== FACTORY METHODS ====================
+    
+    /**
+     * User is eligible to book.
+     */
+    public static BookingEligibilityDTO eligible() {
+        return BookingEligibilityDTO.builder()
+            .eligible(true)
+            .message("Ready to book")
+            .messageSr("Spremni za rezervaciju")
+            .build();
+    }
+    
+    /**
+     * User needs to start verification.
+     */
+    public static BookingEligibilityDTO needsVerification() {
+        return BookingEligibilityDTO.builder()
+            .eligible(false)
+            .blockReason(EligibilityBlockReason.LICENSE_NOT_VERIFIED)
+            .message("Driver's license verification required before booking")
+            .messageSr("Vozačka dozvola mora biti verifikovana pre rezervacije")
+            .actionUrl("/profile/verification")
+            .actionLabel("Verifikujte vozačku dozvolu")
+            .build();
+    }
+    
+    /**
+     * User verification is pending review.
+     */
+    public static BookingEligibilityDTO pendingReview(String waitTime) {
+        return BookingEligibilityDTO.builder()
+            .eligible(false)
+            .blockReason(EligibilityBlockReason.VERIFICATION_PENDING)
+            .message("Your license verification is being reviewed")
+            .messageSr("Vaša vozačka dozvola se pregleda")
+            .estimatedWaitTime(waitTime)
+            .actionUrl("/profile/verification")
+            .actionLabel("Pogledajte status")
+            .build();
+    }
+    
+    /**
+     * User verification was rejected.
+     */
+    public static BookingEligibilityDTO rejected(String reason) {
+        return BookingEligibilityDTO.builder()
+            .eligible(false)
+            .blockReason(EligibilityBlockReason.VERIFICATION_REJECTED)
+            .message("Your license verification was rejected: " + reason)
+            .messageSr("Vaša verifikacija je odbijena: " + reason)
+            .actionUrl("/profile/verification")
+            .actionLabel("Ponovo podnesite dokumente")
+            .build();
+    }
+    
+    /**
+     * User's license is expired.
+     */
+    public static BookingEligibilityDTO licenseExpired(LocalDate expiryDate) {
+        return BookingEligibilityDTO.builder()
+            .eligible(false)
+            .blockReason(EligibilityBlockReason.LICENSE_EXPIRED)
+            .message("Your driver's license has expired")
+            .messageSr("Vaša vozačka dozvola je istekla")
+            .licenseExpiryDate(expiryDate)
+            .actionUrl("/profile/verification")
+            .actionLabel("Ažurirajte vozačku dozvolu")
+            .build();
+    }
+    
+    /**
+     * User's license will expire before trip end.
+     */
+    public static BookingEligibilityDTO licenseExpiresDuringTrip(LocalDate expiryDate, LocalDate tripEnd) {
+        return BookingEligibilityDTO.builder()
+            .eligible(false)
+            .blockReason(EligibilityBlockReason.LICENSE_EXPIRES_DURING_TRIP)
+            .message("Your license expires (" + expiryDate + ") before trip end (" + tripEnd + ")")
+            .messageSr("Vaša dozvola ističe (" + expiryDate + ") pre kraja putovanja (" + tripEnd + ")")
+            .licenseExpiryDate(expiryDate)
+            .actionUrl("/profile/verification")
+            .actionLabel("Ažurirajte vozačku dozvolu")
+            .build();
+    }
+    
+    /**
+     * User is suspended (fraud/abuse).
+     */
+    public static BookingEligibilityDTO suspended() {
+        return BookingEligibilityDTO.builder()
+            .eligible(false)
+            .blockReason(EligibilityBlockReason.ACCOUNT_SUSPENDED)
+            .message("Your verification is suspended. Please contact support.")
+            .messageSr("Vaša verifikacija je suspendovana. Kontaktirajte podršku.")
+            .actionUrl("/support")
+            .actionLabel("Kontaktirajte podršku")
+            .build();
+    }
+    
+    /**
+     * User doesn't meet age requirement.
+     */
+    public static BookingEligibilityDTO underAge(int requiredAge) {
+        return BookingEligibilityDTO.builder()
+            .eligible(false)
+            .blockReason(EligibilityBlockReason.UNDER_AGE)
+            .message("Drivers must be at least " + requiredAge + " years old")
+            .messageSr("Vozači moraju imati najmanje " + requiredAge + " godina")
+            .build();
+    }
+    
+    /**
+     * Reasons why booking might be blocked.
+     */
+    public enum EligibilityBlockReason {
+        /** License not verified yet */
+        LICENSE_NOT_VERIFIED,
+        
+        /** Verification submitted, awaiting review */
+        VERIFICATION_PENDING,
+        
+        /** Verification was rejected */
+        VERIFICATION_REJECTED,
+        
+        /** License has expired */
+        LICENSE_EXPIRED,
+        
+        /** License expires during requested trip */
+        LICENSE_EXPIRES_DURING_TRIP,
+        
+        /** Account is suspended */
+        ACCOUNT_SUSPENDED,
+        
+        /** User is under minimum age */
+        UNDER_AGE,
+        
+        /** User is banned */
+        USER_BANNED
+    }
+}

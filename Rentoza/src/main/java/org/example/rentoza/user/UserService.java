@@ -254,6 +254,41 @@ public class UserService {
                 changed = true;
             }
         }
+        
+        // ✅ DATE OF BIRTH - allow manual entry only if not already verified via OCR
+        if (dto.getDateOfBirth() != null) {
+            java.time.LocalDate dob = dto.getDateOfBirth();
+            
+            // Check if DOB is already verified (from license OCR) - cannot override
+            if (user.isDobVerified()) {
+                throw new BadRequestException(
+                    "Datum rođenja je već verifikovan putem vozačke dozvole i ne može se promeniti"
+                );
+            }
+            
+            // Validate DOB is in the past
+            if (!dob.isBefore(java.time.LocalDate.now())) {
+                throw new BadRequestException("Datum rođenja mora biti u prošlosti");
+            }
+            
+            // Validate user is at least 18 years old
+            int age = java.time.Period.between(dob, java.time.LocalDate.now()).getYears();
+            if (age < 18) {
+                throw new BadRequestException("Morate imati najmanje 18 godina");
+            }
+            
+            // Validate user is not unreasonably old (sanity check)
+            if (age > 120) {
+                throw new BadRequestException("Unesite validan datum rođenja");
+            }
+            
+            if (!dob.equals(user.getDateOfBirth())) {
+                user.setDateOfBirth(dob);
+                // Note: NOT setting dobVerified=true for self-reported DOB
+                // Only OCR-extracted DOB from verified license gets dobVerified=true
+                changed = true;
+            }
+        }
 
         if (!changed) {
             return user; // No changes, return existing user

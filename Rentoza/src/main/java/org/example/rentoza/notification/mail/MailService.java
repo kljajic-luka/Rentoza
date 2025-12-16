@@ -176,6 +176,11 @@ public class MailService {
             case BOOKING_CANCELLED -> "emails/booking-cancelled";
             case REVIEW_RECEIVED -> "emails/review-received";
             case NEW_MESSAGE -> "emails/new-message";
+            // Renter verification templates
+            case LICENSE_VERIFICATION_APPROVED -> "emails/license-approved";
+            case LICENSE_VERIFICATION_REJECTED -> "emails/license-rejected";
+            case LICENSE_EXPIRING_SOON -> "emails/license-expiring";
+            case LICENSE_EXPIRED -> "emails/license-expiring"; // Reuse expiring template
             default -> null;
         };
     }

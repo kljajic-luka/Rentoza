@@ -56,6 +56,12 @@ import { FavoriteButtonComponent } from '@shared/components/favorite-button/favo
 import { TranslateEnumPipe, FeatureHelper } from '@shared/pipes/translate-enum.pipe';
 import { BookingDialogComponent } from '@features/cars/dialogs/booking-dialog/booking-dialog.component';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { RenterVerificationService } from '@core/services/renter-verification.service';
+import {
+  VerificationRequiredDialogComponent,
+  VerificationRequiredDialogData,
+} from '@shared/components/verification-required-dialog/verification-required-dialog.component';
+import { BookingEligibility } from '@core/models/renter-verification.model';
 
 @Component({
   selector: 'app-car-detail',
@@ -250,8 +256,96 @@ export class CarDetailComponent {
       });
   }
 
+  // ========== Renter Verification Service (Booking Gate) ==========
+  private readonly verificationService = inject(RenterVerificationService);
+
+  /** Loading state for eligibility check */
+  readonly isCheckingEligibility = signal(false);
+
+  /**
+   * Opens booking dialog after verifying user eligibility.
+   *
+   * Flow:
+   * 1. Check booking eligibility via RenterVerificationService
+   * 2. If NOT eligible → Show verification required modal with guidance
+   * 3. If eligible → Proceed to BookingDialogComponent
+   *
+   * This gate ensures users cannot start booking without valid driver license.
+   * Backend enforces this as well (defense in depth).
+   */
   openBookingDialog(car: Car): void {
-    // Phase 2.1 Regression Fix: Pass data arrays only, dialog computes its own filters
+    // Skip eligibility check if user is not authenticated (login redirect will handle)
+    if (!this.authService.isAuthenticated()) {
+      this.router.navigate(['/login'], {
+        queryParams: { returnUrl: `/cars/${car.id}` },
+      });
+      return;
+    }
+
+    // Show loading state
+    this.isCheckingEligibility.set(true);
+
+    // Check booking eligibility before opening dialog
+    this.verificationService
+      .checkBookingEligibility()
+      .pipe(
+        take(1),
+        finalize(() => this.isCheckingEligibility.set(false))
+      )
+      .subscribe({
+        next: (eligibility: BookingEligibility) => {
+          if (!eligibility.eligible) {
+            // User is NOT eligible - show verification required modal
+            this.showVerificationRequiredDialog(car, eligibility);
+            return;
+          }
+
+          // User IS eligible - proceed with booking dialog
+          this.openBookingDialogInternal(car);
+        },
+        error: (error) => {
+          console.error('Eligibility check failed:', error);
+          // On error, still allow booking attempt (backend will catch)
+          // This prevents blocking users if eligibility endpoint is down
+          this.toast.warning(
+            'Nije moguće proveriti status verifikacije. Nastavljamo sa rezervacijom.'
+          );
+          this.openBookingDialogInternal(car);
+        },
+      });
+  }
+
+  /**
+   * Shows the verification required dialog with appropriate messaging.
+   */
+  private showVerificationRequiredDialog(car: Car, eligibility: BookingEligibility): void {
+    const dialogData: VerificationRequiredDialogData = {
+      blockedReason: eligibility.blockedReason,
+      messageSr: eligibility.messageSr,
+      messageEn: eligibility.messageEn,
+      carId: car.id,
+      carName: `${car.make} ${car.model} (${car.year})`,
+      daysUntilExpiry: eligibility.daysUntilExpiry,
+      licenseExpiresBeforeTripEnd: eligibility.licenseExpiresBeforeTripEnd,
+    };
+
+    this.dialog.open(VerificationRequiredDialogComponent, {
+      data: dialogData,
+      width: '450px',
+      maxWidth: '90vw',
+      disableClose: false,
+      panelClass: 'verification-required-dialog',
+    });
+
+    // Note: Dialog handles its own navigation on button clicks
+    // No need to subscribe to afterClosed() here
+  }
+
+  /**
+   * Opens the booking dialog (internal method after eligibility check passes).
+   * Phase 2.1 Regression Fix: Pass data arrays only, dialog computes its own filters.
+   */
+  private openBookingDialogInternal(car: Car): void {
     const dialogRef = this.dialog.open(BookingDialogComponent, {
       data: {
         car,

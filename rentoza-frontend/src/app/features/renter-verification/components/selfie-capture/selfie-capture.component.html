@@ -1,0 +1,266 @@
+<div class="selfie-capture-container">
+  <!-- HEADER -->
+  <div class="capture-header">
+    <div class="label-row">
+      <mat-icon class="selfie-icon">face</mat-icon>
+      <span class="label">{{ label }}</span>
+      @if (required) {
+        <span class="required-badge">*</span>
+      }
+    </div>
+    <p class="description">
+      Vaša selfie fotografija nam pomaže da potvrdimo vaš identitet i 
+      sprečimo neovlašćeno korišćenje vaše vozačke dozvole.
+    </p>
+  </div>
+
+  <!-- GDPR CONSENT (if required) -->
+  @if (requireConsent && mode() === 'initial') {
+    <div class="consent-section">
+      <mat-checkbox
+        [checked]="consentGiven()"
+        (change)="onConsentChange($event.checked)"
+        color="primary"
+        aria-label="Saglasnost za obradu biometrijskih podataka">
+        <span class="consent-text">
+          Pristajem na obradu moje fotografije za potrebe verifikacije identiteta.
+          <a href="/privacy-policy#biometric" target="_blank" class="learn-more">
+            Saznajte više
+          </a>
+        </span>
+      </mat-checkbox>
+      
+      <div class="privacy-info">
+        <mat-icon class="privacy-icon">shield</mat-icon>
+        <div class="privacy-details">
+          <strong>Vaša privatnost je zaštićena:</strong>
+          <ul>
+            <li>Fotografija se šifruje pri skladištenju</li>
+            <li>Automatski se briše nakon 90 dana</li>
+            <li>Nikad se ne deli sa trećim stranama</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- INITIAL STATE: Start camera button -->
+  @if (mode() === 'initial') {
+    <div class="initial-state">
+      <div class="camera-placeholder">
+        <mat-icon class="large-icon">photo_camera</mat-icon>
+        <p>Kliknite da započnete snimanje selfie fotografije</p>
+      </div>
+      
+      <div class="action-buttons">
+        <button
+          mat-raised-button
+          color="primary"
+          [disabled]="requireConsent && !consentGiven()"
+          (click)="startCamera()"
+          aria-label="Uključi kameru za selfie">
+          <mat-icon>videocam</mat-icon>
+          <span>Uključi kameru</span>
+        </button>
+        
+        <button
+          mat-stroked-button
+          (click)="useFallback()"
+          aria-label="Otpremi fotografiju sa uređaja">
+          <mat-icon>upload_file</mat-icon>
+          <span>Otpremi sliku</span>
+        </button>
+      </div>
+      
+      @if (requireConsent && !consentGiven()) {
+        <p class="consent-reminder">
+          <mat-icon>info</mat-icon>
+          Molimo označite polje iznad da biste nastavili
+        </p>
+      }
+    </div>
+  }
+
+  <!-- CAMERA MODE: Live camera feed -->
+  @if (mode() === 'camera') {
+    <div class="camera-mode">
+      <!-- Video preview -->
+      <div class="video-container" [class.capturing]="isCapturing()">
+        <video
+          #videoElement
+          autoplay
+          playsinline
+          muted
+          class="camera-feed"
+          [class.mirror]="true">
+        </video>
+        
+        <!-- Face guide overlay -->
+        <div class="face-guide">
+          <div class="guide-oval" [class.quality-good]="qualityScorePercent() >= 80">
+            @if (countdown()) {
+              <div class="countdown">{{ countdown() }}</div>
+            }
+          </div>
+        </div>
+        
+        <!-- Quality indicators -->
+        @if (showQualityFeedback && qualityMetrics()) {
+          <div class="quality-indicators">
+            <div class="quality-bar">
+              <mat-progress-bar
+                mode="determinate"
+                [value]="qualityScorePercent()"
+                [color]="qualityColor() === 'success' ? 'primary' : qualityColor() === 'warning' ? 'accent' : 'warn'">
+              </mat-progress-bar>
+              <span class="quality-label">Kvalitet: {{ qualityScorePercent() }}%</span>
+            </div>
+            
+            @if (guidanceMessages().length > 0) {
+              <div class="guidance-messages">
+                @for (message of guidanceMessages(); track message) {
+                  <span class="guidance-item">
+                    <mat-icon>arrow_right</mat-icon>
+                    {{ message }}
+                  </span>
+                }
+              </div>
+            }
+          </div>
+        }
+      </div>
+      
+      <!-- Liveness instruction -->
+      <div class="liveness-instruction">
+        <mat-icon>visibility</mat-icon>
+        <span>Gledajte direktno u kameru i trepnite</span>
+      </div>
+      
+      <!-- Camera controls -->
+      <div class="camera-controls">
+        <button
+          mat-fab
+          color="primary"
+          [disabled]="!canCapture() || isCapturing()"
+          (click)="captureSelfie()"
+          aria-label="Snimi selfie"
+          class="capture-button">
+          @if (isCapturing()) {
+            <mat-spinner diameter="24" color="accent"></mat-spinner>
+          } @else {
+            <mat-icon>camera</mat-icon>
+          }
+        </button>
+      </div>
+      
+      <!-- Secondary actions -->
+      <div class="secondary-actions">
+        <button
+          mat-button
+          color="warn"
+          (click)="useFallback()"
+          aria-label="Koristi upload umesto kamere">
+          <mat-icon>upload_file</mat-icon>
+          Radije otpremi sliku
+        </button>
+      </div>
+    </div>
+  }
+
+  <!-- FALLBACK MODE: File upload -->
+  @if (mode() === 'fallback') {
+    <div class="fallback-mode">
+      <div 
+        class="drop-zone"
+        (click)="openFileDialog()"
+        (dragover)="$event.preventDefault()"
+        (drop)="$event.preventDefault()"
+        role="button"
+        tabindex="0"
+        (keydown.enter)="openFileDialog()"
+        (keydown.space)="openFileDialog()"
+        aria-label="Kliknite ili prevucite sliku ovde">
+        
+        <mat-icon class="upload-icon">cloud_upload</mat-icon>
+        <p class="drop-text">Kliknite ili prevucite selfie sliku ovde</p>
+        <p class="file-hints">JPEG ili PNG, max 5MB</p>
+      </div>
+      
+      <input
+        #fileInput
+        type="file"
+        accept="image/jpeg,image/jpg,image/png"
+        (change)="onFileSelected($event)"
+        hidden
+        aria-hidden="true" />
+      
+      <button
+        mat-button
+        (click)="startCamera()"
+        class="back-to-camera">
+        <mat-icon>videocam</mat-icon>
+        Koristi kameru umesto toga
+      </button>
+    </div>
+  }
+
+  <!-- PREVIEW MODE: Show captured selfie -->
+  @if (mode() === 'preview' && previewUrl()) {
+    <div class="preview-mode">
+      <div class="preview-container">
+        <img
+          [src]="previewUrl()"
+          alt="Vaša selfie fotografija"
+          class="preview-image" />
+        
+        <div class="preview-overlay">
+          <mat-icon class="check-icon">check_circle</mat-icon>
+        </div>
+      </div>
+      
+      <div class="preview-info">
+        <mat-icon class="success-icon">verified</mat-icon>
+        <span>Selfie uspešno snimljen</span>
+      </div>
+      
+      <div class="preview-actions">
+        <button
+          mat-button
+          color="warn"
+          (click)="retake()"
+          aria-label="Ponovo snimi selfie">
+          <mat-icon>refresh</mat-icon>
+          Ponovi
+        </button>
+        
+        <button
+          mat-button
+          color="primary"
+          (click)="clear()"
+          aria-label="Ukloni selfie">
+          <mat-icon>delete</mat-icon>
+          Ukloni
+        </button>
+      </div>
+    </div>
+  }
+
+  <!-- LOADING STATE -->
+  @if (isInitializing()) {
+    <div class="loading-overlay">
+      <mat-spinner diameter="48"></mat-spinner>
+      <p>Pokrećem kameru...</p>
+    </div>
+  }
+
+  <!-- ERROR MESSAGE -->
+  @if (errorMessage()) {
+    <div class="error-message" role="alert">
+      <mat-icon>error_outline</mat-icon>
+      <span>{{ errorMessage() }}</span>
+    </div>
+  }
+
+  <!-- Hidden canvas for capture -->
+  <canvas #canvasElement hidden aria-hidden="true"></canvas>
+</div>

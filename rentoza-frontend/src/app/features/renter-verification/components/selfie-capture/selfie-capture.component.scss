@@ -1,0 +1,546 @@
+@use 'sass:color';
+
+// Design tokens
+$primary-color: #1976d2;
+$success-color: #4caf50;
+$warning-color: #ff9800;
+$error-color: #f44336;
+$text-primary: #333;
+$text-secondary: #666;
+$border-color: #ddd;
+$bg-light: #f5f5f5;
+$border-radius: 8px;
+
+.selfie-capture-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 500px;
+  margin: 0 auto;
+}
+
+// ============================================================================
+// HEADER
+// ============================================================================
+
+.capture-header {
+  .label-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+
+    .selfie-icon {
+      color: $primary-color;
+      font-size: 28px;
+      width: 28px;
+      height: 28px;
+    }
+
+    .label {
+      font-size: 18px;
+      font-weight: 600;
+      color: $text-primary;
+    }
+
+    .required-badge {
+      color: $error-color;
+      font-weight: bold;
+    }
+  }
+
+  .description {
+    font-size: 14px;
+    color: $text-secondary;
+    line-height: 1.5;
+    margin: 0;
+  }
+}
+
+// ============================================================================
+// CONSENT SECTION
+// ============================================================================
+
+.consent-section {
+  background: $bg-light;
+  border-radius: $border-radius;
+  padding: 16px;
+  border: 1px solid $border-color;
+
+  mat-checkbox {
+    .consent-text {
+      font-size: 14px;
+      line-height: 1.4;
+
+      .learn-more {
+        color: $primary-color;
+        text-decoration: none;
+        margin-left: 4px;
+
+        &:hover {
+          text-decoration: underline;
+        }
+      }
+    }
+  }
+
+  .privacy-info {
+    display: flex;
+    gap: 12px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid $border-color;
+
+    .privacy-icon {
+      color: $success-color;
+      font-size: 24px;
+      flex-shrink: 0;
+    }
+
+    .privacy-details {
+      font-size: 13px;
+      color: $text-secondary;
+
+      strong {
+        display: block;
+        color: $text-primary;
+        margin-bottom: 4px;
+      }
+
+      ul {
+        margin: 0;
+        padding-left: 16px;
+
+        li {
+          margin: 4px 0;
+        }
+      }
+    }
+  }
+}
+
+// ============================================================================
+// INITIAL STATE
+// ============================================================================
+
+.initial-state {
+  text-align: center;
+
+  .camera-placeholder {
+    background: linear-gradient(135deg, #e3f2fd 0%, #f5f5f5 100%);
+    border: 2px dashed $border-color;
+    border-radius: $border-radius;
+    padding: 48px 24px;
+    margin-bottom: 16px;
+
+    .large-icon {
+      font-size: 64px;
+      width: 64px;
+      height: 64px;
+      color: $primary-color;
+      opacity: 0.6;
+    }
+
+    p {
+      color: $text-secondary;
+      margin: 16px 0 0;
+    }
+  }
+
+  .action-buttons {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+
+    button {
+      min-width: 160px;
+    }
+  }
+
+  .consent-reminder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 16px;
+    font-size: 13px;
+    color: $warning-color;
+
+    mat-icon {
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+    }
+  }
+}
+
+// ============================================================================
+// CAMERA MODE
+// ============================================================================
+
+.camera-mode {
+  .video-container {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    background: #000;
+    border-radius: $border-radius;
+    overflow: hidden;
+
+    &.capturing {
+      animation: pulse 0.3s ease-in-out;
+    }
+
+    .camera-feed {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+
+      &.mirror {
+        transform: scaleX(-1);
+      }
+    }
+
+    .face-guide {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+
+      .guide-oval {
+        width: 60%;
+        height: 80%;
+        border: 3px dashed rgba(255, 255, 255, 0.5);
+        border-radius: 50%;
+        transition: border-color 0.3s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        &.quality-good {
+          border-color: $success-color;
+          border-style: solid;
+        }
+
+        .countdown {
+          font-size: 72px;
+          font-weight: bold;
+          color: white;
+          text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+          animation: countdownPulse 1s ease-out;
+        }
+      }
+    }
+
+    .quality-indicators {
+      position: absolute;
+      bottom: 16px;
+      left: 16px;
+      right: 16px;
+      background: rgba(0, 0, 0, 0.7);
+      border-radius: 8px;
+      padding: 12px;
+      color: white;
+
+      .quality-bar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+
+        mat-progress-bar {
+          flex: 1;
+          height: 8px;
+          border-radius: 4px;
+        }
+
+        .quality-label {
+          font-size: 12px;
+          white-space: nowrap;
+        }
+      }
+
+      .guidance-messages {
+        margin-top: 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+
+        .guidance-item {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          font-size: 12px;
+
+          mat-icon {
+            font-size: 14px;
+            width: 14px;
+            height: 14px;
+          }
+        }
+      }
+    }
+  }
+
+  .liveness-instruction {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px;
+    background: linear-gradient(90deg, #e3f2fd 0%, #f3e5f5 100%);
+    border-radius: $border-radius;
+    font-size: 14px;
+    color: $text-primary;
+
+    mat-icon {
+      color: $primary-color;
+    }
+  }
+
+  .camera-controls {
+    display: flex;
+    justify-content: center;
+    padding: 16px;
+
+    .capture-button {
+      width: 72px;
+      height: 72px;
+
+      mat-icon {
+        font-size: 32px;
+        width: 32px;
+        height: 32px;
+      }
+    }
+  }
+
+  .secondary-actions {
+    display: flex;
+    justify-content: center;
+  }
+}
+
+// ============================================================================
+// FALLBACK MODE
+// ============================================================================
+
+.fallback-mode {
+  .drop-zone {
+    border: 2px dashed $border-color;
+    border-radius: $border-radius;
+    padding: 48px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+
+    &:hover,
+    &:focus {
+      border-color: $primary-color;
+      background: rgba($primary-color, 0.04);
+    }
+
+    .upload-icon {
+      font-size: 48px;
+      width: 48px;
+      height: 48px;
+      color: $primary-color;
+      opacity: 0.7;
+    }
+
+    .drop-text {
+      margin: 16px 0 8px;
+      font-size: 16px;
+      color: $text-primary;
+    }
+
+    .file-hints {
+      margin: 0;
+      font-size: 13px;
+      color: $text-secondary;
+    }
+  }
+
+  .back-to-camera {
+    display: block;
+    margin: 16px auto 0;
+  }
+}
+
+// ============================================================================
+// PREVIEW MODE
+// ============================================================================
+
+.preview-mode {
+  .preview-container {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    border-radius: $border-radius;
+    overflow: hidden;
+
+    .preview-image {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .preview-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba($success-color, 0.2);
+
+      .check-icon {
+        font-size: 72px;
+        width: 72px;
+        height: 72px;
+        color: $success-color;
+        background: white;
+        border-radius: 50%;
+        animation: scaleIn 0.3s ease-out;
+      }
+    }
+  }
+
+  .preview-info {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px;
+    background: rgba($success-color, 0.1);
+    border-radius: $border-radius;
+    color: color.adjust($success-color, $lightness: -20%);
+    font-weight: 500;
+
+    .success-icon {
+      color: $success-color;
+    }
+  }
+
+  .preview-actions {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    margin-top: 8px;
+  }
+}
+
+// ============================================================================
+// LOADING & ERRORS
+// ============================================================================
+
+.loading-overlay {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  background: $bg-light;
+  border-radius: $border-radius;
+
+  p {
+    margin-top: 16px;
+    color: $text-secondary;
+  }
+}
+
+.error-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px;
+  background: rgba($error-color, 0.1);
+  border: 1px solid rgba($error-color, 0.3);
+  border-radius: $border-radius;
+  color: $error-color;
+
+  mat-icon {
+    flex-shrink: 0;
+  }
+
+  span {
+    font-size: 14px;
+    line-height: 1.4;
+  }
+}
+
+// ============================================================================
+// ANIMATIONS
+// ============================================================================
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba($primary-color, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 20px rgba($primary-color, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba($primary-color, 0);
+  }
+}
+
+@keyframes countdownPulse {
+  0% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.8);
+    opacity: 0.8;
+  }
+}
+
+@keyframes scaleIn {
+  0% {
+    transform: scale(0);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+// ============================================================================
+// RESPONSIVE
+// ============================================================================
+
+@media (max-width: 480px) {
+  .selfie-capture-container {
+    padding: 0 8px;
+  }
+
+  .initial-state {
+    .action-buttons {
+      flex-direction: column;
+
+      button {
+        width: 100%;
+      }
+    }
+  }
+
+  .camera-mode {
+    .camera-controls {
+      .capture-button {
+        width: 64px;
+        height: 64px;
+
+        mat-icon {
+          font-size: 28px;
+          width: 28px;
+          height: 28px;
+        }
+      }
+    }
+  }
+}

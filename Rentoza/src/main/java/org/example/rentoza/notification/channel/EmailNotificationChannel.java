@@ -86,6 +86,11 @@ public class EmailNotificationChannel implements NotificationChannel {
             case "BOOKING_CANCELLED" -> "Rezervacija otkazana - Rentoza";
             case "NEW_MESSAGE" -> "Nova poruka - Rentoza";
             case "REVIEW_RECEIVED" -> "Nova recenzija - Rentoza";
+            // Renter verification subjects
+            case "LICENSE_VERIFICATION_APPROVED" -> "Vozačka dozvola verifikovana - Rentoza";
+            case "LICENSE_VERIFICATION_REJECTED" -> "Vozačka dozvola - potrebna ponovna provera - Rentoza";
+            case "LICENSE_EXPIRING_SOON" -> "Vozačka dozvola ističe uskoro - Rentoza";
+            case "LICENSE_EXPIRED" -> "Vozačka dozvola je istekla - Rentoza";
             default -> "Obaveštenje - Rentoza";
         };
     }

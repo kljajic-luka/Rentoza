@@ -25,6 +25,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import org.example.rentoza.exception.ValidationException;
+import org.example.rentoza.user.RenterVerificationService;
+import org.example.rentoza.config.FeatureFlags;
+import org.example.rentoza.user.dto.BookingEligibilityDTO;
 import java.time.*;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -63,6 +67,8 @@ public class CheckInService {
     private final GeofenceService geofenceService;
     private final NotificationService notificationService;
     private final LockboxEncryptionService lockboxEncryptionService;
+    private final RenterVerificationService renterVerificationService;
+    private final FeatureFlags featureFlags;
     
     // Metrics
     private final Counter hostCompletedCounter;
@@ -80,6 +86,8 @@ public class CheckInService {
             GeofenceService geofenceService,
             NotificationService notificationService,
             LockboxEncryptionService lockboxEncryptionService,
+            RenterVerificationService renterVerificationService,
+            FeatureFlags featureFlags,
             MeterRegistry meterRegistry) {
         this.bookingRepository = bookingRepository;
         this.eventService = eventService;
@@ -87,6 +95,8 @@ public class CheckInService {
         this.geofenceService = geofenceService;
         this.notificationService = notificationService;
         this.lockboxEncryptionService = lockboxEncryptionService;
+        this.renterVerificationService = renterVerificationService;
+        this.featureFlags = featureFlags;
         
         this.hostCompletedCounter = Counter.builder("checkin.host.completed")
                 .description("Host check-in completions")
@@ -449,6 +459,20 @@ public class CheckInService {
         
         // Process guest confirmation
         if (isGuest) {
+            // STRICT CHECK-IN: Verify license validity before handshake
+            if (featureFlags.isStrictCheckinEnabled()) {
+                BookingEligibilityDTO eligibility = renterVerificationService.checkBookingEligibility(
+                    booking.getRenter().getId(), 
+                    booking.getEndTime().toLocalDate()
+                );
+                
+                if (!eligibility.isEligible()) {
+                    log.warn("[CheckIn] Handshake blocked due to license issue: bookingId={}, reason={}", 
+                        booking.getId(), eligibility.getBlockReason());
+                    throw new ValidationException("Check-in blocked: " + eligibility.getMessageSr());
+                }
+            }
+
             // Geofence validation for remote handoff
             if (booking.getLockboxCodeEncrypted() != null && dto.getLatitude() != null) {
                 // Infer location density for dynamic radius adjustment

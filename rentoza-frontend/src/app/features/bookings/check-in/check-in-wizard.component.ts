@@ -35,6 +35,8 @@ import {
 import { GeolocationService } from '../../../core/services/geolocation.service';
 import { OfflineQueueService } from '../../../core/services/offline-queue.service';
 import { AuthService } from '../../../core/auth/auth.service';
+import { RenterVerificationService } from '../../../core/services/renter-verification.service';
+import { BookingEligibility } from '../../../core/models/renter-verification.model';
 
 import { HostCheckInComponent } from './host-check-in.component';
 import { GuestCheckInComponent } from './guest-check-in.component';
@@ -552,6 +554,7 @@ export class CheckInWizardComponent implements OnInit, OnDestroy {
   private snackBar = inject(MatSnackBar);
   private dialog = inject(MatDialog);
   private authService = inject(AuthService);
+  private verificationService = inject(RenterVerificationService);
 
   checkInService = inject(CheckInService);
   geolocationService = inject(GeolocationService);
@@ -628,6 +631,13 @@ export class CheckInWizardComponent implements OnInit, OnDestroy {
       this.checkInService.loadStatus(this.bookingId()).subscribe({
         next: (status) => {
           console.log('[CheckInWizard] Status loaded:', status);
+
+          // Re-validate driver license eligibility at check-in time
+          // Only for guests (renters) - hosts don't need license validation
+          // Use tripStartScheduled as proxy for trip duration validation
+          if (status.guest && status.tripStartScheduled) {
+            this.validateLicenseForCheckIn(status.tripStartScheduled);
+          }
         },
         error: (err) => {
           console.error('[CheckInWizard] Failed to load status:', err);
@@ -641,6 +651,54 @@ export class CheckInWizardComponent implements OnInit, OnDestroy {
     } else {
       console.log('[CheckInWizard] Location tracking disabled in environment config');
     }
+  }
+
+  /**
+   * Validates driver license eligibility at check-in time.
+   * Ensures license hasn't expired since booking was made.
+   *
+   * @param tripEndDate - The booking end date to validate against
+   */
+  private validateLicenseForCheckIn(tripEndDate: string): void {
+    this.verificationService.checkBookingEligibility(tripEndDate).subscribe({
+      next: (eligibility: BookingEligibility) => {
+        if (!eligibility.eligible) {
+          console.warn('[CheckInWizard] License eligibility failed:', eligibility.blockedReason);
+
+          // Show error and block check-in
+          const message =
+            eligibility.messageSr || 'Vaša vozačka dozvola više nije važeća za ovo putovanje.';
+
+          this.snackBar
+            .open(message, 'Kontaktiraj podršku', {
+              duration: 10000,
+              panelClass: ['snackbar-error'],
+            })
+            .onAction()
+            .subscribe(() => {
+              // Navigate to support or verification page
+              this.router.navigate(['/verify-license']);
+            });
+
+          // Redirect away from check-in
+          setTimeout(() => {
+            this.router.navigate(['/bookings', this.bookingId()]);
+          }, 3000);
+        } else if (eligibility.licenseExpiresBeforeTripEnd) {
+          // Warning: License expires during trip
+          const daysUntil = eligibility.daysUntilExpiry ?? 0;
+          this.snackBar.open(
+            `Upozorenje: Vaša vozačka dozvola ističe za ${daysUntil} dana, pre završetka putovanja.`,
+            'Razumem',
+            { duration: 8000, panelClass: ['snackbar-warning'] }
+          );
+        }
+      },
+      error: (err) => {
+        // On error, log but don't block (backend enforces final validation)
+        console.error('[CheckInWizard] License validation error:', err);
+      },
+    });
   }
 
   ngOnDestroy(): void {

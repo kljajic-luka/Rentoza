@@ -73,6 +73,25 @@ export const ADMIN_ROUTES: Routes = [
         ],
       },
       {
+        path: 'renter-verifications',
+        children: [
+          {
+            path: '',
+            loadComponent: () =>
+              import(
+                './renter-verifications/renter-verification-list/renter-verification-list.component'
+              ).then((m) => m.RenterVerificationListComponent),
+          },
+          {
+            path: ':userId',
+            loadComponent: () =>
+              import(
+                './renter-verifications/renter-verification-detail/renter-verification-detail.component'
+              ).then((m) => m.RenterVerificationDetailComponent),
+          },
+        ],
+      },
+      {
         path: 'financial',
         loadComponent: () =>
           import('./financial/financial-dashboard/financial-dashboard.component').then(

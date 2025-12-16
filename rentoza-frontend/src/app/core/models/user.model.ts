@@ -48,6 +48,14 @@ export interface UserProfileDetails {
   averageRating: number;
   stats: ProfileStats;
   reviews: ProfileReview[];
+
+  // ========== Age/DOB Fields (Enterprise-Grade) ==========
+  /** User's date of birth (ISO format: YYYY-MM-DD) */
+  dateOfBirth?: string | null;
+  /** Calculated age from DOB (null if DOB not set) */
+  age?: number | null;
+  /** Whether DOB was verified via official document (license OCR) */
+  dobVerified?: boolean;
 }
 
 /**
@@ -60,4 +68,6 @@ export interface UpdateProfileRequest {
   avatarUrl?: string;
   bio?: string;
   lastName?: string;
+  /** Date of birth (ISO format: YYYY-MM-DD). Can only be set if not already verified via license OCR. */
+  dateOfBirth?: string | null;
 }

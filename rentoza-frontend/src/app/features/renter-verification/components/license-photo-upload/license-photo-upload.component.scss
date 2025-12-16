@@ -1,0 +1,305 @@
+// ============================================================================
+// LICENSE PHOTO UPLOAD COMPONENT STYLES
+// ============================================================================
+// Styling for the driver license photo upload component.
+// Uses CSS custom properties for theming compatibility.
+
+.license-upload-container {
+  width: 100%;
+}
+
+// ============================================================================
+// LABEL
+// ============================================================================
+
+.upload-label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  margin-bottom: 0.5rem;
+
+  &.required .required-indicator {
+    color: var(--color-error, #dc2626);
+    margin-left: 0.25rem;
+  }
+}
+
+// ============================================================================
+// UPLOAD ZONE
+// ============================================================================
+
+.upload-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 180px;
+  padding: 1.5rem;
+  border: 2px dashed var(--color-border, #e5e7eb);
+  border-radius: 12px;
+  background-color: var(--color-surface-secondary, #f9fafb);
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover,
+  &:focus {
+    border-color: var(--color-primary, #3b82f6);
+    background-color: rgba(59, 130, 246, 0.04);
+    outline: none;
+  }
+
+  &:focus-visible {
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+  }
+
+  &.drag-over {
+    border-color: var(--color-primary, #3b82f6);
+    background-color: rgba(59, 130, 246, 0.08);
+    transform: scale(1.01);
+  }
+
+  &.has-error {
+    border-color: var(--color-error, #dc2626);
+    background-color: rgba(220, 38, 38, 0.04);
+  }
+}
+
+.file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.upload-content {
+  text-align: center;
+}
+
+.upload-icon {
+  font-size: 48px;
+  width: 48px;
+  height: 48px;
+  color: var(--color-text-secondary, #6b7280);
+  margin-bottom: 0.75rem;
+  transition: color 0.2s ease;
+
+  .upload-zone:hover &,
+  .upload-zone.drag-over & {
+    color: var(--color-primary, #3b82f6);
+  }
+}
+
+.upload-text {
+  font-size: 0.9375rem;
+  color: var(--color-text-secondary, #6b7280);
+  margin: 0 0 0.5rem;
+
+  .click-text {
+    color: var(--color-primary, #3b82f6);
+    font-weight: 500;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+}
+
+.upload-hint {
+  font-size: 0.8125rem;
+  color: var(--color-text-tertiary, #9ca3af);
+  margin: 0;
+}
+
+// ============================================================================
+// PREVIEW
+// ============================================================================
+
+.preview-container {
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 12px;
+  overflow: hidden;
+  background-color: var(--color-surface, #ffffff);
+}
+
+.image-preview {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  background-color: #000;
+  overflow: hidden;
+}
+
+.preview-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.preview-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 0.75rem 1rem;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.7), transparent);
+}
+
+.file-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #ffffff;
+  font-size: 0.8125rem;
+
+  mat-icon {
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+  }
+
+  .file-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .file-size {
+    opacity: 0.8;
+    font-size: 0.75rem;
+  }
+}
+
+.preview-actions {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background-color: var(--color-surface-secondary, #f9fafb);
+  border-top: 1px solid var(--color-border, #e5e7eb);
+
+  button {
+    flex: 1;
+    
+    mat-icon {
+      margin-right: 0.25rem;
+    }
+  }
+}
+
+// ============================================================================
+// MESSAGES
+// ============================================================================
+
+.error-message,
+.warning-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+
+  mat-icon {
+    flex-shrink: 0;
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+    margin-top: 1px;
+  }
+}
+
+.error-message {
+  background-color: rgba(220, 38, 38, 0.08);
+  color: var(--color-error, #dc2626);
+
+  mat-icon {
+    color: var(--color-error, #dc2626);
+  }
+}
+
+.warning-message {
+  background-color: rgba(245, 158, 11, 0.08);
+  color: #b45309;
+
+  mat-icon {
+    color: #f59e0b;
+  }
+}
+
+// ============================================================================
+// VALIDATING INDICATOR
+// ============================================================================
+
+.validating-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary, #6b7280);
+}
+
+// ============================================================================
+// DARK MODE OVERRIDES
+// ============================================================================
+
+:host-context(.theme-dark) {
+  .upload-zone {
+    border-color: var(--color-border-dark, #374151);
+    background-color: var(--color-surface-dark, #1f2937);
+
+    &:hover,
+    &:focus {
+      background-color: rgba(59, 130, 246, 0.08);
+    }
+
+    &.drag-over {
+      background-color: rgba(59, 130, 246, 0.12);
+    }
+  }
+
+  .preview-container {
+    border-color: var(--color-border-dark, #374151);
+    background-color: var(--color-surface-dark, #1f2937);
+  }
+
+  .preview-actions {
+    background-color: rgba(0, 0, 0, 0.2);
+    border-top-color: var(--color-border-dark, #374151);
+  }
+}
+
+// ============================================================================
+// RESPONSIVE
+// ============================================================================
+
+@media (max-width: 480px) {
+  .upload-zone {
+    min-height: 150px;
+    padding: 1rem;
+  }
+
+  .upload-icon {
+    font-size: 40px;
+    width: 40px;
+    height: 40px;
+  }
+
+  .upload-text {
+    font-size: 0.875rem;
+  }
+
+  .preview-actions {
+    flex-direction: column;
+
+    button {
+      width: 100%;
+    }
+  }
+}

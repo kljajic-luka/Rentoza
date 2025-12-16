@@ -25,9 +25,11 @@ import org.example.rentoza.notification.dto.CreateNotificationRequestDTO;
 import org.example.rentoza.review.Review;
 import org.example.rentoza.review.ReviewDirection;
 import org.example.rentoza.review.ReviewRepository;
-
+import org.example.rentoza.user.DriverLicenseStatus;
+import org.example.rentoza.user.RenterVerificationService;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
+import org.example.rentoza.user.dto.BookingEligibilityDTO;
 import org.hibernate.Hibernate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -53,6 +55,7 @@ public class BookingService {
     private final org.example.rentoza.security.CurrentUser currentUser;
     private final CancellationPolicyService cancellationPolicyService;
     private final DeliveryFeeCalculator deliveryFeeCalculator;
+    private final RenterVerificationService renterVerificationService;
 
     @org.springframework.beans.factory.annotation.Value("${app.booking.host-approval.enabled:false}")
     private boolean approvalEnabled;
@@ -62,12 +65,16 @@ public class BookingService {
 
     @org.springframework.beans.factory.annotation.Value("${app.booking.host-approval.expiry-hours:48}")
     private int expiryHours;
+    
+    @org.springframework.beans.factory.annotation.Value("${app.renter-verification.license-required:true}")
+    private boolean licenseRequired;
 
     public BookingService(BookingRepository repo, CarRepository carRepo, UserRepository userRepo,
                           ReviewRepository reviewRepo, ChatServiceClient chatServiceClient,
                           NotificationService notificationService, org.example.rentoza.security.CurrentUser currentUser,
                           CancellationPolicyService cancellationPolicyService,
-                          DeliveryFeeCalculator deliveryFeeCalculator) {
+                          DeliveryFeeCalculator deliveryFeeCalculator,
+                          RenterVerificationService renterVerificationService) {
         this.repo = repo;
         this.carRepo = carRepo;
         this.userRepo = userRepo;
@@ -77,6 +84,7 @@ public class BookingService {
         this.currentUser = currentUser;
         this.cancellationPolicyService = cancellationPolicyService;
         this.deliveryFeeCalculator = deliveryFeeCalculator;
+        this.renterVerificationService = renterVerificationService;
     }
 
     @Transactional
@@ -158,6 +166,31 @@ public class BookingService {
                     "Booking cannot be created less than 1 hour before trip start time. " +
                     "Please select a later start date."
             );
+        }
+
+        // ========================================================================
+        // DRIVER LICENSE VERIFICATION CHECK (Renter Identity Verification)
+        // ========================================================================
+        // Validate that the renter has a verified, non-expired driver's license.
+        // The eligibility check considers:
+        // 1. License verification status (must be APPROVED)
+        // 2. License expiry date (must be valid through end of trip)
+        // 3. Suspension status (must not be SUSPENDED)
+        //
+        // This is a critical safety gate - unverified renters cannot book vehicles.
+        // The check is configurable via app.renter-verification.license-required property.
+        if (licenseRequired) {
+            BookingEligibilityDTO eligibility = renterVerificationService.checkBookingEligibilityForUser(
+                    renter, dto.getEndTime().toLocalDate());
+            
+            if (!eligibility.isEligible()) {
+                log.warn("Renter license verification failed: userId={}, reason={}", 
+                        renter.getId(), eligibility.getBlockReason());
+                throw new org.example.rentoza.exception.ValidationException(eligibility.getMessageSr());
+            }
+            
+            log.debug("Renter license verification passed: userId={}, status={}", 
+                    renter.getId(), renter.getDriverLicenseStatus());
         }
 
         Booking booking = new Booking();

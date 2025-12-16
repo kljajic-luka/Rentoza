@@ -48,7 +48,7 @@ public class MockIdVerificationProvider implements IdVerificationProvider {
         // Simulate processing delay
         simulateDelay(800);
         
-        // Return mock document data
+        // Return mock document data with DOB for enterprise-grade age management
         return DocumentExtraction.builder()
                 .success(true)
                 .documentType(DocumentType.DRIVERS_LICENSE)
@@ -57,6 +57,12 @@ public class MockIdVerificationProvider implements IdVerificationProvider {
                 .documentNumber("123456789")
                 .expiryDate(LocalDate.now().plusYears(5))
                 .countryCode("SRB")
+                // DOB: User is 28 years old (born 1996)
+                .dateOfBirth(LocalDate.of(1996, 5, 15))
+                // Standard B category for cars
+                .licenseCategories("B")
+                // License issued 6 years ago
+                .issueDate(LocalDate.now().minusYears(6))
                 .build();
     }
 

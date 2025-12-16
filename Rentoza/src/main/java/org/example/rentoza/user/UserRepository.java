@@ -64,5 +64,51 @@ public interface UserRepository extends JpaRepository<User,Long> {
      */
     @Query("SELECT u FROM User u WHERE u.isIdentityVerified = false AND (u.jmbg IS NOT NULL OR u.pib IS NOT NULL) ORDER BY u.ownerVerificationSubmittedAt DESC")
     List<User> findPendingVerificationOwners();
+    
+    // ========== RENTER DRIVER LICENSE VERIFICATION QUERIES ==========
+    
+    /**
+     * Find users awaiting driver license verification (PENDING_REVIEW status).
+     * Used by admin queue to display all renters needing manual review.
+     * 
+     * @param pageable Pagination and sorting parameters
+     * @return Page of users with PENDING_REVIEW driver license status
+     */
+    @Query("""
+        SELECT u FROM User u 
+        WHERE u.driverLicenseStatus = 'PENDING_REVIEW' 
+        ORDER BY u.renterVerificationSubmittedAt ASC
+        """)
+    org.springframework.data.domain.Page<User> findUsersWithPendingDriverLicenseVerification(
+        org.springframework.data.domain.Pageable pageable
+    );
+    
+    /**
+     * Find users by driver license status with optional filters.
+     * Supports status and risk level filtering.
+     * 
+     * @param status Driver license status to filter by (nullable for all)
+     * @param riskLevel Risk level to filter by (nullable for all)
+     * @param pageable Pagination and sorting
+     * @return Page of filtered users
+     */
+    @Query("""
+        SELECT u FROM User u 
+        WHERE (:status IS NULL OR u.driverLicenseStatus = :status) 
+        AND (:riskLevel IS NULL OR u.riskLevel = :riskLevel)
+        ORDER BY u.renterVerificationSubmittedAt ASC NULLS LAST
+        """)
+    org.springframework.data.domain.Page<User> findUsersByDriverLicenseStatusAndRiskLevel(
+        @org.springframework.data.repository.query.Param("status") DriverLicenseStatus status,
+        @org.springframework.data.repository.query.Param("riskLevel") RiskLevel riskLevel,
+        org.springframework.data.domain.Pageable pageable
+    );
+    
+    /**
+     * Count users with PENDING_REVIEW driver license status.
+     * Used for queue statistics.
+     */
+    @Query("SELECT COUNT(u) FROM User u WHERE u.driverLicenseStatus = 'PENDING_REVIEW'")
+    long countPendingDriverLicenseVerifications();
 }
 

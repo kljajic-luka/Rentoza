@@ -102,7 +102,11 @@ public class ProfileService {
                 user.getCreatedAt(),
                 averageRating,
                 stats,
-                reviewDtos
+                reviewDtos,
+                // DOB fields (enterprise-grade age management)
+                user.getDateOfBirth(),
+                user.getAge(), // Calculated from DOB dynamically
+                user.isDobVerified()
         );
     }
 }

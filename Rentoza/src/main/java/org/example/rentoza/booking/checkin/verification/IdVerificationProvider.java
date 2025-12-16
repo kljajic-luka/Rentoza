@@ -92,6 +92,24 @@ public interface IdVerificationProvider {
         private String countryCode;
         private String errorCode;
         private String errorMessage;
+        
+        /**
+         * Date of birth extracted from document.
+         * CRITICAL: Used for age verification and booking eligibility.
+         */
+        private LocalDate dateOfBirth;
+        
+        /**
+         * License categories (e.g., 'B', 'B,C', 'B+E').
+         * Used to verify user can drive the booked vehicle type.
+         */
+        private String licenseCategories;
+        
+        /**
+         * Issue date of the document.
+         * Used to calculate license tenure for risk scoring.
+         */
+        private LocalDate issueDate;
     }
 
     @Data

@@ -10,6 +10,7 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { Router } from '@angular/router';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -82,6 +83,7 @@ export interface BookingDialogData {
 })
 export class BookingDialogComponent implements OnInit {
   private readonly fb = inject(FormBuilder);
+  private readonly router = inject(Router);
   private readonly bookingService = inject(BookingService);
   private readonly carService = inject(CarService);
   private readonly authService = inject(AuthService);
@@ -590,7 +592,63 @@ export class BookingDialogComponent implements OnInit {
         const errorCode = error.error?.code;
         let errorMessage: string;
 
-        if (error.status === 409) {
+        // Handle verification-related errors (403 Forbidden)
+        if (error.status === 403) {
+          switch (errorCode) {
+            case 'VERIFICATION_REQUIRED':
+            case 'LICENSE_NOT_VERIFIED':
+              // User needs to verify license - redirect to verification page
+              this.handleVerificationRedirect(
+                'Potrebna je verifikacija vozačke dozvole pre rezervacije.'
+              );
+              return;
+            case 'LICENSE_EXPIRED':
+              // License has expired - redirect to verification for renewal
+              this.handleVerificationRedirect(
+                'Vaša vozačka dozvola je istekla. Molimo obnovite verifikaciju.'
+              );
+              return;
+            case 'LICENSE_EXPIRES_BEFORE_TRIP':
+              // License expires before trip ends
+              this.handleVerificationRedirect(
+                'Vaša vozačka dozvola ističe pre završetka putovanja. Molimo obnovite dozvolu.'
+              );
+              return;
+            case 'VERIFICATION_PENDING':
+              // Verification is in progress
+              this.snackBar
+                .open(
+                  'Vaša verifikacija je u toku. Molimo sačekajte odobrenje.',
+                  'Pogledaj status',
+                  { duration: 8000, panelClass: ['snackbar-warning'] }
+                )
+                .onAction()
+                .subscribe(() => {
+                  this.dialogRef.close(false);
+                  this.router.navigate(['/verify-license']);
+                });
+              this.isSubmitting.set(false);
+              return;
+            case 'VERIFICATION_REJECTED':
+              // Previous verification was rejected
+              this.handleVerificationRedirect(
+                'Vaša prethodna verifikacija je odbijena. Molimo pošaljite ponovo.'
+              );
+              return;
+            case 'ACCOUNT_SUSPENDED':
+              // Account is suspended
+              this.snackBar.open(
+                'Vaš nalog je suspendovan. Kontaktirajte podršku za pomoć.',
+                'Zatvori',
+                { duration: 8000, panelClass: ['snackbar-error'] }
+              );
+              this.isSubmitting.set(false);
+              return;
+            default:
+              // Generic 403 error
+              errorMessage = error.error?.message || 'Nemate dozvolu za ovu akciju.';
+          }
+        } else if (error.status === 409) {
           switch (errorCode) {
             case 'USER_OVERLAP':
               errorMessage =
@@ -616,6 +674,28 @@ export class BookingDialogComponent implements OnInit {
         this.isSubmitting.set(false);
       },
     });
+  }
+
+  /**
+   * Handles verification-related errors by showing snackbar and redirecting to verification page.
+   * Includes returnUrl to bring user back to this car after verification.
+   */
+  private handleVerificationRedirect(message: string): void {
+    const carId = this.data.car?.id;
+    const returnUrl = carId ? `/cars/${carId}` : '/cars';
+
+    this.snackBar
+      .open(message, 'Verifikuj', {
+        duration: 8000,
+        panelClass: ['snackbar-warning'],
+      })
+      .onAction()
+      .subscribe(() => {
+        this.dialogRef.close(false);
+        this.router.navigate(['/verify-license'], { queryParams: { returnUrl } });
+      });
+
+    this.isSubmitting.set(false);
   }
 
   protected cancel(): void {

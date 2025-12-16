@@ -1,0 +1,506 @@
+// ============================================================================
+// RENTER VERIFICATION PAGE STYLES
+// ============================================================================
+
+.verification-page {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 3rem;
+}
+
+// ============================================================================
+// HEADER
+// ============================================================================
+
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+
+  .header-content {
+    flex: 1;
+  }
+
+  h1 {
+    margin: 0 0 0.25rem;
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+  }
+
+  .subtitle {
+    margin: 0;
+    font-size: 0.9375rem;
+    color: var(--color-text-secondary);
+  }
+}
+
+// ============================================================================
+// LOADING & ERROR STATES
+// ============================================================================
+
+.loading-container,
+.error-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1rem;
+  text-align: center;
+
+  p {
+    margin: 1rem 0 0;
+    color: var(--color-text-secondary);
+  }
+}
+
+.error-container {
+  mat-icon {
+    font-size: 48px;
+    width: 48px;
+    height: 48px;
+    color: var(--color-error, #dc2626);
+  }
+
+  button {
+    margin-top: 1rem;
+  }
+}
+
+// ============================================================================
+// STATUS CARD
+// ============================================================================
+
+.status-card {
+  margin-bottom: 1.5rem;
+  border-radius: 12px;
+  overflow: hidden;
+
+  &.status-success {
+    border-left: 4px solid var(--color-success, #16a34a);
+  }
+
+  &.status-pending {
+    border-left: 4px solid var(--color-warning, #f59e0b);
+  }
+
+  &.status-error {
+    border-left: 4px solid var(--color-error, #dc2626);
+  }
+
+  &.status-default {
+    border-left: 4px solid var(--color-text-tertiary, #9ca3af);
+  }
+}
+
+.status-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+
+  .status-icon {
+    font-size: 32px;
+    width: 32px;
+    height: 32px;
+  }
+
+  .status-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+  }
+
+  .status-label {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+  }
+
+  .expiry-info {
+    font-size: 0.8125rem;
+    color: var(--color-text-secondary);
+  }
+}
+
+// Status-specific colors
+.status-success .status-icon {
+  color: var(--color-success, #16a34a);
+}
+
+.status-pending .status-icon {
+  color: var(--color-warning, #f59e0b);
+}
+
+.status-error .status-icon {
+  color: var(--color-error, #dc2626);
+}
+
+// ============================================================================
+// STATUS MESSAGES
+// ============================================================================
+
+.status-message {
+  p {
+    margin: 0 0 0.75rem;
+    color: var(--color-text-primary);
+    line-height: 1.5;
+  }
+
+  .hint {
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
+  }
+
+  .masked-license {
+    font-family: monospace;
+    background-color: var(--color-surface-secondary, #f3f4f6);
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    display: inline-block;
+  }
+
+  button, a {
+    margin-top: 0.5rem;
+
+    mat-icon {
+      margin-right: 0.25rem;
+    }
+  }
+}
+
+.pending-animation {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1rem;
+
+  .success-check {
+    font-size: 48px;
+    width: 48px;
+    height: 48px;
+    color: var(--color-success, #16a34a);
+  }
+}
+
+// Pending complete state (documents submitted, waiting for review)
+.status-message.pending.complete {
+  text-align: center;
+  padding: 1rem 0;
+
+  h3 {
+    margin: 0 0 0.75rem;
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--color-success, #16a34a);
+  }
+
+  .pending-details {
+    background-color: var(--color-surface-muted, #f8fafc);
+    border-radius: 12px;
+    padding: 1rem;
+    margin: 1.25rem 0;
+    text-align: left;
+
+    .detail-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.5rem 0;
+
+      &:not(:last-child) {
+        border-bottom: 1px solid var(--color-border-subtle, #e2e8f0);
+      }
+
+      mat-icon {
+        font-size: 20px;
+        width: 20px;
+        height: 20px;
+        color: var(--color-primary, #3b82f6);
+        flex-shrink: 0;
+      }
+
+      span {
+        font-size: 0.9375rem;
+        color: var(--color-text-primary, #334155);
+      }
+    }
+  }
+}
+
+// Pending incomplete state (needs more documents)
+.status-message.pending.incomplete {
+  text-align: center;
+  padding: 0.5rem 0;
+}
+
+.rejection-reason {
+  background-color: rgba(220, 38, 38, 0.08);
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  margin-bottom: 0.75rem;
+  font-size: 0.9375rem;
+
+  strong {
+    color: var(--color-error, #dc2626);
+  }
+}
+
+.status-message.blocked {
+  text-align: center;
+
+  .block-icon {
+    font-size: 48px;
+    width: 48px;
+    height: 48px;
+    color: var(--color-error, #dc2626);
+    margin-bottom: 0.5rem;
+  }
+
+  .blocked-reason {
+    font-style: italic;
+    color: var(--color-text-secondary);
+  }
+}
+
+// ============================================================================
+// UPLOAD CARD
+// ============================================================================
+
+.upload-card {
+  border-radius: 12px;
+  margin-bottom: 1.5rem;
+
+  mat-card-header {
+    padding-bottom: 0;
+  }
+
+  mat-card-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+  }
+
+  mat-card-subtitle {
+    margin-top: 0.25rem;
+    color: var(--color-text-secondary);
+  }
+
+  mat-card-content {
+    padding-top: 1rem;
+  }
+
+  mat-card-actions {
+    padding: 0.5rem 1rem 1rem;
+
+    button {
+      mat-icon, mat-spinner {
+        margin-right: 0.5rem;
+      }
+    }
+  }
+}
+
+.upload-section {
+  margin-bottom: 1.5rem;
+}
+
+.upload-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background-color: var(--color-surface-secondary, #f3f4f6);
+  border-radius: 8px;
+
+  span {
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
+    text-align: center;
+  }
+}
+
+.expiry-section {
+  margin-bottom: 1.5rem;
+
+  .expiry-field {
+    width: 100%;
+  }
+}
+
+.submit-error,
+.submit-success {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  font-size: 0.875rem;
+
+  mat-icon {
+    flex-shrink: 0;
+    font-size: 20px;
+    width: 20px;
+    height: 20px;
+  }
+}
+
+.submit-error {
+  background-color: rgba(220, 38, 38, 0.08);
+  color: var(--color-error, #dc2626);
+}
+
+.submit-success {
+  background-color: rgba(22, 163, 74, 0.08);
+  color: var(--color-success, #16a34a);
+}
+
+.privacy-notice {
+  display: flex;
+  gap: 0.75rem;
+  padding: 1rem;
+  background-color: var(--color-surface-secondary, #f3f4f6);
+  border-radius: 8px;
+  margin-top: 0.5rem;
+
+  mat-icon {
+    flex-shrink: 0;
+    color: var(--color-text-secondary);
+    font-size: 20px;
+    width: 20px;
+    height: 20px;
+  }
+
+  p {
+    margin: 0;
+    font-size: 0.8125rem;
+    color: var(--color-text-secondary);
+    line-height: 1.5;
+  }
+}
+
+// ============================================================================
+// FAQ SECTION
+// ============================================================================
+
+.faq-section {
+  margin-top: 2rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--color-border, #e5e7eb);
+
+  h2 {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin: 0 0 1rem;
+  }
+}
+
+.faq-item {
+  margin-bottom: 0.5rem;
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 8px;
+  overflow: hidden;
+
+  summary {
+    padding: 0.875rem 1rem;
+    font-weight: 500;
+    color: var(--color-text-primary);
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+
+    &:hover {
+      background-color: var(--color-surface-secondary, #f3f4f6);
+    }
+
+    &::marker {
+      color: var(--color-primary, #3b82f6);
+    }
+  }
+
+  &[open] summary {
+    border-bottom: 1px solid var(--color-border, #e5e7eb);
+  }
+
+  .faq-answer {
+    padding: 1rem;
+    background-color: var(--color-surface-secondary, #f9fafb);
+
+    p {
+      margin: 0;
+      font-size: 0.9375rem;
+      color: var(--color-text-secondary);
+      line-height: 1.6;
+    }
+  }
+}
+
+// ============================================================================
+// DARK MODE
+// ============================================================================
+
+:host-context(.theme-dark) {
+  .status-card {
+    background-color: var(--color-surface-dark, #1f2937);
+  }
+
+  .upload-card {
+    background-color: var(--color-surface-dark, #1f2937);
+  }
+
+  .rejection-reason {
+    background-color: rgba(220, 38, 38, 0.15);
+  }
+
+  .privacy-notice,
+  .upload-progress {
+    background-color: rgba(0, 0, 0, 0.2);
+  }
+
+  .faq-item {
+    border-color: var(--color-border-dark, #374151);
+
+    summary:hover {
+      background-color: rgba(255, 255, 255, 0.05);
+    }
+
+    .faq-answer {
+      background-color: rgba(0, 0, 0, 0.2);
+    }
+  }
+
+  .masked-license {
+    background-color: rgba(255, 255, 255, 0.1);
+  }
+}
+
+// ============================================================================
+// RESPONSIVE
+// ============================================================================
+
+@media (max-width: 480px) {
+  .verification-page {
+    padding: 1rem 0.75rem 2rem;
+  }
+
+  .page-header h1 {
+    font-size: 1.25rem;
+  }
+
+  .status-header {
+    .status-icon {
+      font-size: 28px;
+      width: 28px;
+      height: 28px;
+    }
+
+    .status-label {
+      font-size: 1rem;
+    }
+  }
+
+  mat-card-actions button {
+    width: 100%;
+  }
+}

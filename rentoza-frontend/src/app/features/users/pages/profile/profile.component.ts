@@ -35,6 +35,7 @@ import { UserRole } from '@core/models/user-role.type';
 import { UserService } from '@core/services/user.service';
 import { AuthService } from '@core/auth/auth.service';
 import { ProfilePictureUploaderComponent } from '@shared/components/profile-picture-uploader/profile-picture-uploader.component';
+import { VerificationBadgeComponent } from '@shared/components/verification-badge/verification-badge.component';
 
 const optionalMinLengthValidator = (minLength: number) => {
   return (control: AbstractControl): ValidationErrors | null => {
@@ -67,6 +68,7 @@ const optionalMinLengthValidator = (minLength: number) => {
     FlexLayoutModule,
     ProfilePictureUploaderComponent,
     RouterLink,
+    VerificationBadgeComponent,
   ],
   templateUrl: './profile.component.html',
   styleUrls: ['./profile.component.scss'],
@@ -87,11 +89,25 @@ export class ProfileComponent {
   protected readonly isSaving = signal(false);
   protected readonly isGooglePlaceholder = signal(false);
 
+  // DOB field: max date is 18 years ago (minimum age requirement)
+  protected readonly maxDateOfBirth = this.calculateMaxDateOfBirth();
+
+  private calculateMaxDateOfBirth(): string {
+    const today = new Date();
+    const minAge = 18;
+    const maxDate = new Date(today.getFullYear() - minAge, today.getMonth(), today.getDate());
+    return maxDate.toISOString().split('T')[0];
+  }
+
   // Edit form (avatarUrl removed - now using ProfilePictureUploader component)
   protected readonly editForm = this.fb.group({
     phone: ['', [Validators.pattern(/^[0-9]{8,15}$/)]],
     bio: ['', [Validators.maxLength(300)]],
-    lastName: [{ value: '', disabled: true }, [optionalMinLengthValidator(3), Validators.maxLength(50)]],
+    lastName: [
+      { value: '', disabled: true },
+      [optionalMinLengthValidator(3), Validators.maxLength(50)],
+    ],
+    dateOfBirth: [''],
   });
 
   private readonly roleLabels: Record<UserRole, { primary: string; reviews: string }> = {
@@ -162,6 +178,7 @@ export class ProfileComponent {
     this.editForm.patchValue({
       phone: profile.phone ?? '',
       bio: profile.bio ?? '',
+      dateOfBirth: profile.dateOfBirth ?? '',
     });
 
     const lastNameControl = this.editForm.get('lastName');
@@ -175,6 +192,16 @@ export class ProfileComponent {
       }
       lastNameControl.markAsPristine();
       lastNameControl.markAsUntouched();
+    }
+
+    // DOB can only be edited if not already verified via license OCR
+    const dobControl = this.editForm.get('dateOfBirth');
+    if (dobControl) {
+      if (profile.dobVerified) {
+        dobControl.disable({ emitEvent: false });
+      } else {
+        dobControl.enable({ emitEvent: false });
+      }
     }
   }
 
@@ -202,6 +229,12 @@ export class ProfileComponent {
       phone: this.editForm.value.phone || undefined,
       bio: this.editForm.value.bio || undefined,
     };
+
+    // Include DOB if field is enabled (not verified via OCR) and has value
+    const dobControl = this.editForm.get('dateOfBirth');
+    if (dobControl?.enabled && this.editForm.value.dateOfBirth) {
+      request.dateOfBirth = this.editForm.value.dateOfBirth;
+    }
 
     const lastNameControl = this.editForm.get('lastName');
     if (this.isGooglePlaceholder() && lastNameControl?.enabled) {

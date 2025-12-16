@@ -117,6 +117,16 @@ import { AuthService } from '../../../core/auth/auth.service';
             <div class="nav-label">Operations</div>
             <a
               mat-list-item
+              routerLink="/admin/renter-verifications"
+              routerLinkActive="active"
+              class="nav-item pill"
+            >
+              <mat-icon matListItemIcon>verified_user</mat-icon>
+              <span matListItemTitle>Renter Verifications</span>
+              <span class="nav-caret">›</span>
+            </a>
+            <a
+              mat-list-item
               routerLink="/admin/disputes"
               routerLinkActive="active"
               class="nav-item pill"

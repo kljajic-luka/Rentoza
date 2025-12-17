@@ -154,10 +154,10 @@ export class ProfilePictureUploaderComponent {
 
   /**
    * Generate preview URL from file with EXIF orientation correction.
-   * 
+   *
    * This fixes the common mobile photo rotation bug where images appear
    * rotated due to EXIF orientation metadata not being respected.
-   * 
+   *
    * Enterprise solution based on Turo/Airbnb patterns:
    * - Reads EXIF orientation metadata
    * - Corrects rotation client-side before preview
@@ -167,10 +167,10 @@ export class ProfilePictureUploaderComponent {
     try {
       // Get EXIF orientation to detect if rotation correction is needed
       const orientation = await imageCompression.getExifOrientation(file);
-      
+
       // Orientations 5-8 indicate rotation/mirroring is needed
       const needsOrientationCorrection = orientation > 1;
-      
+
       if (needsOrientationCorrection) {
         // Use canvas to correct orientation
         const correctedImage = await this.correctImageOrientation(file, orientation);
@@ -201,7 +201,7 @@ export class ProfilePictureUploaderComponent {
 
   /**
    * Correct image orientation based on EXIF data.
-   * 
+   *
    * EXIF Orientation values:
    * 1 = Normal (no rotation)
    * 2 = Flip horizontal
@@ -299,13 +299,13 @@ export class ProfilePictureUploaderComponent {
 
   /**
    * Upload the selected file to server with EXIF orientation correction.
-   * 
+   *
    * This ensures images are uploaded in the correct orientation by:
    * 1. Reading EXIF orientation metadata
    * 2. Correcting rotation client-side
    * 3. Stripping EXIF data to prevent re-rotation on backend
    * 4. Compressing to reasonable size for upload
-   * 
+   *
    * Enterprise pattern: Handle orientation on client to reduce backend load
    */
   async uploadProfilePicture(): Promise<void> {
@@ -352,7 +352,7 @@ export class ProfilePictureUploaderComponent {
 
   /**
    * Process image for upload: correct orientation, compress, strip EXIF.
-   * 
+   *
    * This is the enterprise-grade solution for the rotation bug:
    * - Fixes EXIF orientation issues from mobile cameras
    * - Removes EXIF metadata (privacy + prevents re-rotation)

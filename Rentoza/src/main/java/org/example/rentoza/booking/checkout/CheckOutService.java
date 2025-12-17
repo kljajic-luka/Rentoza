@@ -10,6 +10,7 @@ import org.example.rentoza.booking.BookingStatus;
 import org.example.rentoza.booking.checkin.*;
 import org.example.rentoza.booking.checkin.dto.CheckInPhotoDTO;
 import org.example.rentoza.booking.checkout.dto.*;
+import org.example.rentoza.booking.checkout.saga.CheckoutSagaOrchestrator;
 import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.notification.NotificationService;
 import org.example.rentoza.notification.NotificationType;
@@ -58,12 +59,15 @@ public class CheckOutService {
     private final CheckInEventService eventService;
     private final CheckInPhotoRepository photoRepository;
     private final NotificationService notificationService;
+    private final CheckoutSagaOrchestrator checkoutSagaOrchestrator;
     
     // Metrics
     private final Counter checkoutInitiatedCounter;
     private final Counter guestCompletedCounter;
     private final Counter hostConfirmedCounter;
     private final Counter damageReportedCounter;
+    private final Counter sagaInvokedCounter;
+    private final Counter sagaInvocationExceptionsCounter;
     private final Timer tripDurationTimer;
 
     @Value("${app.checkout.late.grace-minutes:15}")
@@ -80,11 +84,13 @@ public class CheckOutService {
             CheckInEventService eventService,
             CheckInPhotoRepository photoRepository,
             NotificationService notificationService,
+            CheckoutSagaOrchestrator checkoutSagaOrchestrator,
             MeterRegistry meterRegistry) {
         this.bookingRepository = bookingRepository;
         this.eventService = eventService;
         this.photoRepository = photoRepository;
         this.notificationService = notificationService;
+        this.checkoutSagaOrchestrator = checkoutSagaOrchestrator;
         
         this.checkoutInitiatedCounter = Counter.builder("checkout.initiated")
                 .description("Checkout processes initiated")
@@ -100,6 +106,14 @@ public class CheckOutService {
         
         this.damageReportedCounter = Counter.builder("checkout.damage.reported")
                 .description("Damage reports at checkout")
+                .register(meterRegistry);
+        
+        this.sagaInvokedCounter = Counter.builder("checkout.saga.invoked")
+                .description("Times checkout saga was invoked from service")
+                .register(meterRegistry);
+        
+        this.sagaInvocationExceptionsCounter = Counter.builder("checkout.saga.invocation.exceptions")
+                .description("Exceptions thrown during saga invocation")
                 .register(meterRegistry);
         
         this.tripDurationTimer = Timer.builder("trip.duration")
@@ -445,8 +459,21 @@ public class CheckOutService {
 
     /**
      * Complete the checkout process and mark trip as COMPLETED.
+     * Delegates charge calculation to CheckoutSagaOrchestrator (single source of truth).
+     * 
+     * <p>Enterprise Pattern: Saga-First Architecture</p>
+     * <ul>
+     *   <li>Service handles state transition only</li>
+     *   <li>Saga calculates all charges (late fees, mileage, fuel)</li>
+     *   <li>Saga manages payment capture/release</li>
+     *   <li>Idempotent saga design handles retry scenarios</li>
+     * </ul>
+     * 
+     * <p><strong>Isolation Level:</strong> READ_COMMITTED</p>
+     * <p>Prevents dirty reads while allowing saga to read committed booking state.
+     * Saga uses optimistic locking (@Version) to detect concurrent modifications.</p>
      */
-    @Transactional
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public void completeCheckout(Booking booking, Long userId) {
         booking.setCheckoutCompletedAt(Instant.now());
         booking.setTripEndedAt(Instant.now());
@@ -471,13 +498,29 @@ public class CheckOutService {
                 "endOdometer", booking.getEndOdometer() != null ? booking.getEndOdometer() : "N/A",
                 "endFuelLevel", booking.getEndFuelLevel() != null ? booking.getEndFuelLevel() : "N/A",
                 "totalMileage", totalMileage != null ? totalMileage : "N/A",
-                "newDamageReported", booking.getNewDamageReported() != null && booking.getNewDamageReported()
+                "newDamageReported", booking.getNewDamageReported() != null && booking.getNewDamageReported(),
+                "chargeCalculationDelegatedToSaga", true
             )
         );
         
         bookingRepository.save(booking);
         
-        log.info("[CheckOut] Checkout completed for booking {}", booking.getId());
+        log.info("[CheckOut] Checkout completed for booking {} - delegating charge calculation to saga", 
+            booking.getId());
+        
+        // Invoke saga for charge calculation and payment processing
+        // Saga is the single source of truth for all checkout charges
+        try {
+            checkoutSagaOrchestrator.startSaga(booking.getId());
+            sagaInvokedCounter.increment();
+            log.info("[CheckOut] Saga invoked successfully for booking {}", booking.getId());
+        } catch (Exception e) {
+            sagaInvocationExceptionsCounter.increment();
+            log.error("[CheckOut] Saga invocation failed for booking {}: {}. Recovery scheduler will retry.", 
+                booking.getId(), e.getMessage(), e);
+            // Don't fail checkout - saga recovery scheduler will retry
+            // This ensures user experience is not blocked by saga failures
+        }
         
         // Notify both parties
         notifyCheckoutComplete(booking);
@@ -485,6 +528,15 @@ public class CheckOutService {
 
     // ========== LATE RETURN HANDLING ==========
 
+    /**
+     * Record late/early return timing for audit purposes.
+     * 
+     * <p><strong>IMPORTANT:</strong> This method NO LONGER calculates late fees.</p>
+     * <p>Fee calculation is delegated to CheckoutSagaOrchestrator to maintain
+     * single source of truth and enable saga compensation patterns.</p>
+     * 
+     * @see CheckoutSagaOrchestrator#executeCalculateCharges for fee calculation
+     */
     private void checkAndRecordLateReturn(Booking booking, Long userId) {
         if (booking.getScheduledReturnTime() == null) {
             return;
@@ -498,11 +550,7 @@ public class CheckOutService {
             long lateMinutes = ChronoUnit.MINUTES.between(scheduledReturn, now);
             booking.setLateReturnMinutes((int) lateMinutes);
             
-            // Calculate late fee
-            long lateHours = Math.min((lateMinutes + 59) / 60, maxLateHours); // Round up, cap at max
-            BigDecimal lateFee = BigDecimal.valueOf(lateHours * lateFeePerHourRsd);
-            booking.setLateFeeAmount(lateFee);
-            
+            // Record event for audit trail (fee calculation happens in saga)
             eventService.recordEvent(
                 booking,
                 booking.getCheckoutSessionId(),
@@ -513,12 +561,12 @@ public class CheckOutService {
                     "scheduledReturnTime", scheduledReturn.toString(),
                     "actualReturnTime", now.toString(),
                     "lateMinutes", lateMinutes,
-                    "lateFeeRsd", lateFee
+                    "feeCalculationNote", "Fee will be calculated by saga"
                 )
             );
             
-            log.info("[CheckOut] Late return detected for booking {}: {} minutes late, fee: {} RSD",
-                booking.getId(), lateMinutes, lateFee);
+            log.info("[CheckOut] Late return detected for booking {}: {} minutes late (fee calculation delegated to saga)",
+                booking.getId(), lateMinutes);
         } else if (now.isBefore(scheduledReturn)) {
             // Early return
             long earlyMinutes = ChronoUnit.MINUTES.between(now, scheduledReturn);

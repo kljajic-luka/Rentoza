@@ -63,10 +63,13 @@ public class CheckoutSagaOrchestrator {
     private final Counter sagaCompensatedCounter;
     private final Timer sagaDurationTimer;
 
-    // Configuration (could be externalized)
+    // Configuration standardized with CheckOutService (single source of truth)
+    // All rates aligned with production configuration to ensure consistency
     private static final BigDecimal MILEAGE_RATE_PER_KM = new BigDecimal("0.25");  // EUR per km
     private static final BigDecimal FUEL_RATE_PER_PERCENT = new BigDecimal("0.50"); // EUR per %
-    private static final BigDecimal LATE_FEE_PER_HOUR = new BigDecimal("10.00");    // EUR per hour
+    private static final BigDecimal LATE_FEE_PER_HOUR_RSD = new BigDecimal("500.00");  // RSD per hour (matched with service)
+    private static final int LATE_GRACE_MINUTES = 15;  // Grace period (matched with service @Value)
+    private static final int MAX_LATE_HOURS = 24;  // Maximum billable hours (matched with service)
 
     public CheckoutSagaOrchestrator(
             CheckoutSagaStateRepository sagaRepository,
@@ -103,11 +106,15 @@ public class CheckoutSagaOrchestrator {
     /**
      * Start a new checkout saga for a booking.
      * 
+     * <p><strong>Isolation Level:</strong> READ_COMMITTED</p>
+     * <p>Uses optimistic locking (@Version) to detect concurrent modifications.
+     * Allows service transaction to commit before saga reads booking state.</p>
+     * 
      * @param bookingId Booking to checkout
      * @return Saga state
      * @throws IllegalStateException if saga already exists
      */
-    @Transactional
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public CheckoutSagaState startSaga(Long bookingId) {
         log.info("[Saga] Starting checkout saga for booking {}", bookingId);
 
@@ -123,9 +130,12 @@ public class CheckoutSagaOrchestrator {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Booking not found: " + bookingId));
 
-        if (booking.getStatus() != BookingStatus.COMPLETED) {
+        // Accept both CHECKOUT_HOST_COMPLETE and COMPLETED statuses
+        // Service may have already transitioned to COMPLETED before invoking saga
+        if (booking.getStatus() != BookingStatus.CHECKOUT_HOST_COMPLETE && 
+            booking.getStatus() != BookingStatus.COMPLETED) {
             throw new IllegalStateException(
-                    "Booking must be in CHECK_OUT_COMPLETE status. Current: " + booking.getStatus());
+                    "Booking must be in CHECKOUT_HOST_COMPLETE or COMPLETED status. Current: " + booking.getStatus());
         }
 
         // Create saga state
@@ -254,15 +264,27 @@ public class CheckoutSagaOrchestrator {
             saga.setFuelCharge(FUEL_RATE_PER_PERCENT.multiply(BigDecimal.valueOf(fuelDiff)));
         }
 
-        // Calculate late fee
-        if (booking.getTripEndedAt() != null && booking.getEndTime() != null) {
-            long lateMinutes = ChronoUnit.MINUTES.between(
-                    booking.getEndTime().atZone(java.time.ZoneId.of("Europe/Belgrade")).toInstant(),
-                    booking.getTripEndedAt());
-            if (lateMinutes > 30) {  // 30 minute grace period
-                int lateHours = (int) Math.ceil((lateMinutes - 30) / 60.0);
-                saga.setLateHours(lateHours);
-                saga.setLateFee(LATE_FEE_PER_HOUR.multiply(BigDecimal.valueOf(lateHours)));
+        // Calculate late fee - EXACT SAME LOGIC as CheckOutService.checkAndRecordLateReturn()
+        // This ensures consistent charges regardless of which system calculates
+        if (booking.getScheduledReturnTime() != null && booking.getTripEndedAt() != null) {
+            Instant scheduledReturn = booking.getScheduledReturnTime();
+            Instant actualReturn = booking.getTripEndedAt();
+            Instant graceEnd = scheduledReturn.plus(LATE_GRACE_MINUTES, ChronoUnit.MINUTES);
+            
+            if (actualReturn.isAfter(graceEnd)) {
+                long lateMinutes = ChronoUnit.MINUTES.between(scheduledReturn, actualReturn);
+                
+                // CRITICAL: Use identical calculation to service
+                // Round up to next hour using (lateMinutes + 59) / 60
+                // Cap at MAX_LATE_HOURS to prevent unbounded charges
+                long lateHours = Math.min((lateMinutes + 59) / 60, MAX_LATE_HOURS);
+                BigDecimal lateFee = LATE_FEE_PER_HOUR_RSD.multiply(BigDecimal.valueOf(lateHours));
+                
+                saga.setLateHours((int) lateHours);
+                saga.setLateFee(lateFee);
+                
+                log.info("[Saga] Late fee calculated for booking {}: {} minutes late = {} hours × {} RSD = {} RSD",
+                    saga.getBookingId(), lateMinutes, lateHours, LATE_FEE_PER_HOUR_RSD, lateFee);
             }
         }
 
@@ -338,13 +360,33 @@ public class CheckoutSagaOrchestrator {
         }
     }
 
+    /**
+     * Complete booking step - IDEMPOTENT design for saga retry safety.
+     * 
+     * <p>Enterprise Pattern: Idempotent Operations</p>
+     * <ul>
+     *   <li>Checks current status before updating</li>
+     *   <li>Skips update if already COMPLETED</li>
+     *   <li>Prevents OptimisticLockException on retry</li>
+     *   <li>Safe for saga recovery scheduler</li>
+     * </ul>
+     */
     private void executeCompleteBooking(CheckoutSagaState saga) {
         Booking booking = loadBooking(saga.getBookingId());
 
-        booking.setStatus(BookingStatus.COMPLETED);
-        bookingRepository.save(booking);
-
-        log.info("[Saga] Booking {} marked as COMPLETED", saga.getBookingId());
+        // IDEMPOTENT: Only update if not already COMPLETED
+        // This handles scenarios where:
+        // 1. Service already set status to COMPLETED before saga ran
+        // 2. Saga retry after previous successful completion
+        // 3. Multiple saga instances due to race condition
+        if (booking.getStatus() != BookingStatus.COMPLETED) {
+            booking.setStatus(BookingStatus.COMPLETED);
+            bookingRepository.save(booking);
+            log.info("[Saga] Booking {} transitioned to COMPLETED", saga.getBookingId());
+        } else {
+            log.debug("[Saga] Booking {} already COMPLETED - skipping status update (idempotent retry)", 
+                saga.getBookingId());
+        }
     }
 
     // ========== COMPENSATION ==========

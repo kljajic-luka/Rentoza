@@ -266,6 +266,13 @@ public class CheckInStatusViewSyncListener {
     /**
      * Handle check-in window opened event.
      */
+    /**
+     * Handle check-in window opened event.
+     * 
+     * <p><b>Race Condition Prevention:</b> This method creates the initial view AND
+     * synchronizes the current booking status to prevent stale state if concurrent
+     * events occur during view creation.
+     */
     @EventListener
     @Async("viewSyncExecutor")
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -278,8 +285,20 @@ public class CheckInStatusViewSyncListener {
                 CheckInStatusView view = getOrCreateView(event.bookingId());
 
                 view.setCheckInOpenedAt(event.occurredAt());
-                view.setStatus(BookingStatus.CHECK_IN_OPEN);
-                view.setStatusDisplay("Prijem otvoren");
+                
+                // RACE CONDITION FIX: Always sync status from booking to handle concurrent updates
+                // (e.g., if host uploads photo immediately after window opens)
+                Optional<Booking> bookingOpt = bookingRepository.findById(event.bookingId());
+                if (bookingOpt.isPresent()) {
+                    Booking booking = bookingOpt.get();
+                    view.setStatus(booking.getStatus());
+                    view.setStatusDisplay(mapStatusToDisplay(booking.getStatus()));
+                } else {
+                    // Fallback if booking not found
+                    view.setStatus(BookingStatus.CHECK_IN_OPEN);
+                    view.setStatusDisplay("Prijem otvoren");
+                }
+                
                 view.setLastSyncAt(Instant.now());
 
                 viewRepository.save(view);
@@ -290,7 +309,8 @@ public class CheckInStatusViewSyncListener {
                 broadcastStatusUpdate(event.bookingId(), view.getHostUserId(), view.getGuestUserId());
 
                 syncSuccessCounter.increment();
-                log.info("[View-Sync] Created/updated view for booking {} - window opened", event.bookingId());
+                log.info("[View-Sync] Created/updated view for booking {} - window opened (status: {})", 
+                        event.bookingId(), view.getStatus());
 
             } catch (Exception e) {
                 syncFailureCounter.increment();
@@ -298,6 +318,22 @@ public class CheckInStatusViewSyncListener {
                         event.bookingId(), e.getMessage(), e);
             }
         });
+    }
+    
+    /**
+     * Map booking status to user-friendly display text.
+     */
+    private String mapStatusToDisplay(BookingStatus status) {
+        return switch (status) {
+            case CHECK_IN_OPEN -> "Prijem otvoren";
+            case CHECK_IN_HOST_COMPLETE -> "Domaćin završio";
+            case IN_TRIP -> "U toku";
+            case CHECKOUT_OPEN -> "Povratak otvoren";
+            case CHECKOUT_GUEST_COMPLETE -> "Gost završio";
+            case CHECKOUT_HOST_COMPLETE -> "Domaćin završio";
+            case COMPLETED -> "Završeno";
+            default -> status.name();
+        };
     }
 
     /**

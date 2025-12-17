@@ -116,8 +116,9 @@
         <logger name="org.hibernate.type" level="WARN"/>
         <logger name="org.hibernate.stat" level="INFO"/> <!-- For SQL execution statistics -->
 
-        <!-- HikariCP Connection Pool - INFO for connection events -->
+        <!-- HikariCP Connection Pool - INFO for pool events only, WARN for internal pool stats -->
         <logger name="com.zaxxer.hikari" level="INFO"/>
+        <logger name="com.zaxxer.hikari.pool" level="WARN"/> <!-- Suppress verbose connection creation logs -->
 
         <!-- WebSocket - WARN to reduce noise -->
         <logger name="org.springframework.messaging" level="WARN"/>
@@ -190,14 +191,20 @@
     <!-- Silence noisy libraries -->
     <logger name="org.hibernate.jpa.internal.util.LogHelper" level="WARN"/>
     <logger name="org.hibernate.engine.jdbc.spi.SqlExceptionHelper" level="ERROR"/>
+    <!-- Suppress Tomcat/Catalina startup noise -->
     <logger name="org.apache.catalina.startup.DigesterFactory" level="ERROR"/>
     <logger name="org.apache.catalina.util.LifecycleBase" level="ERROR"/>
-    <logger name="org.apache.tomcat.util.net.NioSelectorPool" level="WARN"/>
+    <logger name="org.apache.coyote.http11.Http11NioProtocol" level="ERROR"/> <!-- ProtocolHandler init noise -->
+    <logger name="org.apache.tomcat.util.net.NioSelectorPool" level="ERROR"/> <!-- Reduced from WARN -->
 
     <!-- Firebase - INFO for push notification events -->
     <logger name="com.google.firebase" level="INFO"/>
 
     <!-- Commons Logging - Redirect to SLF4J -->
     <logger name="org.apache.commons.logging" level="WARN"/>
+    
+    <!-- Suppress verbose initialization logs -->
+    <logger name="org.springframework.web.servlet.DispatcherServlet" level="WARN"/> <!-- Reduce init verbosity -->
+    <logger name="org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping" level="WARN"/>
 
 </configuration>

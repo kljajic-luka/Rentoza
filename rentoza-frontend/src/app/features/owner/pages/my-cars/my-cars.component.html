@@ -27,7 +27,7 @@
         <mat-card class="car-card">
           <div class="car-card__image-wrapper">
             @if (car.imageUrl) {
-              <img [src]="car.imageUrl" [alt]="car.make + ' ' + car.model" class="car-card__image" />
+              <img [src]="car.imageUrl" [alt]="car.make + ' ' + car.model" class="car-card__image" (error)="handleImageError($event)" />
             } @else {
               <div class="car-card__placeholder">
                 <mat-icon>directions_car</mat-icon>

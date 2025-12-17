@@ -116,6 +116,9 @@ public class BookingResponseDTO {
         private Long id;
         private String firstName;
         private String lastName;
+        private String email;
+        private String phone;
+        private String avatarUrl;
     }
 
     public BookingResponseDTO(Booking booking) {
@@ -137,12 +140,15 @@ public class BookingResponseDTO {
             );
         }
 
-        // Map renter details
+        // Map renter details (including contact info and avatar for host coordination)
         if (booking.getRenter() != null) {
             this.renter = new RenterDetailsDTO(
                     booking.getRenter().getId(),
                     booking.getRenter().getFirstName(),
-                    booking.getRenter().getLastName()
+                    booking.getRenter().getLastName(),
+                    booking.getRenter().getEmail(),
+                    booking.getRenter().getPhone(),
+                    booking.getRenter().getAvatarUrl()
             );
         }
         

@@ -1,5 +1,5 @@
 .dialog-container {
-  max-width: 500px;
+  max-width: 520px;
   width: 100%;
   
   .dialog-header {
@@ -41,7 +41,7 @@ mat-dialog-content {
 .guest-profile {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 20px;
 }
 
 .profile-header {
@@ -57,7 +57,7 @@ mat-dialog-content {
       height: 80px;
       border-radius: 50%;
       object-fit: cover;
-      border: 1px solid rgba(0,0,0,0.1);
+      border: 2px solid rgba(0, 0, 0, 0.08);
     }
   }
 
@@ -76,33 +76,61 @@ mat-dialog-content {
       font-size: 0.875rem;
     }
 
-    .badges {
+    // Verification badges (ID, Phone, Email)
+    .verification-badges {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
+      gap: 6px;
+      margin-bottom: 8px;
 
       .verified-badge {
-        font-size: 0.75rem;
-        height: 24px;
+        font-size: 0.7rem;
+        height: 22px;
+        background-color: #e8f5e9;
+        color: #2e7d32;
         
         mat-icon {
-          font-size: 16px;
-          width: 16px;
-          height: 16px;
+          font-size: 14px;
+          width: 14px;
+          height: 14px;
+          margin-right: 2px;
+          color: #2e7d32;
+        }
+      }
+    }
+
+    // Achievement badges (Experienced, Top Rated, Reliable)
+    .achievement-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+
+      .achievement-badge {
+        font-size: 0.7rem;
+        height: 22px;
+        background-color: #fff3e0;
+        color: #e65100;
+        
+        mat-icon {
+          font-size: 14px;
+          width: 14px;
+          height: 14px;
           margin-right: 4px;
+          color: #ff9800;
         }
       }
     }
   }
 }
 
+// Stats grid - now 4 columns
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
   padding: 16px;
   background-color: rgba(0, 0, 0, 0.04);
-  border-radius: 8px;
+  border-radius: 12px;
 
   .stat-item {
     display: flex;
@@ -111,28 +139,145 @@ mat-dialog-content {
     text-align: center;
 
     .stat-value {
-      font-size: 1.25rem;
+      font-size: 1.1rem;
       font-weight: 600;
       display: flex;
       align-items: center;
-      gap: 4px;
+      gap: 2px;
 
-      &.status-approved { color: #2e7d32; }
-      &.status-pending { color: #ed6c02; }
-      &.status-rejected { color: #d32f2f; }
+      // Age verification indicator
+      &.verified {
+        .verified-icon {
+          font-size: 14px;
+          width: 14px;
+          height: 14px;
+          color: #2e7d32;
+        }
+      }
+
+      &.na {
+        color: rgba(0, 0, 0, 0.4);
+      }
+
+      // Cancellation rate colors
+      &.good { color: #2e7d32; }
+      &.warning { color: #d32f2f; }
 
       .star-icon {
-        font-size: 18px;
-        width: 18px;
-        height: 18px;
+        font-size: 16px;
+        width: 16px;
+        height: 16px;
         color: #fbc02d;
       }
     }
 
     .stat-label {
-      font-size: 0.75rem;
+      font-size: 0.7rem;
       color: rgba(0, 0, 0, 0.6);
       margin-top: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+  }
+}
+
+// Driver license section
+.license-section {
+  background-color: rgba(0, 0, 0, 0.02);
+  border-radius: 8px;
+  padding: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+
+  h4 {
+    margin: 0 0 12px 0;
+    font-size: 0.9rem;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    mat-icon {
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+      color: rgba(0, 0, 0, 0.6);
+    }
+  }
+
+  .license-info {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    .license-main {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.875rem;
+      color: rgba(0, 0, 0, 0.87);
+
+      .license-category {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-weight: 500;
+
+        mat-icon {
+          font-size: 16px;
+          width: 16px;
+          height: 16px;
+          color: #1976d2;
+        }
+      }
+
+      .license-country,
+      .license-tenure {
+        color: rgba(0, 0, 0, 0.6);
+      }
+    }
+
+    .license-status {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+
+      .status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 10px;
+        border-radius: 16px;
+        font-size: 0.75rem;
+        font-weight: 500;
+
+        mat-icon {
+          font-size: 14px;
+          width: 14px;
+          height: 14px;
+        }
+
+        &.status-approved {
+          background-color: #e8f5e9;
+          color: #2e7d32;
+        }
+
+        &.status-pending_review {
+          background-color: #fff3e0;
+          color: #e65100;
+        }
+
+        &.status-rejected {
+          background-color: #ffebee;
+          color: #c62828;
+        }
+      }
+
+      .expiry-date {
+        font-size: 0.75rem;
+        color: rgba(0, 0, 0, 0.6);
+      }
     }
   }
 }
@@ -140,8 +285,18 @@ mat-dialog-content {
 .trip-details {
   h4 {
     margin: 0 0 16px 0;
-    font-size: 1rem;
+    font-size: 0.9rem;
     font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    mat-icon {
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+      color: rgba(0, 0, 0, 0.6);
+    }
   }
 
   .detail-row {
@@ -150,16 +305,24 @@ mat-dialog-content {
     gap: 12px;
     margin-bottom: 12px;
     color: rgba(0, 0, 0, 0.87);
+    font-size: 0.875rem;
 
     mat-icon {
       color: rgba(0, 0, 0, 0.54);
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+    }
+
+    strong {
+      font-weight: 600;
     }
   }
 
   .message-box {
     margin-top: 16px;
     padding: 12px;
-    background-color: rgba(0, 0, 0, 0.02);
+    background-color: rgba(63, 81, 181, 0.05);
     border-left: 3px solid #3f51b5;
     border-radius: 4px;
 
@@ -167,6 +330,15 @@ mat-dialog-content {
       font-size: 0.75rem;
       color: rgba(0, 0, 0, 0.6);
       margin: 0 0 4px 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+
+      mat-icon {
+        font-size: 14px;
+        width: 14px;
+        height: 14px;
+      }
     }
 
     .message-text {
@@ -180,17 +352,27 @@ mat-dialog-content {
 .reviews-section {
   h4 {
     margin: 0 0 16px 0;
-    font-size: 1rem;
+    font-size: 0.9rem;
     font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    mat-icon {
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+      color: rgba(0, 0, 0, 0.6);
+    }
   }
 
   .reviews-list {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 12px;
 
     .review-item {
-      padding-bottom: 16px;
+      padding-bottom: 12px;
       border-bottom: 1px solid rgba(0, 0, 0, 0.08);
 
       &:last-child {
@@ -227,6 +409,24 @@ mat-dialog-content {
   }
 }
 
+// New user notice
+.new-user-notice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background-color: #e3f2fd;
+  border-radius: 8px;
+  color: #1565c0;
+  font-size: 0.875rem;
+
+  mat-icon {
+    font-size: 20px;
+    width: 20px;
+    height: 20px;
+  }
+}
+
 // Dark theme support
 :host-context(.theme-dark) {
   .dialog-header {
@@ -243,12 +443,61 @@ mat-dialog-content {
     .join-date { color: rgba(255, 255, 255, 0.7); }
   }
 
+  .verification-badges .verified-badge {
+    background-color: rgba(46, 125, 50, 0.2);
+  }
+
+  .achievement-badges .achievement-badge {
+    background-color: rgba(255, 152, 0, 0.15);
+  }
+
   .stats-grid {
     background-color: rgba(255, 255, 255, 0.05);
     
     .stat-item {
       .stat-value { color: #ffffff; }
       .stat-label { color: rgba(255, 255, 255, 0.7); }
+    }
+  }
+
+  .license-section {
+    background-color: rgba(255, 255, 255, 0.03);
+    border-color: rgba(255, 255, 255, 0.1);
+
+    h4 { 
+      color: #ffffff !important; 
+      
+      mat-icon { color: rgba(255, 255, 255, 0.7); }
+    }
+    
+    .license-main { 
+      color: rgba(255, 255, 255, 0.87); 
+      
+      .license-category {
+        mat-icon { color: #64b5f6; } // Lighter blue for dark mode
+      }
+    }
+    .license-country, .license-tenure { color: rgba(255, 255, 255, 0.7) !important; }
+    .expiry-date { color: rgba(255, 255, 255, 0.7) !important; }
+    
+    // Status badges dark mode
+    .license-status {
+      .status-badge {
+        &.status-approved {
+          background-color: rgba(46, 125, 50, 0.25);
+          color: #81c784;
+        }
+        
+        &.status-pending_review {
+          background-color: rgba(230, 81, 0, 0.2);
+          color: #ffb74d;
+        }
+        
+        &.status-rejected {
+          background-color: rgba(198, 40, 40, 0.2);
+          color: #ef9a9a;
+        }
+      }
     }
   }
 
@@ -260,7 +509,7 @@ mat-dialog-content {
     }
 
     .message-box {
-      background-color: rgba(255, 255, 255, 0.05);
+      background-color: rgba(63, 81, 181, 0.1);
       border-left-color: #7986cb;
 
       .message-label { color: rgba(255, 255, 255, 0.7); }
@@ -276,8 +525,12 @@ mat-dialog-content {
     }
   }
 
+  .new-user-notice {
+    background-color: rgba(30, 136, 229, 0.15);
+    color: #64b5f6;
+  }
+
   /* DARK MODE FINAL PATCH — FORCE ALL MDC TEXT TO WHITE */
-  /* Shadow DOM overrides for MDC-based typography */
   ::ng-deep .mdc-dialog__content,
   ::ng-deep .mdc-dialog__title,
   ::ng-deep .mat-dialog-title,
@@ -291,3 +544,4 @@ mat-dialog-content {
     color: #ffffff !important;
   }
 }
+

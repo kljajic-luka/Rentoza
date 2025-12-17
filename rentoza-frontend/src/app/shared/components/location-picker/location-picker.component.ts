@@ -59,6 +59,7 @@ import {
   computed,
   SimpleChanges,
   OnChanges,
+  inject,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
@@ -69,6 +70,8 @@ import { MatSliderModule } from '@angular/material/slider';
 import { FormsModule } from '@angular/forms';
 import { environment } from '../../../../environments/environment';
 import { CarMarker } from '../../../core/models/location.model';
+import { ThemeService } from '../../../core/services/theme.service';
+import { effect } from '@angular/core';
 
 // Mapbox GL JS types
 declare const mapboxgl: any;
@@ -186,9 +189,51 @@ export class LocationPickerComponent implements OnInit, AfterViewInit, OnDestroy
   private markerPopups: Map<number, any> = new Map();
   private radiusCircleAdded = false;
 
+  // Theme service injection
+  private readonly themeService = inject(ThemeService);
+
   ngOnInit(): void {
     this.loadMapboxScript();
     this.currentRadius.set(this.markerRadius);
+
+    // Set up reactive theme change handler
+    this.setupThemeWatcher();
+  }
+
+  /**
+   * Setup reactive theme watcher to update map style when theme changes
+   * Uses Angular's effect() for dependency tracking
+   */
+  private setupThemeWatcher(): void {
+    effect(() => {
+      const currentTheme = this.themeService.theme();
+      if (this.map?.loaded?.()) {
+        this.updateMapStyle(currentTheme);
+      }
+    });
+  }
+
+  /**
+   * Update map style based on current theme
+   * Handles smooth style transitions without reloading the map
+   */
+  private updateMapStyle(theme: 'light' | 'dark'): void {
+    if (!this.map) return;
+
+    try {
+      const styleConfig = environment.mapbox.styles as Record<string, string>;
+      const newStyle = styleConfig[theme] || environment.mapbox.style;
+
+      // Only update if style has actually changed
+      const currentStyle = this.map.getStyle()?.name;
+      if (currentStyle === newStyle) return;
+
+      // Set the new style with transition
+      this.map.setStyle(newStyle, { diff: true });
+    } catch (error) {
+      console.warn(`[LocationPicker] Failed to update map style to ${theme}:`, error);
+      // Gracefully continue - map will remain functional
+    }
   }
 
   ngOnChanges(changes: SimpleChanges): void {
@@ -257,7 +302,8 @@ export class LocationPickerComponent implements OnInit, AfterViewInit, OnDestroy
   }
 
   /**
-   * Initialize the Mapbox map
+   * Initialize the Mapbox map with theme-aware styling
+   * Determines initial style based on current theme and sets up reactive updates
    */
   private async initializeMap(): Promise<void> {
     try {
@@ -281,10 +327,15 @@ export class LocationPickerComponent implements OnInit, AfterViewInit, OnDestroy
         ? [this.longitude!, this.latitude!]
         : [environment.mapbox.defaultCenter.longitude, environment.mapbox.defaultCenter.latitude];
 
+      // Determine initial style based on current theme
+      const currentTheme = this.themeService.theme();
+      const styleConfig = environment.mapbox.styles as Record<string, string>;
+      const initialStyle = styleConfig[currentTheme] || environment.mapbox.style;
+
       // Create map
       this.map = new mapboxgl.Map({
         container: this.mapContainer.nativeElement,
-        style: environment.mapbox.style,
+        style: initialStyle,
         center: center,
         zoom: this.hasLocation() ? this.zoom : environment.mapbox.defaultZoom,
         attributionControl: true,

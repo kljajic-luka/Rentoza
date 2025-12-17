@@ -60,10 +60,24 @@ export class OwnerBookingDetailsDialogComponent implements OnInit {
   
   readonly netEarnings = computed(() => this.grossTotal() - this.platformFee());
 
-  // Privacy Logic: Show contact info only if booking is confirmed/active
+  // Privacy Logic: Show contact info once booking is confirmed/active
+  // Host can see renter contact info after approval for coordination
   readonly showContactInfo = computed(() => {
     const status = this.booking()?.status;
-    return status === 'ACTIVE' || status === 'IN_TRIP' || status === 'CHECK_IN_OPEN' || status === 'CHECK_IN_HOST_COMPLETE' || status === 'CHECK_IN_COMPLETE';
+    // All statuses after PENDING_APPROVAL should show contact info
+    const confirmedStatuses = [
+      'ACTIVE',           // Approved, waiting for trip start
+      'CONFIRMED',        // Alternative name for approved status
+      'IN_TRIP',          // Trip in progress
+      'CHECK_IN_OPEN',
+      'CHECK_IN_HOST_COMPLETE',
+      'CHECK_IN_COMPLETE',
+      'CHECKOUT_OPEN',
+      'CHECKOUT_GUEST_COMPLETE',
+      'CHECKOUT_HOST_COMPLETE',
+      'COMPLETED',        // Trip finished - might need for dispute resolution
+    ];
+    return status ? confirmedStatuses.includes(status) : false;
   });
 
   constructor(@Inject(MAT_DIALOG_DATA) public data: { bookingId: number }) {}

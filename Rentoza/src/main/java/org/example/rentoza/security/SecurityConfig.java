@@ -144,8 +144,12 @@ public class SecurityConfig {
                         ).permitAll()
                         // OAuth2 endpoints - required for Google login flow
                         .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
-                        // Public static resources
+                        // Public static resources (images, documents, uploads)
                         .requestMatchers(HttpMethod.GET, "/uploads/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/car-images/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/check-in-photos/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/user-avatars/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/documents/**").permitAll()
 
                         // ============ PUBLIC CAR MARKETPLACE ============
                         // Car browsing, search, and availability (guest-accessible)

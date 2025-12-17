@@ -704,7 +704,7 @@ export class GuestCheckInComponent {
    * API serves: "/api/checkin/photos/{sessionId}/{filename}"
    */
   getPhotoUrl(photo: CheckInPhotoDTO): string {
-    let url = photo.url;
+    const url = photo.url;
 
     // If URL is already absolute, return as-is
     if (url && url.startsWith('http')) {

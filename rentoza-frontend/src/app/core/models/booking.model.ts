@@ -59,6 +59,7 @@ export interface Booking {
     lastName?: string;
     email?: string;
     phone?: string;
+    avatarUrl?: string;
   };
   /**
    * Exact trip start timestamp.

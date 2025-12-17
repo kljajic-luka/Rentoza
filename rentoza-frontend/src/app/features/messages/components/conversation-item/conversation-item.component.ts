@@ -65,7 +65,7 @@ import { TimeFormatPipe } from '../../shared/pipes/time-format.pipe';
             {{ lastMessagePreview() }}
           </p>
           <p class="last-message placeholder" *ngIf="!lastMessagePreview()">
-            No messages yet
+            Nema poruka
           </p>
         </div>
       </div>
@@ -448,13 +448,13 @@ export class ConversationItemComponent {
   tripStatusLabel = computed(() => {
     const status = this.tripStatus();
     const labels: Record<string, string> = {
-      current: 'Active',
-      future: 'Upcoming',
-      past: 'Completed',
-      unknown: 'Pending',
-      unavailable: 'Unavailable',
+      current: 'Aktivna',
+      future: 'Predstoji',
+      past: 'Završena',
+      unknown: 'Na čekanju',
+      unavailable: 'Nedostupno',
     };
-    return labels[status] || 'Pending';
+    return labels[status] || 'Na čekanju';
   });
 
   // Event handlers

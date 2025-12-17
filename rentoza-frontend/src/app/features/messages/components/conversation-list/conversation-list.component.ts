@@ -39,7 +39,7 @@ import { ConversationItemComponent } from '../conversation-item/conversation-ite
     @if (isLoading()) {
       <div class="loading-container">
         <mat-spinner diameter="40"></mat-spinner>
-        <p>Loading conversations...</p>
+        <p>Učitavanje razgovora...</p>
       </div>
     }
 
@@ -47,8 +47,8 @@ import { ConversationItemComponent } from '../conversation-item/conversation-ite
     @if (!isLoading() && conversations().length === 0) {
       <div class="empty-state">
         <mat-icon>chat_bubble_outline</mat-icon>
-        <p>No conversations yet</p>
-        <small>Book a car to start a conversation with the owner.</small>
+        <p>Nema razgovora</p>
+        <small>Rezerviši automobil da počneš razgovor sa vlasnikom.</small>
       </div>
     }
 

@@ -8,6 +8,8 @@
   .map-container {
     width: 100%;
     height: 100%;
+    // Prevent white flash on initial load
+    transition: background-color 0.3s ease;
   }
 
   // Loading overlay
@@ -227,13 +229,29 @@
 }
 
 // Dark mode support
-:host-context(.dark-theme) {
+:host-context(.theme-dark) {
   .location-picker {
-    background-color: #333;
+    background-color: #1e1e1e;
 
-    .loading-overlay,
+    .map-container {
+      // Ensure map transitions smoothly to dark theme
+      background-color: #1e1e1e;
+    }
+
+    .loading-overlay {
+      background-color: rgba(30, 30, 30, 0.95);
+
+      span {
+        color: #bbb;
+      }
+    }
+
     .error-overlay {
-      background-color: rgba(48, 48, 48, 0.95);
+      background-color: rgba(30, 30, 30, 0.95);
+
+      mat-icon {
+        color: #ef5350;
+      }
 
       span {
         color: #bbb;
@@ -242,16 +260,34 @@
 
     .privacy-indicator,
     .radius-indicator {
-      background-color: rgba(48, 48, 48, 0.95);
+      background-color: rgba(45, 45, 45, 0.95);
       color: #bbb;
+
+      mat-icon {
+        color: #64b5f6;
+      }
+    }
+
+    .edit-hint {
+      background-color: rgba(30, 100, 200, 0.95);
+      color: white;
     }
 
     .radius-slider-container {
-      background-color: rgba(48, 48, 48, 0.95);
+      background-color: rgba(45, 45, 45, 0.95);
 
       .radius-label {
         color: #ddd;
+
+        mat-icon {
+          color: #64b5f6;
+        }
       }
+    }
+
+    .marker-count {
+      background-color: rgba(30, 100, 200, 0.95);
+      color: white;
     }
   }
 }

@@ -28,6 +28,7 @@ export class OwnerVerificationComponent implements OnInit {
   ownerType = signal<OwnerType>('INDIVIDUAL');
   status = signal<OwnerVerificationStatus | null>(null);
   loading = signal<boolean>(false);
+  initializing = signal<boolean>(true); // Track initial load
   error = signal<string | null>(null);
   success = signal<boolean>(false);
 
@@ -54,15 +55,18 @@ export class OwnerVerificationComponent implements OnInit {
   }
 
   loadStatus(): void {
+    this.initializing.set(true);
     this.verificationService.getStatus().subscribe({
       next: (status) => {
         this.status.set(status);
         if (status.ownerType) {
           this.ownerType.set(status.ownerType);
         }
+        this.initializing.set(false);
       },
       error: (err) => {
         console.error('Failed to load status:', err);
+        this.initializing.set(false);
       },
     });
   }

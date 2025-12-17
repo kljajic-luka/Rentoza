@@ -150,7 +150,7 @@ export const routes: Routes = [
   {
     path: 'verify-license',
     canActivate: [RoleGuard],
-    data: { roles: ['USER', 'OWNER', 'ADMIN'] },
+    data: { roles: ['USER', 'ADMIN'] },
     loadComponent: () =>
       import(
         '@features/renter-verification/pages/renter-verification-page/renter-verification-page.component'
@@ -197,6 +197,13 @@ export const routes: Routes = [
         loadComponent: () =>
           import('@features/owner/pages/bookings/owner-bookings.component').then(
             (m) => m.OwnerBookingsComponent
+          ),
+      },
+      {
+        path: 'booking/:id/review',
+        loadComponent: () =>
+          import('@features/owner/pages/add-review/owner-add-review.component').then(
+            (m) => m.OwnerAddReviewComponent
           ),
       },
       {

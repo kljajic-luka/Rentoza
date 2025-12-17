@@ -12,6 +12,9 @@ import { ToastService } from '@core/services/toast.service';
 const SILENT_ERROR_ENDPOINTS = [
   '/bookings/car/', // Guest users viewing car details shouldn't see auth errors
   '/auth/refresh', // Silent token refresh failures are handled by auth service
+  '/availability', // Availability checks are non-critical and handled in component
+  '/stats', // Stats endpoints are non-blocking
+  '/reviews', // Review loading is non-blocking
 ];
 
 /**
@@ -28,7 +31,9 @@ export const errorResponseInterceptor: HttpInterceptorFn = (req, next) => {
     catchError((error: HttpErrorResponse) => {
       const shouldShowToast = shouldDisplayError(req.url, error.status);
 
-      if (shouldShowToast) {
+      // Only show toast for actual errors (status >= 400), not for connection issues during navigation
+      // Suppress errors for requests that are likely stale (e.g., from previous page navigation)
+      if (shouldShowToast && error.status >= 400) {
         const message = extractUserFriendlyMessage(error);
         toast.error(message);
       }

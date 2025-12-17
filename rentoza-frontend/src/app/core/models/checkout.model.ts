@@ -165,18 +165,20 @@ export const CHECKOUT_PHOTO_SLOTS: CheckoutPhotoSlot[] = [
     icon: 'directions_car',
     required: true,
   },
+  // Interior photos - now required to match check-in
+  {
+    type: 'CHECKOUT_INTERIOR_DASHBOARD',
+    label: 'Instrument tabla',
+    icon: 'dashboard',
+    required: true,
+  },
+  { type: 'CHECKOUT_INTERIOR_REAR', label: 'Zadnja sedišta', icon: 'event_seat', required: true },
+  // Readings photos
   { type: 'CHECKOUT_ODOMETER', label: 'Kilometraža', icon: 'speed', required: true },
   { type: 'CHECKOUT_FUEL_GAUGE', label: 'Nivo goriva', icon: 'local_gas_station', required: true },
 ];
 
 export const OPTIONAL_CHECKOUT_PHOTO_SLOTS: CheckoutPhotoSlot[] = [
-  {
-    type: 'CHECKOUT_INTERIOR_DASHBOARD',
-    label: 'Instrument tabla',
-    icon: 'dashboard',
-    required: false,
-  },
-  { type: 'CHECKOUT_INTERIOR_REAR', label: 'Zadnja sedišta', icon: 'event_seat', required: false },
   { type: 'CHECKOUT_DAMAGE_NEW', label: 'Nova oštećenja', icon: 'report_problem', required: false },
   { type: 'CHECKOUT_CUSTOM', label: 'Dodatna fotografija', icon: 'add_a_photo', required: false },
 ];

@@ -119,7 +119,8 @@ export class EditCarDialogComponent implements OnInit {
       [Validators.required, Validators.min(1950), Validators.max(2050)],
     ],
     location: ['', [Validators.required, Validators.minLength(2)]],
-    pricePerDay: [0, [Validators.required, Validators.min(10)]],
+    // Price field initialized as empty string (not 0) to avoid user having to delete zero
+    pricePerDay: ['', [Validators.required, Validators.min(10)]],
     description: ['', [Validators.maxLength(1000)]],
     seats: [5, [Validators.required, Validators.min(2), Validators.max(9)]],
     fuelType: [FuelType.BENZIN, [Validators.required]],
@@ -140,7 +141,8 @@ export class EditCarDialogComponent implements OnInit {
       model: car.model,
       year: car.year,
       location: car.location,
-      pricePerDay: car.pricePerDay,
+      // Convert numeric price to string for form control (empty string if null/zero)
+      pricePerDay: car.pricePerDay ? String(car.pricePerDay) : '',
       description: car.description || '',
       seats: car.seats || 5,
       fuelType: car.fuelType || FuelType.BENZIN,
@@ -183,20 +185,21 @@ export class EditCarDialogComponent implements OnInit {
     this.isSubmitting.set(true);
 
     const updatedData: Partial<Car> = {
-      make: this.editForm.value.brand!,
-      model: this.editForm.value.model!,
-      year: this.editForm.value.year!,
-      location: this.editForm.value.location!,
-      pricePerDay: this.editForm.value.pricePerDay!,
-      description: this.editForm.value.description,
-      seats: this.editForm.value.seats!,
-      fuelType: this.editForm.value.fuelType!,
-      transmissionType: this.editForm.value.transmissionType!,
-      fuelConsumption: this.editForm.value.fuelConsumption,
-      features: this.selectedFeatures(),
-      cancellationPolicy: this.editForm.value.cancellationPolicy!,
-      minRentalDays: this.editForm.value.minRentalDays!,
-      maxRentalDays: this.editForm.value.maxRentalDays!,
+     make: this.editForm.value.brand!,
+     model: this.editForm.value.model!,
+     year: this.editForm.value.year!,
+     location: this.editForm.value.location!,
+     // Convert form value from string back to number for Car model
+     pricePerDay: Number(this.editForm.value.pricePerDay!),
+     description: this.editForm.value.description,
+     seats: this.editForm.value.seats!,
+     fuelType: this.editForm.value.fuelType!,
+     transmissionType: this.editForm.value.transmissionType!,
+     fuelConsumption: this.editForm.value.fuelConsumption,
+     features: this.selectedFeatures(),
+     cancellationPolicy: this.editForm.value.cancellationPolicy!,
+     minRentalDays: this.editForm.value.minRentalDays!,
+     maxRentalDays: this.editForm.value.maxRentalDays!,
     };
 
     this.carService.updateCar(this.data.car.id, updatedData).subscribe({

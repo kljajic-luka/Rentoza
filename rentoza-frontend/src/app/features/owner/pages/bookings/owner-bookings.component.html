@@ -76,11 +76,28 @@
                   Detalji
                 </button>
                 @if (booking.status === 'PENDING_APPROVAL') {
-                  <button mat-raised-button color="primary">
-                    <mat-icon>check</mat-icon>
+                  <button 
+                    mat-raised-button 
+                    color="primary" 
+                    (click)="approveBooking(booking)"
+                    [disabled]="isProcessing(booking.id)">
+                    @if (isProcessing(booking.id)) {
+                      <mat-spinner diameter="18" class="button-spinner"></mat-spinner>
+                    } @else {
+                      <mat-icon>check</mat-icon>
+                    }
                     Odobri
                   </button>
+                  <button 
+                    mat-stroked-button 
+                    color="warn" 
+                    (click)="declineBooking(booking)"
+                    [disabled]="isProcessing(booking.id)">
+                    <mat-icon>close</mat-icon>
+                    Odbij
+                  </button>
                 }
+
                 @if (canCheckIn(booking)) {
                   <button mat-raised-button color="accent" (click)="goToCheckIn(booking)">
                     <mat-icon>{{ getCheckInIcon(booking) }}</mat-icon>

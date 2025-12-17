@@ -230,8 +230,8 @@ export class ProfilePictureUploaderComponent {
           return;
         }
 
-        let width = img.width;
-        let height = img.height;
+        const width = img.width;
+        const height = img.height;
 
         // Set canvas dimensions based on orientation
         // Orientations 5-8 swap width/height

@@ -238,6 +238,7 @@
                     [alt]="car.make + ' ' + car.model + ' - Image ' + (i + 1)"
                     loading="lazy"
                     class="carousel-image"
+                    (error)="handleImageError($event)"
                   />
                 </div>
                 <!-- Dot Indicators -->
@@ -256,6 +257,7 @@
                   [alt]="car.make + ' ' + car.model"
                   loading="lazy"
                   class="single-image"
+                  (error)="handleImageError($event)"
                 />
                 <ng-template #placeholder>
                   <div class="image-placeholder">

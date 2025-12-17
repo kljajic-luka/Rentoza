@@ -226,7 +226,7 @@
 }
 
 // Dark Mode
-:host-context(.dark-theme) {
+:host-context(.theme-dark) {
   .location-step {
     .step-header {
       h3 {

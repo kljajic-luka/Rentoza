@@ -53,7 +53,7 @@ import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
           (focus)="onFocus()"
           (blur)="onBlur()"
           rows="1"
-          aria-label="Type a message"
+          aria-label="Napišite poruku"
         ></textarea>
 
         <!-- Character counter -->
@@ -72,7 +72,7 @@ import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
           class="send-button"
           [disabled]="!canSend()"
           (click)="onSend()"
-          aria-label="Send message"
+          aria-label="Pošalji poruku"
         >
           <mat-icon *ngIf="!isSending()">send</mat-icon>
           <mat-spinner *ngIf="isSending()" diameter="20"></mat-spinner>
@@ -230,7 +230,7 @@ export class MessageInputComponent implements AfterViewInit, OnDestroy {
 
   // Inputs
   disabled = input<boolean>(false);
-  placeholder = input<string>('Type a message...');
+  placeholder = input<string>('Napišite poruku...');
   isSending = input<boolean>(false);
 
   // Outputs

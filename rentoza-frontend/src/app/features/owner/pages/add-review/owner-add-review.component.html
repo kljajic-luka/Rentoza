@@ -1,0 +1,125 @@
+<div class="add-review">
+  <!-- Loading State -->
+  <div *ngIf="isLoading()" class="add-review__loading">
+    <mat-spinner diameter="48"></mat-spinner>
+    <p>Učitavanje...</p>
+  </div>
+
+  <!-- Review Form -->
+  <div *ngIf="!isLoading() && booking()" class="add-review__container">
+    <mat-card class="add-review__card">
+      <mat-card-header class="add-review__header">
+        <mat-card-title>
+          <mat-icon>rate_review</mat-icon>
+          Recenzija zakupca
+        </mat-card-title>
+        <mat-card-subtitle>
+          Ocenite vaše iskustvo sa ovim zakupcem
+        </mat-card-subtitle>
+      </mat-card-header>
+
+      <mat-card-content>
+        <!-- Renter Summary Section -->
+        <section class="renter-summary">
+          <div class="renter-summary__avatar" [class.has-image]="booking()?.renter?.avatarUrl">
+            <img
+              *ngIf="booking()?.renter?.avatarUrl"
+              [src]="renterAvatarUrl"
+              [alt]="renterName"
+              class="renter-summary__image"
+              (error)="onImageError($event)"
+            />
+            <span *ngIf="!booking()?.renter?.avatarUrl" class="renter-summary__initials">{{ renterInitials }}</span>
+          </div>
+          <div class="renter-summary__details">
+            <h3 class="renter-summary__name">{{ renterName }}</h3>
+            <p class="renter-summary__car">
+              <mat-icon>directions_car</mat-icon>
+              {{ booking()!.car.brand }} {{ booking()!.car.model }}
+              <span *ngIf="booking()!.car.year">({{ booking()!.car.year }})</span>
+            </p>
+            <p class="renter-summary__dates">
+              <mat-icon>event</mat-icon>
+              {{ booking()!.startTime | date: 'dd.MM.yyyy HH:mm' }} - {{ booking()!.endTime | date: 'dd.MM.yyyy HH:mm' }}
+            </p>
+          </div>
+        </section>
+
+        <mat-divider class="add-review__divider"></mat-divider>
+
+        <!-- Rating Categories Section -->
+        <section class="rating-section">
+          <h3 class="rating-section__title">Ocenite zakupca po kategorijama</h3>
+          <p class="rating-section__subtitle">Sve ocene su obavezne</p>
+
+          <div class="rating-categories">
+            <div *ngFor="let category of categories" class="rating-category">
+              <div class="rating-category__header">
+                <mat-icon class="rating-category__icon">{{ category.icon }}</mat-icon>
+                <span class="rating-category__label">{{ category.label }}</span>
+              </div>
+
+              <div class="rating-category__stars">
+                <button
+                  *ngFor="let star of [1, 2, 3, 4, 5]"
+                  type="button"
+                  class="star-button"
+                  [class.star-button--active]="star <= category.rating()"
+                  (click)="setRating(category, star)"
+                  [disabled]="isSubmitting()"
+                  [attr.aria-label]="'Ocena ' + star + ' od 5'"
+                >
+                  <mat-icon>{{ star <= category.rating() ? 'star' : 'star_border' }}</mat-icon>
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <mat-divider class="add-review__divider"></mat-divider>
+
+        <!-- Comment Section -->
+        <section class="comment-section">
+          <form [formGroup]="reviewForm">
+            <mat-form-field appearance="outline" class="comment-field">
+              <mat-label>Komentar (opciono)</mat-label>
+              <textarea
+                matInput
+                formControlName="comment"
+                rows="5"
+                [maxlength]="commentMaxLength"
+                placeholder="Opišite vaše iskustvo sa ovim zakupcem..."
+                [disabled]="isSubmitting()"
+              ></textarea>
+              <mat-hint align="end">{{ commentLength }} / {{ commentMaxLength }}</mat-hint>
+            </mat-form-field>
+          </form>
+        </section>
+      </mat-card-content>
+
+      <mat-card-actions class="add-review__actions">
+        <button
+          mat-button
+          [routerLink]="['/owner/bookings']"
+          [disabled]="isSubmitting()"
+          class="add-review__cancel-button"
+        >
+          <mat-icon>close</mat-icon>
+          Otkaži
+        </button>
+
+        <button
+          mat-raised-button
+          color="primary"
+          (click)="submitReview()"
+          [disabled]="!canSubmit()"
+          class="add-review__submit-button"
+        >
+          <mat-spinner *ngIf="isSubmitting()" diameter="20" class="button-spinner"></mat-spinner>
+          <mat-icon *ngIf="!isSubmitting()">send</mat-icon>
+          {{ isSubmitting() ? 'Slanje...' : 'Pošalji recenziju' }}
+        </button>
+      </mat-card-actions>
+    </mat-card>
+  </div>
+</div>

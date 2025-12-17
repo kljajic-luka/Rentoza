@@ -37,6 +37,7 @@
             [alt]="vm.car.make + ' ' + vm.car.model"
             loading="lazy"
             class="gallery__image"
+            (error)="handleImageError($event)"
           />
 
           @if (getCarImages(vm.car).length > 1) {

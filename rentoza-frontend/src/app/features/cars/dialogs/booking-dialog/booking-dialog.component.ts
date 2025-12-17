@@ -478,8 +478,8 @@ export class BookingDialogComponent implements OnInit {
     }
 
     // Validate minimum hours before booking
-    const startDateTime = combineDateTime(formValues.startDate!, formValues.startTime!);
-    const endDateTime = combineDateTime(formValues.endDate!, formValues.endTime!);
+    const startDateTime = combineDateTime(formValues.startDate!, formValues.startTime);
+    const endDateTime = combineDateTime(formValues.endDate!, formValues.endTime);
     const startMs = new Date(startDateTime).getTime();
     const nowMs = Date.now();
     const hoursUntilStart = (startMs - nowMs) / (1000 * 60 * 60);

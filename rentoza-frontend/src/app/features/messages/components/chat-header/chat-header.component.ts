@@ -81,11 +81,11 @@ import { ConversationDTO } from '@core/models/chat.model';
         <mat-menu #actionMenu="matMenu">
           <button mat-menu-item (click)="viewBookingDetails.emit()">
             <mat-icon>receipt_long</mat-icon>
-            <span>View booking details</span>
+            <span>Pregled detalja rezervacije</span>
           </button>
           <button mat-menu-item (click)="reportUser.emit()">
             <mat-icon>flag</mat-icon>
-            <span>Report user</span>
+            <span>Prijavi korisnika</span>
           </button>
         </mat-menu>
       </div>
@@ -394,13 +394,13 @@ export class ChatHeaderComponent {
   tripStatusLabel = computed(() => {
     const status = this.tripStatus();
     const labels: Record<string, string> = {
-      current: 'Active Trip',
-      future: 'Upcoming',
-      past: 'Completed',
-      unknown: 'Pending',
-      unavailable: 'Unavailable',
+      current: 'Aktivna vožnja',
+      future: 'Predstoji',
+      past: 'Završena',
+      unknown: 'Na čekanju',
+      unavailable: 'Nedostupno',
     };
-    return labels[status] || 'Pending';
+    return labels[status] || 'Na čekanju';
   });
 
   showBookingCard = computed(() => {

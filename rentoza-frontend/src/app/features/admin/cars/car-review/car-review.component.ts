@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import {
@@ -545,6 +545,7 @@ export class CarReviewComponent implements OnInit, OnDestroy {
   private adminApi = inject(AdminApiService);
   private notification = inject(AdminNotificationService);
   private dialog = inject(MatDialog);
+  private cdr = inject(ChangeDetectorRef);
 
   carId: number | null = null;
   carData: AdminCarReviewDetailDto | null = null;
@@ -622,16 +623,19 @@ export class CarReviewComponent implements OnInit, OnDestroy {
         tap(() => {
           this.loading = true;
           this.error = null;
+          this.cdr.markForCheck();
         }),
         switchMap((carId) =>
           this.adminApi.getCarReviewDetail(carId).pipe(
             catchError((err) => {
               console.error('Failed to load car review details', err);
               this.error = 'Failed to load car review details. Please try again.';
+              this.cdr.markForCheck();
               return EMPTY;
             }),
             finalize(() => {
               this.loading = false;
+              this.cdr.markForCheck();
             })
           )
         ),
@@ -643,6 +647,7 @@ export class CarReviewComponent implements OnInit, OnDestroy {
           imageUrls: normalizeMediaUrlArray(data.imageUrls),
         };
         this.currentPhotoIndex = 0;
+        this.cdr.markForCheck();
       });
   }
 

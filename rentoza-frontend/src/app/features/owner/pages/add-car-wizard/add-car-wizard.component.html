@@ -22,7 +22,12 @@
             <mat-label>Marka</mat-label>
             <input matInput formControlName="brand" required />
             <mat-icon matPrefix>directions_car</mat-icon>
-            <ng-container *ngIf="basicInfoForm.controls.brand.hasError('required')">
+            <ng-container
+              *ngIf="
+                basicInfoForm.controls.brand.hasError('required') &&
+                (basicInfoForm.controls.brand.dirty || basicInfoForm.controls.brand.touched)
+              "
+            >
               <mat-error>Marka je obavezna</mat-error>
             </ng-container>
           </mat-form-field>
@@ -31,7 +36,12 @@
             <mat-label>Model</mat-label>
             <input matInput formControlName="model" required />
             <mat-icon matPrefix>drive_eta</mat-icon>
-            <ng-container *ngIf="basicInfoForm.controls.model.hasError('required')">
+            <ng-container
+              *ngIf="
+                basicInfoForm.controls.model.hasError('required') &&
+                (basicInfoForm.controls.model.dirty || basicInfoForm.controls.model.touched)
+              "
+            >
               <mat-error>Model je obavezan</mat-error>
             </ng-container>
           </mat-form-field>
@@ -42,8 +52,9 @@
             <mat-icon matPrefix>calendar_today</mat-icon>
             <ng-container
               *ngIf="
-                basicInfoForm.controls.year.hasError('min') ||
-                basicInfoForm.controls.year.hasError('max')
+                (basicInfoForm.controls.year.hasError('min') ||
+                  basicInfoForm.controls.year.hasError('max')) &&
+                (basicInfoForm.controls.year.dirty || basicInfoForm.controls.year.touched)
               "
             >
               <mat-error>Godina mora biti između 1950 i 2050</mat-error>
@@ -52,13 +63,33 @@
 
           <mat-form-field appearance="outline" class="form-field">
             <mat-label>Registarska oznaka</mat-label>
-            <input matInput formControlName="licensePlate" required placeholder="BG-123-AB" />
+            <input
+              matInput
+              formControlName="licensePlate"
+              required
+              placeholder="BG-123-AB"
+              maxlength="13"
+            />
             <mat-icon matPrefix>badge</mat-icon>
-            <ng-container *ngIf="basicInfoForm.controls.licensePlate.hasError('required')">
+            <mat-hint>Format: BG-123-AB ili BG-1234-AB (tradicionalni) ili BG-123ABC (custom)</mat-hint>
+            <!-- Only show error on form submission attempt, not while typing -->
+            <ng-container
+              *ngIf="
+                basicInfoForm.controls.licensePlate.hasError('required') &&
+                (basicInfoForm.controls.licensePlate.dirty ||
+                  basicInfoForm.controls.licensePlate.touched)
+              "
+            >
               <mat-error>Registarska oznaka je obavezna</mat-error>
             </ng-container>
-            <ng-container *ngIf="basicInfoForm.controls.licensePlate.hasError('pattern')">
-              <mat-error>Format: BG-123-AB</mat-error>
+            <ng-container
+              *ngIf="
+                basicInfoForm.controls.licensePlate.hasError('invalidPlate') &&
+                (basicInfoForm.controls.licensePlate.dirty ||
+                  basicInfoForm.controls.licensePlate.touched)
+              "
+            >
+              <mat-error>Unesite validnu registarsku oznaku (npr. BG-123AB)</mat-error>
             </ng-container>
           </mat-form-field>
 
@@ -66,7 +97,22 @@
             <mat-label>Cena po danu (RSD)</mat-label>
             <input matInput type="number" formControlName="pricePerDay" required />
             <mat-icon matPrefix>payments</mat-icon>
-            <ng-container *ngIf="basicInfoForm.controls.pricePerDay.hasError('min')">
+            <ng-container
+              *ngIf="
+                basicInfoForm.controls.pricePerDay.hasError('required') &&
+                (basicInfoForm.controls.pricePerDay.dirty ||
+                  basicInfoForm.controls.pricePerDay.touched)
+              "
+            >
+              <mat-error>Cena po danu je obavezna</mat-error>
+            </ng-container>
+            <ng-container
+              *ngIf="
+                basicInfoForm.controls.pricePerDay.hasError('min') &&
+                (basicInfoForm.controls.pricePerDay.dirty ||
+                  basicInfoForm.controls.pricePerDay.touched)
+              "
+            >
               <mat-error>Minimalna cena je 10 RSD</mat-error>
             </ng-container>
           </mat-form-field>
@@ -500,11 +546,6 @@
               <p>
                 {{ policiesForm.value.minRentalDays }}-{{ policiesForm.value.maxRentalDays }} dana
               </p>
-            </div>
-
-            <div class="summary-section">
-              <h4>Politika otkazivanja</h4>
-              <p>Standardna platformska politika (Turo-stil)</p>
             </div>
 
             <div class="summary-section">

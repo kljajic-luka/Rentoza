@@ -15,7 +15,6 @@ import { MatDividerModule } from '@angular/material/divider';
 import { Booking } from '@core/models/booking.model';
 import { BookingService } from '@core/services/booking.service';
 import { AuthService } from '@core/auth/auth.service';
-import { OwnerReviewDialogComponent } from '@features/owner/dialogs/owner-review-dialog/owner-review-dialog.component';
 import { isBookingCompleted, canOwnerReviewRenter } from '@core/utils/booking.utils';
 import {
   CancellationPreviewDialogComponent,
@@ -52,6 +51,10 @@ export class OwnerBookingsComponent implements OnInit {
   protected readonly upcomingBookings = signal<Booking[]>([]);
   protected readonly activeBookings = signal<Booking[]>([]);
   protected readonly completedBookings = signal<Booking[]>([]);
+  
+  // Track which bookings are being processed (approve/decline) to prevent double-clicks
+  protected readonly processingIds = signal<Set<number | string>>(new Set());
+
 
   protected readonly hasAnyBooking = computed(() => {
     return (
@@ -368,20 +371,8 @@ export class OwnerBookingsComponent implements OnInit {
   }
 
   protected reviewRenter(booking: Booking): void {
-    const dialogRef = this.dialog.open(OwnerReviewDialogComponent, {
-      width: '700px',
-      maxWidth: '95vw',
-      maxHeight: '90vh',
-      data: { booking },
-      disableClose: false,
-    });
-
-    dialogRef.afterClosed().subscribe((success: boolean) => {
-      if (success) {
-        // Refresh bookings to update the hasOwnerReview flag
-        this.loadOwnerBookings();
-      }
-    });
+    // Navigate to full-page review (matching renter experience)
+    this.router.navigate(['/owner/booking', booking.id, 'review']);
   }
 
   protected openBookingDetails(booking: Booking): void {
@@ -422,4 +413,150 @@ export class OwnerBookingsComponent implements OnInit {
     if (days === 1) return 'Sutra';
     return `za ${days} dana`;
   }
+
+  /**
+   * Check if a booking is currently being processed (approve/decline).
+   */
+  protected isProcessing(bookingId: number | string): boolean {
+    return this.processingIds().has(bookingId);
+  }
+
+  /**
+   * Approve a pending booking request.
+   */
+  protected approveBooking(booking: Booking): void {
+    const bookingId = typeof booking.id === 'string' ? parseInt(booking.id, 10) : booking.id;
+
+    // Add to processing set to disable button
+    this.processingIds.update((ids) => new Set(ids).add(bookingId));
+
+    this.bookingService.approveBooking(bookingId).subscribe({
+      next: () => {
+        this.snackBar.open(
+          `Rezervacija za ${booking.car.brand} ${booking.car.model} je odobrena!`,
+          'Zatvori',
+          {
+            duration: 4000,
+            panelClass: ['snackbar-success'],
+          }
+        );
+
+        // Remove from processing set
+        this.processingIds.update((ids) => {
+          const newIds = new Set(ids);
+          newIds.delete(bookingId);
+          return newIds;
+        });
+
+        // Refresh bookings to update the list
+        this.loadOwnerBookings();
+      },
+      error: (error) => {
+        console.error('Error approving booking:', error);
+
+        let errorMessage = 'Greška pri odobravanju rezervacije.';
+        if (error.status === 403) {
+          errorMessage = 'Nemate dozvolu za ovu akciju.';
+        } else if (error.status === 404) {
+          errorMessage = 'Rezervacija nije pronađena.';
+        } else if (error.status === 409) {
+          errorMessage = 'Rezervacija je već obrađena.';
+        }
+
+        this.snackBar.open(errorMessage, 'Zatvori', {
+          duration: 5000,
+          panelClass: ['snackbar-error'],
+        });
+
+        // Remove from processing set
+        this.processingIds.update((ids) => {
+          const newIds = new Set(ids);
+          newIds.delete(bookingId);
+          return newIds;
+        });
+      },
+    });
+  }
+
+  /**
+   * Decline a pending booking request with confirmation dialog.
+   */
+  protected declineBooking(booking: Booking): void {
+    // Open decline dialog dynamically to avoid circular imports
+    import('../../dialogs/decline-reason-dialog/decline-reason-dialog.component').then(
+      ({ DeclineReasonDialogComponent }) => {
+        const dialogRef = this.dialog.open(DeclineReasonDialogComponent, {
+          width: '450px',
+          maxWidth: '95vw',
+          data: { booking },
+        });
+
+        dialogRef.afterClosed().subscribe((result: { reason: string } | null | undefined) => {
+          if (result?.reason) {
+            this.performDecline(booking, result.reason);
+          }
+        });
+      }
+    ).catch(() => {
+      // If dialog doesn't exist, perform simple decline with default reason
+      this.performDecline(booking, 'Rezervacija je odbijena od strane vlasnika');
+    });
+  }
+
+
+  /**
+   * Actually perform the decline API call.
+   */
+  private performDecline(booking: Booking, reason?: string): void {
+    const bookingId = typeof booking.id === 'string' ? parseInt(booking.id, 10) : booking.id;
+
+    // Add to processing set
+    this.processingIds.update((ids) => new Set(ids).add(bookingId));
+
+    this.bookingService.declineBooking(bookingId, reason).subscribe({
+      next: () => {
+        this.snackBar.open(
+          `Rezervacija za ${booking.car.brand} ${booking.car.model} je odbijena.`,
+          'Zatvori',
+          {
+            duration: 4000,
+            panelClass: ['snackbar-info'],
+          }
+        );
+
+        // Remove from processing set
+        this.processingIds.update((ids) => {
+          const newIds = new Set(ids);
+          newIds.delete(bookingId);
+          return newIds;
+        });
+
+        // Refresh bookings
+        this.loadOwnerBookings();
+      },
+      error: (error) => {
+        console.error('Error declining booking:', error);
+
+        let errorMessage = 'Greška pri odbijanju rezervacije.';
+        if (error.status === 403) {
+          errorMessage = 'Nemate dozvolu za ovu akciju.';
+        } else if (error.status === 404) {
+          errorMessage = 'Rezervacija nije pronađena.';
+        }
+
+        this.snackBar.open(errorMessage, 'Zatvori', {
+          duration: 5000,
+          panelClass: ['snackbar-error'],
+        });
+
+        // Remove from processing set
+        this.processingIds.update((ids) => {
+          const newIds = new Set(ids);
+          newIds.delete(bookingId);
+          return newIds;
+        });
+      },
+    });
+  }
 }
+

@@ -159,7 +159,7 @@ export class HomeComponent implements OnInit, OnDestroy {
     this.navigationSubscription = this.router.events
       .pipe(filter((event) => event instanceof NavigationEnd))
       .subscribe((event) => {
-        const navEnd = event as NavigationEnd;
+        const navEnd = event;
         // Only reset if navigating to home without query params
         if (this.isHomeUrl(navEnd.urlAfterRedirects) && !navEnd.urlAfterRedirects.includes('?')) {
           this.resetSearchFields();

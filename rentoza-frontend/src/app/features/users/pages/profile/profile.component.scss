@@ -107,9 +107,10 @@
 
 .profile__body {
   display: grid;
-  grid-template-columns: minmax(260px, 320px) 1fr;
+  grid-template-columns: 1fr;
   gap: 2rem;
   align-items: start;
+  max-width: calc(100% - 340px);
 }
 
 .profile__card {

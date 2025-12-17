@@ -12,7 +12,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSortModule } from '@angular/material/sort';
 import { MatTableModule } from '@angular/material/table';
 import { MatTabsModule } from '@angular/material/tabs';
-import { debounceTime, distinctUntilChanged, Subject, filter, takeUntil } from 'rxjs';
+import { debounceTime, distinctUntilChanged, Subject, filter, takeUntil, forkJoin } from 'rxjs';
 import { AdminApiService, AdminCarDto } from '../../../../core/services/admin-api.service';
 import { AdminNotificationService } from '../../../../core/services/admin-notification.service';
 import { normalizeMediaUrl } from '@shared/utils/media-url.util';
@@ -60,18 +60,18 @@ import { CarApprovalDialogComponent } from '../dialogs/car-approval-dialog.compo
               <span>Pending Approval</span>
             </ng-template>
             <div class="tab-section">
-              <div *ngIf="loading" class="row between" style="padding: 12px 0;">
+              <div *ngIf="loadingPending" class="row between" style="padding: 12px 0;">
                 <span class="muted">Loading pending cars…</span>
                 <mat-progress-spinner diameter="28" mode="indeterminate"></mat-progress-spinner>
               </div>
 
-              <div *ngIf="!loading && pendingCars.length === 0" class="empty-state">
+              <div *ngIf="!loadingPending && pendingCars.length === 0" class="empty-state">
                 <mat-icon>check_circle</mat-icon>
                 <p>No cars waiting for approval.</p>
               </div>
 
               <table
-                *ngIf="!loading && pendingCars.length > 0"
+                *ngIf="!loadingPending && pendingCars.length > 0"
                 mat-table
                 [dataSource]="pendingCars"
               >
@@ -161,12 +161,12 @@ import { CarApprovalDialogComponent } from '../dialogs/car-approval-dialog.compo
                 />
               </mat-form-field>
 
-              <div *ngIf="loading" class="row between" style="padding: 12px 0;">
+              <div *ngIf="loadingAll" class="row between" style="padding: 12px 0;">
                 <span class="muted">Loading cars…</span>
                 <mat-progress-spinner diameter="28" mode="indeterminate"></mat-progress-spinner>
               </div>
 
-              <table *ngIf="!loading" mat-table [dataSource]="allCars">
+              <table *ngIf="!loadingAll" mat-table [dataSource]="allCars">
                 <ng-container matColumnDef="id">
                   <th mat-header-cell *matHeaderCellDef>ID</th>
                   <td mat-cell *matCellDef="let car">#{{ car.id }}</td>
@@ -252,7 +252,15 @@ export class CarListComponent implements OnInit, OnDestroy {
   pendingCars: AdminCarDto[] = [];
   allCars: AdminCarDto[] = [];
 
-  loading = true;
+  // Separate loading states to prevent race conditions
+  loadingPending = true;
+  loadingAll = true;
+
+  // Legacy getter for backwards compatibility (returns true if either is loading)
+  get loading(): boolean {
+    return this.loadingPending || this.loadingAll;
+  }
+
   totalElements = 0;
   pageIndex = 0;
   pageSize = 10;
@@ -264,7 +272,7 @@ export class CarListComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>();
 
   ngOnInit() {
-    // Initial load
+    // Initial load - load both tabs in parallel
     this.refreshView();
 
     // Listen for navigation end to ensure data refreshes when navigating to this page
@@ -302,32 +310,36 @@ export class CarListComponent implements OnInit, OnDestroy {
   }
 
   loadPendingCars() {
-    this.loading = true;
+    this.loadingPending = true;
     this.adminApi.getPendingCars().subscribe({
       next: (cars) => {
         this.pendingCars = cars;
-        this.loading = false;
+        this.loadingPending = false;
+        this.cdr.markForCheck();
       },
       error: (err) => {
         console.error('Failed to load pending cars', err);
         this.notification.showError('Failed to load pending cars');
-        this.loading = false;
+        this.loadingPending = false;
+        this.cdr.markForCheck();
       },
     });
   }
 
   loadAllCars(search?: string) {
-    this.loading = true;
+    this.loadingAll = true;
     this.adminApi.getCars(this.pageIndex, this.pageSize, search).subscribe({
       next: (response) => {
         this.allCars = response.content;
         this.totalElements = response.totalElements;
-        this.loading = false;
+        this.loadingAll = false;
+        this.cdr.markForCheck();
       },
       error: (err) => {
         console.error('Failed to load cars', err);
         this.notification.showError('Failed to load cars');
-        this.loading = false;
+        this.loadingAll = false;
+        this.cdr.markForCheck();
       },
     });
   }
@@ -378,10 +390,32 @@ export class CarListComponent implements OnInit, OnDestroy {
   }
 
   refreshView(): void {
-    // Reload both lists to keep "All Cars" in sync with "Pending" changes
-    this.loadPendingCars();
-    this.loadAllCars(this.searchTerm);
-    this.cdr.detectChanges();
+    // Use forkJoin to load both lists in parallel and properly manage loading states
+    this.loadingPending = true;
+    this.loadingAll = true;
+
+    forkJoin({
+      pending: this.adminApi.getPendingCars(),
+      all: this.adminApi.getCars(this.pageIndex, this.pageSize, this.searchTerm),
+    })
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: ({ pending, all }) => {
+          this.pendingCars = pending;
+          this.allCars = all.content;
+          this.totalElements = all.totalElements;
+          this.loadingPending = false;
+          this.loadingAll = false;
+          this.cdr.markForCheck();
+        },
+        error: (err) => {
+          console.error('Failed to refresh cars', err);
+          this.notification.showError('Failed to load cars');
+          this.loadingPending = false;
+          this.loadingAll = false;
+          this.cdr.markForCheck();
+        },
+      });
   }
 
   openApprovalDialog(car: AdminCarDto): void {

@@ -43,7 +43,7 @@ import { TypingIndicatorComponent } from '../typing-indicator/typing-indicator.c
     <!-- Empty state -->
     <div class="empty-messages" *ngIf="displayMessages().length === 0 && !isTyping()">
       <mat-icon>chat_bubble_outline</mat-icon>
-      <h3>No messages yet</h3>
+      <h3>Nema poruka</h3>
       <p>{{ emptyStateText() }}</p>
     </div>
 
@@ -271,17 +271,17 @@ export class MessageViewComponent implements AfterViewInit, OnDestroy {
   // Computed: empty state text
   emptyStateText = computed(() => {
     const conv = this.conversation();
-    if (!conv) return 'Start a conversation';
+    if (!conv) return 'Počnite razgovor';
 
     const tripStatus = conv.tripStatus?.toLowerCase();
     if (tripStatus === 'future') {
-      return 'Say hello to coordinate your upcoming trip!';
+      return 'Pozdravi se da koordiniraš nadolazećim putovanjem!';
     } else if (tripStatus === 'current') {
-      return 'Need help during your trip? Send a message.';
+      return 'Trebaš li pomoć tokom putovanja? Pošalji poruku.';
     } else if (tripStatus === 'past') {
-      return 'This trip has ended. Leave feedback or ask questions.';
+      return 'Ovo putovanje je završeno. Ostavi povratnu informaciju ili postavi pitanja.';
     }
-    return 'Send a message to start the conversation.';
+    return 'Pošalji poruku da počneš razgovor.';
   });
 
   /**
@@ -329,7 +329,7 @@ export class MessageViewComponent implements AfterViewInit, OnDestroy {
   }
 
   private formatDateHeader(timestamp: string | undefined): string {
-    if (!timestamp) return 'Today';
+    if (!timestamp) return 'Danas';
 
     const date = new Date(timestamp);
     const now = new Date();
@@ -337,13 +337,13 @@ export class MessageViewComponent implements AfterViewInit, OnDestroy {
     yesterday.setDate(yesterday.getDate() - 1);
 
     if (date.toDateString() === now.toDateString()) {
-      return 'Today';
+      return 'Danas';
     } else if (date.toDateString() === yesterday.toDateString()) {
-      return 'Yesterday';
+      return 'Juče';
     } else if (date.getFullYear() === now.getFullYear()) {
-      return date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+      return date.toLocaleDateString('sr-RS', { weekday: 'long', month: 'long', day: 'numeric' });
     } else {
-      return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+      return date.toLocaleDateString('sr-RS', { year: 'numeric', month: 'long', day: 'numeric' });
     }
   }
 

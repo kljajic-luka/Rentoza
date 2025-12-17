@@ -29,7 +29,7 @@
   >
     <!-- Sidebar Header -->
     <div class="sidebar-header">
-      <h2>Messages</h2>
+      <h2>Poruke</h2>
       <div class="header-actions">
         @if (wsConnected()) {
           <mat-icon class="ws-status connected" matTooltip="Connected">
@@ -62,8 +62,8 @@
     @if (!selectedConversation()) {
       <div class="no-selection">
         <mat-icon>chat</mat-icon>
-        <h2>Select a conversation</h2>
-        <p>Choose a conversation from the left to view messages.</p>
+        <h2>Izaberite razgovor</h2>
+        <p>Odaberite razgovor sa leve strane da biste videli poruke.</p>
       </div>
     }
 
@@ -104,7 +104,7 @@
         <!-- Message Input Component -->
         <app-message-input
           [disabled]="!isMessagingAllowed() || isSendingMessage()"
-          [placeholder]="isMessagingAllowed() ? 'Type a message...' : 'Messaging not allowed'"
+          [placeholder]="isMessagingAllowed() ? 'Napišite poruku...' : 'Poruke nisu dozvoljene'"
           (messageSent)="onSendMessage($event)"
           (typingStarted)="onTypingStarted()"
           (typingStopped)="onTypingStopped()"
@@ -114,7 +114,7 @@
         @if (!isMessagingAllowed()) {
           <div class="messaging-disabled-warning">
             <mat-icon>lock</mat-icon>
-            <span>Messaging is not allowed for this conversation.</span>
+            <span>Poruke nisu dozvoljene za ovaj razgovor.</span>
           </div>
         }
       </div>

@@ -15,7 +15,7 @@ import {
   inject,
   signal,
   computed,
-  ChangeDetectionStrategy,
+  ChangeDetectionStrategy, OnInit,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import {
@@ -34,6 +34,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatStepperModule } from '@angular/material/stepper';
+import { MatSliderModule } from '@angular/material/slider';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 
 import { CheckoutService } from '@core/services/checkout.service';
@@ -56,6 +57,7 @@ import { environment } from '@environments/environment';
     MatProgressBarModule,
     MatDividerModule,
     MatStepperModule,
+    MatSliderModule,
     MatSnackBarModule,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -121,50 +123,62 @@ import { environment } from '@environments/environment';
         <mat-step [completed]="step2Complete()">
           <ng-template matStepLabel>Fotografije povratka</ng-template>
           <div class="step-content">
-            <h3>Fotografirajte vozilo</h3>
-            <p class="hint">Slikajte vozilo sa svih strana kao dokaz stanja pri povratku.</p>
+            <div class="section-header">
+              <mat-icon>camera_alt</mat-icon>
+              <div>
+                <h3>Fotografije vozila</h3>
+                <p class="hint">Slikajte vozilo sa svih strana kao dokaz stanja pri povratku.</p>
+              </div>
+            </div>
 
-            <div class="photo-upload-grid">
+            <!-- Premium photo grid matching check-in style -->
+            <div class="photo-grid">
               @for (slot of photoSlots; track slot.type) {
-              <div class="upload-slot" [class.completed]="isPhotoUploaded(slot.type)">
-                <div class="slot-header">
-                  <mat-icon>{{ slot.icon }}</mat-icon>
-                  <span>{{ slot.label }}</span>
-                  @if (slot.required) {
-                  <span class="required">*</span>
+              <div
+                class="photo-slot"
+                [class.completed]="isPhotoUploaded(slot.type)"
+                [class.uploading]="getUploadProgress(slot.type)?.state === 'uploading' || getUploadProgress(slot.type)?.state === 'compressing'"
+                (click)="triggerUpload(slot.type)"
+              >
+                @if (getUploadProgress(slot.type); as progress) {
+                  @if (progress.state === 'complete') {
+                    <img
+                      [src]="progress.previewUrl || getPhotoUrl(progress.result?.url || '')"
+                      [alt]="slot.label"
+                      class="photo-preview"
+                    />
+                    <div class="success-badge">
+                      <mat-icon>check_circle</mat-icon>
+                    </div>
+                    <button
+                      mat-mini-fab
+                      color="warn"
+                      class="remove-photo-btn"
+                      (click)="triggerUpload(slot.type); $event.stopPropagation()"
+                      aria-label="Zameni fotografiju"
+                    >
+                      <mat-icon>refresh</mat-icon>
+                    </button>
+                  } @else if (progress.state === 'error') {
+                    <div class="error-overlay">
+                      <mat-icon>error</mat-icon>
+                      <span class="error-message">{{ progress.error }}</span>
+                      <button mat-button class="retry-btn">Pokušaj ponovo</button>
+                    </div>
+                  } @else {
+                    <div class="upload-progress">
+                      <mat-progress-bar mode="determinate" [value]="progress.progress"></mat-progress-bar>
+                      <span>{{ getProgressLabel(progress.state) }}</span>
+                    </div>
                   }
-                </div>
-
-                @if (getUploadProgress(slot.type); as progress) { @if (progress.state ===
-                'complete') {
-                <div class="uploaded-preview">
-                  <img
-                    [src]="progress.previewUrl || getPhotoUrl(progress.result?.url || '')"
-                    alt=""
-                  />
-                  <button mat-icon-button class="replace-btn" (click)="triggerUpload(slot.type)">
-                    <mat-icon>refresh</mat-icon>
-                  </button>
-                </div>
-                } @else if (progress.state === 'error') {
-                <div class="upload-error">
-                  <mat-icon color="warn">error</mat-icon>
-                  <span>{{ progress.error }}</span>
-                  <button mat-button (click)="triggerUpload(slot.type)">Pokušaj ponovo</button>
-                </div>
                 } @else {
-                <div class="upload-progress">
-                  <mat-progress-bar
-                    mode="determinate"
-                    [value]="progress.progress"
-                  ></mat-progress-bar>
-                  <span>{{ getProgressLabel(progress.state) }}</span>
-                </div>
-                } } @else {
-                <button mat-stroked-button class="upload-btn" (click)="triggerUpload(slot.type)">
-                  <mat-icon>add_a_photo</mat-icon>
-                  Dodaj fotografiju
-                </button>
+                  <div class="photo-placeholder">
+                    <mat-icon>{{ slot.icon }}</mat-icon>
+                    <span>{{ slot.label }}</span>
+                    @if (slot.required) {
+                      <span class="required-badge">Obavezno</span>
+                    }
+                  </div>
                 }
 
                 <input
@@ -177,6 +191,15 @@ import { environment } from '@environments/environment';
                 />
               </div>
               }
+            </div>
+
+            <!-- Progress summary -->
+            <div class="progress-summary">
+              <span>{{ getUploadedCount() }}/{{ photoSlots.length }} fotografija</span>
+              <mat-progress-bar
+                mode="determinate"
+                [value]="(getUploadedCount() / photoSlots.length) * 100"
+              ></mat-progress-bar>
             </div>
 
             <div class="step-actions">
@@ -205,35 +228,47 @@ import { environment } from '@environments/environment';
             <p class="hint">Unesite završnu kilometražu i nivo goriva.</p>
 
             <form [formGroup]="readingsForm" class="readings-form">
-              <mat-form-field appearance="outline">
-                <mat-label>Završna kilometraža (km)</mat-label>
+              <!-- Odometer -->
+              <mat-form-field appearance="outline" class="full-width">
+                <mat-label>Završna kilometraža</mat-label>
                 <input
                   matInput
                   type="number"
                   formControlName="endOdometer"
                   [min]="status?.startOdometer || 0"
+                  placeholder="npr. 45230"
                 />
-                <mat-icon matSuffix>speed</mat-icon>
+                <span matSuffix>km</span>
+                <mat-hint>Unesite vrednost sa odometra</mat-hint>
                 @if (readingsForm.get('endOdometer')?.errors?.['min']) {
-                <mat-error
-                  >Kilometraža ne može biti manja od početne ({{
-                    status?.startOdometer
-                  }}
-                  km)</mat-error
-                >
+                <mat-error>Kilometraža ne može biti manja od početne ({{ status?.startOdometer }} km)</mat-error>
                 }
               </mat-form-field>
 
-              <mat-form-field appearance="outline">
-                <mat-label>Nivo goriva (%)</mat-label>
-                <input matInput type="number" formControlName="endFuelLevel" min="0" max="100" />
-                <mat-icon matSuffix>local_gas_station</mat-icon>
-                <mat-hint>0-100%</mat-hint>
-              </mat-form-field>
+              <!-- Fuel level slider (matching check-in style) -->
+              <div class="fuel-section">
+                <label>Nivo goriva: {{ readingsForm.get('endFuelLevel')?.value }}%</label>
+                <div class="fuel-slider">
+                  <mat-icon>local_gas_station</mat-icon>
+                  <mat-slider min="0" max="100" step="5" discrete class="fuel-slider-input">
+                    <input matSliderThumb formControlName="endFuelLevel" />
+                  </mat-slider>
+                  <span class="fuel-value">{{ readingsForm.get('endFuelLevel')?.value }}%</span>
+                </div>
+                <div class="fuel-markers">
+                  <span>Prazan</span>
+                  <span>1/4</span>
+                  <span>1/2</span>
+                  <span>3/4</span>
+                  <span>Pun</span>
+                </div>
+              </div>
 
-              <mat-form-field appearance="outline">
+              <!-- Comment -->
+              <mat-form-field appearance="outline" class="full-width">
                 <mat-label>Komentar (opciono)</mat-label>
                 <textarea matInput formControlName="comment" rows="3"></textarea>
+                <mat-hint>Opišite stanje vozila ili napomene</mat-hint>
               </mat-form-field>
             </form>
 
@@ -292,25 +327,202 @@ import { environment } from '@environments/environment';
         }
 
         .hint {
-          color: var(--text-secondary);
-          margin-bottom: 24px;
+          color: var(--text-secondary, rgba(0,0,0,0.6));
+          margin: 4px 0 0;
+          font-size: 14px;
         }
       }
 
-      .photo-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      /* Section header matching check-in style */
+      .section-header {
+        display: flex;
+        align-items: center;
         gap: 12px;
-        margin-bottom: 24px;
+        margin-bottom: 20px;
+
+        mat-icon {
+          font-size: 32px;
+          width: 32px;
+          height: 32px;
+          color: var(--primary-color, #1976d2);
+        }
+
+        h3 {
+          margin: 0;
+          font-size: 18px;
+        }
       }
 
+      /* Premium photo grid matching check-in */
+      .photo-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+
+      .photo-slot {
+        aspect-ratio: 4/3;
+        border-radius: 12px;
+        border: 2px dashed var(--border-color, #e0e0e0);
+        overflow: hidden;
+        position: relative;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .photo-slot:active {
+        transform: scale(0.98);
+      }
+
+      .photo-slot.completed {
+        border-color: var(--success-color, #4caf50);
+        border-style: solid;
+      }
+
+      .photo-slot.uploading {
+        border-color: var(--primary-color, #1976d2);
+      }
+
+      .photo-placeholder {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        gap: 4px;
+        color: var(--text-secondary, rgba(0,0,0,0.6));
+        background: var(--surface-color, #fafafa);
+      }
+
+      .photo-placeholder mat-icon {
+        font-size: 36px;
+        width: 36px;
+        height: 36px;
+      }
+
+      .photo-placeholder span {
+        font-size: 12px;
+        text-align: center;
+      }
+
+      .required-badge {
+        font-size: 10px;
+        padding: 2px 6px;
+        background: var(--primary-color, #1976d2);
+        color: white;
+        border-radius: 8px;
+      }
+
+      .photo-preview {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .success-badge {
+        position: absolute;
+        bottom: 8px;
+        left: 8px;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: var(--success-color, #4caf50);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      }
+
+      .success-badge mat-icon {
+        font-size: 18px;
+        width: 18px;
+        height: 18px;
+        color: white;
+      }
+
+      .remove-photo-btn {
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        z-index: 10;
+        width: 28px !important;
+        height: 28px !important;
+      }
+
+      .remove-photo-btn mat-icon {
+        font-size: 18px;
+        width: 18px;
+        height: 18px;
+      }
+
+      .upload-progress {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: rgba(0, 0, 0, 0.7);
+        padding: 8px;
+        color: white;
+        text-align: center;
+      }
+
+      .error-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: rgba(244, 67, 54, 0.9);
+        color: white;
+        padding: 8px;
+        text-align: center;
+        gap: 4px;
+      }
+
+      .error-overlay mat-icon {
+        font-size: 24px;
+        width: 24px;
+        height: 24px;
+      }
+
+      .error-message {
+        font-size: 11px;
+        line-height: 1.3;
+      }
+
+      .retry-btn {
+        font-size: 12px !important;
+        padding: 0 8px !important;
+        min-width: auto !important;
+        height: 28px !important;
+      }
+
+      /* Progress summary */
+      .progress-summary {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-bottom: 16px;
+        
+        span {
+          font-size: 14px;
+          color: var(--text-secondary, rgba(0,0,0,0.6));
+        }
+      }
+
+      /* Check-in review photos */
       .photo-item {
         position: relative;
         aspect-ratio: 4/3;
         border-radius: 8px;
         overflow: hidden;
         cursor: pointer;
-        background: var(--surface-color);
+        background: var(--surface-color, #fafafa);
 
         img {
           width: 100%;
@@ -341,11 +553,11 @@ import { environment } from '@environments/environment';
           align-items: center;
           gap: 8px;
           padding: 12px 16px;
-          background: var(--surface-color);
+          background: var(--surface-color, #fafafa);
           border-radius: 8px;
 
           mat-icon {
-            color: var(--primary-color);
+            color: var(--primary-color, #1976d2);
           }
         }
       }
@@ -353,120 +565,81 @@ import { environment } from '@environments/environment';
       .empty-state {
         text-align: center;
         padding: 48px;
-        background: var(--surface-color);
+        background: var(--surface-color, #fafafa);
         border-radius: 8px;
 
         mat-icon {
           font-size: 48px;
           width: 48px;
           height: 48px;
-          color: var(--text-secondary);
+          color: var(--text-secondary, rgba(0,0,0,0.6));
         }
 
         p {
           margin: 16px 0 0;
-          color: var(--text-secondary);
+          color: var(--text-secondary, rgba(0,0,0,0.6));
         }
       }
 
-      .photo-upload-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-        gap: 16px;
-        margin-bottom: 24px;
-      }
-
-      .upload-slot {
-        padding: 16px;
-        background: var(--surface-color);
-        border-radius: 12px;
-        border: 2px dashed var(--border-color);
-        transition: border-color 0.2s;
-
-        &.completed {
-          border-style: solid;
-          border-color: var(--success-color, #4caf50);
-        }
-
-        .slot-header {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          margin-bottom: 12px;
-
-          mat-icon {
-            font-size: 20px;
-            width: 20px;
-            height: 20px;
-            color: var(--text-secondary);
-          }
-
-          .required {
-            color: var(--warn-color);
-          }
-        }
-
-        .upload-btn {
-          width: 100%;
-        }
-
-        .uploaded-preview {
-          position: relative;
-          aspect-ratio: 4/3;
-          border-radius: 8px;
-          overflow: hidden;
-
-          img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-          }
-
-          .replace-btn {
-            position: absolute;
-            top: 4px;
-            right: 4px;
-            background: rgba(0, 0, 0, 0.5);
-            color: white;
-          }
-        }
-
-        .upload-progress {
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-
-          span {
-            font-size: 0.75rem;
-            color: var(--text-secondary);
-          }
-        }
-
-        .upload-error {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 8px;
-          text-align: center;
-
-          span {
-            font-size: 0.75rem;
-            color: var(--warn-color);
-          }
-        }
-      }
-
+      /* Readings form */
       .readings-form {
         display: flex;
         flex-direction: column;
         gap: 16px;
-        max-width: 400px;
+        max-width: 500px;
       }
 
+      .full-width {
+        width: 100%;
+      }
+
+      /* Fuel slider matching check-in style */
+      .fuel-section {
+        padding: 16px;
+        background: var(--surface-color, #fafafa);
+        border-radius: 12px;
+
+        label {
+          font-weight: 500;
+          margin-bottom: 12px;
+          display: block;
+        }
+      }
+
+      .fuel-slider {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+
+        mat-icon {
+          color: var(--primary-color, #1976d2);
+        }
+
+        .fuel-slider-input {
+          flex: 1;
+        }
+
+        .fuel-value {
+          font-weight: 600;
+          min-width: 48px;
+          text-align: right;
+        }
+      }
+
+      .fuel-markers {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 4px;
+        padding: 0 40px;
+        font-size: 11px;
+        color: var(--text-secondary, rgba(0,0,0,0.6));
+      }
+
+      /* Trip summary */
       .summary {
         margin: 24px 0;
         padding: 16px;
-        background: var(--surface-color);
+        background: var(--surface-color, #fafafa);
         border-radius: 8px;
 
         h4 {
@@ -477,14 +650,14 @@ import { environment } from '@environments/environment';
           display: flex;
           justify-content: space-between;
           padding: 8px 0;
-          border-bottom: 1px solid var(--border-color);
+          border-bottom: 1px solid var(--border-color, #e0e0e0);
 
           &:last-child {
             border-bottom: none;
           }
 
           .negative {
-            color: var(--warn-color);
+            color: var(--warn-color, #f44336);
           }
         }
       }
@@ -495,16 +668,215 @@ import { environment } from '@environments/environment';
         gap: 16px;
         margin-top: 24px;
         padding-top: 16px;
-        border-top: 1px solid var(--border-color);
+        border-top: 1px solid var(--border-color, #e0e0e0);
       }
 
       .hidden {
         display: none;
       }
+
+      /* ============================================
+         DARK MODE SUPPORT
+         ============================================ */
+      
+      /* Dark mode via system preference */
+      @media (prefers-color-scheme: dark) {
+        .section-header {
+          mat-icon {
+            color: #64b5f6;
+          }
+
+          h3 {
+            color: rgba(255, 255, 255, 0.92);
+          }
+
+          .hint {
+            color: rgba(255, 255, 255, 0.7);
+          }
+        }
+
+        .photo-slot {
+          border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .photo-slot.completed {
+          border-color: #4ade80;
+        }
+
+        .photo-placeholder {
+          background: rgba(255, 255, 255, 0.05);
+          color: rgba(255, 255, 255, 0.7);
+        }
+
+        .required-badge {
+          background: #3b82f6;
+        }
+
+        .progress-summary span {
+          color: rgba(255, 255, 255, 0.87);
+        }
+
+        .readings-comparison .reading {
+          background: rgba(255, 255, 255, 0.05);
+
+          mat-icon {
+            color: #64b5f6;
+          }
+
+          span, strong {
+            color: rgba(255, 255, 255, 0.87);
+          }
+        }
+
+        .fuel-section {
+          background: rgba(255, 255, 255, 0.05);
+
+          label {
+            color: rgba(255, 255, 255, 0.87);
+          }
+
+          mat-icon {
+            color: #64b5f6;
+          }
+
+          .fuel-value {
+            color: rgba(255, 255, 255, 0.92);
+          }
+        }
+
+        .fuel-markers span {
+          color: rgba(255, 255, 255, 0.6);
+        }
+
+        .summary {
+          background: rgba(255, 255, 255, 0.05);
+
+          h4 {
+            color: rgba(255, 255, 255, 0.92);
+          }
+
+          .summary-item {
+            border-bottom-color: rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.87);
+          }
+        }
+
+        .step-actions {
+          border-top-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .step-content {
+          h3 {
+            color: rgba(255, 255, 255, 0.92);
+          }
+
+          .hint {
+            color: rgba(255, 255, 255, 0.7);
+          }
+        }
+      }
+
+      /* Dark mode via Angular theme class */
+      :host-context(.dark-theme),
+      :host-context(.theme-dark) {
+        .section-header {
+          mat-icon {
+            color: #64b5f6;
+          }
+
+          h3 {
+            color: rgba(255, 255, 255, 0.92);
+          }
+
+          .hint {
+            color: rgba(255, 255, 255, 0.7);
+          }
+        }
+
+        .photo-slot {
+          border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .photo-slot.completed {
+          border-color: #4ade80;
+        }
+
+        .photo-placeholder {
+          background: rgba(255, 255, 255, 0.05);
+          color: rgba(255, 255, 255, 0.7);
+        }
+
+        .required-badge {
+          background: #3b82f6;
+        }
+
+        .progress-summary span {
+          color: rgba(255, 255, 255, 0.87);
+        }
+
+        .readings-comparison .reading {
+          background: rgba(255, 255, 255, 0.05);
+
+          mat-icon {
+            color: #64b5f6;
+          }
+
+          span, strong {
+            color: rgba(255, 255, 255, 0.87);
+          }
+        }
+
+        .fuel-section {
+          background: rgba(255, 255, 255, 0.05);
+
+          label {
+            color: rgba(255, 255, 255, 0.87);
+          }
+
+          mat-icon {
+            color: #64b5f6;
+          }
+
+          .fuel-value {
+            color: rgba(255, 255, 255, 0.92);
+          }
+        }
+
+        .fuel-markers span {
+          color: rgba(255, 255, 255, 0.6);
+        }
+
+        .summary {
+          background: rgba(255, 255, 255, 0.05);
+
+          h4 {
+            color: rgba(255, 255, 255, 0.92);
+          }
+
+          .summary-item {
+            border-bottom-color: rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.87);
+          }
+        }
+
+        .step-actions {
+          border-top-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .step-content {
+          h3 {
+            color: rgba(255, 255, 255, 0.92);
+          }
+
+          .hint {
+            color: rgba(255, 255, 255, 0.7);
+          }
+        }
+      }
     `,
   ],
 })
-export class GuestCheckoutComponent {
+export class GuestCheckoutComponent implements OnInit {
   @Input() bookingId!: number;
   @Input() status: CheckOutStatusDTO | null = null;
   @Output() completed = new EventEmitter<void>();
@@ -517,7 +889,7 @@ export class GuestCheckoutComponent {
 
   readingsForm: FormGroup = this.fb.group({
     endOdometer: [null, [Validators.required, Validators.min(0)]],
-    endFuelLevel: [null, [Validators.required, Validators.min(0), Validators.max(100)]],
+    endFuelLevel: [50, [Validators.required, Validators.min(0), Validators.max(100)]], // Default 50% like check-in
     comment: [''],
   });
 
@@ -604,6 +976,13 @@ export class GuestCheckoutComponent {
   allRequiredPhotosUploaded(): boolean {
     const required = CHECKOUT_PHOTO_SLOTS.filter((s) => s.required).map((s) => s.type);
     return required.every((type) => this.isPhotoUploaded(type));
+  }
+
+  /**
+   * Get count of uploaded photos for progress display.
+   */
+  getUploadedCount(): number {
+    return this.photoSlots.filter((slot) => this.isPhotoUploaded(slot.type)).length;
   }
 
   getProgressLabel(state: string): string {

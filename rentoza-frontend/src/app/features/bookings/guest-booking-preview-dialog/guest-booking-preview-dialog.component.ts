@@ -6,11 +6,16 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatDividerModule } from '@angular/material/divider';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { BookingService } from '@core/services/booking.service';
 import { GuestBookingPreview } from '@core/models/guest-preview.model';
 import { catchError, finalize } from 'rxjs/operators';
 import { of } from 'rxjs';
 
+/**
+ * Guest booking preview dialog for host approval workflow.
+ * Displays enterprise-grade guest information to help hosts make informed decisions.
+ */
 @Component({
   selector: 'app-guest-booking-preview-dialog',
   standalone: true,
@@ -22,6 +27,7 @@ import { of } from 'rxjs';
     MatProgressSpinnerModule,
     MatChipsModule,
     MatDividerModule,
+    MatTooltipModule,
   ],
   templateUrl: './guest-booking-preview-dialog.component.html',
   styleUrls: ['./guest-booking-preview-dialog.component.scss'],
@@ -72,6 +78,9 @@ export class GuestBookingPreviewDialogComponent implements OnInit {
     this.dialogRef.close();
   }
 
+  /**
+   * Format date-time string for display (Serbian locale).
+   */
   formatDate(dateStr: string): string {
     if (!dateStr) return '';
     return new Date(dateStr).toLocaleDateString('sr-RS', {
@@ -82,4 +91,37 @@ export class GuestBookingPreviewDialogComponent implements OnInit {
       minute: '2-digit',
     });
   }
+
+  /**
+   * Format license tenure in months to human-readable string.
+   * e.g., 36 months -> "3 godine", 8 months -> "8 meseci"
+   */
+  formatTenure(months: number): string {
+    if (!months || months <= 0) return '—';
+    
+    if (months >= 12) {
+      const years = Math.floor(months / 12);
+      const remainingMonths = months % 12;
+      
+      if (remainingMonths === 0) {
+        return years === 1 ? '1 godina' : `${years} godina`;
+      }
+      return `${years}g ${remainingMonths}m`;
+    }
+    
+    return months === 1 ? '1 mesec' : `${months} meseci`;
+  }
+
+  /**
+   * Format license expiry date for display.
+   */
+  formatLicenseExpiry(dateStr: string): string {
+    if (!dateStr) return '—';
+    return new Date(dateStr).toLocaleDateString('sr-RS', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
+  }
 }
+

@@ -274,8 +274,10 @@
         <mat-spinner diameter="20"></mat-spinner>
         <span>Otpremanje...</span>
         } @else {
-        <mat-icon>cloud_upload</mat-icon>
-        <span>Otpremi za verifikaciju</span>
+        <ng-container>
+          <mat-icon>cloud_upload</mat-icon>
+          <span>Otpremi za verifikaciju</span>
+        </ng-container>
         }
       </button>
     </mat-card-actions>

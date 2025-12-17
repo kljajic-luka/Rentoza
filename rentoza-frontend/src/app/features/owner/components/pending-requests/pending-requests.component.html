@@ -34,12 +34,12 @@
           @if (booking.car.imageUrl) {
           <img
             [src]="booking.car.imageUrl"
-            [alt]="booking.car.model + ' ' + booking.car.model"
+            [alt]="booking.car.brand + ' ' + booking.car.model"
             class="car-image"
           />
           }
           <div>
-            <mat-card-title>{{ booking.car.model }} {{ booking.car.model }}</mat-card-title>
+            <mat-card-title>{{ booking.car.brand }} {{ booking.car.model }}</mat-card-title>
             <mat-card-subtitle>
               Zahtev od: {{ booking.renter.firstName }} {{ booking.renter.lastName }}
             </mat-card-subtitle>

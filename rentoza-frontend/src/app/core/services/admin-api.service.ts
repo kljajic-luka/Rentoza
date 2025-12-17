@@ -629,11 +629,9 @@ export class AdminApiService {
     // Prefer HATEOAS embedded content; fall back to first embedded array or legacy Page content.
     let content: T[] = [];
     if (Array.isArray(response._embedded?.content)) {
-      content = response._embedded!.content as T[];
+      content = response._embedded.content;
     } else if (response._embedded) {
-      const firstArray = Object.values(response._embedded).find((v) => Array.isArray(v)) as
-        | T[]
-        | undefined;
+      const firstArray = Object.values(response._embedded).find((v) => Array.isArray(v));
       if (firstArray) {
         content = firstArray;
       }

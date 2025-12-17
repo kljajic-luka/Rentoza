@@ -1,6 +1,5 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
-import { RouterLink } from '@angular/router';
 import {
   AbstractControl,
   ValidationErrors,
@@ -67,7 +66,6 @@ const optionalMinLengthValidator = (minLength: number) => {
     MatSnackBarModule,
     FlexLayoutModule,
     ProfilePictureUploaderComponent,
-    RouterLink,
     VerificationBadgeComponent,
   ],
   templateUrl: './profile.component.html',

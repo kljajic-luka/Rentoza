@@ -233,3 +233,143 @@
   border-radius: 8px;
   text-align: center;
 }
+
+// ============================================================================
+// DARK MODE SUPPORT
+// ============================================================================
+:host-context(.theme-dark) {
+  .upload-label {
+    color: #e5e7eb;
+  }
+
+  .drop-zone {
+    border-color: #4b5563;
+    background: #1f2937;
+
+    &.drag-over {
+      border-color: #60a5fa;
+      background: #1e3a5f;
+    }
+
+    &.has-file {
+      border-color: #34d399;
+      background: #064e3b;
+    }
+
+    &.uploading {
+      border-color: #60a5fa;
+      background: #1e3a5f;
+    }
+  }
+
+  .empty-state {
+    .icon {
+      opacity: 0.7;
+    }
+
+    .primary-text {
+      color: #e5e7eb;
+    }
+
+    .secondary-text {
+      color: #9ca3af;
+    }
+
+    .hint {
+      color: #6b7280;
+    }
+  }
+
+  .browse-button {
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    color: white;
+
+    &:hover {
+      background: linear-gradient(135deg, #60a5fa, #3b82f6);
+    }
+  }
+
+  .file-preview {
+    .preview-image {
+      border-color: #4b5563;
+    }
+
+    .pdf-icon {
+      background: #78350f;
+    }
+
+    .file-info {
+      .file-name {
+        color: #e5e7eb;
+      }
+
+      .file-size {
+        color: #9ca3af;
+      }
+    }
+
+    .remove-button {
+      background: #7f1d1d;
+      color: #fca5a5;
+
+      &:hover {
+        background: #991b1b;
+      }
+    }
+  }
+
+  .progress-container {
+    .progress-bar {
+      background: #374151;
+    }
+
+    .progress-text {
+      color: #60a5fa;
+    }
+  }
+
+  .expiry-date-container {
+    label {
+      color: #9ca3af;
+    }
+
+    input[type="date"] {
+      background: #374151;
+      border-color: #4b5563;
+      color: #e5e7eb;
+
+      &:focus {
+        border-color: #60a5fa;
+        box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.2);
+      }
+
+      // Style the calendar icon in dark mode
+      &::-webkit-calendar-picker-indicator {
+        filter: invert(1);
+      }
+    }
+
+    .hint {
+      color: #6b7280;
+    }
+  }
+
+  .error-message {
+    color: #fca5a5;
+    background: #7f1d1d;
+  }
+
+  .upload-button {
+    background: linear-gradient(135deg, #10b981, #059669);
+
+    &:hover {
+      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+    }
+  }
+
+  .success-message {
+    color: #34d399;
+    background: #064e3b;
+  }
+}
+

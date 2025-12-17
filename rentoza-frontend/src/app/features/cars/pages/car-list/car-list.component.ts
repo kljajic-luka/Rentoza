@@ -1443,4 +1443,18 @@ export class CarListComponent implements OnInit, OnDestroy {
       replaceUrl: true,
     });
   }
+
+  // ====== Image Error Handling ======
+
+  /**
+   * Handle broken car images by falling back to placeholder SVG.
+   * Prevents broken image icons from showing in the UI.
+   */
+  protected handleImageError(event: Event): void {
+    const img = event.target as HTMLImageElement;
+    if (img && !img.src.includes('placeholder-car.svg')) {
+      img.src = '/images/placeholder-car.svg';
+      img.alt = 'Slika nije dostupna';
+    }
+  }
 }

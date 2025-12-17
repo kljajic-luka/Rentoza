@@ -403,6 +403,16 @@
     button[color="accent"] {
       flex: 1 1 100%;
     }
+
+    // Loading spinner inside buttons
+    .button-spinner {
+      display: inline-block;
+      margin-right: 4px;
+      
+      ::ng-deep circle {
+        stroke: currentColor;
+      }
+    }
   }
 }
 

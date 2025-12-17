@@ -2,8 +2,8 @@
   <h3 class="title">Verifikacija vlasnika</h3>
   <p class="subtitle">Potrebno za iznajmljivanje vozila u skladu sa srpskim propisima</p>
 
-  <!-- Current Status -->
-  <div *ngIf="status()" class="status-card" [ngClass]="getStatusClass()">
+  <!-- Current Status (show only when loaded) -->
+  <div *ngIf="!initializing() && status()" class="status-card" [ngClass]="getStatusClass()">
     <span class="status-label">Status: {{ getStatusLabel() }}</span>
     <span *ngIf="status()?.maskedId" class="masked-id">
       ID: {{ status()?.maskedId }}
@@ -34,7 +34,7 @@
   </div>
 
   <!-- Form Section (show only if not submitted) -->
-  <div *ngIf="status()?.status === 'NOT_SUBMITTED' || !status()" class="form-section">
+  <div *ngIf="!initializing() && (status()?.status === 'NOT_SUBMITTED')" class="form-section">
     
     <!-- Owner Type Toggle -->
     <div class="type-toggle">

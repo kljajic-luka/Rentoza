@@ -94,7 +94,7 @@ export class PendingRequestsComponent implements OnInit {
     this.bookingService.approveBooking(bookingId).subscribe({
       next: (updatedBooking) => {
         this.snackBar.open(
-          `Rezervacija za ${booking.car.model} ${booking.car.model} je odobrena!`,
+          `Rezervacija za ${booking.car.brand} ${booking.car.model} je odobrena!`,
           'Zatvori',
           {
             duration: 4000,
@@ -171,7 +171,7 @@ export class PendingRequestsComponent implements OnInit {
         this.bookingService.declineBooking(bookingId, reason).subscribe({
           next: () => {
             this.snackBar.open(
-              `Rezervacija za ${booking.car.model} ${booking.car.model} je odbijena.`,
+              `Rezervacija za ${booking.car.brand} ${booking.car.model} je odbijena.`,
               'Zatvori',
               {
                 duration: 4000,

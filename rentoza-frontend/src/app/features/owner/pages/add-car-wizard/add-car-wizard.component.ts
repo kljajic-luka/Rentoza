@@ -1,7 +1,13 @@
 import { Component, OnInit, inject, signal, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterLink } from '@angular/router';
-import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import {
+  FormBuilder,
+  ReactiveFormsModule,
+  Validators,
+  AbstractControl,
+  ValidationErrors,
+} from '@angular/forms';
 import { MatStepperModule, MatStepper } from '@angular/material/stepper';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -162,8 +168,12 @@ export class AddCarWizardComponent implements OnInit {
       new Date().getFullYear(),
       [Validators.required, Validators.min(1950), Validators.max(2050)],
     ],
-    licensePlate: ['', [Validators.required, Validators.pattern('^[A-Z]{2}-[0-9]{3,4}-[A-Z]{2}$')]],
-    pricePerDay: [0, [Validators.required, Validators.min(10)]],
+    // License plate: Auto-formatting + validation only on submission
+    // Format: XX-XXXXXXXX (2 letters + dash + 4-8 chars, min 7 total)
+    // Auto-uppercase and auto-dash insertion while typing
+    licensePlate: ['', [Validators.required, this.licensePlateValidator.bind(this)]],
+    // Price field initialized as empty string (not 0) to avoid user having to delete zero
+    pricePerDay: ['', [Validators.required, Validators.min(10)]],
     description: ['', [Validators.maxLength(1000)]],
   });
 
@@ -172,7 +182,7 @@ export class AddCarWizardComponent implements OnInit {
     seats: [5, [Validators.required, Validators.min(2), Validators.max(9)]],
     fuelType: [FuelType.BENZIN, [Validators.required]],
     transmissionType: [TransmissionType.MANUAL, [Validators.required]],
-    fuelConsumption: [0, [Validators.min(0), Validators.max(50)]],
+    fuelConsumption: [null as number | null, [Validators.min(0), Validators.max(50)]],
   });
 
   // Step 5: Rental Policies
@@ -183,6 +193,98 @@ export class AddCarWizardComponent implements OnInit {
 
   ngOnInit(): void {
     // Initialize with default values
+    // Setup license plate auto-formatting
+    this.basicInfoForm.get('licensePlate')?.valueChanges.subscribe((value) => {
+      if (value) {
+        const formatted = this.formatLicensePlate(value);
+        if (formatted !== value) {
+          this.basicInfoForm.get('licensePlate')?.setValue(formatted, { emitEvent: false });
+        }
+      }
+    });
+  }
+
+  /**
+   * Auto-format license plate input (Serbian format):
+   * - Supports traditional: XX-NNN-XX or XX-NNNN-XX (2 dashes)
+   * - Supports custom: XX-XXXXXXXX (1 dash)
+   * - Converts to uppercase
+   * - Auto-inserts dashes at correct positions
+   * - Removes invalid characters
+   */
+  private formatLicensePlate(value: string): string {
+    if (!value) return '';
+
+    // Remove spaces and convert to uppercase
+    const formatted = value.toUpperCase().replace(/\s+/g, '');
+
+    // Extract first 2 letters (city code)
+    const letters = formatted.substring(0, 2);
+    if (!/^[A-Z]{2}$/.test(letters)) {
+      // Keep only the letters part if not 2 uppercase letters yet
+      return formatted.substring(0, 2);
+    }
+
+    // Get everything after first 2 letters
+    let rest = formatted.substring(2);
+
+    // Remove all dashes first (we'll re-add them in correct position)
+    rest = rest.replace(/-/g, '');
+
+    // Keep only alphanumeric characters
+    rest = rest.replace(/[^A-Z0-9]/g, '');
+
+    // Determine formatting based on length
+    // Traditional Serbian format: XX-NNN-XX (3-4 middle chars + 2 end chars)
+    // Maximum: 10 chars without dashes (2 + 4 + 4 for edge cases)
+    rest = rest.substring(0, 8);
+
+    if (rest.length === 0) {
+      return letters;
+    }
+
+    // Auto-format logic:
+    // If we have 3+ characters in rest, format as XX-XXX-XX or XX-XXXX-XX
+    // Check if this looks like traditional format (should end with 2+ chars)
+    if (rest.length >= 5) {
+      // Has enough for traditional format: XX-NNN-XX or XX-NNNN-XX
+      // Take first 3-4 chars for middle, rest for end
+      const middleLength = rest.length >= 6 ? 4 : 3; // 4 if 6+ total chars, else 3
+      const middle = rest.substring(0, middleLength);
+      const end = rest.substring(middleLength, middleLength + 2);
+      return letters + '-' + middle + '-' + end;
+    } else if (rest.length <= 4) {
+      // Not enough for traditional format, use simple format XX-XXXX
+      return letters + '-' + rest;
+    } else {
+      // rest.length === 5: ambiguous, use XX-XXX-XX
+      return letters + '-' + rest.substring(0, 3) + '-' + rest.substring(3, 5);
+    }
+  }
+
+  /**
+   * License plate custom validator (Serbian format)
+   * Supports both traditional and custom formats
+   * Traditional: XX-NNN-XX or XX-NNNN-XX (2 dashes)
+   * Custom: XX-XXXXXXXX (1 dash)
+   * Validation happens only on form submission
+   */
+  private licensePlateValidator(control: AbstractControl): ValidationErrors | null {
+    const value = control.value;
+
+    if (!value) {
+      return { required: true };
+    }
+
+    // Support traditional Serbian format: XX-NNN-XX or XX-NNNN-XX
+    // Also support custom format: XX-XXXXXXXX
+    const pattern = /^[A-Z]{2}-([A-Z0-9]{3,4}-[A-Z0-9]{2}|[A-Z0-9]{4,8})$/;
+
+    if (!pattern.test(value)) {
+      return { invalidPlate: true };
+    }
+
+    return null;
   }
 
   // ============================================================================
@@ -390,13 +492,14 @@ export class AddCarWizardComponent implements OnInit {
         locationCity: location.city,
         locationZipCode: location.zipCode,
 
-        pricePerDay: this.basicInfoForm.value.pricePerDay!,
+        // Convert form value from string back to number for Car model
+        pricePerDay: Number(this.basicInfoForm.value.pricePerDay!),
         description: this.basicInfoForm.value.description,
 
         seats: this.specificationsForm.value.seats!,
         fuelType: this.specificationsForm.value.fuelType!,
         transmissionType: this.specificationsForm.value.transmissionType!,
-        fuelConsumption: this.specificationsForm.value.fuelConsumption,
+        fuelConsumption: this.specificationsForm.value.fuelConsumption ?? 0,
 
         features: this.selectedFeatures(),
         addOns: this.addOns(), // tags -> addOns property in backend?

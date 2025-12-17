@@ -359,14 +359,9 @@ export class CarDetailComponent {
 
     dialogRef.afterClosed().subscribe((result) => {
       if (result === true) {
-        // Booking was successful
-        this.snackBar.open('Uspešno ste rezervisali vozilo!', 'Zatvori', {
-          duration: 4000,
-          horizontalPosition: 'center',
-          verticalPosition: 'top',
-        });
-
-        // Refresh bookings to show the new blocked dates
+        // Booking was successful - dialog already showed appropriate message
+        // (either "pending approval" or "confirmed" based on status)
+        // Just refresh bookings to show the new blocked dates
         this.refreshBookings();
       }
     });
@@ -707,6 +702,17 @@ export class CarDetailComponent {
       this.previousImage(car);
     } else if (event.key === 'ArrowRight') {
       this.nextImage(car);
+    }
+  }
+
+  /**
+   * Handle broken car images by falling back to placeholder SVG.
+   */
+  protected handleImageError(event: Event): void {
+    const img = event.target as HTMLImageElement;
+    if (img && !img.src.includes('placeholder-car.svg')) {
+      img.src = '/images/placeholder-car.svg';
+      img.alt = 'Slika nije dostupna';
     }
   }
 }

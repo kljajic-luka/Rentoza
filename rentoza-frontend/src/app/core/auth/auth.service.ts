@@ -530,7 +530,7 @@ export class AuthService {
     const normalizedUser: UserProfile = {
       ...user,
       id: String(user.id),
-      roles: Array.isArray(user.roles) ? (user.roles as UserRole[]) : [],
+      roles: Array.isArray(user.roles) ? (user.roles) : [],
     };
 
     // Update observable only (no localStorage in cookie-only mode)

@@ -1,0 +1,316 @@
+.oauth-complete {
+  min-height: calc(100vh - 120px);
+  display: grid;
+  place-items: center;
+  padding: 3rem 1rem;
+  background: radial-gradient(circle at top left, rgba(59, 130, 246, 0.08), transparent 55%),
+    radial-gradient(circle at bottom right, rgba(99, 102, 241, 0.1), transparent 50%);
+  gap: 2rem;
+
+  &__header {
+    text-align: center;
+    max-width: 520px;
+
+    h1 {
+      margin: 0 0 0.75rem;
+      font-size: clamp(1.75rem, 3vw, 2.25rem);
+    }
+
+    p {
+      margin: 0;
+      color: var(--color-text-muted);
+    }
+  }
+}
+
+.loading-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 3rem;
+  border-radius: 24px;
+  background: var(--color-surface);
+
+  p {
+    margin: 0;
+    color: var(--color-text-muted);
+  }
+}
+
+.stepper-card {
+  width: min(600px, 100%);
+  border-radius: 24px;
+  box-shadow: var(--shadow-elevated);
+  backdrop-filter: blur(8px);
+  background: var(--color-surface);
+  padding: 1.5rem;
+
+  ::ng-deep {
+    .mat-horizontal-stepper-header-container {
+      margin-bottom: 1.5rem;
+    }
+
+    .mat-step-header {
+      .mat-step-icon {
+        background-color: rgba(59, 130, 246, 0.2);
+        color: rgba(59, 130, 246, 0.9);
+      }
+
+      .mat-step-icon-selected,
+      .mat-step-icon-state-done {
+        background-color: rgba(59, 130, 246, 0.9);
+        color: white;
+      }
+    }
+  }
+}
+
+.step-form {
+  display: grid;
+  gap: 1.25rem;
+  padding: 0.5rem 0;
+}
+
+.step-intro {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 1rem;
+  background: rgba(59, 130, 246, 0.06);
+  border-radius: 12px;
+  margin-bottom: 0.5rem;
+
+  mat-icon {
+    color: rgba(59, 130, 246, 0.8);
+    font-size: 1.5rem;
+    width: 1.5rem;
+    height: 1.5rem;
+    flex-shrink: 0;
+    margin-top: 0.25rem;
+  }
+
+  h3 {
+    margin: 0 0 0.25rem;
+    font-size: 1.125rem;
+    font-weight: 600;
+  }
+
+  p {
+    margin: 0;
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+  }
+}
+
+mat-form-field {
+  width: 100%;
+
+  ::ng-deep .mdc-text-field {
+    border-radius: 12px;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Age Confirmation Checkbox
+// ═══════════════════════════════════════════════════════════════════════════
+
+.age-checkbox,
+.confirm-checkbox {
+  margin-top: -0.25rem;
+
+  ::ng-deep .mdc-form-field {
+    font-size: 0.9375rem;
+  }
+}
+
+.checkbox-error {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--mdc-theme-error, #f44336);
+  margin-top: -0.5rem;
+  padding-left: 0.5rem;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Owner Type Selection
+// ═══════════════════════════════════════════════════════════════════════════
+
+.owner-type-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+
+  mat-radio-button {
+    padding: 1rem;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 12px;
+    transition: all 0.2s ease;
+
+    &:hover {
+      border-color: rgba(59, 130, 246, 0.4);
+      background: rgba(59, 130, 246, 0.04);
+    }
+
+    &.mat-mdc-radio-checked {
+      border-color: rgba(59, 130, 246, 0.6);
+      background: rgba(59, 130, 246, 0.08);
+    }
+
+    .radio-label {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+
+      strong {
+        font-size: 0.9375rem;
+        color: var(--color-text-primary);
+      }
+
+      span {
+        font-size: 0.8125rem;
+        color: var(--color-text-muted);
+      }
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Agreements Section
+// ═══════════════════════════════════════════════════════════════════════════
+
+.agreements-section {
+  margin-top: 0.5rem;
+  padding-top: 1rem;
+  border-top: 1px dashed rgba(0, 0, 0, 0.08);
+
+  h4 {
+    margin: 0 0 1rem;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+  }
+
+  mat-checkbox {
+    display: block;
+    margin-bottom: 0.75rem;
+
+    ::ng-deep .mdc-form-field {
+      font-size: 0.875rem;
+    }
+
+    a {
+      color: rgba(59, 130, 246, 0.9);
+      text-decoration: none;
+
+      &:hover {
+        text-decoration: underline;
+      }
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Summary Card (Review Step)
+// ═══════════════════════════════════════════════════════════════════════════
+
+.summary-card {
+  background: rgba(0, 0, 0, 0.02);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  padding: 1.25rem;
+
+  h4 {
+    margin: 0 0 1rem;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+  }
+}
+
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0;
+
+  &:not(:last-child) {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+  }
+}
+
+.summary-label {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+.summary-value {
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.summary-divider {
+  height: 1px;
+  background: rgba(0, 0, 0, 0.08);
+  margin: 0.75rem 0;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Step Actions
+// ═══════════════════════════════════════════════════════════════════════════
+
+.step-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+
+  button {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 44px;
+    border-radius: 999px;
+    font-weight: 500;
+
+    mat-spinner {
+      margin-right: 0.5rem;
+    }
+  }
+
+  button[mat-raised-button] {
+    padding: 0 1.5rem;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Responsive
+// ═══════════════════════════════════════════════════════════════════════════
+
+@media (max-width: 599px) {
+  .stepper-card {
+    border-radius: 18px;
+    padding: 1rem;
+  }
+
+  .step-intro {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .owner-type-group mat-radio-button {
+    padding: 0.75rem;
+  }
+
+  .step-actions {
+    flex-direction: column;
+
+    button {
+      width: 100%;
+      justify-content: center;
+    }
+  }
+}

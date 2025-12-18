@@ -46,6 +46,20 @@ export const routes: Routes = [
             (m) => m.AuthCallbackComponent
           ),
       },
+      // ═══════════════════════════════════════════════════════════════════════════
+      // PHASE 2: OAuth Profile Completion Route
+      // ═══════════════════════════════════════════════════════════════════════════
+      // For Google OAuth users with registrationStatus=INCOMPLETE
+      // User must be authenticated but profile is incomplete
+      {
+        path: 'complete-profile',
+        canActivate: [RoleGuard],
+        data: { roles: ['USER', 'OWNER'] },
+        loadComponent: () =>
+          import('@features/auth/pages/oauth-complete/oauth-complete.component').then(
+            (m) => m.OAuthCompleteComponent
+          ),
+      },
     ],
   },
   // OAuth2 cookie-only success route (no token in URL)

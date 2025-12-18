@@ -217,6 +217,38 @@ public class OwnerVerificationService {
         log.info("Legal entity verification submitted for userId={}, PIB masked={}", 
             userId, user.getMaskedPib());
     }
+
+    // ==================== AUTO-SUBMIT AT REGISTRATION ====================
+
+    /**
+     * Submit owner for verification immediately after registration.
+     * 
+     * <p>Called automatically when OWNER registers via enhanced flow.
+     * Sets submission timestamp and logs for admin queue.
+     * 
+     * @param owner Owner user to submit for verification
+     * @throws IllegalArgumentException if user is not an OWNER
+     */
+    @Transactional
+    public void submitForVerification(User owner) {
+        if (owner.getRole() != Role.OWNER) {
+            throw new IllegalArgumentException("Only owners can be submitted for verification");
+        }
+        
+        // Set submission timestamp if not already set
+        if (owner.getOwnerVerificationSubmittedAt() == null) {
+            owner.setOwnerVerificationSubmittedAt(LocalDateTime.now());
+            userRepository.save(owner);
+        }
+        
+        log.info("Owner submitted for verification: userId={}, type={}, maskedId={}", 
+                owner.getId(), 
+                owner.getOwnerType(),
+                owner.getOwnerType() == OwnerType.INDIVIDUAL ? owner.getMaskedJmbg() : owner.getMaskedPib());
+        
+        // Note: Email notification can be added here (async)
+        // emailService.sendOwnerVerificationSubmittedEmail(owner);
+    }
     
     // ==================== ADMIN VERIFICATION ====================
     

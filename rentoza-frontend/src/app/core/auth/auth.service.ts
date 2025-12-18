@@ -18,7 +18,14 @@ import {
 } from 'rxjs';
 
 import { environment } from '@environments/environment';
-import { AuthResponse, LoginRequest, RegisterRequest } from '@core/models/auth.model';
+import {
+  AuthResponse,
+  LoginRequest,
+  RegisterRequest,
+  UserRegisterRequest,
+  OwnerRegisterRequest,
+  GoogleOAuthCompletionRequest,
+} from '@core/models/auth.model';
 import { UserProfile } from '@core/models/user.model';
 import { UserRole } from '@core/models/user-role.type';
 import { SKIP_AUTH } from './auth.tokens';
@@ -176,6 +183,91 @@ export class AuthService {
         map((response) => response.user as UserProfile)
       );
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE 2: Enhanced Registration Methods
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Register a new user with enhanced fields (phone, DOB, age confirmation).
+   * Uses the new POST /api/auth/register/user endpoint.
+   *
+   * @param payload Enhanced user registration data
+   * @returns Observable of the newly created user profile
+   *
+   * @see REGISTRATION_IMPLEMENTATION_PLAN.md lines 931-940
+   */
+  registerUser(payload: UserRegisterRequest): Observable<UserProfile> {
+    const context = new HttpContext().set(SKIP_AUTH, true);
+    return this.http
+      .post<AuthResponse>(`${this.apiUrl}/register/user`, payload, {
+        context,
+        withCredentials: true,
+      })
+      .pipe(
+        tap((response) => this.persistSession(response)),
+        map(() => this.currentUserSubject.value!)
+      );
+  }
+
+  /**
+   * Register a new owner/host with identity verification fields.
+   * Uses the new POST /api/auth/register/owner endpoint.
+   *
+   * Owner registration includes:
+   * - All user fields (phone, DOB, age confirmation)
+   * - Owner type (INDIVIDUAL or LEGAL_ENTITY)
+   * - Identity document (JMBG or PIB)
+   * - Optional bank account (IBAN)
+   * - Agreement checkboxes
+   *
+   * @param payload Owner registration data with identity documents
+   * @returns Observable of the newly created owner profile
+   *
+   * @see REGISTRATION_IMPLEMENTATION_PLAN.md
+   */
+  registerOwner(payload: OwnerRegisterRequest): Observable<UserProfile> {
+    const context = new HttpContext().set(SKIP_AUTH, true);
+    return this.http
+      .post<AuthResponse>(`${this.apiUrl}/register/owner`, payload, {
+        context,
+        withCredentials: true,
+      })
+      .pipe(
+        tap((response) => this.persistSession(response)),
+        map(() => this.currentUserSubject.value!)
+      );
+  }
+
+  /**
+   * Complete OAuth profile for users with INCOMPLETE registration status.
+   * Used when Google OAuth provides limited data (no phone, DOB).
+   * Uses POST /api/auth/oauth-complete endpoint.
+   *
+   * Flow:
+   * 1. User authenticates via Google OAuth
+   * 2. Backend creates user with registrationStatus=INCOMPLETE
+   * 3. auth-callback detects INCOMPLETE → redirects to /auth/complete-profile
+   * 4. User fills in missing data → this method is called
+   * 5. Profile updated → user redirected to dashboard
+   *
+   * @param payload Profile completion data (phone, DOB, optional owner fields)
+   * @returns Observable of the updated user profile
+   *
+   * @see REGISTRATION_IMPLEMENTATION_PLAN.md lines 942-951
+   */
+  completeOAuthProfile(payload: GoogleOAuthCompletionRequest): Observable<UserProfile> {
+    return this.http
+      .post<AuthResponse>(`${this.apiUrl}/oauth-complete`, payload, {
+        withCredentials: true,
+      })
+      .pipe(
+        tap((response) => this.persistSession(response)),
+        map(() => this.currentUserSubject.value!)
+      );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
 
   logout(): void {
     this.clearSession();
@@ -530,7 +622,7 @@ export class AuthService {
     const normalizedUser: UserProfile = {
       ...user,
       id: String(user.id),
-      roles: Array.isArray(user.roles) ? (user.roles) : [],
+      roles: Array.isArray(user.roles) ? user.roles : [],
     };
 
     // Update observable only (no localStorage in cookie-only mode)

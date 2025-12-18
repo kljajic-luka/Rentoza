@@ -175,18 +175,18 @@ export type VerificationRequiredDialogResult = 'verify' | 'browse' | 'cancel';
         }
 
         &.icon-warning {
-          background: #fff3e0;
-          color: #ef6c00;
+          background: color-mix(in srgb, var(--mat-sys-warning) 15%, transparent);
+          color: var(--mat-sys-warning);
         }
 
         &.icon-error {
-          background: #ffebee;
-          color: #c62828;
+          background: color-mix(in srgb, var(--mat-sys-error) 15%, transparent);
+          color: var(--mat-sys-error);
         }
 
         &.icon-info {
-          background: #e3f2fd;
-          color: #1976d2;
+          background: color-mix(in srgb, var(--mat-sys-primary) 15%, transparent);
+          color: var(--mat-sys-primary);
         }
       }
 
@@ -195,7 +195,7 @@ export type VerificationRequiredDialogResult = 'verify' | 'browse' | 'cancel';
         margin: 0;
         font-size: 1.25rem;
         font-weight: 600;
-        color: #333;
+        color: var(--mat-sys-on-surface);
       }
 
       mat-dialog-content {
@@ -204,7 +204,7 @@ export type VerificationRequiredDialogResult = 'verify' | 'browse' | 'cancel';
 
       .message {
         text-align: center;
-        color: #666;
+        color: var(--mat-sys-on-surface-variant);
         margin-bottom: 16px;
         font-size: 0.9375rem;
         line-height: 1.5;
@@ -215,17 +215,17 @@ export type VerificationRequiredDialogResult = 'verify' | 'browse' | 'cancel';
         align-items: center;
         gap: 8px;
         padding: 12px 16px;
-        background: #f5f5f5;
+        background: var(--mat-sys-surface-container);
         border-radius: 8px;
         margin-bottom: 16px;
 
         mat-icon {
-          color: #666;
+          color: var(--mat-sys-on-surface-variant);
         }
 
         span {
           font-weight: 500;
-          color: #333;
+          color: var(--mat-sys-on-surface);
         }
       }
 
@@ -234,11 +234,11 @@ export type VerificationRequiredDialogResult = 'verify' | 'browse' | 'cancel';
         align-items: center;
         gap: 8px;
         padding: 12px 16px;
-        background: #fff3e0;
-        border: 1px solid #ffcc80;
+        background: color-mix(in srgb, var(--mat-sys-warning) 15%, transparent);
+        border: 1px solid color-mix(in srgb, var(--mat-sys-warning) 30%, transparent);
         border-radius: 8px;
         margin-bottom: 16px;
-        color: #ef6c00;
+        color: var(--mat-sys-warning);
 
         mat-icon {
           font-size: 20px;
@@ -252,7 +252,7 @@ export type VerificationRequiredDialogResult = 'verify' | 'browse' | 'cancel';
       }
 
       .benefits {
-        background: #fafafa;
+        background: var(--mat-sys-surface-container-low);
         border-radius: 8px;
         padding: 16px;
 
@@ -260,7 +260,7 @@ export type VerificationRequiredDialogResult = 'verify' | 'browse' | 'cancel';
           margin: 0 0 12px 0;
           font-size: 0.875rem;
           font-weight: 600;
-          color: #333;
+          color: var(--mat-sys-on-surface);
         }
 
         ul {
@@ -274,11 +274,11 @@ export type VerificationRequiredDialogResult = 'verify' | 'browse' | 'cancel';
           align-items: center;
           gap: 10px;
           padding: 8px 0;
-          color: #555;
+          color: var(--mat-sys-on-surface-variant);
           font-size: 0.875rem;
 
           mat-icon {
-            color: #4caf50;
+            color: var(--mat-sys-tertiary);
             font-size: 18px;
             width: 18px;
             height: 18px;

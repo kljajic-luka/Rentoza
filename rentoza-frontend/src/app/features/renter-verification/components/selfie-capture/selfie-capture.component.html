@@ -56,20 +56,11 @@
         mat-raised-button
         color="primary"
         [disabled]="requireConsent && !consentGiven()"
-        (click)="startCamera()"
-        aria-label="Uključi kameru za selfie"
+        (click)="openFileDialog()"
+        aria-label="Dodaj selfie fotografiju"
       >
-        <mat-icon>videocam</mat-icon>
-        <span>Uključi kameru</span>
-      </button>
-
-      <button
-        mat-stroked-button
-        (click)="useFallback()"
-        aria-label="Otpremi fotografiju sa uređaja"
-      >
-        <mat-icon>upload_file</mat-icon>
-        <span>Otpremi sliku</span>
+        <mat-icon>add_a_photo</mat-icon>
+        <span>Dodaj fotografiju</span>
       </button>
     </div>
 
@@ -200,6 +191,7 @@
       #fileInput
       type="file"
       accept="image/jpeg,image/jpg,image/png"
+      capture="user"
       (change)="onFileSelected($event)"
       hidden
       aria-hidden="true"

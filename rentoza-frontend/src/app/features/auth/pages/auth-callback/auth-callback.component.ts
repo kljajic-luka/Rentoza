@@ -5,6 +5,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { AuthService } from '@core/auth/auth.service';
 import { FavoriteService } from '@core/services/favorite.service';
 import { ToastService } from '@core/services/toast.service';
+import { EnhancedUserProfile, RegistrationStatus } from '@core/models/auth.model';
 import { MatCardModule } from '@angular/material/card';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatIconModule } from '@angular/material/icon';
@@ -19,7 +20,8 @@ import { MatIconModule } from '@angular/material/icon';
  * 2. Backend sets HttpOnly cookies (access + refresh tokens)
  * 3. Backend redirects to /oauth2/success (no token in URL!)
  * 4. This component verifies session via /api/users/me
- * 5. Redirects to appropriate page based on backend-verified role
+ * 5. PHASE 2: If registrationStatus=INCOMPLETE → redirect to /auth/complete-profile
+ * 6. Otherwise redirects to appropriate page based on backend-verified role
  *
  * SECURITY: Token is NEVER exposed in URL or JavaScript.
  */
@@ -79,6 +81,10 @@ export class AuthCallbackComponent implements OnInit {
    * - No localStorage storage (eliminated XSS vector)
    * - Session verified via backend /api/users/me
    * - Tokens are HttpOnly cookies managed by browser
+   *
+   * PHASE 2: INCOMPLETE Registration Detection
+   * - If registrationStatus === 'INCOMPLETE', redirect to /auth/complete-profile
+   * - This allows Google OAuth users to complete their profile (phone, DOB, etc.)
    */
   private async processOAuth2Session(): Promise<void> {
     try {
@@ -93,6 +99,27 @@ export class AuthCallbackComponent implements OnInit {
       }
 
       console.log('✅ OAuth2: Session verified successfully', verifiedUser.email);
+
+      // ═══════════════════════════════════════════════════════════════════════════
+      // PHASE 2: Check for INCOMPLETE registration status
+      // ═══════════════════════════════════════════════════════════════════════════
+      const enhancedUser = verifiedUser as EnhancedUserProfile;
+      if (enhancedUser.registrationStatus === 'INCOMPLETE') {
+        console.log(
+          '📝 OAuth2: User has INCOMPLETE registration - redirecting to profile completion'
+        );
+
+        // Determine role for completion form (owner vs user)
+        const isOwner = verifiedUser.roles?.includes('OWNER');
+        const queryParams = isOwner ? { role: 'owner' } : {};
+
+        this.toast.info('Molimo dovršite registraciju popunjavanjem preostalih podataka.');
+
+        void this.router.navigate(['/auth/complete-profile'], { queryParams });
+        this.isProcessing.set(false);
+        return;
+      }
+      // ═══════════════════════════════════════════════════════════════════════════
 
       // ✅ STEP 2: Load user's favorited cars for immediate availability
       console.log('❤️ OAuth2: Loading favorited cars');

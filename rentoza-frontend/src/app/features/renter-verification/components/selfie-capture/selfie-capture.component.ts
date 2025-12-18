@@ -140,7 +140,7 @@ export class SelfieCaptureComponent implements AfterViewInit, OnDestroy {
   // ============================================================================
 
   /** Current capture mode */
-  readonly mode = signal<'initial' | 'camera' | 'fallback' | 'preview'>('initial');
+  readonly mode = signal<'initial' | 'camera' | 'fallback' | 'preview'>('fallback');
 
   /** Whether camera is initializing */
   readonly isInitializing = signal<boolean>(false);

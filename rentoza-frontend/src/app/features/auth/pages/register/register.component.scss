@@ -24,7 +24,7 @@
 }
 
 .auth-card {
-  width: min(500px, 100%);
+  width: min(560px, 100%);
   border-radius: 24px;
   box-shadow: var(--shadow-elevated);
   backdrop-filter: blur(8px);
@@ -77,6 +77,128 @@
     border-radius: 999px;
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Phase 2: Age Confirmation Checkbox
+// ═══════════════════════════════════════════════════════════════════════════
+
+.age-checkbox {
+  margin-top: -0.5rem;
+  margin-bottom: 0.5rem;
+
+  ::ng-deep .mdc-form-field {
+    font-size: 0.9375rem;
+  }
+}
+
+.checkbox-error {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--mdc-theme-error, #f44336);
+  margin-top: -0.75rem;
+  margin-bottom: 0.5rem;
+  padding-left: 0.5rem;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Phase 2: Owner-Specific Section
+// ═══════════════════════════════════════════════════════════════════════════
+
+.owner-section {
+  margin-top: 1rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+
+  .section-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0 0 1.25rem;
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+
+    mat-icon {
+      color: rgba(59, 130, 246, 0.8);
+      font-size: 1.25rem;
+      width: 1.25rem;
+      height: 1.25rem;
+    }
+  }
+}
+
+.owner-type-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+
+  mat-radio-button {
+    padding: 1rem;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 12px;
+    transition: all 0.2s ease;
+
+    &:hover {
+      border-color: rgba(59, 130, 246, 0.4);
+      background: rgba(59, 130, 246, 0.04);
+    }
+
+    &.mat-mdc-radio-checked {
+      border-color: rgba(59, 130, 246, 0.6);
+      background: rgba(59, 130, 246, 0.08);
+    }
+
+    .radio-label {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+
+      strong {
+        font-size: 0.9375rem;
+        color: var(--color-text-primary);
+      }
+
+      span {
+        font-size: 0.8125rem;
+        color: var(--color-text-muted);
+      }
+    }
+  }
+}
+
+.agreements-section {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px dashed rgba(0, 0, 0, 0.08);
+
+  h4 {
+    margin: 0 0 1rem;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+  }
+
+  mat-checkbox {
+    display: block;
+    margin-bottom: 0.75rem;
+
+    ::ng-deep .mdc-form-field {
+      font-size: 0.875rem;
+    }
+
+    a {
+      color: rgba(59, 130, 246, 0.9);
+      text-decoration: none;
+
+      &:hover {
+        text-decoration: underline;
+      }
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 
 .auth-divider {
   display: flex;
@@ -157,5 +279,9 @@ mat-card-actions {
   mat-card-actions {
     flex-direction: column;
     gap: 0.75rem;
+  }
+
+  .owner-type-group mat-radio-button {
+    padding: 0.75rem;
   }
 }

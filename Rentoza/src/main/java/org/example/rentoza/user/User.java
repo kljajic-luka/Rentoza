@@ -125,6 +125,15 @@ public class User {
     @Column(nullable = false)
     private boolean locked = false;
 
+    /**
+     * Registration completion status.
+     * INCOMPLETE for Google OAuth users who haven't completed profile.
+     * ACTIVE after successful registration completion.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "registration_status", nullable = false, length = 20)
+    private RegistrationStatus registrationStatus = RegistrationStatus.ACTIVE;
+
     // ========== USER MODERATION FIELDS (Admin Infrastructure) ==========
     
     /**

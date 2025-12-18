@@ -1,6 +1,7 @@
 package org.example.rentoza.auth.oauth2;
 
 import org.example.rentoza.user.AuthProvider;
+import org.example.rentoza.user.RegistrationStatus;
 import org.example.rentoza.user.Role;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
@@ -240,19 +241,29 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
         newUser.setEmail(email);
         newUser.setGoogleId(googleId);
         newUser.setFirstName(givenName != null ? givenName : "User");
-        newUser.setLastName(familyName != null ? familyName : "");
+        
+        // Handle missing lastName from Google - use placeholder
+        if (familyName == null || familyName.isBlank()) {
+            newUser.setLastName(User.GOOGLE_PLACEHOLDER_LAST_NAME);
+        } else {
+            newUser.setLastName(familyName);
+        }
+        
         newUser.setAvatarUrl(picture);
         newUser.setAuthProvider(AuthProvider.GOOGLE);
         newUser.setRole(Role.USER);
         newUser.setEnabled(true);
         newUser.setLocked(false);
+        
+        // Mark as INCOMPLETE - user must complete registration via /oauth-complete
+        newUser.setRegistrationStatus(RegistrationStatus.INCOMPLETE);
 
         // Set placeholder password (column is non-null but won't be used for OAuth2 users)
         String placeholderPassword = OAUTH2_PLACEHOLDER_PASSWORD + UUID.randomUUID();
         newUser.setPassword(passwordEncoder.encode(placeholderPassword));
 
         User savedUser = userRepository.save(newUser);
-        log.info("Created new Google user: email={}, googleId={}", email, googleId);
+        log.info("Created new Google user (INCOMPLETE): email={}, googleId={}", email, googleId);
 
         return buildPrincipal(savedUser, sourceUser);
     }

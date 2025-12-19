@@ -1,7 +1,9 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterModule, NavigationEnd } from '@angular/router';
-import { filter, map, Subject, takeUntil, Observable } from 'rxjs';
+import { filter, map, Subject, takeUntil, Observable, BehaviorSubject } from 'rxjs';
+import { startWith, shareReplay } from 'rxjs/operators';
+import { BreakpointObserver, Breakpoints } from '@angular/cdk/layout';
 import { MatSidenavModule } from '@angular/material/sidenav';
 import { MatListModule } from '@angular/material/list';
 import { MatIconModule } from '@angular/material/icon';
@@ -10,9 +12,11 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatBadgeModule } from '@angular/material/badge';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatDividerModule } from '@angular/material/divider';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { AdminStateService } from '../../../core/services/admin-state.service';
 import { DashboardKpiDto } from '../../../core/services/admin-api.service';
 import { AuthService } from '../../../core/auth/auth.service';
+import { ThemeService } from '../../../core/services/theme.service';
 
 @Component({
   selector: 'app-admin-layout',
@@ -28,10 +32,17 @@ import { AuthService } from '../../../core/auth/auth.service';
     MatBadgeModule,
     MatMenuModule,
     MatDividerModule,
+    MatTooltipModule,
   ],
   template: `
     <mat-sidenav-container class="admin-shell safe-area">
-      <mat-sidenav class="admin-sidenav" mode="side" opened>
+      <mat-sidenav 
+        #sidenav
+        class="admin-sidenav" 
+        [mode]="(sidenavMode$ | async) || 'side'" 
+        [opened]="(sidenavMode$ | async) === 'side' ? true : (sidenavOpened$ | async)"
+        (closedStart)="onSidenavClosed()"
+      >
         <div class="brand">
           <div class="brand-mark">RZ</div>
           <div class="brand-copy">
@@ -77,7 +88,7 @@ import { AuthService } from '../../../core/auth/auth.service';
           </div>
         </div>
 
-        <div class="sidenav-scroll">
+          <div class="sidenav-scroll">
           <div class="nav-section">
             <div class="nav-label">Overview</div>
             <a
@@ -123,7 +134,10 @@ import { AuthService } from '../../../core/auth/auth.service';
             >
               <mat-icon matListItemIcon>verified_user</mat-icon>
               <span matListItemTitle>Renter Verifications</span>
-              <span class="nav-caret">›</span>
+              <span class="badge" *ngIf="(kpis$ | async)?.pendingApprovalsCount as count">
+                {{ count }}
+              </span>
+              <span class="nav-caret" *ngIf="!(kpis$ | async)?.pendingApprovalsCount">›</span>
             </a>
             <a
               mat-list-item
@@ -133,7 +147,10 @@ import { AuthService } from '../../../core/auth/auth.service';
             >
               <mat-icon matListItemIcon>gavel</mat-icon>
               <span matListItemTitle>Disputes</span>
-              <span class="nav-caret">›</span>
+              <span class="badge badge-warning" *ngIf="(kpis$ | async)?.openDisputesCount as count">
+                {{ count }}
+              </span>
+              <span class="nav-caret" *ngIf="!(kpis$ | async)?.openDisputesCount">›</span>
             </a>
             <a
               mat-list-item
@@ -168,6 +185,17 @@ import { AuthService } from '../../../core/auth/auth.service';
 
       <mat-sidenav-content class="admin-content">
         <mat-toolbar class="admin-toolbar" color="primary">
+          <!-- Show hamburger menu button only on mobile -->
+          <button 
+            *ngIf="(sidenavMode$ | async) === 'over'" 
+            mat-icon-button 
+            (click)="sidenav.toggle()"
+            aria-label="Toggle navigation menu"
+            class="sidebar-toggle"
+          >
+            <mat-icon>menu</mat-icon>
+          </button>
+          
           <div class="toolbar-left">
             <div class="breadcrumb">
               <span class="crumb-root">Admin Portal</span>
@@ -180,6 +208,16 @@ import { AuthService } from '../../../core/auth/auth.service';
           <div class="toolbar-actions">
             <button mat-icon-button aria-label="Alerts" matBadge="3" matBadgeColor="warn">
               <mat-icon>notifications</mat-icon>
+            </button>
+
+            <!-- Theme Toggle Button -->
+            <button 
+              mat-icon-button 
+              (click)="toggleTheme()"
+              [matTooltip]="themeService.theme() === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'"
+              [attr.aria-label]="themeService.theme() === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
+            >
+              <mat-icon>{{ themeService.theme() === 'dark' ? 'light_mode' : 'dark_mode' }}</mat-icon>
             </button>
 
             <button mat-icon-button [matMenuTriggerFor]="profileMenu" aria-label="Profile">
@@ -210,13 +248,29 @@ export class AdminLayoutComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>();
   currentRoute = 'Dashboard';
   kpis$: Observable<DashboardKpiDto | null>;
+  
+  // Responsive sidebar observables
+  sidenavMode$: Observable<'side' | 'over'>;
+  sidenavOpened$ = new BehaviorSubject<boolean>(true);
 
   constructor(
     private router: Router,
     private adminState: AdminStateService,
-    private authService: AuthService
+    private authService: AuthService,
+    private breakpointObserver: BreakpointObserver,
+    public themeService: ThemeService
   ) {
     this.kpis$ = this.adminState.dashboardKpi$;
+    
+    // Set up responsive sidebar behavior
+    this.sidenavMode$ = this.breakpointObserver
+      .observe(Breakpoints.Handset) // < 768px
+      .pipe(
+        map(result => result.matches ? ('over' as const) : ('side' as const)),
+        startWith('side' as 'side' | 'over'),
+        shareReplay(1)
+      );
+    
     this.router.events
       .pipe(
         filter((event): event is NavigationEnd => event instanceof NavigationEnd),
@@ -228,6 +282,18 @@ export class AdminLayoutComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.adminState.loadDashboardKpis();
+  }
+
+  onSidenavClosed(): void {
+    this.sidenavMode$.pipe(takeUntil(this.destroy$)).subscribe(mode => {
+      if (mode === 'over') {
+        this.sidenavOpened$.next(false);
+      }
+    });
+  }
+
+  toggleTheme(): void {
+    this.themeService.toggle();
   }
 
   logout(): void {

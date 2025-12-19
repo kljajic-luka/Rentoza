@@ -15,6 +15,7 @@ import { RejectOwnerVerificationDialogComponent } from '../../shared/dialogs/rej
 import { AdminStateService } from '../../../../core/services/admin-state.service';
 import { Observable, take } from 'rxjs';
 import { AdminUserDetailDto } from '../../../../core/services/admin-api.service';
+import { RiskScoreCardComponent, RiskFactor } from '../../shared/components/risk-score-card/risk-score-card.component';
 
 @Component({
   selector: 'app-user-detail',
@@ -29,6 +30,7 @@ import { AdminUserDetailDto } from '../../../../core/services/admin-api.service'
     MatDialogModule,
     MatSnackBarModule,
     MatProgressSpinnerModule,
+    RiskScoreCardComponent,
   ],
   templateUrl: './user-detail.component.html',
   styleUrls: ['../../admin-shared.styles.scss', './user-detail.component.scss'],
@@ -166,5 +168,98 @@ export class UserDetailComponent implements OnInit {
         }
       });
     });
+  }
+
+  // ========== RISK ASSESSMENT HELPERS ==========
+
+  getRiskLevel(score?: number): string {
+    if (!score) return 'LOW';
+    if (score <= 20) return 'LOW';
+    if (score <= 50) return 'MEDIUM';
+    if (score <= 80) return 'HIGH';
+    return 'CRITICAL';
+  }
+
+  getRiskFactors(user: AdminUserDetailDto): RiskFactor[] {
+    const factors: RiskFactor[] = [];
+
+    // TODO: Replace with actual risk factors from backend API
+    // For now, generate factors based on available user data
+
+    // Compliance factors
+    if (user.banned) {
+      factors.push({
+        name: 'Account Banned',
+        points: 40,
+        category: 'Compliance',
+        isNegative: false
+      });
+    }
+
+    // Account age
+    // TODO: Backend to add 'createdAt' field to AdminUserDetailDto
+    const accountAgeDays = this.getAccountAgeDays(user.ownerVerificationSubmittedAt);
+    if (accountAgeDays < 7) {
+      factors.push({
+        name: 'Brand new account (< 7 days)',
+        points: 20,
+        category: 'Account',
+        isNegative: false
+      });
+    } else if (accountAgeDays < 30) {
+      factors.push({
+        name: 'New account (7-30 days)',
+        points: 10,
+        category: 'Account',
+        isNegative: false
+      });
+    }
+
+    // Identity verification
+    if (!user.phone) {
+      factors.push({
+        name: 'Phone not verified',
+        points: 10,
+        category: 'Identity',
+        isNegative: false
+      });
+    }
+
+    // Behavioral factors
+    const totalBookings = (user.totalBookings || 0);
+    const cancelledBookings = (user.cancelledBookings || 0);
+    
+    if (totalBookings > 0) {
+      const cancellationRate = cancelledBookings / totalBookings;
+      if (cancellationRate > 0.30) {
+        factors.push({
+          name: `High cancellation rate (${Math.round(cancellationRate * 100)}%)`,
+          points: 15,
+          category: 'Behavioral',
+          isNegative: false
+        });
+      }
+    }
+
+    // Positive factors
+    const completedBookings = (user.completedBookings || 0);
+    if (completedBookings > 10) {
+      factors.push({
+        name: `Good booking history (${completedBookings} trips)`,
+        points: Math.min(10, Math.floor(completedBookings / 2)),
+        category: 'Behavioral',
+        isNegative: true // Negative = good (reduces risk)
+      });
+    }
+
+    return factors;
+  }
+
+  private getAccountAgeDays(createdAt?: string): number {
+    if (!createdAt) return 999;
+    const created = new Date(createdAt);
+    const now = new Date();
+    const diffTime = Math.abs(now.getTime() - created.getTime());
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   }
 }

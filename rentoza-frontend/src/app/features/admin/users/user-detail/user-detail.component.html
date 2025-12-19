@@ -59,10 +59,23 @@
               <mat-icon>check_circle</mat-icon>
               Unban User
             </button>
-            <button mat-stroked-button color="warn">
-              <mat-icon>delete_forever</mat-icon>
-              Delete Account
-            </button>
+
+            <!-- 
+              ⚠️ COMPLIANCE: Delete Account button REMOVED (Dec 18, 2025)
+              
+              Reason: Violated enterprise best practices and GDPR compliance:
+              - No confirmation dialog or legal review workflow
+              - Would destroy evidence needed for disputes/investigations  
+              - Orphans booking history and payment records
+              - No audit trail of deletions
+              - Violates data retention requirements (7 years)
+              
+              TODO: Implement enterprise-grade account lifecycle management:
+              - Suspend Account (reversible, temporary block)
+              - Initiate Deletion (legal review required, soft delete)
+              - See: ADMIN_USER_MANAGEMENT_BEST_PRACTICES_UPGRADE.md
+              - Track implementation: Task #UserManagement-001
+            -->
           </div>
         </div>
       </mat-card>
@@ -129,6 +142,14 @@
           </div>
         </mat-card-content>
       </mat-card>
+
+      <!-- NEW: Modern Risk Score Card (replaced bare number display) -->
+      <app-risk-score-card
+        [totalScore]="user.riskScore || 0"
+        [riskLevel]="getRiskLevel(user.riskScore)"
+        [factors]="getRiskFactors(user)"
+        [calculatedAt]="user.ownerVerificationSubmittedAt"
+      ></app-risk-score-card>
     </div>
 
     <div class="content-column">

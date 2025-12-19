@@ -14,6 +14,17 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
+
+  // Tablet: reduce width slightly
+  @media (max-width: 768px) {
+    width: 280px;
+  }
+
+  // Mobile: full width overlay
+  @media (max-width: 480px) {
+    width: 100%;
+    max-width: 80vw;
+  }
 }
 
 .sidenav-scroll {
@@ -238,10 +249,28 @@
   min-height: 72px;
   background: var(--toolbar-bg);
   color: var(--toolbar-color);
+
+  @media (max-width: 768px) {
+    min-height: 56px;
+    padding: 0 12px;
+  }
 }
 
-.toolbar-left { display: flex; flex-direction: column; gap: 4px; }
-.toolbar-title { font-size: 18px; font-weight: 700; }
+.toolbar-left { 
+  display: flex; 
+  flex-direction: column; 
+  gap: 4px; 
+  min-width: 0; // allow text truncation
+}
+
+.toolbar-title { 
+  font-size: 18px; 
+  font-weight: 700; 
+
+  @media (max-width: 480px) {
+    font-size: 16px;
+  }
+}
 
 .breadcrumb {
   display: flex;
@@ -251,6 +280,10 @@
   font-size: 12px;
   letter-spacing: 0.03em;
   text-transform: uppercase;
+
+  @media (max-width: 480px) {
+    display: none; // hide breadcrumb on very small screens
+  }
 }
 
 .crumb-root { opacity: 0.85; }
@@ -267,6 +300,10 @@
   height: calc(100vh - 72px);
   overflow: auto;
   background: var(--color-bg);
+
+  @media (max-width: 768px) {
+    height: calc(100vh - 56px);
+  }
 }
 
 .avatar {
@@ -279,4 +316,95 @@
   align-items: center;
   justify-content: center;
   font-weight: 700;
+}
+
+/* ==================== DESIGN POLISH: SIDEBAR ENHANCEMENTS ==================== */
+
+/* Badge System for Sidebar */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 11px;
+  margin-left: auto;
+  box-shadow: 0 2px 4px rgba(239, 68, 68, 0.3);
+
+  &.badge-warning {
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    box-shadow: 0 2px 4px rgba(245, 158, 11, 0.3);
+  }
+
+  &.badge-success {
+    background: linear-gradient(135deg, #10b981, #059669);
+   box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
+  }
+
+  &.badge-info {
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
+  }
+}
+
+/* Enhanced Nav Item Active State */
+.nav-item.pill {
+  position: relative;
+  margin-bottom: 4px;
+  border-radius: 10px;
+  transition: all 200ms ease;
+
+  &.active {
+    background: rgba(59, 130, 246, 0.12) !important;
+
+    &::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      height: 60%;
+      width: 3px;
+      background: linear-gradient(180deg, #3b82f6, #2563eb);
+      border-radius: 0 3px 3px 0;
+      box-shadow: 0 0 8px rgba(59, 130, 246, 0.4);
+    }
+
+    mat-icon {
+      color: var(--icon-color);
+    }
+
+    .mdc-list-item__primary-text {
+      color: var(--icon-color) !important;
+      font-weight: 600;
+    }
+  }
+
+  &:hover:not(.active) {
+    background: rgba(59, 130, 246, 0.06) !important;
+    transform: translateX(2px);
+  }
+}
+
+.nav-caret {
+  margin-left: auto;
+  color: var(--color-text-muted);
+  font-size: 18px;
+  opacity: 0.5;
+  transition: all 200ms ease;
+
+  .nav-item.active & {
+    opacity: 1;
+    color: var(--icon-color);
+  }
+
+  .nav-item:hover & {
+    opacity: 0.8;
+    transform: translateX(2px);
+  }
 }

@@ -315,6 +315,30 @@ export interface AuditLogSearchParams {
   size?: number;
 }
 
+// ==================== ADMIN SETTINGS ====================
+
+export interface AdminSettings {
+  // Notifications
+  emailNotifications: boolean;
+  pushNotifications: boolean;
+  smsNotifications: boolean;
+
+  // Reports
+  weeklyReport: boolean;
+  monthlyReport: boolean;
+  reportFormat: 'pdf' | 'csv' | 'excel' | 'json';
+
+  // Regional
+  timezone: string;
+  currencyFormat: string;
+
+  // Security
+  twoFactorEnabled: boolean;
+  loginAlerts: boolean;
+  sessionTimeout: string;
+}
+
+
 @Injectable({
   providedIn: 'root',
 })
@@ -623,6 +647,71 @@ export class AdminApiService {
     if (endDate) params = params.set('endDate', endDate);
 
     return this.http.get(`${this.apiUrl}/audit/stats`, { params });
+  }
+
+  // ==================== ADMIN SETTINGS ====================
+
+  /**
+   * Get admin settings
+   * TODO: Backend implementation required
+   * Endpoint: GET /api/admin/settings
+   * 
+   * For now, returns mock data from localStorage or defaults
+   */
+  getAdminSettings(): Observable<AdminSettings> {
+    // TODO: Replace with actual API call when backend is ready
+    // return this.http.get<AdminSettings>(`${this.apiUrl}/settings`);
+    
+    // Mock implementation with localStorage persistence
+    const savedSettings = localStorage.getItem('admin.settings');
+    const defaultSettings: AdminSettings = {
+      emailNotifications: true,
+      pushNotifications: false,
+      smsNotifications: false,
+      weeklyReport: true,
+      monthlyReport: false,
+      reportFormat: 'pdf',
+      timezone: 'Europe/Belgrade',
+      currencyFormat: 'RSD',
+      twoFactorEnabled: false,
+      loginAlerts: true,
+      sessionTimeout: '60',
+    };
+
+    const settings = savedSettings ? JSON.parse(savedSettings) : defaultSettings;
+    
+    // Simulate network delay
+    return new Observable(observer => {
+      setTimeout(() => {
+        observer.next(settings);
+        observer.complete();
+      }, 300);
+    });
+  }
+
+  /**
+   * Update admin settings
+   * TODO: Backend implementation required
+   * Endpoint: PUT /api/admin/settings
+   * 
+   * For now, saves to localStorage
+   */
+  updateAdminSettings(settings: AdminSettings): Observable<AdminSettings> {
+    // TODO: Replace with actual API call when backend is ready
+    // return this.http.put<AdminSettings>(`${this.apiUrl}/settings`, settings);
+    
+    // Mock implementation with localStorage persistence
+    return new Observable(observer => {
+      setTimeout(() => {
+        try {
+          localStorage.setItem('admin.settings', JSON.stringify(settings));
+          observer.next(settings);
+          observer.complete();
+        } catch (error) {
+          observer.error(error);
+        }
+      }, 500); // Simulate network delay
+    });
   }
 
   private normalizePage<T>(response: HateoasPage<T>): PaginatedResponse<T> {

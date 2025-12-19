@@ -15,16 +15,19 @@ public class AttributeEncryptor implements AttributeConverter<String, String> {
 
     private static final String AES = "AES";
     
-    // MVP: Hardcoded key (128-bit/16-byte for simplicity and broad compatibility)
-    // Production TODO: Load from environment/vault variable
-    private static final String SECRET_KEY = "SecretKeyToEncryptPIIData1234567"; // 32 chars = 256 bits?
-    // "SecretKeyToEncryptPIIData1234567" length is 32. 32 bytes = 256 bits.
-    // Ensure JVM allows 256-bit keys (modern OpenJDK does).
-
     private final Key key;
 
     public AttributeEncryptor() {
-        this.key = new SecretKeySpec(SECRET_KEY.getBytes(), AES);
+        String encryptionKey = System.getenv("PII_ENCRYPTION_KEY");
+        if (encryptionKey == null || encryptionKey.isEmpty()) {
+            throw new IllegalStateException(
+                "PII_ENCRYPTION_KEY environment variable is required but not set. " +
+                "Make sure .env.local is loaded by your IDE and contains: " +
+                "PII_ENCRYPTION_KEY=SecretKeyToEncryptPIIData1234567"
+            );
+        }
+        // Use first 16 bytes for AES-128 (ensures compatibility)
+        this.key = new SecretKeySpec(encryptionKey.getBytes(), 0, 16, AES);
     }
 
     @Override

@@ -14,10 +14,13 @@ import java.util.UUID;
  * 
  * <p><b>IMPORTANT:</b> Never use in production!
  * Enable with: {@code app.payment.provider=MOCK}
+ * 
+ * <p>Requires explicit configuration - will NOT activate if property is missing.
+ * Set PAYMENT_PROVIDER=MOCK in .env.local for development.
  */
 @Component
 @Slf4j
-@ConditionalOnProperty(name = "app.payment.provider", havingValue = "MOCK", matchIfMissing = true)
+@ConditionalOnProperty(name = "app.payment.provider", havingValue = "MOCK")
 public class MockPaymentProvider implements PaymentProvider {
 
     @Override

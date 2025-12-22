@@ -172,6 +172,32 @@ public class BookingEligibilityDTO {
     }
     
     /**
+     * User's license tenure is less than required minimum (2 years).
+     * H1 FIX: Platform spec requires minimum 2 years of license tenure.
+     */
+    public static BookingEligibilityDTO licenseTenureTooShort(int currentTenureMonths, int requiredTenureMonths, LocalDate eligibleFrom) {
+        String eligibleDateStr = eligibleFrom != null 
+            ? ". Eligible from: " + eligibleFrom 
+            : "";
+        String eligibleDateStrSr = eligibleFrom != null 
+            ? ". Možete rezervisati od: " + eligibleFrom 
+            : "";
+            
+        return BookingEligibilityDTO.builder()
+            .eligible(false)
+            .blockReason(EligibilityBlockReason.LICENSE_TENURE_TOO_SHORT)
+            .message(String.format(
+                "Driver's license must be at least %d years old. Current tenure: %d months%s",
+                requiredTenureMonths / 12, currentTenureMonths, eligibleDateStr))
+            .messageSr(String.format(
+                "Vozačka dozvola mora biti stara najmanje %d godine. Trenutni staž: %d meseci%s",
+                requiredTenureMonths / 12, currentTenureMonths, eligibleDateStrSr))
+            .actionUrl("/profile/verification")
+            .actionLabel("Pogledajte detalje")
+            .build();
+    }
+    
+    /**
      * Reasons why booking might be blocked.
      */
     public enum EligibilityBlockReason {
@@ -197,6 +223,9 @@ public class BookingEligibilityDTO {
         UNDER_AGE,
         
         /** User is banned */
-        USER_BANNED
+        USER_BANNED,
+        
+        /** License tenure is less than 2 years (H1 spec requirement) */
+        LICENSE_TENURE_TOO_SHORT
     }
 }

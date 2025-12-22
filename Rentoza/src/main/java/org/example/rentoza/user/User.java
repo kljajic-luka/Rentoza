@@ -346,19 +346,50 @@ public class User {
     @UpdateTimestamp
     private Instant updatedAt;
 
-    @OneToMany(mappedBy = "owner", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    // ========================================================================
+    // H3 FIX: Changed CascadeType.ALL to safer cascade options
+    // ========================================================================
+    // BEFORE: CascadeType.ALL caused cascade deletion of cars/bookings/reviews
+    // when user was deleted - catastrophic data loss risk!
+    // 
+    // AFTER: No cascade DELETE - service layer enforces safe deletion checks.
+    // Persist/merge still work normally for creating/updating child entities.
+    // 
+    // User deletion is now protected by UserService.deleteUser() validation.
+    // ========================================================================
+
+    /**
+     * Cars owned by this user.
+     * CASCADE: Only PERSIST/MERGE to allow saving new cars with owner.
+     * DELETE protection: UserService.deleteUser() checks for owned cars.
+     */
+    @OneToMany(mappedBy = "owner", cascade = {CascadeType.PERSIST, CascadeType.MERGE}, fetch = FetchType.LAZY)
     @JsonIgnore
     private List<Car> cars;
 
-    @OneToMany(mappedBy = "renter", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    /**
+     * Bookings made by this user as renter.
+     * NO CASCADE: Bookings should never be cascade-deleted with user.
+     * Historical booking data must be preserved for audit/financial reconciliation.
+     */
+    @OneToMany(mappedBy = "renter", fetch = FetchType.LAZY)
     @JsonIgnore
     private List<Booking> bookings;
 
-    @OneToMany(mappedBy = "reviewer", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    /**
+     * Reviews written by this user.
+     * CASCADE: Only PERSIST/MERGE for convenience.
+     * Reviews are preserved even if user is deleted (soft-delete pattern).
+     */
+    @OneToMany(mappedBy = "reviewer", cascade = {CascadeType.PERSIST, CascadeType.MERGE}, fetch = FetchType.LAZY)
     @JsonIgnore
     private List<Review> reviewsGiven;
 
-    @OneToMany(mappedBy = "reviewee", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    /**
+     * Reviews received by this user.
+     * NO CASCADE: Reviews about user should never be auto-deleted.
+     */
+    @OneToMany(mappedBy = "reviewee", fetch = FetchType.LAZY)
     @JsonIgnore
     private List<Review> reviewsReceived;
 

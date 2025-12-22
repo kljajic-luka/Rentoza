@@ -38,6 +38,42 @@ public class ChatService {
     private final BackendApiClient backendApiClient;
     private final ConversationEnrichmentService enrichmentService;
 
+    /**
+     * Create a conversation with authorization check.
+     * The authenticated user must be either the renter or owner specified in the request,
+     * OR the caller must be an internal service (ROLE_INTERNAL_SERVICE).
+     * 
+     * @param request The conversation creation request
+     * @param authenticatedUserId The authenticated user/service making the request
+     * @param isInternalService True if the caller has ROLE_INTERNAL_SERVICE authority
+     * @return The created conversation DTO
+     * @throws ForbiddenException if user is not the renter or owner and not an internal service
+     */
+    @Transactional
+    public ConversationDTO createConversationSecure(CreateConversationRequest request, String authenticatedUserId, boolean isInternalService) {
+        // SECURITY: Internal services (main backend) are trusted to create conversations on behalf of users
+        if (isInternalService) {
+            log.info("[Security] INTERNAL SERVICE {} creating conversation for booking {} on behalf of users",
+                    authenticatedUserId, request.getBookingId());
+            return createConversation(request);
+        }
+        
+        // SECURITY: Verify the authenticated user is one of the participants
+        if (!authenticatedUserId.equals(request.getRenterId()) && !authenticatedUserId.equals(request.getOwnerId())) {
+            log.warn("[Security] UNAUTHORIZED: User {} attempted to create conversation for booking {} " +
+                    "but is neither renter ({}) nor owner ({})",
+                    authenticatedUserId, request.getBookingId(), request.getRenterId(), request.getOwnerId());
+            throw new ForbiddenException("You are not authorized to create a conversation for this booking");
+        }
+        
+        return createConversation(request);
+    }
+
+    /**
+     * @deprecated Use {@link #createConversationSecure(CreateConversationRequest, String)} instead.
+     * This method lacks authorization checks and should only be used for internal/system operations.
+     */
+    @Deprecated
     @Transactional
     public ConversationDTO createConversation(CreateConversationRequest request) {
         // Check if conversation already exists
@@ -167,6 +203,68 @@ public class ChatService {
         log.info("Messages marked as read in conversation {} by user {}", conversation.getId(), userId);
     }
 
+    /**
+     * Check if a user is a participant in the conversation.
+     * 
+     * @param bookingId The booking ID for the conversation
+     * @param userId The user ID to check
+     * @return true if the user is a participant (renter or owner)
+     */
+    @Transactional(readOnly = true)
+    public boolean isUserParticipant(String bookingId, String userId) {
+        return conversationRepository.findByBookingId(bookingId)
+                .map(conversation -> conversation.isParticipant(userId))
+                .orElse(false);
+    }
+
+    /**
+     * Update conversation status with authorization check.
+     * Only participants of the conversation can update its status.
+     * 
+     * Production security: This method enforces row-level security by verifying
+     * the requesting user is either the renter or owner of the conversation.
+     * 
+     * @param bookingId The booking ID for the conversation
+     * @param status The new status to set
+     * @param userId The authenticated user making the request
+     * @throws ConversationNotFoundException if conversation doesn't exist
+     * @throws ForbiddenException if user is not a participant
+     */
+    @Transactional
+    public void updateConversationStatusSecure(String bookingId, ConversationStatus status, String userId) {
+        Conversation conversation = conversationRepository.findByBookingId(bookingId)
+                .orElseThrow(() -> new ConversationNotFoundException("Conversation not found for booking: " + bookingId));
+
+        // SECURITY: Verify user is a participant before allowing status update
+        if (!conversation.isParticipant(userId)) {
+            log.warn("[Security] UNAUTHORIZED: User {} attempted to update status for conversation {} (booking {}). " +
+                    "User is not a participant (renter={}, owner={})",
+                    userId, conversation.getId(), bookingId, conversation.getRenterId(), conversation.getOwnerId());
+            throw new ForbiddenException("You are not authorized to update this conversation's status");
+        }
+
+        // Additional validation: prevent closing conversations with active disputes
+        // (future enhancement: check dispute status from main backend)
+        
+        ConversationStatus previousStatus = conversation.getStatus();
+        conversation.setStatus(status);
+        conversationRepository.save(conversation);
+
+        log.info("[Security] Conversation {} status changed from {} to {} by authorized user {}", 
+                conversation.getId(), previousStatus, status, userId);
+
+        // Notify participants via WebSocket
+        messagingTemplate.convertAndSend(
+                "/topic/conversation/" + bookingId + "/status",
+                status.name()
+        );
+    }
+
+    /**
+     * @deprecated Use {@link #updateConversationStatusSecure(String, ConversationStatus, String)} instead.
+     * This method lacks authorization checks and should only be used for internal/system operations.
+     */
+    @Deprecated
     @Transactional
     public void updateConversationStatus(String bookingId, ConversationStatus status) {
         Conversation conversation = conversationRepository.findByBookingId(bookingId)
@@ -175,7 +273,7 @@ public class ChatService {
         conversation.setStatus(status);
         conversationRepository.save(conversation);
 
-        log.info("Conversation {} status updated to {}", conversation.getId(), status);
+        log.info("Conversation {} status updated to {} (internal operation)", conversation.getId(), status);
 
         // Notify participants via WebSocket
         messagingTemplate.convertAndSend(

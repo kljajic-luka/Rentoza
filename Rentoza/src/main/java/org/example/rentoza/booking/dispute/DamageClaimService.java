@@ -79,8 +79,16 @@ public class DamageClaimService {
     // ========== CREATE CLAIM ==========
 
     /**
+     * Maximum time window (in hours) after checkout within which damage claims can be filed.
+     * H4 FIX: Platform spec requires claims within 48 hours of checkout.
+     */
+    private static final int DAMAGE_CLAIM_WINDOW_HOURS = 48;
+
+    /**
      * Create a new damage claim.
      * Called from checkout when host reports damage.
+     * 
+     * H4 FIX: Enforces 48-hour window after checkout for filing claims.
      */
     @Transactional
     public DamageClaimDTO createClaim(
@@ -97,6 +105,29 @@ public class DamageClaimService {
         if (!booking.getCar().getOwner().getId().equals(hostUserId)) {
             throw new AccessDeniedException("Samo vlasnik može prijaviti štetu");
         }
+        
+        // ========================================================================
+        // H4 FIX: Enforce 48-hour damage claim window after checkout
+        // ========================================================================
+        // Platform spec: "Damage claims must be filed within 48 hours of checkout"
+        // This prevents hosts from filing claims weeks after the fact (unfair to renters).
+        Instant checkoutTime = booking.getCheckoutCompletedAt();
+        if (checkoutTime != null) {
+            Duration timeSinceCheckout = Duration.between(checkoutTime, Instant.now());
+            if (timeSinceCheckout.toHours() > DAMAGE_CLAIM_WINDOW_HOURS) {
+                log.warn("[DamageClaim] WINDOW EXPIRED: bookingId={}, checkoutAt={}, hoursSince={}", 
+                        bookingId, checkoutTime, timeSinceCheckout.toHours());
+                throw new IllegalStateException(String.format(
+                        "Rok za prijavu štete je istekao. " +
+                        "Prijava štete mora biti podneta u roku od %d sata od završetka najma. " +
+                        "Završetak najma: %s (%d sata pre).",
+                        DAMAGE_CLAIM_WINDOW_HOURS,
+                        checkoutTime.atZone(SERBIA_ZONE).toLocalDateTime(),
+                        timeSinceCheckout.toHours()
+                ));
+            }
+        }
+        // Note: If checkout is not completed yet, claim is filed during checkout flow (allowed)
         
         // Check if claim already exists
         if (claimRepository.existsByBookingId(bookingId)) {

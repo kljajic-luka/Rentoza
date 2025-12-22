@@ -36,15 +36,29 @@ public class ChatController {
     private final ContentModerationFilter contentModerationFilter;
     private final RateLimitConfig rateLimitConfig;
 
+    /**
+     * Create a new conversation for a booking.
+     * 
+     * Security: The authenticated user must be either the renter or owner in the request.
+     * This prevents users from creating conversations they shouldn't have access to.
+     * 
+     * @param request The conversation creation request
+     * @param authentication The authenticated user
+     * @return The created conversation
+     */
     @PostMapping("/conversations")
     public ResponseEntity<ConversationDTO> createConversation(
             @Valid @RequestBody CreateConversationRequest request,
             Authentication authentication
     ) {
         String userId = authentication.getName();
-        log.info("Creating conversation for booking {} by user {}", request.getBookingId(), userId);
+        boolean isInternalService = authentication.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_INTERNAL_SERVICE"));
         
-        ConversationDTO conversation = chatService.createConversation(request);
+        log.info("[Security] {} creating conversation for booking {} (renter={}, owner={}, internal={})", 
+                userId, request.getBookingId(), request.getRenterId(), request.getOwnerId(), isInternalService);
+        
+        ConversationDTO conversation = chatService.createConversationSecure(request, userId, isInternalService);
         return ResponseEntity.status(HttpStatus.CREATED).body(conversation);
     }
 
@@ -128,14 +142,32 @@ public class ChatController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * Update conversation status (e.g., ACTIVE -> CLOSED).
+     * 
+     * Security: Only conversation participants (renter or owner) or ADMIN can update status.
+     * This prevents malicious users from closing other users' conversations.
+     * 
+     * @param bookingId The booking ID for the conversation
+     * @param status The new status
+     * @param authentication The authenticated user
+     * @return 204 No Content on success
+     */
     @PutMapping("/conversations/{bookingId}/status")
     public ResponseEntity<Void> updateConversationStatus(
             @PathVariable String bookingId,
-            @RequestParam ConversationStatus status
+            @RequestParam ConversationStatus status,
+            Authentication authentication
     ) {
-        log.info("Updating conversation status for booking {} to {}", bookingId, status);
+        String userId = authentication.getName();
+        log.info("[Security] User {} attempting to update conversation status for booking {} to {}", 
+                userId, bookingId, status);
         
-        chatService.updateConversationStatus(bookingId, status);
+        // Authorization check: verify user is participant or admin
+        chatService.updateConversationStatusSecure(bookingId, status, userId);
+        
+        log.info("[Security] Conversation status updated successfully for booking {} by user {}", 
+                bookingId, userId);
         return ResponseEntity.noContent().build();
     }
 

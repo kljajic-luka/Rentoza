@@ -370,6 +370,83 @@ class RenterVerificationServiceTest {
             // Assert
             assertThat(result.isEligible()).isFalse();
         }
+        
+        // ==================== H1 FIX: LICENSE TENURE TESTS ====================
+        
+        @Test
+        @DisplayName("H1: checkBookingEligibility blocks license tenure less than 24 months")
+        void checkBookingEligibility_TenureLessThan24Months_NotEligible() {
+            // Arrange
+            Long userId = 1L;
+            User user = createTestUser(userId, DriverLicenseStatus.APPROVED);
+            user.setDriverLicenseExpiryDate(LocalDate.now().plusYears(5));
+            user.setDriverLicenseTenureMonths(23); // 23 months - just under 2 years
+            user.setAge(25);
+            when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+            // Act
+            BookingEligibilityDTO result = service.checkBookingEligibility(userId, LocalDate.now().plusDays(5));
+
+            // Assert - Should be blocked due to insufficient tenure
+            assertThat(result.isEligible()).isFalse();
+            assertThat(result.getBlockReason())
+                    .isEqualTo(BookingEligibilityDTO.EligibilityBlockReason.LICENSE_TENURE_TOO_SHORT);
+            assertThat(result.getMessage()).contains("24");
+        }
+        
+        @Test
+        @DisplayName("H1: checkBookingEligibility allows license tenure exactly 24 months")
+        void checkBookingEligibility_TenureExactly24Months_Eligible() {
+            // Arrange
+            Long userId = 1L;
+            User user = createTestUser(userId, DriverLicenseStatus.APPROVED);
+            user.setDriverLicenseExpiryDate(LocalDate.now().plusYears(5));
+            user.setDriverLicenseTenureMonths(24); // Exactly 2 years
+            user.setAge(25);
+            when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+            // Act
+            BookingEligibilityDTO result = service.checkBookingEligibility(userId, LocalDate.now().plusDays(5));
+
+            // Assert - Should be eligible (boundary case)
+            assertThat(result.isEligible()).isTrue();
+        }
+        
+        @Test
+        @DisplayName("H1: checkBookingEligibility allows license tenure greater than 24 months")
+        void checkBookingEligibility_TenureGreaterThan24Months_Eligible() {
+            // Arrange
+            Long userId = 1L;
+            User user = createTestUser(userId, DriverLicenseStatus.APPROVED);
+            user.setDriverLicenseExpiryDate(LocalDate.now().plusYears(5));
+            user.setDriverLicenseTenureMonths(60); // 5 years
+            user.setAge(30);
+            when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+            // Act
+            BookingEligibilityDTO result = service.checkBookingEligibility(userId, LocalDate.now().plusDays(5));
+
+            // Assert
+            assertThat(result.isEligible()).isTrue();
+        }
+        
+        @Test
+        @DisplayName("H1: checkBookingEligibility allows null tenure (unverified OCR data)")
+        void checkBookingEligibility_TenureNull_Eligible() {
+            // Arrange - Tenure might be null if OCR didn't extract issue date
+            Long userId = 1L;
+            User user = createTestUser(userId, DriverLicenseStatus.APPROVED);
+            user.setDriverLicenseExpiryDate(LocalDate.now().plusYears(5));
+            user.setDriverLicenseTenureMonths(null);
+            user.setAge(25);
+            when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+            // Act
+            BookingEligibilityDTO result = service.checkBookingEligibility(userId, LocalDate.now().plusDays(5));
+
+            // Assert - Should be eligible (null is treated as unknown, not as blocking)
+            assertThat(result.isEligible()).isTrue();
+        }
     }
     
     // ==================== ADMIN APPROVAL/REJECTION TESTS ====================

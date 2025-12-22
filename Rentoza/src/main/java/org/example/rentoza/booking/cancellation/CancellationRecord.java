@@ -56,6 +56,16 @@ public class CancellationRecord {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    /**
+     * Optimistic locking version field.
+     * Prevents lost updates when concurrent modifications occur.
+     * 
+     * H9 FIX: Added to prevent race conditions in cancellation updates.
+     */
+    @Version
+    @Column(name = "version")
+    private Long version;
+
     // ==================== RELATIONSHIP ====================
 
     /**

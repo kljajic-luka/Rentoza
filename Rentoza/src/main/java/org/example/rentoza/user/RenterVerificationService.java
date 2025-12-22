@@ -828,6 +828,25 @@ public class RenterVerificationService {
                         user.getDriverLicenseExpiryDate(), tripEndDate);
                 }
                 
+                // ========================================================================
+                // H1 FIX: Enforce minimum 2-year (24 month) license tenure requirement
+                // ========================================================================
+                // Platform spec: "Cannot book if license tenure < 2 years"
+                // This is a safety requirement for car rental industry standards.
+                // Tenure is calculated from license issue date (extracted via OCR at verification).
+                int requiredTenureMonths = 24;
+                Integer tenureMonths = user.getDriverLicenseTenureMonths();
+                if (tenureMonths != null && tenureMonths < requiredTenureMonths) {
+                    // Calculate approximate eligibility date based on remaining months
+                    int remainingMonths = requiredTenureMonths - tenureMonths;
+                    LocalDate eligibleFrom = LocalDate.now().plusMonths(remainingMonths);
+                    
+                    log.info("[Eligibility] License tenure too short: userId={}, tenure={}mo, required={}mo, eligibleFrom={}", 
+                            user.getId(), tenureMonths, requiredTenureMonths, eligibleFrom);
+                    return BookingEligibilityDTO.licenseTenureTooShort(
+                            tenureMonths, requiredTenureMonths, eligibleFrom);
+                }
+                
                 return BookingEligibilityDTO.eligible();
                 
             default:

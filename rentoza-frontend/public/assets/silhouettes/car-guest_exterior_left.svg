@@ -1,0 +1,71 @@
+<!-- 
+  Car Left Side Silhouette for Photo Capture Guidance
+  Used for GUEST_EXTERIOR_LEFT and HOST_EXTERIOR_LEFT photo types.
+  
+  Display at 30% opacity over camera preview to guide positioning.
+-->
+<svg viewBox="0 0 400 300" xmlns="http://www.w3.org/2000/svg">
+  <!-- Car body outline - Left Side Profile -->
+  <g fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Roof line -->
+    <path d="M80 120 L120 70 L280 70 L320 120" />
+    
+    <!-- Windows -->
+    <path d="M120 70 L125 120 L175 120 L180 75" />
+    <path d="M180 75 L175 120 L230 120 L235 75" />
+    <path d="M235 75 L230 120 L275 120 L280 70" />
+    
+    <!-- Body side -->
+    <path d="M60 120 L60 180 L340 180 L340 120" />
+    
+    <!-- Door lines -->
+    <line x1="175" y1="70" x2="175" y2="180" />
+    <line x1="235" y1="70" x2="235" y2="180" />
+    
+    <!-- Door handles -->
+    <rect x="145" y="130" width="20" height="6" rx="2" />
+    <rect x="200" y="130" width="20" height="6" rx="2" />
+    
+    <!-- Wheel wells -->
+    <path d="M80 180 Q80 140, 120 140 Q160 140, 160 180" />
+    <path d="M240 180 Q240 140, 280 140 Q320 140, 320 180" />
+    
+    <!-- Wheels -->
+    <circle cx="120" cy="180" r="35" />
+    <circle cx="120" cy="180" r="20" />
+    <circle cx="280" cy="180" r="35" />
+    <circle cx="280" cy="180" r="20" />
+    
+    <!-- Headlight -->
+    <ellipse cx="55" cy="145" rx="8" ry="15" />
+    
+    <!-- Taillight -->
+    <ellipse cx="345" cy="145" rx="8" ry="15" />
+    
+    <!-- Side mirror -->
+    <path d="M60 100 L40 105 L40 120 L60 125" />
+  </g>
+  
+  <!-- Frame guide (dashed) -->
+  <rect 
+    x="20" y="30" 
+    width="360" height="230" 
+    fill="none" 
+    stroke="#FFFFFF" 
+    stroke-width="2" 
+    stroke-dasharray="10,5" 
+    opacity="0.5"
+  />
+  
+  <!-- Distance indicator -->
+  <g fill="#FFFFFF" opacity="0.6">
+    <path d="M200 270 L195 260 L205 260 Z" />
+    <line x1="200" y1="260" x2="200" y2="280" stroke="#FFFFFF" stroke-width="2" />
+    <text x="200" y="295" text-anchor="middle" font-size="12" fill="#FFFFFF">5-8m</text>
+  </g>
+  
+  <!-- Instruction hint -->
+  <text x="200" y="20" text-anchor="middle" font-size="10" fill="#FFFFFF" opacity="0.7">
+    Sva 4 točka moraju biti vidljiva
+  </text>
+</svg>

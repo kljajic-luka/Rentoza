@@ -18,12 +18,16 @@ import {
   ChangeDetectionStrategy,
   OnInit,
   OnChanges,
+  OnDestroy,
   SimpleChanges,
   DestroyRef,
+  HostListener,
+  effect,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, Validators, ReactiveFormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Subject, debounceTime } from 'rxjs';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatCardModule } from '@angular/material/card';
@@ -34,11 +38,17 @@ import { MatChipsModule } from '@angular/material/chips';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { MatSliderModule } from '@angular/material/slider';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 
 import { environment } from '@environments/environment';
 import { CheckInService } from '../../../core/services/check-in.service';
 import { PhotoCompressionService } from '../../../core/services/photo-compression.service';
 import { GeolocationService } from '../../../core/services/geolocation.service';
+import { PhotoGuidanceService } from '../../../core/services/photo-guidance.service';
+import {
+  CheckInPersistenceService,
+  CaptureState,
+} from '../../../core/services/check-in-persistence.service';
 import {
   CheckInStatusDTO,
   CheckInPhotoType,
@@ -50,10 +60,17 @@ import {
   PhotoStatsViewModel,
   PhotoSlot,
 } from '../../../core/models/check-in.model';
+import { GuestCheckInPhotoSubmissionDTO } from '../../../core/models/photo-guidance.model';
 import { LazyImgDirective } from '../../../shared/directives/lazy-img.directive';
 import { generateUUID } from '../../../core/utils/uuid';
 import { ReadOnlyPickupLocationComponent } from '../components/readonly-pickup-location/readonly-pickup-location.component';
 import { PickupLocationData } from '../../../core/models/booking-details.model';
+import { GuidedPhotoCaptureComponent } from './guided-photo-capture/guided-photo-capture.component';
+import {
+  CheckInRecoveryDialogComponent,
+  RecoveryDialogData,
+  RecoveryDialogResult,
+} from './check-in-recovery-dialog/check-in-recovery-dialog.component';
 
 const PHOTO_SLOTS: PhotoSlot[] = [
   { type: 'HOST_EXTERIOR_FRONT', label: 'Prednja strana', icon: 'directions_car', required: true },
@@ -82,8 +99,11 @@ const PHOTO_SLOTS: PhotoSlot[] = [
     MatExpansionModule,
     MatSliderModule,
     MatSnackBarModule,
+    MatDialogModule,
     LazyImgDirective,
     ReadOnlyPickupLocationComponent,
+    GuidedPhotoCaptureComponent,
+    CheckInRecoveryDialogComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -128,7 +148,60 @@ const PHOTO_SLOTS: PhotoSlot[] = [
         </div>
       </div>
 
-      <!-- Required Photo grid -->
+      <!-- Guided Capture Mode (shown when active) -->
+      @if (showGuidedCapture() && !readOnly) {
+      <app-guided-photo-capture
+        [bookingId]="bookingId"
+        [mode]="'host-checkin'"
+        [restoredState]="_restoredCaptureState()"
+        (captureComplete)="onGuidedCaptureComplete($event)"
+        (captureCancelled)="onGuidedCaptureCancelled()"
+      />
+      } @else {
+      <!-- Manual Capture Mode (default or after guided capture) -->
+
+      <!-- Start guided capture prompt (only when no photos yet) -->
+      @if (!readOnly && photoStats().completed === 0) {
+      <mat-card class="capture-prompt-card">
+        <mat-card-content>
+          <div class="capture-prompt">
+            <mat-icon>camera_enhance</mat-icon>
+            <div class="prompt-text">
+              <h4>Snimite fotografije vozila</h4>
+              <p>Vođeno snimanje vas vodi kroz sve potrebne uglove sa prikazom silueta.</p>
+            </div>
+          </div>
+          <div class="capture-actions">
+            <button
+              mat-raised-button
+              color="primary"
+              (click)="startGuidedCapture()"
+              class="start-capture-btn"
+            >
+              <mat-icon>photo_camera</mat-icon>
+              Započni vođeno snimanje
+            </button>
+            <button mat-stroked-button (click)="useManualCapture()" class="manual-btn">
+              Ručno snimanje
+            </button>
+          </div>
+        </mat-card-content>
+      </mat-card>
+      }
+
+      <!-- Continue guided capture button (when partially done) -->
+      @if (!readOnly && photoStats().completed > 0 && !photoStats().allRequiredComplete) {
+      <div class="continue-capture-bar">
+        <span>{{ photoStats().completed }}/{{ photoStats().total }} fotografija snimljeno</span>
+        <button mat-stroked-button color="primary" (click)="startGuidedCapture()">
+          <mat-icon>photo_camera</mat-icon>
+          Nastavi snimanje
+        </button>
+      </div>
+      }
+
+      <!-- Required Photo grid (show when in manual mode or has photos) -->
+      @if (showManualGrid() || photoStats().completed > 0 || readOnly) {
       <div class="photo-grid">
         @for (vm of photoSlotViewModels(); track vm.slot.type) {
         <div
@@ -225,6 +298,10 @@ const PHOTO_SLOTS: PhotoSlot[] = [
         >
         </mat-progress-bar>
       </div>
+      }
+      <!-- End photo-grid @if -->
+      }
+      <!-- End guided capture @else -->
 
       <!-- Damage Photos Section (hidden in readOnly if no damage photos exist) -->
       @if (!readOnly || damagePhotos().length > 0) {
@@ -712,6 +789,8 @@ const PHOTO_SLOTS: PhotoSlot[] = [
         width: 100%;
         height: 100%;
         object-fit: cover;
+        /* CRITICAL: Respect EXIF orientation metadata for rotated photos */
+        image-orientation: from-image;
       }
 
       /* Minimal success badge (replaces obstructive overlay) */
@@ -1245,10 +1324,111 @@ const PHOTO_SLOTS: PhotoSlot[] = [
         border-radius: 6px;
         transition: width 0.3s ease;
       }
+
+      /* ============================================
+         GUIDED CAPTURE PROMPT STYLES
+         ============================================ */
+      .capture-prompt-card {
+        margin-bottom: 20px;
+        border: 2px dashed var(--checkin-border);
+        background: var(--checkin-surface-muted);
+      }
+
+      .capture-prompt {
+        display: flex;
+        align-items: flex-start;
+        gap: 16px;
+        margin-bottom: 16px;
+      }
+
+      .capture-prompt mat-icon {
+        font-size: 48px;
+        width: 48px;
+        height: 48px;
+        color: var(--checkin-primary);
+      }
+
+      .capture-prompt .prompt-text h4 {
+        margin: 0 0 8px;
+        font-size: 18px;
+        font-weight: 600;
+        color: var(--checkin-text-primary);
+      }
+
+      .capture-prompt .prompt-text p {
+        margin: 0;
+        font-size: 14px;
+        color: var(--checkin-text-secondary);
+        line-height: 1.5;
+      }
+
+      .capture-actions {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .start-capture-btn {
+        min-width: 200px;
+      }
+
+      .start-capture-btn mat-icon {
+        margin-right: 8px;
+      }
+
+      .manual-btn {
+        color: var(--checkin-text-secondary);
+      }
+
+      /* Continue capture bar */
+      .continue-capture-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 12px 16px;
+        margin-bottom: 16px;
+        background: var(--checkin-surface-muted);
+        border: 1px solid var(--checkin-border);
+        border-radius: 8px;
+      }
+
+      .continue-capture-bar span {
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--checkin-text-primary);
+      }
+
+      .continue-capture-bar button mat-icon {
+        margin-right: 8px;
+      }
+
+      /* Dark mode adjustments for capture prompt */
+      @media (prefers-color-scheme: dark) {
+        .capture-prompt-card {
+          border-color: var(--checkin-border);
+          background: var(--checkin-surface-muted);
+        }
+
+        .capture-prompt mat-icon {
+          color: var(--checkin-primary);
+        }
+      }
+
+      :host-context(.dark-theme) .capture-prompt-card,
+      :host-context(.theme-dark) .capture-prompt-card {
+        border-color: var(--checkin-border);
+        background: var(--checkin-surface-muted);
+      }
+
+      :host-context(.dark-theme) .capture-prompt mat-icon,
+      :host-context(.theme-dark) .capture-prompt mat-icon {
+        color: var(--checkin-primary);
+      }
     `,
   ],
 })
-export class HostCheckInComponent implements OnInit, OnChanges {
+export class HostCheckInComponent implements OnInit, OnChanges, OnDestroy {
   @Input() bookingId!: number;
   @Input() status!: CheckInStatusDTO | null;
   @Input() readOnly = false;
@@ -1257,10 +1437,18 @@ export class HostCheckInComponent implements OnInit, OnChanges {
 
   private fb = inject(FormBuilder);
   private snackBar = inject(MatSnackBar);
+  private dialog = inject(MatDialog);
   private destroyRef = inject(DestroyRef);
   checkInService = inject(CheckInService);
   private compressionService = inject(PhotoCompressionService);
   private geolocationService = inject(GeolocationService);
+  private photoGuidanceService = inject(PhotoGuidanceService);
+  private persistenceService = inject(CheckInPersistenceService);
+
+  // Persistence state
+  readonly _restoredCaptureState = signal<CaptureState | undefined>(undefined);
+  readonly _hasUnsavedPhotos = signal(false);
+  private formChangeSubject = new Subject<void>();
 
   // Local photo previews (blob URLs or hydrated backend URLs) keyed by slotId
   private localPreviews = signal<Map<string, string>>(new Map());
@@ -1268,6 +1456,19 @@ export class HostCheckInComponent implements OnInit, OnChanges {
   // Dynamic damage photo slots
   readonly damagePhotos = signal<DamagePhotoSlot[]>([]);
   readonly maxDamagePhotos = MAX_DAMAGE_PHOTOS;
+
+  // Guided capture state
+  private _showGuidedCapture = signal(false);
+  private _showManualGrid = signal(false);
+  readonly showGuidedCapture = this._showGuidedCapture.asReadonly();
+  readonly showManualGrid = this._showManualGrid.asReadonly();
+
+  constructor() {
+    // Set up debounced form persistence
+    this.formChangeSubject
+      .pipe(debounceTime(500), takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => this.persistFormState());
+  }
 
   // ========== SVELTE-INSPIRED VIEW MODELS ==========
   // Single-pass derivation pattern: compute all photo state once per change
@@ -1496,7 +1697,122 @@ export class HostCheckInComponent implements OnInit, OnChanges {
     // Also update on value changes to catch all cases
     this.detailsForm.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
       this.formValidSignal.set(this.detailsForm.valid);
+      // Trigger debounced form persistence
+      this.formChangeSubject.next();
     });
+
+    // Check for saved session on component init (if not in readOnly mode)
+    if (!this.readOnly) {
+      this.checkForSavedSession();
+      // Acquire lock for this booking
+      this.persistenceService.acquireLock(this.bookingId);
+    }
+  }
+
+  ngOnDestroy(): void {
+    // Release lock when component is destroyed
+    this.persistenceService.releaseLock(this.bookingId);
+    this.formChangeSubject.complete();
+  }
+
+  /**
+   * Warn user before leaving if there are unsaved photos.
+   */
+  @HostListener('window:beforeunload', ['$event'])
+  onBeforeUnload(event: BeforeUnloadEvent): void {
+    if (this._hasUnsavedPhotos()) {
+      event.preventDefault();
+      event.returnValue =
+        'Imate nesnimljene fotografije. Da li ste sigurni da želite da napustite stranicu?';
+    }
+  }
+
+  /**
+   * Check for a previously saved session and offer recovery.
+   */
+  private async checkForSavedSession(): Promise<void> {
+    try {
+      const savedSession = await this.persistenceService.checkForSavedSession(
+        this.bookingId,
+        'host-checkin'
+      );
+
+      if (!savedSession.exists) return;
+
+      // Show recovery dialog
+      const dialogRef = this.dialog.open(CheckInRecoveryDialogComponent, {
+        width: '400px',
+        disableClose: true,
+        data: {
+          sessionInfo: savedSession,
+          bookingId: this.bookingId,
+          mode: 'host-checkin',
+        } satisfies RecoveryDialogData,
+      });
+
+      const result = (await dialogRef.afterClosed().toPromise()) as
+        | RecoveryDialogResult
+        | undefined;
+
+      if (result?.action === 'resume') {
+        this._restoredCaptureState.set(result.captureState);
+        this._hasUnsavedPhotos.set(result.captureState.capturedPhotos.length > 0);
+        if (result.captureState.capturedPhotos.length > 0) {
+          this._showGuidedCapture.set(true);
+        }
+        await this.restoreFormState();
+        this.snackBar.open('Prethodna sesija uspešno vraćena', 'OK', { duration: 3000 });
+      } else if (result?.action === 'takeover') {
+        await this.persistenceService.requestTakeover(this.bookingId);
+        this._restoredCaptureState.set(result.captureState);
+        this._hasUnsavedPhotos.set(result.captureState.capturedPhotos.length > 0);
+        if (result.captureState.capturedPhotos.length > 0) {
+          this._showGuidedCapture.set(true);
+        }
+        await this.restoreFormState();
+        this.snackBar.open('Prethodna sesija uspešno vraćena', 'OK', { duration: 3000 });
+      } else if (result?.action === 'start-fresh') {
+        await this.persistenceService.clearBookingData(this.bookingId, 'host-checkin');
+      }
+      // 'cancel' or undefined - do nothing
+    } catch (err) {
+      console.error('[HostCheckIn] Error checking for saved session:', err);
+    }
+  }
+
+  /**
+   * Persist form state to IndexedDB with debouncing.
+   */
+  private async persistFormState(): Promise<void> {
+    if (this.readOnly) return;
+
+    try {
+      await this.persistenceService.saveFormState(this.bookingId, 'host-checkin', {
+        odometerReading: this.detailsForm.get('odometerReading')?.value,
+        fuelLevelPercent: this.detailsForm.get('fuelLevelPercent')?.value,
+        lockboxCode: this.detailsForm.get('lockboxCode')?.value,
+      });
+    } catch (err) {
+      console.warn('[HostCheckIn] Failed to persist form state:', err);
+    }
+  }
+
+  /**
+   * Restore form state from IndexedDB.
+   */
+  private async restoreFormState(): Promise<void> {
+    try {
+      const formState = await this.persistenceService.loadFormState(this.bookingId, 'host-checkin');
+      if (formState) {
+        this.detailsForm.patchValue({
+          odometerReading: formState.odometerReading ?? null,
+          fuelLevelPercent: formState.fuelLevelPercent ?? 50,
+          lockboxCode: formState.lockboxCode ?? '',
+        });
+      }
+    } catch (err) {
+      console.warn('[HostCheckIn] Failed to restore form state:', err);
+    }
   }
 
   // Methods
@@ -1645,6 +1961,83 @@ export class HostCheckInComponent implements OnInit, OnChanges {
     return match ? parseInt(match[1], 10) : null;
   }
 
+  // ========== GUIDED CAPTURE METHODS ==========
+
+  /**
+   * Start the guided photo capture flow.
+   * This provides step-by-step guidance with silhouettes.
+   */
+  startGuidedCapture(): void {
+    this._showGuidedCapture.set(true);
+    this._showManualGrid.set(false);
+  }
+
+  /**
+   * Switch to manual capture mode (traditional grid).
+   */
+  useManualCapture(): void {
+    this._showManualGrid.set(true);
+    this._showGuidedCapture.set(false);
+  }
+
+  /**
+   * Handle completion of guided photo capture.
+   * Converts submission data and uploads each photo individually.
+   */
+  onGuidedCaptureComplete(submission: GuestCheckInPhotoSubmissionDTO): void {
+    console.log('[HostCheckIn] Guided capture complete:', submission.photos.length, 'photos');
+
+    // Process each photo from the guided capture
+    for (const photo of submission.photos) {
+      // Convert base64 to blob
+      const byteString = atob(photo.base64Data);
+      const arrayBuffer = new ArrayBuffer(byteString.length);
+      const uint8Array = new Uint8Array(arrayBuffer);
+      for (let i = 0; i < byteString.length; i++) {
+        uint8Array[i] = byteString.charCodeAt(i);
+      }
+      const blob = new Blob([uint8Array], { type: photo.mimeType || 'image/jpeg' });
+      const file = new File([blob], `${photo.photoType}.jpg`, {
+        type: photo.mimeType || 'image/jpeg',
+      });
+
+      // Create preview URL
+      const previewUrl = URL.createObjectURL(blob);
+      this.localPreviews.update((map) => {
+        const newMap = new Map(map);
+        const oldUrl = newMap.get(photo.photoType);
+        if (oldUrl) URL.revokeObjectURL(oldUrl);
+        newMap.set(photo.photoType, previewUrl);
+        return newMap;
+      });
+
+      // Upload to backend
+      this.checkInService.uploadPhoto(
+        this.bookingId,
+        file,
+        photo.photoType,
+        photo.photoType as CheckInPhotoType
+      );
+    }
+
+    // Exit guided capture mode
+    this._showGuidedCapture.set(false);
+    this._showManualGrid.set(true); // Show grid to see results
+
+    this.snackBar.open(`${submission.photos.length} fotografija uspešno snimljeno!`, 'OK', {
+      duration: 3000,
+      panelClass: 'success-snackbar',
+    });
+  }
+
+  /**
+   * Handle cancellation of guided capture.
+   */
+  onGuidedCaptureCancelled(): void {
+    this._showGuidedCapture.set(false);
+    this.photoGuidanceService.resetCapture();
+  }
+
   submitHostCheckIn(): void {
     if (!this.canSubmit()) return;
 
@@ -1659,6 +2052,12 @@ export class HostCheckInComponent implements OnInit, OnChanges {
       )
       .subscribe({
         next: () => {
+          // Clear persisted session data on successful submission
+          this.persistenceService.clearBookingData(this.bookingId, 'host-checkin').catch((err) => {
+            console.warn('[HostCheckIn] Failed to clear persistence data:', err);
+          });
+          this._hasUnsavedPhotos.set(false);
+
           this.snackBar.open('Check-in uspešno poslat gostu!', 'OK', {
             duration: 3000,
             panelClass: 'success-snackbar',

@@ -3,8 +3,9 @@
  *
  * Handles the guest's portion of check-in:
  * 1. Review host's photos of vehicle condition
- * 2. Acknowledge condition is acceptable OR mark damage hotspots
- * 3. Optionally reveal lockbox code if remote handoff
+ * 2. [Phase 2] Take comparison photos (dual-party)
+ * 3. Acknowledge condition is acceptable OR mark damage hotspots
+ * 4. Optionally reveal lockbox code if remote handoff
  */
 import {
   Component,
@@ -15,6 +16,10 @@ import {
   signal,
   computed,
   ChangeDetectionStrategy,
+  OnInit,
+  OnDestroy,
+  HostListener,
+  effect,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -28,18 +33,29 @@ import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { Subject, debounceTime } from 'rxjs';
 
 import { CheckInService } from '../../../core/services/check-in.service';
 import { GeolocationService } from '../../../core/services/geolocation.service';
+import { PhotoGuidanceService } from '../../../core/services/photo-guidance.service';
+import {
+  CheckInPersistenceService,
+  CaptureState,
+} from '../../../core/services/check-in-persistence.service';
 import {
   CheckInStatusDTO,
   CheckInPhotoDTO,
-  HotspotLocation,
-  HotspotMarkingDTO,
+  CheckInPhotoType,
 } from '../../../core/models/check-in.model';
-import { VehicleWireframeComponent } from './vehicle-wireframe.component';
+import { GuestCheckInPhotoSubmissionDTO } from '../../../core/models/photo-guidance.model';
+import { GuidedPhotoCaptureComponent } from './guided-photo-capture/guided-photo-capture.component';
+import { PhotoComparisonComponent } from './photo-comparison/photo-comparison.component';
 import { PhotoViewerDialogComponent } from '../../../shared/components/photo-viewer-dialog/photo-viewer-dialog.component';
-import { LazyImgDirective } from '../../../shared/directives/lazy-img.directive';
+import {
+  CheckInRecoveryDialogComponent,
+  RecoveryDialogData,
+  RecoveryDialogResult,
+} from './check-in-recovery-dialog/check-in-recovery-dialog.component';
 import { environment } from '../../../../environments/environment';
 import { ReadOnlyPickupLocationComponent } from '../components/readonly-pickup-location/readonly-pickup-location.component';
 import { PickupLocationData } from '../../../core/models/booking-details.model';
@@ -60,9 +76,10 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
     MatChipsModule,
     MatSnackBarModule,
     MatProgressSpinnerModule,
-    VehicleWireframeComponent,
-    LazyImgDirective,
+    GuidedPhotoCaptureComponent,
+    PhotoComparisonComponent,
     ReadOnlyPickupLocationComponent,
+    CheckInRecoveryDialogComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -100,56 +117,107 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
       </div>
       }
 
-      <!-- Warning banner: Host photos incomplete or have rejections -->
-      @if (hasPhotosWithIssues()) {
+      <!-- Warning banner: Host photos incomplete or have rejections (only shown in comparison) -->
+      @if (hasPhotosWithIssues() && guestPhotosComplete()) {
       <div class="photo-issues-warning">
         <mat-icon>warning</mat-icon>
         <div class="warning-content">
-          <span class="warning-title">Nepotpune fotografije</span>
+          <span class="warning-title">Nepotpune fotografije domaćina</span>
           <span class="warning-message">
-            Neke fotografije od domaćina imaju probleme sa validacijom. Pregledajte pažljivo pre
-            potvrde.
+            Neke fotografije od domaćina imaju probleme sa validacijom. Pregledajte pažljivo u
+            poređenju ispod.
           </span>
         </div>
       </div>
       }
 
-      <!-- Host photos section -->
-      <div class="section-header">
-        <mat-icon>photo_library</mat-icon>
-        <div>
-          <h2>Fotografije vozila</h2>
-          <p>Pregledajte stanje vozila pre preuzimanja</p>
-        </div>
-      </div>
-
-      <!-- Photo gallery -->
-      <div class="photo-gallery">
-        @for (photo of status?.vehiclePhotos; track photo.photoId) {
-        <div class="photo-item" (click)="openPhotoViewer(photo)">
-          <img
-            appLazyImg
-            [lazySrc]="getPhotoUrl(photo)"
-            [alt]="getPhotoLabel(photo.photoType)"
-            rootMargin="200px"
-          />
-          <div class="photo-label">{{ getPhotoLabel(photo.photoType) }}</div>
-
-          <!-- EXIF validation badge -->
-          @if (photo.exifValidationStatus !== 'VALID') {
-          <div
-            class="validation-badge"
-            [class.warning]="photo.exifValidationStatus === 'VALID_WITH_WARNINGS'"
-            [class.invalid]="photo.exifValidationStatus.startsWith('REJECTED')"
-          >
-            <mat-icon>
-              {{ photo.exifValidationStatus === 'VALID_WITH_WARNINGS' ? 'warning' : 'error' }}
-            </mat-icon>
+      <!-- ═══════════════════════════════════════════════════════════════════════════
+           PHASE 2: DUAL-PARTY PHOTO CAPTURE
+           Guest takes their own comparison photos for dispute resolution
+           ═══════════════════════════════════════════════════════════════════════════ -->
+      @if (dualPartyPhotosEnabled && !guestPhotosComplete()) {
+      <div class="dual-party-section">
+        <div class="section-header">
+          <mat-icon>add_a_photo</mat-icon>
+          <div>
+            <h2>Vaše fotografije vozila</h2>
+            <p>Uslikajte vozilo za dodatnu dokumentaciju</p>
           </div>
+          @if (!dualPartyPhotosRequired) {
+          <mat-chip class="optional-badge">Opciono</mat-chip>
           }
         </div>
+
+        @if (!showGuidedCapture()) {
+        <!-- Start capture button -->
+        <mat-card class="capture-prompt-card">
+          <mat-card-content>
+            <div class="capture-prompt">
+              <mat-icon>camera_enhance</mat-icon>
+              <div class="prompt-text">
+                <h4>Dokumentujte stanje vozila</h4>
+                <p>
+                  Snimite fotografije vozila iz svih uglova. Ove fotografije služe kao dokaz u
+                  slučaju neslaganja.
+                </p>
+              </div>
+            </div>
+            <div class="capture-actions">
+              <button
+                mat-raised-button
+                color="primary"
+                (click)="startGuidedCapture()"
+                class="start-capture-btn"
+              >
+                <mat-icon>photo_camera</mat-icon>
+                Započni snimanje
+              </button>
+              @if (!dualPartyPhotosRequired) {
+              <button mat-stroked-button (click)="skipGuestPhotos()" class="skip-btn">
+                Preskoči
+              </button>
+              }
+            </div>
+            @if (guestPhotosProgress() > 0) {
+            <div class="progress-indicator">
+              <mat-icon>check_circle</mat-icon>
+              <span>{{ guestPhotosProgress() }}% završeno</span>
+            </div>
+            }
+          </mat-card-content>
+        </mat-card>
+        } @else {
+        <!-- Guided photo capture component -->
+        <app-guided-photo-capture
+          [bookingId]="bookingId"
+          [mode]="'guest-checkin'"
+          [restoredState]="restoredCaptureState()"
+          (captureComplete)="onGuestPhotosComplete($event)"
+          (captureCancelled)="onGuestPhotosCancelled()"
+        />
         }
       </div>
+      }
+
+      <!-- Photo comparison (after guest photos are complete) -->
+      @if (dualPartyPhotosEnabled && guestPhotosComplete() && hasPhotosToCompare()) {
+      <div class="comparison-section">
+        <div class="section-header">
+          <mat-icon>compare</mat-icon>
+          <div>
+            <h2>Upoređivanje fotografija</h2>
+            <p>Pregledajte razlike između fotografija domaćina i vaših</p>
+          </div>
+        </div>
+
+        <app-photo-comparison
+          [hostPhotos]="status?.vehiclePhotos ?? []"
+          [guestPhotos]="guestCapturedPhotos()"
+          (continue)="onComparisonContinue()"
+          (reportDiscrepancy)="onReportDiscrepancy()"
+        />
+      </div>
+      }
 
       <!-- Condition acknowledgment -->
       <mat-card class="condition-card">
@@ -166,30 +234,30 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
               Pregledao/la sam fotografije i prihvatam trenutno stanje vozila
             </mat-checkbox>
 
-            <!-- Mark damage option -->
+            <!-- Report damage option (simplified - photos serve as documentation) -->
             @if (!conditionForm.get('conditionAccepted')?.value) {
             <div class="damage-section">
-              <p class="damage-prompt">Uočili ste oštećenje? Označite ga na vozilu:</p>
-
-              <app-vehicle-wireframe
-                [hotspots]="markedHotspots()"
-                (hotspotClicked)="onHotspotClicked($event)"
-                class="wireframe"
-              >
-              </app-vehicle-wireframe>
+              <div class="damage-info">
+                <mat-icon>info_outline</mat-icon>
+                <p>
+                  Ukoliko primetite bilo kakvo oštećenje, vaše fotografije služe kao dokumentacija.
+                  Dodajte komentar ispod za dodatne informacije.
+                </p>
+              </div>
 
               <!-- Comment for damage -->
-              @if (markedHotspots().length > 0) {
               <mat-form-field appearance="outline" class="full-width">
-                <mat-label>Opis oštećenja</mat-label>
+                <mat-label>Opis uočenih problema (opciono)</mat-label>
                 <textarea
                   matInput
                   formControlName="conditionComment"
                   rows="3"
-                  placeholder="Opišite uočeno oštećenje..."
+                  placeholder="Opišite uočeno oštećenje ili problem..."
                 ></textarea>
+                <mat-hint
+                  >Vaše fotografije su glavni dokaz - komentar je dodatna informacija</mat-hint
+                >
               </mat-form-field>
-              }
             </div>
             }
           </form>
@@ -256,10 +324,11 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
         >
           @if (checkInService.isLoading()) {
           <mat-spinner diameter="24"></mat-spinner>
-          } @else if (markedHotspots().length > 0) {
+          } @else if (!conditionForm.get('conditionAccepted')?.value &&
+          conditionForm.get('conditionComment')?.value?.trim()) {
           <ng-container>
             <mat-icon>report</mat-icon>
-            Prijavi oštećenje
+            Prijavi problem
           </ng-container>
           } @else {
           <ng-container>
@@ -390,6 +459,8 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
         width: 100%;
         height: 100%;
         object-fit: cover;
+        /* CRITICAL: Respect EXIF orientation metadata for rotated photos */
+        image-orientation: from-image;
       }
 
       .photo-label {
@@ -451,14 +522,63 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
         border-radius: 8px;
       }
 
-      .damage-prompt {
-        margin: 0 0 12px;
-        font-weight: 500;
-        color: var(--color-text-primary, #212121);
+      .damage-info {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        margin-bottom: 16px;
+        padding: 12px;
+        background: var(--warning-surface, #fff3e0);
+        border-radius: 8px;
+        border-left: 4px solid var(--warning-color, #ff9800);
       }
 
-      .wireframe {
-        margin-bottom: 16px;
+      :host-context(.dark-theme) .damage-info,
+      :host-context(.theme-dark) .damage-info {
+        background: rgba(255, 152, 0, 0.12);
+        border-left-color: rgba(251, 191, 36, 0.7);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .damage-info {
+          background: rgba(255, 152, 0, 0.12);
+          border-left-color: rgba(251, 191, 36, 0.7);
+        }
+      }
+
+      .damage-info mat-icon {
+        color: var(--warning-color, #ff9800);
+        flex-shrink: 0;
+        margin-top: 2px;
+      }
+
+      :host-context(.dark-theme) .damage-info mat-icon,
+      :host-context(.theme-dark) .damage-info mat-icon {
+        color: #fbbf24;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .damage-info mat-icon {
+          color: #fbbf24;
+        }
+      }
+
+      .damage-info p {
+        margin: 0;
+        font-size: 14px;
+        color: var(--color-text-primary, #212121);
+        line-height: 1.5;
+      }
+
+      :host-context(.dark-theme) .damage-info p,
+      :host-context(.theme-dark) .damage-info p {
+        color: rgba(226, 232, 240, 0.9);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .damage-info p {
+          color: rgba(226, 232, 240, 0.9);
+        }
       }
 
       .full-width {
@@ -590,10 +710,241 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
         color: #bf360c;
         line-height: 1.4;
       }
+
+      /* ═══════════════════════════════════════════════════════════════════════════
+         DUAL-PARTY PHOTO CAPTURE STYLES
+         ═══════════════════════════════════════════════════════════════════════════ */
+      .dual-party-section {
+        margin-bottom: 24px;
+        padding: 16px;
+        background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%);
+        border-radius: 12px;
+        border: 1px solid #90caf9;
+      }
+
+      :host-context(.dark-theme) .dual-party-section,
+      :host-context(.theme-dark) .dual-party-section {
+        background: linear-gradient(
+          135deg,
+          rgba(33, 150, 243, 0.15) 0%,
+          rgba(156, 39, 176, 0.12) 100%
+        );
+        border-color: rgba(144, 202, 249, 0.25);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .dual-party-section {
+          background: linear-gradient(
+            135deg,
+            rgba(33, 150, 243, 0.15) 0%,
+            rgba(156, 39, 176, 0.12) 100%
+          );
+          border-color: rgba(144, 202, 249, 0.25);
+        }
+      }
+
+      .dual-party-section .section-header {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+
+      .dual-party-section .section-header mat-icon {
+        font-size: 28px;
+        width: 28px;
+        height: 28px;
+        color: var(--primary-color, #7c4dff);
+      }
+
+      :host-context(.dark-theme) .dual-party-section .section-header mat-icon,
+      :host-context(.theme-dark) .dual-party-section .section-header mat-icon {
+        color: #b388ff;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .dual-party-section .section-header mat-icon {
+          color: #b388ff;
+        }
+      }
+
+      .dual-party-section .section-header h2,
+      .dual-party-section .section-header p {
+        color: var(--color-text-primary, #212121);
+      }
+
+      :host-context(.dark-theme) .dual-party-section .section-header h2,
+      :host-context(.theme-dark) .dual-party-section .section-header h2 {
+        color: rgba(226, 232, 240, 0.95);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .dual-party-section .section-header h2 {
+          color: rgba(226, 232, 240, 0.95);
+        }
+      }
+
+      .dual-party-section .section-header p {
+        color: var(--color-text-muted, #757575);
+      }
+
+      :host-context(.dark-theme) .dual-party-section .section-header p,
+      :host-context(.theme-dark) .dual-party-section .section-header p {
+        color: rgba(148, 163, 184, 0.85);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .dual-party-section .section-header p {
+          color: rgba(148, 163, 184, 0.85);
+        }
+      }
+
+      .optional-badge {
+        margin-left: auto;
+        font-size: 11px !important;
+        height: 24px !important;
+        min-height: 24px !important;
+        background: rgba(124, 77, 255, 0.1) !important;
+        color: #7c4dff !important;
+      }
+
+      :host-context(.dark-theme) .optional-badge,
+      :host-context(.theme-dark) .optional-badge {
+        background: rgba(124, 77, 255, 0.2) !important;
+        color: #b388ff !important;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .optional-badge {
+          background: rgba(124, 77, 255, 0.2) !important;
+          color: #b388ff !important;
+        }
+      }
+
+      .capture-prompt-card {
+        background: var(--color-surface, #ffffff);
+        border-radius: 8px;
+      }
+
+      :host-context(.dark-theme) .capture-prompt-card,
+      :host-context(.theme-dark) .capture-prompt-card {
+        background: rgba(30, 41, 59, 0.8);
+        border: 1px solid rgba(94, 117, 168, 0.25);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .capture-prompt-card {
+          background: rgba(30, 41, 59, 0.8);
+          border: 1px solid rgba(94, 117, 168, 0.25);
+        }
+      }
+
+      .capture-prompt {
+        display: flex;
+        align-items: flex-start;
+        gap: 16px;
+        margin-bottom: 16px;
+      }
+
+      .capture-prompt mat-icon {
+        font-size: 48px;
+        width: 48px;
+        height: 48px;
+        color: var(--primary-color, #7c4dff);
+        opacity: 0.9;
+      }
+
+      :host-context(.dark-theme) .capture-prompt mat-icon,
+      :host-context(.theme-dark) .capture-prompt mat-icon {
+        color: #b388ff;
+        opacity: 1;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .capture-prompt mat-icon {
+          color: #b388ff;
+          opacity: 1;
+        }
+      }
+
+      .capture-prompt .prompt-text h4 {
+        margin: 0 0 4px;
+        color: var(--color-text-primary, #212121);
+      }
+
+      :host-context(.dark-theme) .capture-prompt .prompt-text h4,
+      :host-context(.theme-dark) .capture-prompt .prompt-text h4 {
+        color: rgba(226, 232, 240, 0.95);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .capture-prompt .prompt-text h4 {
+          color: rgba(226, 232, 240, 0.95);
+        }
+      }
+
+      .capture-prompt .prompt-text p {
+        margin: 0;
+        font-size: 13px;
+        color: var(--color-text-muted, #757575);
+        line-height: 1.4;
+      }
+
+      :host-context(.dark-theme) .capture-prompt .prompt-text p,
+      :host-context(.theme-dark) .capture-prompt .prompt-text p {
+        color: rgba(148, 163, 184, 0.85);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .capture-prompt .prompt-text p {
+          color: rgba(148, 163, 184, 0.85);
+        }
+      }
+
+      .capture-actions {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+
+      .start-capture-btn {
+        flex: 1;
+      }
+
+      .skip-btn {
+        min-width: 100px;
+      }
+
+      .progress-indicator {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        color: var(--success-color, #4caf50);
+      }
+
+      .progress-indicator mat-icon {
+        font-size: 18px;
+        width: 18px;
+        height: 18px;
+      }
+
+      /* Comparison Section */
+      .comparison-section {
+        margin-bottom: 24px;
+      }
+
+      .comparison-section .section-header {
+        margin-bottom: 16px;
+      }
+
+      .comparison-section .section-header mat-icon {
+        color: #ff9800;
+      }
     `,
   ],
 })
-export class GuestCheckInComponent {
+export class GuestCheckInComponent implements OnInit, OnDestroy {
   @Input() bookingId!: number;
   @Input() status!: CheckInStatusDTO | null;
   @Output() completed = new EventEmitter<void>();
@@ -603,15 +954,49 @@ export class GuestCheckInComponent {
   private dialog = inject(MatDialog);
   checkInService = inject(CheckInService);
   geolocationService = inject(GeolocationService);
+  private photoGuidanceService = inject(PhotoGuidanceService);
+  private persistenceService = inject(CheckInPersistenceService);
 
-  // State
-  private _markedHotspots = signal<HotspotMarkingDTO[]>([]);
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FEATURE FLAGS
+  // ═══════════════════════════════════════════════════════════════════════════
+  protected readonly dualPartyPhotosEnabled = environment.checkIn?.dualPartyPhotosEnabled ?? false;
+  protected readonly dualPartyPhotosRequired =
+    environment.checkIn?.dualPartyPhotosRequired ?? false;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STATE SIGNALS
+  // ═══════════════════════════════════════════════════════════════════════════
   private _lockboxCode = signal<string | null>(null);
   private _conditionAccepted = signal<boolean>(false);
 
-  markedHotspots = this._markedHotspots.asReadonly();
+  // Dual-party photo capture state
+  private _showGuidedCapture = signal(false);
+  private _guestPhotosComplete = signal(false);
+  private _guestPhotosSkipped = signal(false);
+  private _guestCapturedPhotos = signal<CheckInPhotoDTO[]>([]);
+
+  // Persistence state
+  private _restoredCaptureState = signal<CaptureState | undefined>(undefined);
+  private _hasUnsavedPhotos = signal(false);
+
+  // Public readonly signals
   lockboxCode = this._lockboxCode.asReadonly();
   conditionAccepted = this._conditionAccepted.asReadonly();
+  showGuidedCapture = this._showGuidedCapture.asReadonly();
+  guestPhotosComplete = computed(() => this._guestPhotosComplete() || this._guestPhotosSkipped());
+  guestCapturedPhotos = this._guestCapturedPhotos.asReadonly();
+  restoredCaptureState = this._restoredCaptureState.asReadonly();
+
+  /** Progress percentage for guest photo capture */
+  guestPhotosProgress = computed(() => this.photoGuidanceService.progress());
+
+  /** Whether there are photos to compare (host photos exist) */
+  hasPhotosToCompare = computed(() => {
+    const hostPhotos = this.status?.vehiclePhotos ?? [];
+    const guestPhotos = this._guestCapturedPhotos();
+    return hostPhotos.length > 0 && guestPhotos.length > 0;
+  });
 
   // Form
   conditionForm: FormGroup = this.fb.group({
@@ -619,11 +1004,143 @@ export class GuestCheckInComponent {
     conditionComment: [''],
   });
 
+  // Form change debounce for persistence
+  private formChangeSubject = new Subject<void>();
+
+  // Auto-save form state effect
+  private readonly formSaveEffect = effect(() => {
+    // Track form values (trigger on changes)
+    const comment = this.conditionForm.get('conditionComment')?.value;
+    const accepted = this._conditionAccepted();
+
+    // Debounced save happens in formChangeSubject subscription
+  });
+
   constructor() {
     // Sync form checkbox with signal for reactive computed
     this.conditionForm.get('conditionAccepted')?.valueChanges.subscribe((value) => {
       this._conditionAccepted.set(value);
+      this.formChangeSubject.next();
     });
+
+    // Debounce form changes and persist
+    this.conditionForm.get('conditionComment')?.valueChanges.subscribe(() => {
+      this.formChangeSubject.next();
+    });
+
+    this.formChangeSubject.pipe(debounceTime(500)).subscribe(() => {
+      this.persistFormState();
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // LIFECYCLE HOOKS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  async ngOnInit(): Promise<void> {
+    // Check for saved session and show recovery dialog if found
+    await this.checkForSavedSession();
+
+    // Acquire lock for this booking
+    const lockAcquired = await this.persistenceService.acquireLock(this.bookingId);
+    if (!lockAcquired) {
+      this.snackBar.open('Sesija je aktivna u drugom tabu', 'OK', { duration: 5000 });
+    }
+
+    // Restore form state if available
+    await this.restoreFormState();
+  }
+
+  ngOnDestroy(): void {
+    // Release the lock when leaving
+    this.persistenceService.releaseLock(this.bookingId);
+    this.formChangeSubject.complete();
+  }
+
+  /**
+   * Warn user before leaving page if they have unsaved photos.
+   */
+  @HostListener('window:beforeunload', ['$event'])
+  onBeforeUnload(event: BeforeUnloadEvent): void {
+    const hasPhotos = this._guestCapturedPhotos().length > 0 && !this._guestPhotosComplete();
+
+    if (hasPhotos || this._showGuidedCapture()) {
+      event.preventDefault();
+      event.returnValue =
+        'Imate nesačuvane fotografije. Da li ste sigurni da želite da napustite stranicu?';
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PERSISTENCE METHODS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Check for a saved session and show recovery dialog if found.
+   */
+  private async checkForSavedSession(): Promise<void> {
+    const sessionInfo = await this.persistenceService.checkForSavedSession(
+      this.bookingId,
+      'guest-checkin'
+    );
+
+    if (sessionInfo.exists) {
+      const dialogRef = this.dialog.open(CheckInRecoveryDialogComponent, {
+        data: {
+          sessionInfo,
+          bookingId: this.bookingId,
+          mode: 'guest-checkin',
+        } as RecoveryDialogData,
+        disableClose: true,
+        width: '400px',
+      });
+
+      const result = (await dialogRef.afterClosed().toPromise()) as RecoveryDialogResult;
+
+      if (result?.action === 'resume' && result.captureState) {
+        // Resume from saved state
+        this._restoredCaptureState.set(result.captureState);
+        this._showGuidedCapture.set(true);
+        console.log('[GuestCheckIn] Resuming from saved state');
+      } else if (result?.action === 'takeover' && result.captureState) {
+        // Takeover from another tab
+        this._restoredCaptureState.set(result.captureState);
+        this._showGuidedCapture.set(true);
+        console.log('[GuestCheckIn] Took over session from another tab');
+      } else if (result?.action === 'start-fresh') {
+        console.log('[GuestCheckIn] Starting fresh');
+      }
+      // 'cancel' action - do nothing, stay on page
+    }
+  }
+
+  /**
+   * Persist form state to IndexedDB.
+   */
+  private async persistFormState(): Promise<void> {
+    if (!this.bookingId) return;
+
+    await this.persistenceService.saveFormState(this.bookingId, 'guest-checkin', {
+      conditionAccepted: this._conditionAccepted(),
+      conditionComment: this.conditionForm.get('conditionComment')?.value || undefined,
+    });
+  }
+
+  /**
+   * Restore form state from IndexedDB.
+   */
+  private async restoreFormState(): Promise<void> {
+    const formState = await this.persistenceService.loadFormState(this.bookingId, 'guest-checkin');
+
+    if (formState) {
+      if (formState.conditionAccepted !== undefined) {
+        this.conditionForm.patchValue({ conditionAccepted: formState.conditionAccepted });
+      }
+      if (formState.conditionComment) {
+        this.conditionForm.patchValue({ conditionComment: formState.conditionComment });
+      }
+      console.log('[GuestCheckIn] Restored form state');
+    }
   }
 
   // Computed
@@ -676,9 +1193,10 @@ export class GuestCheckInComponent {
     const hasPosition = this.locationRequired ? this.geolocationService.hasPosition() : true;
     const isLoading = this.checkInService.isLoading();
     const accepted = this._conditionAccepted();
-    const hasHotspots = this._markedHotspots().length > 0;
+    const hasComment = !!this.conditionForm.get('conditionComment')?.value?.trim();
 
-    return hasPosition && !isLoading && (accepted || hasHotspots);
+    // Can submit if: has location (or bypassed), not loading, and either accepted condition or has comment about issues
+    return hasPosition && !isLoading && (accepted || hasComment);
   });
 
   // Photo labels
@@ -742,23 +1260,6 @@ export class GuestCheckInComponent {
     });
   }
 
-  onHotspotClicked(location: HotspotLocation): void {
-    const existing = this._markedHotspots().find((h) => h.location === location);
-
-    if (existing) {
-      // Remove if already marked
-      this._markedHotspots.update((hotspots) => hotspots.filter((h) => h.location !== location));
-    } else {
-      // Add new hotspot
-      this._markedHotspots.update((hotspots) => [...hotspots, { location, description: '' }]);
-    }
-
-    // Uncheck condition accepted if hotspots marked
-    if (this._markedHotspots().length > 0) {
-      this.conditionForm.patchValue({ conditionAccepted: false });
-    }
-  }
-
   revealLockboxCode(): void {
     this.checkInService.revealLockboxCode(this.bookingId).subscribe({
       next: (result) => {
@@ -775,20 +1276,23 @@ export class GuestCheckInComponent {
   submitAcknowledgment(): void {
     const accepted = this.conditionForm.get('conditionAccepted')?.value || false;
     const comment = this.conditionForm.get('conditionComment')?.value || undefined;
-    const hotspots = this._markedHotspots();
 
+    // With dual-party photos, hotspots are no longer used - photos serve as documentation
     this.checkInService
       .acknowledgeCondition(
         this.bookingId,
         accepted,
         comment,
-        hotspots.map((h) => ({
-          location: h.location,
-          description: h.description || comment || '',
-        }))
+        [] // No hotspots - dual-party photos now serve as documentation
       )
       .subscribe({
         next: () => {
+          // Clear persisted session data on successful submission
+          this.persistenceService.clearBookingData(this.bookingId, 'guest-checkin').catch((err) => {
+            console.warn('[GuestCheckIn] Failed to clear persistence data:', err);
+          });
+          this._hasUnsavedPhotos.set(false);
+
           const message = accepted ? 'Stanje vozila potvrđeno!' : 'Prijava oštećenja poslata!';
           this.snackBar.open(message, 'OK', {
             duration: 3000,
@@ -801,5 +1305,102 @@ export class GuestCheckInComponent {
           this.snackBar.open(message, 'OK', { duration: 5000 });
         },
       });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // DUAL-PARTY PHOTO CAPTURE METHODS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Start the guided photo capture flow.
+   * Loads the guest check-in sequence from the backend.
+   */
+  startGuidedCapture(): void {
+    this._showGuidedCapture.set(true);
+    this.photoGuidanceService.startGuestCheckInCapture().subscribe({
+      next: () => console.log('[GuestCheckIn] Guided capture started'),
+      error: (err) => {
+        console.error('[GuestCheckIn] Failed to start guided capture:', err);
+        this.snackBar.open('Greška pri pokretanju kamere', 'OK', { duration: 3000 });
+        this._showGuidedCapture.set(false);
+      },
+    });
+  }
+
+  /**
+   * Skip guest photo capture (only available when not required).
+   */
+  skipGuestPhotos(): void {
+    this._guestPhotosSkipped.set(true);
+    this.snackBar.open('Fotografije preskočene. Možete nastaviti sa potvrdom.', 'OK', {
+      duration: 3000,
+    });
+  }
+
+  /**
+   * Handle completion of guided photo capture.
+   * Converts submission data to CheckInPhotoDTO format for comparison component.
+   * Stores full base64 data URLs so photos can be displayed locally before upload.
+   * @param submission The submitted photo data from guided capture
+   */
+  onGuestPhotosComplete(submission: GuestCheckInPhotoSubmissionDTO): void {
+    // Convert submission to CheckInPhotoDTO array for comparison component
+    // Use full base64 data URL so photos can be displayed in comparison
+    const photos: CheckInPhotoDTO[] = submission.photos.map((p, i) => ({
+      photoId: i + 1, // Temporary IDs until backend confirms
+      photoType: p.photoType,
+      url: `data:${p.mimeType || 'image/jpeg'};base64,${p.base64Data}`, // Full data URL for display
+      uploadedAt: new Date().toISOString(),
+      exifValidationStatus: 'PENDING' as const,
+      exifValidationMessage: null,
+      width: null,
+      height: null,
+      mimeType: p.mimeType || 'image/jpeg',
+      exifTimestamp: null,
+      exifLatitude: p.latitude ?? null,
+      exifLongitude: p.longitude ?? null,
+      deviceModel: null,
+      accepted: true,
+    }));
+
+    this._guestCapturedPhotos.set(photos);
+    this._guestPhotosComplete.set(true);
+    this._showGuidedCapture.set(false);
+
+    this.snackBar.open(`${submission.photos.length} fotografija uspešno snimljeno!`, 'OK', {
+      duration: 3000,
+      panelClass: 'success-snackbar',
+    });
+  }
+
+  /**
+   * Handle cancellation of photo capture.
+   */
+  onGuestPhotosCancelled(): void {
+    this._showGuidedCapture.set(false);
+    this.photoGuidanceService.resetCapture();
+  }
+
+  /**
+   * Continue after photo comparison.
+   */
+  onComparisonContinue(): void {
+    // User is satisfied with the comparison, proceed to condition acknowledgment
+    console.log('[GuestCheckIn] Comparison complete, proceeding to acknowledgment');
+  }
+
+  /**
+   * Report a discrepancy found during photo comparison.
+   * Expands the comment field for the user to describe the issue.
+   */
+  onReportDiscrepancy(): void {
+    // Show the comment section for user to describe the issue
+    this.snackBar.open('Razlike primećene. Opišite problem u polju ispod.', 'OK', {
+      duration: 4000,
+      panelClass: 'warning-snackbar',
+    });
+
+    // Uncheck condition accepted to reveal the comment field
+    this.conditionForm.patchValue({ conditionAccepted: false });
   }
 }

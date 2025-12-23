@@ -221,6 +221,41 @@ public class Booking {
     private Instant guestCheckInCompletedAt;
 
     /**
+     * Number of accepted photos from guest during dual-party check-in.
+     * Phase 2 Enterprise Upgrade: Dual-party verification.
+     */
+    @Column(name = "guest_checkin_photo_count")
+    private Integer guestCheckinPhotoCount;
+
+    /**
+     * When guest completed all required dual-party photos.
+     * Phase 2 Enterprise Upgrade: Dual-party verification.
+     */
+    @Column(name = "guest_checkin_photos_completed_at")
+    private Instant guestCheckinPhotosCompletedAt;
+
+    /**
+     * Number of accepted photos from host during checkout verification.
+     * Phase 2 Enterprise Upgrade: Dual-party verification.
+     */
+    @Column(name = "host_checkout_photo_count")
+    private Integer hostCheckoutPhotoCount;
+
+    /**
+     * Number of discrepancies detected between check-in and checkout photos.
+     * Phase 2 Enterprise Upgrade: Automated damage detection.
+     */
+    @Column(name = "checkout_discrepancy_count")
+    private Integer checkoutDiscrepancyCount;
+
+    /**
+     * When host completed all required checkout photos.
+     * Phase 2 Enterprise Upgrade: Dual-party verification.
+     */
+    @Column(name = "host_checkout_photos_completed_at")
+    private Instant hostCheckoutPhotosCompletedAt;
+
+    /**
      * When both parties confirmed the handshake (mutual agreement to start trip).
      * Triggers transition from CHECK_IN_COMPLETE to IN_TRIP.
      */

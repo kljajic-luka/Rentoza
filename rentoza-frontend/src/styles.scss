@@ -745,3 +745,10 @@ textarea {
   overflow: hidden;
   background: var(--color-surface-muted);
 }
+
+/* 📷 EXIF ORIENTATION FIX: Ensure all images respect EXIF metadata orientation
+ * Mobile phones often store photos with EXIF orientation rather than physical rotation.
+ * This CSS property tells browsers to respect that metadata and display correctly. */
+img {
+  image-orientation: from-image !important;
+}

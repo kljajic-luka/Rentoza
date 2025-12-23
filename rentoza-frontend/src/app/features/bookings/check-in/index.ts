@@ -11,3 +11,7 @@ export { GuestCheckInComponent } from './guest-check-in.component';
 export { HandshakeComponent } from './handshake.component';
 export { VehicleWireframeComponent } from './vehicle-wireframe.component';
 export { CheckInCompleteComponent } from './check-in-complete.component';
+
+// Phase 2: Guided Photo Capture Components
+export { GuidedPhotoCaptureComponent } from './guided-photo-capture/guided-photo-capture.component';
+export { PhotoComparisonComponent } from './photo-comparison/photo-comparison.component';

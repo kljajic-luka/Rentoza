@@ -22,6 +22,16 @@ export type CheckInPhotoType =
   | 'HOST_CUSTOM'
   | 'GUEST_DAMAGE_NOTED'
   | 'GUEST_HOTSPOT'
+  // Guest check-in photos (dual-party verification)
+  | 'GUEST_EXTERIOR_FRONT'
+  | 'GUEST_EXTERIOR_REAR'
+  | 'GUEST_EXTERIOR_LEFT'
+  | 'GUEST_EXTERIOR_RIGHT'
+  | 'GUEST_INTERIOR_DASHBOARD'
+  | 'GUEST_INTERIOR_REAR'
+  | 'GUEST_ODOMETER'
+  | 'GUEST_FUEL_GAUGE'
+  | 'GUEST_CUSTOM'
   // Checkout photo types
   | 'CHECKOUT_EXTERIOR_FRONT'
   | 'CHECKOUT_EXTERIOR_REAR'
@@ -35,7 +45,17 @@ export type CheckInPhotoType =
   | 'CHECKOUT_CUSTOM'
   // Host checkout confirmation photos
   | 'HOST_CHECKOUT_CONFIRMATION'
-  | 'HOST_CHECKOUT_DAMAGE_EVIDENCE';
+  | 'HOST_CHECKOUT_DAMAGE_EVIDENCE'
+  // Host checkout photos (dual-party verification)
+  | 'HOST_CHECKOUT_EXTERIOR_FRONT'
+  | 'HOST_CHECKOUT_EXTERIOR_REAR'
+  | 'HOST_CHECKOUT_EXTERIOR_LEFT'
+  | 'HOST_CHECKOUT_EXTERIOR_RIGHT'
+  | 'HOST_CHECKOUT_INTERIOR_DASHBOARD'
+  | 'HOST_CHECKOUT_INTERIOR_REAR'
+  | 'HOST_CHECKOUT_ODOMETER'
+  | 'HOST_CHECKOUT_FUEL_GAUGE'
+  | 'HOST_CHECKOUT_CUSTOM';
 
 export type ExifValidationStatus =
   | 'PENDING'
@@ -515,6 +535,7 @@ export const REQUIRED_HOST_PHOTOS: CheckInPhotoType[] = [
 ];
 
 export const PHOTO_TYPE_LABELS: Record<CheckInPhotoType, string> = {
+  // Host check-in photos
   HOST_EXTERIOR_FRONT: 'Prednja strana',
   HOST_EXTERIOR_REAR: 'Zadnja strana',
   HOST_EXTERIOR_LEFT: 'Leva strana',
@@ -525,8 +546,19 @@ export const PHOTO_TYPE_LABELS: Record<CheckInPhotoType, string> = {
   HOST_FUEL_GAUGE: 'Nivo goriva',
   HOST_DAMAGE_PREEXISTING: 'Postojeća oštećenja',
   HOST_CUSTOM: 'Dodatna fotografija',
+  // Guest check-in photos (dual-party verification)
+  GUEST_EXTERIOR_FRONT: 'Gost - Prednja strana',
+  GUEST_EXTERIOR_REAR: 'Gost - Zadnja strana',
+  GUEST_EXTERIOR_LEFT: 'Gost - Leva strana',
+  GUEST_EXTERIOR_RIGHT: 'Gost - Desna strana',
+  GUEST_INTERIOR_DASHBOARD: 'Gost - Instrument tabla',
+  GUEST_INTERIOR_REAR: 'Gost - Zadnja sedišta',
+  GUEST_ODOMETER: 'Gost - Kilometraža',
+  GUEST_FUEL_GAUGE: 'Gost - Nivo goriva',
+  GUEST_CUSTOM: 'Gost - Dodatna fotografija',
   GUEST_DAMAGE_NOTED: 'Primećena oštećenja',
   GUEST_HOTSPOT: 'Označena tačka',
+  // Checkout photos
   CHECKOUT_EXTERIOR_FRONT: 'Povratak - Prednja strana',
   CHECKOUT_EXTERIOR_REAR: 'Povratak - Zadnja strana',
   CHECKOUT_EXTERIOR_LEFT: 'Povratak - Leva strana',
@@ -537,8 +569,19 @@ export const PHOTO_TYPE_LABELS: Record<CheckInPhotoType, string> = {
   CHECKOUT_FUEL_GAUGE: 'Povratak - Nivo goriva',
   CHECKOUT_DAMAGE_NEW: 'Nova oštećenja',
   CHECKOUT_CUSTOM: 'Povratak - Dodatna fotografija',
+  // Host checkout confirmation
   HOST_CHECKOUT_CONFIRMATION: 'Potvrda povratka',
   HOST_CHECKOUT_DAMAGE_EVIDENCE: 'Dokaz oštećenja',
+  // Host checkout photos (dual-party verification)
+  HOST_CHECKOUT_EXTERIOR_FRONT: 'Host checkout - Prednja strana',
+  HOST_CHECKOUT_EXTERIOR_REAR: 'Host checkout - Zadnja strana',
+  HOST_CHECKOUT_EXTERIOR_LEFT: 'Host checkout - Leva strana',
+  HOST_CHECKOUT_EXTERIOR_RIGHT: 'Host checkout - Desna strana',
+  HOST_CHECKOUT_INTERIOR_DASHBOARD: 'Host checkout - Instrument tabla',
+  HOST_CHECKOUT_INTERIOR_REAR: 'Host checkout - Zadnja sedišta',
+  HOST_CHECKOUT_ODOMETER: 'Host checkout - Kilometraža',
+  HOST_CHECKOUT_FUEL_GAUGE: 'Host checkout - Nivo goriva',
+  HOST_CHECKOUT_CUSTOM: 'Host checkout - Dodatna fotografija',
 };
 
 // ============================================================================

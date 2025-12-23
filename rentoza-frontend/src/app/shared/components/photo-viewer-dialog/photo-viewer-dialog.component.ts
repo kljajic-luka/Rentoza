@@ -189,6 +189,8 @@ export interface PhotoViewerDialogData {
         object-fit: contain;
         transition: transform 0.15s ease-out;
         will-change: transform;
+        /* CRITICAL: Respect EXIF orientation metadata for rotated photos */
+        image-orientation: from-image !important;
       }
 
       /* Navigation buttons */

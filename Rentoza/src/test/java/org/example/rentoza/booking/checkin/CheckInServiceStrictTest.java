@@ -34,6 +34,7 @@ class CheckInServiceStrictTest {
     @Mock private BookingRepository bookingRepository;
     @Mock private CheckInEventService eventService;
     @Mock private CheckInPhotoRepository photoRepository;
+    @Mock private GuestCheckInPhotoRepository guestCheckInPhotoRepository;
     @Mock private GeofenceService geofenceService;
     @Mock private NotificationService notificationService;
     @Mock private LockboxEncryptionService lockboxEncryptionService;
@@ -52,6 +53,7 @@ class CheckInServiceStrictTest {
             bookingRepository,
             eventService,
             photoRepository,
+            guestCheckInPhotoRepository,
             geofenceService,
             notificationService,
             lockboxEncryptionService,

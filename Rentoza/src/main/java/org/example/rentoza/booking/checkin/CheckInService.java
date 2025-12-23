@@ -64,11 +64,14 @@ public class CheckInService {
     private final BookingRepository bookingRepository;
     private final CheckInEventService eventService;
     private final CheckInPhotoRepository photoRepository;
+    private final GuestCheckInPhotoRepository guestPhotoRepository;
     private final GeofenceService geofenceService;
     private final NotificationService notificationService;
     private final LockboxEncryptionService lockboxEncryptionService;
     private final RenterVerificationService renterVerificationService;
     private final FeatureFlags featureFlags;
+    
+    private static final int REQUIRED_GUEST_PHOTO_TYPES = 8;
     
     // Metrics
     private final Counter hostCompletedCounter;
@@ -83,6 +86,7 @@ public class CheckInService {
             BookingRepository bookingRepository,
             CheckInEventService eventService,
             CheckInPhotoRepository photoRepository,
+            GuestCheckInPhotoRepository guestPhotoRepository,
             GeofenceService geofenceService,
             NotificationService notificationService,
             LockboxEncryptionService lockboxEncryptionService,
@@ -92,6 +96,7 @@ public class CheckInService {
         this.bookingRepository = bookingRepository;
         this.eventService = eventService;
         this.photoRepository = photoRepository;
+        this.guestPhotoRepository = guestPhotoRepository;
         this.geofenceService = geofenceService;
         this.notificationService = notificationService;
         this.lockboxEncryptionService = lockboxEncryptionService;
@@ -459,6 +464,38 @@ public class CheckInService {
         
         // Process guest confirmation
         if (isGuest) {
+            // DUAL-PARTY PHOTOS: Verify guest has uploaded required photos before handshake
+            if (featureFlags.isDualPartyPhotosRequiredForHandshake() &&
+                featureFlags.isDualPartyPhotosEnabledForBooking(booking.getId())) {
+                
+                long guestPhotoCount = guestPhotoRepository.countRequiredGuestPhotoTypes(booking.getId());
+                
+                if (guestPhotoCount < REQUIRED_GUEST_PHOTO_TYPES) {
+                    log.warn("[CheckIn] Handshake blocked - guest photos incomplete: bookingId={}, uploadedCount={}, requiredCount={}", 
+                        booking.getId(), guestPhotoCount, REQUIRED_GUEST_PHOTO_TYPES);
+                    
+                    eventService.recordEvent(
+                        booking,
+                        booking.getCheckInSessionId(),
+                        CheckInEventType.GUEST_PHOTO_VALIDATION_FAILED,
+                        userId,
+                        CheckInActorRole.GUEST,
+                        Map.of(
+                            "uploadedCount", guestPhotoCount,
+                            "requiredCount", REQUIRED_GUEST_PHOTO_TYPES,
+                            "reason", "INCOMPLETE_PHOTOS"
+                        )
+                    );
+                    
+                    throw new ValidationException(
+                        "Morate otpremiti sve obavezne fotografije pre potvrde primopredaje. " +
+                        "Otpremljeno: " + guestPhotoCount + "/" + REQUIRED_GUEST_PHOTO_TYPES);
+                }
+                
+                log.info("[CheckIn] Guest photos validated for booking {}: {}/{} required types uploaded",
+                    booking.getId(), guestPhotoCount, REQUIRED_GUEST_PHOTO_TYPES);
+            }
+            
             // STRICT CHECK-IN: Verify license validity before handshake
             if (featureFlags.isStrictCheckinEnabled()) {
                 BookingEligibilityDTO eligibility = renterVerificationService.checkBookingEligibility(

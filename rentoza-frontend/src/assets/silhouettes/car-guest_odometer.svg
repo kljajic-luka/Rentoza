@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" fill="none">
+  <!-- Car Odometer/Instrument Cluster Silhouette for Photo Guidance -->
+  <title>Vehicle Odometer - Capture Guide</title>
+  <desc>Semi-transparent silhouette showing optimal odometer/mileage display positioning</desc>
+  
+  <!-- Background with transparency indicator -->
+  <rect width="400" height="300" fill="transparent"/>
+  
+  <!-- Instrument cluster outline -->
+  <g opacity="0.6" stroke="#3B82F6" stroke-width="2" fill="none">
+    <!-- Main cluster housing -->
+    <path d="M60 80 Q60 60 100 55 L300 55 Q340 60 340 80 L340 220 Q340 240 300 245 L100 245 Q60 240 60 220 Z" stroke-dasharray="8,4"/>
+    
+    <!-- Inner bezel -->
+    <path d="M75 90 Q75 75 105 70 L295 70 Q325 75 325 90 L325 210 Q325 225 295 230 L105 230 Q75 225 75 210 Z" stroke-dasharray="6,3"/>
+    
+    <!-- Speedometer gauge (left) -->
+    <circle cx="140" cy="140" r="55" stroke-dasharray="6,3"/>
+    <circle cx="140" cy="140" r="45" stroke-dasharray="4,2"/>
+    <!-- Speed markings -->
+    <g stroke-dasharray="2,2">
+      <line x1="140" y1="90" x2="140" y2="100"/>
+      <line x1="180" y1="105" x2="173" y2="112"/>
+      <line x1="190" y1="140" x2="180" y2="140"/>
+      <line x1="180" y1="175" x2="173" y2="168"/>
+      <line x1="140" y1="190" x2="140" y2="180"/>
+      <line x1="100" y1="175" x2="107" y2="168"/>
+      <line x1="90" y1="140" x2="100" y2="140"/>
+      <line x1="100" y1="105" x2="107" y2="112"/>
+    </g>
+    <text x="140" y="170" font-size="8" fill="#64748B" text-anchor="middle">km/h</text>
+    
+    <!-- Tachometer gauge (right) -->
+    <circle cx="260" cy="140" r="55" stroke-dasharray="6,3"/>
+    <circle cx="260" cy="140" r="45" stroke-dasharray="4,2"/>
+    <!-- RPM markings -->
+    <g stroke-dasharray="2,2">
+      <line x1="260" y1="90" x2="260" y2="100"/>
+      <line x1="300" y1="105" x2="293" y2="112"/>
+      <line x1="310" y1="140" x2="300" y2="140"/>
+      <line x1="300" y1="175" x2="293" y2="168"/>
+      <line x1="260" y1="190" x2="260" y2="180"/>
+      <line x1="220" y1="175" x2="227" y2="168"/>
+      <line x1="210" y1="140" x2="220" y2="140"/>
+      <line x1="220" y1="105" x2="227" y2="112"/>
+    </g>
+    <text x="260" y="170" font-size="8" fill="#64748B" text-anchor="middle">RPM</text>
+    
+    <!-- ODOMETER DISPLAY (PRIMARY FOCUS - HIGHLIGHTED) -->
+    <g>
+      <rect x="155" y="195" width="90" height="28" rx="4" stroke="#22C55E" stroke-width="4" fill="#22C55E" fill-opacity="0.15"/>
+      <!-- Digital display segments -->
+      <g fill="#22C55E" font-family="monospace" font-size="14" font-weight="bold">
+        <text x="200" y="215" text-anchor="middle">000000</text>
+      </g>
+      <text x="250" y="215" font-size="8" fill="#22C55E">km</text>
+    </g>
+    
+    <!-- Trip meter (secondary) -->
+    <rect x="170" y="225" width="60" height="15" rx="2" stroke="#F59E0B" stroke-width="2" fill="#F59E0B" fill-opacity="0.1"/>
+    <text x="200" y="236" font-size="7" fill="#F59E0B" text-anchor="middle">TRIP</text>
+    
+    <!-- Center info display -->
+    <rect x="175" y="125" width="50" height="25" rx="3" stroke-dasharray="4,2"/>
+    
+    <!-- Fuel gauge (small, bottom left) -->
+    <g transform="translate(90, 200)">
+      <path d="M0 0 Q-5 -20 15 -25 Q35 -20 30 0" stroke-dasharray="4,2"/>
+      <text x="15" y="10" font-size="6" fill="#64748B" text-anchor="middle">F    E</text>
+    </g>
+    
+    <!-- Temperature gauge (small, bottom right) -->
+    <g transform="translate(280, 200)">
+      <path d="M0 0 Q-5 -20 15 -25 Q35 -20 30 0" stroke-dasharray="4,2"/>
+      <text x="15" y="10" font-size="6" fill="#64748B" text-anchor="middle">C    H</text>
+    </g>
+  </g>
+  
+  <!-- Focus zone indicator -->
+  <g stroke="#22C55E" stroke-width="2" fill="none">
+    <rect x="145" y="185" width="110" height="48" rx="6"/>
+    <!-- Focus arrows pointing to odometer -->
+    <path d="M130 209 L145 209" stroke-width="2"/>
+    <polygon points="145,209 138,204 138,214" fill="#22C55E"/>
+    <path d="M270 209 L255 209" stroke-width="2"/>
+    <polygon points="255,209 262,204 262,214" fill="#22C55E"/>
+  </g>
+  
+  <!-- Key callout -->
+  <g>
+    <rect x="280" y="55" width="110" height="35" rx="4" fill="#22C55E" fill-opacity="0.1" stroke="#22C55E" stroke-width="1"/>
+    <text x="335" y="72" font-size="10" fill="#22C55E" text-anchor="middle" font-weight="bold">FOCUS HERE</text>
+    <text x="335" y="84" font-size="8" fill="#22C55E" text-anchor="middle">Mileage must be clear</text>
+  </g>
+  
+  <!-- Alignment guides -->
+  <g stroke="#94A3B8" stroke-width="1" stroke-dasharray="4,4" opacity="0.3">
+    <line x1="200" y1="40" x2="200" y2="260"/>
+  </g>
+  
+  <!-- Corner markers for close-up framing -->
+  <g stroke="#3B82F6" stroke-width="2" opacity="0.5">
+    <path d="M50 45 L50 65 M50 45 L70 45"/>
+    <path d="M350 45 L350 65 M350 45 L330 45"/>
+    <path d="M50 255 L50 235 M50 255 L70 255"/>
+    <path d="M350 255 L350 235 M350 255 L330 255"/>
+  </g>
+  
+  <!-- Instruction text -->
+  <text x="200" y="25" font-size="12" fill="#64748B" text-anchor="middle" font-weight="500">
+    Close-up of odometer display
+  </text>
+  <text x="200" y="280" font-size="10" fill="#64748B" text-anchor="middle">
+    Ensure all mileage digits are clearly readable
+  </text>
+</svg>

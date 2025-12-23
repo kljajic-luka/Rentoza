@@ -305,5 +305,137 @@ public enum CheckInEventType {
      * Guest initiated early return (before scheduled end date).
      * Metadata: {@code {"scheduledEndDate": "...", "requestedReturnDate": "...", "daysEarly": 2}}
      */
-    EARLY_RETURN_INITIATED
+    EARLY_RETURN_INITIATED,
+    
+    // ========== DUAL-PARTY PHOTO CAPTURE (Phase 1 - Enterprise Upgrade) ==========
+    
+    /**
+     * Guest uploaded a check-in photo (dual-party verification).
+     * When guest arrives, they capture the same angles as host to establish
+     * bilateral evidence for dispute resolution.
+     * 
+     * <p>Metadata: {@code {"photoId": 123, "photoType": "GUEST_EXTERIOR_FRONT", 
+     *                       "exifValid": true, "sessionId": "uuid-..."}}
+     * 
+     * @since Enterprise Upgrade Phase 1
+     */
+    GUEST_CHECK_IN_PHOTO_UPLOADED,
+    
+    /**
+     * Guest check-in photo was rejected due to EXIF validation failure.
+     * 
+     * <p>Metadata: {@code {"photoType": "GUEST_EXTERIOR_FRONT", "exifStatus": "REJECTED_TOO_OLD",
+     *                       "errorCode": "PHOTO_TOO_OLD", "rejectionReason": "..."}}
+     * 
+     * @since Enterprise Upgrade Phase 1
+     */
+    GUEST_CHECK_IN_PHOTO_REJECTED,
+    
+    /**
+     * Guest photo validation failed at handshake - not all required photos uploaded.
+     * Blocks handshake until guest completes required photo uploads.
+     * 
+     * <p>Metadata: {@code {"uploadedCount": 5, "requiredCount": 8, "reason": "INCOMPLETE_PHOTOS"}}
+     * 
+     * @since Enterprise Upgrade Phase 1.5
+     */
+    GUEST_PHOTO_VALIDATION_FAILED,
+    
+    /**
+     * Guest completed all required dual-party check-in photos.
+     * 
+     * <p>Metadata: {@code {"photoCount": 8, "validPhotoCount": 8, "sessionId": "uuid-..."}}
+     * 
+     * @since Enterprise Upgrade Phase 1
+     */
+    GUEST_CHECK_IN_PHOTOS_COMPLETE,
+    
+    /**
+     * Host uploaded a checkout photo (dual-party verification).
+     * When vehicle is returned, host captures the same angles as guest
+     * to verify return condition.
+     * 
+     * <p>Metadata: {@code {"photoId": 456, "photoType": "HOST_CHECKOUT_EXTERIOR_FRONT",
+     *                       "exifValid": true, "sessionId": "uuid-..."}}
+     * 
+     * @since Enterprise Upgrade Phase 1
+     */
+    HOST_CHECKOUT_PHOTO_UPLOADED,
+    
+    /**
+     * Host checkout photo was rejected due to EXIF validation failure.
+     * 
+     * <p>Metadata: {@code {"photoType": "HOST_CHECKOUT_EXTERIOR_FRONT", "exifStatus": "REJECTED_NO_EXIF",
+     *                       "errorCode": "NO_EXIF_DATA", "rejectionReason": "..."}}
+     * 
+     * @since Enterprise Upgrade Phase 1
+     */
+    HOST_CHECKOUT_PHOTO_REJECTED,
+    
+    /**
+     * Host completed all required dual-party checkout photos.
+     * 
+     * <p>Metadata: {@code {"photoCount": 8, "validPhotoCount": 8, "sessionId": "uuid-..."}}
+     * 
+     * @since Enterprise Upgrade Phase 1
+     */
+    HOST_CHECKOUT_PHOTOS_COMPLETE,
+    
+    // ========== PHOTO DISCREPANCY DETECTION ==========
+    
+    /**
+     * Photo discrepancy detected between host and guest photos.
+     * System flagged a difference when comparing same angle photos.
+     * 
+     * <p>Metadata: {@code {"discrepancyId": 789, "photoType": "EXTERIOR_FRONT",
+     *                       "severity": "MEDIUM", "description": "...",
+     *                       "hostPhotoId": 123, "guestPhotoId": 456}}
+     * 
+     * @since Enterprise Upgrade Phase 1
+     */
+    PHOTO_DISCREPANCY_DETECTED,
+    
+    /**
+     * Photo discrepancy was resolved by admin.
+     * 
+     * <p>Metadata: {@code {"discrepancyId": 789, "resolution": "DISMISSED",
+     *                       "resolvedBy": "admin@example.com", "notes": "..."}}
+     * 
+     * @since Enterprise Upgrade Phase 1
+     */
+    PHOTO_DISCREPANCY_RESOLVED,
+    
+    /**
+     * Critical photo discrepancy blocking handover.
+     * Requires resolution before check-in can complete.
+     * 
+     * <p>Metadata: {@code {"discrepancyId": 789, "photoType": "EXTERIOR_LEFT",
+     *                       "blocksHandover": true, "severity": "CRITICAL"}}
+     * 
+     * @since Enterprise Upgrade Phase 1
+     */
+    PHOTO_DISCREPANCY_BLOCKING,
+    
+    // ========== OCR VERIFICATION ==========
+    
+    /**
+     * Odometer OCR extraction completed.
+     * 
+     * <p>Metadata: {@code {"ocrValue": 45678, "userValue": 45680, "confidence": 0.95,
+     *                       "discrepancy": 2, "flagged": false, "photoId": 123}}
+     * 
+     * @since Enterprise Upgrade Phase 1
+     */
+    ODOMETER_OCR_EXTRACTED,
+    
+    /**
+     * Odometer OCR discrepancy flagged.
+     * OCR reading differs significantly from user-submitted value.
+     * 
+     * <p>Metadata: {@code {"ocrValue": 45000, "userValue": 46000, "difference": 1000,
+     *                       "threshold": 10, "flagged": true}}
+     * 
+     * @since Enterprise Upgrade Phase 1
+     */
+    ODOMETER_OCR_DISCREPANCY
 }

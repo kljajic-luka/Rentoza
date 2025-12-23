@@ -586,6 +586,19 @@ export class PhotoCompressionService implements OnDestroy {
               Object.keys(exifObj['Exif'] || {}).length > 0 ||
               Object.keys(exifObj['GPS'] || {}).length > 0)
           ) {
+            // CRITICAL FIX: Reset Orientation to "Normal" (1)
+            // After canvas processing, the image is already physically rotated.
+            // If we keep the original Orientation tag (e.g., 6 = rotate 90°),
+            // browsers with image-orientation:from-image will rotate AGAIN.
+            // Setting Orientation to 1 prevents double rotation.
+            if (exifObj['0th'] && exifObj['0th'][piexif.ImageIFD.Orientation]) {
+              const originalOrientation = exifObj['0th'][piexif.ImageIFD.Orientation];
+              exifObj['0th'][piexif.ImageIFD.Orientation] = 1; // Normal orientation
+              console.log(
+                `[EXIF] Reset Orientation from ${originalOrientation} to 1 (Normal) to prevent double rotation`
+              );
+            }
+
             // Dump EXIF to binary string
             const exifBytes = piexif.dump(exifObj);
             console.log('[EXIF] Extracted EXIF data:', {

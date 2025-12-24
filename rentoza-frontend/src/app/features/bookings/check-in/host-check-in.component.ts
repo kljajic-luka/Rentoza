@@ -1688,7 +1688,7 @@ export class HostCheckInComponent implements OnInit, OnChanges, OnDestroy {
     return stats.allRequiredComplete && formValid && !loading;
   });
 
-  ngOnInit(): void {
+  async ngOnInit(): Promise<void> {
     // Subscribe to form status changes and update the signal
     this.detailsForm.statusChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
       this.formValidSignal.set(this.detailsForm.valid);
@@ -1703,9 +1703,14 @@ export class HostCheckInComponent implements OnInit, OnChanges, OnDestroy {
 
     // Check for saved session on component init (if not in readOnly mode)
     if (!this.readOnly) {
-      this.checkForSavedSession();
+      // CRITICAL: Wait for persistence service to be ready before checking
+      await this.persistenceService.waitForReady();
+
+      // Check for saved session and show recovery dialog if found
+      await this.checkForSavedSession();
+
       // Acquire lock for this booking
-      this.persistenceService.acquireLock(this.bookingId);
+      await this.persistenceService.acquireLock(this.bookingId);
     }
   }
 

@@ -128,7 +128,16 @@ export class CheckInPersistenceService implements OnDestroy {
   private readonly tabId = generateUUID();
   private activeLocks = new Map<number, string>(); // bookingId -> tabId
 
+  // Promise that resolves when database is ready
+  private dbReadyPromise: Promise<void>;
+  private dbReadyResolve!: () => void;
+
   constructor() {
+    // Create a promise that will resolve when DB is ready
+    this.dbReadyPromise = new Promise((resolve) => {
+      this.dbReadyResolve = resolve;
+    });
+
     this.initDatabase();
     this.initBroadcastChannel();
     this.cleanupExpiredStates();
@@ -138,6 +147,25 @@ export class CheckInPersistenceService implements OnDestroy {
     this.releaseLock();
     this.broadcastChannel?.close();
     this.db?.close();
+  }
+
+  // ========== PUBLIC API: INITIALIZATION ==========
+
+  /**
+   * Wait for the database to be fully initialized.
+   * MUST be called before any database operations in components.
+   * This ensures race conditions don't cause silent failures.
+   */
+  async waitForReady(): Promise<void> {
+    await this.dbReadyPromise;
+  }
+
+  /**
+   * Check if the database is ready synchronously.
+   * Useful for quick checks but waitForReady() is preferred.
+   */
+  get isReady(): boolean {
+    return this._isInitialized() && this.db !== null;
   }
 
   // ========== PUBLIC API: CAPTURE STATE ==========
@@ -222,14 +250,23 @@ export class CheckInPersistenceService implements OnDestroy {
 
   /**
    * Check if a saved session exists for a booking.
+   * This is called on component init to detect and offer session recovery.
    */
   async checkForSavedSession(
     bookingId: number,
     mode: CaptureState['mode']
   ): Promise<SavedSessionInfo> {
+    console.log(`[Persistence] Checking for saved session: booking=${bookingId}, mode=${mode}`);
+
     const state = await this.loadCaptureState(bookingId, mode);
 
-    if (!state || state.capturedPhotos.length === 0) {
+    if (!state) {
+      console.log(`[Persistence] No saved state found for booking ${bookingId}`);
+      return { exists: false };
+    }
+
+    if (state.capturedPhotos.length === 0) {
+      console.log(`[Persistence] Saved state has no photos for booking ${bookingId}`);
       return { exists: false };
     }
 
@@ -239,6 +276,10 @@ export class CheckInPersistenceService implements OnDestroy {
     // Check if another tab owns this session
     const isOwnedByOtherTab =
       state.tabId !== this.tabId && this.activeLocks.get(bookingId) === state.tabId;
+
+    console.log(
+      `[Persistence] Found saved session: ${state.capturedPhotos.length} photos, ${minutesAgo} min ago`
+    );
 
     return {
       exists: true,
@@ -442,22 +483,25 @@ export class CheckInPersistenceService implements OnDestroy {
     if (!('indexedDB' in window)) {
       console.warn('[Persistence] IndexedDB not supported');
       this._isInitialized.set(true);
+      this.dbReadyResolve(); // Resolve even if not supported
       return;
     }
 
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
 
       request.onerror = () => {
         console.error('[Persistence] Failed to open database:', request.error);
         this._isInitialized.set(true);
+        this.dbReadyResolve(); // Resolve even on error (graceful degradation)
         resolve();
       };
 
       request.onsuccess = () => {
         this.db = request.result;
         this._isInitialized.set(true);
-        console.log('[Persistence] Database initialized');
+        this.dbReadyResolve(); // Signal that DB is ready
+        console.log('[Persistence] Database initialized successfully');
         resolve();
       };
 
@@ -481,7 +525,12 @@ export class CheckInPersistenceService implements OnDestroy {
   }
 
   private async saveToStore<T extends { id: string }>(storeName: string, data: T): Promise<void> {
-    if (!this.db) return;
+    // Wait for DB to be ready before writing
+    await this.dbReadyPromise;
+    if (!this.db) {
+      console.warn('[Persistence] Database not available for save');
+      return;
+    }
 
     return new Promise((resolve, reject) => {
       const transaction = this.db!.transaction(storeName, 'readwrite');
@@ -494,7 +543,12 @@ export class CheckInPersistenceService implements OnDestroy {
   }
 
   private async loadFromStore<T>(storeName: string, id: string): Promise<T | null> {
-    if (!this.db) return null;
+    // Wait for DB to be ready before reading
+    await this.dbReadyPromise;
+    if (!this.db) {
+      console.warn('[Persistence] Database not available for load');
+      return null;
+    }
 
     return new Promise((resolve, reject) => {
       const transaction = this.db!.transaction(storeName, 'readonly');
@@ -507,6 +561,7 @@ export class CheckInPersistenceService implements OnDestroy {
   }
 
   private async deleteFromStore(storeName: string, id: string): Promise<void> {
+    await this.dbReadyPromise;
     if (!this.db) return;
 
     return new Promise((resolve, reject) => {
@@ -520,6 +575,7 @@ export class CheckInPersistenceService implements OnDestroy {
   }
 
   private async clearStore(storeName: string): Promise<void> {
+    await this.dbReadyPromise;
     if (!this.db) return;
 
     return new Promise((resolve, reject) => {

@@ -1038,6 +1038,9 @@ export class GuestCheckInComponent implements OnInit, OnDestroy {
   // ═══════════════════════════════════════════════════════════════════════════
 
   async ngOnInit(): Promise<void> {
+    // CRITICAL: Wait for persistence service to be ready before any DB operations
+    await this.persistenceService.waitForReady();
+
     // Check for saved session and show recovery dialog if found
     await this.checkForSavedSession();
 

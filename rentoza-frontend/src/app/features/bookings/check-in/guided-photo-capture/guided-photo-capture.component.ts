@@ -20,6 +20,8 @@ import {
   EventEmitter,
   OnInit,
   OnDestroy,
+  OnChanges,
+  SimpleChanges,
   inject,
   signal,
   computed,
@@ -781,12 +783,15 @@ interface PhotoCaptureState {
     `,
   ],
 })
-export class GuidedPhotoCaptureComponent implements OnInit, OnDestroy {
+export class GuidedPhotoCaptureComponent implements OnInit, OnDestroy, OnChanges {
   @Input() bookingId!: number;
   @Input() mode: 'guest-checkin' | 'host-checkin' | 'host-checkout' = 'guest-checkin';
 
   /** Restored capture state from persistence service (passed from parent) */
   @Input() restoredState?: CaptureState;
+
+  // Flag to prevent double initialization
+  private hasInitializedFromRestore = false;
 
   @Output() captureComplete = new EventEmitter<GuestCheckInPhotoSubmissionDTO>();
   @Output() captureCancelled = new EventEmitter<void>();
@@ -831,6 +836,23 @@ export class GuidedPhotoCaptureComponent implements OnInit, OnDestroy {
     }
   });
 
+  /**
+   * Handle Input changes - especially for restoredState which may arrive after ngOnInit
+   * due to conditional rendering (@if blocks) in parent templates.
+   */
+  ngOnChanges(changes: SimpleChanges): void {
+    // If restoredState is set after init and we haven't already restored
+    if (
+      changes['restoredState'] &&
+      !changes['restoredState'].firstChange &&
+      changes['restoredState'].currentValue &&
+      !this.hasInitializedFromRestore
+    ) {
+      console.log('[GuidedCapture] restoredState arrived via ngOnChanges, initializing...');
+      this.initializeWithRestoredState();
+    }
+  }
+
   ngOnInit(): void {
     // Detect dark mode
     this.detectColorScheme();
@@ -842,13 +864,25 @@ export class GuidedPhotoCaptureComponent implements OnInit, OnDestroy {
     // Also check Material theme
     this.checkMaterialTheme();
 
-    // Check if we have restored state to apply
-    if (this.restoredState && this.restoredState.capturedPhotos.length > 0) {
+    // Check if we have restored state to apply (may already be set via @Input)
+    if (
+      this.restoredState &&
+      this.restoredState.capturedPhotos.length > 0 &&
+      !this.hasInitializedFromRestore
+    ) {
+      console.log('[GuidedCapture] restoredState available in ngOnInit, initializing...');
       this.initializeWithRestoredState();
       return;
     }
 
-    // Start the capture sequence based on mode
+    // Start the capture sequence based on mode (only if not restoring)
+    this.startFreshCaptureSequence();
+  }
+
+  /**
+   * Start a fresh capture sequence without any restored state.
+   */
+  private startFreshCaptureSequence(): void {
     switch (this.mode) {
       case 'guest-checkin':
         this.guidanceService.startGuestCheckInCapture().subscribe({
@@ -893,6 +927,9 @@ export class GuidedPhotoCaptureComponent implements OnInit, OnDestroy {
    */
   private async initializeWithRestoredState(): Promise<void> {
     if (!this.restoredState) return;
+    if (this.hasInitializedFromRestore) return; // Prevent double initialization
+
+    this.hasInitializedFromRestore = true;
 
     console.log(
       `[GuidedCapture] Restoring ${this.restoredState.capturedPhotos.length} photos from persistence`
@@ -986,6 +1023,12 @@ export class GuidedPhotoCaptureComponent implements OnInit, OnDestroy {
     }
 
     if (persistedPhotos.length > 0) {
+      console.log(
+        `[GuidedCapture] Persisting ${
+          persistedPhotos.length
+        } photos at index ${this.currentIndex()}, phase: ${this.currentPhase()}`
+      );
+
       await this.persistenceService.saveCaptureState(
         this.bookingId,
         this.mode,
@@ -993,6 +1036,8 @@ export class GuidedPhotoCaptureComponent implements OnInit, OnDestroy {
         this.currentPhase(),
         persistedPhotos
       );
+
+      console.log('[GuidedCapture] State persisted successfully');
     }
   }
 
@@ -1111,9 +1156,13 @@ export class GuidedPhotoCaptureComponent implements OnInit, OnDestroy {
     if (this.isLastPhoto()) {
       this.finishCapture();
     } else {
-      // Move to next photo
+      // Move to next photo FIRST (before persistence effect runs)
       this.guidanceService.nextPhoto();
       this.currentPhase.set('guidance');
+
+      // Explicitly trigger persistence with updated position
+      // This ensures the correct index is saved after navigation
+      this.persistCaptureState();
     }
   }
 

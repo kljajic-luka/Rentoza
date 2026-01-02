@@ -330,6 +330,33 @@ public class Car {
     @Min(1)
     private Integer maxRentalDays = 30;
 
+    // ========== BOOKING SETTINGS (Phase 2 - Turo-style Host Control) ==========
+
+    /**
+     * Host-configurable booking rules for this car.
+     * 
+     * <p>Allows car owners to customize:
+     * <ul>
+     *   <li>Minimum trip duration</li>
+     *   <li>Maximum trip duration</li>
+     *   <li>Advance notice required</li>
+     *   <li>Buffer between bookings</li>
+     *   <li>Instant booking toggle</li>
+     * </ul>
+     * 
+     * @since 2026-01 (Phase 2 - Validation Alignment)
+     * @see CarBookingSettings
+     */
+    @Embedded
+    @AttributeOverrides({
+            @AttributeOverride(name = "minTripHours", column = @Column(name = "booking_min_trip_hours")),
+            @AttributeOverride(name = "maxTripDays", column = @Column(name = "booking_max_trip_days")),
+            @AttributeOverride(name = "advanceNoticeHours", column = @Column(name = "booking_advance_notice_hours")),
+            @AttributeOverride(name = "prepBufferHours", column = @Column(name = "booking_prep_buffer_hours")),
+            @AttributeOverride(name = "instantBookEnabled", column = @Column(name = "booking_instant_book_enabled"))
+    })
+    private CarBookingSettings bookingSettings = new CarBookingSettings();
+
     @CreationTimestamp
     @Column(updatable = false)
     private Instant createdAt;
@@ -441,5 +468,15 @@ public class Car {
             java.time.LocalDate.now(), 
             technicalInspectionExpiryDate
         );
+    }
+
+    // ========== BOOKING SETTINGS HELPER METHODS ==========
+
+    /**
+     * Get effective booking settings (never null).
+     * @return Car's booking settings or defaults if not set
+     */
+    public CarBookingSettings getEffectiveBookingSettings() {
+        return bookingSettings != null ? bookingSettings : new CarBookingSettings();
     }
 }

@@ -6,11 +6,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingRepository;
 import org.example.rentoza.booking.BookingStatus;
+import org.example.rentoza.scheduler.SchedulerIdempotencyService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
@@ -41,17 +43,21 @@ public class CheckOutScheduler {
 
     private final CheckOutService checkOutService;
     private final BookingRepository bookingRepository;
+    private final SchedulerIdempotencyService idempotencyService;
     
     // Metrics
     private final Counter checkoutWindowOpenedCounter;
     private final Counter checkoutReminderSentCounter;
+    private final Counter schedulerSkippedCounter;
 
     public CheckOutScheduler(
             CheckOutService checkOutService,
             BookingRepository bookingRepository,
+            SchedulerIdempotencyService idempotencyService,
             MeterRegistry meterRegistry) {
         this.checkOutService = checkOutService;
         this.bookingRepository = bookingRepository;
+        this.idempotencyService = idempotencyService;
         
         this.checkoutWindowOpenedCounter = Counter.builder("checkout.window.opened")
                 .description("Checkout windows opened by scheduler")
@@ -59,6 +65,11 @@ public class CheckOutScheduler {
         
         this.checkoutReminderSentCounter = Counter.builder("checkout.reminder.sent")
                 .description("Checkout reminders sent")
+                .register(meterRegistry);
+        
+        this.schedulerSkippedCounter = Counter.builder("scheduler.skipped.duplicate")
+                .description("Scheduler executions skipped due to idempotency")
+                .tag("scheduler", "checkout")
                 .register(meterRegistry);
     }
 
@@ -70,10 +81,19 @@ public class CheckOutScheduler {
      * 
      * <p>Cron: {@code 0 0 * * * *} (every hour at :00)
      */
-    @Scheduled(cron = "${app.checkout.scheduler.window-cron:0 0 * * * *}")
+    @Scheduled(cron = "${app.checkout.scheduler.window-cron:0 0 * * * *}", zone = "Europe/Belgrade")
     @Transactional
     public void openCheckoutWindows() {
         LocalDate today = LocalDate.now(SERBIA_ZONE);
+        String taskId = "checkout-window-" + today;
+        
+        // Idempotency guard - prevent duplicate execution within 55 minutes
+        if (!idempotencyService.tryAcquireLock(taskId, Duration.ofMinutes(55))) {
+            log.debug("[CheckOutScheduler] Skipping duplicate checkout window opening for: {}", today);
+            schedulerSkippedCounter.increment();
+            return;
+        }
+        
         log.debug("[CheckOutScheduler] Running checkout window opening for date: {}", today);
         
         try {
@@ -110,9 +130,19 @@ public class CheckOutScheduler {
      * 
      * <p>Cron: {@code 0 0 0/4 * * *} (every 4 hours)
      */
-    @Scheduled(cron = "${app.checkout.scheduler.reminder-cron:0 0 0/4 * * *}")
+    @Scheduled(cron = "${app.checkout.scheduler.reminder-cron:0 0 0/4 * * *}", zone = "Europe/Belgrade")
     @Transactional(readOnly = true)
     public void sendCheckoutReminders() {
+        String taskId = "checkout-reminder-" + LocalDate.now(SERBIA_ZONE) + "-" + 
+                        (java.time.LocalTime.now(SERBIA_ZONE).getHour() / 4);
+        
+        // Idempotency guard - prevent duplicate execution within 3 hours 50 minutes
+        if (!idempotencyService.tryAcquireLock(taskId, Duration.ofMinutes(230))) {
+            log.debug("[CheckOutScheduler] Skipping duplicate checkout reminder: {}", taskId);
+            schedulerSkippedCounter.increment();
+            return;
+        }
+        
         log.debug("[CheckOutScheduler] Running checkout reminder check");
         
         try {
@@ -148,9 +178,19 @@ public class CheckOutScheduler {
      * 
      * <p>Cron: {@code 0 0 0/6 * * *} (every 6 hours)
      */
-    @Scheduled(cron = "${app.checkout.scheduler.escalation-cron:0 0 0/6 * * *}")
+    @Scheduled(cron = "${app.checkout.scheduler.escalation-cron:0 0 0/6 * * *}", zone = "Europe/Belgrade")
     @Transactional(readOnly = true)
     public void escalateOverdueReturns() {
+        String taskId = "checkout-escalation-" + LocalDate.now(SERBIA_ZONE) + "-" + 
+                        (java.time.LocalTime.now(SERBIA_ZONE).getHour() / 6);
+        
+        // Idempotency guard - prevent duplicate execution within 5 hours 50 minutes
+        if (!idempotencyService.tryAcquireLock(taskId, Duration.ofMinutes(350))) {
+            log.debug("[CheckOutScheduler] Skipping duplicate escalation check: {}", taskId);
+            schedulerSkippedCounter.increment();
+            return;
+        }
+        
         log.debug("[CheckOutScheduler] Running overdue return escalation check");
         
         try {

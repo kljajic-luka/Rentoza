@@ -10,6 +10,8 @@ import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
 
+import org.example.rentoza.booking.util.TripDurationCalculator;
+
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
@@ -167,6 +169,48 @@ public class BookingRequestDTO {
         boolean hasLat = pickupLatitude != null;
         boolean hasLon = pickupLongitude != null;
         return hasLat == hasLon; // Both present or both absent
+    }
+
+    /**
+     * Validates that the start time is a valid local time (not in a DST gap).
+     * 
+     * <p>During spring forward (March ~29 in Serbia), times like 02:30 don't exist
+     * because clocks jump from 01:59:59 directly to 03:00:00.
+     * 
+     * @since Phase 3 - Enterprise Hardening
+     */
+    @AssertTrue(message = "Nevalidan datum/vreme - vreme ne postoji zbog promene letnjeg računanja vremena")
+    private boolean isStartTimeValidForDst() {
+        if (startTime == null) {
+            return true; // Let @NotNull handle nulls
+        }
+        return TripDurationCalculator.isValidLocalTime(startTime);
+    }
+
+    /**
+     * Validates that the end time is a valid local time (not in a DST gap).
+     * 
+     * @since Phase 3 - Enterprise Hardening
+     */
+    @AssertTrue(message = "Nevalidan datum/vreme završetka - vreme ne postoji zbog promene letnjeg računanja vremena")
+    private boolean isEndTimeValidForDst() {
+        if (endTime == null) {
+            return true; // Let @NotNull handle nulls
+        }
+        return TripDurationCalculator.isValidLocalTime(endTime);
+    }
+
+    /**
+     * Warns (via log) if the booking spans a DST transition.
+     * Does not reject - just returns true but can be used for monitoring.
+     * 
+     * @since Phase 3 - Enterprise Hardening
+     */
+    public boolean spansDstTransition() {
+        if (startTime == null || endTime == null) {
+            return false;
+        }
+        return TripDurationCalculator.spansDstTransition(startTime, endTime);
     }
 
     // ========== CONVENIENCE METHODS ==========

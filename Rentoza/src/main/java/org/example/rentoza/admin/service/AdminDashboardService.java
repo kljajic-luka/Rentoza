@@ -162,7 +162,7 @@ public class AdminDashboardService {
      * <p>Scheduled to run every hour at minute 0.
      * Stores current KPIs for historical trend analysis.
      */
-    @Scheduled(cron = "0 0 * * * *") // Every hour at minute 0
+    @Scheduled(cron = "0 0 * * * *", zone = "Europe/Belgrade") // Every hour at minute 0
     @Transactional
     public void saveMetricsSnapshot() {
         log.info("Saving hourly metrics snapshot");
@@ -204,7 +204,7 @@ public class AdminDashboardService {
      * 
      * <p>Scheduled to run daily at 3 AM.
      */
-    @Scheduled(cron = "0 0 3 * * *") // Daily at 3 AM
+    @Scheduled(cron = "0 0 3 * * *", zone = "Europe/Belgrade") // Daily at 3 AM
     @Transactional
     public void cleanupOldMetrics() {
         LocalDateTime cutoff = LocalDateTime.now().minusMonths(12);

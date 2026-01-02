@@ -106,8 +106,35 @@ public class TripExtensionService {
         
         int additionalDays = (int) ChronoUnit.DAYS.between(currentEndDate, newEndDate);
         
-        // Check availability (simplified - in production would check calendar)
-        // TODO: Integrate with availability service
+        // ========================================================================
+        // CRITICAL FIX (Phase 1): Availability Check for Extension
+        // ========================================================================
+        // Prevents extension from overlapping with next booking.
+        // Uses same pessimistic locking as BookingService for consistency.
+        // 
+        // Time window: current end time → requested new end time (same time of day)
+        // ========================================================================
+        LocalDateTime currentEndDateTime = booking.getEndTime();
+        java.time.LocalTime endTimeOfDay = currentEndDateTime.toLocalTime();
+        LocalDateTime requestedEndDateTime = newEndDate.atTime(endTimeOfDay);
+        
+        boolean hasConflict = bookingRepository.existsOverlappingBookingsWithLock(
+                booking.getCar().getId(),
+                currentEndDateTime,  // Check from current end
+                requestedEndDateTime // To requested new end
+        );
+        
+        if (hasConflict) {
+            log.warn("[TripExtension] Extension blocked - conflict with next booking: bookingId={}, carId={}, requestedEnd={}",
+                    bookingId, booking.getCar().getId(), requestedEndDateTime);
+            throw new IllegalStateException(
+                    "Produženje nije moguće - postoji druga rezervacija za taj period. " +
+                    "Molimo izaberite raniji datum završetka."
+            );
+        }
+        
+        log.debug("[TripExtension] Availability check passed for booking {}: {} → {}",
+                bookingId, currentEndDateTime, requestedEndDateTime);
         
         // Calculate cost
         BigDecimal dailyRate = booking.getSnapshotDailyRate() != null 

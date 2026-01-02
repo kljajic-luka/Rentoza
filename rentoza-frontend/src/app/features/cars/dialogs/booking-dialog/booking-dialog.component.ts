@@ -43,6 +43,14 @@ import {
   PickupLocationData,
 } from '@features/bookings/components/pickup-location-selector';
 import { DeliveryFeeResult } from '@core/services/location.service';
+import {
+  validateLeadTime,
+  validateMinimumDuration,
+  validateMaximumDuration,
+  DEFAULT_ADVANCE_NOTICE_HOURS,
+  DEFAULT_MIN_TRIP_HOURS,
+  DEFAULT_MAX_TRIP_DAYS,
+} from '@core/utils/time-validation.util';
 
 export interface BookingDialogData {
   car: Car;
@@ -477,19 +485,42 @@ export class BookingDialogComponent implements OnInit {
       return;
     }
 
-    // Validate minimum hours before booking
+    // Validate minimum hours before booking using centralized validation
     const startDateTime = combineDateTime(formValues.startDate!, formValues.startTime);
     const endDateTime = combineDateTime(formValues.endDate!, formValues.endTime);
-    const startMs = new Date(startDateTime).getTime();
-    const nowMs = Date.now();
-    const hoursUntilStart = (startMs - nowMs) / (1000 * 60 * 60);
+    const startDate = new Date(startDateTime);
+    const endDate = new Date(endDateTime);
 
-    if (hoursUntilStart < this.MIN_HOURS_BEFORE_BOOKING) {
-      this.snackBar.open(
-        'Rezervacija mora biti napravljena najmanje 1 sat pre početka putovanja.',
-        'Zatvori',
-        { duration: 5000, panelClass: ['snackbar-error'] }
-      );
+    // Use car-specific or default advance notice hours
+    const advanceNoticeHours = this.data.car.advanceNoticeHours ?? DEFAULT_ADVANCE_NOTICE_HOURS;
+    const leadTimeValidation = validateLeadTime(startDate, advanceNoticeHours);
+    if (!leadTimeValidation.valid) {
+      this.snackBar.open(leadTimeValidation.errorMessage!, 'Zatvori', {
+        duration: 5000,
+        panelClass: ['snackbar-error'],
+      });
+      return;
+    }
+
+    // Validate minimum duration using centralized validation
+    const minTripHours = this.data.car.minTripHours ?? DEFAULT_MIN_TRIP_HOURS;
+    const minDurationValidation = validateMinimumDuration(startDate, endDate, minTripHours);
+    if (!minDurationValidation.valid) {
+      this.snackBar.open(minDurationValidation.errorMessage!, 'Zatvori', {
+        duration: 5000,
+        panelClass: ['snackbar-error'],
+      });
+      return;
+    }
+
+    // Validate maximum duration using centralized validation
+    const maxTripDays = this.data.car.maxTripDays ?? DEFAULT_MAX_TRIP_DAYS;
+    const maxDurationValidation = validateMaximumDuration(startDate, endDate, maxTripDays);
+    if (!maxDurationValidation.valid) {
+      this.snackBar.open(maxDurationValidation.errorMessage!, 'Zatvori', {
+        duration: 5000,
+        panelClass: ['snackbar-error'],
+      });
       return;
     }
 

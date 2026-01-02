@@ -62,6 +62,13 @@ import { FavoriteButtonComponent } from '@shared/components/favorite-button/favo
 import { CarFiltersComponent } from '../../components/car-filters/car-filters.component';
 import { TranslateEnumPipe } from '@shared/pipes/translate-enum.pipe';
 import { environment } from '@environments/environment';
+// Phase 2: Time validation utilities
+import {
+  validateLeadTime,
+  validateMinimumDuration,
+  DEFAULT_MIN_TRIP_HOURS,
+  DEFAULT_ADVANCE_NOTICE_HOURS,
+} from '@core/utils/time-validation.util';
 
 @Component({
   selector: 'app-car-list',
@@ -689,8 +696,8 @@ export class CarListComponent implements OnInit, OnDestroy {
 
   onStartDateChange(event: MatDatepickerInputEvent<Date>, endPicker: MatDatepicker<Date>): void {
     this.searchStartDate = event.value ?? null;
-    this.searchStartTime = '';
-    this.searchEndTime = '';
+    this.searchStartTime = '09:00'; // Default to 9 AM for better UX
+    this.searchEndTime = '09:00'; // Default to 9 AM for better UX
     this.startTimeError = '';
     this.endTimeError = '';
 
@@ -707,7 +714,7 @@ export class CarListComponent implements OnInit, OnDestroy {
 
   onEndDateChange(event: MatDatepickerInputEvent<Date>): void {
     this.searchEndDate = event.value ?? null;
-    this.searchEndTime = '';
+    this.searchEndTime = '09:00'; // Default to 9 AM for better UX
     this.endTimeError = '';
     this.validateField('endDate');
   }
@@ -773,6 +780,34 @@ export class CarListComponent implements OnInit, OnDestroy {
 
     if (endDateTime <= startDateTime) {
       this.dateRangeError = 'Krajnji datum mora biti posle početnog';
+      return;
+    }
+
+    // ========================================================================
+    // PHASE 2: Lead Time Validation (Frontend Guard)
+    // ========================================================================
+    // Validate that booking starts at least 1 hour from now.
+    // This is a UX improvement - backend has authoritative validation.
+    // ========================================================================
+    const leadTimeResult = validateLeadTime(startDateTime, DEFAULT_ADVANCE_NOTICE_HOURS);
+    if (!leadTimeResult.valid) {
+      this.startDateError = leadTimeResult.errorMessage || 'Prerano početno vreme';
+      return;
+    }
+
+    // ========================================================================
+    // PHASE 2: Minimum Duration Validation (Frontend Guard)
+    // ========================================================================
+    // Validate 24-hour minimum trip duration (system default).
+    // Individual cars may have different minimums - enforced at booking time.
+    // ========================================================================
+    const minDurationResult = validateMinimumDuration(
+      startDateTime,
+      endDateTime,
+      DEFAULT_MIN_TRIP_HOURS
+    );
+    if (!minDurationResult.valid) {
+      this.dateRangeError = minDurationResult.errorMessage || 'Prekratko trajanje';
       return;
     }
 

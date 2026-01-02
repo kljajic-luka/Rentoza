@@ -284,9 +284,9 @@ public class NotificationService {
 
     /**
      * Scheduled cleanup of expired notifications (older than 30 days).
-     * Runs daily at 2 AM.
+     * Runs daily at 2 AM Europe/Belgrade timezone.
      */
-    @Scheduled(cron = "0 0 2 * * *")
+    @Scheduled(cron = "0 0 2 * * *", zone = "Europe/Belgrade")
     @Transactional
     public void cleanupExpiredNotifications() {
         Instant expirationDate = Instant.now().minus(30, ChronoUnit.DAYS);

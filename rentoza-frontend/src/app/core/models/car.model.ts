@@ -120,6 +120,13 @@ export interface Car {
   maxRentalDays?: number;
   imageUrls?: string[];
 
+  // Booking settings (Phase 2 - Time Window Logic)
+  minTripHours?: number; // Minimum trip duration in hours (default: 24)
+  maxTripDays?: number; // Maximum trip duration in days (default: 30)
+  advanceNoticeHours?: number; // Hours required before trip start (default: 1)
+  prepBufferHours?: number; // Buffer between bookings (default: 3)
+  instantBookEnabled?: boolean; // Whether instant booking is allowed
+
   // Owner information (Privacy Safe)
   ownerId?: number;
   ownerFirstName?: string;

@@ -534,8 +534,8 @@ export class HomeComponent implements OnInit, OnDestroy {
 
   onStartDateChange(event: MatDatepickerInputEvent<Date>, endPicker: MatDatepicker<Date>): void {
     this.searchStartDate = event.value ?? null;
-    this.searchStartTime = '';
-    this.searchEndTime = '';
+    this.searchStartTime = '09:00'; // Default to 9 AM for better UX
+    this.searchEndTime = '09:00'; // Default to 9 AM for better UX
     this.startTimeError = '';
     this.endTimeError = '';
 
@@ -554,7 +554,7 @@ export class HomeComponent implements OnInit, OnDestroy {
 
   onEndDateChange(event: MatDatepickerInputEvent<Date>): void {
     this.searchEndDate = event.value ?? null;
-    this.searchEndTime = '';
+    this.searchEndTime = '09:00'; // Default to 9 AM for better UX
     this.endTimeError = '';
     this.validateField('endDate');
     this.cdr.markForCheck();

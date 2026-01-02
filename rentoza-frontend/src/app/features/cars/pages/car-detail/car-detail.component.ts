@@ -62,6 +62,13 @@ import {
   VerificationRequiredDialogData,
 } from '@shared/components/verification-required-dialog/verification-required-dialog.component';
 import { BookingEligibility } from '@core/models/renter-verification.model';
+// Phase 2: Time validation utilities
+import {
+  validateLeadTime,
+  validateMinimumDuration,
+  DEFAULT_MIN_TRIP_HOURS,
+  DEFAULT_ADVANCE_NOTICE_HOURS,
+} from '@core/utils/time-validation.util';
 
 @Component({
   selector: 'app-car-detail',

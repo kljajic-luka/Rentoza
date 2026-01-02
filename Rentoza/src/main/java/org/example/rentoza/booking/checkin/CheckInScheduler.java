@@ -5,13 +5,17 @@ import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingStatus;
+import org.example.rentoza.scheduler.SchedulerIdempotencyService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
@@ -54,16 +58,20 @@ public class CheckInScheduler {
 
     private final CheckInService checkInService;
     private final CheckInEventService eventService;
+    private final SchedulerIdempotencyService idempotencyService;
     private final Counter windowsOpenedCounter;
     private final Counter noShowHostCounter;
     private final Counter noShowGuestCounter;
+    private final Counter schedulerSkippedCounter;
 
     public CheckInScheduler(
             CheckInService checkInService,
             CheckInEventService eventService,
+            SchedulerIdempotencyService idempotencyService,
             MeterRegistry meterRegistry) {
         this.checkInService = checkInService;
         this.eventService = eventService;
+        this.idempotencyService = idempotencyService;
         
         this.windowsOpenedCounter = Counter.builder("checkin.window.opened")
                 .description("Number of check-in windows opened")
@@ -78,6 +86,11 @@ public class CheckInScheduler {
         this.noShowGuestCounter = Counter.builder("checkin.noshow")
                 .description("No-show events")
                 .tag("party", "guest")
+                .register(meterRegistry);
+        
+        this.schedulerSkippedCounter = Counter.builder("scheduler.skipped.duplicate")
+                .description("Scheduler executions skipped due to idempotency")
+                .tag("scheduler", "checkin")
                 .register(meterRegistry);
     }
 
@@ -97,6 +110,17 @@ public class CheckInScheduler {
     @Scheduled(cron = "${app.checkin.scheduler.window-cron:0 0 * * * *}", zone = "Europe/Belgrade")
     @Transactional
     public void openCheckInWindows() {
+        LocalDate today = LocalDate.now(SERBIA_ZONE);
+        int currentHour = LocalTime.now(SERBIA_ZONE).getHour();
+        String taskId = "checkin-window-" + today + "-" + currentHour;
+        
+        // Idempotency guard - prevent duplicate execution within 55 minutes
+        if (!idempotencyService.tryAcquireLock(taskId, Duration.ofMinutes(55))) {
+            log.debug("[CheckIn] Skipping duplicate check-in window opening: {}", taskId);
+            schedulerSkippedCounter.increment();
+            return;
+        }
+        
         log.info("[CheckIn] Starting scheduled check-in window opening");
         
         try {
@@ -168,6 +192,17 @@ public class CheckInScheduler {
     @Scheduled(cron = "${app.checkin.scheduler.reminder-cron:0 30 * * * *}", zone = "Europe/Belgrade")
     @Transactional
     public void sendCheckInReminders() {
+        LocalDate today = LocalDate.now(SERBIA_ZONE);
+        int currentHour = LocalTime.now(SERBIA_ZONE).getHour();
+        String taskId = "checkin-reminder-" + today + "-" + currentHour;
+        
+        // Idempotency guard - prevent duplicate execution within 55 minutes
+        if (!idempotencyService.tryAcquireLock(taskId, Duration.ofMinutes(55))) {
+            log.debug("[CheckIn] Skipping duplicate check-in reminder: {}", taskId);
+            schedulerSkippedCounter.increment();
+            return;
+        }
+        
         log.info("[CheckIn] Starting check-in reminder check");
         
         try {
@@ -228,6 +263,18 @@ public class CheckInScheduler {
     @Scheduled(cron = "${app.checkin.scheduler.noshow-cron:0 0/10 * * * *}", zone = "Europe/Belgrade")
     @Transactional
     public void detectNoShows() {
+        // For 10-minute intervals, use minute block as task ID component
+        int minuteBlock = LocalTime.now(SERBIA_ZONE).getMinute() / 10;
+        String taskId = "checkin-noshow-" + LocalDate.now(SERBIA_ZONE) + "-" + 
+                        LocalTime.now(SERBIA_ZONE).getHour() + "-" + minuteBlock;
+        
+        // Idempotency guard - prevent duplicate execution within 8 minutes
+        if (!idempotencyService.tryAcquireLock(taskId, Duration.ofMinutes(8))) {
+            log.debug("[CheckIn] Skipping duplicate no-show detection: {}", taskId);
+            schedulerSkippedCounter.increment();
+            return;
+        }
+        
         log.info("[CheckIn] Starting no-show detection");
         
         try {

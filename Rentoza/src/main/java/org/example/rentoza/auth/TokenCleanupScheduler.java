@@ -28,7 +28,7 @@ public class TokenCleanupScheduler {
      * Cron: second, minute, hour, day of month, month, day of week
      * "0 0 2 * * ?" = At 02:00:00am every day
      */
-    @Scheduled(cron = "${refresh-token.cleanup.cron:0 0 2 * * ?}")
+    @Scheduled(cron = "${refresh-token.cleanup.cron:0 0 2 * * ?}", zone = "Europe/Belgrade")
     @Transactional
     public void cleanupExpiredTokens() {
         log.info("Starting scheduled cleanup of expired refresh tokens");
@@ -52,7 +52,7 @@ public class TokenCleanupScheduler {
      * Additional cleanup every 6 hours (for high-traffic environments)
      * Can be disabled by setting refresh-token.cleanup.frequent.enabled=false
      */
-    @Scheduled(cron = "${refresh-token.cleanup.frequent.cron:0 0 */6 * * ?}")
+    @Scheduled(cron = "${refresh-token.cleanup.frequent.cron:0 0 */6 * * ?}", zone = "Europe/Belgrade")
     @Transactional
     public void frequentCleanup() {
         if (Boolean.parseBoolean(System.getProperty("refresh-token.cleanup.frequent.enabled", "false"))) {

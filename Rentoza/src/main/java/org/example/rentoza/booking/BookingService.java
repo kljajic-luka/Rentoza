@@ -155,16 +155,68 @@ public class BookingService {
         // ========================================================================
         // TRIP START BUFFER VALIDATION (Short Notice Protection)
         // ========================================================================
-        // Reject booking if trip starts within 1 hour from now.
-        // Rationale: Hosts need minimum time to respond, and last-minute bookings
-        // create poor UX (auto-expiry would trigger almost immediately).
+        // Reject booking if trip starts within required advance notice period.
+        // Default: 1 hour minimum, but hosts can configure per-car settings.
+        //
+        // PHASE 2 ENHANCEMENT: Use car-specific advance notice from CarBookingSettings
+        // Falls back to system default (1 hour) if not configured.
+        //
+        // All booking times are interpreted as Europe/Belgrade local time.
+        // ========================================================================
+        final java.time.ZoneId SERBIA_ZONE = java.time.ZoneId.of("Europe/Belgrade");
         LocalDateTime tripStartDateTime = dto.getStartTime();
-        LocalDateTime oneHourFromNow = LocalDateTime.now().plusHours(1);
+        LocalDateTime tripEndDateTime = dto.getEndTime();
+        LocalDateTime nowInSerbia = LocalDateTime.now(SERBIA_ZONE);
         
-        if (tripStartDateTime.isBefore(oneHourFromNow)) {
+        // Get car-specific booking settings (or defaults)
+        var carBookingSettings = car.getEffectiveBookingSettings();
+        int advanceNoticeHours = carBookingSettings.getEffectiveAdvanceNoticeHours();
+        LocalDateTime minStartTime = nowInSerbia.plusHours(advanceNoticeHours);
+        
+        if (tripStartDateTime.isBefore(minStartTime)) {
+            log.warn("Lead time validation failed: tripStart={}, minRequired={}, advanceNotice={}h, now={}", 
+                    tripStartDateTime, minStartTime, advanceNoticeHours, nowInSerbia);
             throw new org.example.rentoza.exception.ValidationException(
-                    "Booking cannot be created less than 1 hour before trip start time. " +
-                    "Please select a later start date."
+                    String.format("Rezervacija mora biti kreirana najmanje %d sat(a) pre početka. " +
+                    "Najraniji mogući početak: %s (CET/CEST)", 
+                    advanceNoticeHours,
+                    minStartTime.format(java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm")))
+            );
+        }
+        
+        // ========================================================================
+        // MINIMUM TRIP DURATION VALIDATION (Phase 2 Enhancement)
+        // ========================================================================
+        // Ensure trip meets car-specific minimum duration.
+        // Default: 24 hours, but hosts can configure per-car.
+        // ========================================================================
+        int minTripHours = carBookingSettings.getEffectiveMinTripHours();
+        long tripDurationHours = ChronoUnit.HOURS.between(tripStartDateTime, tripEndDateTime);
+        
+        if (tripDurationHours < minTripHours) {
+            log.warn("Minimum duration validation failed: duration={}h, required={}h, carId={}", 
+                    tripDurationHours, minTripHours, car.getId());
+            throw new org.example.rentoza.exception.ValidationException(
+                    String.format("Minimalno trajanje iznajmljivanja za ovaj automobil je %d sati. " +
+                    "Vaše izabrano trajanje: %d sati.", minTripHours, tripDurationHours)
+            );
+        }
+        
+        // ========================================================================
+        // MAXIMUM TRIP DURATION VALIDATION (Phase 2 Enhancement)
+        // ========================================================================
+        // Ensure trip doesn't exceed car-specific maximum duration.
+        // Default: 30 days, but hosts can configure per-car.
+        // ========================================================================
+        int maxTripDays = carBookingSettings.getEffectiveMaxTripDays();
+        long tripDurationDays = ChronoUnit.DAYS.between(tripStartDateTime.toLocalDate(), tripEndDateTime.toLocalDate());
+        
+        if (tripDurationDays > maxTripDays) {
+            log.warn("Maximum duration validation failed: duration={}d, max={}d, carId={}", 
+                    tripDurationDays, maxTripDays, car.getId());
+            throw new org.example.rentoza.exception.ValidationException(
+                    String.format("Maksimalno trajanje iznajmljivanja za ovaj automobil je %d dana. " +
+                    "Vaše izabrano trajanje: %d dana.", maxTripDays, tripDurationDays)
             );
         }
 

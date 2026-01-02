@@ -63,7 +63,7 @@ public class BookingScheduler {
      * Can be overridden via application.properties:
      * app.booking.scheduler.expiry-cron=0 0 0/6 * * *  (revert to 6h for low-volume deployments)
      */
-    @Scheduled(cron = "${app.booking.scheduler.expiry-cron:0 0/15 * * * *}")
+    @Scheduled(cron = "${app.booking.scheduler.expiry-cron:0 0/15 * * * *}", zone = "Europe/Belgrade")
     public void autoExpirePendingBookings() {
         log.info("Starting scheduled auto-expiry of pending booking approval requests");
 

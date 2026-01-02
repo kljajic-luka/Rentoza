@@ -15,6 +15,9 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.file.Files;
@@ -67,8 +70,14 @@ public class GuestCheckInPhotoService {
     @Value("${app.checkin.photo.upload-dir:uploads/checkin}")
     private String uploadDir;
 
-    @Value("${app.checkin.photo.max-size-mb:10}")
+    @Value("${app.checkin.photo.max-size-mb:3}")
     private int maxSizeMb;
+
+    @Value("${app.checkin.photo.max-width-pixels:2560}")
+    private int maxWidthPixels;
+
+    @Value("${app.checkin.photo.max-height-pixels:2560}")
+    private int maxHeightPixels;
 
     /**
      * Process batch upload of guest check-in photos.
@@ -111,6 +120,10 @@ public class GuestCheckInPhotoService {
             booking.setCheckInSessionId(sessionId);
             bookingRepository.save(booking);
         }
+        
+        // PHASE 1 IMPROVEMENT: Validate photo types at upload time
+        // Prevents duplicate types in same submission and re-uploads of existing types
+        validatePhotoTypesAtUpload(bookingId, submission.getPhotos());
         
         List<CheckInPhotoDTO> processedPhotos = new ArrayList<>();
         int acceptedCount = 0;
@@ -227,6 +240,24 @@ public class GuestCheckInPhotoService {
         if (photoBytes.length > maxBytes) {
             throw new IllegalArgumentException(
                 String.format("Fotografija je prevelika. Maksimum: %dMB", maxSizeMb));
+        }
+        
+        // Validate image dimensions (prevents memory exhaustion on mobile)
+        try {
+            BufferedImage img = ImageIO.read(new ByteArrayInputStream(photoBytes));
+            if (img == null) {
+                throw new IllegalArgumentException("Nije moguće pročitati fotografiju. Proverite format slike.");
+            }
+            if (img.getWidth() > maxWidthPixels || img.getHeight() > maxHeightPixels) {
+                throw new IllegalArgumentException(
+                    String.format("Rezolucija fotografije je prevelika (%dx%d). Maksimum: %dx%d piksela. " +
+                        "Molimo smanjite veličinu slike ili omogućite kompresiju u aplikaciji.",
+                        img.getWidth(), img.getHeight(), maxWidthPixels, maxHeightPixels));
+            }
+            log.debug("[GuestCheckIn] Image dimensions validated: {}x{}", img.getWidth(), img.getHeight());
+        } catch (IOException e) {
+            log.warn("[GuestCheckIn] Failed to read image dimensions: {}", e.getMessage());
+            // Continue processing - EXIF validation will catch corrupt images
         }
         
         // EXIF validation
@@ -471,6 +502,66 @@ public class GuestCheckInPhotoService {
         } else {
             return "Nijedna fotografija nije prihvaćena. Proverite da li fotografišete direktno sa kamere.";
         }
+    }
+
+    /**
+     * PHASE 1 IMPROVEMENT: Validate photo types at upload time.
+     * 
+     * <p>Prevents two issues:
+     * <ol>
+     *   <li>Duplicate photo types in the same submission (e.g., 8x FRONT)</li>
+     *   <li>Re-upload of photo types that already exist for this booking</li>
+     * </ol>
+     * 
+     * @param bookingId the booking ID
+     * @param photos list of photos being submitted
+     * @throws IllegalArgumentException if validation fails
+     */
+    private void validatePhotoTypesAtUpload(Long bookingId, List<GuestCheckInPhotoSubmissionDTO.PhotoItem> photos) {
+        if (photos == null || photos.isEmpty()) {
+            return;
+        }
+        
+        // Check for duplicate types within this submission
+        Set<CheckInPhotoType> submittedTypes = new HashSet<>();
+        List<CheckInPhotoType> duplicates = new ArrayList<>();
+        
+        for (GuestCheckInPhotoSubmissionDTO.PhotoItem photo : photos) {
+            if (!submittedTypes.add(photo.getPhotoType())) {
+                duplicates.add(photo.getPhotoType());
+            }
+        }
+        
+        if (!duplicates.isEmpty()) {
+            String duplicateNames = duplicates.stream()
+                .map(CheckInPhotoType::name)
+                .distinct()
+                .collect(Collectors.joining(", "));
+            throw new IllegalArgumentException(
+                String.format("Otkrivene su duplirane vrste fotografija u ovom zahtevu: %s. " +
+                    "Svaki tip fotografije može biti poslat samo jednom.", duplicateNames));
+        }
+        
+        // Check for photo types that already exist for this booking
+        List<String> alreadyUploaded = new ArrayList<>();
+        for (CheckInPhotoType type : submittedTypes) {
+            long existingCount = guestPhotoRepository.countByBookingIdAndPhotoType(bookingId, type);
+            if (existingCount > 0) {
+                alreadyUploaded.add(type.name());
+            }
+        }
+        
+        if (!alreadyUploaded.isEmpty()) {
+            String existingTypes = String.join(", ", alreadyUploaded);
+            log.warn("[GuestCheckIn] Attempt to re-upload existing photo types: bookingId={}, types={}", 
+                bookingId, existingTypes);
+            throw new IllegalArgumentException(
+                String.format("Sledeće vrste fotografija su već otpremljene za ovu rezervaciju: %s. " +
+                    "Koristite opciju zamene ako želite da promenite postojeću fotografiju.", existingTypes));
+        }
+        
+        log.debug("[GuestCheckIn] Photo types validated for upload: bookingId={}, types={}", 
+            bookingId, submittedTypes.stream().map(Enum::name).collect(Collectors.joining(", ")));
     }
 
     /**

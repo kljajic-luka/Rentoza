@@ -743,7 +743,7 @@ public class Booking {
      * @return Distance in meters, or null if locations unavailable
      * @deprecated Since Phase 2 - Location variance validation removed (Turo simplification)
      */
-    @Deprecated(since = "Phase2", forRemoval = false)
+    @Deprecated(since = "Phase2", forRemoval = true)
     public Integer calculatePickupLocationVariance() {
         if (pickupLocation == null || !pickupLocation.hasCoordinates()) {
             return null;
@@ -755,31 +755,5 @@ public class Booking {
         GeoPoint actualCarLocation = new GeoPoint(carLatitude, carLongitude);
         double distance = pickupLocation.distanceTo(actualCarLocation);
         return (int) Math.round(distance);
-    }
-
-    /**
-     * Check if car location variance exceeds warning threshold (500m).
-     * 
-     * <p><b>DEPRECATED (Phase 2):</b> No longer used. See {@link #calculatePickupLocationVariance()}.
-     * 
-     * @return true if variance > 500m
-     * @deprecated Since Phase 2 - Location variance validation removed
-     */
-    @Deprecated(since = "Phase2", forRemoval = false)
-    public boolean hasSignificantLocationVariance() {
-        return pickupLocationVarianceMeters != null && pickupLocationVarianceMeters > 500;
-    }
-
-    /**
-     * Check if car location variance exceeds blocking threshold (2km).
-     * 
-     * <p><b>DEPRECATED (Phase 2):</b> No longer used. See {@link #calculatePickupLocationVariance()}.
-     * 
-     * @return true if variance > 2km
-     * @deprecated Since Phase 2 - Location variance validation removed
-     */
-    @Deprecated(since = "Phase2", forRemoval = false)
-    public boolean hasBlockingLocationVariance() {
-        return pickupLocationVarianceMeters != null && pickupLocationVarianceMeters > 2000;
     }
 }

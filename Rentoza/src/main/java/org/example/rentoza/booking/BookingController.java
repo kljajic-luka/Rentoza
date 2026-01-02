@@ -271,40 +271,6 @@ public class BookingController {
         ));
     }
 
-    /**
-     * Cancel a booking (LEGACY - deprecated).
-     * 
-     * <p><b>DEPRECATED:</b> Use POST /{id}/cancel with CancellationRequestDTO instead.
-     * This endpoint is kept for backwards compatibility.
-     * 
-     * RLS-ENFORCED: Only the renter can cancel their booking (verified at service layer).
-     * SpEL expression ensures only booking modifier can access.
-     * 
-     * @deprecated Use POST /{id}/cancel with CancellationRequestDTO for proper penalty handling
-     */
-    @Deprecated(since = "2024-01")
-    @PutMapping("/cancel/{id}")
-    @PreAuthorize("@bookingSecurity.canModifyBooking(#id, authentication.principal.id) or hasRole('ADMIN')")
-    public ResponseEntity<?> cancelBooking(
-            @PathVariable Long id,
-            @org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal
-    ) {
-        try {
-            // Get the booking to verify ownership
-            Booking bookingToCancel = service.getBookingById(id);
-
-            // Verify the authenticated user is the renter who created the booking
-            if (!bookingToCancel.getRenter().getEmail().equalsIgnoreCase(principal.getUsername())) {
-                return ResponseEntity.status(403).body(Map.of("error", "Unauthorized to cancel this booking"));
-            }
-
-            Booking booking = service.cancelBooking(id);
-            return ResponseEntity.ok(new BookingResponseDTO(booking));
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
-        }
-    }
-
     // ==================== CANCELLATION POLICY MIGRATION (Phase 2) ====================
 
     /**

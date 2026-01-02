@@ -305,18 +305,6 @@ export class AuthService {
   }
 
   /**
-   * @deprecated OAuth2 now uses cookie-only flow. This method is a no-op.
-   * The access token is set via HttpOnly cookie by the backend.
-   * Frontend should call verifySession() after OAuth2 redirect.
-   */
-  setAccessToken(_token: string): void {
-    console.warn('⚠️ setAccessToken() is deprecated. Tokens are now cookie-only.');
-    // No-op: tokens are managed by HttpOnly cookies
-    // Hydrate user from backend instead
-    this.hydrateUserFromBackend();
-  }
-
-  /**
    * Check if user is authenticated.
    *
    * SECURITY HARDENING: In cookie-only mode, we cannot inspect the token
@@ -645,23 +633,6 @@ export class AuthService {
           error: (err) => console.error('Failed to load favorited cars:', err),
         });
     });
-  }
-
-  /**
-   * @deprecated No longer used - tokens are HttpOnly cookies.
-   * Kept for backward compatibility during migration.
-   */
-  private persistAccessToken(_token: string): void {
-    // No-op: tokens are managed by HttpOnly cookies
-    console.debug('persistAccessToken() is deprecated - tokens are HttpOnly');
-  }
-
-  /**
-   * @deprecated No longer used - cannot decode HttpOnly tokens.
-   */
-  private extractUserFromPayload(_payload: Record<string, unknown>): UserProfile | null {
-    console.debug('extractUserFromPayload() is deprecated - tokens are HttpOnly');
-    return null;
   }
 
   private extractRoles(payload: Record<string, unknown>): UserRole[] {

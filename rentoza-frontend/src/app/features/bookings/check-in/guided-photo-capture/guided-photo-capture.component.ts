@@ -256,6 +256,36 @@ interface PhotoCaptureState {
         }
       </nav>
 
+      <!-- PHASE 1 IMPROVEMENT: Completion Progress Checklist -->
+      <section class="completion-checklist" aria-label="Status fotografija">
+        <div class="checklist-header">
+          <mat-icon class="checklist-icon">photo_library</mat-icon>
+          <span class="checklist-title"
+            >Napredak: {{ completedPhotosCount() }}/{{ totalPhotos() }}</span
+          >
+        </div>
+        <div class="checklist-grid">
+          @for (status of photoTypeStatusList(); track status.type) {
+          <div
+            class="checklist-item"
+            [class.completed]="status.completed"
+            [class.current]="status.isCurrent"
+          >
+            <mat-icon class="status-icon">
+              {{
+                status.completed
+                  ? 'check_circle'
+                  : status.isCurrent
+                  ? 'radio_button_checked'
+                  : 'radio_button_unchecked'
+              }}
+            </mat-icon>
+            <span class="type-name">{{ status.displayName }}</span>
+          </div>
+          }
+        </div>
+      </section>
+
       <!-- Footer with Cancel -->
       <footer class="capture-footer">
         <button mat-button (click)="cancelCapture()" class="cancel-button">
@@ -715,6 +745,107 @@ interface PhotoCaptureState {
         height: 18px;
       }
 
+      /* ========== COMPLETION CHECKLIST (Phase 1 Improvement) ========== */
+      .completion-checklist {
+        background: var(--mat-card-background-color, #fff);
+        border-radius: 12px;
+        padding: 16px;
+        margin: 16px 0;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      }
+
+      .dark-mode .completion-checklist {
+        background: #1e1e1e;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+      }
+
+      .checklist-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 12px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+      }
+
+      .dark-mode .checklist-header {
+        border-bottom-color: rgba(255, 255, 255, 0.1);
+      }
+
+      .checklist-icon {
+        color: var(--mat-primary-color, #3f51b5);
+        font-size: 20px;
+        width: 20px;
+        height: 20px;
+      }
+
+      .checklist-title {
+        font-weight: 500;
+        font-size: 14px;
+      }
+
+      .checklist-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+      }
+
+      @media (min-width: 600px) {
+        .checklist-grid {
+          grid-template-columns: repeat(4, 1fr);
+        }
+      }
+
+      .checklist-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px;
+        border-radius: 8px;
+        background: rgba(0, 0, 0, 0.03);
+        transition: all 0.2s ease;
+        font-size: 12px;
+      }
+
+      .dark-mode .checklist-item {
+        background: rgba(255, 255, 255, 0.05);
+      }
+
+      .checklist-item.completed {
+        background: rgba(76, 175, 80, 0.1);
+      }
+
+      .checklist-item.completed .status-icon {
+        color: #4caf50;
+      }
+
+      .checklist-item.current {
+        background: rgba(63, 81, 181, 0.1);
+        border: 1px solid var(--mat-primary-color, #3f51b5);
+      }
+
+      .checklist-item.current .status-icon {
+        color: var(--mat-primary-color, #3f51b5);
+      }
+
+      .checklist-item .status-icon {
+        font-size: 16px;
+        width: 16px;
+        height: 16px;
+        color: rgba(0, 0, 0, 0.3);
+      }
+
+      .dark-mode .checklist-item .status-icon {
+        color: rgba(255, 255, 255, 0.3);
+      }
+
+      .checklist-item .type-name {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
       /* ========== FOOTER ========== */
       .capture-footer {
         display: flex;
@@ -761,6 +892,15 @@ interface PhotoCaptureState {
         .retake-button,
         .confirm-button {
           width: 100%;
+        }
+
+        .completion-checklist {
+          padding: 12px;
+        }
+
+        .checklist-item {
+          font-size: 11px;
+          padding: 6px;
         }
       }
 
@@ -816,6 +956,33 @@ export class GuidedPhotoCaptureComponent implements OnInit, OnDestroy, OnChanges
   protected readonly currentIndex = this.guidanceService.currentIndex;
   protected readonly allGuidance = this.guidanceService.captureSequence;
   protected readonly totalPhotos = computed(() => this.allGuidance().length);
+
+  // PHASE 1 IMPROVEMENT: Photo type status for completion checklist
+  protected readonly photoTypeStatusList = computed(() => {
+    const guidance = this.allGuidance();
+    const captured = this.capturedPhotos();
+    const currentIdx = this.currentIndex();
+
+    return guidance.map((g, idx) => {
+      const state = captured.get(g.photoType);
+      return {
+        type: g.photoType,
+        displayName: g.displayName,
+        completed: state?.verified ?? false,
+        isCurrent: idx === currentIdx,
+      };
+    });
+  });
+
+  // PHASE 1 IMPROVEMENT: Count of completed photos
+  protected readonly completedPhotosCount = computed(() => {
+    const captured = this.capturedPhotos();
+    let count = 0;
+    captured.forEach((state) => {
+      if (state.verified) count++;
+    });
+    return count;
+  });
 
   // Progress computation
   protected readonly overallProgress = computed(() => {

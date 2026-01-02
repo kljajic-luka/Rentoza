@@ -22,6 +22,8 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.security.access.AccessDeniedException;
 
+import org.springframework.test.util.ReflectionTestUtils;
+
 import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
@@ -78,6 +80,12 @@ class GuestCheckInPhotoServiceTest {
             photoRejectionService,
             photoGuidanceService
         );
+        
+        // Inject @Value properties that Spring would normally inject
+        ReflectionTestUtils.setField(guestPhotoService, "maxSizeMb", 3);
+        ReflectionTestUtils.setField(guestPhotoService, "maxWidthPixels", 2560);
+        ReflectionTestUtils.setField(guestPhotoService, "maxHeightPixels", 2560);
+        ReflectionTestUtils.setField(guestPhotoService, "uploadDir", "uploads/test");
         
         // Initialize test fixtures
         bookingId = 1L;
@@ -442,6 +450,122 @@ class GuestCheckInPhotoServiceTest {
             ArgumentCaptor<Booking> bookingCaptor = ArgumentCaptor.forClass(Booking.class);
             verify(bookingRepository, atLeastOnce()).save(bookingCaptor.capture());
             assertThat(bookingCaptor.getValue().getCheckInSessionId()).isNotNull();
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // HELPER METHODS
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PHASE 1 IMPROVEMENT: UPLOAD-TIME TYPE VALIDATION TESTS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    @Nested
+    @DisplayName("Upload-Time Type Validation Tests (Phase 1 Improvement)")
+    class UploadTimeTypeValidationTests {
+
+        @Test
+        @DisplayName("Should reject submission with duplicate photo types in same request")
+        void shouldRejectDuplicatePhotoTypesInSameSubmission() {
+            // Arrange
+            testBooking.setStatus(BookingStatus.CHECK_IN_HOST_COMPLETE);
+            GuestCheckInPhotoSubmissionDTO submission = new GuestCheckInPhotoSubmissionDTO();
+            submission.setPhotos(List.of(
+                createPhotoItem(CheckInPhotoType.GUEST_EXTERIOR_FRONT),
+                createPhotoItem(CheckInPhotoType.GUEST_EXTERIOR_FRONT) // Duplicate!
+            ));
+            submission.setClientCapturedAt(Instant.now());
+            
+            when(bookingRepository.findByIdWithRelations(bookingId))
+                .thenReturn(Optional.of(testBooking));
+            when(userRepository.findById(renterId))
+                .thenReturn(Optional.of(testRenter));
+            
+            // Act & Assert
+            assertThatThrownBy(() -> 
+                guestPhotoService.uploadGuestPhotos(bookingId, renterId, submission))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("duplirane");
+        }
+
+        @Test
+        @DisplayName("Should reject re-upload of photo type that already exists")
+        void shouldRejectReuploadOfExistingPhotoType() {
+            // Arrange
+            testBooking.setStatus(BookingStatus.CHECK_IN_HOST_COMPLETE);
+            GuestCheckInPhotoSubmissionDTO submission = createValidSubmission(); // GUEST_EXTERIOR_FRONT
+            
+            when(bookingRepository.findByIdWithRelations(bookingId))
+                .thenReturn(Optional.of(testBooking));
+            when(userRepository.findById(renterId))
+                .thenReturn(Optional.of(testRenter));
+            // This type already exists in DB
+            when(guestPhotoRepository.countByBookingIdAndPhotoType(bookingId, CheckInPhotoType.GUEST_EXTERIOR_FRONT))
+                .thenReturn(1L);
+            
+            // Act & Assert
+            assertThatThrownBy(() -> 
+                guestPhotoService.uploadGuestPhotos(bookingId, renterId, submission))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("već otpremljene");
+        }
+
+        @Test
+        @DisplayName("Should accept submission with unique photo types")
+        void shouldAcceptSubmissionWithUniquePhotoTypes() {
+            // Arrange
+            testBooking.setStatus(BookingStatus.CHECK_IN_HOST_COMPLETE);
+            GuestCheckInPhotoSubmissionDTO submission = new GuestCheckInPhotoSubmissionDTO();
+            submission.setPhotos(List.of(
+                createPhotoItem(CheckInPhotoType.GUEST_EXTERIOR_FRONT),
+                createPhotoItem(CheckInPhotoType.GUEST_EXTERIOR_REAR) // Different types
+            ));
+            submission.setClientCapturedAt(Instant.now());
+            
+            when(bookingRepository.findByIdWithRelations(bookingId))
+                .thenReturn(Optional.of(testBooking));
+            when(userRepository.findById(renterId))
+                .thenReturn(Optional.of(testRenter));
+            // No existing photos
+            when(guestPhotoRepository.countByBookingIdAndPhotoType(eq(bookingId), any()))
+                .thenReturn(0L);
+            when(guestPhotoRepository.countRequiredGuestPhotoTypes(bookingId))
+                .thenReturn(0L);
+            when(exifValidationService.validate(any(), any()))
+                .thenReturn(createValidExifResult());
+            when(photoRejectionService.shouldReject(any()))
+                .thenReturn(true); // Reject for simplicity (doesn't store)
+            
+            // Act - should not throw validation error
+            assertThatCode(() -> 
+                guestPhotoService.uploadGuestPhotos(bookingId, renterId, submission))
+                .doesNotThrowAnyException();
+        }
+
+        @Test
+        @DisplayName("Should report all duplicate types in error message")
+        void shouldReportAllDuplicateTypesInErrorMessage() {
+            // Arrange
+            testBooking.setStatus(BookingStatus.CHECK_IN_HOST_COMPLETE);
+            GuestCheckInPhotoSubmissionDTO submission = new GuestCheckInPhotoSubmissionDTO();
+            submission.setPhotos(List.of(
+                createPhotoItem(CheckInPhotoType.GUEST_EXTERIOR_FRONT),
+                createPhotoItem(CheckInPhotoType.GUEST_EXTERIOR_FRONT),
+                createPhotoItem(CheckInPhotoType.GUEST_EXTERIOR_REAR),
+                createPhotoItem(CheckInPhotoType.GUEST_EXTERIOR_REAR) // Two different duplicates
+            ));
+            submission.setClientCapturedAt(Instant.now());
+            
+            when(bookingRepository.findByIdWithRelations(bookingId))
+                .thenReturn(Optional.of(testBooking));
+            when(userRepository.findById(renterId))
+                .thenReturn(Optional.of(testRenter));
+            
+            // Act & Assert
+            assertThatThrownBy(() -> 
+                guestPhotoService.uploadGuestPhotos(bookingId, renterId, submission))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("GUEST_EXTERIOR_FRONT")
+                .hasMessageContaining("GUEST_EXTERIOR_REAR");
         }
     }
 

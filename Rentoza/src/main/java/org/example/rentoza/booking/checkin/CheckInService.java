@@ -747,6 +747,60 @@ public class CheckInService {
     }
 
     /**
+     * Manually force-open check-in window for a booking.
+     * 
+     * <p>DEV/ADMIN ONLY: Bypasses scheduler timing to immediately transition
+     * a booking from ACTIVE to CHECK_IN_OPEN. Used for testing or when
+     * scheduler timing doesn't align with operational needs.
+     * 
+     * @param bookingId The booking to open
+     * @param requestingUserId The admin/dev user forcing the open
+     * @throws IllegalStateException if booking not in ACTIVE status
+     * @throws IllegalArgumentException if booking not found
+     */
+    @Transactional
+    public void forceOpenCheckInWindow(Long bookingId, Long requestingUserId) {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new IllegalArgumentException("Booking not found: " + bookingId));
+        
+        // Only allow force-open for ACTIVE bookings (or already CHECK_IN_OPEN is no-op)
+        if (booking.getStatus() == BookingStatus.CHECK_IN_OPEN) {
+            log.info("[CheckIn] Booking {} already in CHECK_IN_OPEN status, no action needed", bookingId);
+            return;
+        }
+        
+        if (booking.getStatus() != BookingStatus.ACTIVE) {
+            throw new IllegalStateException(String.format(
+                "Cannot force-open check-in for booking %d: current status is %s, expected ACTIVE",
+                bookingId, booking.getStatus()));
+        }
+        
+        // Generate session and transition
+        String sessionId = java.util.UUID.randomUUID().toString();
+        booking.setCheckInSessionId(sessionId);
+        booking.setCheckInOpenedAt(java.time.Instant.now());
+        booking.setStatus(BookingStatus.CHECK_IN_OPEN);
+        
+        // Record audit event
+        eventService.recordSystemEvent(
+            booking,
+            sessionId,
+            CheckInEventType.CHECK_IN_OPENED,
+            java.util.Map.of(
+                "triggeredBy", "MANUAL_FORCE_OPEN",
+                "requestingUserId", requestingUserId.toString(),
+                "bookingStartTime", booking.getStartTime().toString()
+            )
+        );
+        
+        // Send notification to host
+        notifyCheckInWindowOpened(booking);
+        
+        log.warn("[CheckIn] MANUAL: Force-opened check-in window for booking {} by user {} (session: {})",
+            bookingId, requestingUserId, sessionId);
+    }
+
+    /**
      * Find bookings needing reminder notifications.
      * 
      * PERFORMANCE OPTIMIZATION (Phase 1 Critical Fix):
@@ -790,15 +844,33 @@ public class CheckInService {
 
     // ========== NOTIFICATION METHODS ==========
 
+    /**
+     * Notify both host and guest when check-in window opens.
+     * Host needs to upload photos, guest needs to prepare for pickup.
+     */
     public void notifyCheckInWindowOpened(Booking booking) {
         User host = booking.getCar().getOwner();
+        User guest = booking.getRenter();
+        String carInfo = booking.getCar().getBrand() + " " + booking.getCar().getModel();
+        
+        // Notify host - needs to upload vehicle photos
         notificationService.createNotification(CreateNotificationRequestDTO.builder()
                 .recipientId(host.getId())
                 .type(NotificationType.CHECK_IN_WINDOW_OPENED)
-                .message(String.format("Prijem vozila je otvoren za rezervaciju %s - %s. Otpremite fotografije vozila.", 
-                    booking.getCar().getBrand(), booking.getCar().getModel()))
+                .message(String.format("Prijem vozila %s je otvoren. Otpremite fotografije vozila pre predaje gostu.", carInfo))
                 .relatedEntityId(String.valueOf(booking.getId()))
                 .build());
+        
+        // Notify guest - pickup time approaching
+        notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                .recipientId(guest.getId())
+                .type(NotificationType.CHECK_IN_WINDOW_OPENED)
+                .message(String.format("Prijem vozila %s je otvoren. Pripremite se za preuzimanje vozila.", carInfo))
+                .relatedEntityId(String.valueOf(booking.getId()))
+                .build());
+        
+        log.info("[CheckIn] Sent check-in window opened notifications for booking {} to host {} and guest {}", 
+            booking.getId(), host.getId(), guest.getId());
     }
 
     public void notifyGuestCheckInReady(Booking booking) {
@@ -981,6 +1053,12 @@ public class CheckInService {
                 .varianceStatus(varianceStatus)
                 .isEstimatedLocation(isEstimated)
                 .estimatedLocationSource(estimatedSource)
+                // Phase 4B: License Verification - required for in-person handoffs (no lockbox)
+                .licenseVerificationRequired(licenseVerificationEnabled && licenseVerificationRequired 
+                        && booking.getLockboxCodeEncrypted() == null)
+                .licenseVerifiedInPerson(booking.getLicenseVerifiedInPersonAt() != null)
+                .licenseVerifiedInPersonAt(booking.getLicenseVerifiedInPersonAt() != null 
+                        ? booking.getLicenseVerifiedInPersonAt().toString() : null)
                 .car(CheckInStatusDTO.CarSummaryDTO.builder()
                         .id(booking.getCar().getId())
                         .brand(booking.getCar().getBrand())

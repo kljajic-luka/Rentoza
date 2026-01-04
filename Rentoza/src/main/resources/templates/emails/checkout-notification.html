@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+	<head>
+		<meta charset="UTF-8" />
+		<title>Vraćanje vozila - Rentoza</title>
+		<style>
+			body {
+				font-family: Arial, sans-serif;
+				line-height: 1.6;
+				color: #333;
+				margin: 0;
+				padding: 0;
+			}
+			.container {
+				max-width: 600px;
+				margin: 0 auto;
+				padding: 20px;
+				border: 1px solid #ddd;
+				border-radius: 8px;
+			}
+			.header {
+				padding: 20px;
+				text-align: center;
+				border-radius: 8px 8px 0 0;
+			}
+			.header.high {
+				background-color: #f44336;
+				color: white;
+			}
+			.header.medium {
+				background-color: #ff9800;
+				color: white;
+			}
+			.header.low {
+				background-color: #4caf50;
+				color: white;
+			}
+			.header h2 {
+				margin: 0;
+				font-size: 24px;
+			}
+			.header .emoji {
+				font-size: 32px;
+				margin-bottom: 10px;
+			}
+			.content {
+				padding: 25px;
+				background-color: #fafafa;
+			}
+			.message-box {
+				background-color: white;
+				border-left: 4px solid #9c27b0;
+				padding: 15px;
+				margin: 15px 0;
+				border-radius: 0 4px 4px 0;
+			}
+			.action-required {
+				background-color: #fff3e0;
+				border: 1px solid #ff9800;
+				border-radius: 4px;
+				padding: 15px;
+				margin: 20px 0;
+			}
+			.action-required h4 {
+				color: #e65100;
+				margin: 0 0 10px 0;
+			}
+			.damage-alert {
+				background-color: #ffebee;
+				border: 2px solid #f44336;
+				border-radius: 4px;
+				padding: 15px;
+				margin: 20px 0;
+			}
+			.damage-alert h4 {
+				color: #c62828;
+				margin: 0 0 10px 0;
+			}
+			.late-return-alert {
+				background-color: #fff8e1;
+				border: 2px solid #ffc107;
+				border-radius: 4px;
+				padding: 15px;
+				margin: 20px 0;
+			}
+			.late-return-alert h4 {
+				color: #f57f17;
+				margin: 0 0 10px 0;
+			}
+			.steps {
+				background-color: white;
+				border-radius: 4px;
+				padding: 15px;
+				margin: 15px 0;
+			}
+			.steps h4 {
+				color: #7b1fa2;
+				margin: 0 0 10px 0;
+			}
+			.steps ol {
+				margin: 0;
+				padding-left: 20px;
+			}
+			.steps li {
+				margin: 8px 0;
+			}
+			.button {
+				display: inline-block;
+				padding: 14px 28px;
+				background-color: #9c27b0;
+				color: white;
+				text-decoration: none;
+				border-radius: 6px;
+				margin-top: 20px;
+				font-weight: bold;
+				text-align: center;
+			}
+			.button:hover {
+				background-color: #7b1fa2;
+			}
+			.button.urgent {
+				background-color: #f44336;
+			}
+			.info-card {
+				display: flex;
+				background-color: white;
+				border: 1px solid #e0e0e0;
+				border-radius: 4px;
+				padding: 15px;
+				margin: 15px 0;
+			}
+			.info-card .icon {
+				font-size: 24px;
+				margin-right: 15px;
+			}
+			.info-card .details h5 {
+				margin: 0 0 5px 0;
+				color: #333;
+			}
+			.info-card .details p {
+				margin: 0;
+				color: #666;
+				font-size: 14px;
+			}
+			.success-box {
+				background-color: #e8f5e9;
+				border: 1px solid #4caf50;
+				border-radius: 4px;
+				padding: 20px;
+				margin: 20px 0;
+				text-align: center;
+			}
+			.success-box h3 {
+				color: #2e7d32;
+				margin: 0 0 10px 0;
+			}
+			.success-box p {
+				color: #388e3c;
+				margin: 0;
+			}
+			.checklist {
+				background-color: white;
+				border-radius: 4px;
+				padding: 15px;
+				margin: 15px 0;
+			}
+			.checklist h4 {
+				color: #7b1fa2;
+				margin: 0 0 10px 0;
+			}
+			.checklist ul {
+				margin: 0;
+				padding-left: 0;
+				list-style: none;
+			}
+			.checklist li {
+				margin: 8px 0;
+				padding-left: 25px;
+				position: relative;
+			}
+			.checklist li::before {
+				content: "☐";
+				position: absolute;
+				left: 0;
+			}
+			.footer {
+				margin-top: 30px;
+				padding: 20px;
+				font-size: 12px;
+				color: #777;
+				text-align: center;
+				border-top: 1px solid #e0e0e0;
+			}
+			.footer a {
+				color: #9c27b0;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="container">
+			<!-- Dynamic header based on urgency -->
+			<div class="header" th:classappend="${urgencyLevel}">
+				<div class="emoji" th:switch="${notificationType}">
+					<span th:case="'CHECKOUT_WINDOW_OPENED'">⏰</span>
+					<span th:case="'CHECKOUT_REMINDER'">⚠️</span>
+					<span th:case="'CHECKOUT_GUEST_COMPLETE'">✅</span>
+					<span th:case="'CHECKOUT_GUEST_BEGUN'">🔄</span>
+					<span th:case="'CHECKOUT_DAMAGE_REPORTED'">⚠️</span>
+					<span th:case="'CHECKOUT_COMPLETE'">🎉</span>
+					<span th:case="'LATE_RETURN_DETECTED'">⏰</span>
+					<span th:case="*">📋</span>
+				</div>
+				<h2 th:switch="${notificationType}">
+					<span th:case="'CHECKOUT_WINDOW_OPENED'"
+						>Vreme za vraćanje vozila</span
+					>
+					<span th:case="'CHECKOUT_REMINDER'">Podsetnik za vraćanje</span>
+					<span th:case="'CHECKOUT_GUEST_COMPLETE'"
+						>Gost je završio povratak</span
+					>
+					<span th:case="'CHECKOUT_GUEST_BEGUN'">Vraćanje vozila započeto</span>
+					<span th:case="'CHECKOUT_DAMAGE_REPORTED'"
+						>Prijavljeno novo oštećenje</span
+					>
+					<span th:case="'CHECKOUT_COMPLETE'">Vozilo uspešno vraćeno!</span>
+					<span th:case="'LATE_RETURN_DETECTED'">Kašnjenje sa povratkom</span>
+					<span th:case="*">Obaveštenje o vraćanju</span>
+				</h2>
+			</div>
+
+			<div class="content">
+				<p>Poštovani,</p>
+
+				<!-- Main message from notification -->
+				<div class="message-box">
+					<p th:text="${message}">Obaveštenje o vraćanju vozila.</p>
+				</div>
+
+				<!-- Late return alert -->
+				<div
+					th:if="${notificationType == 'LATE_RETURN_DETECTED'}"
+					class="late-return-alert"
+				>
+					<h4>⏰ Kašnjenje sa povratkom</h4>
+					<p>
+						Vozilo nije vraćeno u predviđenom terminu. Molimo vas da što pre
+						kontaktirate vlasnika i vratite vozilo. Dodatni troškovi mogu biti
+						naplaćeni za kašnjenje.
+					</p>
+				</div>
+
+				<!-- Damage reported alert -->
+				<div
+					th:if="${notificationType == 'CHECKOUT_DAMAGE_REPORTED'}"
+					class="damage-alert"
+				>
+					<h4>⚠️ Prijavljeno oštećenje</h4>
+					<p>
+						Vlasnik je prijavio novo oštećenje na vozilu prilikom vraćanja.
+						Molimo pregledajte detalje i fotografije u aplikaciji. Ako se ne
+						slažete sa prijavom, možete pokrenuti spor.
+					</p>
+				</div>
+
+				<!-- Action required section (conditional) -->
+				<div
+					th:if="${actionRequired and notificationType != 'LATE_RETURN_DETECTED' and notificationType != 'CHECKOUT_DAMAGE_REPORTED'}"
+					class="action-required"
+				>
+					<h4>⚡ Potrebna akcija</h4>
+					<p th:switch="${notificationType}">
+						<span th:case="'CHECKOUT_WINDOW_OPENED'">
+							Pripremite vozilo za vraćanje i otpremite završne fotografije.
+						</span>
+						<span th:case="'CHECKOUT_REMINDER'">
+							Vreme za vraćanje vozila ističe. Molimo završite postupak povrata.
+						</span>
+						<span th:case="'CHECKOUT_GUEST_COMPLETE'">
+							Pregledajte stanje vozila i potvrdite povrat.
+						</span>
+						<span th:case="*"> Otvorite aplikaciju za više detalja. </span>
+					</p>
+				</div>
+
+				<!-- Checkout steps (for checkout window opened) -->
+				<div
+					th:if="${notificationType == 'CHECKOUT_WINDOW_OPENED'}"
+					class="steps"
+				>
+					<h4>📝 Koraci za vraćanje vozila</h4>
+					<ol>
+						<li>Napunite gorivo do nivoa pri preuzimanju</li>
+						<li>Očistite unutrašnjost vozila</li>
+						<li>Fotografišite vozilo iz svih uglova</li>
+						<li>Zabeležite završnu kilometražu</li>
+						<li>Vratite sve ključeve i dokumenta</li>
+						<li>Potvrdite vraćanje u aplikaciji</li>
+					</ol>
+				</div>
+
+				<!-- Checklist for host on guest complete -->
+				<div
+					th:if="${notificationType == 'CHECKOUT_GUEST_COMPLETE'}"
+					class="checklist"
+				>
+					<h4>✓ Lista za proveru pri prijemu vozila</h4>
+					<ul>
+						<li>Proverite spoljašnjost za nova oštećenja</li>
+						<li>Proverite unutrašnjost i čistoću</li>
+						<li>Verifikujte nivo goriva</li>
+						<li>Proverite kilometražu</li>
+						<li>Potvrdite da su svi ključevi vraćeni</li>
+						<li>Fotografišite bilo kakve probleme</li>
+					</ul>
+				</div>
+
+				<!-- Success message (for checkout complete) -->
+				<div
+					th:if="${notificationType == 'CHECKOUT_COMPLETE'}"
+					class="success-box"
+				>
+					<h3>🎉 Vozilo uspešno vraćeno!</h3>
+					<p>
+						Hvala vam na korišćenju Rentoza platforme. Nadamo se da ste imali
+						prijatno iskustvo!
+					</p>
+				</div>
+
+				<!-- Review prompt (for checkout complete) -->
+				<div
+					th:if="${notificationType == 'CHECKOUT_COMPLETE'}"
+					class="info-card"
+				>
+					<div class="icon">⭐</div>
+					<div class="details">
+						<h5>Ostavite recenziju</h5>
+						<p>
+							Podelite vaše iskustvo sa zajednicom. Vaša povratna informacija
+							pomaže drugima.
+						</p>
+					</div>
+				</div>
+
+				<!-- CTA Button -->
+				<div style="text-align: center">
+					<a
+						th:href="${checkOutUrl}"
+						class="button"
+						th:classappend="${urgencyLevel == 'HIGH'} ? 'urgent' : ''"
+					>
+						<span th:switch="${notificationType}">
+							<span th:case="'CHECKOUT_WINDOW_OPENED'">Započni vraćanje</span>
+							<span th:case="'CHECKOUT_REMINDER'">Završi vraćanje</span>
+							<span th:case="'CHECKOUT_GUEST_COMPLETE'"
+								>Pregledaj i potvrdi</span
+							>
+							<span th:case="'CHECKOUT_DAMAGE_REPORTED'"
+								>Pregledaj oštećenje</span
+							>
+							<span th:case="'CHECKOUT_COMPLETE'">Ostavi recenziju</span>
+							<span th:case="'LATE_RETURN_DETECTED'">Kontaktiraj vlasnika</span>
+							<span th:case="*">Otvori rezervaciju</span>
+						</span>
+					</a>
+				</div>
+
+				<!-- Helpful tips for returning -->
+				<div
+					th:if="${notificationType == 'CHECKOUT_WINDOW_OPENED' or notificationType == 'CHECKOUT_REMINDER'}"
+					style="
+						margin-top: 25px;
+						padding: 15px;
+						background-color: #f3e5f5;
+						border-radius: 4px;
+					"
+				>
+					<h4 style="margin: 0 0 10px 0; color: #7b1fa2">
+						💡 Saveti za vraćanje
+					</h4>
+					<ul style="margin: 0; padding-left: 20px; color: #6a1b9a">
+						<li>Vratite vozilo na ugovorenu lokaciju</li>
+						<li>Budite tačni - kašnjenje može izazvati dodatne troškove</li>
+						<li>Sačuvajte potvrdu vraćanja</li>
+					</ul>
+				</div>
+			</div>
+
+			<div class="footer">
+				<p>
+					Imate pitanja?
+					<a href="https://rentoza.com/support">Kontaktirajte podršku</a>
+				</p>
+				<p>&copy; 2025 Rentoza. Sva prava zadržana.</p>
+				<p style="font-size: 11px; color: #999">
+					Ova poruka je automatski generisana. Molimo ne odgovarajte na ovu
+					e-poštu.
+				</p>
+			</div>
+		</div>
+	</body>
+</html>

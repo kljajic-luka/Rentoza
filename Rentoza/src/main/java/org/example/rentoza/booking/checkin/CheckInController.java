@@ -519,6 +519,40 @@ public class CheckInController {
         ));
     }
 
+    // ========== DEV/ADMIN: MANUAL WINDOW OPENING ==========
+
+    /**
+     * Manually open check-in window for a booking.
+     * 
+     * <p>DEV ONLY: Forces CHECK_IN_OPEN transition regardless of timing.
+     * Used for testing when scheduler timing doesn't align with test scenarios.
+     * 
+     * <p>In production, use admin override instead.
+     * 
+     * @param bookingId The booking to open check-in for
+     */
+    @PostMapping("/force-open-window")
+    @PreAuthorize("hasRole('ADMIN') or @environment.acceptsProfiles('dev')")
+    public ResponseEntity<Map<String, Object>> forceOpenCheckInWindow(@PathVariable Long bookingId) {
+        Long userId = currentUser.id();
+        log.warn("[CheckIn] MANUAL WINDOW OPEN requested by user {} for booking {}", userId, bookingId);
+        
+        try {
+            checkInService.forceOpenCheckInWindow(bookingId, userId);
+            return ResponseEntity.ok(Map.of(
+                "success", true,
+                "message", "Check-in window manually opened for booking " + bookingId,
+                "bookingId", bookingId
+            ));
+        } catch (Exception e) {
+            log.error("[CheckIn] Failed to force-open window for booking {}: {}", bookingId, e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                "error", "FORCE_OPEN_FAILED",
+                "message", e.getMessage()
+            ));
+        }
+    }
+
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<Map<String, Object>> handleIllegalState(IllegalStateException ex) {
         

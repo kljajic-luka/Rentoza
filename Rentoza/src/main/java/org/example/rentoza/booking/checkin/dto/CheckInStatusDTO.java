@@ -101,6 +101,16 @@ public class CheckInStatusDTO {
     private CarSummaryDTO car;
 
     // =========================================================================
+    // Phase 4B: License Verification
+    // =========================================================================
+    /** Whether in-person license verification is required (no lockbox = in-person handoff) */
+    private Boolean licenseVerificationRequired;
+    /** Whether license has been verified in person by host */
+    private Boolean licenseVerifiedInPerson;
+    /** When license was verified in person (ISO string for frontend) */
+    private String licenseVerifiedInPersonAt;
+
+    // =========================================================================
     // Pickup Location (Phase 4: Pickup Location Display Feature)
     // =========================================================================
     /** Pickup location latitude (from booking.pickupLocation or car.locationGeoPoint fallback) */

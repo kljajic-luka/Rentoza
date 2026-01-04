@@ -122,7 +122,9 @@ const PHOTO_SLOTS: PhotoSlot[] = [
         <mat-icon>schedule</mat-icon>
         <div class="timing-content">
           <span class="timing-title">Check-in još nije dozvoljen</span>
-          <span class="timing-message">{{ status?.timingBlockedMessage || 'Check-in moguć najranije 1 sat pre početka rezervacije' }}</span>
+          <span class="timing-message">{{
+            status?.timingBlockedMessage || 'Check-in moguć najranije 1 sat pre početka rezervacije'
+          }}</span>
           @if (status?.minutesUntilCheckInAllowed) {
           <span class="timing-countdown">
             <mat-icon>hourglass_empty</mat-icon>

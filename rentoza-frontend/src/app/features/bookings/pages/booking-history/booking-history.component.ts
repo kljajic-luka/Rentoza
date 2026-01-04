@@ -45,6 +45,9 @@ export class BookingHistoryComponent {
   private readonly dialog = inject(MatDialog);
   private readonly router = inject(Router);
 
+  /** Serbia timezone identifier for consistent time parsing */
+  private readonly SERBIA_TIMEZONE = 'Europe/Belgrade';
+
   protected readonly isLoading = signal(true);
   protected readonly bookings = signal<UserBooking[]>([]);
 
@@ -91,8 +94,9 @@ export class BookingHistoryComponent {
 
   protected getTimeIndicator(booking: UserBooking, category: BookingCategory): string {
     const now = new Date();
-    const startTime = new Date(booking.startTime);
-    const endTime = new Date(booking.endTime);
+    // Parse times as Serbia timezone (backend stores LocalDateTime without timezone)
+    const startTime = this.parseAsSerbia(booking.startTime);
+    const endTime = this.parseAsSerbia(booking.endTime);
 
     if (category === 'upcoming') {
       return `Počinje za ${this.getTimeUntil(startTime, now)}`;
@@ -101,6 +105,51 @@ export class BookingHistoryComponent {
     } else {
       return `Završeno pre ${this.getTimeSince(endTime, now)}`;
     }
+  }
+
+  /**
+   * Parse a date string as Serbia timezone.
+   * Backend sends LocalDateTime (no timezone) which represents Serbia local time.
+   * We need to interpret it correctly regardless of browser timezone.
+   */
+  private parseAsSerbia(dateStr: string): Date {
+    // If the string already has timezone info, parse directly
+    if (dateStr.includes('Z') || dateStr.includes('+') || dateStr.includes('-', 10)) {
+      return new Date(dateStr);
+    }
+    // Otherwise, append Serbia timezone offset
+    // Create a date formatter to get the current Serbia offset (handles DST)
+    const serbiaDate = new Date(dateStr + 'Z'); // Parse as UTC first
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: this.SERBIA_TIMEZONE,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
+
+    // Get Serbia's current offset from UTC in minutes
+    const utcDate = new Date(dateStr.replace('T', ' ').replace(/-/g, '/'));
+    const serbiaOffset = this.getSerbiaOffsetMinutes(utcDate);
+
+    // The dateStr represents Serbia local time, so subtract the offset to get UTC
+    return new Date(utcDate.getTime() - serbiaOffset * 60 * 1000);
+  }
+
+  /**
+   * Get Serbia's UTC offset in minutes for a given date (handles DST).
+   * CET = UTC+1 (winter), CEST = UTC+2 (summer)
+   */
+  private getSerbiaOffsetMinutes(date: Date): number {
+    // Create two dates: one interpreted as UTC, one as Serbia
+    const utcStr = date.toLocaleString('en-US', { timeZone: 'UTC' });
+    const serbiaStr = date.toLocaleString('en-US', { timeZone: this.SERBIA_TIMEZONE });
+    const utcTime = new Date(utcStr).getTime();
+    const serbiaTime = new Date(serbiaStr).getTime();
+    return (serbiaTime - utcTime) / (60 * 1000);
   }
 
   private getTimeUntil(futureDate: Date, now: Date): string {

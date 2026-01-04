@@ -47,14 +47,16 @@ export class OwnerBookingsComponent implements OnInit {
   private readonly dialog = inject(MatDialog);
   private readonly router = inject(Router);
 
+  /** Serbia timezone identifier for consistent time parsing */
+  private readonly SERBIA_TIMEZONE = 'Europe/Belgrade';
+
   protected readonly isLoading = signal(false);
   protected readonly upcomingBookings = signal<Booking[]>([]);
   protected readonly activeBookings = signal<Booking[]>([]);
   protected readonly completedBookings = signal<Booking[]>([]);
-  
+
   // Track which bookings are being processed (approve/decline) to prevent double-clicks
   protected readonly processingIds = signal<Set<number | string>>(new Set());
-
 
   protected readonly hasAnyBooking = computed(() => {
     return (
@@ -118,7 +120,9 @@ export class OwnerBookingsComponent implements OnInit {
                 // BUT: Exclude checkout statuses (they need action even if endTime passed)
                 if (
                   (endTime < now || booking.status === 'COMPLETED') &&
-                  !['CHECKOUT_OPEN', 'CHECKOUT_GUEST_COMPLETE', 'CHECKOUT_HOST_COMPLETE'].includes(booking.status) &&
+                  !['CHECKOUT_OPEN', 'CHECKOUT_GUEST_COMPLETE', 'CHECKOUT_HOST_COMPLETE'].includes(
+                    booking.status
+                  ) &&
                   booking.status !== 'CANCELLED' &&
                   booking.status !== 'DECLINED' &&
                   booking.status !== 'EXPIRED'
@@ -129,16 +133,24 @@ export class OwnerBookingsComponent implements OnInit {
                 // BUT: If check-in is open, treat as active (better UX)
                 else if (
                   (startTime > now || booking.status === 'PENDING_APPROVAL') &&
-                  !['CHECK_IN_OPEN', 'CHECK_IN_HOST_COMPLETE', 'CHECK_IN_COMPLETE'].includes(booking.status) &&
-                  !['CHECKOUT_OPEN', 'CHECKOUT_GUEST_COMPLETE', 'CHECKOUT_HOST_COMPLETE'].includes(booking.status)
+                  !['CHECK_IN_OPEN', 'CHECK_IN_HOST_COMPLETE', 'CHECK_IN_COMPLETE'].includes(
+                    booking.status
+                  ) &&
+                  !['CHECKOUT_OPEN', 'CHECKOUT_GUEST_COMPLETE', 'CHECKOUT_HOST_COMPLETE'].includes(
+                    booking.status
+                  )
                 ) {
                   upcoming.push(booking);
                 }
                 // 3. Active: Current time is within booking period OR check-in/checkout is in progress
                 else if (
                   (startTime <= now && endTime >= now) ||
-                  ['CHECK_IN_OPEN', 'CHECK_IN_HOST_COMPLETE', 'CHECK_IN_COMPLETE'].includes(booking.status) ||
-                  ['CHECKOUT_OPEN', 'CHECKOUT_GUEST_COMPLETE', 'CHECKOUT_HOST_COMPLETE'].includes(booking.status)
+                  ['CHECK_IN_OPEN', 'CHECK_IN_HOST_COMPLETE', 'CHECK_IN_COMPLETE'].includes(
+                    booking.status
+                  ) ||
+                  ['CHECKOUT_OPEN', 'CHECKOUT_GUEST_COMPLETE', 'CHECKOUT_HOST_COMPLETE'].includes(
+                    booking.status
+                  )
                 ) {
                   active.push(booking);
                 }
@@ -298,8 +310,7 @@ export class OwnerBookingsComponent implements OnInit {
    */
   protected canCheckout(booking: Booking): boolean {
     return (
-      booking.status === 'CHECKOUT_GUEST_COMPLETE' ||
-      booking.status === 'CHECKOUT_OPEN' // For viewing status
+      booking.status === 'CHECKOUT_GUEST_COMPLETE' || booking.status === 'CHECKOUT_OPEN' // For viewing status
     );
   }
 
@@ -376,24 +387,24 @@ export class OwnerBookingsComponent implements OnInit {
   }
 
   protected openBookingDetails(booking: Booking): void {
-    import('../../dialogs/owner-booking-details-dialog/owner-booking-details-dialog.component').then(
-      ({ OwnerBookingDetailsDialogComponent }) => {
-        const dialogRef = this.dialog.open(OwnerBookingDetailsDialogComponent, {
-          width: '800px',
-          maxWidth: '95vw',
-          maxHeight: '90vh',
-          data: { bookingId: booking.id },
-          panelClass: 'owner-booking-details-dialog-panel',
-        });
+    import(
+      '../../dialogs/owner-booking-details-dialog/owner-booking-details-dialog.component'
+    ).then(({ OwnerBookingDetailsDialogComponent }) => {
+      const dialogRef = this.dialog.open(OwnerBookingDetailsDialogComponent, {
+        width: '800px',
+        maxWidth: '95vw',
+        maxHeight: '90vh',
+        data: { bookingId: booking.id },
+        panelClass: 'owner-booking-details-dialog-panel',
+      });
 
-        // Optional: Refresh bookings if actions were taken in dialog (e.g. cancellation)
-        dialogRef.afterClosed().subscribe((result) => {
-          if (result?.refresh) {
-            this.loadOwnerBookings();
-          }
-        });
-      }
-    );
+      // Optional: Refresh bookings if actions were taken in dialog (e.g. cancellation)
+      dialogRef.afterClosed().subscribe((result) => {
+        if (result?.refresh) {
+          this.loadOwnerBookings();
+        }
+      });
+    });
   }
 
   // Helper for template calculations
@@ -402,16 +413,74 @@ export class OwnerBookingsComponent implements OnInit {
     return totalPrice * 0.8;
   }
 
+  /**
+   * Get human-readable time until a date (e.g., "58 minuta", "2 sata i 15 minuta").
+   * Uses granular hours/minutes for same-day, days for future dates.
+   * Parses dates as Serbia timezone since backend stores LocalDateTime without timezone.
+   */
   protected getTimeUntil(dateStr: string): string {
-    const date = new Date(dateStr);
+    const date = this.parseAsSerbia(dateStr);
     const now = new Date();
     const diffMs = date.getTime() - now.getTime();
-    const days = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-    
-    if (days < 0) return 'Završeno';
-    if (days === 0) return 'Danas';
-    if (days === 1) return 'Sutra';
-    return `za ${days} dana`;
+
+    if (diffMs < 0) return 'Završeno';
+
+    const totalMinutes = Math.floor(diffMs / (1000 * 60));
+    const days = Math.floor(totalMinutes / (60 * 24));
+    const hours = Math.floor((totalMinutes - days * 24 * 60) / 60);
+    const minutes = totalMinutes - days * 24 * 60 - hours * 60;
+
+    // If more than 1 day away, show days
+    if (days > 1) {
+      return `za ${days} dana`;
+    }
+
+    // If tomorrow (1 day), but check if it's actually more than 24h
+    if (days === 1) {
+      // If it's really close to 24h, show "Sutra"
+      if (hours === 0) return 'Sutra';
+      return `za ${days} dan i ${hours} ${hours === 1 ? 'sat' : 'sati'}`;
+    }
+
+    // Same day - show hours and/or minutes
+    if (hours > 0) {
+      const minutesPart = minutes > 0 ? ` i ${minutes} min` : '';
+      return `za ${hours} ${hours === 1 ? 'sat' : 'sata'}${minutesPart}`;
+    }
+
+    // Less than an hour
+    if (minutes > 0) {
+      return `za ${minutes} ${minutes === 1 ? 'minut' : 'minuta'}`;
+    }
+
+    return 'Sada';
+  }
+
+  /**
+   * Parse a date string as Serbia timezone.
+   * Backend sends LocalDateTime (no timezone) which represents Serbia local time.
+   */
+  private parseAsSerbia(dateStr: string): Date {
+    // If the string already has timezone info, parse directly
+    if (dateStr.includes('Z') || dateStr.includes('+') || dateStr.includes('-', 10)) {
+      return new Date(dateStr);
+    }
+    // Parse as local time, then adjust for Serbia offset
+    const utcDate = new Date(dateStr.replace('T', ' ').replace(/-/g, '/'));
+    const serbiaOffset = this.getSerbiaOffsetMinutes(utcDate);
+    // The dateStr represents Serbia local time, so subtract the offset to get UTC
+    return new Date(utcDate.getTime() - serbiaOffset * 60 * 1000);
+  }
+
+  /**
+   * Get Serbia's UTC offset in minutes for a given date (handles DST).
+   */
+  private getSerbiaOffsetMinutes(date: Date): number {
+    const utcStr = date.toLocaleString('en-US', { timeZone: 'UTC' });
+    const serbiaStr = date.toLocaleString('en-US', { timeZone: this.SERBIA_TIMEZONE });
+    const utcTime = new Date(utcStr).getTime();
+    const serbiaTime = new Date(serbiaStr).getTime();
+    return (serbiaTime - utcTime) / (60 * 1000);
   }
 
   /**
@@ -483,8 +552,8 @@ export class OwnerBookingsComponent implements OnInit {
    */
   protected declineBooking(booking: Booking): void {
     // Open decline dialog dynamically to avoid circular imports
-    import('../../dialogs/decline-reason-dialog/decline-reason-dialog.component').then(
-      ({ DeclineReasonDialogComponent }) => {
+    import('../../dialogs/decline-reason-dialog/decline-reason-dialog.component')
+      .then(({ DeclineReasonDialogComponent }) => {
         const dialogRef = this.dialog.open(DeclineReasonDialogComponent, {
           width: '450px',
           maxWidth: '95vw',
@@ -496,13 +565,12 @@ export class OwnerBookingsComponent implements OnInit {
             this.performDecline(booking, result.reason);
           }
         });
-      }
-    ).catch(() => {
-      // If dialog doesn't exist, perform simple decline with default reason
-      this.performDecline(booking, 'Rezervacija je odbijena od strane vlasnika');
-    });
+      })
+      .catch(() => {
+        // If dialog doesn't exist, perform simple decline with default reason
+        this.performDecline(booking, 'Rezervacija je odbijena od strane vlasnika');
+      });
   }
-
 
   /**
    * Actually perform the decline API call.
@@ -559,4 +627,3 @@ export class OwnerBookingsComponent implements OnInit {
     });
   }
 }
-

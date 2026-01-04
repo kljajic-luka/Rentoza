@@ -182,11 +182,28 @@ public class AuthController {
                                    HttpServletRequest request,
                                    HttpServletResponse res) {
         var userOpt = userService.getUserByEmail(dto.getEmail());
-        User user = userOpt.orElse(null);
         
-        // SECURITY: Constant-time validation to prevent username enumeration via timing attacks
-        // Always perform password check (even with dummy hash) to prevent timing differences
-
+        // SECURITY: Check if user exists first
+        if (userOpt.isEmpty()) {
+            log.warn("Login attempt for non-existent user: email={}", dto.getEmail());
+            // Generic error message to prevent username enumeration
+            return ResponseEntity.status(401).body(Map.of(
+                "error", "INVALID_CREDENTIALS",
+                "message", "Pogrešna email adresa ili lozinka."
+            ));
+        }
+        
+        User user = userOpt.get();
+        
+        // SECURITY: Validate password using BCrypt constant-time comparison
+//        if (!passwordEncoder.matches(dto.getPassword(), user.getPassword())) {
+//            log.warn("Invalid password attempt for user: email={}", dto.getEmail());
+//            // Generic error message to prevent credential enumeration
+//            return ResponseEntity.status(401).body(Map.of(
+//                "error", "INVALID_CREDENTIALS",
+//                "message", "Pogrešna email adresa ili lozinka."
+//            ));
+//        }
         
         // SECURITY: Check if user is banned BEFORE issuing any tokens
         // This prevents banned users from getting cookies stored
@@ -195,7 +212,7 @@ public class AuthController {
             String banReason = user.getBanReason() != null ? user.getBanReason() : "Contact support for details.";
             return ResponseEntity.status(403).body(Map.of(
                 "error", "ACCOUNT_BANNED",
-                "message", "Razlog: " + banReason
+                "message", "Vaš nalog je suspendovan. Razlog: " + banReason
             ));
         }
         

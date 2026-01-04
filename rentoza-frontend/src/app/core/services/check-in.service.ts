@@ -806,7 +806,7 @@ export class CheckInService implements OnDestroy {
 
     return this.http
       .post<CheckInStatusDTO>(
-        `${this.baseUrl}/${bookingId}/check-in/license-verification`,
+        `${this.baseUrl}/${bookingId}/check-in/host/license-verification`,
         {
           latitude: position?.latitude,
           longitude: position?.longitude,
@@ -838,8 +838,7 @@ export class CheckInService implements OnDestroy {
   readonly licenseVerificationPending = computed(() => {
     const status = this._status();
     if (!status) return false;
-    return status.licenseVerificationRequired === true &&
-           status.licenseVerifiedInPerson !== true;
+    return status.licenseVerificationRequired === true && status.licenseVerifiedInPerson !== true;
   });
 
   /**

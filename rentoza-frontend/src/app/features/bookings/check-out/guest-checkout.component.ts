@@ -15,7 +15,8 @@ import {
   inject,
   signal,
   computed,
-  ChangeDetectionStrategy, OnInit,
+  ChangeDetectionStrategy,
+  OnInit,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import {
@@ -137,48 +138,53 @@ import { environment } from '@environments/environment';
               <div
                 class="photo-slot"
                 [class.completed]="isPhotoUploaded(slot.type)"
-                [class.uploading]="getUploadProgress(slot.type)?.state === 'uploading' || getUploadProgress(slot.type)?.state === 'compressing'"
+                [class.uploading]="
+                  getUploadProgress(slot.type)?.state === 'uploading' ||
+                  getUploadProgress(slot.type)?.state === 'compressing'
+                "
                 (click)="triggerUpload(slot.type)"
               >
-                @if (getUploadProgress(slot.type); as progress) {
-                  @if (progress.state === 'complete') {
-                    <img
-                      [src]="progress.previewUrl || getPhotoUrl(progress.result?.url || '')"
-                      [alt]="slot.label"
-                      class="photo-preview"
-                    />
-                    <div class="success-badge">
-                      <mat-icon>check_circle</mat-icon>
-                    </div>
-                    <button
-                      mat-mini-fab
-                      color="warn"
-                      class="remove-photo-btn"
-                      (click)="triggerUpload(slot.type); $event.stopPropagation()"
-                      aria-label="Zameni fotografiju"
-                    >
-                      <mat-icon>refresh</mat-icon>
-                    </button>
-                  } @else if (progress.state === 'error') {
-                    <div class="error-overlay">
-                      <mat-icon>error</mat-icon>
-                      <span class="error-message">{{ progress.error }}</span>
-                      <button mat-button class="retry-btn">Pokušaj ponovo</button>
-                    </div>
-                  } @else {
-                    <div class="upload-progress">
-                      <mat-progress-bar mode="determinate" [value]="progress.progress"></mat-progress-bar>
-                      <span>{{ getProgressLabel(progress.state) }}</span>
-                    </div>
-                  }
+                @if (getUploadProgress(slot.type); as progress) { @if (progress.state ===
+                'complete') {
+                <img
+                  [src]="progress.previewUrl || getPhotoUrl(progress.result?.url || '')"
+                  [alt]="slot.label"
+                  class="photo-preview"
+                />
+                <div class="success-badge">
+                  <mat-icon>check_circle</mat-icon>
+                </div>
+                <button
+                  mat-mini-fab
+                  color="warn"
+                  class="remove-photo-btn"
+                  (click)="triggerUpload(slot.type); $event.stopPropagation()"
+                  aria-label="Zameni fotografiju"
+                >
+                  <mat-icon>refresh</mat-icon>
+                </button>
+                } @else if (progress.state === 'error') {
+                <div class="error-overlay">
+                  <mat-icon>error</mat-icon>
+                  <span class="error-message">{{ progress.error }}</span>
+                  <button mat-button class="retry-btn">Pokušaj ponovo</button>
+                </div>
                 } @else {
-                  <div class="photo-placeholder">
-                    <mat-icon>{{ slot.icon }}</mat-icon>
-                    <span>{{ slot.label }}</span>
-                    @if (slot.required) {
-                      <span class="required-badge">Obavezno</span>
-                    }
-                  </div>
+                <div class="upload-progress">
+                  <mat-progress-bar
+                    mode="determinate"
+                    [value]="progress.progress"
+                  ></mat-progress-bar>
+                  <span>{{ getProgressLabel(progress.state) }}</span>
+                </div>
+                } } @else {
+                <div class="photo-placeholder">
+                  <mat-icon>{{ slot.icon }}</mat-icon>
+                  <span>{{ slot.label }}</span>
+                  @if (slot.required) {
+                  <span class="required-badge">Obavezno</span>
+                  }
+                </div>
                 }
 
                 <input
@@ -241,7 +247,12 @@ import { environment } from '@environments/environment';
                 <span matSuffix>km</span>
                 <mat-hint>Unesite vrednost sa odometra</mat-hint>
                 @if (readingsForm.get('endOdometer')?.errors?.['min']) {
-                <mat-error>Kilometraža ne može biti manja od početne ({{ status?.startOdometer }} km)</mat-error>
+                <mat-error
+                  >Kilometraža ne može biti manja od početne ({{
+                    status?.startOdometer
+                  }}
+                  km)</mat-error
+                >
                 }
               </mat-form-field>
 
@@ -305,7 +316,9 @@ import { environment } from '@environments/environment';
                 <mat-icon>warning</mat-icon>
                 <div class="warning-content">
                   <span class="warning-title">Nepravilan povratak detektovan</span>
-                  <span class="warning-code">{{ getImproperReturnLabel(status.improperReturnCode) }}</span>
+                  <span class="warning-code">{{
+                    getImproperReturnLabel(status.improperReturnCode)
+                  }}</span>
                   @if (status.improperReturnNotes) {
                   <span class="warning-notes">{{ status.improperReturnNotes }}</span>
                   }
@@ -352,7 +365,7 @@ import { environment } from '@environments/environment';
         }
 
         .hint {
-          color: var(--text-secondary, rgba(0,0,0,0.6));
+          color: var(--text-secondary, rgba(0, 0, 0, 0.6));
           margin: 4px 0 0;
           font-size: 14px;
         }
@@ -416,7 +429,7 @@ import { environment } from '@environments/environment';
         justify-content: center;
         height: 100%;
         gap: 4px;
-        color: var(--text-secondary, rgba(0,0,0,0.6));
+        color: var(--text-secondary, rgba(0, 0, 0, 0.6));
         background: var(--surface-color, #fafafa);
       }
 
@@ -533,10 +546,10 @@ import { environment } from '@environments/environment';
         flex-direction: column;
         gap: 8px;
         margin-bottom: 16px;
-        
+
         span {
           font-size: 14px;
-          color: var(--text-secondary, rgba(0,0,0,0.6));
+          color: var(--text-secondary, rgba(0, 0, 0, 0.6));
         }
       }
 
@@ -597,12 +610,12 @@ import { environment } from '@environments/environment';
           font-size: 48px;
           width: 48px;
           height: 48px;
-          color: var(--text-secondary, rgba(0,0,0,0.6));
+          color: var(--text-secondary, rgba(0, 0, 0, 0.6));
         }
 
         p {
           margin: 16px 0 0;
-          color: var(--text-secondary, rgba(0,0,0,0.6));
+          color: var(--text-secondary, rgba(0, 0, 0, 0.6));
         }
       }
 
@@ -657,7 +670,7 @@ import { environment } from '@environments/environment';
         margin-top: 4px;
         padding: 0 40px;
         font-size: 11px;
-        color: var(--text-secondary, rgba(0,0,0,0.6));
+        color: var(--text-secondary, rgba(0, 0, 0, 0.6));
       }
 
       /* Trip summary */
@@ -772,7 +785,7 @@ import { environment } from '@environments/environment';
       /* ============================================
          DARK MODE SUPPORT
          ============================================ */
-      
+
       /* Dark mode via system preference */
       @media (prefers-color-scheme: dark) {
         .section-header {
@@ -817,7 +830,8 @@ import { environment } from '@environments/environment';
             color: #64b5f6;
           }
 
-          span, strong {
+          span,
+          strong {
             color: rgba(255, 255, 255, 0.87);
           }
         }
@@ -915,7 +929,8 @@ import { environment } from '@environments/environment';
             color: #64b5f6;
           }
 
-          span, strong {
+          span,
+          strong {
             color: rgba(255, 255, 255, 0.87);
           }
         }

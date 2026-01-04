@@ -26,10 +26,16 @@ import java.util.UUID;
  * 
  * <h2>Responsibilities</h2>
  * <ul>
- *   <li>Open check-in windows at T-24h before trip start</li>
- *   <li>Send reminder notifications at T-12h</li>
+ *   <li>Open check-in windows at T-Xh before trip start (configurable, default: 1h)</li>
+ *   <li>Send reminder notifications (only if window > 12h)</li>
  *   <li>Detect and process no-show scenarios at T+30m</li>
  * </ul>
+ * 
+ * <h2>Critical Configuration</h2>
+ * <p>The property {@code app.checkin.window-hours-before-trip} must align with
+ * {@code app.checkin.max-early-hours} for consistent UX. If window opens before
+ * submission is allowed, users can start uploading photos but cannot complete
+ * check-in, leading to frustration.</p>
  * 
  * <h2>Regional Context: Serbia</h2>
  * <p>All cron expressions are evaluated in {@code Europe/Belgrade} timezone.
@@ -55,6 +61,14 @@ import java.util.UUID;
 public class CheckInScheduler {
 
     private static final ZoneId SERBIA_ZONE = ZoneId.of("Europe/Belgrade");
+    
+    /**
+     * Hours before trip start when check-in window opens.
+     * CRITICAL: Must align with app.checkin.max-early-hours for consistent UX.
+     * If window opens before submission is allowed, users can start but not finish.
+     */
+    @org.springframework.beans.factory.annotation.Value("${app.checkin.window-hours-before-trip:1}")
+    private int windowHoursBeforeTrip;
 
     private final CheckInService checkInService;
     private final CheckInEventService eventService;
@@ -110,12 +124,15 @@ public class CheckInScheduler {
     @Scheduled(cron = "${app.checkin.scheduler.window-cron:0 0 * * * *}", zone = "Europe/Belgrade")
     @Transactional
     public void openCheckInWindows() {
-        LocalDate today = LocalDate.now(SERBIA_ZONE);
-        int currentHour = LocalTime.now(SERBIA_ZONE).getHour();
-        String taskId = "checkin-window-" + today + "-" + currentHour;
+        LocalDateTime now = LocalDateTime.now(SERBIA_ZONE);
+        // Use both hour AND minute bucket (0, 15, 30, 45) for 15-minute cron compatibility
+        int minuteBucket = (now.getMinute() / 15) * 15;
+        String taskId = String.format("checkin-window-%s-%02d-%02d", 
+            now.toLocalDate(), now.getHour(), minuteBucket);
         
-        // Idempotency guard - prevent duplicate execution within 55 minutes
-        if (!idempotencyService.tryAcquireLock(taskId, Duration.ofMinutes(55))) {
+        // Idempotency guard - prevent duplicate execution within 14 minutes
+        // (shorter than 15-min cron interval to allow next scheduled run)
+        if (!idempotencyService.tryAcquireLock(taskId, Duration.ofMinutes(14))) {
             log.debug("[CheckIn] Skipping duplicate check-in window opening: {}", taskId);
             schedulerSkippedCounter.increment();
             return;
@@ -124,11 +141,11 @@ public class CheckInScheduler {
         log.info("[CheckIn] Starting scheduled check-in window opening");
         
         try {
-            // Find bookings starting within next 24-26 hours (buffer for hourly run)
-            // Uses exact timestamps for precise T-24h detection
-            LocalDateTime now = LocalDateTime.now(SERBIA_ZONE);
+            // Find bookings starting within configured window (default: 1 hour before trip)
+            // Uses exact timestamps for precise timing detection
+            // Buffer of 2 hours ensures we catch bookings even if cron runs slightly late
             LocalDateTime windowStart = now; // Open window now
-            LocalDateTime windowEnd = now.plusHours(26); // Buffer for hourly cron
+            LocalDateTime windowEnd = now.plusHours(windowHoursBeforeTrip + 2); // Configurable + buffer
             
             List<Booking> eligibleBookings = checkInService.findBookingsForCheckInWindowOpening(windowStart, windowEnd);
             
@@ -200,6 +217,13 @@ public class CheckInScheduler {
         if (!idempotencyService.tryAcquireLock(taskId, Duration.ofMinutes(55))) {
             log.debug("[CheckIn] Skipping duplicate check-in reminder: {}", taskId);
             schedulerSkippedCounter.increment();
+            return;
+        }
+        
+        // Skip reminders if window is too short - no time for separate reminder
+        if (windowHoursBeforeTrip <= 12) {
+            log.debug("[CheckIn] Reminder skipped: window ({} hours) too short for separate reminder", 
+                windowHoursBeforeTrip);
             return;
         }
         

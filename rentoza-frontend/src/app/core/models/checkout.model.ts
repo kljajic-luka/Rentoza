@@ -69,7 +69,12 @@ export interface CheckOutStatusDTO {
   /** Whether vehicle was returned in improper condition */
   improperReturnFlag?: boolean;
   /** Improper return code: LOW_FUEL, EXCESSIVE_MILEAGE, CLEANING_REQUIRED, etc. */
-  improperReturnCode?: 'LOW_FUEL' | 'EXCESSIVE_MILEAGE' | 'CLEANING_REQUIRED' | 'SMOKING_DETECTED' | 'WRONG_LOCATION';
+  improperReturnCode?:
+    | 'LOW_FUEL'
+    | 'EXCESSIVE_MILEAGE'
+    | 'CLEANING_REQUIRED'
+    | 'SMOKING_DETECTED'
+    | 'WRONG_LOCATION';
   /** Notes describing improper return condition */
   improperReturnNotes?: string;
 

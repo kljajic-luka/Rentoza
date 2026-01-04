@@ -164,9 +164,11 @@ public class MailService {
 
     /**
      * Select email template based on notification type.
+     * Uses a generic check-in/checkout template for workflow notifications.
      */
     private String getTemplateForType(NotificationType type) {
         return switch (type) {
+            // Booking lifecycle
             case BOOKING_CONFIRMED -> "emails/booking-confirmed";
             case BOOKING_APPROVED -> "emails/booking-approved";
             case BOOKING_REQUEST_SENT -> "emails/booking-request-sent";
@@ -176,12 +178,26 @@ public class MailService {
             case BOOKING_CANCELLED -> "emails/booking-cancelled";
             case REVIEW_RECEIVED -> "emails/review-received";
             case NEW_MESSAGE -> "emails/new-message";
+            
             // Renter verification templates
             case LICENSE_VERIFICATION_APPROVED -> "emails/license-approved";
             case LICENSE_VERIFICATION_REJECTED -> "emails/license-rejected";
-            case LICENSE_EXPIRING_SOON -> "emails/license-expiring";
-            case LICENSE_EXPIRED -> "emails/license-expiring"; // Reuse expiring template
-            default -> null;
+            case LICENSE_EXPIRING_SOON, LICENSE_EXPIRED -> "emails/license-expiring";
+            
+            // Check-in workflow templates
+            case CHECK_IN_WINDOW_OPENED, CHECK_IN_REMINDER, CHECK_IN_HOST_COMPLETE,
+                 CHECK_IN_HOST_BEGUN, CHECK_IN_GUEST_BEGUN, HANDSHAKE_CONFIRMED,
+                 TRIP_STARTED, NO_SHOW_HOST, NO_SHOW_GUEST, HOTSPOT_MARKED -> "emails/checkin-notification";
+            
+            // Checkout workflow templates
+            case CHECKOUT_WINDOW_OPENED, CHECKOUT_REMINDER, CHECKOUT_GUEST_COMPLETE,
+                 CHECKOUT_GUEST_BEGUN, CHECKOUT_DAMAGE_REPORTED, CHECKOUT_COMPLETE,
+                 LATE_RETURN_DETECTED -> "emails/checkout-notification";
+            
+            // Disputes
+            case DISPUTE_RESOLVED -> "emails/dispute-resolved";
+            
+            default -> "emails/generic-notification";
         };
     }
 
@@ -205,9 +221,63 @@ public class MailService {
             case NEW_MESSAGE -> {
                 variables.put("chatUrl", buildChatUrl());
             }
+            // Check-in workflow variables
+            case CHECK_IN_WINDOW_OPENED, CHECK_IN_REMINDER, CHECK_IN_HOST_COMPLETE,
+                 CHECK_IN_HOST_BEGUN, CHECK_IN_GUEST_BEGUN, HANDSHAKE_CONFIRMED,
+                 TRIP_STARTED, NO_SHOW_HOST, NO_SHOW_GUEST, HOTSPOT_MARKED -> {
+                variables.put("bookingId", relatedEntityId);
+                variables.put("checkInUrl", buildCheckInUrl(relatedEntityId));
+                variables.put("isCheckIn", true);
+                variables.put("notificationType", type.name());
+                variables.put("actionRequired", isActionRequired(type));
+                variables.put("urgencyLevel", getUrgencyLevel(type));
+            }
+            // Checkout workflow variables
+            case CHECKOUT_WINDOW_OPENED, CHECKOUT_REMINDER, CHECKOUT_GUEST_COMPLETE,
+                 CHECKOUT_GUEST_BEGUN, CHECKOUT_DAMAGE_REPORTED, CHECKOUT_COMPLETE,
+                 LATE_RETURN_DETECTED -> {
+                variables.put("bookingId", relatedEntityId);
+                variables.put("checkOutUrl", buildCheckOutUrl(relatedEntityId));
+                variables.put("isCheckOut", true);
+                variables.put("notificationType", type.name());
+                variables.put("actionRequired", isActionRequired(type));
+                variables.put("urgencyLevel", getUrgencyLevel(type));
+            }
+            case DISPUTE_RESOLVED -> {
+                variables.put("bookingId", relatedEntityId);
+                variables.put("bookingUrl", buildBookingUrl(relatedEntityId));
+            }
+            default -> {
+                // Generic notification - no extra variables
+            }
         }
 
         variables.forEach(context::setVariable);
+    }
+
+    /**
+     * Determine if the notification type requires user action.
+     */
+    private boolean isActionRequired(NotificationType type) {
+        return switch (type) {
+            case CHECK_IN_WINDOW_OPENED, CHECK_IN_REMINDER, CHECK_IN_HOST_COMPLETE,
+                 CHECKOUT_WINDOW_OPENED, CHECKOUT_REMINDER, CHECKOUT_GUEST_COMPLETE,
+                 NO_SHOW_HOST, NO_SHOW_GUEST, CHECKOUT_DAMAGE_REPORTED, LATE_RETURN_DETECTED -> true;
+            default -> false;
+        };
+    }
+
+    /**
+     * Get urgency level for email styling: HIGH, MEDIUM, LOW.
+     */
+    private String getUrgencyLevel(NotificationType type) {
+        return switch (type) {
+            case NO_SHOW_HOST, NO_SHOW_GUEST, CHECKOUT_DAMAGE_REPORTED, 
+                 LATE_RETURN_DETECTED -> "HIGH";
+            case CHECK_IN_REMINDER, CHECKOUT_REMINDER, CHECK_IN_WINDOW_OPENED,
+                 CHECK_IN_HOST_COMPLETE, CHECKOUT_GUEST_COMPLETE -> "MEDIUM";
+            default -> "LOW";
+        };
     }
 
     /**
@@ -215,6 +285,14 @@ public class MailService {
      */
     private String buildBookingUrl(String bookingId) {
         return "https://rentoza.com/bookings/" + bookingId;
+    }
+
+    private String buildCheckInUrl(String bookingId) {
+        return "https://rentoza.com/bookings/" + bookingId + "/check-in";
+    }
+
+    private String buildCheckOutUrl(String bookingId) {
+        return "https://rentoza.com/bookings/" + bookingId + "/check-out";
     }
 
     private String buildReviewUrl(String reviewId) {

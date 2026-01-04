@@ -117,7 +117,9 @@ import { CheckInStatusDTO } from '../../../core/models/check-in.model';
             <mat-icon>gpp_maybe</mat-icon>
             <div class="banner-text">
               <span class="banner-title">Obavezna provera vozačke dozvole</span>
-              <span class="banner-hint">Za siguran proces, morate fizički proveriti vozačku dozvolu gosta</span>
+              <span class="banner-hint"
+                >Za siguran proces, morate fizički proveriti vozačku dozvolu gosta</span
+              >
             </div>
           </div>
           }
@@ -131,30 +133,35 @@ import { CheckInStatusDTO } from '../../../core/models/check-in.model';
               <span class="banner-hint">{{ formatLicenseVerifiedAt() }}</span>
             </div>
           </div>
-          }
-
-          @if (!status?.licenseVerifiedInPerson) {
-          <mat-checkbox 
-            [(ngModel)]="verifyPhysicalId" 
+          } @if (!status?.licenseVerifiedInPerson) {
+          <mat-checkbox
+            [(ngModel)]="verifyPhysicalId"
             color="primary"
             [required]="isLicenseVerificationRequired()"
           >
             <div class="checkbox-content">
               <span class="checkbox-label">
-                {{ isLicenseVerificationRequired() ? 'Potvrdite da ste proverili vozačku dozvolu' : 'Verifikovao sam identitet gosta' }}
+                {{
+                  isLicenseVerificationRequired()
+                    ? 'Potvrdite da ste proverili vozačku dozvolu'
+                    : 'Verifikovao sam identitet gosta'
+                }}
               </span>
               <span class="checkbox-hint">
-                {{ isLicenseVerificationRequired() 
-                   ? 'Obavezno za primopredaju - provera slike, datuma važnosti i podudaranja sa gostom' 
-                   : 'Proverio sam ličnu kartu ili vozačku dozvolu' }}
+                {{
+                  isLicenseVerificationRequired()
+                    ? 'Obavezno za primopredaju - provera slike, datuma važnosti i podudaranja sa gostom'
+                    : 'Proverio sam ličnu kartu ili vozačku dozvolu'
+                }}
               </span>
             </div>
           </mat-checkbox>
 
           <!-- Phase 4B: Confirm License Verification Button (for required cases) -->
-          @if (isLicenseVerificationRequired() && verifyPhysicalId && !isLicenseVerificationConfirmed()) {
-          <button 
-            mat-raised-button 
+          @if (isLicenseVerificationRequired() && verifyPhysicalId &&
+          !isLicenseVerificationConfirmed()) {
+          <button
+            mat-raised-button
             color="primary"
             [disabled]="checkInService.isLoading() || isLicenseVerificationConfirmed()"
             (click)="confirmLicenseVerification()"
@@ -163,8 +170,7 @@ import { CheckInStatusDTO } from '../../../core/models/check-in.model';
             <mat-icon>verified</mat-icon>
             Potvrdi verifikaciju dozvole
           </button>
-          }
-          }
+          } }
         </mat-card-content>
       </mat-card>
       }
@@ -606,7 +612,11 @@ export class HandshakeComponent implements OnInit, OnDestroy {
 
   canConfirm = computed(() => {
     // Phase 4B: Block confirmation if license verification is required but not done
-    if (this.status?.host && this.isLicenseVerificationRequired() && !this.status?.licenseVerifiedInPerson) {
+    if (
+      this.status?.host &&
+      this.isLicenseVerificationRequired() &&
+      !this.status?.licenseVerifiedInPerson
+    ) {
       return false;
     }
     return !this._isConfirmed() && !this.checkInService.isLoading();
@@ -630,7 +640,10 @@ export class HandshakeComponent implements OnInit, OnDestroy {
   formatLicenseVerifiedAt(): string {
     if (!this.status?.licenseVerifiedInPersonAt) return '';
     const date = new Date(this.status.licenseVerifiedInPersonAt);
-    return `Verifikovano ${date.toLocaleTimeString('sr-RS', { hour: '2-digit', minute: '2-digit' })}`;
+    return `Verifikovano ${date.toLocaleTimeString('sr-RS', {
+      hour: '2-digit',
+      minute: '2-digit',
+    })}`;
   }
 
   /**

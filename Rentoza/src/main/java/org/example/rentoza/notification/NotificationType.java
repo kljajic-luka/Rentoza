@@ -178,5 +178,27 @@ public enum NotificationType {
      * Triggered when a renter's driver license has expired.
      * Sent to inform the renter they cannot book until license is updated.
      */
-    LICENSE_EXPIRED
-    }
+    LICENSE_EXPIRED,
+
+    // ==========================================================================
+    // PHASE 4I: CHECK-IN/CHECKOUT BEGUN NOTIFICATIONS
+    // ==========================================================================
+
+    /**
+     * Triggered when host starts the check-in process.
+     * Sent to guest to let them know the host is preparing the vehicle.
+     */
+    CHECK_IN_HOST_BEGUN,
+
+    /**
+     * Triggered when guest starts the check-in process.
+     * Sent to host to let them know the guest is beginning vehicle inspection.
+     */
+    CHECK_IN_GUEST_BEGUN,
+
+    /**
+     * Triggered when guest starts the checkout process.
+     * Sent to host to let them know the guest is preparing to return the vehicle.
+     */
+    CHECKOUT_GUEST_BEGUN
+}

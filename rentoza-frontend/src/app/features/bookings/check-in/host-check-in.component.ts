@@ -116,6 +116,34 @@ const PHOTO_SLOTS: PhotoSlot[] = [
       </div>
       }
 
+      <!-- Phase 4A: Check-in Timing Restriction Banner -->
+      @if (status?.timingBlocked) {
+      <div class="timing-blocked-banner">
+        <mat-icon>schedule</mat-icon>
+        <div class="timing-content">
+          <span class="timing-title">Check-in još nije dozvoljen</span>
+          <span class="timing-message">{{ status?.timingBlockedMessage || 'Check-in moguć najranije 1 sat pre početka rezervacije' }}</span>
+          @if (status?.minutesUntilCheckInAllowed) {
+          <span class="timing-countdown">
+            <mat-icon>hourglass_empty</mat-icon>
+            Preostalo: {{ formatMinutes(status?.minutesUntilCheckInAllowed!) }}
+          </span>
+          }
+        </div>
+      </div>
+      }
+
+      <!-- Phase 4C: No-Show Grace Period Info -->
+      @if (status?.noShowGraceMinutes && !readOnly) {
+      <div class="grace-period-info" [class.short-trip]="status?.isShortTrip">
+        <mat-icon>info_outline</mat-icon>
+        <span>
+          Gost ima {{ status?.noShowGraceMinutes }} min. tolerancije za kašnjenje
+          {{ status?.isShortTrip ? '(kratka rezervacija)' : '' }}
+        </span>
+      </div>
+      }
+
       <!-- Pickup Location Section (shows where car should be picked up) -->
       @if (pickupLocationData()) {
       <div class="pickup-location-section">
@@ -1231,6 +1259,83 @@ const PHOTO_SLOTS: PhotoSlot[] = [
         height: 20px;
       }
 
+      /* Phase 4A: Timing Blocked Banner */
+      .timing-blocked-banner {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 16px;
+        margin-bottom: 16px;
+        background: rgba(239, 68, 68, 0.1);
+        border: 1px solid rgba(239, 68, 68, 0.3);
+        border-left: 4px solid #ef4444;
+        border-radius: 8px;
+      }
+
+      .timing-blocked-banner > mat-icon {
+        color: #ef4444;
+        font-size: 28px;
+        width: 28px;
+        height: 28px;
+      }
+
+      .timing-content {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .timing-title {
+        font-weight: 600;
+        font-size: 15px;
+        color: #dc2626;
+      }
+
+      .timing-message {
+        font-size: 13px;
+        color: var(--checkin-text-secondary);
+      }
+
+      .timing-countdown {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        margin-top: 8px;
+        font-weight: 500;
+        font-size: 14px;
+        color: #dc2626;
+      }
+
+      .timing-countdown mat-icon {
+        font-size: 16px;
+        width: 16px;
+        height: 16px;
+      }
+
+      /* Phase 4C: Grace Period Info */
+      .grace-period-info {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 14px;
+        margin-bottom: 16px;
+        background: rgba(59, 130, 246, 0.1);
+        border-radius: 8px;
+        font-size: 13px;
+        color: #1d4ed8;
+      }
+
+      .grace-period-info mat-icon {
+        font-size: 18px;
+        width: 18px;
+        height: 18px;
+      }
+
+      .grace-period-info.short-trip {
+        background: rgba(245, 158, 11, 0.1);
+        color: #b45309;
+      }
+
       .readonly-mode .photo-slot {
         cursor: default;
       }
@@ -1964,6 +2069,26 @@ export class HostCheckInComponent implements OnInit, OnChanges, OnDestroy {
     if (!rejectionReason) return null;
     const match = rejectionReason.match(/(\d+)m od automobila/);
     return match ? parseInt(match[1], 10) : null;
+  }
+
+  // =========================================================================
+  // Phase 4A: Timing Display Helper Methods
+  // =========================================================================
+
+  /**
+   * Format minutes into a human-readable time string.
+   * Used for displaying timing restrictions to users.
+   */
+  formatMinutes(minutes: number): string {
+    if (minutes < 60) {
+      return `${minutes} min`;
+    }
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+    if (remainingMinutes === 0) {
+      return `${hours} sat${hours === 1 ? '' : hours < 5 ? 'a' : 'i'}`;
+    }
+    return `${hours}h ${remainingMinutes}min`;
   }
 
   // ========== GUIDED CAPTURE METHODS ==========

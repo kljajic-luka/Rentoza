@@ -258,6 +258,82 @@ public class CheckInController {
 
     // ========== GUEST WORKFLOW ==========
 
+    // ========== PHASE 4B: IN-PERSON LICENSE VERIFICATION ==========
+
+    /**
+     * Host confirms they have visually verified the guest's driver's license.
+     * 
+     * <p><b>Purpose (Phase 4B):</b> For in-person handshakes (no lockbox), hosts MUST
+     * confirm they have visually verified that the guest's physical driver's license:
+     * <ul>
+     *   <li>Matches the ID verification photos on file</li>
+     *   <li>Is valid (not expired)</li>
+     *   <li>Belongs to the person picking up the vehicle</li>
+     * </ul>
+     * 
+     * <p><b>Insurance Compliance:</b> This verification is critical for insurance
+     * coverage. Without it, claims may be denied if the driver was not properly
+     * identified at trip start.
+     * 
+     * <p><b>When Required:</b> Only for in-person handshakes. Remote handoff (lockbox)
+     * trips skip this requirement since license is verified during ID verification.
+     * 
+     * <p><b>Flow:</b>
+     * <ol>
+     *   <li>Guest arrives at pickup location</li>
+     *   <li>Host visually compares physical license to ID verification photos</li>
+     *   <li>Host calls this endpoint to confirm verification</li>
+     *   <li>Both parties can now proceed to handshake</li>
+     * </ol>
+     * 
+     * <h3>Idempotency</h3>
+     * <p>Supports {@code X-Idempotency-Key} header to prevent duplicate verifications.
+     * 
+     * @param bookingId The booking ID
+     * @param idempotencyKey Optional idempotency key
+     * @return Updated check-in status
+     * @throws AccessDeniedException if user is not the car owner (host)
+     * @throws IllegalStateException if booking is not in correct state
+     */
+    @PostMapping("/host/license-verification")
+    public ResponseEntity<CheckInStatusDTO> confirmLicenseVerifiedInPerson(
+            @PathVariable Long bookingId,
+            @RequestHeader(value = IDEMPOTENCY_HEADER, required = false) String idempotencyKey) {
+        
+        Long userId = currentUser.id();
+        log.info("[CheckIn] Host confirming license verification for booking {} by user {}", 
+            bookingId, userId);
+        
+        // Idempotency check
+        Optional<IdempotencyResult> cached = idempotencyService.checkIdempotency(idempotencyKey, userId);
+        if (cached.isPresent()) {
+            IdempotencyResult result = cached.get();
+            if (result.getStatus() == IdempotencyStatus.PROCESSING) {
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(null);
+            }
+            log.info("[CheckIn] Returning cached license-verification response for key: {}", 
+                    idempotencyKey != null ? idempotencyKey.substring(0, 8) + "..." : "N/A");
+            return ResponseEntity.status(result.getHttpStatus()).build();
+        }
+        
+        // Mark as processing
+        if (!idempotencyService.markProcessing(idempotencyKey, userId, "LICENSE_VERIFICATION")) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).build();
+        }
+        
+        try {
+            CheckInStatusDTO status = checkInService.confirmLicenseVerifiedInPerson(bookingId, userId);
+            
+            // Store successful result
+            idempotencyService.storeSuccess(idempotencyKey, userId, HttpStatus.OK, status);
+            
+            return ResponseEntity.ok(status);
+        } catch (Exception e) {
+            idempotencyService.remove(idempotencyKey, userId);
+            throw e;
+        }
+    }
+
     /**
      * Guest acknowledges vehicle condition.
      * 

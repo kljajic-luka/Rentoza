@@ -109,14 +109,62 @@ import { CheckInStatusDTO } from '../../../core/models/check-in.model';
 
       <!-- Host: ID verification option -->
       @if (status?.host) {
-      <mat-card class="id-verification-card">
+      <mat-card class="id-verification-card" [class.required]="isLicenseVerificationRequired()">
         <mat-card-content>
-          <mat-checkbox [(ngModel)]="verifyPhysicalId" color="primary">
+          <!-- Phase 4B: License Verification Required Banner -->
+          @if (isLicenseVerificationRequired() && !status?.licenseVerifiedInPerson) {
+          <div class="license-required-banner">
+            <mat-icon>gpp_maybe</mat-icon>
+            <div class="banner-text">
+              <span class="banner-title">Obavezna provera vozačke dozvole</span>
+              <span class="banner-hint">Za siguran proces, morate fizički proveriti vozačku dozvolu gosta</span>
+            </div>
+          </div>
+          }
+
+          <!-- Phase 4B: License Verified Success Banner -->
+          @if (status?.licenseVerifiedInPerson) {
+          <div class="license-verified-banner">
+            <mat-icon>verified_user</mat-icon>
+            <div class="banner-text">
+              <span class="banner-title">Vozačka dozvola verifikovana</span>
+              <span class="banner-hint">{{ formatLicenseVerifiedAt() }}</span>
+            </div>
+          </div>
+          }
+
+          @if (!status?.licenseVerifiedInPerson) {
+          <mat-checkbox 
+            [(ngModel)]="verifyPhysicalId" 
+            color="primary"
+            [required]="isLicenseVerificationRequired()"
+          >
             <div class="checkbox-content">
-              <span class="checkbox-label">Verifikovao sam identitet gosta</span>
-              <span class="checkbox-hint">Proverio sam ličnu kartu ili vozačku dozvolu</span>
+              <span class="checkbox-label">
+                {{ isLicenseVerificationRequired() ? 'Potvrdite da ste proverili vozačku dozvolu' : 'Verifikovao sam identitet gosta' }}
+              </span>
+              <span class="checkbox-hint">
+                {{ isLicenseVerificationRequired() 
+                   ? 'Obavezno za primopredaju - provera slike, datuma važnosti i podudaranja sa gostom' 
+                   : 'Proverio sam ličnu kartu ili vozačku dozvolu' }}
+              </span>
             </div>
           </mat-checkbox>
+
+          <!-- Phase 4B: Confirm License Verification Button (for required cases) -->
+          @if (isLicenseVerificationRequired() && verifyPhysicalId && !isLicenseVerificationConfirmed()) {
+          <button 
+            mat-raised-button 
+            color="primary"
+            [disabled]="checkInService.isLoading() || isLicenseVerificationConfirmed()"
+            (click)="confirmLicenseVerification()"
+            class="confirm-license-btn"
+          >
+            <mat-icon>verified</mat-icon>
+            Potvrdi verifikaciju dozvole
+          </button>
+          }
+          }
         </mat-card-content>
       </mat-card>
       }
@@ -253,6 +301,79 @@ import { CheckInStatusDTO } from '../../../core/models/check-in.model';
       .id-verification-card {
         width: 100%;
         background: var(--color-surface, #ffffff);
+      }
+
+      .id-verification-card.required {
+        border: 2px solid var(--warning-color, #ff9800);
+        background: rgba(255, 152, 0, 0.05);
+      }
+
+      .id-verification-card.required.verified {
+        border-color: var(--success-color, #4caf50);
+        background: rgba(76, 175, 80, 0.05);
+      }
+
+      /* Phase 4B: License Verification Banners */
+      .license-required-banner {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 12px;
+        margin-bottom: 16px;
+        background: rgba(255, 152, 0, 0.1);
+        border-radius: 8px;
+        border-left: 4px solid var(--warning-color, #ff9800);
+      }
+
+      .license-required-banner mat-icon {
+        color: var(--warning-color, #ff9800);
+        font-size: 28px;
+        width: 28px;
+        height: 28px;
+      }
+
+      .license-verified-banner {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 12px;
+        margin-bottom: 16px;
+        background: rgba(76, 175, 80, 0.1);
+        border-radius: 8px;
+        border-left: 4px solid var(--success-color, #4caf50);
+      }
+
+      .license-verified-banner mat-icon {
+        color: var(--success-color, #4caf50);
+        font-size: 28px;
+        width: 28px;
+        height: 28px;
+      }
+
+      .banner-text {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .banner-title {
+        font-weight: 600;
+        font-size: 14px;
+        color: var(--color-text-primary, #212121);
+      }
+
+      .banner-hint {
+        font-size: 12px;
+        color: var(--color-text-muted, #757575);
+      }
+
+      .confirm-license-btn {
+        margin-top: 16px;
+        width: 100%;
+      }
+
+      .confirm-license-btn mat-icon {
+        margin-right: 8px;
       }
 
       .checkbox-content {
@@ -451,12 +572,14 @@ export class HandshakeComponent implements OnInit, OnDestroy {
   private _swipeProgress = signal(0);
   private _isSwiping = signal(false);
   private _isConfirmed = signal(false);
+  private _licenseVerificationConfirmed = signal(false);
   private startX = 0;
   private maxSwipe = 0;
 
   swipeProgress = this._swipeProgress.asReadonly();
   isSwiping = this._isSwiping.asReadonly();
   isConfirmed = this._isConfirmed.asReadonly();
+  isLicenseVerificationConfirmed = this._licenseVerificationConfirmed.asReadonly();
 
   // Computed
   roleInstructions = computed(() => {
@@ -482,8 +605,55 @@ export class HandshakeComponent implements OnInit, OnDestroy {
   });
 
   canConfirm = computed(() => {
+    // Phase 4B: Block confirmation if license verification is required but not done
+    if (this.status?.host && this.isLicenseVerificationRequired() && !this.status?.licenseVerifiedInPerson) {
+      return false;
+    }
     return !this._isConfirmed() && !this.checkInService.isLoading();
   });
+
+  // =========================================================================
+  // Phase 4B: License Verification Helper Methods
+  // =========================================================================
+
+  /**
+   * Check if license verification is required for this booking.
+   * Backend sets licenseVerificationRequired=true for in-person handoffs.
+   */
+  isLicenseVerificationRequired(): boolean {
+    return this.status?.licenseVerificationRequired === true;
+  }
+
+  /**
+   * Format the license verification timestamp for display.
+   */
+  formatLicenseVerifiedAt(): string {
+    if (!this.status?.licenseVerifiedInPersonAt) return '';
+    const date = new Date(this.status.licenseVerifiedInPersonAt);
+    return `Verifikovano ${date.toLocaleTimeString('sr-RS', { hour: '2-digit', minute: '2-digit' })}`;
+  }
+
+  /**
+   * Confirm license verification with backend.
+   * Called when host clicks the confirm button after checking the checkbox.
+   */
+  confirmLicenseVerification(): void {
+    if (!this.verifyPhysicalId || !this.bookingId) return;
+
+    this.checkInService.confirmLicenseVerifiedInPerson(this.bookingId).subscribe({
+      next: () => {
+        this._licenseVerificationConfirmed.set(true);
+        this.snackBar.open('Verifikacija vozačke dozvole zabeležena ✓', '', {
+          duration: 3000,
+          panelClass: 'success-snackbar',
+        });
+      },
+      error: (err) => {
+        const message = err.error?.message || 'Verifikacija nije uspela. Pokušajte ponovo.';
+        this.snackBar.open(message, 'OK', { duration: 5000 });
+      },
+    });
+  }
 
   /**
    * Check if user is within geofence threshold (close to vehicle).

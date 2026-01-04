@@ -172,6 +172,40 @@ public class CheckInPhoto {
     @Column(name = "exif_validated_at")
     private Instant exifValidatedAt;
 
+    // ========== PHASE 4E: PHOTO DEADLINE EVIDENCE WEIGHT ==========
+
+    /**
+     * Evidence weight based on upload timing relative to trip end.
+     * 
+     * <p><b>Phase 4E Safety Improvement:</b> Photos uploaded late (after deadline)
+     * are marked as SECONDARY evidence to reduce their weight in disputes.
+     * 
+     * <p><b>Deadline:</b> Configurable (default 24 hours after trip end)
+     * <ul>
+     *   <li><b>PRIMARY:</b> Uploaded on time - full evidence weight</li>
+     *   <li><b>SECONDARY:</b> Uploaded late - reduced evidence weight, noted in disputes</li>
+     * </ul>
+     * 
+     * @see EvidenceWeight
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "evidence_weight", length = 20)
+    @Builder.Default
+    private EvidenceWeight evidenceWeight = EvidenceWeight.PRIMARY;
+
+    /**
+     * When the evidence weight was downgraded (if applicable).
+     * Null for PRIMARY weight photos.
+     */
+    @Column(name = "evidence_weight_downgraded_at")
+    private Instant evidenceWeightDowngradedAt;
+
+    /**
+     * Reason for evidence weight downgrade.
+     */
+    @Column(name = "evidence_weight_downgrade_reason", length = 255)
+    private String evidenceWeightDowngradeReason;
+
     // ========== UPLOAD METADATA ==========
 
     /**

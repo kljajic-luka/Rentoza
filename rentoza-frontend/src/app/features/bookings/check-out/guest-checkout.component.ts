@@ -287,6 +287,31 @@ import { environment } from '@environments/environment';
                   >{{ calculateFuelDiff() }}%</strong
                 >
               </div>
+
+              <!-- Phase 4D: Late Fee Display -->
+              @if (status && status.lateFeeAmount && status.lateFeeAmount > 0) {
+              <div class="summary-item late-fee">
+                <span>
+                  <mat-icon>schedule</mat-icon>
+                  Naknada za kašnjenje (Tier {{ status.lateFeeTier || '?' }}):
+                </span>
+                <strong class="fee-amount">{{ status.lateFeeAmount }} RSD</strong>
+              </div>
+              }
+
+              <!-- Phase 4F: Improper Return Warning -->
+              @if (status && status.improperReturnFlag) {
+              <div class="improper-return-warning">
+                <mat-icon>warning</mat-icon>
+                <div class="warning-content">
+                  <span class="warning-title">Nepravilan povratak detektovan</span>
+                  <span class="warning-code">{{ getImproperReturnLabel(status.improperReturnCode) }}</span>
+                  @if (status.improperReturnNotes) {
+                  <span class="warning-notes">{{ status.improperReturnNotes }}</span>
+                  }
+                </div>
+              </div>
+              }
             </div>
 
             <div class="step-actions">
@@ -660,6 +685,75 @@ import { environment } from '@environments/environment';
             color: var(--warn-color, #f44336);
           }
         }
+
+        /* Phase 4D: Late Fee Display */
+        .summary-item.late-fee {
+          background: rgba(239, 68, 68, 0.05);
+          margin: 8px -12px;
+          padding: 12px;
+          border-radius: 8px;
+          border-bottom: none;
+
+          span {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #dc2626;
+          }
+
+          mat-icon {
+            font-size: 18px;
+            width: 18px;
+            height: 18px;
+          }
+
+          .fee-amount {
+            color: #dc2626;
+            font-size: 16px;
+          }
+        }
+
+        /* Phase 4F: Improper Return Warning */
+        .improper-return-warning {
+          display: flex;
+          align-items: flex-start;
+          gap: 12px;
+          margin-top: 16px;
+          padding: 12px;
+          background: rgba(245, 158, 11, 0.1);
+          border: 1px solid rgba(245, 158, 11, 0.3);
+          border-radius: 8px;
+
+          > mat-icon {
+            color: #b45309;
+            font-size: 24px;
+            width: 24px;
+            height: 24px;
+          }
+
+          .warning-content {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+          }
+
+          .warning-title {
+            font-weight: 600;
+            color: #b45309;
+            font-size: 14px;
+          }
+
+          .warning-code {
+            font-size: 13px;
+            color: var(--text-secondary);
+          }
+
+          .warning-notes {
+            font-size: 12px;
+            color: var(--text-secondary);
+            font-style: italic;
+          }
+        }
       }
 
       .step-actions {
@@ -1010,6 +1104,30 @@ export class GuestCheckoutComponent implements OnInit {
     const start = this.status?.startFuelLevel || 0;
     const end = this.readingsForm.get('endFuelLevel')?.value || start;
     return end - start;
+  }
+
+  // =========================================================================
+  // Phase 4F: Improper Return Display Helpers
+  // =========================================================================
+
+  /**
+   * Get human-readable label for improper return codes.
+   */
+  getImproperReturnLabel(code?: string): string {
+    switch (code) {
+      case 'LOW_FUEL':
+        return 'Nizak nivo goriva';
+      case 'EXCESSIVE_MILEAGE':
+        return 'Prekoračena kilometraža';
+      case 'CLEANING_REQUIRED':
+        return 'Potrebno čišćenje vozila';
+      case 'SMOKING_DETECTED':
+        return 'Detektovano pušenje u vozilu';
+      case 'WRONG_LOCATION':
+        return 'Vozilo vraćeno na pogrešnu lokaciju';
+      default:
+        return code || 'Nepoznat razlog';
+    }
   }
 
   // ========== Submit ==========

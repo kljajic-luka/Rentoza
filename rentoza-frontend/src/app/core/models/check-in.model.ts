@@ -191,6 +191,34 @@ export interface CheckInStatusDTO {
   estimatedLocation?: boolean;
   /** Source of estimate: "CAR_HOME_LOCATION" when fallback used */
   estimatedLocationSource?: string;
+
+  // =========================================================================
+  // Phase 4 Safety Improvements
+  // =========================================================================
+
+  // Phase 4A: Check-in Timing
+  /** Maximum hours early that check-in can be completed */
+  maxEarlyCheckInHours?: number;
+  /** Whether timing validation is blocking check-in */
+  timingBlocked?: boolean;
+  /** Message explaining timing restriction (Serbian) */
+  timingBlockedMessage?: string;
+  /** Minutes until check-in is allowed (if blocked) */
+  minutesUntilCheckInAllowed?: number;
+
+  // Phase 4B: License Verification
+  /** Whether in-person license verification is required (no lockbox) */
+  licenseVerificationRequired?: boolean;
+  /** Whether license has been verified in person by host */
+  licenseVerifiedInPerson?: boolean;
+  /** When license was verified in person */
+  licenseVerifiedInPersonAt?: string;
+
+  // Phase 4C: No-Show Grace Period
+  /** Grace period in minutes for this booking (15 for short trips, 30 for long) */
+  noShowGraceMinutes?: number;
+  /** Whether this is a short trip (≤24h) */
+  isShortTrip?: boolean;
 }
 
 export interface CarSummaryDTO {
@@ -235,6 +263,25 @@ export interface CheckInPhotoDTO {
    * Only populated when accepted=false.
    */
   remediationHint?: string;
+
+  // ========== Phase 4E: Evidence Weight (Photo Deadline) ==========
+
+  /**
+   * Evidence weight for dispute resolution.
+   * PRIMARY = uploaded on time (full evidentiary weight)
+   * SECONDARY = uploaded late (reduced evidentiary weight)
+   */
+  evidenceWeight?: 'PRIMARY' | 'SECONDARY';
+
+  /**
+   * When evidence weight was downgraded (if SECONDARY).
+   */
+  evidenceWeightDowngradedAt?: string;
+
+  /**
+   * Reason for evidence weight downgrade (Serbian).
+   */
+  evidenceWeightDowngradeReason?: string;
 }
 
 // ============================================================================

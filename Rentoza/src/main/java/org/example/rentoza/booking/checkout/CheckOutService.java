@@ -78,6 +78,14 @@ public class CheckOutService {
 
     @Value("${app.checkout.late.max-hours:24}")
     private int maxLateHours;
+    
+    // ========== PHASE 4F: IMPROPER RETURN THRESHOLDS ==========
+    
+    @Value("${app.checkout.improper-return.fuel-difference-threshold:25}")
+    private int fuelDifferenceThreshold;
+    
+    @Value("${app.checkout.improper-return.mileage-multiplier-threshold:2}")
+    private double mileageMultiplierThreshold;
 
     public CheckOutService(
             BookingRepository bookingRepository,
@@ -307,6 +315,14 @@ public class CheckOutService {
         
         // Check for late return
         checkAndRecordLateReturn(booking, userId);
+        
+        // ================================================================
+        // PHASE 4F: IMPROPER RETURN DETECTION
+        // ================================================================
+        // Check for conditions that indicate improper vehicle return:
+        // - Significant fuel difference (>25% by default)
+        // - Excessive mileage (>2x estimated by default)
+        checkAndFlagImproperReturn(booking, dto, userId);
         
         // Calculate total mileage
         Integer totalMileage = null;
@@ -758,5 +774,111 @@ public class CheckOutService {
         if (instant == null) return null;
         return LocalDateTime.ofInstant(instant, SERBIA_ZONE);
     }
-}
 
+    // ========== PHASE 4F: IMPROPER RETURN DETECTION ==========
+
+    /**
+     * Phase 4F: Check for and flag improper vehicle return conditions.
+     * 
+     * <p>Conditions that trigger improper return flag:
+     * <ul>
+     *   <li><b>LOW_FUEL:</b> Fuel level significantly lower than start (>25% difference)</li>
+     *   <li><b>EXCESSIVE_MILEAGE:</b> Miles exceeded estimated by >2x</li>
+     * </ul>
+     * 
+     * <p>Additional conditions detected by host during confirmation:
+     * <ul>
+     *   <li>CLEANING_REQUIRED: Professional cleaning needed</li>
+     *   <li>SMOKING_DETECTED: Evidence of smoking in vehicle</li>
+     *   <li>WRONG_LOCATION: Returned to different location</li>
+     * </ul>
+     * 
+     * @param booking The booking being checked out
+     * @param dto Guest checkout submission data
+     * @param userId The guest user ID
+     */
+    private void checkAndFlagImproperReturn(Booking booking, GuestCheckOutSubmissionDTO dto, Long userId) {
+        // Check fuel difference
+        if (booking.getStartFuelLevel() != null) {
+            int fuelDiff = booking.getStartFuelLevel() - dto.getEndFuelLevelPercent();
+            if (fuelDiff > fuelDifferenceThreshold) {
+                flagImproperReturn(
+                    booking, 
+                    "LOW_FUEL", 
+                    String.format("Nivo goriva smanjen za %d%% (početni: %d%%, završni: %d%%)",
+                            fuelDiff, booking.getStartFuelLevel(), dto.getEndFuelLevelPercent()),
+                    userId
+                );
+                return; // Only flag one condition at a time
+            }
+        }
+        
+        // Check excessive mileage
+        if (booking.getStartOdometer() != null) {
+            int actualMileage = dto.getEndOdometerReading() - booking.getStartOdometer();
+            
+            // Calculate expected mileage based on trip duration and default daily limit
+            int estimatedMileage = calculateEstimatedMileage(booking);
+            
+            if (estimatedMileage > 0 && actualMileage > (estimatedMileage * mileageMultiplierThreshold)) {
+                flagImproperReturn(
+                    booking,
+                    "EXCESSIVE_MILEAGE",
+                    String.format("Prekoračena kilometraža: %d km (očekivano: ~%d km, faktor: %.1fx)",
+                            actualMileage, estimatedMileage, (double) actualMileage / estimatedMileage),
+                    userId
+                );
+            }
+        }
+    }
+    
+    /**
+     * Flag a booking as having improper return condition.
+     * 
+     * @param booking The booking to flag
+     * @param code Improper return code (LOW_FUEL, EXCESSIVE_MILEAGE, etc.)
+     * @param notes Detailed description
+     * @param userId User who triggered the detection (guest or system)
+     */
+    private void flagImproperReturn(Booking booking, String code, String notes, Long userId) {
+        booking.setImproperReturnFlag(true);
+        booking.setImproperReturnCode(code);
+        booking.setImproperReturnNotes(notes);
+        
+        eventService.recordEvent(
+            booking,
+            booking.getCheckoutSessionId(),
+            CheckInEventType.IMPROPER_RETURN_FLAGGED,
+            userId,
+            userId != null && isGuest(booking, userId) ? CheckInActorRole.GUEST : CheckInActorRole.SYSTEM,
+            Map.of(
+                "code", code,
+                "notes", notes,
+                "detectedAt", Instant.now().toString(),
+                "autoDetected", true
+            )
+        );
+        
+        log.warn("[Phase4F] IMPROPER RETURN DETECTED: booking={}, code={}, notes={}",
+                booking.getId(), code, notes);
+    }
+    
+    /**
+     * Calculate estimated mileage based on trip duration.
+     * Uses default 200km/day limit if not configured on car.
+     */
+    private int calculateEstimatedMileage(Booking booking) {
+        if (booking.getStartTime() == null || booking.getEndTime() == null) {
+            return 0;
+        }
+        
+        long days = ChronoUnit.DAYS.between(
+                booking.getStartTime().toLocalDate(),
+                booking.getEndTime().toLocalDate()) + 1;
+        
+        // TODO: Get daily limit from car or booking configuration
+        int dailyLimit = 200; // Default 200km per day
+        
+        return (int) (days * dailyLimit);
+    }
+}

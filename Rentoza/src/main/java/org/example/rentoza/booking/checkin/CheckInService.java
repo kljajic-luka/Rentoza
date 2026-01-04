@@ -78,9 +78,44 @@ public class CheckInService {
     private final Counter guestCompletedCounter;
     private final Counter handshakeCompletedCounter;
     private final Timer checkInDurationTimer;
+    private final Counter earlyCheckInBlockedCounter;
+    private final Counter licenseVerificationCounter;
 
     @Value("${app.checkin.noshow.grace-minutes:30}")
     private int noShowGraceMinutes;
+    
+    // ========== PHASE 4: SAFETY IMPROVEMENTS CONFIGURATION ==========
+    
+    // Phase 4A: Check-in Timing & Insurance Alignment
+    @Value("${app.checkin.max-early-hours:1}")
+    private int maxEarlyCheckInHours;
+    
+    @Value("${app.checkin.timing.validation-enabled:true}")
+    private boolean checkInTimingValidationEnabled;
+    
+    // Phase 4B: License Verification
+    @Value("${app.checkin.license-verification.required:true}")
+    private boolean licenseVerificationRequired;
+    
+    @Value("${app.checkin.license-verification.enabled:true}")
+    private boolean licenseVerificationEnabled;
+    
+    // Phase 4C: Hardened No-Show Logic
+    @Value("${app.checkin.noshow.require-message-attempt:true}")
+    private boolean requireMessageAttemptForNoShow;
+    
+    @Value("${app.checkin.noshow.short-trip-threshold-hours:24}")
+    private int shortTripThresholdHours;
+    
+    @Value("${app.checkin.noshow.short-trip-grace-minutes:15}")
+    private int shortTripGraceMinutes;
+    
+    @Value("${app.checkin.noshow.long-trip-grace-minutes:30}")
+    private int longTripGraceMinutes;
+    
+    // Phase 4I: Begun Notifications
+    @Value("${app.checkin.begun-notifications.enabled:true}")
+    private boolean begunNotificationsEnabled;
 
     public CheckInService(
             BookingRepository bookingRepository,
@@ -118,6 +153,14 @@ public class CheckInService {
         this.checkInDurationTimer = Timer.builder("checkin.duration")
                 .description("Time from check-in open to trip start")
                 .register(meterRegistry);
+        
+        this.earlyCheckInBlockedCounter = Counter.builder("checkin.early.blocked")
+                .description("Early check-in attempts blocked for insurance compliance")
+                .register(meterRegistry);
+        
+        this.licenseVerificationCounter = Counter.builder("checkin.license.verified")
+                .description("In-person license verifications completed")
+                .register(meterRegistry);
     }
 
     // ========== STATUS RETRIEVAL ==========
@@ -140,9 +183,14 @@ public class CheckInService {
     /**
      * Complete host check-in with odometer/fuel readings.
      * 
+     * <p><b>Phase 4A Enhancement:</b> Now validates check-in timing to ensure
+     * insurance coverage is active. Check-in cannot be completed more than
+     * {@code maxEarlyCheckInHours} (default: 1 hour) before trip start.
+     * 
      * @param dto Submission data
      * @param userId Current user ID
      * @return Updated check-in status
+     * @throws IllegalStateException if check-in is attempted too early (Phase 4A)
      */
     @Transactional
     public CheckInStatusDTO completeHostCheckIn(HostCheckInSubmissionDTO dto, Long userId) {
@@ -158,6 +206,14 @@ public class CheckInService {
         if (booking.getStatus() != BookingStatus.CHECK_IN_OPEN) {
             throw new IllegalStateException("Prijem nije otvoren. Trenutni status: " + booking.getStatus());
         }
+        
+        // ========================================================================
+        // PHASE 4A: VALIDATE CHECK-IN TIMING FOR INSURANCE COMPLIANCE
+        // ========================================================================
+        // Ensures check-in cannot be completed more than 1 hour before trip start.
+        // This prevents insurance coverage gaps where the vehicle is handed over
+        // before the policy's effective start time.
+        validateCheckInTiming(booking, userId, CheckInActorRole.HOST);
         
         // Validate photos
         long validPhotoTypes = photoRepository.countRequiredHostPhotoTypes(booking.getId());
@@ -582,6 +638,17 @@ public class CheckInService {
         boolean guestConfirmed = isGuestHandshakeConfirmed(booking);
         
         if (hostConfirmed && guestConfirmed) {
+            // ====================================================================
+            // PHASE 4B: VALIDATE LICENSE VERIFICATION FOR IN-PERSON HANDSHAKES
+            // ====================================================================
+            // For in-person handshakes (no lockbox), require the host to confirm
+            // they have visually verified the guest's driver's license.
+            // This is critical for insurance compliance.
+            if (booking.getLockboxCodeEncrypted() == null) {
+                // In-person handshake - require license verification
+                validateLicenseVerification(booking);
+            }
+            
             // Start the trip!
             booking.setStatus(BookingStatus.IN_TRIP);
             booking.setHandshakeCompletedAt(Instant.now());
@@ -978,6 +1045,277 @@ public class CheckInService {
         } else {
             return "BLOCKING";
         }
+    }
+
+    // ========== PHASE 4: SAFETY VALIDATION METHODS ==========
+
+    /**
+     * Phase 4A: Validate check-in timing for insurance compliance.
+     * 
+     * <p>Check-in cannot be completed more than {@code maxEarlyCheckInHours} before trip start.
+     * This ensures insurance coverage is active when the vehicle is handed over.
+     * 
+     * <p>Insurance policies typically begin at the scheduled trip start time. Completing
+     * check-in too early creates a coverage gap where the vehicle is with the guest
+     * but insurance is not yet active.
+     * 
+     * @param booking The booking to validate
+     * @param userId The user attempting to complete check-in
+     * @param actorRole HOST or GUEST
+     * @throws IllegalStateException if check-in is attempted too early
+     */
+    private void validateCheckInTiming(Booking booking, Long userId, CheckInActorRole actorRole) {
+        if (!checkInTimingValidationEnabled) {
+            log.debug("[CheckIn-Phase4A] Timing validation disabled by configuration");
+            return;
+        }
+        
+        LocalDateTime now = LocalDateTime.now(SERBIA_ZONE);
+        LocalDateTime tripStart = booking.getStartTime();
+        LocalDateTime earliestAllowedCheckIn = tripStart.minusHours(maxEarlyCheckInHours);
+        
+        long minutesUntilTrip = ChronoUnit.MINUTES.between(now, tripStart);
+        long maxEarlyMinutes = maxEarlyCheckInHours * 60L;
+        
+        if (now.isBefore(earliestAllowedCheckIn)) {
+            // Log the blocked attempt
+            eventService.recordEvent(
+                booking,
+                booking.getCheckInSessionId(),
+                CheckInEventType.EARLY_CHECK_IN_BLOCKED,
+                userId,
+                actorRole,
+                Map.of(
+                    "tripStartTime", tripStart.toString(),
+                    "attemptTime", now.toString(),
+                    "minutesUntilTrip", minutesUntilTrip,
+                    "maxEarlyMinutes", maxEarlyMinutes,
+                    "earliestAllowedTime", earliestAllowedCheckIn.toString()
+                )
+            );
+            
+            earlyCheckInBlockedCounter.increment();
+            
+            log.warn("[CheckIn-Phase4A] Early check-in blocked for booking {}. " +
+                    "Attempt at {}, trip starts at {}, earliest allowed at {}",
+                    booking.getId(), now, tripStart, earliestAllowedCheckIn);
+            
+            // Format user-friendly message
+            String earliestTimeFormatted = earliestAllowedCheckIn.format(
+                java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
+            
+            throw new IllegalStateException(String.format(
+                "Prijem nije dozvoljen više od %d sat(a) pre početka putovanja. " +
+                "Molimo pokušajte ponovo u %s ili kasnije. " +
+                "Ovo osigurava da je vaše osiguranje aktivno tokom predaje vozila.",
+                maxEarlyCheckInHours,
+                earliestTimeFormatted
+            ));
+        }
+        
+        // Log successful timing validation
+        eventService.recordEvent(
+            booking,
+            booking.getCheckInSessionId(),
+            CheckInEventType.CHECK_IN_TIMING_VALIDATED,
+            userId,
+            actorRole,
+            Map.of(
+                "tripStartTime", tripStart.toString(),
+                "attemptTime", now.toString(),
+                "minutesUntilTrip", minutesUntilTrip,
+                "maxEarlyMinutes", maxEarlyMinutes
+            )
+        );
+        
+        log.debug("[CheckIn-Phase4A] Timing validation passed for booking {}. " +
+                "Check-in at {}, trip starts at {} ({}min away)",
+                booking.getId(), now, tripStart, minutesUntilTrip);
+    }
+
+    /**
+     * Phase 4B: Validate license verification before handshake.
+     * 
+     * <p>When license verification is required, the host must confirm they have
+     * visually verified the guest's driver's license in-person before the handshake
+     * can proceed.
+     * 
+     * @param booking The booking to validate
+     * @throws IllegalStateException if license verification is required but not completed
+     */
+    private void validateLicenseVerification(Booking booking) {
+        if (!licenseVerificationEnabled || !licenseVerificationRequired) {
+            log.debug("[CheckIn-Phase4B] License verification disabled or not required");
+            return;
+        }
+        
+        if (booking.getLicenseVerifiedInPersonAt() == null) {
+            throw new IllegalStateException(
+                "Morate potvrditi da ste lično proverili vozačku dozvolu gosta " +
+                "pre završetka predaje vozila. Ovo je neophodno za validnost osiguranja."
+            );
+        }
+        
+        log.debug("[CheckIn-Phase4B] License verification confirmed for booking {} at {}",
+                booking.getId(), booking.getLicenseVerifiedInPersonAt());
+    }
+
+    /**
+     * Phase 4B: Host confirms in-person license verification.
+     * 
+     * <p>This method is called when the host confirms they have visually verified
+     * the guest's driver's license. The verification is recorded with a timestamp
+     * and creates an audit event.
+     * 
+     * @param bookingId The booking ID
+     * @param userId The host user ID
+     * @return Updated check-in status DTO
+     * @throws AccessDeniedException if user is not the host
+     * @throws ResourceNotFoundException if booking not found
+     */
+    @Transactional
+    public CheckInStatusDTO confirmLicenseVerifiedInPerson(Long bookingId, Long userId) {
+        Booking booking = bookingRepository.findByIdWithRelations(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Rezervacija nije pronađena"));
+        
+        if (!isHost(booking, userId)) {
+            throw new AccessDeniedException("Samo vlasnik vozila može potvrditi proveru vozačke dozvole");
+        }
+        
+        // Validate booking is in appropriate state
+        if (booking.getStatus() != BookingStatus.CHECK_IN_HOST_COMPLETE &&
+            booking.getStatus() != BookingStatus.CHECK_IN_COMPLETE) {
+            throw new IllegalStateException(
+                "Provera vozačke dozvole je moguća samo nakon što domaćin završi prijem");
+        }
+        
+        // Check if already verified (idempotent operation)
+        if (booking.getLicenseVerifiedInPersonAt() != null) {
+            log.info("[CheckIn-Phase4B] License already verified for booking {} at {}",
+                    bookingId, booking.getLicenseVerifiedInPersonAt());
+            return getCheckInStatus(bookingId, userId);
+        }
+        
+        // Record verification
+        Instant verifiedAt = Instant.now();
+        booking.setLicenseVerifiedInPersonAt(verifiedAt);
+        booking.setLicenseVerifiedByUserId(userId);
+        
+        // Get guest name for audit
+        String guestName = booking.getRenter() != null 
+            ? booking.getRenter().getFirstName()
+            : "Unknown";
+        
+        eventService.recordEvent(
+            booking,
+            booking.getCheckInSessionId(),
+            CheckInEventType.LICENSE_VERIFIED_IN_PERSON,
+            userId,
+            CheckInActorRole.HOST,
+            Map.of(
+                "guestUserId", booking.getRenter() != null ? booking.getRenter().getId() : "N/A",
+                "guestName", guestName,
+                "verifiedAt", verifiedAt.toString(),
+                "hostUserId", userId
+            )
+        );
+        
+        bookingRepository.save(booking);
+        licenseVerificationCounter.increment();
+        
+        log.info("[CheckIn-Phase4B] License verified in-person for booking {} by host {}. Guest: {}",
+                bookingId, userId, guestName);
+        
+        return getCheckInStatus(bookingId, userId);
+    }
+
+    /**
+     * Phase 4C: Get the appropriate no-show grace minutes based on trip length.
+     * 
+     * <p>Short trips (≤ 24 hours) have a tighter grace period since the impact
+     * of delays is proportionally greater. Long trips get more lenient grace periods.
+     * 
+     * @param booking The booking to calculate grace for
+     * @return Grace period in minutes
+     */
+    public int getNoShowGraceMinutesForTrip(Booking booking) {
+        Duration tripDuration = Duration.between(
+            booking.getStartTime(), 
+            booking.getEndTime()
+        );
+        
+        if (tripDuration.toHours() <= shortTripThresholdHours) {
+            return shortTripGraceMinutes;
+        }
+        return longTripGraceMinutes;
+    }
+
+    /**
+     * Phase 4I: Notify that check-in has begun.
+     * 
+     * <p>Sends a notification to the other party when check-in process begins
+     * (first photo upload or interaction). Prevents duplicate notifications
+     * via event deduplication.
+     * 
+     * @param bookingId The booking ID
+     * @param userId The user starting check-in
+     * @param party "HOST" or "GUEST"
+     */
+    @Transactional
+    public void notifyCheckInBegun(Long bookingId, Long userId, String party) {
+        if (!begunNotificationsEnabled) {
+            return;
+        }
+        
+        Booking booking = bookingRepository.findByIdWithRelations(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Rezervacija nije pronađena"));
+        
+        // Determine event type based on party
+        CheckInEventType eventType = "HOST".equals(party) 
+            ? CheckInEventType.CHECK_IN_HOST_BEGUN 
+            : CheckInEventType.CHECK_IN_GUEST_BEGUN;
+        
+        // Check if already notified (idempotency)
+        if (eventService.hasEventOfType(bookingId, eventType)) {
+            log.debug("[CheckIn-Phase4I] Already notified {} begun for booking {}", party, bookingId);
+            return;
+        }
+        
+        // Record event
+        eventService.recordEvent(
+            booking,
+            booking.getCheckInSessionId(),
+            eventType,
+            userId,
+            "HOST".equals(party) ? CheckInActorRole.HOST : CheckInActorRole.GUEST,
+            Map.of(
+                "begunAt", Instant.now().toString(),
+                party.toLowerCase() + "UserId", userId
+            )
+        );
+        
+        // Send notification to other party
+        NotificationType notifType = "HOST".equals(party)
+            ? NotificationType.CHECK_IN_HOST_BEGUN
+            : NotificationType.CHECK_IN_GUEST_BEGUN;
+        
+        Long recipientId = "HOST".equals(party) 
+            ? booking.getRenter().getId() 
+            : booking.getCar().getOwner().getId();
+        
+        String message = "HOST".equals(party)
+            ? "Domaćin je počeo da dokumentuje stanje vozila. Pripremi se za preuzimanje."
+            : "Gost je započeo proces prijema vozila.";
+        
+        notificationService.createNotification(CreateNotificationRequestDTO.builder()
+            .recipientId(recipientId)
+            .type(notifType)
+            .message(message)
+            .relatedEntityId(String.valueOf(booking.getId()))
+            .build());
+        
+        log.info("[CheckIn-Phase4I] {} begun notification sent for booking {} to user {}",
+                party, bookingId, recipientId);
     }
 
     /**

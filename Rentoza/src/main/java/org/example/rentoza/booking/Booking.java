@@ -545,6 +545,101 @@ public class Booking {
     @Column(name = "late_fee_amount", precision = 19, scale = 2)
     private BigDecimal lateFeeAmount;
 
+    // ========== PHASE 4B: IN-PERSON LICENSE VERIFICATION (Insurance Compliance) ==========
+
+    /**
+     * Timestamp when the host confirmed they visually verified the guest's driver's license.
+     * 
+     * <p><b>Purpose:</b> For in-person handshakes (no lockbox), hosts must confirm they
+     * have verified the guest's physical license matches their ID verification before
+     * the handshake can complete. This is critical for insurance compliance.
+     * 
+     * <p><b>Set By:</b> CheckInService.confirmLicenseVerifiedInPerson()
+     * <p><b>Required:</b> Only for in-person handshakes (lockboxCodeEncrypted == null)
+     * 
+     * @see #licenseVerifiedByUserId
+     */
+    @Column(name = "license_verified_in_person_at")
+    private Instant licenseVerifiedInPersonAt;
+
+    /**
+     * User ID of the host who confirmed in-person license verification.
+     * 
+     * <p><b>Audit Trail:</b> Captures which user (host account) performed the verification.
+     * Used for dispute resolution and compliance audits.
+     */
+    @Column(name = "license_verified_by_user_id")
+    private Long licenseVerifiedByUserId;
+
+    // ========== PHASE 4D: TIERED LATE FEE TRACKING ==========
+
+    /**
+     * The fee tier applied to the late return.
+     * 
+     * <p><b>Tiers:</b>
+     * <ul>
+     *   <li>1: First 2 hours late (base rate)</li>
+     *   <li>2: 2-6 hours late (1.5x rate)</li>
+     *   <li>3: 6+ hours late (2x rate)</li>
+     * </ul>
+     * 
+     * <p>Null if no late fee applied.
+     */
+    @Column(name = "late_fee_tier")
+    private Integer lateFeeTier;
+
+    /**
+     * Flag indicating the vehicle has not been returned within the threshold.
+     * 
+     * <p><b>Threshold:</b> Set when vehicle is 24+ hours overdue.
+     * <p><b>Escalation:</b> Triggers manual review and potential insurance notification.
+     */
+    @Column(name = "vehicle_not_returned_flag")
+    private Boolean vehicleNotReturnedFlag = false;
+
+    /**
+     * When the vehicle was flagged as not returned.
+     */
+    @Column(name = "vehicle_not_returned_flagged_at")
+    private Instant vehicleNotReturnedFlaggedAt;
+
+    // ========== PHASE 4F: IMPROPER RETURN STATE ==========
+
+    /**
+     * Flag indicating the vehicle was returned in an improper state.
+     * 
+     * <p><b>Conditions that trigger this flag:</b>
+     * <ul>
+     *   <li>Fuel level significantly lower than start (>25% difference)</li>
+     *   <li>Excessive mileage (>2x estimated)</li>
+     *   <li>Cleanliness issues requiring professional cleaning</li>
+     *   <li>Smoking evidence detected</li>
+     * </ul>
+     */
+    @Column(name = "improper_return_flag")
+    private Boolean improperReturnFlag = false;
+
+    /**
+     * Code indicating the type of improper return.
+     * 
+     * <p><b>Codes:</b>
+     * <ul>
+     *   <li>LOW_FUEL: Fuel not refilled per agreement</li>
+     *   <li>EXCESSIVE_MILEAGE: Miles exceeded estimate by >2x</li>
+     *   <li>CLEANING_REQUIRED: Professional cleaning needed</li>
+     *   <li>SMOKING_DETECTED: Evidence of smoking in vehicle</li>
+     *   <li>WRONG_LOCATION: Returned to different location</li>
+     * </ul>
+     */
+    @Column(name = "improper_return_code", length = 30)
+    private String improperReturnCode;
+
+    /**
+     * Notes describing the improper return condition.
+     */
+    @Column(name = "improper_return_notes", columnDefinition = "TEXT")
+    private String improperReturnNotes;
+
     // ========== SECURITY DEPOSIT ==========
 
     /**

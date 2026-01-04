@@ -7,11 +7,15 @@ import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingRepository;
 import org.example.rentoza.booking.BookingStatus;
+import org.example.rentoza.booking.checkin.CheckInActorRole;
+import org.example.rentoza.booking.checkin.CheckInEventService;
+import org.example.rentoza.booking.checkin.CheckInEventType;
 import org.example.rentoza.booking.checkout.saga.CheckoutSagaState.SagaStatus;
 import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.notification.NotificationService;
 import org.example.rentoza.notification.NotificationType;
 import org.example.rentoza.notification.dto.CreateNotificationRequestDTO;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,6 +23,7 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -31,11 +36,18 @@ import java.util.UUID;
  * <h2>Steps</h2>
  * <ol>
  *   <li>VALIDATE_RETURN - Verify checkout photos and readings</li>
- *   <li>CALCULATE_CHARGES - Calculate extra fees</li>
+ *   <li>CALCULATE_CHARGES - Calculate extra fees (with Phase 4D tiered late fees)</li>
  *   <li>CAPTURE_DEPOSIT - Charge from held deposit</li>
  *   <li>RELEASE_DEPOSIT - Return unused deposit</li>
  *   <li>COMPLETE_BOOKING - Mark booking as completed</li>
  * </ol>
+ * 
+ * <h2>Phase 4D: Tiered Late Fee Structure</h2>
+ * <ul>
+ *   <li><b>Tier 1 (0-2 hours):</b> 500 RSD/hour - grace period expired, basic fee</li>
+ *   <li><b>Tier 2 (2-6 hours):</b> 750 RSD/hour - significant delay</li>
+ *   <li><b>Tier 3 (6+ hours):</b> 1000 RSD/hour - major delay, approaching no-return</li>
+ * </ul>
  * 
  * <h2>Error Handling</h2>
  * <p>If any step fails:
@@ -55,30 +67,56 @@ public class CheckoutSagaOrchestrator {
     private final CheckoutSagaStateRepository sagaRepository;
     private final BookingRepository bookingRepository;
     private final NotificationService notificationService;
+    private final CheckInEventService eventService;
 
     // Metrics
     private final Counter sagaStartedCounter;
     private final Counter sagaCompletedCounter;
     private final Counter sagaFailedCounter;
     private final Counter sagaCompensatedCounter;
+    private final Counter lateFeesTier1Counter;
+    private final Counter lateFeesTier2Counter;
+    private final Counter lateFeesTier3Counter;
+    private final Counter vehicleNotReturnedCounter;
     private final Timer sagaDurationTimer;
 
-    // Configuration standardized with CheckOutService (single source of truth)
-    // All rates aligned with production configuration to ensure consistency
+    // ========== PHASE 4D: TIERED LATE FEE CONFIGURATION ==========
+    // All rates are configurable via application properties for production flexibility
+    
+    @Value("${app.checkout.late.tier1-max-hours:2}")
+    private int tier1MaxHours;
+    
+    @Value("${app.checkout.late.tier1-rate-rsd:500}")
+    private int tier1RateRsd;
+    
+    @Value("${app.checkout.late.tier2-max-hours:6}")
+    private int tier2MaxHours;
+    
+    @Value("${app.checkout.late.tier2-rate-rsd:750}")
+    private int tier2RateRsd;
+    
+    @Value("${app.checkout.late.tier3-rate-rsd:1000}")
+    private int tier3RateRsd;
+    
+    @Value("${app.checkout.vehicle-not-returned-threshold-hours:24}")
+    private int vehicleNotReturnedThresholdHours;
+    
+    // Legacy configuration for backward compatibility
     private static final BigDecimal MILEAGE_RATE_PER_KM = new BigDecimal("0.25");  // EUR per km
     private static final BigDecimal FUEL_RATE_PER_PERCENT = new BigDecimal("0.50"); // EUR per %
-    private static final BigDecimal LATE_FEE_PER_HOUR_RSD = new BigDecimal("500.00");  // RSD per hour (matched with service)
-    private static final int LATE_GRACE_MINUTES = 15;  // Grace period (matched with service @Value)
-    private static final int MAX_LATE_HOURS = 24;  // Maximum billable hours (matched with service)
+    private static final int LATE_GRACE_MINUTES = 15;  // Grace period before fees apply
+    private static final int MAX_LATE_HOURS = 24;  // Maximum billable hours
 
     public CheckoutSagaOrchestrator(
             CheckoutSagaStateRepository sagaRepository,
             BookingRepository bookingRepository,
             NotificationService notificationService,
+            CheckInEventService eventService,
             MeterRegistry meterRegistry) {
         this.sagaRepository = sagaRepository;
         this.bookingRepository = bookingRepository;
         this.notificationService = notificationService;
+        this.eventService = eventService;
 
         this.sagaStartedCounter = Counter.builder("checkout.saga.started")
                 .description("Checkout sagas started")
@@ -94,6 +132,23 @@ public class CheckoutSagaOrchestrator {
 
         this.sagaCompensatedCounter = Counter.builder("checkout.saga.compensated")
                 .description("Checkout sagas compensated")
+                .register(meterRegistry);
+                
+        // Phase 4D: Tiered late fee metrics
+        this.lateFeesTier1Counter = Counter.builder("checkout.late_fees.tier1")
+                .description("Late fees at Tier 1 (0-2 hours)")
+                .register(meterRegistry);
+                
+        this.lateFeesTier2Counter = Counter.builder("checkout.late_fees.tier2")
+                .description("Late fees at Tier 2 (2-6 hours)")
+                .register(meterRegistry);
+                
+        this.lateFeesTier3Counter = Counter.builder("checkout.late_fees.tier3")
+                .description("Late fees at Tier 3 (6+ hours)")
+                .register(meterRegistry);
+                
+        this.vehicleNotReturnedCounter = Counter.builder("checkout.vehicle_not_returned")
+                .description("Vehicles flagged as not returned (24+ hours)")
                 .register(meterRegistry);
 
         this.sagaDurationTimer = Timer.builder("checkout.saga.duration")
@@ -264,8 +319,16 @@ public class CheckoutSagaOrchestrator {
             saga.setFuelCharge(FUEL_RATE_PER_PERCENT.multiply(BigDecimal.valueOf(fuelDiff)));
         }
 
-        // Calculate late fee - EXACT SAME LOGIC as CheckOutService.checkAndRecordLateReturn()
-        // This ensures consistent charges regardless of which system calculates
+        // ================================================================
+        // PHASE 4D: TIERED LATE FEE CALCULATION
+        // ================================================================
+        // Three-tier system to incentivize timely returns while being fair:
+        //   Tier 1 (0-2h):  Base rate - minor delays, grace expired
+        //   Tier 2 (2-6h):  1.5x rate - significant delay, inconveniences host
+        //   Tier 3 (6h+):   2x rate - major delay, approaching no-return territory
+        //
+        // Vehicle Not Returned Flag: Set at 24+ hours for insurance/escalation
+        
         if (booking.getScheduledReturnTime() != null && booking.getTripEndedAt() != null) {
             Instant scheduledReturn = booking.getScheduledReturnTime();
             Instant actualReturn = booking.getTripEndedAt();
@@ -273,18 +336,38 @@ public class CheckoutSagaOrchestrator {
             
             if (actualReturn.isAfter(graceEnd)) {
                 long lateMinutes = ChronoUnit.MINUTES.between(scheduledReturn, actualReturn);
-                
-                // CRITICAL: Use identical calculation to service
-                // Round up to next hour using (lateMinutes + 59) / 60
-                // Cap at MAX_LATE_HOURS to prevent unbounded charges
                 long lateHours = Math.min((lateMinutes + 59) / 60, MAX_LATE_HOURS);
-                BigDecimal lateFee = LATE_FEE_PER_HOUR_RSD.multiply(BigDecimal.valueOf(lateHours));
+                
+                // Calculate tiered late fee
+                TieredLateFeeResult feeResult = calculateTieredLateFee(lateHours);
                 
                 saga.setLateHours((int) lateHours);
-                saga.setLateFee(lateFee);
+                saga.setLateFee(feeResult.totalFee);
                 
-                log.info("[Saga] Late fee calculated for booking {}: {} minutes late = {} hours × {} RSD = {} RSD",
-                    saga.getBookingId(), lateMinutes, lateHours, LATE_FEE_PER_HOUR_RSD, lateFee);
+                // Update booking with tier information for audit trail
+                booking.setLateFeeTier(feeResult.tier);
+                booking.setLateFeeAmount(feeResult.totalFee);
+                
+                // Record audit event for the tier applied
+                recordLateFeeAuditEvent(booking, feeResult.tier, feeResult.totalFee, lateHours);
+                
+                // Update metrics based on tier
+                switch (feeResult.tier) {
+                    case 1 -> lateFeesTier1Counter.increment();
+                    case 2 -> lateFeesTier2Counter.increment();
+                    case 3 -> lateFeesTier3Counter.increment();
+                }
+                
+                log.info("[Saga-Phase4D] Tiered late fee for booking {}: {} hours late = Tier {} = {} RSD",
+                    saga.getBookingId(), lateHours, feeResult.tier, feeResult.totalFee);
+                
+                // ================================================================
+                // PHASE 4D: VEHICLE NOT RETURNED FLAG
+                // ================================================================
+                // If 24+ hours overdue, flag for manual review and potential insurance notification
+                if (lateHours >= vehicleNotReturnedThresholdHours) {
+                    flagVehicleNotReturned(booking);
+                }
             }
         }
 
@@ -298,7 +381,130 @@ public class CheckoutSagaOrchestrator {
 
         log.info("[Saga] Calculated charges for booking {}: total={}",
                 saga.getBookingId(), total);
+        
+        // Save booking with updated late fee tier
+        bookingRepository.save(booking);
     }
+    
+    /**
+     * Phase 4D: Calculate late fee using tiered structure.
+     * 
+     * <p>Tiers are calculated progressively - hours in each tier are charged
+     * at that tier's rate:
+     * <ul>
+     *   <li>Hours 1-2: Tier 1 rate (500 RSD/hour default)</li>
+     *   <li>Hours 3-6: Tier 2 rate (750 RSD/hour default)</li>
+     *   <li>Hours 7+:  Tier 3 rate (1000 RSD/hour default)</li>
+     * </ul>
+     * 
+     * @param lateHours Total hours late (rounded up from minutes)
+     * @return Fee result with total amount and highest tier reached
+     */
+    private TieredLateFeeResult calculateTieredLateFee(long lateHours) {
+        BigDecimal totalFee = BigDecimal.ZERO;
+        int highestTier = 1;
+        
+        // Tier 1: First tier1MaxHours hours
+        long tier1Hours = Math.min(lateHours, tier1MaxHours);
+        totalFee = totalFee.add(BigDecimal.valueOf(tier1Hours * tier1RateRsd));
+        
+        // Tier 2: Hours from tier1MaxHours to tier2MaxHours
+        if (lateHours > tier1MaxHours) {
+            long tier2Hours = Math.min(lateHours - tier1MaxHours, tier2MaxHours - tier1MaxHours);
+            totalFee = totalFee.add(BigDecimal.valueOf(tier2Hours * tier2RateRsd));
+            highestTier = 2;
+        }
+        
+        // Tier 3: Hours beyond tier2MaxHours
+        if (lateHours > tier2MaxHours) {
+            long tier3Hours = lateHours - tier2MaxHours;
+            totalFee = totalFee.add(BigDecimal.valueOf(tier3Hours * tier3RateRsd));
+            highestTier = 3;
+        }
+        
+        log.debug("[Phase4D] Late fee breakdown: {} hours = {} RSD (highest tier: {})",
+                lateHours, totalFee, highestTier);
+        
+        return new TieredLateFeeResult(totalFee, highestTier);
+    }
+    
+    /**
+     * Phase 4D: Flag vehicle as not returned (24+ hours overdue).
+     * 
+     * <p>This triggers:
+     * <ul>
+     *   <li>Manual review notification to ops team</li>
+     *   <li>Potential insurance notification</li>
+     *   <li>Audit event for compliance</li>
+     * </ul>
+     */
+    private void flagVehicleNotReturned(Booking booking) {
+        if (Boolean.TRUE.equals(booking.getVehicleNotReturnedFlag())) {
+            log.debug("[Phase4D] Vehicle already flagged as not returned for booking {}",
+                    booking.getId());
+            return;
+        }
+        
+        booking.setVehicleNotReturnedFlag(true);
+        booking.setVehicleNotReturnedFlaggedAt(Instant.now());
+        
+        vehicleNotReturnedCounter.increment();
+        
+        // Record audit event
+        eventService.recordEvent(
+            booking,
+            booking.getCheckoutSessionId(),
+            CheckInEventType.VEHICLE_NOT_RETURNED_FLAG,
+            null, // System triggered
+            CheckInActorRole.SYSTEM,
+            Map.of(
+                "thresholdHours", vehicleNotReturnedThresholdHours,
+                "scheduledReturn", booking.getScheduledReturnTime().toString(),
+                "flaggedAt", Instant.now().toString()
+            )
+        );
+        
+        // TODO: Send notification to ops team for manual review
+        // TODO: Consider insurance notification based on policy
+        
+        log.warn("[Phase4D] VEHICLE NOT RETURNED: Booking {} flagged as 24+ hours overdue. " +
+                "Manual review required. Scheduled return: {}",
+                booking.getId(), booking.getScheduledReturnTime());
+    }
+    
+    /**
+     * Record audit event for late fee tier application.
+     */
+    private void recordLateFeeAuditEvent(Booking booking, int tier, BigDecimal amount, long hours) {
+        CheckInEventType eventType = switch (tier) {
+            case 1 -> CheckInEventType.LATE_FEE_TIER_1_APPLIED;
+            case 2 -> CheckInEventType.LATE_FEE_TIER_2_APPLIED;
+            case 3 -> CheckInEventType.LATE_FEE_TIER_3_APPLIED;
+            default -> CheckInEventType.LATE_FEE_TIER_1_APPLIED;
+        };
+        
+        eventService.recordEvent(
+            booking,
+            booking.getCheckoutSessionId(),
+            eventType,
+            null,
+            CheckInActorRole.SYSTEM,
+            Map.of(
+                "tier", tier,
+                "amount", amount.toString(),
+                "hours", hours,
+                "scheduledReturn", booking.getScheduledReturnTime() != null 
+                    ? booking.getScheduledReturnTime().toString() : "N/A",
+                "actualReturn", booking.getTripEndedAt() != null 
+                    ? booking.getTripEndedAt().toString() : "N/A"
+            )
+        );
+    }
+    
+    /**
+     * Result holder for tiered late fee calculation.
+     */
+    private record TieredLateFeeResult(BigDecimal totalFee, int tier) {}
 
     private void executeCaptureDeposit(CheckoutSagaState saga) {
         if (saga.getTotalCharges() == null || saga.getTotalCharges().compareTo(BigDecimal.ZERO) <= 0) {

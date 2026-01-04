@@ -49,6 +49,30 @@ export interface CheckOutStatusDTO {
   lateReturnMinutes: number | null;
   lateFeeAmount: number | null;
 
+  // =========================================================================
+  // Phase 4D: Tiered Late Fees
+  // =========================================================================
+  /** The fee tier applied to the late return (1, 2, or 3) */
+  lateFeeTier?: number;
+  /** Tier 1 max hours (default 2) */
+  tier1MaxHours?: number;
+  /** Tier 2 max hours (default 6) */
+  tier2MaxHours?: number;
+  /** Whether vehicle was flagged as not returned (24+ hours overdue) */
+  vehicleNotReturnedFlag?: boolean;
+  /** When vehicle was flagged as not returned */
+  vehicleNotReturnedFlaggedAt?: string;
+
+  // =========================================================================
+  // Phase 4F: Improper Return Detection
+  // =========================================================================
+  /** Whether vehicle was returned in improper condition */
+  improperReturnFlag?: boolean;
+  /** Improper return code: LOW_FUEL, EXCESSIVE_MILEAGE, CLEANING_REQUIRED, etc. */
+  improperReturnCode?: 'LOW_FUEL' | 'EXCESSIVE_MILEAGE' | 'CLEANING_REQUIRED' | 'SMOKING_DETECTED' | 'WRONG_LOCATION';
+  /** Notes describing improper return condition */
+  improperReturnNotes?: string;
+
   // Odometer & Fuel
   startOdometer: number | null;
   endOdometer: number | null;

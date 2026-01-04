@@ -437,5 +437,204 @@ public enum CheckInEventType {
      * 
      * @since Enterprise Upgrade Phase 1
      */
-    ODOMETER_OCR_DISCREPANCY
+    ODOMETER_OCR_DISCREPANCY,
+    
+    // ========== PHASE 4: SAFETY IMPROVEMENTS ==========
+    
+    // ========== 4A: CHECK-IN TIMING & INSURANCE ALIGNMENT ==========
+    
+    /**
+     * Check-in process has begun (first interaction/photo upload).
+     * Sent as notification to the other party for awareness.
+     * 
+     * <p>Metadata: {@code {"party": "HOST|GUEST", "begunAt": "...", "tripStartTime": "..."}}
+     * 
+     * @since Phase 4 - Safety Improvements
+     */
+    CHECK_IN_BEGUN,
+    
+    /**
+     * Check-in timing validated successfully.
+     * User attempted check-in within the allowed window (max 1 hour before trip start).
+     * 
+     * <p>Metadata: {@code {"tripStartTime": "...", "attemptTime": "...", 
+     *                       "minutesUntilTrip": 45, "maxEarlyMinutes": 60}}
+     * 
+     * @since Phase 4A - Insurance Alignment
+     */
+    CHECK_IN_TIMING_VALIDATED,
+    
+    /**
+     * Check-in blocked due to early timing (outside insurance coverage window).
+     * User tried to complete check-in more than 1 hour before trip start.
+     * 
+     * <p>Metadata: {@code {"tripStartTime": "...", "attemptTime": "...", 
+     *                       "minutesUntilTrip": 120, "maxEarlyMinutes": 60,
+     *                       "earliestAllowedTime": "..."}}
+     * 
+     * @since Phase 4A - Insurance Alignment
+     */
+    EARLY_CHECK_IN_BLOCKED,
+    
+    // ========== 4B: IDENTITY & LICENSE VERIFICATION ==========
+    
+    /**
+     * Host confirmed they verified guest's driver's license in-person.
+     * Required step before check-in completion when license verification is mandatory.
+     * 
+     * <p>Metadata: {@code {"guestUserId": 123, "guestName": "...", 
+     *                       "verifiedAt": "...", "hostUserId": 456}}
+     * 
+     * @since Phase 4B - License Verification
+     */
+    LICENSE_VERIFIED_IN_PERSON,
+    
+    /**
+     * License verification was skipped (admin override or feature disabled).
+     * Logged for audit trail when verification requirement is bypassed.
+     * 
+     * <p>Metadata: {@code {"reason": "FEATURE_DISABLED|ADMIN_OVERRIDE", 
+     *                       "skippedBy": "SYSTEM|admin@example.com"}}
+     * 
+     * @since Phase 4B - License Verification
+     */
+    LICENSE_VERIFICATION_SKIPPED,
+    
+    // ========== 4C: HARDENED NO-SHOW LOGIC ==========
+    
+    /**
+     * No-show processing blocked due to missing messaging attempt.
+     * System requires at least one message attempt before triggering no-show.
+     * 
+     * <p>Metadata: {@code {"reason": "NO_MESSAGE_ATTEMPT", "party": "HOST|GUEST",
+     *                       "gracePeriodMinutes": 30, "tripStartTime": "..."}}
+     * 
+     * @since Phase 4C - No-Show Hardening
+     */
+    NO_SHOW_BLOCKED_NO_MESSAGE,
+    
+    /**
+     * Messaging attempt logged before no-show detection.
+     * Records that user attempted to contact the other party.
+     * 
+     * <p>Metadata: {@code {"messageId": "...", "sentAt": "...", 
+     *                       "sender": "HOST|GUEST", "channel": "IN_APP|SMS"}}
+     * 
+     * @since Phase 4C - No-Show Hardening
+     */
+    MESSAGE_ATTEMPT_LOGGED,
+    
+    // ========== 4D: LATE RETURNS & TIERED PENALTIES ==========
+    
+    /**
+     * Late fee tier 1 applied (0-2 hours late).
+     * 
+     * <p>Metadata: {@code {"tier": 1, "lateMinutes": 45, "feeRsd": 375, 
+     *                       "ratePerHour": 500}}
+     * 
+     * @since Phase 4D - Tiered Penalties
+     */
+    LATE_FEE_TIER_1_APPLIED,
+    
+    /**
+     * Late fee tier 2 applied (2-6 hours late).
+     * 
+     * <p>Metadata: {@code {"tier": 2, "lateMinutes": 240, "feeRsd": 2500, 
+     *                       "ratePerHour": 750}}
+     * 
+     * @since Phase 4D - Tiered Penalties
+     */
+    LATE_FEE_TIER_2_APPLIED,
+    
+    /**
+     * Late fee tier 3 applied (6-24 hours late).
+     * 
+     * <p>Metadata: {@code {"tier": 3, "lateMinutes": 600, "feeRsd": 8000, 
+     *                       "ratePerHour": 1000}}
+     * 
+     * @since Phase 4D - Tiered Penalties
+     */
+    LATE_FEE_TIER_3_APPLIED,
+    
+    /**
+     * Vehicle not returned flag set (24+ hours overdue).
+     * Automatic escalation to admin and potential legal action.
+     * 
+     * <p>Metadata: {@code {"hoursOverdue": 24, "scheduledReturnTime": "...",
+     *                       "escalatedToAdmin": true, "adminNotifiedAt": "..."}}
+     * 
+     * @since Phase 4D - Vehicle Not Returned
+     */
+    VEHICLE_NOT_RETURNED_FLAG,
+    
+    // ========== 4E: PHOTO TIMING WINDOWS ==========
+    
+    /**
+     * Photo uploaded after the deadline (reduced evidentiary weight).
+     * Photos uploaded more than 24 hours after window opening have secondary weight.
+     * 
+     * <p>Metadata: {@code {"photoId": 123, "photoType": "HOST_EXTERIOR_FRONT",
+     *                       "deadline": "...", "uploadedAt": "...", 
+     *                       "lateByMinutes": 180, "evidenceWeight": "SECONDARY"}}
+     * 
+     * @since Phase 4E - Photo Timing
+     */
+    PHOTO_UPLOAD_LATE,
+    
+    /**
+     * Photo evidence weight reduced due to late upload.
+     * Logged when a late photo's weight is downgraded from PRIMARY to SECONDARY.
+     * 
+     * <p>Metadata: {@code {"photoId": 123, "previousWeight": "PRIMARY", 
+     *                       "newWeight": "SECONDARY", "reason": "LATE_UPLOAD"}}
+     * 
+     * @since Phase 4E - Photo Timing
+     */
+    PHOTO_EVIDENCE_WEIGHT_REDUCED,
+    
+    // ========== 4F: IMPROPER RETURN STATE ==========
+    
+    /**
+     * Improper return flagged by host.
+     * Vehicle returned with issues (keys not returned, wrong location, etc.).
+     * 
+     * <p>Metadata: {@code {"reason": "KEYS_NOT_RETURNED|WRONG_LOCATION|OTHER",
+     *                       "keysReturned": false, "correctLocation": false,
+     *                       "damageNotes": "...", "photoIds": [789, 790]}}
+     * 
+     * @since Phase 4F - Improper Return
+     */
+    IMPROPER_RETURN_FLAGGED,
+    
+    // ========== 4I: BEGUN NOTIFICATIONS ==========
+    
+    /**
+     * Host has begun their check-in process (first photo or interaction).
+     * Notification sent to guest for awareness.
+     * 
+     * <p>Metadata: {@code {"begunAt": "...", "hostUserId": 456}}
+     * 
+     * @since Phase 4I - Begun Notifications
+     */
+    CHECK_IN_HOST_BEGUN,
+    
+    /**
+     * Guest has begun their check-in process.
+     * Notification sent to host for awareness.
+     * 
+     * <p>Metadata: {@code {"begunAt": "...", "guestUserId": 123}}
+     * 
+     * @since Phase 4I - Begun Notifications
+     */
+    CHECK_IN_GUEST_BEGUN,
+    
+    /**
+     * Guest has begun their checkout process.
+     * Notification sent to host for awareness.
+     * 
+     * <p>Metadata: {@code {"begunAt": "...", "guestUserId": 123}}
+     * 
+     * @since Phase 4I - Begun Notifications
+     */
+    CHECKOUT_GUEST_BEGUN
 }

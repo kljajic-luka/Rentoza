@@ -65,6 +65,14 @@ public class CheckInPhotoService {
 
     @Value("${app.checkin.photo.max-size-mb:10}")
     private int maxSizeMb;
+    
+    // ========== PHASE 4E: PHOTO DEADLINE CONFIGURATION ==========
+    
+    @Value("${app.checkin.photo-upload-deadline-hours:24}")
+    private int checkinPhotoDeadlineHours;
+    
+    @Value("${app.checkout.photo-upload-deadline-hours:24}")
+    private int checkoutPhotoDeadlineHours;
 
     /**
      * Upload a check-in photo with EXIF validation and zero-storage policy.
@@ -350,6 +358,38 @@ public class CheckInPhotoService {
                 .uploadedBy(user)
                 .clientUploadedAt(clientTimestamp)
                 .build();
+        
+        // ================================================================
+        // PHASE 4E: PHOTO DEADLINE - EVIDENCE WEIGHT DETERMINATION
+        // ================================================================
+        // Check if photo is being uploaded past the deadline.
+        // Late uploads get SECONDARY evidence weight for dispute resolution.
+        EvidenceWeightResult evidenceResult = determineEvidenceWeight(booking, photoType);
+        photo.setEvidenceWeight(evidenceResult.weight());
+        
+        if (evidenceResult.isLate()) {
+            photo.setEvidenceWeightDowngradedAt(Instant.now());
+            photo.setEvidenceWeightDowngradeReason(evidenceResult.reason());
+            
+            // Log audit event for late upload
+            eventService.recordEvent(
+                booking,
+                sessionId,
+                CheckInEventType.PHOTO_UPLOAD_LATE,
+                user.getId(),
+                photoType.isHostCheckoutPhoto() ? CheckInActorRole.HOST : 
+                    (photoType.isCheckoutPhoto() ? CheckInActorRole.GUEST : CheckInActorRole.HOST),
+                Map.of(
+                    "photoType", photoType.name(),
+                    "deadlineHours", photoType.isCheckoutPhoto() ? checkoutPhotoDeadlineHours : checkinPhotoDeadlineHours,
+                    "evidenceWeight", EvidenceWeight.SECONDARY.name(),
+                    "reason", evidenceResult.reason()
+                )
+            );
+            
+            log.warn("[Phase4E] LATE PHOTO UPLOAD: booking={}, type={}, weight=SECONDARY, reason={}",
+                    booking.getId(), photoType, evidenceResult.reason());
+        }
         
         photo = photoRepository.save(photo);
         
@@ -729,4 +769,82 @@ public class CheckInPhotoService {
         }
         return sb.toString().trim();
     }
+
+    // ========== PHASE 4E: PHOTO DEADLINE EVIDENCE WEIGHT ==========
+
+    /**
+     * Determine evidence weight based on upload timing relative to trip events.
+     * 
+     * <p><b>Phase 4E Safety Improvement:</b> Photos uploaded after the deadline
+     * are marked as SECONDARY evidence to reduce their weight in disputes.
+     * 
+     * <h3>Deadlines:</h3>
+     * <ul>
+     *   <li><b>Check-in photos:</b> Must be uploaded within N hours of trip start
+     *       (deadline = tripStartedAt + checkinPhotoDeadlineHours)</li>
+     *   <li><b>Checkout photos:</b> Must be uploaded within N hours of trip end
+     *       (deadline = tripEndedAt + checkoutPhotoDeadlineHours)</li>
+     * </ul>
+     * 
+     * <p>Photos uploaded during the check-in/checkout process (before trip start/end)
+     * are always PRIMARY evidence.
+     * 
+     * @param booking The booking being photographed
+     * @param photoType The type of photo being uploaded
+     * @return EvidenceWeightResult with weight and reason if late
+     */
+    private EvidenceWeightResult determineEvidenceWeight(Booking booking, CheckInPhotoType photoType) {
+        Instant now = Instant.now();
+        
+        if (photoType.isCheckoutPhoto()) {
+            // Checkout photo deadline: tripEndedAt + checkoutPhotoDeadlineHours
+            Instant tripEndedAt = booking.getTripEndedAt();
+            
+            if (tripEndedAt == null) {
+                // Trip hasn't ended yet - photo is on time (during checkout process)
+                return new EvidenceWeightResult(EvidenceWeight.PRIMARY, false, null);
+            }
+            
+            Instant deadline = tripEndedAt.plus(checkoutPhotoDeadlineHours, java.time.temporal.ChronoUnit.HOURS);
+            
+            if (now.isAfter(deadline)) {
+                long hoursLate = java.time.Duration.between(deadline, now).toHours();
+                String reason = String.format(
+                    "Fotografija otpremljena %d sati nakon roka (rok: %d sati od završetka putovanja)",
+                    hoursLate, checkoutPhotoDeadlineHours
+                );
+                return new EvidenceWeightResult(EvidenceWeight.SECONDARY, true, reason);
+            }
+        } else {
+            // Check-in photo deadline: tripStartedAt + checkinPhotoDeadlineHours
+            Instant tripStartedAt = booking.getTripStartedAt();
+            
+            if (tripStartedAt == null) {
+                // Trip hasn't started yet - photo is on time (during check-in process)
+                return new EvidenceWeightResult(EvidenceWeight.PRIMARY, false, null);
+            }
+            
+            Instant deadline = tripStartedAt.plus(checkinPhotoDeadlineHours, java.time.temporal.ChronoUnit.HOURS);
+            
+            if (now.isAfter(deadline)) {
+                long hoursLate = java.time.Duration.between(deadline, now).toHours();
+                String reason = String.format(
+                    "Fotografija otpremljena %d sati nakon roka (rok: %d sati od početka putovanja)",
+                    hoursLate, checkinPhotoDeadlineHours
+                );
+                return new EvidenceWeightResult(EvidenceWeight.SECONDARY, true, reason);
+            }
+        }
+        
+        return new EvidenceWeightResult(EvidenceWeight.PRIMARY, false, null);
+    }
+    
+    /**
+     * Result record for evidence weight determination.
+     * 
+     * @param weight The determined evidence weight
+     * @param isLate Whether the upload was past the deadline
+     * @param reason Reason for SECONDARY weight (null if PRIMARY)
+     */
+    private record EvidenceWeightResult(EvidenceWeight weight, boolean isLate, String reason) {}
 }

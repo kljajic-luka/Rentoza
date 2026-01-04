@@ -772,6 +772,91 @@ export class CheckInService implements OnDestroy {
     });
   }
 
+  // =========================================================================
+  // Phase 4B: License Verification API Methods
+  // =========================================================================
+
+  /**
+   * Confirm that host has physically verified the guest's driver's license.
+   *
+   * Called by host during in-person handshake to record license verification.
+   * Backend will record timestamp and create audit event.
+   *
+   * @param bookingId - Booking ID
+   * @returns Updated check-in status with licenseVerifiedInPerson = true
+   */
+  confirmLicenseVerifiedInPerson(bookingId: number): Observable<CheckInStatusDTO> {
+    this._isLoading.set(true);
+    this._error.set(null);
+
+    // Store previous state for rollback
+    const previousStatus = this._status();
+
+    // Optimistic update: immediately mark license as verified
+    if (previousStatus) {
+      const optimisticStatus: CheckInStatusDTO = {
+        ...previousStatus,
+        licenseVerifiedInPerson: true,
+        licenseVerifiedInPersonAt: new Date().toISOString(),
+      };
+      this._status.set(optimisticStatus);
+    }
+
+    const position = this.geolocationService.position();
+
+    return this.http
+      .post<CheckInStatusDTO>(
+        `${this.baseUrl}/${bookingId}/check-in/license-verification`,
+        {
+          latitude: position?.latitude,
+          longitude: position?.longitude,
+        },
+        { withCredentials: true }
+      )
+      .pipe(
+        tap((status) => {
+          // Server response overwrites optimistic state
+          this._status.set(status);
+        }),
+        catchError((error) => {
+          // Rollback on error
+          if (previousStatus) {
+            this._status.set(previousStatus);
+          }
+          this._error.set(this.extractErrorMessage(error));
+          return throwError(() => error);
+        }),
+        finalize(() => this._isLoading.set(false)),
+        takeUntil(this.destroy$)
+      );
+  }
+
+  /**
+   * Computed signal: Whether license verification is required and not yet completed.
+   * UI should show license verification prompt when this is true.
+   */
+  readonly licenseVerificationPending = computed(() => {
+    const status = this._status();
+    if (!status) return false;
+    return status.licenseVerificationRequired === true &&
+           status.licenseVerifiedInPerson !== true;
+  });
+
+  /**
+   * Computed signal: Minutes until check-in is allowed.
+   * Returns null if already allowed or no timing restriction active.
+   */
+  readonly checkInTimingBlocked = computed(() => {
+    const status = this._status();
+    if (!status) return null;
+    if (!status.timingBlocked) return null;
+    return {
+      blocked: true,
+      message: status.timingBlockedMessage || 'Check-in nije još dozvoljen',
+      minutesRemaining: status.minutesUntilCheckInAllowed ?? 0,
+    };
+  });
+
   /**
    * Retry all queued uploads for a booking.
    */

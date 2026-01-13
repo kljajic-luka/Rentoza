@@ -337,7 +337,7 @@ export class RegisterComponent implements OnInit {
               );
               // Redirect to login page with message
               this.router.navigate(['/auth/login'], {
-                queryParams: { emailConfirmation: 'required' }
+                queryParams: { emailConfirmation: 'required' },
               });
             } else {
               // Normal flow - user is logged in

@@ -134,8 +134,8 @@ export interface AuthResponse {
 
   /** Optional message (e.g., "Welcome back!") */
   message?: string;
-  
-  /** 
+
+  /**
    * Email confirmation required flag (Supabase Auth).
    * When true: user must confirm email before logging in.
    * Frontend should show "check your email" message and NOT persist session.

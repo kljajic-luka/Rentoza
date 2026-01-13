@@ -68,7 +68,6 @@ public class DeliveryPoi {
     /**
      * Type of POI for categorization and reporting
      */
-    @Enumerated(EnumType.STRING)
     @Column(name = "poi_type", nullable = false, length = 30)
     private PoiType poiType;
 

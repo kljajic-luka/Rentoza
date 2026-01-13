@@ -126,7 +126,7 @@ public class PhotoDiscrepancy {
      * Example: {"algorithm": "damage_detection_v2", "bounding_boxes": [...], "labels": [...]}
      */
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "ai_detection_details", columnDefinition = "JSON")
+    @Column(name = "ai_detection_details", columnDefinition = "TEXT")
     private Map<String, Object> aiDetectionDetails;
 
     // ========== RESOLUTION ==========

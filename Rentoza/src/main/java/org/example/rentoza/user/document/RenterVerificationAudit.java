@@ -67,21 +67,18 @@ public class RenterVerificationAudit {
     /**
      * Action taken.
      */
-    @Enumerated(EnumType.STRING)
     @Column(name = "action", nullable = false, length = 50)
     private AuditAction action;
     
     /**
      * Previous status before action.
      */
-    @Enumerated(EnumType.STRING)
     @Column(name = "previous_status", length = 50)
     private DriverLicenseStatus previousStatus;
     
     /**
      * New status after action.
      */
-    @Enumerated(EnumType.STRING)
     @Column(name = "new_status", nullable = false, length = 50)
     private DriverLicenseStatus newStatus;
     
@@ -96,7 +93,7 @@ public class RenterVerificationAudit {
     /**
      * Metadata (JSON) - OCR results, risk scores, etc.
      */
-    @Column(name = "metadata", columnDefinition = "JSON")
+    @Column(name = "metadata", columnDefinition = "TEXT")
     private String metadata;
     
     /**

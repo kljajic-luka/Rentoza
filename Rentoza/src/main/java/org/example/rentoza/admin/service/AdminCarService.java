@@ -98,7 +98,7 @@ public class AdminCarService {
      */
     @Transactional(readOnly = true)
     public List<AdminCarDto> getPendingCars() {
-        List<Car> pendingCars = carRepo.findByApprovalStatus(org.example.rentoza.car.ApprovalStatus.PENDING);
+        List<Car> pendingCars = carRepo.findByApprovalStatus(org.example.rentoza.car.ApprovalStatus.PENDING.name());
         return pendingCars.stream()
                 .map(AdminCarDto::fromEntity)
                 .toList();

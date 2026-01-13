@@ -47,6 +47,18 @@ export const routes: Routes = [
           ),
       },
       // ═══════════════════════════════════════════════════════════════════════════
+      // SUPABASE EMAIL CONFIRMATION CALLBACK
+      // ═══════════════════════════════════════════════════════════════════════════
+      // Handles Supabase email verification redirect with access_token in URL hash
+      // Flow: Supabase verifies email → redirects here → we exchange token → login
+      {
+        path: 'confirm',
+        loadComponent: () =>
+          import('@features/auth/pages/email-confirm/email-confirm.component').then(
+            (m) => m.EmailConfirmComponent
+          ),
+      },
+      // ═══════════════════════════════════════════════════════════════════════════
       // PHASE 2: OAuth Profile Completion Route
       // ═══════════════════════════════════════════════════════════════════════════
       // For Google OAuth users with registrationStatus=INCOMPLETE

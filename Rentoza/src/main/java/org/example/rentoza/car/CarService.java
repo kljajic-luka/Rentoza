@@ -403,18 +403,13 @@ public class CarService {
         // Normalize and validate criteria
         criteria.normalize();
 
-        // Build specification from criteria
-        Specification<Car> spec = CarSpecification.fromCriteriaWithAnyFeature(criteria);
-        
-        // CRITICAL: Only show APPROVED cars in public search
-        spec = spec.and((root, query, cb) -> 
-            cb.equal(root.get("approvalStatus"), ApprovalStatus.APPROVED));
-
         // Build pageable with sorting
         Pageable pageable = buildPageable(criteria);
-
-        // Execute query
-        Page<Car> carPage = repo.findAll(spec, pageable);
+        
+        // CRITICAL: Only show APPROVED cars in public search
+        // Use native query to work around PostgreSQL ENUM operator issue
+        // Native SQL: approval_status::text = 'APPROVED' handles the ENUM properly
+        Page<Car> carPage = repo.findApprovedAvailableCars(pageable);
 
         // Map to DTOs with privacy-aware location
         Long currentUserId = currentUser.idOrNull();

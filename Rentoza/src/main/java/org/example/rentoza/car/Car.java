@@ -166,7 +166,6 @@ public class Car {
      */
     @Deprecated(since = "2025-01", forRemoval = true)
     @NotNull
-    @Enumerated(EnumType.STRING)
     @Column(name = "approval_status", nullable = false, columnDefinition = "VARCHAR(20)")
     private ApprovalStatus approvalStatus = ApprovalStatus.PENDING;
 
@@ -174,7 +173,6 @@ public class Car {
      * Car listing lifecycle status (Serbian compliance).
      * DRAFT → PENDING_APPROVAL → APPROVED (or REJECTED/SUSPENDED)
      */
-    @Enumerated(EnumType.STRING)
     @Column(name = "listing_status", nullable = false, length = 50)
     private ListingStatus listingStatus = ListingStatus.PENDING_APPROVAL;
 
@@ -251,7 +249,6 @@ public class Car {
     private Integer seats = 5;
 
     @NotNull
-    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private FuelType fuelType = FuelType.BENZIN;
 
@@ -261,7 +258,6 @@ public class Car {
     private Double fuelConsumption; // liters per 100km
 
     @NotNull
-    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private TransmissionType transmissionType = TransmissionType.MANUAL;
 
@@ -282,7 +278,6 @@ public class Car {
     @ElementCollection(fetch = FetchType.LAZY)
     @CollectionTable(name = "car_features", joinColumns = @JoinColumn(name = "car_id"))
     @Column(name = "feature")
-    @Enumerated(EnumType.STRING)
     private Set<Feature> features = new HashSet<>();
 
     /**
@@ -319,7 +314,6 @@ public class Car {
      */
     @Deprecated(since = "2024-01", forRemoval = false)
     @Column(name = "cancellation_policy", length = 20)
-    @Enumerated(EnumType.STRING)
     private CancellationPolicy cancellationPolicy = CancellationPolicy.FLEXIBLE;
 
     @Column(name = "min_rental_days")

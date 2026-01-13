@@ -9,6 +9,10 @@ import org.example.rentoza.security.csrf.CustomCookieCsrfTokenRepository;
 import org.example.rentoza.security.csrf.LoggingCsrfTokenRequestHandler;
 import org.example.rentoza.security.ratelimit.RateLimitService;
 import org.example.rentoza.security.ratelimit.RateLimitingFilter;
+import org.example.rentoza.security.supabase.SupabaseJwtAuthFilter;
+import org.example.rentoza.security.supabase.SupabaseJwtUtil;
+import org.example.rentoza.security.supabase.SupabaseUserMappingRepository;
+import org.example.rentoza.user.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
@@ -100,7 +104,7 @@ public class SecurityConfig {
     }
 
     /**
-     * Register JwtAuthFilter as a Spring-managed bean.
+     * Register JwtAuthFilter as a Spring-managed bean (Legacy - kept for compatibility).
      * 
      * Purpose: Authenticate external client JWT Bearer tokens
      * Order: 3rd in chain (after internal service auth, before UsernamePasswordAuthenticationFilter)
@@ -108,17 +112,38 @@ public class SecurityConfig {
      * @param jwtUtil JWT parser and validator
      * @param userDetailsService Spring Security user details loader
      * @return Configured JwtAuthFilter instance
+     * @deprecated Use SupabaseJwtAuthFilter instead for Supabase Auth
      */
     @Bean
     public JwtAuthFilter jwtAuthFilter(JwtUtil jwtUtil, UserDetailsService userDetailsService) {
         return new JwtAuthFilter(jwtUtil, userDetailsService);
     }
 
+    /**
+     * Register SupabaseJwtAuthFilter as a Spring-managed bean.
+     * 
+     * Purpose: Validate Supabase Auth JWT tokens and map to Rentoza users
+     * Order: 4th in chain (after legacy JWT filter, before UsernamePasswordAuthenticationFilter)
+     * 
+     * @param supabaseJwtUtil Supabase JWT validator
+     * @param userRepository Rentoza user repository
+     * @param mappingRepository Supabase-Rentoza user mapping repository
+     * @return Configured SupabaseJwtAuthFilter instance
+     */
+    @Bean
+    public SupabaseJwtAuthFilter supabaseJwtAuthFilter(
+            SupabaseJwtUtil supabaseJwtUtil,
+            UserRepository userRepository,
+            SupabaseUserMappingRepository mappingRepository) {
+        return new SupabaseJwtAuthFilter(supabaseJwtUtil, userRepository, mappingRepository);
+    }
+
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http,
                                            RateLimitingFilter rateLimitingFilter,
                                            ServiceAuthenticationFilter serviceAuthenticationFilter,
-                                           JwtAuthFilter jwtAuthFilter) throws Exception {
+                                           JwtAuthFilter jwtAuthFilter,
+                                           SupabaseJwtAuthFilter supabaseJwtAuthFilter) throws Exception {
         http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 // CSRF PROTECTION: Enabled for all cookie-based auth endpoints
@@ -144,6 +169,16 @@ public class SecurityConfig {
                                 "/api/auth/logout",
                                 "/api/auth/google/**"
                         ).permitAll()
+                        // Supabase auth endpoints
+                        .requestMatchers(
+                                "/api/auth/supabase/register",
+                                "/api/auth/supabase/login",
+                                "/api/auth/supabase/refresh",
+                                "/api/auth/supabase/logout",
+                                "/api/auth/supabase/confirm-email"  // Email verification callback
+                        ).permitAll()
+                        // Debug endpoints (for development - consider disabling in production)
+                        .requestMatchers("/api/auth/debug/**").permitAll()
                         // OAuth2 endpoints - required for Google login flow
                         .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
                         // Public static resources (images, documents, uploads)
@@ -285,20 +320,27 @@ public class SecurityConfig {
                 // FILTER CHAIN ORDER (execution from top to bottom):
                 // 1. RateLimitingFilter (fail fast on rate limit exceeded)
                 // 2. ServiceAuthenticationFilter (internal service authentication)
-                // 3. JwtAuthFilter (JWT authentication for API requests)
-                // 4. UsernamePasswordAuthenticationFilter (Spring Security default)
+                // 3. JwtAuthFilter (legacy JWT authentication - kept for compatibility)
+                // 4. SupabaseJwtAuthFilter (Supabase Auth JWT validation)
+                // 5. UsernamePasswordAuthenticationFilter (Spring Security default)
                 //
                 // CRITICAL: Using bean instances (not class references) to avoid IllegalArgumentException
                 // "The Filter class X does not have a registered order"
                 //
                 // Correct ordering strategy:
-                // - All three custom filters anchored to UsernamePasswordAuthenticationFilter.class
+                // - All custom filters anchored to UsernamePasswordAuthenticationFilter.class
                 // - Spring preserves declaration order when filters share the same anchor
                 // - ONLY use built-in Spring Security filters as anchors (e.g., UsernamePasswordAuthenticationFilter)
                 // - NEVER use custom filter classes as anchors (e.g., JwtAuthFilter.class)
+                //
+                // SUPABASE AUTH MIGRATION:
+                // - SupabaseJwtAuthFilter runs after legacy JwtAuthFilter
+                // - If legacy filter authenticates, Supabase filter will skip
+                // - Once migration complete, remove legacy JwtAuthFilter
                 .addFilterBefore(rateLimitingFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(serviceAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(supabaseJwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterAfter(new CsrfCookieFilter(), org.springframework.security.web.csrf.CsrfFilter.class);
 
         SecurityFilterChain chain = http.build();

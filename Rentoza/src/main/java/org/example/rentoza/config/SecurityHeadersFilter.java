@@ -21,6 +21,12 @@ public class SecurityHeadersFilter extends OncePerRequestFilter {
     private String activeProfile;
 
     @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        // Skip CORS preflight requests - let CorsFilter handle them
+        return "OPTIONS".equalsIgnoreCase(request.getMethod());
+    }
+
+    @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
 

@@ -38,7 +38,6 @@ public class UserDeviceToken {
     @Column(name = "device_token", nullable = false, unique = true, length = 255)
     private String deviceToken;
 
-    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private DevicePlatform platform;
 

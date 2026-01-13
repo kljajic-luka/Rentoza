@@ -1,8 +1,10 @@
 package org.example.rentoza.car.storage;
 
 import jakarta.annotation.PostConstruct;
+import org.example.rentoza.storage.SupabaseStorageService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -18,6 +20,18 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
+/**
+ * Car Image Storage Service with dual-mode support.
+ * 
+ * <p>Supports both local filesystem (dev) and Supabase Storage (production).
+ * Storage mode is controlled by the {@code storage.mode} property.
+ * 
+ * <p>Usage:
+ * <ul>
+ *   <li>storage.mode=local - Store in local filesystem (dev/testing)</li>
+ *   <li>storage.mode=supabase - Store in Supabase Storage (production)</li>
+ * </ul>
+ */
 @Service
 public class CarImageStorageService {
 
@@ -34,20 +48,38 @@ public class CarImageStorageService {
 
     @Value("${upload.dir:uploads}")
     private String uploadDir;
+    
+    @Value("${storage.mode:local}")
+    private String storageMode;
 
     private Path carImagesRoot;
+    
+    @Autowired(required = false)
+    private SupabaseStorageService supabaseStorageService;
 
     @PostConstruct
     public void init() {
-        carImagesRoot = Paths.get(uploadDir, "car-images").toAbsolutePath().normalize();
-        try {
-            Files.createDirectories(carImagesRoot);
-            log.info("✅ Car images directory initialized: {}", carImagesRoot);
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to initialize car images storage", e);
+        // Only initialize local storage directory if in local mode
+        if ("local".equalsIgnoreCase(storageMode)) {
+            carImagesRoot = Paths.get(uploadDir, "car-images").toAbsolutePath().normalize();
+            try {
+                Files.createDirectories(carImagesRoot);
+                log.info("✅ Car images directory initialized (LOCAL mode): {}", carImagesRoot);
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to initialize car images storage", e);
+            }
+        } else {
+            log.info("✅ Car images storage initialized (SUPABASE mode)");
         }
     }
 
+    /**
+     * Store car images using configured storage mode.
+     * 
+     * @param carId Car ID for path organization
+     * @param images List of image files to store
+     * @return List of public URLs for stored images
+     */
     public List<String> storeCarImages(long carId, List<MultipartFile> images) {
         if (images == null || images.isEmpty()) {
             throw new IllegalArgumentException("Bar jedna fotografija auta je obavezna");
@@ -56,6 +88,45 @@ public class CarImageStorageService {
             throw new IllegalArgumentException("Maksimalno " + MAX_IMAGES + " slika je dozvoljeno");
         }
 
+        // Route to appropriate storage backend
+        if ("supabase".equalsIgnoreCase(storageMode) && supabaseStorageService != null) {
+            return storeToSupabase(carId, images);
+        } else {
+            return storeToLocalFilesystem(carId, images);
+        }
+    }
+    
+    /**
+     * Store images to Supabase Storage (production mode).
+     */
+    private List<String> storeToSupabase(long carId, List<MultipartFile> images) {
+        List<String> storedUrls = new ArrayList<>(images.size());
+        
+        try {
+            for (MultipartFile image : images) {
+                validateImage(image);
+                String publicUrl = supabaseStorageService.uploadCarImage(carId, image);
+                storedUrls.add(publicUrl);
+                log.debug("✅ Uploaded car image to Supabase: {}", publicUrl);
+            }
+            return storedUrls;
+        } catch (IOException e) {
+            // Best-effort cleanup of uploaded files on failure
+            for (String url : storedUrls) {
+                try {
+                    supabaseStorageService.deleteCarImage(url);
+                } catch (Exception ignored) {
+                    // ignore cleanup failures
+                }
+            }
+            throw new RuntimeException("Greška pri čuvanju fotografija auta u Supabase", e);
+        }
+    }
+    
+    /**
+     * Store images to local filesystem (development mode).
+     */
+    private List<String> storeToLocalFilesystem(long carId, List<MultipartFile> images) {
         List<String> storedUrls = new ArrayList<>(images.size());
         Path carDir = carImagesRoot.resolve(String.valueOf(carId)).normalize();
         try {

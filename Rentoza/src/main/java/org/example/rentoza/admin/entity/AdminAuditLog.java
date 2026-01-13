@@ -31,7 +31,7 @@ import java.time.LocalDateTime;
  */
 @Entity
 @Table(
-    name = "admin_audit_logs",
+    name = "admin_audit_log",
     indexes = {
         @Index(name = "idx_audit_admin_created", columnList = "admin_id, created_at"),
         @Index(name = "idx_audit_resource", columnList = "resource_type, resource_id"),
@@ -61,7 +61,6 @@ public class AdminAuditLog {
      * What action was performed.
      * Examples: USER_BANNED, USER_DELETED, CAR_APPROVED, etc.
      */
-    @Enumerated(EnumType.STRING)
     @Column(name = "action", nullable = false, length = 50)
     private AdminAction action;
     
@@ -69,7 +68,6 @@ public class AdminAuditLog {
      * Type of resource affected.
      * Examples: USER, CAR, BOOKING, DISPUTE
      */
-    @Enumerated(EnumType.STRING)
     @Column(name = "resource_type", nullable = false, length = 50)
     private ResourceType resourceType;
     

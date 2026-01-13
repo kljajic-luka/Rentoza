@@ -37,7 +37,6 @@ public class Notification {
     @JoinColumn(name = "recipient_id", nullable = false)
     private User recipient;
 
-    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 50)
     private NotificationType type;
 

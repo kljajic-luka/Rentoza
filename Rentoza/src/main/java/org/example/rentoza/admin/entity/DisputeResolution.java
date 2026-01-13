@@ -30,7 +30,6 @@ public class DisputeResolution {
     @JoinColumn(name = "admin_id", nullable = false)
     private User admin;
 
-    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private DisputeDecision decision;
 

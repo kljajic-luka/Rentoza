@@ -192,25 +192,17 @@ export class LocationPickerComponent implements OnInit, AfterViewInit, OnDestroy
   // Theme service injection
   private readonly themeService = inject(ThemeService);
 
+  // Reactive theme watcher - must be defined as field initializer for injection context
+  private readonly themeEffect = effect(() => {
+    const currentTheme = this.themeService.theme();
+    if (this.map?.loaded?.()) {
+      this.updateMapStyle(currentTheme);
+    }
+  });
+
   ngOnInit(): void {
     this.loadMapboxScript();
     this.currentRadius.set(this.markerRadius);
-
-    // Set up reactive theme change handler
-    this.setupThemeWatcher();
-  }
-
-  /**
-   * Setup reactive theme watcher to update map style when theme changes
-   * Uses Angular's effect() for dependency tracking
-   */
-  private setupThemeWatcher(): void {
-    effect(() => {
-      const currentTheme = this.themeService.theme();
-      if (this.map?.loaded?.()) {
-        this.updateMapStyle(currentTheme);
-      }
-    });
   }
 
   /**

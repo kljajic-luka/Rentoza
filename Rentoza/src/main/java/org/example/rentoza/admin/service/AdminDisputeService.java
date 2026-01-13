@@ -49,19 +49,19 @@ public class AdminDisputeService {
         Specification<DamageClaim> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 
-            // Status filter
-            if (filters.getStatus() != null) {
-                predicates.add(cb.equal(root.get("status"), filters.getStatus()));
-            } else {
-                // Default: PENDING or ESCALATED
-                // Note: DamageClaimStatus.DISPUTED is the user-facing status for "Disputed by guest"
-                // The plan mentioned DisputeStatus.PENDING/ESCALATED. 
-                // We map DamageClaimStatus here.
-                predicates.add(cb.or(
-                    cb.equal(root.get("status"), DamageClaimStatus.DISPUTED),
-                    cb.equal(root.get("status"), DamageClaimStatus.ESCALATED)
-                ));
-            }
+            // Status filter - cast column to String type AND compare with enum name
+             if (filters.getStatus() != null) {
+                 predicates.add(cb.equal(root.get("status").as(String.class), filters.getStatus().name()));
+             } else {
+                 // Default: PENDING or ESCALATED
+                 // Note: DamageClaimStatus.DISPUTED is the user-facing status for "Disputed by guest"
+                 // The plan mentioned DisputeStatus.PENDING/ESCALATED. 
+                 // We map DamageClaimStatus here.
+                 predicates.add(cb.or(
+                     cb.equal(root.get("status").as(String.class), DamageClaimStatus.DISPUTED.name()),
+                     cb.equal(root.get("status").as(String.class), DamageClaimStatus.ESCALATED.name())
+                 ));
+             }
 
             // Severity filter (Estimated Cost)
             if (filters.getSeverity() != null) {

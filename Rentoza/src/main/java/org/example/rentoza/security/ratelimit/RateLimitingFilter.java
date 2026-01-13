@@ -116,6 +116,11 @@ public class RateLimitingFilter extends OncePerRequestFilter {
      */
     @Override
     protected boolean shouldNotFilter(@NonNull HttpServletRequest request) {
+        // Skip CORS preflight requests - let them pass through
+        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+            return true;
+        }
+        
         String path = request.getRequestURI();
 
         // Bypass rate limiting for excluded paths

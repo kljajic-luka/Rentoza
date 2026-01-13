@@ -49,7 +49,6 @@ public class CarDocument {
     /**
      * Document type (REGISTRATION, TECHNICAL_INSPECTION, etc.).
      */
-    @Enumerated(EnumType.STRING)
     @Column(name = "document_type", nullable = false, length = 50)
     private DocumentType type;
     
@@ -100,7 +99,6 @@ public class CarDocument {
     /**
      * Verification status.
      */
-    @Enumerated(EnumType.STRING)
     @Column(name = "verification_status", nullable = false, length = 50)
     @Builder.Default
     private DocumentVerificationStatus status = DocumentVerificationStatus.PENDING;

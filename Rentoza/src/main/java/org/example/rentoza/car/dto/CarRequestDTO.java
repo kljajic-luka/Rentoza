@@ -28,9 +28,10 @@ public class CarRequestDTO {
     private String locationZipCode;
 
     // New production-ready fields
-    // License plate validation: Must start with 2 letters, max 11 total characters
-    // Supports flexible Serbian plate formats: BG-123-AB, BG123AB, BGABC1234, etc.
-    @Pattern(regexp = "^[A-Z]{2}[A-Z0-9]{0,9}$", message = "License plate must start with 2 uppercase letters and contain max 11 characters total")
+    // License plate validation: Serbian format with dashes
+    // Traditional format: XX-NNN-XX or XX-NNNN-XX (e.g., BG-123-AB, NS-1234-CD)
+    // Custom format: XX-XXXXXXXX (e.g., BG-12345678)
+    @Pattern(regexp = "^[A-Z]{2}-([A-Z0-9]{3,4}-[A-Z0-9]{2}|[A-Z0-9]{1,8})$", message = "License plate must be in Serbian format: XX-NNN-XX or XX-NNNNNNNN")
     private String licensePlate;
     private String description;
     private Integer seats;

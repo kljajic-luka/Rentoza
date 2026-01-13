@@ -216,6 +216,11 @@ public class AuthController {
             ));
         }
         
+        // SECURITY FIX: Revoke all existing tokens before issuing new ones
+        // This prevents old token chains from causing false theft detection
+        // when browser sends stale cookies from previous sessions
+        refreshTokenService.revokeAll(user.getEmail(), "NEW_LOGIN_SESSION");
+        
         String accessToken = jwtUtil.generateToken(user.getEmail(), user.getRole().name(), user.getId());
 
         // Issue refresh token with IP/UserAgent fingerprinting

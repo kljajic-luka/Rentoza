@@ -193,11 +193,11 @@ export class AuthService {
    * Uses the new POST /api/auth/register/user endpoint.
    *
    * @param payload Enhanced user registration data
-   * @returns Observable of the newly created user profile
+   * @returns Observable of the newly created user profile, or null if email confirmation required
    *
    * @see REGISTRATION_IMPLEMENTATION_PLAN.md lines 931-940
    */
-  registerUser(payload: UserRegisterRequest): Observable<UserProfile> {
+  registerUser(payload: UserRegisterRequest): Observable<UserProfile | null> {
     const context = new HttpContext().set(SKIP_AUTH, true);
     return this.http
       .post<AuthResponse>(`${this.apiUrl}/register/user`, payload, {
@@ -205,8 +205,19 @@ export class AuthService {
         withCredentials: true,
       })
       .pipe(
-        tap((response) => this.persistSession(response)),
-        map(() => this.currentUserSubject.value!)
+        tap((response) => {
+          // Only persist session if email confirmation is NOT required
+          if (!response.emailConfirmationRequired && response.authenticated) {
+            this.persistSession(response);
+          }
+        }),
+        map((response) => {
+          // Return null if email confirmation required - don't try to get user
+          if (response.emailConfirmationRequired) {
+            return null;
+          }
+          return this.currentUserSubject.value!;
+        })
       );
   }
 

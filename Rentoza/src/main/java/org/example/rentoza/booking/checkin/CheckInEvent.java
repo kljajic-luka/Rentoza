@@ -117,7 +117,7 @@ public class CheckInEvent {
      * </pre>
      */
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "metadata", columnDefinition = "JSON", updatable = false)
+    @Column(name = "metadata", columnDefinition = "TEXT", updatable = false)
     private Map<String, Object> metadata;
 
     /**

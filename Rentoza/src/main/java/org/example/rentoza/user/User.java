@@ -59,7 +59,6 @@ public class User {
     @Column(nullable = false)
     private String password;
 
-    @Enumerated(EnumType.STRING)
     @Column(name = "auth_provider", nullable = false, length = 20)
     private AuthProvider authProvider = AuthProvider.LOCAL;
 
@@ -115,7 +114,6 @@ public class User {
     @Column(length = 300, columnDefinition = "VARCHAR(300) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
     private String bio;
 
-    @Enumerated(EnumType.STRING)
     @Column(name = "user_role", length = 50)
     private Role role = Role.USER;
 
@@ -130,7 +128,6 @@ public class User {
      * INCOMPLETE for Google OAuth users who haven't completed profile.
      * ACTIVE after successful registration completion.
      */
-    @Enumerated(EnumType.STRING)
     @Column(name = "registration_status", nullable = false, length = 20)
     private RegistrationStatus registrationStatus = RegistrationStatus.ACTIVE;
 
@@ -170,7 +167,6 @@ public class User {
     /**
      * Owner type: INDIVIDUAL (requires JMBG) or LEGAL_ENTITY (requires PIB).
      */
-    @Enumerated(EnumType.STRING)
     @Column(name = "owner_type", nullable = false, length = 20)
     private OwnerType ownerType = OwnerType.INDIVIDUAL;
     
@@ -256,7 +252,6 @@ public class User {
      * State machine: NOT_STARTED → PENDING_REVIEW → APPROVED/REJECTED
      * Booking requires: APPROVED + non-expired license
      */
-    @Enumerated(EnumType.STRING)
     @Column(name = "driver_license_status", nullable = false, length = 20)
     private DriverLicenseStatus driverLicenseStatus = DriverLicenseStatus.NOT_STARTED;
     
@@ -316,7 +311,6 @@ public class User {
      * Risk level for this user (impacts verification requirements).
      * LOW = auto-approve at 95%, MEDIUM = 90% + liveness, HIGH = manual review.
      */
-    @Enumerated(EnumType.STRING)
     @Column(name = "risk_level", nullable = false, length = 20)
     private RiskLevel riskLevel = RiskLevel.MEDIUM;
     

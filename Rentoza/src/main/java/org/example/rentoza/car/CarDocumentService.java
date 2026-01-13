@@ -1,13 +1,15 @@
 package org.example.rentoza.car;
 
-import lombok.RequiredArgsConstructor;
 import org.example.rentoza.admin.dto.DocumentReviewDto;
 import org.example.rentoza.car.storage.DocumentStorageStrategy;
 import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.exception.ValidationException;
+import org.example.rentoza.storage.SupabaseStorageService;
 import org.example.rentoza.user.User;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -19,6 +21,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -32,7 +35,6 @@ import java.util.Set;
  * </ul>
  */
 @Service
-@RequiredArgsConstructor
 public class CarDocumentService {
     
     private static final Logger log = LoggerFactory.getLogger(CarDocumentService.class);
@@ -51,6 +53,22 @@ public class CarDocumentService {
     private final CarDocumentRepository documentRepository;
     private final CarRepository carRepository;
     private final DocumentStorageStrategy storageStrategy;
+    private final Optional<SupabaseStorageService> supabaseStorageService;
+    
+    @Value("${storage.mode:local}")
+    private String storageMode;
+    
+    @Autowired
+    public CarDocumentService(
+            CarDocumentRepository documentRepository,
+            CarRepository carRepository,
+            DocumentStorageStrategy storageStrategy,
+            @Autowired(required = false) SupabaseStorageService supabaseStorageService) {
+        this.documentRepository = documentRepository;
+        this.carRepository = carRepository;
+        this.storageStrategy = storageStrategy;
+        this.supabaseStorageService = Optional.ofNullable(supabaseStorageService);
+    }
     
     // ==================== DOCUMENT UPLOAD ====================
     
@@ -104,13 +122,20 @@ public class CarDocumentService {
                 documentRepository.delete(existing);
             });
         
-        // Generate storage path
-        String storagePath = String.format("cars/%d/documents/%s_%d.%s",
-            carId, type.name().toLowerCase(), System.currentTimeMillis(),
-            getFileExtension(file.getOriginalFilename()));
-        
-        // Upload to storage
-        String documentUrl = storageStrategy.uploadFile(file, storagePath);
+        // Upload to storage - use Supabase service if available and in supabase mode
+        String documentUrl;
+        if (isSupabaseMode() && supabaseStorageService.isPresent()) {
+            // Supabase path: cars/{carId}/documents/{docType}/{filename}
+            documentUrl = supabaseStorageService.get().uploadCarDocument(carId, type.name(), file);
+            log.debug("Uploaded to Supabase: {}", documentUrl);
+        } else {
+            // Local storage path: cars/{carId}/documents/{type}_{timestamp}.{ext}
+            String storagePath = String.format("cars/%d/documents/%s_%d.%s",
+                carId, type.name().toLowerCase(), System.currentTimeMillis(),
+                getFileExtension(file.getOriginalFilename()));
+            documentUrl = storageStrategy.uploadFile(file, storagePath);
+            log.debug("Uploaded to local storage: {}", documentUrl);
+        }
         
         // Calculate file hash for integrity
         String hash = calculateSha256(file.getBytes());
@@ -312,6 +337,15 @@ public class CarDocumentService {
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException("SHA-256 not available", e);
         }
+    }
+    
+    /**
+     * Check if storage mode is set to supabase.
+     */
+    private boolean isSupabaseMode() {
+        return "supabase".equalsIgnoreCase(storageMode) 
+                || "prod".equalsIgnoreCase(storageMode)
+                || "production".equalsIgnoreCase(storageMode);
     }
     
     private void updateCarExpiryDates(Car car, DocumentType type, LocalDate expiryDate) {

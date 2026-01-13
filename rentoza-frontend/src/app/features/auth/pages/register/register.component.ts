@@ -329,8 +329,21 @@ export class RegisterComponent implements OnInit {
         .registerUser(payload)
         .pipe(
           tap((user) => {
-            this.toast.success('Dobrodošli u Rentoza! Vaš nalog je uspešno kreiran.');
-            this.redirectService.redirectAfterLogin(user);
+            if (user === null) {
+              // Email confirmation required - show success message but don't redirect
+              this.toast.success(
+                'Nalog je uspešno kreiran! Molimo proverite Vaš email za potvrdu naloga pre prijavljivanja.',
+                'Potvrda emaila potrebna'
+              );
+              // Redirect to login page with message
+              this.router.navigate(['/auth/login'], {
+                queryParams: { emailConfirmation: 'required' }
+              });
+            } else {
+              // Normal flow - user is logged in
+              this.toast.success('Dobrodošli u Rentoza! Vaš nalog je uspešno kreiran.');
+              this.redirectService.redirectAfterLogin(user);
+            }
           }),
           finalize(() => this.isSubmitting.set(false))
         )

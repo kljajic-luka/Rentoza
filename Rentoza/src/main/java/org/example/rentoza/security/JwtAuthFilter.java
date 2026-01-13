@@ -34,12 +34,32 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
     private final UserDetailsService userDetailsService;
+    
+    // Endpoints that should ALWAYS skip JWT authentication (truly public)
     private static final List<String> PUBLIC_ENDPOINT_PREFIXES = List.of(
+            "/api/auth",    // Auth endpoints (login, register, refresh, logout)
             "/login/oauth2",
             "/oauth2",
             "/login",
-            "/uploads"
+            "/uploads",
+            "/actuator"     // Health checks
     );
+    
+    // Specific GET endpoints that are public (exact paths or patterns)
+    // These are public for browsing by guests
+    private static final List<String> PUBLIC_GET_PATHS = List.of(
+            "/api/cars",                    // List all cars
+            "/api/cars/search",             // Search cars
+            "/api/cars/availability-search",// Availability search
+            "/api/cars/features",           // Car features list
+            "/api/cars/makes",              // Car makes list
+            "/api/cars/location",           // Location-based search
+            "/api/reviews/car"              // Public reviews for a car
+    );
+    
+    // Patterns for dynamic public GET endpoints (e.g., /api/cars/{id} but NOT /api/cars/owner/{email})
+    private static final java.util.regex.Pattern PUBLIC_CAR_DETAIL_PATTERN = 
+            java.util.regex.Pattern.compile("^/api/cars/\\d+$");  // Only numeric IDs are public
 
     public JwtAuthFilter(JwtUtil jwtUtil, UserDetailsService userDetailsService) {
         this.jwtUtil = jwtUtil;
@@ -177,7 +197,13 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
+        // Skip CORS preflight requests - let them pass through
+        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+            return true;
+        }
+        
         String path = request.getRequestURI();
+        String method = request.getMethod();
 
         // ENDPOINT SCOPING: This filter should NOT run on OAuth2 authentication endpoints
         // OAuth2 flow uses different authentication mechanisms (authorization code, OIDC)
@@ -189,12 +215,38 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         // - /login (traditional form login - if enabled)
         //
         // All other authenticated endpoints (/api/**) SHOULD use JWT authentication
-        boolean shouldSkip = PUBLIC_ENDPOINT_PREFIXES.stream().anyMatch(path::startsWith);
-
-        if (shouldSkip) {
-            log.trace("Skipping JWT filter for public endpoint: {}", path);
+        
+        // Check fully public endpoints (all methods)
+        boolean isFullyPublic = PUBLIC_ENDPOINT_PREFIXES.stream().anyMatch(path::startsWith);
+        if (isFullyPublic) {
+            log.trace("Skipping JWT filter for fully public endpoint: {}", path);
+            return true;
         }
-
-        return shouldSkip;
+        
+        // Check specific public GET endpoints (exact match or startsWith for sub-paths)
+        if ("GET".equalsIgnoreCase(method)) {
+            // Check exact path matches
+            for (String publicPath : PUBLIC_GET_PATHS) {
+                if (path.equals(publicPath) || path.startsWith(publicPath + "/")) {
+                    // Special case: /api/cars/owner/* is NOT public (requires auth)
+                    if (path.startsWith("/api/cars/owner/")) {
+                        log.debug("Running JWT filter for owner-specific endpoint: {}", path);
+                        return false;
+                    }
+                    log.trace("Skipping JWT filter for public GET endpoint: {}", path);
+                    return true;
+                }
+            }
+            
+            // Check pattern: /api/cars/{numericId} is public (car detail page)
+            if (PUBLIC_CAR_DETAIL_PATTERN.matcher(path).matches()) {
+                log.trace("Skipping JWT filter for public car detail: {}", path);
+                return true;
+            }
+        }
+        
+        // All other endpoints require JWT authentication
+        log.debug("Running JWT filter for protected {} request to: {}", method, path);
+        return false;
     }
 }

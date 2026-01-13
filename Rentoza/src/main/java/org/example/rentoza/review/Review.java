@@ -63,7 +63,6 @@ public class Review {
     @Column(nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 
-    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private ReviewDirection direction = ReviewDirection.FROM_USER;
 

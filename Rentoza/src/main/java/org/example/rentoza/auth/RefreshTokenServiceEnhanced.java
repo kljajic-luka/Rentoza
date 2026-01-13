@@ -35,6 +35,15 @@ public class RefreshTokenServiceEnhanced {
     private static final Logger log = LoggerFactory.getLogger(RefreshTokenServiceEnhanced.class);
     private static final Logger securityLog = LoggerFactory.getLogger("SECURITY_AUDIT");
     private static final int TOKEN_BYTES = 64; // 512 bits
+    
+    /**
+     * Grace period (in seconds) for token reuse after rotation.
+     * This handles race conditions where concurrent requests may use the same token
+     * before the new cookie is synced to the browser.
+     * 
+     * Set to 60 seconds to handle slow networks and browser cookie sync delays.
+     */
+    private static final int TOKEN_ROTATION_GRACE_PERIOD_SECONDS = 60;
 
     private final RefreshTokenRepository repo;
     private final SecureRandom random = new SecureRandom();
@@ -52,8 +61,8 @@ public class RefreshTokenServiceEnhanced {
         this.fingerprintEnabled = fingerprintEnabled;
         this.maxActiveSessions = maxActiveSessions;
 
-        log.info("Refresh token service initialized: expiryDays={}, fingerprintEnabled={}, maxActiveSessions={}",
-                tokenExpiryDays, fingerprintEnabled, maxActiveSessions);
+        log.info("Refresh token service initialized: expiryDays={}, fingerprintEnabled={}, maxActiveSessions={}, gracePeriodSeconds={}",
+                tokenExpiryDays, fingerprintEnabled, maxActiveSessions, TOKEN_ROTATION_GRACE_PERIOD_SECONDS);
     }
 
     // =====================================================
@@ -252,15 +261,29 @@ public class RefreshTokenServiceEnhanced {
         String email = old.getUserEmail();
 
         // Check if token was already used (replay attack detection)
+        // GRACE PERIOD: Allow reuse within grace period for race conditions
         if (old.wasReused()) {
-            log.error("SECURITY ALERT: Token reuse detected for user: {} from IP: {}", email, ipAddress);
-            securityLog.error("SECURITY ALERT: Possible token theft detected - user: {}, IP: {}, previousUse: {}",
-                    email, ipAddress, old.getUsedAt());
+            Instant usedAt = old.getUsedAt();
+            Instant graceDeadline = Instant.now().minusSeconds(TOKEN_ROTATION_GRACE_PERIOD_SECONDS);
+            
+            if (usedAt != null && usedAt.isBefore(graceDeadline)) {
+                // Token was used more than GRACE_PERIOD ago - this IS suspicious
+                log.error("SECURITY ALERT: Token reuse detected for user: {} from IP: {} (used {}s ago)", 
+                        email, ipAddress, java.time.Duration.between(usedAt, Instant.now()).getSeconds());
+                securityLog.error("SECURITY ALERT: Possible token theft detected - user: {}, IP: {}, previousUse: {}",
+                        email, ipAddress, usedAt);
 
-            // PHASE 2: CASCADE REVOCATION
-            // Revoke ALL tokens for this user AND any child tokens in the lineage
-            revokeAllWithLineage(email, oldHash);
-            throw new InvalidRefreshTokenException("Token reuse detected - all sessions invalidated for security");
+                // PHASE 2: CASCADE REVOCATION
+                // Revoke ALL tokens for this user AND any child tokens in the lineage
+                revokeAllWithLineage(email, oldHash);
+                throw new InvalidRefreshTokenException("Token reuse detected - all sessions invalidated for security");
+            } else {
+                // Token was used very recently - race condition, not theft
+                // Just reject this request but don't revoke all tokens
+                log.info("Token reuse within grace period ({}s) for user: {} - treating as race condition",
+                        TOKEN_ROTATION_GRACE_PERIOD_SECONDS, email);
+                throw new InvalidRefreshTokenException("Token already rotated - please retry with new token");
+            }
         }
 
         // Check expiration
@@ -314,6 +337,11 @@ public class RefreshTokenServiceEnhanced {
      * this is a strong indicator of token theft. We find Token B (which has
      * Token A as its previousTokenHash) and revoke the entire user's session.
      *
+     * GRACE PERIOD (Race Condition Fix):
+     * To handle legitimate race conditions where concurrent requests use the same
+     * token before cookie sync completes, we only trigger theft detection if the
+     * child token was created more than GRACE_PERIOD seconds ago.
+     *
      * @param stolenTokenHash Hash of the potentially stolen token
      * @param ipAddress IP address of the attacker
      */
@@ -324,14 +352,31 @@ public class RefreshTokenServiceEnhanced {
             RefreshToken child = childToken.get();
             String email = child.getUserEmail();
             
-            log.error("SECURITY ALERT: THEFT CHAIN DETECTED! Token was already rotated.");
-            log.error("SECURITY ALERT: user={}, attackerIP={}, childTokenCreated={}", 
-                    email, ipAddress, child.getCreatedAt());
-            securityLog.error("THEFT_CHAIN_DETECTED: user={}, attackerIP={}, stolenTokenHash={}...", 
-                    email, ipAddress, stolenTokenHash.substring(0, 10));
+            // GRACE PERIOD CHECK: Only treat as theft if the rotation happened
+            // more than GRACE_PERIOD seconds ago
+            Instant graceDeadline = Instant.now().minusSeconds(TOKEN_ROTATION_GRACE_PERIOD_SECONDS);
             
-            // Revoke ALL tokens for this user - the attacker has the old token
-            revokeAll(email, "THEFT_CHAIN_DETECTED");
+            if (child.getCreatedAt().isBefore(graceDeadline)) {
+                // Token was rotated a while ago - this IS suspicious
+                log.error("SECURITY ALERT: THEFT CHAIN DETECTED! Token was already rotated ({}s ago).",
+                        java.time.Duration.between(child.getCreatedAt(), Instant.now()).getSeconds());
+                log.error("SECURITY ALERT: user={}, attackerIP={}, childTokenCreated={}", 
+                        email, ipAddress, child.getCreatedAt());
+                securityLog.error("THEFT_CHAIN_DETECTED: user={}, attackerIP={}, stolenTokenHash={}...", 
+                        email, ipAddress, stolenTokenHash.substring(0, 10));
+                
+                // Revoke ALL tokens for this user - the attacker has the old token
+                revokeAll(email, "THEFT_CHAIN_DETECTED");
+            } else {
+                // Token was rotated very recently - likely a race condition, not theft
+                log.info("Token reuse within grace period ({}s) - treating as race condition, not theft. user={}, IP={}",
+                        TOKEN_ROTATION_GRACE_PERIOD_SECONDS, email, ipAddress);
+                
+                // Return the CURRENT valid token info so the frontend can retry
+                // Actually, we should just let the request fail with 401 and 
+                // let the frontend use the new cookie it should have received
+                // Don't revoke anything - this is likely a legitimate race condition
+            }
         }
     }
     

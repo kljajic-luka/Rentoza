@@ -26,8 +26,11 @@ public interface CarRepository extends JpaRepository<Car, Long>, JpaSpecificatio
     @Query("SELECT c FROM Car c WHERE c.id = :id")
     Optional<Car> findByIdForUpdate(@Param("id") Long id);
 
-    @Query("SELECT c FROM Car c WHERE c.approvalStatus = :status")
-    List<Car> findByApprovalStatus(@Param("status") ApprovalStatus status);
+    @Query(value = "SELECT * FROM cars WHERE approval_status::text = :status", nativeQuery = true)
+    List<Car> findByApprovalStatus(@Param("status") String status);
+    
+    @Query("SELECT c FROM Car c WHERE c.available = true AND CAST(c.approvalStatus AS String) = 'APPROVED'")
+    Page<Car> findApprovedAvailableCars(Pageable pageable);
     
     // ========== LIST VIEWS (NO features/addOns - Performance Optimized) ==========
     // These methods only load owner, keeping list views lightweight
@@ -162,20 +165,13 @@ public interface CarRepository extends JpaRepository<Car, Long>, JpaSpecificatio
      * @return List of cars with distance, ordered by proximity
      */
     @Query(value = """
-        SELECT c.*, 
-               ST_Distance_Sphere(
-                   c.location_point, 
-                   ST_PointFromText(CONCAT('POINT(', :longitude, ' ', :latitude, ')'), 4326)
-               ) / 1000 AS distance_km
+        SELECT c.* 
         FROM cars c
         WHERE c.available = true
           AND c.location_latitude IS NOT NULL
           AND c.location_longitude IS NOT NULL
-          AND ST_Distance_Sphere(
-                  c.location_point,
-                  ST_PointFromText(CONCAT('POINT(', :longitude, ' ', :latitude, ')'), 4326)
-              ) <= :radiusKm * 1000
-        ORDER BY distance_km ASC
+          AND sqrt(pow(:latitude - c.location_latitude, 2) + pow(:longitude - c.location_longitude, 2)) * 111.32 <= :radiusKm
+        ORDER BY sqrt(pow(:latitude - c.location_latitude, 2) + pow(:longitude - c.location_longitude, 2)) ASC
         """, nativeQuery = true)
     List<Car> findNearby(
             @Param("latitude") Double latitude,
@@ -193,20 +189,13 @@ public interface CarRepository extends JpaRepository<Car, Long>, JpaSpecificatio
      * @return Page of cars ordered by distance
      */
     @Query(value = """
-        SELECT c.*, 
-               ST_Distance_Sphere(
-                   c.location_point, 
-                   ST_PointFromText(CONCAT('POINT(', :longitude, ' ', :latitude, ')'), 4326)
-               ) / 1000 AS distance_km
+        SELECT c.*
         FROM cars c
         WHERE c.available = true
           AND c.location_latitude IS NOT NULL
           AND c.location_longitude IS NOT NULL
-          AND ST_Distance_Sphere(
-                  c.location_point,
-                  ST_PointFromText(CONCAT('POINT(', :longitude, ' ', :latitude, ')'), 4326)
-              ) <= :radiusKm * 1000
-        ORDER BY distance_km ASC
+          AND sqrt(pow(:latitude - c.location_latitude, 2) + pow(:longitude - c.location_longitude, 2)) * 111.32 <= :radiusKm
+        ORDER BY sqrt(pow(:latitude - c.location_latitude, 2) + pow(:longitude - c.location_longitude, 2)) ASC
         """,
             countQuery = """
         SELECT COUNT(*)
@@ -214,10 +203,7 @@ public interface CarRepository extends JpaRepository<Car, Long>, JpaSpecificatio
         WHERE c.available = true
           AND c.location_latitude IS NOT NULL
           AND c.location_longitude IS NOT NULL
-          AND ST_Distance_Sphere(
-                  c.location_point,
-                  ST_PointFromText(CONCAT('POINT(', :longitude, ' ', :latitude, ')'), 4326)
-              ) <= :radiusKm * 1000
+          AND sqrt(pow(:latitude - c.location_latitude, 2) + pow(:longitude - c.location_longitude, 2)) * 111.32 <= :radiusKm
         """,
             nativeQuery = true)
     Page<Car> findNearbyPaginated(
@@ -236,11 +222,7 @@ public interface CarRepository extends JpaRepository<Car, Long>, JpaSpecificatio
      * @return Optional containing the car if within delivery range, empty otherwise
      */
     @Query(value = """
-        SELECT c.*,
-               ST_Distance_Sphere(
-                   c.location_point,
-                   ST_PointFromText(CONCAT('POINT(', :longitude, ' ', :latitude, ')'), 4326)
-               ) / 1000 AS distance_km
+        SELECT c.*
         FROM cars c
         WHERE c.id = :carId
           AND c.available = true
@@ -248,10 +230,7 @@ public interface CarRepository extends JpaRepository<Car, Long>, JpaSpecificatio
           AND c.delivery_radius_km > 0
           AND c.location_latitude IS NOT NULL
           AND c.location_longitude IS NOT NULL
-          AND ST_Distance_Sphere(
-                  c.location_point,
-                  ST_PointFromText(CONCAT('POINT(', :longitude, ' ', :latitude, ')'), 4326)
-              ) <= c.delivery_radius_km * 1000
+          AND sqrt(pow(:latitude - c.location_latitude, 2) + pow(:longitude - c.location_longitude, 2)) * 111.32 <= c.delivery_radius_km
         """, nativeQuery = true)
     Optional<Car> findIfWithinDeliveryRange(
             @Param("carId") Long carId,
@@ -267,22 +246,15 @@ public interface CarRepository extends JpaRepository<Car, Long>, JpaSpecificatio
      * @return List of cars that can deliver to the location
      */
     @Query(value = """
-        SELECT c.*,
-               ST_Distance_Sphere(
-                   c.location_point,
-                   ST_PointFromText(CONCAT('POINT(', :longitude, ' ', :latitude, ')'), 4326)
-               ) / 1000 AS distance_km
+        SELECT c.*
         FROM cars c
         WHERE c.available = true
           AND c.delivery_radius_km IS NOT NULL
           AND c.delivery_radius_km > 0
           AND c.location_latitude IS NOT NULL
           AND c.location_longitude IS NOT NULL
-          AND ST_Distance_Sphere(
-                  c.location_point,
-                  ST_PointFromText(CONCAT('POINT(', :longitude, ' ', :latitude, ')'), 4326)
-              ) <= c.delivery_radius_km * 1000
-        ORDER BY distance_km ASC
+          AND sqrt(pow(:latitude - c.location_latitude, 2) + pow(:longitude - c.location_longitude, 2)) * 111.32 <= c.delivery_radius_km
+        ORDER BY sqrt(pow(:latitude - c.location_latitude, 2) + pow(:longitude - c.location_longitude, 2)) ASC
         """, nativeQuery = true)
     List<Car> findCarsOfferingDeliveryTo(
             @Param("latitude") Double latitude,

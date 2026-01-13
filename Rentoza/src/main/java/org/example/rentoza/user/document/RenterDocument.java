@@ -65,7 +65,6 @@ public class RenterDocument {
     /**
      * Document type (DRIVERS_LICENSE_FRONT, SELFIE, etc.).
      */
-    @Enumerated(EnumType.STRING)
     @Column(name = "document_type", nullable = false, length = 50)
     private RenterDocumentType type;
     
@@ -116,7 +115,6 @@ public class RenterDocument {
     /**
      * Verification status (reuses car document enum for consistency).
      */
-    @Enumerated(EnumType.STRING)
     @Column(name = "verification_status", nullable = false, length = 50)
     @Builder.Default
     private DocumentVerificationStatus status = DocumentVerificationStatus.PENDING;
@@ -146,7 +144,7 @@ public class RenterDocument {
      * OCR extracted data (JSON format).
      * Contains: firstName, lastName, documentNumber, expiryDate, categories, etc.
      */
-    @Column(name = "ocr_extracted_data", columnDefinition = "JSON")
+    @Column(name = "ocr_extracted_data", columnDefinition = "TEXT")
     private String ocrExtractedData;
     
     /**
@@ -179,7 +177,6 @@ public class RenterDocument {
     /**
      * Processing status for async verification.
      */
-    @Enumerated(EnumType.STRING)
     @Column(name = "processing_status", nullable = false, length = 20)
     @Builder.Default
     private ProcessingStatus processingStatus = ProcessingStatus.PENDING;

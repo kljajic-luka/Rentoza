@@ -8,6 +8,8 @@ import org.example.rentoza.exception.ValidationException;
 import org.example.rentoza.security.CookieConstants;
 import org.example.rentoza.security.JwtUserPrincipal;
 import org.example.rentoza.security.JwtUtil;
+import org.example.rentoza.security.supabase.SupabaseAuthService;
+import org.example.rentoza.security.supabase.SupabaseAuthService.SupabaseAuthResult;
 import org.example.rentoza.user.*;
 import org.example.rentoza.user.dto.*;
 import org.example.rentoza.user.validation.IdentityDocumentValidator;
@@ -59,6 +61,7 @@ public class EnhancedAuthController {
     private final IdentityDocumentValidator identityValidator;
     private final OwnerVerificationService ownerVerificationService;
     private final HashUtil hashUtil;
+    private final SupabaseAuthService supabaseAuthService;
 
     @Value("${jwt.expiration}")
     private long jwtExpirationMs;
@@ -73,7 +76,8 @@ public class EnhancedAuthController {
             CsrfTokenRepository csrfTokenRepository,
             IdentityDocumentValidator identityValidator,
             OwnerVerificationService ownerVerificationService,
-            HashUtil hashUtil) {
+            HashUtil hashUtil,
+            SupabaseAuthService supabaseAuthService) {
         this.userService = userService;
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
@@ -84,10 +88,20 @@ public class EnhancedAuthController {
         this.identityValidator = identityValidator;
         this.ownerVerificationService = ownerVerificationService;
         this.hashUtil = hashUtil;
+        this.supabaseAuthService = supabaseAuthService;
     }
 
     /**
      * Enhanced user registration with dateOfBirth and required phone.
+     * Now uses Supabase Auth for authentication with Rentoza user record for profile data.
+     * 
+     * <p>Handles two scenarios:
+     * <ol>
+     *   <li><b>Email confirmation required</b>: Returns success with emailConfirmationRequired=true,
+     *       no tokens issued. User must confirm email before logging in.</li>
+     *   <li><b>No email confirmation</b>: Returns success with tokens in cookies,
+     *       user can proceed immediately.</li>
+     * </ol>
      */
     @Transactional
     @PostMapping("/register/user")
@@ -98,7 +112,7 @@ public class EnhancedAuthController {
             // Validate age eligibility (21+)
             validateAgeEligibility(dto.getDateOfBirth());
 
-            // Check for existing email
+            // Check for existing email in Rentoza
             if (userRepository.findByEmail(dto.getEmail().toLowerCase()).isPresent()) {
                 return ResponseEntity.badRequest().body(Map.of("error", "Email already registered"));
             }
@@ -108,36 +122,43 @@ public class EnhancedAuthController {
                 return ResponseEntity.badRequest().body(Map.of("error", "Phone already registered"));
             }
 
-            // Create user
-            User user = new User();
-            user.setFirstName(dto.getFirstName());
-            user.setLastName(dto.getLastName());
-            user.setEmail(dto.getEmail().toLowerCase());
+            // Register via Supabase Auth (creates Supabase user + Rentoza user + mapping)
+            SupabaseAuthResult result = supabaseAuthService.register(
+                    dto.getEmail(),
+                    dto.getPassword(),
+                    dto.getFirstName(),
+                    dto.getLastName(),
+                    Role.USER
+            );
+
+            // Update additional fields that Supabase registration doesn't set
+            User user = result.getUser();
             user.setPhone(dto.getPhone());
-            user.setPassword(passwordEncoder.encode(dto.getPassword()));
             user.setDateOfBirth(dto.getDateOfBirth());
             user.setDobVerified(false); // User-provided, not verified
-            user.setRole(Role.USER);
-            user.setRegistrationStatus(RegistrationStatus.ACTIVE);
-            user.setAuthProvider(AuthProvider.LOCAL);
-            user.setEnabled(true);
-            user.setLocked(false);
-            user.setCars(new ArrayList<>());
-            user.setBookings(new ArrayList<>());
-            user.setReviewsGiven(new ArrayList<>());
-            user.setReviewsReceived(new ArrayList<>());
-
             user = userRepository.save(user);
 
-            log.info("User registered successfully via enhanced flow: email={}", user.getEmail());
-            return issueTokensAndRespond(user, request, res, "Account created successfully");
+            log.info("User registered via Supabase: email={}, emailConfirmationPending={}", 
+                    user.getEmail(), result.isEmailConfirmationPending());
+            
+            // Handle email confirmation pending scenario
+            if (result.isEmailConfirmationPending()) {
+                UserResponseDTO userResponse = userService.toUserResponse(user);
+                return ResponseEntity.ok(AuthResponseDTO.emailConfirmationRequired(
+                        userResponse,
+                        "Account created! Please check your email to confirm your account before logging in."
+                ));
+            }
+            
+            // No email confirmation required - issue tokens and log user in
+            return issueSupabaseTokensAndRespond(result, user, request, res, "Account created successfully");
 
         } catch (ValidationException e) {
             log.warn("User registration validation failed: {}", e.getMessage());
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
-            log.error("User registration failed: {}", e.getMessage());
-            return ResponseEntity.badRequest().body(Map.of("error", "Registration failed"));
+            log.error("User registration failed: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest().body(Map.of("error", "Registration failed: " + e.getMessage()));
         }
     }
 
@@ -385,6 +406,33 @@ public class EnhancedAuthController {
 
         UserResponseDTO userResponse = userService.toUserResponse(user);
         log.info("User authenticated successfully: email={}, role={}", user.getEmail(), user.getRole());
+
+        return ResponseEntity.ok(AuthResponseDTO.success(userResponse, message));
+    }
+
+    /**
+     * Issue Supabase tokens in cookies and return user response.
+     * Uses Supabase access_token and refresh_token instead of custom JWT.
+     */
+    private ResponseEntity<?> issueSupabaseTokensAndRespond(SupabaseAuthResult result,
+                                                            User user,
+                                                            HttpServletRequest request,
+                                                            HttpServletResponse res,
+                                                            String message) {
+        // Set Supabase access token cookie
+        ResponseCookie accessCookie = createAccessTokenCookie(result.getAccessToken());
+        res.addHeader("Set-Cookie", accessCookie.toString());
+
+        // Set Supabase refresh token cookie
+        if (result.getRefreshToken() != null) {
+            ResponseCookie refreshCookie = createRefreshTokenCookie(result.getRefreshToken());
+            res.addHeader("Set-Cookie", refreshCookie.toString());
+        }
+
+        ensureCsrfCookie(request, res);
+
+        UserResponseDTO userResponse = userService.toUserResponse(user);
+        log.info("User authenticated via Supabase: email={}, role={}", user.getEmail(), user.getRole());
 
         return ResponseEntity.ok(AuthResponseDTO.success(userResponse, message));
     }

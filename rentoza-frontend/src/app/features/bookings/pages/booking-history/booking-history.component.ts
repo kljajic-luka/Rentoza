@@ -64,7 +64,17 @@ export class BookingHistoryComponent {
         // Use unified completion check to determine if booking is completed
         if (isBookingCompleted(booking)) {
           acc.past.push(booking);
-        } else if (now < startTime) {
+        }
+        // ====================================================================
+        // CRITICAL FIX: Also consider booking status, not just dates
+        // ====================================================================
+        // If booking has started (IN_TRIP, CHECKOUT_*), it's ongoing
+        // even if start time is in the future (timezone edge case)
+        else if (this.isBookingInProgress(booking.status)) {
+          acc.ongoing.push(booking);
+        }
+        // Otherwise, use date-based categorization
+        else if (now < startTime) {
           acc.upcoming.push(booking);
         } else {
           // Ongoing: start time has passed but booking not yet completed
@@ -90,6 +100,25 @@ export class BookingHistoryComponent {
         next: (bookings) => this.bookings.set(bookings),
         error: (error) => console.error('Error loading bookings:', error),
       });
+  }
+
+  /**
+   * Check if a booking is in progress based on its status.
+   * This includes trips that have started or are in checkout phase.
+   * 
+   * @param status The booking status from the backend
+   * @return true if booking is actively in progress
+   */
+  private isBookingInProgress(status: string): boolean {
+    return [
+      'CHECK_IN_OPEN',
+      'CHECK_IN_HOST_COMPLETE',
+      'CHECK_IN_COMPLETE',
+      'IN_TRIP',  // Trip actively started - critical for the fix
+      'CHECKOUT_OPEN',
+      'CHECKOUT_GUEST_COMPLETE',
+      'CHECKOUT_HOST_COMPLETE'
+    ].includes(status);
   }
 
   protected getTimeIndicator(booking: UserBooking, category: BookingCategory): string {

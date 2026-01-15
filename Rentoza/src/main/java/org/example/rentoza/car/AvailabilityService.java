@@ -95,13 +95,7 @@ public class AvailabilityService {
         // Initialize additional bags to avoid lazy loading outside the transaction
         candidateCars.forEach(car -> {
             Hibernate.initialize(car.getAddOns());
-            Hibernate.initialize(car.getImageUrls());
-        });
-
-        // Initialize additional bags to avoid lazy loading outside the transaction
-        candidateCars.forEach(car -> {
-            Hibernate.initialize(car.getAddOns());
-            Hibernate.initialize(car.getImageUrls());
+            Hibernate.initialize(car.getImages());
         });
         
         // CRITICAL: Filter out non-approved cars (e.g. legacy data or pending approval)
@@ -119,10 +113,15 @@ public class AvailabilityService {
 
         log.debug("[AvailabilityService] After time filtering: {} available cars", availableCars.size());
 
-        // Step 3: Apply in-memory filters (price, make, features, etc.)
+        // Step 3a: ALWAYS filter by rental duration constraints (min/max days)
+        // This is critical - owners set these limits and they must be respected
+        availableCars = filterByRentalDuration(availableCars, requestedStart, requestedEnd);
+        log.debug("[AvailabilityService] After rental duration filtering: {} available cars", availableCars.size());
+
+        // Step 3b: Apply additional filters (price, make, features, etc.) if specified
         if (request.hasFilters()) {
             availableCars = applyFilters(availableCars, request);
-            log.debug("[AvailabilityService] After filter application: {} cars", availableCars.size());
+            log.debug("[AvailabilityService] After additional filters: {} cars", availableCars.size());
         }
 
         // Step 4: Apply pagination
@@ -192,6 +191,58 @@ public class AvailabilityService {
     }
 
     /**
+     * Filter cars by rental duration constraints (min/max days).
+     * 
+     * This is always applied regardless of other filters because:
+     * - Owners set these limits for business/insurance reasons
+     * - A 12-day search should never show a car with maxRentalDays=10
+     * 
+     * @param cars List of candidate cars
+     * @param requestedStart Search start datetime
+     * @param requestedEnd Search end datetime
+     * @return Filtered list with only cars that allow the requested duration
+     */
+    private List<Car> filterByRentalDuration(
+            List<Car> cars,
+            LocalDateTime requestedStart,
+            LocalDateTime requestedEnd
+    ) {
+        // Calculate requested rental days from search date range
+        long rentalDays = ChronoUnit.DAYS.between(
+            requestedStart.toLocalDate(),
+            requestedEnd.toLocalDate()
+        );
+        // Minimum 1 day if same-day or overnight rental
+        if (rentalDays < 1) {
+            rentalDays = 1;
+        }
+
+        final long finalRentalDays = rentalDays;
+
+        return cars.stream()
+            .filter(car -> {
+                // Check minimum rental days constraint
+                Integer minRentalDays = car.getMinRentalDays();
+                if (minRentalDays != null && finalRentalDays < minRentalDays) {
+                    log.trace("[AvailabilityService] Car {} filtered: rental {} days < min {} days",
+                        car.getId(), finalRentalDays, minRentalDays);
+                    return false;
+                }
+
+                // Check maximum rental days constraint
+                Integer maxRentalDays = car.getMaxRentalDays();
+                if (maxRentalDays != null && finalRentalDays > maxRentalDays) {
+                    log.trace("[AvailabilityService] Car {} filtered: rental {} days > max {} days",
+                        car.getId(), finalRentalDays, maxRentalDays);
+                    return false;
+                }
+
+                return true;
+            })
+            .toList();
+    }
+
+    /**
      * Apply in-memory filters to candidate cars.
      * 
      * This is efficient for typical availability search result sizes (< 100 cars).
@@ -216,7 +267,11 @@ public class AvailabilityService {
      * @return true if car matches all filters (or no filters are active)
      */
     private boolean matchesFilters(Car car, AvailabilitySearchRequestDTO request) {
-        // Price filters
+        // NOTE: Rental duration constraints (min/max days) are checked by 
+        // filterByRentalDuration() which runs BEFORE this method.
+        // Do NOT duplicate that logic here.
+
+        // ========== PRICE FILTERS ==========
         if (request.getMinPrice() != null && 
             car.getPricePerDay().compareTo(BigDecimal.valueOf(request.getMinPrice())) < 0) {
             return false;

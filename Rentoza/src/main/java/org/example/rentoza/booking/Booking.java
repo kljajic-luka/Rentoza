@@ -11,6 +11,7 @@ import org.example.rentoza.car.Car;
 import org.example.rentoza.common.GeoPoint;
 import org.example.rentoza.user.User;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -91,6 +92,7 @@ public class Booking {
     @Column(name = "approved_at")
     private LocalDateTime approvedAt;
     
+    @UpdateTimestamp
     @Column(name = "updated_at")
     private Instant updatedAt;
 

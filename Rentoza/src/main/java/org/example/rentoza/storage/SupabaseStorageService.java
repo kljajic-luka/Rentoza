@@ -47,6 +47,7 @@ public class SupabaseStorageService {
     public static final String BUCKET_CAR_IMAGES = "cars-images";
     public static final String BUCKET_CAR_DOCUMENTS = "car-documents";
     public static final String BUCKET_CHECK_IN_PHOTOS = "check-in-photos";
+    public static final String BUCKET_CHECK_IN_PII = "check-in-pii";  // Service-role only, for ID verification
     public static final String BUCKET_RENTER_DOCUMENTS = "renter-documents";
     public static final String BUCKET_USER_AVATARS = "user-avatars";
     
@@ -164,6 +165,106 @@ public class SupabaseStorageService {
         return createSignedUrl(BUCKET_CHECK_IN_PHOTOS, storagePath, expiresInSeconds);
     }
     
+    // ============================================================================
+    // CHECK-IN PII PHOTOS (Private bucket - ID verification, service-role only)
+    // ============================================================================
+    
+    /**
+     * Upload an identity verification photo to the PII-restricted bucket.
+     * 
+     * <p>This method handles driver's licenses, passports, and selfies used for
+     * biometric verification. All uploads are restricted to service-role access only.
+     * 
+     * <p><b>Security Notes:</b>
+     * <ul>
+     *   <li>Photos are NOT publicly accessible</li>
+     *   <li>Storage keys include session UUID for namespace isolation</li>
+     *   <li>Original filenames are NOT preserved (enumeration attack prevention)</li>
+     * </ul>
+     * 
+     * @param storageKey Full path within the check-in-pii bucket
+     * @param fileBytes Raw photo bytes
+     * @param contentType MIME type (must be image/jpeg or image/png)
+     * @return Storage key (same as input, for chaining)
+     * @throws IOException if upload fails
+     */
+    public String uploadIdPhoto(String storageKey, byte[] fileBytes, String contentType) 
+            throws IOException {
+        // Validate content type for PII photos (only JPEG/PNG allowed)
+        if (contentType == null || 
+            (!contentType.equals("image/jpeg") && !contentType.equals("image/png"))) {
+            throw new IllegalArgumentException(
+                "ID photos must be JPEG or PNG format. Received: " + contentType);
+        }
+        
+        // Validate size (max 10MB for ID documents)
+        if (fileBytes.length > 10 * 1024 * 1024) {
+            throw new IllegalArgumentException("ID photo too large (max 10MB)");
+        }
+        
+        // Calculate checksum for integrity verification
+        String checksum = calculateSha256(fileBytes);
+        
+        log.info("[Storage-PII] Uploading ID photo: path={}, size={}KB, checksum={}",
+            storageKey, fileBytes.length / 1024, checksum.substring(0, 16) + "...");
+        
+        uploadToSupabase(BUCKET_CHECK_IN_PII, storageKey, fileBytes, contentType);
+        
+        log.info("[Storage-PII] Upload successful: path={}", storageKey);
+        
+        return storageKey;
+    }
+    
+    /**
+     * Generate a time-limited signed URL for ID photo retrieval.
+     * 
+     * <p><b>Security:</b> Signed URLs expire in 5 minutes (non-configurable for PII).
+     * Authorization must be checked by the calling service before invoking this method.
+     * 
+     * @param storagePath Path within check-in-pii bucket
+     * @return Signed URL valid for 300 seconds
+     */
+    public String getIdPhotoSignedUrl(String storagePath) {
+        // PII signed URLs have fixed 5-minute expiration (security requirement)
+        return createSignedUrl(BUCKET_CHECK_IN_PII, storagePath, 300);
+    }
+    
+    /**
+     * Upload check-in photo bytes directly (for services that already have byte arrays).
+     * 
+     * @param bookingId Booking ID
+     * @param party "host" or "guest"
+     * @param photoType Photo type
+     * @param photoBytes Photo data as byte array
+     * @param contentType MIME type
+     * @return Storage path
+     * @throws IOException if upload fails
+     */
+    public String uploadCheckInPhotoBytes(Long bookingId, String party, String photoType,
+            byte[] photoBytes, String contentType) throws IOException {
+        validateImageBytes(photoBytes, contentType);
+        
+        String extension = getExtension(contentType);
+        String filename = UUID.randomUUID().toString().substring(0, 12) + "." + extension;
+        String storagePath = String.format("bookings/%d/%s/%s/%s", 
+                bookingId, party.toLowerCase(), photoType, filename);
+        
+        uploadToSupabase(BUCKET_CHECK_IN_PHOTOS, storagePath, photoBytes, contentType);
+        
+        return storagePath;
+    }
+    
+    private void validateImageBytes(byte[] bytes, String contentType) {
+        if (bytes == null || bytes.length == 0) {
+            throw new IllegalArgumentException("Image bytes cannot be empty");
+        }
+        if (contentType == null || !contentType.startsWith("image/")) {
+            throw new IllegalArgumentException("Only image files are allowed");
+        }
+        if (bytes.length > 10 * 1024 * 1024) {
+            throw new IllegalArgumentException("Image file too large (max 10MB)");
+        }
+    }
     // ============================================================================
     // RENTER DOCUMENTS (Private bucket - KYC verification)
     // ============================================================================
@@ -475,6 +576,68 @@ public class SupabaseStorageService {
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException("SHA-256 algorithm not available", e);
         }
+    }
+
+    // ============================================================================
+    // URL RESOLUTION (Multi-format support)
+    // ============================================================================
+
+    /**
+     * Resolve any image URL to a displayable format.
+     * 
+     * <p>Handles:
+     * <ul>
+     *   <li>Supabase URLs - returned as-is (already public)</li>
+     *   <li>Local paths - converted to server-relative URL</li>
+     *   <li>Base64 data URIs - returned as-is (inline display)</li>
+     *   <li>Storage paths - converted to public Supabase URL</li>
+     * </ul>
+     * 
+     * @param imageUrl URL, path, or base64 data
+     * @return Displayable URL
+     */
+    public String resolveCarImageUrl(String imageUrl) {
+        if (imageUrl == null || imageUrl.isBlank()) {
+            return null;
+        }
+
+        // Already a full URL (Supabase or external CDN)
+        if (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) {
+            return imageUrl;
+        }
+
+        // Base64 data URI - return as-is
+        if (imageUrl.startsWith("data:image/")) {
+            return imageUrl;
+        }
+
+        // Local path (e.g., /uploads/car-images/47/image.jpg)
+        if (imageUrl.startsWith("/uploads/") || imageUrl.startsWith("uploads/")) {
+            // Return as server-relative URL
+            return imageUrl.startsWith("/") ? imageUrl : "/" + imageUrl;
+        }
+
+        // Legacy local path format
+        if (imageUrl.startsWith("/car-images/") || imageUrl.startsWith("car-images/")) {
+            return imageUrl.startsWith("/") ? "/uploads" + imageUrl : "/uploads/" + imageUrl;
+        }
+
+        // Storage path (e.g., cars/47/images/filename.jpg) - convert to public URL
+        if (imageUrl.startsWith("cars/")) {
+            return getPublicUrl(BUCKET_CAR_IMAGES, imageUrl);
+        }
+
+        // Fallback: assume it's a storage path
+        log.warn("Unknown image URL format, attempting as storage path: {}", imageUrl);
+        return getPublicUrl(BUCKET_CAR_IMAGES, imageUrl);
+    }
+
+    /**
+     * Get public URL for car images bucket.
+     * Convenience method for external use.
+     */
+    public String getCarImagePublicUrl(String storagePath) {
+        return getPublicUrl(BUCKET_CAR_IMAGES, storagePath);
     }
     
     // Response DTO for signed URL API

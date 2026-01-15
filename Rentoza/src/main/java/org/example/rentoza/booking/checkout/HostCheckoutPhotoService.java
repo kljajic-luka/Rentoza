@@ -85,8 +85,17 @@ public class HostCheckoutPhotoService {
             Long userId,
             HostCheckoutPhotoSubmissionDTO submission) {
         
-        // Validate booking exists and get it with relations
-        Booking booking = bookingRepository.findByIdWithRelations(bookingId)
+        // ========== P0-4 FIX: PESSIMISTIC LOCKING ==========
+        // 
+        // CRITICAL: Use pessimistic write lock to prevent race condition where:
+        // - Host starts upload (checks status = CHECKOUT_GUEST_COMPLETE)
+        // - Guest cancels and restarts checkout (status = CHECKOUT_OPEN)
+        // - Host continues and overwrites status
+        //
+        // Solution: Lock booking row for entire transaction. If guest tries to
+        // change status, they will be blocked until host finishes.
+        //
+        Booking booking = bookingRepository.findByIdWithLock(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Rezervacija nije pronađena"));
         
         // Validate user is the owner (host)
@@ -94,11 +103,16 @@ public class HostCheckoutPhotoService {
             throw new AccessDeniedException("Samo vlasnik vozila može otpremiti fotografije za povratak");
         }
         
-        // Validate booking status - host can only upload after guest completes checkout
+        // P0-4: RE-CHECK status AFTER acquiring lock (paranoid check)
+        // This verifies that status didn't change between initial request and lock acquisition
         if (booking.getStatus() != BookingStatus.CHECKOUT_GUEST_COMPLETE) {
+            log.warn("[HostCheckout-P0-4] Status changed during lock acquisition. " +
+                "Expected: {}, Actual: {}, User: {}, Booking: {}",
+                BookingStatus.CHECKOUT_GUEST_COMPLETE, booking.getStatus(), userId, bookingId);
             throw new IllegalStateException(
                 "Povratak nije spreman za fotografije od strane domaćina. " +
-                "Trenutni status: " + booking.getStatus());
+                "Trenutni status: " + booking.getStatus() + 
+                ". Guest može biti promenio status - molim pokušajte ponovo.");
         }
         
         // Get user
@@ -119,7 +133,7 @@ public class HostCheckoutPhotoService {
         List<HostCheckoutPhotoResponseDTO.ConditionComparisonDTO> conditionChanges = new ArrayList<>();
         boolean newDamageDetected = submission.getNewDamageReported() != null && submission.getNewDamageReported();
         
-        // Process each photo
+        // Process each photo (all under pessimistic lock)
         for (HostCheckoutPhotoSubmissionDTO.PhotoItem photoItem : submission.getPhotos()) {
             try {
                 CheckInPhotoDTO result = processHostCheckoutPhoto(

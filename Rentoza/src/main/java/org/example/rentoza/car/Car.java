@@ -151,8 +151,7 @@ public class Car {
 
     // TODO: Long-term: Switch to cloud storage URLs (S3, Cloudinary, etc.)
     // Currently supports Base64-encoded images for MVP
-    @Lob
-    @Column(name = "image_url")
+    @Column(name = "image_url", columnDefinition = "TEXT")
     private String imageUrl;
 
     @Column(nullable = false)
@@ -358,13 +357,19 @@ public class Car {
     @UpdateTimestamp
     private Instant updatedAt;
 
-    // TODO: Long-term: Switch to cloud storage URLs (S3, Cloudinary, etc.)
-    // Currently supports Base64-encoded images for MVP (up to 10 images)
-    @ElementCollection
-    @CollectionTable(name = "car_images", joinColumns = @JoinColumn(name = "car_id"))
-    @Lob
-    @Column(name = "image_url")
-    private List<String> imageUrls = new ArrayList<>();
+    // ========== CAR IMAGES (Supabase Storage) ==========
+
+    /**
+     * Car images stored in Supabase Storage (cars-images bucket).
+     * 
+     * <p>Ordered by displayOrder for consistent gallery presentation.
+     * Primary image (displayOrder=0) used for listings and thumbnails.
+     * 
+     * @see CarImage
+     */
+    @OneToMany(mappedBy = "car", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @OrderBy("displayOrder ASC")
+    private List<CarImage> images = new ArrayList<>();
 
     // 🔗 Relations
     @ManyToOne(fetch = FetchType.LAZY)
@@ -472,5 +477,98 @@ public class Car {
      */
     public CarBookingSettings getEffectiveBookingSettings() {
         return bookingSettings != null ? bookingSettings : new CarBookingSettings();
+    }
+
+    // ========== IMAGE HELPER METHODS (Backward Compatibility) ==========
+
+    /**
+     * Get all image URLs as strings (backward compatibility).
+     * 
+     * <p>Returns URLs from the {@link CarImage} entities in display order.
+     * Use this for API responses and templates.
+     * 
+     * @return List of image URLs, empty list if no images
+     */
+    public List<String> getImageUrls() {
+        if (images == null || images.isEmpty()) {
+            // Fallback to legacy single imageUrl if present
+            if (imageUrl != null && !imageUrl.isBlank()) {
+                return List.of(imageUrl);
+            }
+            return List.of();
+        }
+        return images.stream()
+                .map(CarImage::getImageUrl)
+                .toList();
+    }
+
+    /**
+     * Set image URLs (backward compatibility for DTOs/APIs).
+     * 
+     * <p>Creates {@link CarImage} entities from the URL list.
+     * Replaces existing images with new ones.
+     * 
+     * @param urls List of image URLs to set
+     */
+    public void setImageUrls(List<String> urls) {
+        if (this.images == null) {
+            this.images = new ArrayList<>();
+        }
+        this.images.clear();
+        
+        if (urls != null) {
+            for (int i = 0; i < urls.size(); i++) {
+                CarImage img = new CarImage();
+                img.setCar(this);
+                img.setImageUrl(urls.get(i));
+                img.setDisplayOrder(i);
+                this.images.add(img);
+            }
+            // Also set legacy imageUrl to first image
+            if (!urls.isEmpty()) {
+                this.imageUrl = urls.get(0);
+            }
+        }
+    }
+
+    /**
+     * Get primary image URL (first in gallery).
+     * 
+     * @return Primary image URL or null if no images
+     */
+    public String getPrimaryImageUrl() {
+        if (images != null && !images.isEmpty()) {
+            return images.get(0).getImageUrl();
+        }
+        return imageUrl; // Fallback to legacy field
+    }
+
+    /**
+     * Add a single image URL to the gallery.
+     * 
+     * @param url Image URL to add
+     */
+    public void addImageUrl(String url) {
+        if (this.images == null) {
+            this.images = new ArrayList<>();
+        }
+        CarImage img = new CarImage();
+        img.setCar(this);
+        img.setImageUrl(url);
+        img.setDisplayOrder(this.images.size());
+        this.images.add(img);
+        
+        // Set legacy imageUrl if this is the first image
+        if (this.images.size() == 1) {
+            this.imageUrl = url;
+        }
+    }
+
+    /**
+     * Check if car has any images.
+     */
+    public boolean hasImages() {
+        return (images != null && !images.isEmpty()) || 
+               (imageUrl != null && !imageUrl.isBlank());
     }
 }

@@ -147,7 +147,21 @@ public class CheckInScheduler {
             LocalDateTime windowStart = now; // Open window now
             LocalDateTime windowEnd = now.plusHours(windowHoursBeforeTrip + 2); // Configurable + buffer
             
+            // DIAGNOSTIC LOGGING: Help trace PostgreSQL timestamp issues
+            log.info("[CheckIn] Query parameters: timezone={}, windowStart={}, windowEnd={}, hoursBeforeTrip={}",
+                SERBIA_ZONE, windowStart, windowEnd, windowHoursBeforeTrip);
+            
             List<Booking> eligibleBookings = checkInService.findBookingsForCheckInWindowOpening(windowStart, windowEnd);
+            
+            // DIAGNOSTIC LOGGING: Show what was found
+            log.info("[CheckIn] Found {} eligible bookings for check-in window opening", eligibleBookings.size());
+            
+            if (eligibleBookings.isEmpty()) {
+                // Additional diagnostics when nothing found
+                log.debug("[CheckIn] No eligible bookings in range [{} to {}]. " +
+                    "Criteria: status=ACTIVE, checkInSessionId=null, startTime in range",
+                    windowStart, windowEnd);
+            }
             
             int opened = 0;
             for (Booking booking : eligibleBookings) {

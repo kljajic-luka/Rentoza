@@ -1,0 +1,363 @@
+/**
+ * Renter Verification Card Styles
+ * 
+ * Responsive breakpoints:
+ * - Mobile (<576px): Single column, stacked
+ * - Tablet (576-992px): 2-column grid
+ * - Desktop (>992px): 3-column grid
+ */
+
+// ==================== VARIABLES ====================
+
+$breakpoint-sm: 576px;
+$breakpoint-lg: 992px;
+
+// ==================== MIXINS ====================
+
+@mixin respond-to($breakpoint) {
+  @if $breakpoint == 'xs' {
+    @media (max-width: #{$breakpoint-sm - 1}) { @content; }
+  } @else if $breakpoint == 'sm' {
+    @media (min-width: $breakpoint-sm) { @content; }
+  } @else if $breakpoint == 'lg' {
+    @media (min-width: $breakpoint-lg) { @content; }
+  }
+}
+
+// ==================== CARD LAYOUT ====================
+
+.verification-card {
+  margin-top: 16px;
+}
+
+.header-icon {
+  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  color: white;
+  border-radius: 12px;
+  padding: 8px;
+  width: 40px;
+  height: 40px;
+}
+
+// ==================== STATES ====================
+
+.loading-state {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 24px;
+  color: var(--admin-muted);
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 32px;
+  color: var(--admin-muted);
+  text-align: center;
+  
+  mat-icon {
+    font-size: 48px;
+    width: 48px;
+    height: 48px;
+    opacity: 0.5;
+  }
+  
+  p {
+    margin: 0;
+  }
+}
+
+// ==================== LICENSE METADATA ====================
+
+.license-metadata {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  background: var(--color-surface-muted);
+  border-radius: 12px;
+  margin-bottom: 16px;
+}
+
+.text-warn {
+  color: #d97706 !important;
+}
+
+.text-error {
+  color: #dc2626 !important;
+}
+
+// ==================== DOCUMENTS SECTION ====================
+
+.documents-section {
+  margin: 16px 0;
+}
+
+.section-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--admin-muted);
+  margin: 0 0 12px;
+}
+
+// ==================== DOCUMENTS GRID ====================
+
+.documents-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr;
+  
+  @include respond-to('sm') {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  @include respond-to('lg') {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.document-tile {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: all 200ms ease;
+  
+  &.clickable {
+    cursor: pointer;
+    
+    &:hover {
+      border-color: var(--icon-color);
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-elevated);
+    }
+    
+    &:focus-visible {
+      outline: 2px solid var(--icon-color);
+      outline-offset: 2px;
+    }
+  }
+}
+
+.doc-thumbnail {
+  width: 100%;
+  height: 80px;
+  background: linear-gradient(135deg, #e0e7ff, #eef2ff);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  
+  .doc-icon {
+    font-size: 32px;
+    width: 32px;
+    height: 32px;
+    color: #4f46e5;
+  }
+}
+
+.doc-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.doc-type {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--admin-strong);
+}
+
+.doc-status {
+  font-size: 12px;
+  font-weight: 500;
+  
+  &.doc-status-pending {
+    color: #b45309;
+  }
+  
+  &.doc-status-verified {
+    color: #047857;
+  }
+  
+  &.doc-status-rejected {
+    color: #b91c1c;
+  }
+  
+  &.doc-status-expired_auto {
+    color: #9a3412;
+  }
+}
+
+// ==================== SCORE BADGES ====================
+
+.doc-scores {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.score-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  
+  mat-icon {
+    font-size: 12px;
+    width: 12px;
+    height: 12px;
+  }
+}
+
+// Confidence levels
+.confidence-low {
+  background: rgba(239, 68, 68, 0.12);
+  color: #b91c1c;
+}
+
+.confidence-medium {
+  background: rgba(245, 158, 11, 0.12);
+  color: #b45309;
+}
+
+.confidence-high {
+  background: rgba(34, 197, 94, 0.12);
+  color: #15803d;
+}
+
+.confidence-excellent {
+  background: rgba(16, 185, 129, 0.12);
+  color: #047857;
+}
+
+// Liveness badge
+.liveness-badge {
+  &.passed {
+    background: rgba(16, 185, 129, 0.12);
+    color: #047857;
+  }
+  
+  &.failed {
+    background: rgba(239, 68, 68, 0.12);
+    color: #b91c1c;
+  }
+}
+
+.doc-preview-hint {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--admin-muted);
+  margin-top: auto;
+  
+  mat-icon {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+  }
+}
+
+// ==================== MISSING DOCS WARNING ====================
+
+.missing-docs-warning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 8px;
+  color: #b45309;
+  font-size: 13px;
+  margin: 16px 0;
+  
+  mat-icon {
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+  }
+}
+
+// ==================== ACTION BUTTONS ====================
+
+.action-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border-subtle);
+  
+  @include respond-to('sm') {
+    flex-direction: row;
+    justify-content: flex-end;
+  }
+  
+  button {
+    min-height: 44px; // Touch target
+    
+    @include respond-to('xs') {
+      width: 100%;
+    }
+  }
+}
+
+// ==================== STATUS MESSAGES ====================
+
+.status-message {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  margin-top: 16px;
+  
+  mat-icon {
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+  }
+  
+  &.success {
+    background: rgba(16, 185, 129, 0.1);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    color: #047857;
+  }
+  
+  &.error {
+    background: rgba(239, 68, 68, 0.08);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    color: #b91c1c;
+  }
+  
+  &.warn {
+    background: rgba(245, 158, 11, 0.08);
+    border: 1px solid rgba(245, 158, 11, 0.2);
+    color: #b45309;
+  }
+}
+
+// ==================== STATUS BADGE IN HEADER ====================
+
+.status-icon {
+  font-size: 14px !important;
+  width: 14px !important;
+  height: 14px !important;
+  margin-right: 4px;
+  vertical-align: middle;
+}

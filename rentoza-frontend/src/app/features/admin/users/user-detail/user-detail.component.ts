@@ -13,9 +13,16 @@ import { AdminNotificationService } from '../../../../core/services/admin-notifi
 import { BanUserDialogComponent } from '../../shared/dialogs/ban-user-dialog/ban-user-dialog.component';
 import { RejectOwnerVerificationDialogComponent } from '../../shared/dialogs/reject-owner-verification-dialog/reject-owner-verification-dialog.component';
 import { AdminStateService } from '../../../../core/services/admin-state.service';
+import { AdminApiService, AdminUserDetailDto } from '../../../../core/services/admin-api.service';
 import { Observable, take } from 'rxjs';
-import { AdminUserDetailDto } from '../../../../core/services/admin-api.service';
 import { RiskScoreCardComponent, RiskFactor } from '../../shared/components/risk-score-card/risk-score-card.component';
+
+// Renter Verification Components
+import { RenterVerificationCardComponent } from '../../shared/components/renter-verification-card/renter-verification-card.component';
+import { DocumentPreviewDialogComponent, DocumentPreviewDialogData } from '../../shared/dialogs/document-preview-dialog/document-preview-dialog.component';
+import { ApproveRenterVerificationDialogComponent, ApproveRenterVerificationDialogData } from '../../shared/dialogs/approve-renter-verification-dialog/approve-renter-verification-dialog.component';
+import { RejectRenterVerificationDialogComponent, RejectRenterVerificationDialogData, RejectRenterVerificationDialogResult } from '../../shared/dialogs/reject-renter-verification-dialog/reject-renter-verification-dialog.component';
+import { RenterDocumentDto, RenterVerificationProfileDto } from '../../../../core/models/admin-renter-verification.model';
 
 @Component({
   selector: 'app-user-detail',
@@ -31,6 +38,7 @@ import { RiskScoreCardComponent, RiskFactor } from '../../shared/components/risk
     MatSnackBarModule,
     MatProgressSpinnerModule,
     RiskScoreCardComponent,
+    RenterVerificationCardComponent,
   ],
   templateUrl: './user-detail.component.html',
   styleUrls: ['../../admin-shared.styles.scss', './user-detail.component.scss'],
@@ -41,11 +49,15 @@ export class UserDetailComponent implements OnInit {
   private notification = inject(AdminNotificationService);
   private dialog = inject(MatDialog);
   private adminState = inject(AdminStateService);
+  private adminApi = inject(AdminApiService);
 
   userId: number | null = null;
   user$: Observable<AdminUserDetailDto | null> = this.adminState.currentUser$;
   loading$: Observable<boolean> = this.adminState.loading$;
   error$: Observable<string | null> = this.adminState.error$;
+
+  // Renter verification state
+  renterVerificationProfile: RenterVerificationProfileDto | null = null;
 
   ngOnInit() {
     const id = this.route.snapshot.paramMap.get('id');
@@ -164,6 +176,77 @@ export class UserDetailComponent implements OnInit {
               this.loadUserDetail();
             },
             error: () => this.notification.showError('Failed to reject owner verification'),
+          });
+        }
+      });
+    });
+  }
+
+  // ========== RENTER VERIFICATION METHODS ==========
+
+  /**
+   * Open document preview dialog.
+   */
+  openRenterDocumentPreview(doc: RenterDocumentDto): void {
+    this.dialog.open(DocumentPreviewDialogComponent, {
+      width: '90vw',
+      maxWidth: '1200px',
+      maxHeight: '90vh',
+      data: { document: doc } as DocumentPreviewDialogData,
+    });
+  }
+
+  /**
+   * Open approval confirmation dialog.
+   */
+  approveRenterVerification(): void {
+    if (!this.userId) return;
+
+    // First fetch the verification profile for the dialog
+    this.adminApi.getRenterVerificationDetails(this.userId).pipe(take(1)).subscribe({
+      next: (profile) => {
+        const dialogRef = this.dialog.open(ApproveRenterVerificationDialogComponent, {
+          width: '520px',
+          data: { profile } as ApproveRenterVerificationDialogData,
+        });
+
+        dialogRef.afterClosed().subscribe((result) => {
+          if (result && this.userId) {
+            this.adminState.approveRenterVerification(this.userId, result.notes).subscribe({
+              next: () => {
+                this.notification.showSuccess('Verifikacija vozačke dozvole je odobrena');
+                this.loadUserDetail();
+              },
+              error: () => this.notification.showError('Greška pri odobravanju verifikacije'),
+            });
+          }
+        });
+      },
+      error: () => this.notification.showError('Greška pri učitavanju podataka verifikacije'),
+    });
+  }
+
+  /**
+   * Open rejection dialog.
+   */
+  rejectRenterVerification(): void {
+    if (!this.userId) return;
+
+    this.user$.pipe(take(1)).subscribe((user) => {
+      const displayName = user ? `${user.firstName} ${user.lastName}` : 'ovog korisnika';
+      const dialogRef = this.dialog.open(RejectRenterVerificationDialogComponent, {
+        width: '520px',
+        data: { displayName } as RejectRenterVerificationDialogData,
+      });
+
+      dialogRef.afterClosed().subscribe((result: RejectRenterVerificationDialogResult | undefined) => {
+        if (result && this.userId) {
+          this.adminState.rejectRenterVerification(this.userId, result.reason).subscribe({
+            next: () => {
+              this.notification.showSuccess('Verifikacija vozačke dozvole je odbijena');
+              this.loadUserDetail();
+            },
+            error: () => this.notification.showError('Greška pri odbijanju verifikacije'),
           });
         }
       });

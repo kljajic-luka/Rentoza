@@ -5,6 +5,15 @@ import { environment } from '../../../environments/environment';
 
 import { User } from '../models/user.model';
 import { HateoasPage, PaginatedResponse } from '../models/paginated-response.model';
+import {
+  RenterDocumentDto,
+  RenterVerificationProfileDto,
+  PagedVerificationResponse as PagedRenterVerificationResponse,
+  VerificationQueueStats as RenterVerificationQueueStats,
+  VerificationActionResponse as RenterVerificationActionResponse,
+  VerificationAuditItem as RenterVerificationAuditItem,
+  SignedUrlResponse,
+} from '../models/admin-renter-verification.model';
 
 // DTO Interfaces
 // DTO Interfaces
@@ -410,6 +419,131 @@ export class AdminApiService {
     return this.http.post<void>(`${this.apiUrl}/owners/${userId}/reject`, {
       reason,
     } as OwnerVerificationRejectRequest);
+  }
+
+  // ==================== RENTER VERIFICATION (ADMIN) ====================
+  // Endpoints for managing renter driver's license verification
+  // @see AdminRenterVerificationController.java
+
+  /**
+   * Get pending verification queue (paginated).
+   * Users awaiting driver license verification.
+   */
+  getRenterVerificationQueue(
+    page: number = 0,
+    size: number = 20,
+    sortBy: 'newest' | 'oldest' | 'riskLevel' = 'newest'
+  ): Observable<PagedRenterVerificationResponse> {
+    const params = new HttpParams()
+      .set('page', page.toString())
+      .set('size', size.toString())
+      .set('sortBy', sortBy);
+
+    return this.http.get<PagedRenterVerificationResponse>(
+      `${this.apiUrl}/renter-verifications/pending`,
+      { params }
+    );
+  }
+
+  /**
+   * Get queue statistics (pending count, today's activity).
+   */
+  getRenterVerificationStats(): Observable<RenterVerificationQueueStats> {
+    return this.http.get<RenterVerificationQueueStats>(
+      `${this.apiUrl}/renter-verifications/pending/stats`
+    );
+  }
+
+  /**
+   * Get complete verification profile for a user.
+   * Includes all documents with OCR/biometric data.
+   */
+  getRenterVerificationDetails(userId: number): Observable<RenterVerificationProfileDto> {
+    return this.http.get<RenterVerificationProfileDto>(
+      `${this.apiUrl}/renter-verifications/users/${userId}`
+    );
+  }
+
+  /**
+   * Get single document detail.
+   */
+  getRenterDocument(documentId: number): Observable<RenterDocumentDto> {
+    return this.http.get<RenterDocumentDto>(
+      `${this.apiUrl}/renter-verifications/documents/${documentId}`
+    );
+  }
+
+  /**
+   * Get signed URL for document viewing.
+   * URL expires in 15 minutes.
+   */
+  getRenterDocumentSignedUrl(documentId: number): Observable<SignedUrlResponse> {
+    return this.http.post<SignedUrlResponse>(
+      `${this.apiUrl}/renter-verifications/documents/${documentId}/signed-url`,
+      {}
+    );
+  }
+
+  /**
+   * Download document as binary blob.
+   */
+  downloadRenterDocument(documentId: number): Observable<Blob> {
+    return this.http.get(
+      `${this.apiUrl}/renter-verifications/documents/${documentId}/download`,
+      { responseType: 'blob' }
+    );
+  }
+
+  /**
+   * Approve renter verification.
+   * User will be able to book cars after approval.
+   */
+  approveRenterVerification(userId: number, notes?: string): Observable<RenterVerificationActionResponse> {
+    return this.http.post<RenterVerificationActionResponse>(
+      `${this.apiUrl}/renter-verifications/users/${userId}/approve`,
+      { notes }
+    );
+  }
+
+  /**
+   * Reject renter verification.
+   * User must re-submit documents.
+   */
+  rejectRenterVerification(userId: number, reason: string): Observable<RenterVerificationActionResponse> {
+    return this.http.post<RenterVerificationActionResponse>(
+      `${this.apiUrl}/renter-verifications/users/${userId}/reject`,
+      { reason }
+    );
+  }
+
+  /**
+   * Suspend renter verification.
+   * For fraud/abuse cases requiring investigation.
+   */
+  suspendRenterVerification(userId: number, reason: string): Observable<RenterVerificationActionResponse> {
+    return this.http.post<RenterVerificationActionResponse>(
+      `${this.apiUrl}/renter-verifications/users/${userId}/suspend`,
+      { reason }
+    );
+  }
+
+  /**
+   * Get verification audit history for user.
+   */
+  getRenterVerificationAudits(userId: number): Observable<RenterVerificationAuditItem[]> {
+    return this.http.get<RenterVerificationAuditItem[]>(
+      `${this.apiUrl}/renter-verifications/users/${userId}/audits`
+    );
+  }
+
+  /**
+   * Retry processing for a stuck document.
+   */
+  retryRenterDocumentProcessing(documentId: number): Observable<{ success: boolean; message: string }> {
+    return this.http.post<{ success: boolean; message: string }>(
+      `${this.apiUrl}/renter-verifications/documents/${documentId}/retry-processing`,
+      {}
+    );
   }
 
   // ==================== CAR MANAGEMENT ====================

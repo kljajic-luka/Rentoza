@@ -70,7 +70,7 @@ public interface CarRepository extends JpaRepository<Car, Long>, JpaSpecificatio
      * - Prevents LazyInitializationException in service layer
      * - Optimized for single-entity retrieval
      */
-    @EntityGraph(attributePaths = {"owner", "features", "addOns", "imageUrls"})
+    @EntityGraph(attributePaths = {"owner", "features", "addOns", "images"})
     @Query("SELECT c FROM Car c WHERE c.id = :id")
     Optional<Car> findWithDetailsById(@Param("id") Long id);
 

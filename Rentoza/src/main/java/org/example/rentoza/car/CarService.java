@@ -350,8 +350,8 @@ public class CarService {
             car.setImageUrl(dto.getImageUrl());
         }
         if (dto.getImageUrls() != null) {
-            car.getImageUrls().clear();
-            car.getImageUrls().addAll(dto.getImageUrls());
+            // Use setImageUrls to properly manage CarImage entities
+            car.setImageUrls(new ArrayList<>(dto.getImageUrls()));
         }
 
         Car savedCar = repo.save(car);

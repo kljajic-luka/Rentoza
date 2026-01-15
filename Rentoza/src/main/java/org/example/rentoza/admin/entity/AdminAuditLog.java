@@ -85,14 +85,14 @@ public class AdminAuditLog {
      * <p>Example:
      * <pre>{"id": 5847, "email": "user@example.com", "banned": false, "role": "USER"}</pre>
      */
-    @Column(name = "before_state", columnDefinition = "LONGTEXT")
+    @Column(name = "before_state", columnDefinition = "TEXT")
     private String beforeState;
     
     /**
      * Full JSON snapshot of resource AFTER the action.
      * Null if resource was deleted.
      */
-    @Column(name = "after_state", columnDefinition = "LONGTEXT")
+    @Column(name = "after_state", columnDefinition = "TEXT")
     private String afterState;
     
     /**

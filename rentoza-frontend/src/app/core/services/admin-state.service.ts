@@ -196,6 +196,68 @@ export class AdminStateService {
     });
   }
 
+  // ==================== RENTER VERIFICATION ACTIONS ====================
+
+  /**
+   * Approve renter driver's license verification.
+   * Refreshes user detail after success.
+   */
+  approveRenterVerification(userId: number, notes?: string): Observable<void> {
+    return new Observable((subscriber) => {
+      this.api.approveRenterVerification(userId, notes).subscribe({
+        next: () => {
+          this.loadUserDetail(userId);
+          subscriber.next();
+          subscriber.complete();
+        },
+        error: (err) => {
+          this.updateState({ error: 'Failed to approve renter verification' });
+          subscriber.error(err);
+        },
+      });
+    });
+  }
+
+  /**
+   * Reject renter driver's license verification.
+   * User will need to re-submit documents.
+   */
+  rejectRenterVerification(userId: number, reason: string): Observable<void> {
+    return new Observable((subscriber) => {
+      this.api.rejectRenterVerification(userId, reason).subscribe({
+        next: () => {
+          this.loadUserDetail(userId);
+          subscriber.next();
+          subscriber.complete();
+        },
+        error: (err) => {
+          this.updateState({ error: 'Failed to reject renter verification' });
+          subscriber.error(err);
+        },
+      });
+    });
+  }
+
+  /**
+   * Suspend renter verification for fraud/abuse.
+   * Requires investigation before reinstatement.
+   */
+  suspendRenterVerification(userId: number, reason: string): Observable<void> {
+    return new Observable((subscriber) => {
+      this.api.suspendRenterVerification(userId, reason).subscribe({
+        next: () => {
+          this.loadUserDetail(userId);
+          subscriber.next();
+          subscriber.complete();
+        },
+        error: (err) => {
+          this.updateState({ error: 'Failed to suspend renter verification' });
+          subscriber.error(err);
+        },
+      });
+    });
+  }
+
   clearError(): void {
     this.updateState({ error: null });
   }

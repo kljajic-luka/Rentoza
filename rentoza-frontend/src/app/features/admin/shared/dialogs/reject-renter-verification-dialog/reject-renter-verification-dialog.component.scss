@@ -1,0 +1,21 @@
+.w-full {
+  width: 100%;
+}
+
+.dialog-copy {
+  margin-bottom: 16px;
+  line-height: 1.6;
+}
+
+.checkbox-row {
+  margin-top: 12px;
+}
+
+mat-dialog-actions {
+  gap: 12px;
+}
+
+.destructive {
+  display: flex;
+  align-items: center;
+}

@@ -111,7 +111,7 @@ public class User {
     private String avatarUrl;
 
     @Size(max = 300, message = "Bio must be maximum 300 characters")
-    @Column(length = 300, columnDefinition = "VARCHAR(300) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
+    @Column(length = 300)
     private String bio;
 
     @Column(name = "user_role", length = 50)

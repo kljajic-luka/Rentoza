@@ -20,6 +20,8 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import org.example.rentoza.storage.SupabaseStorageService;
+import org.example.rentoza.booking.photo.PiiPhotoStorageService;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -59,6 +61,11 @@ public class CheckInPhotoService {
     private final LockboxEncryptionService lockboxEncryptionService;
     private final PhotoRejectionService photoRejectionService;
     private final ApplicationEventPublisher eventPublisher;
+    private final SupabaseStorageService supabaseStorageService;
+    private final PiiPhotoStorageService piiPhotoStorageService;  // P0-2: PII enforcement
+
+    @Value("${storage.mode:local}")
+    private String storageMode;
 
     @Value("${app.checkin.photo.upload-dir:uploads/checkin}")
     private String uploadDir;
@@ -316,26 +323,46 @@ public class CheckInPhotoService {
             filename
         );
         
-        // Ensure directory exists (use different base dir for checkout if needed)
-        String baseDir = photoType.isCheckoutPhoto() ? uploadDir.replace("checkin", "checkout") : uploadDir;
-        Path uploadPath = Paths.get(baseDir, sessionId);
-        Files.createDirectories(uploadPath);
-        
-        // Save file
-        Path filePath = uploadPath.resolve(filename);
-        Files.write(filePath, photoBytes);
+        String contentType = file.getContentType();
         
         // Determine storage bucket
         CheckInPhoto.StorageBucket bucket;
         if (photoType.name().contains("ID")) {
             bucket = CheckInPhoto.StorageBucket.CHECKIN_PII;
         } else if (photoType.isCheckoutPhoto()) {
-            bucket = CheckInPhoto.StorageBucket.CHECKIN_STANDARD; // Or create CHECKOUT_STANDARD if needed
+            bucket = CheckInPhoto.StorageBucket.CHECKIN_STANDARD;
         } else {
             bucket = CheckInPhoto.StorageBucket.CHECKIN_STANDARD;
         }
         
-        String contentType = file.getContentType();
+        // ========== STORAGE MODE: Supabase or Local Filesystem ==========
+        if ("supabase".equalsIgnoreCase(storageMode)) {
+            // Upload to Supabase Storage
+            try {
+                String party = booking.getCar().getOwner().getId().equals(user.getId()) ? "host" : "guest";
+                storageKey = supabaseStorageService.uploadCheckInPhotoBytes(
+                    booking.getId(),
+                    party,
+                    photoType.name(),
+                    photoBytes,
+                    contentType
+                );
+                log.info("[CheckIn] Photo uploaded to Supabase: booking={}, type={}, key={}",
+                    booking.getId(), photoType, storageKey);
+            } catch (IOException e) {
+                log.error("[CheckIn] Supabase upload failed for booking {}: {}",
+                    booking.getId(), e.getMessage(), e);
+                throw e;
+            }
+        } else {
+            // Legacy: Local filesystem storage (deprecated, for migration only)
+            log.warn("[CheckIn] Using LOCAL filesystem storage (deprecated): storage.mode={}", storageMode);
+            String baseDir = photoType.isCheckoutPhoto() ? uploadDir.replace("checkin", "checkout") : uploadDir;
+            Path uploadPath = Paths.get(baseDir, sessionId);
+            Files.createDirectories(uploadPath);
+            Path filePath = uploadPath.resolve(filename);
+            Files.write(filePath, photoBytes);
+        }
         
         // Create photo entity
         CheckInPhoto photo = CheckInPhoto.builder()
@@ -588,20 +615,31 @@ public class CheckInPhotoService {
     }
 
     /**
-     * Store an ID verification photo in the PII bucket.
+     * Stores an identity verification photo securely in Supabase PII bucket.
      * 
-     * <p>This method is used by the ID verification service to store:
+     * <p><b>P0-2 FIX:</b> This method ONLY stores to Supabase encrypted PII bucket.
+     * No fallback to local filesystem. If Supabase is not configured, throws exception.
+     * 
+     * <p>This method handles driver's licenses, passports, and selfies used for
+     * biometric verification. All uploads are encrypted at rest and restricted
+     * to service-role access only.
+     * 
+     * <p><b>Security Notes:</b>
      * <ul>
-     *   <li>Selfie for liveness check</li>
-     *   <li>ID document front</li>
-     *   <li>ID document back</li>
+     *   <li>Photos ONLY stored in encrypted Supabase bucket (no local filesystem)</li>
+     *   <li>Storage keys include session UUID for namespace isolation</li>
+     *   <li>Original filenames are NOT preserved (prevent enumeration attacks)</li>
+     *   <li>Throws IllegalStateException if Supabase not configured</li>
      * </ul>
-     *
-     * @param bookingId The booking ID
-     * @param sessionId The check-in session ID
-     * @param file The photo file
-     * @param photoType Type identifier (selfie, id_front, id_back)
-     * @return Storage key for the photo
+     * 
+     * @param bookingId Booking identifier (for audit trail)
+     * @param sessionId Check-in session UUID (namespace isolation)
+     * @param file Multipart file upload (validated upstream)
+     * @param photoType ID document type (ID_FRONT, ID_BACK, SELFIE)
+     * @return Storage key in format: checkin_pii/{sessionId}/{type}_{timestamp}_{random}.jpg
+     * @throws IOException if storage upload fails
+     * @throws IllegalArgumentException if file validation fails
+     * @throws IllegalStateException if Supabase not configured (P0-2 enforcement)
      */
     public String storeIdPhoto(Long bookingId, String sessionId, MultipartFile file, String photoType) throws IOException {
         // Validate file
@@ -623,15 +661,33 @@ public class CheckInPhotoService {
         );
         String storageKey = String.format("checkin_pii/%s/%s", sessionId, filename);
         
-        // Ensure directory exists
-        Path uploadPath = Paths.get(uploadDir + "_pii", sessionId);
-        Files.createDirectories(uploadPath);
-        
-        // Save file
-        Path filePath = uploadPath.resolve(filename);
-        Files.write(filePath, file.getBytes());
-        
-        log.info("[CheckIn] ID photo stored: booking={}, type={}, key={}", bookingId, photoType, storageKey);
+        // ========== P0-2 FIX: FORCE SUPABASE-ONLY STORAGE FOR PII ==========
+        //
+        // CRITICAL SECURITY: Identity documents MUST be encrypted.
+        // We use PiiPhotoStorageService which:
+        // 1. Validates Supabase is enabled
+        // 2. Validates bucket is a PII bucket
+        // 3. Throws exception if configuration invalid
+        // 4. Has NO fallback to insecure local filesystem
+        //
+        try {
+            piiPhotoStorageService.storePiiPhoto(
+                "checkin_pii",  // Encrypted bucket for check-in PII
+                storageKey,
+                file.getBytes(),
+                file.getContentType()
+            );
+            log.info("[CheckIn-PII-P0-2] ID photo securely stored in Supabase: booking={}, session={}, type={}, key={}",
+                bookingId, sessionId, photoType, storageKey);
+        } catch (IllegalStateException e) {
+            // P0-2: Re-throw configuration error with context
+            log.error("[CheckIn-PII-P0-2] CRITICAL: PII storage misconfigured: {}", e.getMessage(), e);
+            throw e;
+        } catch (IOException e) {
+            log.error("[CheckIn-PII-P0-2] Failed to store PII photo to Supabase: booking={}, session={}, type={}",
+                bookingId, sessionId, photoType, e);
+            throw new IOException("Nije moguće pohraniti identifikacijski dokument. Pokušajte ponovo.", e);
+        }
         
         return storageKey;
     }

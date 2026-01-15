@@ -44,10 +44,10 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             List<BookingStatus> statuses
     );
 
-    @Query("SELECT COUNT(b) FROM Booking b WHERE b.renter.id = :renterId AND CAST(b.status AS String) = CAST(:status AS String)")
+    @Query("SELECT COUNT(b) FROM Booking b WHERE b.renter.id = :renterId AND b.status = :status")
     long countByRenterIdAndStatus(@Param("renterId") Long renterId, @Param("status") BookingStatus status);
 
-    @Query("SELECT COUNT(b) FROM Booking b WHERE b.car.owner.id = :ownerId AND CAST(b.status AS String) = CAST(:status AS String)")
+    @Query("SELECT COUNT(b) FROM Booking b WHERE b.car.owner.id = :ownerId AND b.status = :status")
     long countByOwnerIdAndStatus(
             @Param("ownerId") Long ownerId,
             @Param("status") BookingStatus status
@@ -88,6 +88,35 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
            "LEFT JOIN FETCH c.owner " +
            "WHERE b.id = :id")
     java.util.Optional<Booking> findByIdWithRelations(@Param("id") Long id);
+
+    /**
+     * P0-4 FIX: Find booking by ID with PESSIMISTIC_WRITE lock for race condition prevention.
+     * 
+     * <p>Used in HostCheckoutPhotoService to prevent guest from changing booking status
+     * while host is uploading checkout photos. Lock is held until transaction commits.
+     * 
+     * <p><b>Critical for checkout photo upload atomicity:</b>
+     * <ol>
+     *   <li>Host acquires lock on booking row</li>
+     *   <li>Verifies status is CHECKOUT_GUEST_COMPLETE</li>
+     *   <li>Processes photos under lock</li>
+     *   <li>Updates status to CHECKOUT_HOST_COMPLETE</li>
+     *   <li>Releases lock on transaction commit</li>
+     * </ol>
+     * 
+     * <p>If guest tries to change status during this window, they will block until
+     * host transaction commits, preventing race conditions.
+     * 
+     * @param id Booking ID to lock
+     * @return Booking with pessimistic write lock acquired
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.car c " +
+           "JOIN FETCH b.renter r " +
+           "LEFT JOIN FETCH c.owner " +
+           "WHERE b.id = :id")
+    java.util.Optional<Booking> findByIdWithLock(@Param("id") Long id);
 
     /**
      * Sum total revenue from completed bookings within a time period.
@@ -256,11 +285,11 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     /**
      * Find booking by ID for conversation view with eager loading.
      * Optimized for BookingConversationDTO construction:
-     * - Eagerly loads Car (brand, model, year, imageUrl, imageUrls)
+     * - Eagerly loads Car (brand, model, year, images)
      * - Eagerly loads Renter (for RLS check)
      * - Eagerly loads Owner (for RLS check)
      * 
-     * Note: Car.imageUrls is @ElementCollection(fetch = EAGER) so automatically loaded.
+     * Note: Car.images (OneToMany to CarImage) loaded via LEFT JOIN FETCH for image URLs.
      * 
      * @param id Booking ID
      * @return Optional containing booking with all conversation-view dependencies
@@ -269,6 +298,7 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
            "JOIN FETCH b.car c " +
            "JOIN FETCH b.renter r " +
            "LEFT JOIN FETCH c.owner o " +
+           "LEFT JOIN FETCH c.images " +
            "WHERE b.id = :id")
     java.util.Optional<Booking> findByIdForConversationView(@Param("id") Long id);
 
@@ -465,7 +495,7 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
            "JOIN FETCH b.car c " +
            "JOIN FETCH b.renter r " +
            "LEFT JOIN FETCH c.owner " +
-           "WHERE CAST(b.status AS String) = CAST(:status AS String) " +
+           "WHERE b.status = :status " +
            "AND b.checkInOpenedAt IS NOT NULL " +
            "AND b.checkInOpenedAt < :openedBefore")
     List<Booking> findBookingsNeedingReminder(
@@ -485,7 +515,7 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
            "JOIN FETCH b.car c " +
            "JOIN FETCH b.renter r " +
            "LEFT JOIN FETCH c.owner " +
-           "WHERE CAST(b.status AS String) = CAST(:status AS String) " +
+           "WHERE b.status = :status " +
            "AND b.hostCheckInCompletedAt IS NULL " +
            "AND b.startTime < :thresholdTime")
     List<Booking> findPotentialHostNoShows(
@@ -505,7 +535,7 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
            "JOIN FETCH b.car c " +
            "JOIN FETCH b.renter r " +
            "LEFT JOIN FETCH c.owner " +
-           "WHERE CAST(b.status AS String) = CAST(:status AS String) " +
+           "WHERE b.status = :status " +
            "AND b.guestCheckInCompletedAt IS NULL " +
            "AND b.hostCheckInCompletedAt IS NOT NULL " +
            "AND b.hostCheckInCompletedAt < :hostCompletedBefore")
@@ -521,7 +551,7 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     @Query("SELECT b FROM Booking b " +
            "JOIN FETCH b.car c " +
            "JOIN FETCH b.renter r " +
-           "WHERE CAST(b.status AS String) IN ('CHECK_IN_OPEN', 'CHECK_IN_HOST_COMPLETE', 'CHECK_IN_COMPLETE') " +
+           "WHERE b.status IN ('CHECK_IN_OPEN', 'CHECK_IN_HOST_COMPLETE', 'CHECK_IN_COMPLETE') " +
            "ORDER BY b.startTime ASC")
     List<Booking> findBookingsInCheckInPhase();
 
@@ -630,7 +660,7 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
      * 
      * @return Number of currently active trips
      */
-    @Query("SELECT COUNT(b) FROM Booking b WHERE CAST(b.status AS String) = 'IN_TRIP'")
+    @Query("SELECT COUNT(b) FROM Booking b WHERE b.status = 'IN_TRIP'")
     Long countActiveTrips();
 
     /**
@@ -639,7 +669,7 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
      * @param status Booking status
      * @return Count of bookings with that status
      */
-    @Query("SELECT COUNT(b) FROM Booking b WHERE CAST(b.status AS String) = CAST(:status AS String)")
+    @Query("SELECT COUNT(b) FROM Booking b WHERE b.status = :status")
     Long countByStatus(@Param("status") BookingStatus status);
     
     /**

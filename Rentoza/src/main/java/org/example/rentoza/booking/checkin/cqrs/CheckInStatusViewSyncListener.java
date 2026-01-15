@@ -337,7 +337,20 @@ public class CheckInStatusViewSyncListener {
     }
 
     /**
-     * Handle photo uploaded event.
+     * Handle photo uploaded event - atomic upsert version.
+     * 
+     * <p>Uses PostgreSQL INSERT...ON CONFLICT to prevent race conditions.
+     * No retry logic needed - single atomic operation.
+     * 
+     * <p><b>Before (Broken):</b>
+     * <pre>
+     * SELECT view → IF NOT EXISTS → INSERT → RACE CONDITION!
+     * </pre>
+     * 
+     * <p><b>After (Fixed):</b>
+     * <pre>
+     * INSERT...ON CONFLICT DO UPDATE → Atomic, impossible to race
+     * </pre>
      */
     @EventListener
     @Async("viewSyncExecutor")
@@ -347,25 +360,43 @@ public class CheckInStatusViewSyncListener {
 
         syncLatencyTimer.record(() -> {
             try {
-                Optional<CheckInStatusView> viewOpt = viewRepository.findByBookingId(event.bookingId());
+                // Fetch booking data for denormalized fields
+                Booking booking = bookingRepository.findByIdWithRelations(event.bookingId())
+                        .orElseThrow(() -> new IllegalStateException(
+                                "Cannot sync photo - booking not found: " + event.bookingId()));
 
-                if (viewOpt.isPresent()) {
-                    CheckInStatusView view = viewOpt.get();
+                var host = booking.getCar().getOwner();
+                var guest = booking.getRenter();
+                var car = booking.getCar();
 
-                    // Increment photo count
-                    int currentCount = view.getPhotoCount() != null ? view.getPhotoCount() : 0;
-                    view.setPhotoCount(currentCount + 1);
-                    view.setLastSyncAt(Instant.now());
+                // ✅ Atomic upsert - race condition impossible
+                // No retry logic needed - PostgreSQL ON CONFLICT handles concurrency
+                viewRepository.upsertPhotoCount(
+                        event.bookingId(),
+                        UUID.fromString(booking.getCheckInSessionId()),
+                        host.getId(),
+                        host.getFirstName() + " " + host.getLastName(),
+                        host.getPhone(),
+                        guest.getId(),
+                        guest.getFirstName() + " " + guest.getLastName(),
+                        guest.getPhone(),
+                        car.getId(),
+                        car.getBrand(),
+                        car.getModel(),
+                        car.getYear(),
+                        car.getImageUrl(),
+                        car.getLicensePlate(),
+                        booking.getStatus().name(),
+                        mapStatusToDisplay(booking.getStatus()),
+                        booking.getStartTime(),
+                        booking.getLockboxCodeEncrypted() != null,
+                        booking.getGeofenceDistanceMeters()
+                );
 
-                    viewRepository.save(view);
+                evictPhotoCaches(event.bookingId(), host.getId(), guest.getId());
 
-                    // Evict photo caches specifically
-                    evictPhotoCaches(event.bookingId(), view.getHostUserId(), view.getGuestUserId());
-
-                    syncSuccessCounter.increment();
-                    log.debug("[View-Sync] Updated photo count for booking {} to {}",
-                            event.bookingId(), view.getPhotoCount());
-                }
+                syncSuccessCounter.increment();
+                log.info("[View-Sync] Updated photo count for booking {}", event.bookingId());
 
             } catch (Exception e) {
                 syncFailureCounter.increment();

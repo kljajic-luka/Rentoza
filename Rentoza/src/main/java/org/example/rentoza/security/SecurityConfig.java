@@ -203,11 +203,12 @@ public class SecurityConfig {
                         // ============ PUBLIC REVIEWS ============
                         .requestMatchers(HttpMethod.GET, "/api/reviews/car/**").permitAll()
 
-                        // ============ PUBLIC AVAILABILITY DATA ============
                         // Calendar availability for booking UI (no PII exposure)
                         // IMPORTANT: Must come BEFORE /api/bookings/* internal service rule
                         .requestMatchers(HttpMethod.GET, "/api/bookings/car/*/public").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/availability/*").permitAll()
+                        // FIX: Add car-specific availability endpoint (used by booking dialog calendar)
+                        .requestMatchers(HttpMethod.GET, "/api/cars/*/availability").permitAll()
 
                         // ============ PUBLIC OWNER PROFILES ============
                         .requestMatchers(HttpMethod.GET, "/api/owners/*/public-profile").permitAll()

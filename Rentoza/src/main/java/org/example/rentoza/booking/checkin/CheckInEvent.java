@@ -81,7 +81,7 @@ public class CheckInEvent {
      * User ID who triggered this event.
      * Use 0 for SYSTEM-triggered events (scheduler, background jobs).
      */
-    @Column(name = "actor_id", nullable = false, updatable = false)
+    @Column(name = "actor_id", nullable = true, updatable = false)
     private Long actorId;
 
     /**
@@ -214,8 +214,8 @@ public class CheckInEvent {
             CheckInEventType eventType,
             Map<String, Object> metadata
     ) {
-        return create(booking, checkInSessionId, eventType, 0L, CheckInActorRole.SYSTEM,
-                null, metadata, null, "SYSTEM");
+        return create(booking, checkInSessionId, eventType, null, CheckInActorRole.SYSTEM,
+                null, metadata, null, "SYSTEM");  // ← Change 0L to null
     }
 
     // ========== HELPER METHODS ==========

@@ -143,6 +143,15 @@
         </mat-card-content>
       </mat-card>
 
+      <!-- NEW: Renter License Verification Card -->
+      <app-renter-verification-card
+        *ngIf="userId"
+        [userId]="userId"
+        (approve)="approveRenterVerification()"
+        (reject)="rejectRenterVerification()"
+        (previewDocument)="openRenterDocumentPreview($event)"
+      ></app-renter-verification-card>
+
       <!-- NEW: Modern Risk Score Card (replaced bare number display) -->
       <app-risk-score-card
         [totalScore]="user.riskScore || 0"

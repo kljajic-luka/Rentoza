@@ -508,16 +508,6 @@ export class CarListComponent implements OnInit, OnDestroy {
     if (!this.loggedSample && cars.length > 0) {
       this.loggedSample = true;
       const sample = cars[0];
-      console.info('[CarList] Sample car image fields (runtime)', {
-        carId: sample.id,
-        imageUrlPrefix:
-          typeof sample.imageUrl === 'string' ? sample.imageUrl.slice(0, 32) : sample.imageUrl,
-        imageUrlsCount: Array.isArray(sample.imageUrls) ? sample.imageUrls.length : 0,
-        firstImageUrlPrefix:
-          Array.isArray(sample.imageUrls) && sample.imageUrls[0]
-            ? String(sample.imageUrls[0]).slice(0, 32)
-            : null,
-      });
     }
 
     for (const car of cars) {

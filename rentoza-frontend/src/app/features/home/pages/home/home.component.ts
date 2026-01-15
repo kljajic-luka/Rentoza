@@ -41,6 +41,7 @@ import {
 } from 'rxjs';
 
 import { Car } from '@core/models/car.model';
+import { AvailabilitySearchParams } from '@core/models/car-search.model';
 import { CarService } from '@core/services/car.service';
 import {
   LocationService,
@@ -676,7 +677,8 @@ export class HomeComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Perform geospatial search using LocationService
+   * Perform availability search using CarService.
+   * Uses the same endpoint as car-list page to ensure max/min rental days filtering.
    */
   private performGeospatialSearch(): void {
     this.isSearching = true;
@@ -684,26 +686,34 @@ export class HomeComponent implements OnInit, OnDestroy {
     this.cdr.markForCheck();
 
     // Get location string from selected suggestion (city name for backend search)
-    // Skip 'Nepoznato' city fallback - prefer address extraction in that case
     const city = this.selectedGeocodeSuggestion?.city;
     const locationString =
       city && city !== 'Nepoznato'
         ? city
         : this.searchLocation.split(',')[0]?.trim() || this.searchLocation;
 
-    const filters: GeospatialSearchFilters = {
-      location: locationString, // Send city name to backend
+    // Build ISO-8601 timestamps from date + time
+    const startTime = this.combineDateTime(this.searchStartDate!, this.searchStartTime);
+    const endTime = this.combineDateTime(this.searchEndDate!, this.searchEndTime);
+
+    // Use AvailabilitySearchParams to include dates for proper filtering
+    // This ensures cars are filtered by min/max rental days on the backend
+    const params: AvailabilitySearchParams = {
+      location: locationString,
+      startTime,
+      endTime,
       latitude: this.searchCenter.latitude,
       longitude: this.searchCenter.longitude,
       radiusKm: this.searchRadius,
       page: 0,
-      pageSize: 50,
+      size: 50,
     };
 
-    this.locationService.searchCars(filters).subscribe({
+    this.carService.searchAvailableCars(params).subscribe({
       next: (response) => {
-        this.searchResults = response.data;
-        this.carMarkers = this.createCarMarkers(response.data);
+        // Map Car[] to CarSearchResult[] for compatibility with existing template
+        this.searchResults = response.content.map(car => this.mapCarToSearchResult(car));
+        this.carMarkers = this.createCarMarkers(this.searchResults);
         this.isSearching = false;
 
         // Persist search state to URL for refresh/sharing
@@ -712,13 +722,41 @@ export class HomeComponent implements OnInit, OnDestroy {
         this.cdr.markForCheck();
       },
       error: (error) => {
-        console.error('Geospatial search failed:', error);
+        console.error('Availability search failed:', error);
         this.searchResults = [];
         this.carMarkers = [];
         this.isSearching = false;
         this.cdr.markForCheck();
       },
     });
+  }
+
+  /**
+   * Map Car model to CarSearchResult for template compatibility.
+   * This bridges the gap between CarService response and LocationService response format.
+   */
+  private mapCarToSearchResult(car: Car): CarSearchResult {
+    return {
+      id: parseInt(car.id?.toString() || '0', 10),
+      brand: car.brand || car.make || '',
+      model: car.model || '',
+      year: car.year || 0,
+      pricePerDay: car.pricePerDay || 0,
+      locationGeoPoint: {
+        latitude: car.locationLatitude || 0,
+        longitude: car.locationLongitude || 0,
+        city: car.locationCity || car.location || 'Nepoznato',
+        obfuscationRadiusMeters: 500,
+        obfuscationApplied: true,
+      },
+      imageUrl: car.imageUrl,
+      imageUrls: car.imageUrls,
+      features: car.features,
+      transmission: car.transmissionType,
+      fuelType: car.fuelType,
+      seats: car.seats,
+      available: car.available ?? true,
+    };
   }
 
   /**

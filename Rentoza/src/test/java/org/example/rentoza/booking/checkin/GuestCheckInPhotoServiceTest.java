@@ -21,6 +21,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.security.access.AccessDeniedException;
+import org.example.rentoza.storage.SupabaseStorageService;
 
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -55,6 +56,7 @@ class GuestCheckInPhotoServiceTest {
     @Mock private ExifValidationService exifValidationService;
     @Mock private PhotoRejectionService photoRejectionService;
     @Mock private PhotoGuidanceService photoGuidanceService;
+    @Mock private SupabaseStorageService supabaseStorageService;
 
     private GuestCheckInPhotoService guestPhotoService;
     
@@ -78,10 +80,12 @@ class GuestCheckInPhotoServiceTest {
             eventService,
             exifValidationService,
             photoRejectionService,
-            photoGuidanceService
+            photoGuidanceService,
+            supabaseStorageService
         );
         
         // Inject @Value properties that Spring would normally inject
+        ReflectionTestUtils.setField(guestPhotoService, "storageMode", "local");
         ReflectionTestUtils.setField(guestPhotoService, "maxSizeMb", 3);
         ReflectionTestUtils.setField(guestPhotoService, "maxWidthPixels", 2560);
         ReflectionTestUtils.setField(guestPhotoService, "maxHeightPixels", 2560);

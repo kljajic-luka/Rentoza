@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 
 import java.security.Key;
 import java.util.Date;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -41,7 +42,8 @@ public class InternalServiceJwtUtil {
         return Jwts.builder()
                 .setClaims(Map.of(
                         "service", serviceName,
-                        "type", "INTERNAL_SERVICE"
+                        "type", "INTERNAL_SERVICE",
+                        "authorities", List.of("ROLE_INTERNAL_SERVICE")  // ← ADD THIS
                 ))
                 .setSubject(serviceName)
                 .setIssuedAt(new Date())

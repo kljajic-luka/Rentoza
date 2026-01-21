@@ -31,11 +31,6 @@ import java.util.regex.Pattern;
 @Slf4j
 public class ContentModerationFilter {
 
-    // Matches international phone numbers with various separators
-    private static final Pattern PHONE_PATTERN = Pattern.compile(
-            "\\+?[0-9]{1,4}[\\s.-]?\\(?[0-9]{1,3}\\)?[\\s.-]?[0-9]{2,4}[\\s.-]?[0-9]{2,4}[\\s.-]?[0-9]{0,4}"
-    );
-
     // Standard email pattern
     private static final Pattern EMAIL_PATTERN = Pattern.compile(
             "[\\w.+\\-]+@[\\w.\\-]+\\.[a-zA-Z]{2,}"
@@ -57,15 +52,6 @@ public class ContentModerationFilter {
             "openstreetmap.org"
     );
 
-    // Common phone number keywords for obfuscation detection
-    private static final Pattern PHONE_OBFUSCATION_PATTERN = Pattern.compile(
-            "(call\\s*me|text\\s*me|whatsapp|telegram|my\\s*number|phone\\s*is)",
-            Pattern.CASE_INSENSITIVE
-    );
-
-    // Minimum message length for phone detection
-    private static final int MIN_LENGTH_FOR_PHONE_CHECK = 6;
-
     /**
      * Validate message content for policy violations.
      * 
@@ -81,21 +67,16 @@ public class ContentModerationFilter {
         List<String> violations = new ArrayList<>();
         List<String> flags = new ArrayList<>();
 
-        // Check for phone numbers (BLOCKED)
-        if (trimmedContent.length() >= MIN_LENGTH_FOR_PHONE_CHECK) {
-            if (PHONE_PATTERN.matcher(trimmedContent).find()) {
-                violations.add("phone numbers");
-                log.debug("[Moderation] Phone number detected - BLOCKED");
-            }
-        }
-
-        // Check for email addresses (BLOCKED)
+        // NOTE: Phone number blocking removed - users need to share contact info for coordination
+        // See: https://rentoza.atlassian.net/browse/RENT-XXX
+        
+        // Check for email addresses (BLOCKED - prevents off-platform transactions)
         if (EMAIL_PATTERN.matcher(trimmedContent).find()) {
             violations.add("email addresses");
             log.debug("[Moderation] Email address detected - BLOCKED");
         }
 
-        // Check for URLs (ALLOWED if maps, FLAGGED otherwise)
+        // Check for URLs (ALLOWED if maps, FLAGGED otherwise for admin review)
         Matcher urlMatcher = URL_PATTERN.matcher(trimmedContent);
         while (urlMatcher.find()) {
             String url = urlMatcher.group().toLowerCase();
@@ -104,14 +85,6 @@ public class ContentModerationFilter {
                 log.debug("[Moderation] Non-allowlisted URL detected - FLAGGED: {}", maskUrl(url));
             } else {
                 log.debug("[Moderation] Allowlisted URL allowed: {}", maskUrl(url));
-            }
-        }
-
-        // Check for obfuscation attempts (BLOCKED if combined with numbers)
-        if (PHONE_OBFUSCATION_PATTERN.matcher(trimmedContent).find()) {
-            if (trimmedContent.matches(".*\\d{4,}.*")) {
-                violations.add("contact sharing attempts");
-                log.debug("[Moderation] Contact sharing attempt detected - BLOCKED");
             }
         }
 

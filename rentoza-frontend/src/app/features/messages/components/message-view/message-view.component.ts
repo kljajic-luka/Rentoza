@@ -66,7 +66,7 @@ import { TypingIndicatorComponent } from '../typing-indicator/typing-indicator.c
           <app-message-bubble
             *ngIf="item.type === 'message'"
             [message]="item.message!"
-            [isOwn]="item.message!.senderId === currentUserId()"
+            [isOwn]="item.message!.senderId?.toString() === currentUserId()?.toString()"
             [showAvatar]="item.showAvatar ?? true"
             [isFirstInGroup]="item.isFirstInGroup ?? true"
             [isLastInGroup]="item.isLastInGroup ?? true"
@@ -292,9 +292,11 @@ export class MessageViewComponent implements AfterViewInit, OnDestroy {
     const conv = this.conversation();
     if (!conv) return null;
     
-    if (senderId === conv.renterId) {
+    // Type-safe comparison - senderId may be number or string
+    const senderIdStr = senderId?.toString();
+    if (senderIdStr === conv.renterId?.toString()) {
       return conv.renterProfilePicUrl;
-    } else if (senderId === conv.ownerId) {
+    } else if (senderIdStr === conv.ownerId?.toString()) {
       return conv.ownerProfilePicUrl;
     }
     return null;

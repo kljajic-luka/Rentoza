@@ -10,6 +10,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Entity
 @Table(name = "messages")
@@ -23,11 +24,11 @@ public class Message {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false)
+    @Column(name = "conversation_id", nullable = false)
     private Long conversationId;
 
-    @Column(nullable = false)
-    private String senderId;
+    @Column(name = "sender_id", nullable = false)
+    private Long senderId;  // BIGINT in SQL
 
     @Column(nullable = false, length = 2000)
     private String content;
@@ -36,25 +37,49 @@ public class Message {
     @Column(nullable = false, updatable = false)
     private LocalDateTime timestamp;
 
-    @ElementCollection(fetch = FetchType.EAGER)
-    @CollectionTable(name = "message_read_by", joinColumns = @JoinColumn(name = "message_id"))
-    @Column(name = "user_id")
-    @Builder.Default
-    private Set<String> readBy = new HashSet<>();
-
     @Column
     private String mediaUrl;
 
-    // Mark message as read by a user
-    public void markAsReadBy(String userId) {
-        if (readBy == null) {
-            readBy = new HashSet<>();
+    // Users who have read this message (proper @OneToMany relationship)
+    @OneToMany(fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
+    @JoinColumn(name = "message_id")
+    @Builder.Default
+    private Set<MessageReadReceipt> readReceipts = new HashSet<>();
+
+    /**
+     * Mark this message as read by a user.
+     * @param userId User ID (BIGINT from users.id)
+     */
+    public void markAsReadBy(Long userId) {
+        if (this.readReceipts == null) {
+            this.readReceipts = new HashSet<>();
         }
-        readBy.add(userId);
+        // Check if a receipt for this user already exists to avoid duplicates
+        boolean alreadyRead = this.readReceipts.stream().anyMatch(r -> r.getUserId().equals(userId));
+        if (!alreadyRead) {
+            this.readReceipts.add(MessageReadReceipt.create(this.id, userId));
+        }
     }
 
-    // Check if message is read by a user
-    public boolean isReadBy(String userId) {
-        return readBy != null && readBy.contains(userId);
+    /**
+     * Check if this message has been read by a specific user.
+     * @param userId User ID (BIGINT from users.id)
+     */
+    public boolean isReadBy(Long userId) {
+        return this.readReceipts != null &&
+               this.readReceipts.stream().anyMatch(r -> r.getUserId().equals(userId));
+    }
+
+    /**
+     * Get set of user IDs who have read this message (for backward compatibility)
+     * @return Set of Long user IDs
+     */
+    public Set<Long> getReadBy() {
+        if (this.readReceipts == null) {
+            return new HashSet<>();
+        }
+        return this.readReceipts.stream()
+                .map(MessageReadReceipt::getUserId)
+                .collect(Collectors.toSet());
     }
 }

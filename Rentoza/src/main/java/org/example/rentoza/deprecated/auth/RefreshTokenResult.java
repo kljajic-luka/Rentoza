@@ -1,4 +1,4 @@
-package org.example.rentoza.auth;
+package org.example.rentoza.deprecated.auth;
 
 /**
  * Represents the outcome of rotating a refresh token.

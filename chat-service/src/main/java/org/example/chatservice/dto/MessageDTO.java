@@ -16,10 +16,10 @@ public class MessageDTO {
 
     private Long id;
     private Long conversationId;
-    private String senderId;
+    private Long senderId;
     private String content;
     private LocalDateTime timestamp;
-    private Set<String> readBy;
+    private Set<Long> readBy;
     private String mediaUrl;
     private boolean isOwnMessage;
 

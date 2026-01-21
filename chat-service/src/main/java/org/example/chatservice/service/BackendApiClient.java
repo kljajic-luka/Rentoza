@@ -55,7 +55,7 @@ public class BackendApiClient {
                 });
     }
 
-    public Mono<UserDetailsDTO> getUserDetails(String userId) {
+    public Mono<UserDetailsDTO> getUserDetails(Long userId) {
         logger.info("🔄 Fetching user details for userId: {}", userId);
         
         return webClient.get()

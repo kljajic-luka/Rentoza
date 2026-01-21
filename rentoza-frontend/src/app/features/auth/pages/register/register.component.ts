@@ -273,6 +273,7 @@ export class RegisterComponent implements OnInit {
       // Owner registration with identity documents
       const ownerData = this.ownerForm.getRawValue();
       const payload: OwnerRegisterRequest = {
+        role: 'OWNER', // ✅ CRITICAL: Set role to OWNER for host registration
         firstName: basicData.firstName,
         lastName: basicData.lastName,
         email: basicData.email,
@@ -299,14 +300,25 @@ export class RegisterComponent implements OnInit {
       }
 
       this.authService
-        .registerOwner(payload)
+        .supabaseRegister(payload as any)
         .pipe(
           tap((user) => {
-            this.toast.success(
-              'Dobrodošli u Rentoza zajednicu domaćina! Vaš nalog je kreiran i čeka verifikaciju.'
-            );
-            // Owner redirects to verification pending or dashboard
-            this.redirectService.redirectAfterLogin(user);
+            if (user === null) {
+              // Email confirmation required
+              this.toast.success(
+                'Nalog je uspešno kreiran! Molimo proverite Vaš email za potvrdu naloga.',
+                'Potvrda emaila potrebna'
+              );
+              this.router.navigate(['/auth/login'], {
+                queryParams: { emailConfirmation: 'required' },
+              });
+            } else {
+              this.toast.success(
+                'Dobrodošli u Rentoza zajednicu domaćina! Vaš nalog je kreiran i čeka verifikaciju.'
+              );
+              // Owner redirects to verification pending or dashboard
+              this.redirectService.redirectAfterLogin(user);
+            }
           }),
           finalize(() => this.isSubmitting.set(false))
         )
@@ -316,6 +328,7 @@ export class RegisterComponent implements OnInit {
     } else {
       // Standard user registration
       const payload: UserRegisterRequest = {
+        role: 'USER', // ✅ CRITICAL: Set role to USER for standard registration
         firstName: basicData.firstName,
         lastName: basicData.lastName,
         email: basicData.email,
@@ -326,7 +339,7 @@ export class RegisterComponent implements OnInit {
       };
 
       this.authService
-        .registerUser(payload)
+        .supabaseRegister(payload)
         .pipe(
           tap((user) => {
             if (user === null) {
@@ -342,7 +355,7 @@ export class RegisterComponent implements OnInit {
             } else {
               // Normal flow - user is logged in
               this.toast.success('Dobrodošli u Rentoza! Vaš nalog je uspešno kreiran.');
-              this.redirectService.redirectAfterLogin(user);
+              this.redirectService.redirectAfterLogin(user!);
             }
           }),
           finalize(() => this.isSubmitting.set(false))
@@ -366,15 +379,26 @@ export class RegisterComponent implements OnInit {
     }
 
     this.authService
-      .register(payload)
+      .supabaseRegister(payload as RegisterRequest)
       .pipe(
         tap((user) => {
-          this.toast.success(
-            this.isOwnerRegistration()
-              ? 'Dobrodošli u Rentoza zajednicu domaćina! Vaš nalog je kreiran.'
-              : 'Dobrodošli u Rentoza! Vaš nalog je uspešno kreiran.'
-          );
-          this.redirectService.redirectAfterLogin(user);
+          if (user === null) {
+            // Email confirmation required
+            this.toast.success(
+              'Nalog je uspešno kreiran! Molimo proverite Vaš email za potvrdu naloga.',
+              'Potvrda emaila potrebna'
+            );
+            this.router.navigate(['/auth/login'], {
+              queryParams: { emailConfirmation: 'required' },
+            });
+          } else {
+            this.toast.success(
+              this.isOwnerRegistration()
+                ? 'Dobrodošli u Rentoza zajednicu domaćina! Vaš nalog je kreiran.'
+                : 'Dobrodošli u Rentoza! Vaš nalog je uspešno kreiran.'
+            );
+            this.redirectService.redirectAfterLogin(user);
+          }
         }),
         finalize(() => this.isSubmitting.set(false))
       )

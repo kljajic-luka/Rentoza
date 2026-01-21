@@ -1,4 +1,4 @@
-package org.example.rentoza.auth;
+package org.example.rentoza.deprecated.auth;
 
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
@@ -29,6 +29,7 @@ import java.util.Optional;
  * @author Rentoza Team
  * @since 2.0.0
  */
+@Deprecated(since = "2.1.0", forRemoval = true)
 @Service
 public class RefreshTokenServiceEnhanced {
 
@@ -474,11 +475,4 @@ public class RefreshTokenServiceEnhanced {
     }
 }
 
-/**
- * Custom exception for invalid refresh tokens
- */
-class InvalidRefreshTokenException extends RuntimeException {
-    public InvalidRefreshTokenException(String message) {
-        super(message);
-    }
-}
+

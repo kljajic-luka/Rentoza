@@ -29,6 +29,8 @@ export interface RegisterRequest {
  * @see REGISTRATION_IMPLEMENTATION_PLAN.md lines 25-59
  */
 export interface UserRegisterRequest {
+  /** User role - REQUIRED for Supabase Auth (usually "USER" for standard registration) */
+  role?: 'USER' | 'OWNER';
   /** First name (3-50 characters) */
   firstName: string;
   /** Last name (3-50 characters) */
@@ -58,6 +60,8 @@ export type OwnerType = 'INDIVIDUAL' | 'LEGAL_ENTITY';
  * @see REGISTRATION_IMPLEMENTATION_PLAN.md lines 62-138
  */
 export interface OwnerRegisterRequest extends UserRegisterRequest {
+  /** User role - REQUIRED for Supabase Auth (always "OWNER" for owner registration) */
+  role?: 'OWNER';
   /** Owner type determines required identity document */
   ownerType: OwnerType;
   /** Serbian personal ID (13 digits) - Required if ownerType=INDIVIDUAL */

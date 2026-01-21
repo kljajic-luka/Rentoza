@@ -70,11 +70,11 @@ public class RateLimitConfig {
     /**
      * Try to consume a token from the user's bucket.
      * 
-     * @param userId The user's ID
+     * @param userId The user's ID (BIGINT from database)
      * @return true if allowed, false if rate limited
      */
-    public boolean tryConsume(String userId) {
-        Bucket bucket = resolveBucket(userId);
+    public boolean tryConsume(Long userId) {
+        Bucket bucket = resolveBucket(String.valueOf(userId));
         boolean allowed = bucket.tryConsume(1);
 
         if (!allowed) {
@@ -86,9 +86,10 @@ public class RateLimitConfig {
 
     /**
      * Get remaining tokens for a user (for headers/debugging).
+     * @param userId The user's ID (BIGINT from database)
      */
-    public long getRemainingTokens(String userId) {
-        return resolveBucket(userId).getAvailableTokens();
+    public long getRemainingTokens(Long userId) {
+        return resolveBucket(String.valueOf(userId)).getAvailableTokens();
     }
 
     /**

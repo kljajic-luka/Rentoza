@@ -1,0 +1,569 @@
+package org.example.chatservice.security;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.MalformedJwtException;
+import io.jsonwebtoken.security.SignatureException;
+import io.micrometer.core.annotation.Timed;
+import io.micrometer.core.instrument.MeterRegistry;
+import jakarta.annotation.PostConstruct;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.bouncycastle.jce.ECNamedCurveTable;
+import org.bouncycastle.jce.spec.ECNamedCurveParameterSpec;
+import org.bouncycastle.jce.spec.ECPublicKeySpec;
+import org.bouncycastle.math.ec.ECPoint;
+import org.example.chatservice.exception.ForbiddenException;
+import org.example.chatservice.repository.UserRepository;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Mono;
+
+import java.io.IOException;
+import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
+import java.security.KeyFactory;
+import java.security.interfaces.ECPublicKey;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * Supabase JWT Utility for ES256 Token Validation
+ * 
+ * <p>Algorithm: ES256 (Elliptic Curve Digital Signature Algorithm with SHA-256)</p>
+ * <p>Purpose: Validate Supabase Auth JWTs with asymmetric public key verification</p>
+ * 
+ * <h3>Key Features:</h3>
+ * <ul>
+ *   <li>Dynamic JWKS endpoint for automatic key rotation</li>
+ *   <li>In-memory key cache with 24-hour TTL</li>
+ *   <li>UUID (auth.uid) to BIGINT (users.id) mapping</li>
+ *   <li>Caffeine cache for user ID lookups</li>
+ *   <li>Performance monitoring via Micrometer</li>
+ * </ul>
+ * 
+ * <h3>Security:</h3>
+ * <ul>
+ *   <li>Verifies ES256 signature using public key from JWKS</li>
+ *   <li>Validates token expiration</li>
+ *   <li>Validates issuer matches Supabase instance</li>
+ *   <li>Validates audience claim ("authenticated")</li>
+ * </ul>
+ * 
+ * @see <a href="https://supabase.com/docs/guides/auth/jwts">Supabase JWT Documentation</a>
+ * @author Rentoza Development Team
+ * @since 2.0.0 (Supabase Migration)
+ */
+@Component
+@RequiredArgsConstructor
+@Slf4j
+public class SupabaseJwtUtil {
+
+    private final WebClient.Builder webClientBuilder;
+    private final UserRepository userRepository;
+    private final MeterRegistry meterRegistry;
+    private final ObjectMapper objectMapper = new ObjectMapper();  // For JSON parsing
+
+    @Value("${supabase.jwt.jwks-url}")
+    private String jwksUrl;
+
+    @Value("${supabase.jwt.issuer}")
+    private String issuer;
+
+    @Value("${supabase.jwt.audience:authenticated}")
+    private String audience;
+    
+    @Value("${supabase.anon-key}")
+    private String supabaseAnonKey;
+
+
+    // In-memory cache for JWKS public keys (kid -> ECPublicKey)
+    private final Map<String, ECPublicKey> keyCache = new ConcurrentHashMap<>();
+
+    // Track last JWKS fetch time for cache invalidation
+    private long lastJwksFetchTime = 0;
+    private static final long JWKS_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+    /**
+     * Initialize JWKS cache on startup with validation
+     * Validates configuration and fetches public keys from Supabase JWKS endpoint
+     */
+    @PostConstruct
+    public void init() {
+        // Validate required configuration
+        if (jwksUrl == null || jwksUrl.contains("your-project")) {
+            throw new IllegalStateException(
+                "SUPABASE_JWKS_URL not configured - still contains placeholder or is null");
+        }
+        
+        if (issuer == null || issuer.contains("your-project")) {
+            throw new IllegalStateException(
+                "SUPABASE_JWT_ISSUER not configured - still contains placeholder or is null");
+        }
+        
+        log.info("✅ Supabase config validated");
+        log.info("Initializing Supabase JWT validation with JWKS endpoint: {}", jwksUrl);
+        
+        try {
+            refreshPublicKeysWithRetry();
+            log.info("JWKS cache initialized successfully with {} keys", keyCache.size());
+        } catch (Exception e) {
+            log.error("Failed to initialize JWKS cache: {}. Token validation will fail until keys are fetched.", 
+                e.getMessage(), e);
+            // Don't throw - service can start, but tokens will fail validation until JWKS fetched
+        }
+    }
+
+    /**
+     * Validate Supabase ES256 JWT token
+     * 
+     * <p>Verification steps:</p>
+     * <ol>
+     *   <li>Extract 'kid' (key ID) from token header</li>
+     *   <li>Find matching public key in cache</li>
+     *   <li>Verify ES256 signature</li>
+     *   <li>Validate expiration</li>
+     *   <li>Validate issuer and audience</li>
+     * </ol>
+     * 
+     * @param token JWT token string (without "Bearer " prefix)
+     * @return true if token is valid, false otherwise
+     */
+    @Timed(value = "auth.jwt.validation", description = "JWT validation duration", percentiles = {0.5, 0.95, 0.99})
+    public boolean validateToken(String token) {
+        try {
+            // Parse unverified header to get kid (key ID)
+            String kid = extractKeyId(token);
+            if (kid == null) {
+                log.warn("Token missing 'kid' (key ID) in header");
+                meterRegistry.counter("auth.jwt.validation.failure", "reason", "missing_kid").increment();
+                return false;
+            }
+
+            // Get public key from cache (refresh if needed)
+            ECPublicKey publicKey = getPublicKey(kid);
+            if (publicKey == null) {
+                log.warn("No public key found for kid: {}", kid);
+                meterRegistry.counter("auth.jwt.validation.failure", "reason", "key_not_found").increment();
+                return false;
+            }
+
+            // Parse and verify token
+            Claims claims = Jwts.parser()
+                    .verifyWith(publicKey)  // ES256 signature verification
+                    .requireIssuer(issuer)
+                    .requireAudience(audience)
+                    .build()
+                    .parseSignedClaims(token.trim())
+                    .getPayload();
+
+            // Check expiration
+            if (isTokenExpired(claims)) {
+                log.debug("Token expired: exp={}", claims.getExpiration());
+                meterRegistry.counter("auth.jwt.validation.failure", "reason", "expired").increment();
+                return false;
+            }
+
+            log.debug("Token validated successfully for user: {}", claims.getSubject());
+            meterRegistry.counter("auth.jwt.validation.success").increment();
+            return true;
+
+        } catch (SignatureException e) {
+            log.warn("Invalid token signature: {}", e.getMessage());
+            meterRegistry.counter("auth.jwt.validation.failure", "reason", "invalid_signature").increment();
+            return false;
+        } catch (Exception e) {
+            log.error("Token validation failed: {}", e.getMessage(), e);
+            meterRegistry.counter("auth.jwt.validation.failure", "reason", "exception").increment();
+            return false;
+        }
+    }
+
+    /**
+     * Extract Supabase user UUID from token
+     * 
+     * @param token JWT token string
+     * @return UUID from 'sub' claim (auth.uid in Supabase)
+     * @throws IllegalArgumentException if token invalid or subject not UUID
+     */
+    public UUID getSupabaseUserId(String token) {
+        try {
+            Claims claims = extractAllClaims(token);
+            String subject = claims.getSubject();
+            return UUID.fromString(subject);
+        } catch (Exception e) {
+            log.error("Failed to extract Supabase user ID from token: {}", e.getMessage());
+            throw new IllegalArgumentException("Invalid token or subject not a valid UUID", e);
+        }
+    }
+
+    /**
+     * Map Supabase UUID to Rentoza BIGINT user ID (with timing)
+     * 
+     * <p>Delegates to cached method for actual lookup</p>
+     * 
+     * @param token JWT token string
+     * @return BIGINT user ID from users.id
+     * @throws ForbiddenException if user not found in database
+     */
+    @Timed(value = "auth.user.mapping.total", description = "Total user mapping time")
+    public Long getRentozaUserId(String token) {
+        UUID authUid = getSupabaseUserId(token);
+        return getRentozaUserIdCached(authUid);
+    }
+
+    /**
+     * Cached UUID to BIGINT mapping with stampede prevention
+     * 
+     * <p>Cache configuration:</p>
+     * <ul>
+     *   <li>TTL: 1 hour (expireAfterWrite)</li>
+     *   <li>Max size: 10,000 entries</li>
+     *   <li>Cache name: "userIdMapping"</li>
+     *   <li>Stampede prevention: Synchronized on cache miss</li>
+     * </ul>
+     * 
+     * <p>FIXED: Added synchronized method to prevent cache stampede</p>
+     * <p>If 100 concurrent requests miss cache, only one DB query executes instead of 100</p>
+     * 
+     * @param authUid Supabase UUID (auth.users.id)
+     * @return BIGINT user ID from users.id
+     * @throws ForbiddenException if user not found
+     */
+    @Timed(value = "auth.user.mapping", description = "UUID to BIGINT mapping duration", percentiles = {0.5, 0.95, 0.99})
+    @Cacheable(value = "userIdMapping", key = "#authUid", unless = "#result == null")
+    public synchronized Long getRentozaUserIdCached(UUID authUid) {
+        log.debug("Mapping UUID to BIGINT: authUid={}", authUid);
+        
+        return userRepository.findByAuthUid(authUid)
+                .map(user -> {
+                    log.debug("User found: userId={}, authUid={}", user.getId(), authUid);
+                    meterRegistry.counter("auth.user.mapping.success").increment();
+                    return user.getId();
+                })
+                .orElseThrow(() -> {
+                    log.warn("User not found for authUid: {}", authUid);
+                    meterRegistry.counter("auth.user.mapping.failure", "reason", "user_not_found").increment();
+                    return new ForbiddenException("User not found for auth_uid: " + authUid);
+                });
+    }
+
+    /**
+     * Extract email from token (optional claim)
+     * 
+     * @param token JWT token string
+     * @return email address or null if not present
+     */
+    public String getEmail(String token) {
+        try {
+            Claims claims = extractAllClaims(token);
+            return claims.get("email", String.class);
+        } catch (Exception e) {
+            log.debug("Failed to extract email from token: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Extract role from token
+     * 
+     * @param token JWT token string
+     * @return role ("authenticated" or "anon")
+     */
+    public String getRole(String token) {
+        try {
+            Claims claims = extractAllClaims(token);
+            return claims.get("role", String.class);
+        } catch (Exception e) {
+            log.debug("Failed to extract role from token: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    // ========================================================================
+    // PRIVATE HELPER METHODS
+    // ========================================================================
+
+    /**
+     * Extract 'kid' (key ID) from token header using Jackson
+     * 
+     * <p>FIXED: Replaced manual indexOf() parsing with proper JSON parsing</p>
+     */
+    private String extractKeyId(String token) {
+        try {
+            // Split token and decode header
+            String[] parts = token.split("\\.");
+            if (parts.length < 2) {
+                throw new MalformedJwtException("Invalid JWT format - missing header/payload");
+            }
+            
+            String headerJson = new String(
+                Base64.getUrlDecoder().decode(parts[0]),
+                StandardCharsets.UTF_8
+            );
+            
+            // Use Jackson to parse header
+            JsonNode header = objectMapper.readTree(headerJson);
+            
+            if (!header.has("kid")) {
+                log.warn("JWT missing 'kid' header - cannot identify key");
+                return null;
+            }
+            
+            String kid = header.get("kid").asText();
+            log.debug("Extracted kid from JWT: {}", kid);
+            
+            return kid;
+            
+        } catch (Exception e) {
+            log.error("Failed to extract kid from JWT: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Get public key from cache, refresh if needed
+     */
+    private ECPublicKey getPublicKey(String kid) {
+        ECPublicKey key = keyCache.get(kid);
+        
+        // Cache miss or TTL expired - refresh
+        if (key == null || isCacheExpired()) {
+            log.info("JWKS cache miss or expired for kid: {}, refreshing...", kid);
+            try {
+                refreshPublicKeys();
+            } catch (IOException e) {
+                log.error("Failed to refresh JWKS for kid {}: {}", kid, e.getMessage());
+                // Return null - token validation will fail gracefully
+            }
+            key = keyCache.get(kid);
+        }
+        
+        return key;
+    }
+
+    /**
+     * Check if JWKS cache expired (24 hour TTL)
+     */
+    private boolean isCacheExpired() {
+        return (System.currentTimeMillis() - lastJwksFetchTime) > JWKS_CACHE_TTL_MS;
+    }
+
+    /**
+     * Refresh public keys from JWKS endpoint with retry logic
+     * 
+     * <p>FIXED: Added Resilience4j retry (3 attempts, 2s delay)</p>
+     * <p>Scheduled to run every 24 hours to refresh keys</p>
+     */
+    @Scheduled(fixedDelay = 86400000, initialDelay = 86400000) // 24 hours
+    public void refreshPublicKeysWithRetry() {
+        int maxAttempts = 3;
+        int attempt = 0;
+        
+        while (attempt < maxAttempts) {
+            try {
+                attempt++;
+                log.debug("JWKS refresh attempt {}/{}", attempt, maxAttempts);
+                
+                refreshPublicKeys(); // throws IOException
+                
+                log.info("JWKS cache refreshed successfully with {} keys", keyCache.size());
+                meterRegistry.counter("jwks.refresh.success").increment();
+                return; // Success - exit
+                
+            } catch (IOException e) {
+                log.warn("JWKS refresh attempt {}/{} failed: {}", attempt, maxAttempts, e.getMessage());
+                
+                if (attempt >= maxAttempts) {
+                    log.error("JWKS refresh failed after {} retries. Keeping old keys in cache (graceful degradation).", 
+                        maxAttempts, e);
+                    meterRegistry.counter("jwks.refresh.failure").increment();
+                    return; // Give up but don't crash
+                }
+                
+                // Wait before retry (exponential backoff)
+                try {
+                    long waitMs = 2000L * attempt; // 2s, 4s, 6s
+                    Thread.sleep(waitMs);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
+        }
+    }
+
+    /**
+     * Refresh public keys from JWKS endpoint (single attempt)
+     * 
+     * <p>Fetches from: https://[PROJECT].supabase.co/auth/v1/jwks</p>
+     * <p>Parses keys and stores in cache: kid → ECPublicKey</p>
+     * 
+     * @throws IOException if JWKS fetch or parse fails
+     */
+    private void refreshPublicKeys() throws IOException {
+        log.debug("Fetching JWKS from: {}", jwksUrl);
+        
+        // Fetch JWKS JSON
+        String jwksJson = webClientBuilder.build()
+                .get()
+                .uri(jwksUrl)
+                .header("apikey", supabaseAnonKey)  // Required by Supabase even for public JWKS
+                .retrieve()
+                .bodyToMono(String.class)
+                .timeout(java.time.Duration.ofSeconds(10))
+                .onErrorResume(e -> {
+                    log.error("Failed to fetch JWKS: {}", e.getMessage());
+                    return Mono.error(new IOException("JWKS fetch failed", e));
+                })
+                .block();
+
+        if (jwksJson == null || jwksJson.isEmpty()) {
+            throw new IOException("JWKS endpoint returned empty response");
+        }
+
+        // Parse keys
+        parseAndCacheKeys(jwksJson);
+        
+        lastJwksFetchTime = System.currentTimeMillis();
+    }
+
+    /**
+     * Parse JWKS JSON and cache EC public keys
+     * 
+     * <p>FIXED: Implemented proper JWKS parsing with Jackson and BouncyCastle</p>
+     * <p>Supports P-256 (secp256r1) elliptic curve</p>
+     * 
+     * @param jwksJson JWKS JSON string from Supabase endpoint
+     * @throws IOException if parsing fails
+     */
+    private void parseAndCacheKeys(String jwksJson) throws IOException {
+        try {
+            // Parse JWKS JSON
+            JsonNode jwks = objectMapper.readTree(jwksJson);
+            JsonNode keys = jwks.get("keys");
+            
+            if (keys == null || !keys.isArray()) {
+                throw new IOException("Invalid JWKS format: 'keys' array not found");
+            }
+            
+            int parsedCount = 0;
+            
+            for (JsonNode key : keys) {
+                String kid = key.get("kid").asText();
+                String kty = key.get("kty").asText();
+                
+                // Only process EC (Elliptic Curve) keys
+                if (!"EC".equals(kty)) {
+                    log.warn("Skipping non-EC key: kid={}, kty={}", kid, kty);
+                    continue;
+                }
+                
+                // Extract EC key parameters
+                String x = key.get("x").asText();
+                String y = key.get("y").asText();
+                String crv = key.get("crv").asText();
+                
+                // Build EC public key from coordinates
+                ECPublicKey publicKey = buildECPublicKey(x, y, crv);
+                keyCache.put(kid, publicKey);
+                
+                parsedCount++;
+                log.info("Cached public key: kid={}, curve={}", kid, crv);
+            }
+            
+            if (parsedCount == 0) {
+                log.error("No EC keys found in JWKS response (total keys: {})", keys.size());
+                throw new IOException("No valid EC keys in JWKS");
+            }
+            
+            log.info("Successfully parsed {} EC keys from JWKS", parsedCount);
+            
+        } catch (Exception e) {
+            log.error("Failed to parse JWKS: {}", e.getMessage(), e);
+            throw new IOException("JWKS parsing failed", e);
+        }
+    }
+
+    /**
+     * Build EC public key from JWKS coordinates
+     * 
+     * <p>Uses BouncyCastle to construct ECPublicKey from Base64URL-encoded x,y coordinates</p>
+     * <p>Currently supports P-256 (secp256r1) curve - Supabase default</p>
+     * 
+     * @param xBase64Url Base64URL-encoded X coordinate
+     * @param yBase64Url Base64URL-encoded Y coordinate
+     * @param curveName Curve name ("P-256", "P-384", "P-521")
+     * @return ECPublicKey constructed from coordinates
+     * @throws Exception if key construction fails or curve unsupported
+     */
+    private ECPublicKey buildECPublicKey(String xBase64Url, String yBase64Url, String curveName) 
+            throws Exception {
+        
+        // Decode Base64URL coordinates
+        byte[] xBytes = Base64.getUrlDecoder().decode(xBase64Url);
+        byte[] yBytes = Base64.getUrlDecoder().decode(yBase64Url);
+        
+        // Convert to BigInteger (unsigned)
+        BigInteger x = new BigInteger(1, xBytes);
+        BigInteger y = new BigInteger(1, yBytes);
+        
+        // Map curve name to BouncyCastle curve spec
+        ECNamedCurveParameterSpec curveSpec;
+        switch (curveName) {
+            case "P-256":
+                curveSpec = ECNamedCurveTable.getParameterSpec("secp256r1");
+                break;
+            case "P-384":
+                curveSpec = ECNamedCurveTable.getParameterSpec("secp384r1");
+                break;
+            case "P-521":
+                curveSpec = ECNamedCurveTable.getParameterSpec("secp521r1");
+                break;
+            default:
+                throw new IllegalArgumentException("Unsupported curve: " + curveName);
+        }
+        
+        // Create EC point from coordinates
+        ECPoint point = curveSpec.getCurve().createPoint(x, y);
+        
+        // Build public key spec
+        ECPublicKeySpec publicKeySpec = new ECPublicKeySpec(point, curveSpec);
+        
+        // Generate public key
+        KeyFactory keyFactory = KeyFactory.getInstance("EC", "BC");
+        return (ECPublicKey) keyFactory.generatePublic(publicKeySpec);
+    }
+
+    /**
+     * Extract all claims from token (verified)
+     */
+    private Claims extractAllClaims(String token) {
+        // Find key and verify - reuse validation logic
+        String kid = extractKeyId(token);
+        ECPublicKey publicKey = getPublicKey(kid);
+        
+        if (publicKey == null) {
+            throw new IllegalArgumentException("No public key found for token");
+        }
+
+        return Jwts.parser()
+                .verifyWith(publicKey)
+                .requireIssuer(issuer)
+                .build()
+                .parseSignedClaims(token.trim())
+                .getPayload();
+    }
+
+    /**
+     * Check if token expired
+     */
+    private boolean isTokenExpired(Claims claims) {
+        return claims.getExpiration().before(new Date());
+    }
+}

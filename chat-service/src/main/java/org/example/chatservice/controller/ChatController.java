@@ -21,10 +21,21 @@ import java.util.List;
 /**
  * REST controller for chat messaging.
  * 
- * Security features:
- * - Content moderation (blocks PII like phone/email/URL)
- * - Rate limiting (50/hour, 5/minute burst)
- * - Idempotency key support for retry-safe message sending
+ * <h3>Security Features:</h3>
+ * <ul>
+ *   <li>Supabase ES256 JWT authentication (user tokens)</li>
+ *   <li>Internal service HS256 authentication (service tokens)</li>
+ *   <li>Content moderation (blocks PII like phone/email/URL)</li>
+ *   <li>Rate limiting (50/hour, 5/minute burst)</li>
+ *   <li>Idempotency key support for retry-safe message sending</li>
+ * </ul>
+ * 
+ * <h3>User ID Handling:</h3>
+ * <p>SecurityContext principal is stored as String (from SupabaseJwtAuthFilter or JwtAuthenticationFilter).</p>
+ * <p>This controller safely converts to Long using {@link #extractUserId(Authentication)}.</p>
+ * 
+ * @author Rentoza Development Team
+ * @since 2.0.0 (Supabase Migration)
  */
 @RestController
 @RequestMapping("/api")
@@ -37,13 +48,105 @@ public class ChatController {
     private final RateLimitConfig rateLimitConfig;
 
     /**
+     * Extract user ID from SecurityContext principal.
+     * 
+     * <p>Handles two authentication types:</p>
+     * <ul>
+     *   <li><strong>User Authentication</strong>: Principal is numeric user ID (Long as String)</li>
+     *   <li><strong>Internal Service Authentication</strong>: Principal is service name (e.g., "chat-service")</li>
+     * </ul>
+     * 
+     * <p>Internal service requests (those with ROLE_INTERNAL_SERVICE) should use
+     * {@link #extractUserIdOrNull(Authentication)} instead, as they don't represent
+     * a specific user and should use the InternalChatController.</p>
+     * 
+     * @param authentication Spring Security authentication
+     * @return User ID as Long (for user authentication)
+     * @throws IllegalArgumentException if principal is null, not numeric, or appears to be an internal service
+     */
+    private Long extractUserId(Authentication authentication) {
+        if (authentication == null || authentication.getPrincipal() == null) {
+            throw new IllegalArgumentException("Authentication principal is null");
+        }
+        
+        Object principal = authentication.getPrincipal();
+        
+        // Handle case where principal is already Long (shouldn't happen, but be defensive)
+        if (principal instanceof Long) {
+            return (Long) principal;
+        }
+        
+        // Principal is String - parse to Long
+        if (principal instanceof String) {
+            String principalStr = (String) principal;
+            
+            // Check if this looks like an internal service (non-numeric)
+            if (!principalStr.matches("\\d+")) {
+                log.error("Internal service principal '{}' passed to user endpoint. Use InternalChatController instead.", principalStr);
+                throw new IllegalArgumentException(
+                    "This endpoint requires user authentication. Use /api/internal for service-to-service calls.");
+            }
+            
+            try {
+                return Long.parseLong(principalStr);
+            } catch (NumberFormatException e) {
+                log.error("Invalid user ID format in principal: {}", principal);
+                throw new IllegalArgumentException("Principal is not a valid numeric user ID: " + principal, e);
+            }
+        }
+        
+        // Unexpected type
+        log.error("Unexpected principal type: {} value: {}", principal.getClass().getName(), principal);
+        throw new IllegalArgumentException("Unexpected principal type: " + principal.getClass().getName());
+    }
+
+    /**
+     * Extract user ID from SecurityContext principal, or null for internal services.
+     * 
+     * <p>Used by InternalChatController endpoints that accept both user and service authentication.</p>
+     * 
+     * @param authentication Spring Security authentication
+     * @return User ID as Long (for user tokens), or null (for internal service tokens)
+     */
+    private Long extractUserIdOrNull(Authentication authentication) {
+        if (authentication == null || authentication.getPrincipal() == null) {
+            return null;
+        }
+        
+        Object principal = authentication.getPrincipal();
+        
+        if (principal instanceof Long) {
+            return (Long) principal;
+        }
+        
+        if (principal instanceof String) {
+            String principalStr = (String) principal;
+            
+            // If numeric, parse to Long
+            if (principalStr.matches("\\d+")) {
+                try {
+                    return Long.parseLong(principalStr);
+                } catch (NumberFormatException e) {
+                    return null;
+                }
+            }
+            
+            // If non-numeric (internal service name), return null
+            return null;
+        }
+        
+        return null;
+    }
+
+    /**
      * Create a new conversation for a booking.
      * 
-     * Security: The authenticated user must be either the renter or owner in the request.
-     * This prevents users from creating conversations they shouldn't have access to.
+     * Security:
+     * - User Auth: The authenticated user must be either the renter or owner in the request.
+     * - Service Auth: Internal services with ROLE_INTERNAL_SERVICE can create any conversation.
      * 
      * @param request The conversation creation request
-     * @param authentication The authenticated user
+     * @param authentication The authenticated user or service
      * @return The created conversation
      */
     @PostMapping("/conversations")
@@ -51,14 +154,21 @@ public class ChatController {
             @Valid @RequestBody CreateConversationRequest request,
             Authentication authentication
     ) {
-        String userId = authentication.getName();
+        // Check if this is an internal service call
         boolean isInternalService = authentication.getAuthorities().stream()
                 .anyMatch(a -> a.getAuthority().equals("ROLE_INTERNAL_SERVICE"));
         
-        log.info("[Security] {} creating conversation for booking {} (renter={}, owner={}, internal={})", 
-                userId, request.getBookingId(), request.getRenterId(), request.getOwnerId(), isInternalService);
+        // Extract user ID (null for internal services, Long for users)
+        Long userId = isInternalService ? null : extractUserId(authentication);
         
-        ConversationDTO conversation = chatService.createConversationSecure(request, userId, isInternalService);
+        log.info("[Security] {} creating conversation for booking {} (renter={}, owner={}, internal={})", 
+                userId != null ? "User " + userId : "Service", 
+                request.getBookingId(), request.getRenterId(), request.getOwnerId(), isInternalService);
+        
+        // For internal services, use 0L as userId (will be ignored due to isInternalService flag)
+        Long effectiveUserId = userId != null ? userId : 0L;
+        
+        ConversationDTO conversation = chatService.createConversationSecure(request, effectiveUserId, isInternalService);
         return ResponseEntity.status(HttpStatus.CREATED).body(conversation);
     }
 
@@ -69,10 +179,11 @@ public class ChatController {
             @RequestParam(defaultValue = "50") int size,
             Authentication authentication
     ) {
-        String userId = authentication.getName();
-        log.info("Getting conversation for booking {} by user {}", bookingId, userId);
+        Long userId = extractUserId(authentication);
+        Long bookingIdLong = Long.parseLong(bookingId);  // Parse String → Long
+        log.info("Getting conversation for booking {} by user {}", bookingIdLong, userId);
         
-        ConversationDTO conversation = chatService.getConversation(bookingId, userId, page, size);
+        ConversationDTO conversation = chatService.getConversation(bookingIdLong, userId, page, size);
         return ResponseEntity.ok(conversation);
     }
 
@@ -97,11 +208,12 @@ public class ChatController {
             @Valid @RequestBody SendMessageRequest request,
             Authentication authentication
     ) {
-        String userId = authentication.getName();
+        Long userId = extractUserId(authentication);
+        Long bookingIdLong = Long.parseLong(bookingId);  // Parse String → Long
         
         // 1. Rate limiting check
         if (!rateLimitConfig.tryConsume(userId)) {
-            log.warn("[Security] Rate limit exceeded for user {} in booking {}", userId, bookingId);
+            log.warn("[Security] Rate limit exceeded for user {} in booking {}", userId, bookingIdLong);
             throw new RateLimitExceededException("Too many messages. Please wait a moment before sending more.");
         }
         
@@ -109,8 +221,11 @@ public class ChatController {
         ContentModerationResult moderationResult = contentModerationFilter.validateMessage(request.getContent());
         if (!moderationResult.isApproved()) {
             log.warn("[Security] Content moderation blocked message from user {} in booking {}: {}", 
-                    userId, bookingId, moderationResult.getReason());
-            throw new ContentModerationException(moderationResult.getReason());
+                    userId, bookingIdLong, moderationResult.getReason());
+            throw ContentModerationException.fromViolations(
+                    moderationResult.getReason(), 
+                    moderationResult.getViolations()
+            );
         }
         
         // 3. Log with idempotency key if present (for future Redis idempotency integration)
@@ -120,9 +235,9 @@ public class ChatController {
             // TODO: Integrate with Redis idempotency service when available
         }
         
-        log.info("Sending message in conversation for booking {} by user {}", bookingId, userId);
+        log.info("Sending message in conversation for booking {} by user {}", bookingIdLong, userId);
         
-        MessageDTO message = chatService.sendMessage(bookingId, userId, request);
+        MessageDTO message = chatService.sendMessage(bookingIdLong, userId, request);
         
         // Add rate limit remaining to response headers for client awareness
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -135,10 +250,11 @@ public class ChatController {
             @PathVariable String bookingId,
             Authentication authentication
     ) {
-        String userId = authentication.getName();
-        log.info("Marking messages as read in conversation for booking {} by user {}", bookingId, userId);
+        Long userId = extractUserId(authentication);
+        Long bookingIdLong = Long.parseLong(bookingId);  // Parse String → Long
+        log.info("Marking messages as read in conversation for booking {} by user {}", bookingIdLong, userId);
         
-        chatService.markMessagesAsRead(bookingId, userId);
+        chatService.markMessagesAsRead(bookingIdLong, userId);
         return ResponseEntity.noContent().build();
     }
 
@@ -159,15 +275,16 @@ public class ChatController {
             @RequestParam ConversationStatus status,
             Authentication authentication
     ) {
-        String userId = authentication.getName();
+        Long userId = extractUserId(authentication);
+        Long bookingIdLong = Long.parseLong(bookingId);  // Parse String → Long
         log.info("[Security] User {} attempting to update conversation status for booking {} to {}", 
-                userId, bookingId, status);
+                userId, bookingIdLong, status);
         
         // Authorization check: verify user is participant or admin
-        chatService.updateConversationStatusSecure(bookingId, status, userId);
+        chatService.updateConversationStatusSecure(bookingIdLong, status, userId);
         
         log.info("[Security] Conversation status updated successfully for booking {} by user {}", 
-                bookingId, userId);
+                bookingIdLong, userId);
         return ResponseEntity.noContent().build();
     }
 
@@ -175,7 +292,7 @@ public class ChatController {
     public ResponseEntity<List<ConversationDTO>> getUserConversations(
             Authentication authentication
     ) {
-        String userId = authentication.getName();
+        Long userId = extractUserId(authentication);
         log.info("Getting all conversations for user {}", userId);
         
         List<ConversationDTO> conversations = chatService.getUserConversations(userId);

@@ -4,13 +4,17 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import org.example.rentoza.config.AppProperties;
+import org.example.rentoza.deprecated.auth.InvalidRefreshTokenException;
+import org.example.rentoza.deprecated.auth.RefreshTokenServiceEnhanced;
 import org.example.rentoza.security.CookieConstants;
-import org.example.rentoza.security.JwtUtil;
+
+import org.example.rentoza.deprecated.jwt.JwtUtil;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserService;
 import org.example.rentoza.user.dto.AuthResponseDTO;
 import org.example.rentoza.user.dto.UserLoginDTO;
 import org.example.rentoza.user.dto.UserRegisterDTO;
+
 import org.example.rentoza.user.dto.UserResponseDTO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -71,7 +75,7 @@ public class AuthController {
         var builder = ResponseCookie.from(CookieConstants.REFRESH_TOKEN, token)
                 .httpOnly(true)
                 .secure(appProperties.getCookie().isSecure())
-                .path("/api/auth/refresh")
+                .path("/")
                 .sameSite(appProperties.getCookie().getSameSite())
                 .maxAge(Duration.ofDays(14));
         
@@ -112,7 +116,7 @@ public class AuthController {
         var builder = ResponseCookie.from(CookieConstants.REFRESH_TOKEN, "")
                 .httpOnly(true)
                 .secure(appProperties.getCookie().isSecure())
-                .path("/api/auth/refresh")
+                .path("/")
                 .sameSite(appProperties.getCookie().getSameSite())
                 .maxAge(0);
         

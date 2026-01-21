@@ -38,7 +38,7 @@ public class ReadReceiptService {
      * @return Number of messages marked as read
      */
     @Transactional
-    public int markMessagesAsRead(Long conversationId, String userId) {
+    public int markMessagesAsRead(Long conversationId, Long userId) {
         // Get unread message IDs in a single query
         List<Long> unreadMessageIds = readReceiptRepository
                 .findUnreadMessageIdsInConversation(conversationId, userId);
@@ -71,7 +71,7 @@ public class ReadReceiptService {
      * @return true if newly marked as read, false if already read
      */
     @Transactional
-    public boolean markMessageAsRead(Long messageId, String userId) {
+    public boolean markMessageAsRead(Long messageId, Long userId) {
         // Check if already read (avoid duplicate insert)
         if (readReceiptRepository.existsByMessageIdAndUserId(messageId, userId)) {
             log.debug("[ReadReceipt] Message {} already read by user {}", messageId, userId);
@@ -95,7 +95,7 @@ public class ReadReceiptService {
      * @return Count of unread messages
      */
     @Transactional(readOnly = true)
-    public long getUnreadCount(Long conversationId, String userId) {
+    public long getUnreadCount(Long conversationId, Long userId) {
         return readReceiptRepository.countUnreadMessagesInConversation(conversationId, userId);
     }
 
@@ -118,7 +118,7 @@ public class ReadReceiptService {
      * @return true if the user has read the message
      */
     @Transactional(readOnly = true)
-    public boolean hasUserReadMessage(Long messageId, String userId) {
+    public boolean hasUserReadMessage(Long messageId, Long userId) {
         return readReceiptRepository.existsByMessageIdAndUserId(messageId, userId);
     }
 

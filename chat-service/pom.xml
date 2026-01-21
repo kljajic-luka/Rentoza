@@ -79,6 +79,13 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- BouncyCastle for EC key parsing from JWKS -->
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk15on</artifactId>
+            <version>1.70</version>
+        </dependency>
+
         <!-- Lombok -->
         <dependency>
             <groupId>org.projectlombok</groupId>

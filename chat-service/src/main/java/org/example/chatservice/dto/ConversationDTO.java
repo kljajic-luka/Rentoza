@@ -16,9 +16,9 @@ import java.util.List;
 public class ConversationDTO {
 
     private Long id;
-    private String bookingId;
-    private String renterId;
-    private String ownerId;
+    private Long bookingId;  // BIGINT in SQL
+    private Long renterId;
+    private Long ownerId;
     private ConversationStatus status;
     private LocalDateTime createdAt;
     private LocalDateTime lastMessageAt;

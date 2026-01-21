@@ -126,6 +126,7 @@ public class ChatServiceClient {
      * This is a non-blocking version that won't delay the booking creation
      */
     public void createConversationAsync(String bookingId, String renterId, String ownerId, String jwtToken) {
+
         new Thread(() -> createConversation(bookingId, renterId, ownerId, jwtToken)).start();
     }
 }

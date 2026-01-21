@@ -71,6 +71,12 @@ public class SupabaseAuthController {
 
     /**
      * Register a new user with Supabase Auth.
+     * 
+     * <p>Two possible outcomes:
+     * <ol>
+     *   <li>Email confirmation DISABLED: User is logged in immediately, cookies set</li>
+     *   <li>Email confirmation ENABLED: User must verify email first, NO cookies set</li>
+     * </ol>
      */
     @PostMapping("/register")
     public ResponseEntity<?> register(
@@ -88,11 +94,25 @@ public class SupabaseAuthController {
                     role
             );
 
-            // Set cookies
-            setAuthCookies(response, result.getAccessToken(), result.getRefreshToken());
-
             // Build response
             UserResponseDTO userResponse = userService.toUserResponse(result.getUser());
+            
+            // CRITICAL: Handle email confirmation pending case
+            if (result.isEmailConfirmationPending()) {
+                log.info("User registered via Supabase (email confirmation pending): email={}", dto.getEmail());
+                
+                // DO NOT set cookies - tokens are null when email confirmation is pending
+                // Return special response so frontend knows to show email confirmation message
+                return ResponseEntity.ok(Map.of(
+                        "success", true,
+                        "emailConfirmationPending", true,
+                        "message", "Please check your email to confirm your account.",
+                        "user", userResponse
+                ));
+            }
+            
+            // Email confirmation disabled - user can login immediately
+            setAuthCookies(response, result.getAccessToken(), result.getRefreshToken());
             
             log.info("User registered via Supabase: email={}, role={}", dto.getEmail(), role);
             
@@ -286,8 +306,17 @@ public class SupabaseAuthController {
 
     /**
      * Set authentication cookies (access token + refresh token).
+     * 
+     * <p>SECURITY: Only sets cookies if both tokens are present.
+     * This prevents setting empty cookies which would cause immediate session expiry.
      */
     private void setAuthCookies(HttpServletResponse response, String accessToken, String refreshToken) {
+        // CRITICAL: Don't set empty cookies - this causes "session expired" errors
+        if (accessToken == null || accessToken.isBlank() || refreshToken == null || refreshToken.isBlank()) {
+            log.warn("Attempted to set auth cookies with null/empty tokens - skipping");
+            return;
+        }
+        
         // Access token cookie
         ResponseCookie accessCookie = ResponseCookie.from(CookieConstants.ACCESS_TOKEN, accessToken)
                 .httpOnly(true)
@@ -302,7 +331,7 @@ public class SupabaseAuthController {
         ResponseCookie refreshCookie = ResponseCookie.from(CookieConstants.REFRESH_TOKEN, refreshToken)
                 .httpOnly(true)
                 .secure(appProperties.getCookie().isSecure())
-                .path("/api/auth")
+                .path("/")
                 .sameSite(appProperties.getCookie().getSameSite())
                 .maxAge(Duration.ofDays(REFRESH_TOKEN_EXPIRY_DAYS))
                 .domain(getCookieDomain())
@@ -330,7 +359,7 @@ public class SupabaseAuthController {
         ResponseCookie clearedRefresh = ResponseCookie.from(CookieConstants.REFRESH_TOKEN, "")
                 .httpOnly(true)
                 .secure(appProperties.getCookie().isSecure())
-                .path("/api/auth")
+                .path("/")
                 .sameSite(appProperties.getCookie().getSameSite())
                 .maxAge(0)
                 .domain(getCookieDomain())

@@ -6,6 +6,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.example.rentoza.deprecated.jwt.JwtUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -36,8 +37,9 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     private final UserDetailsService userDetailsService;
     
     // Endpoints that should ALWAYS skip JWT authentication (truly public)
+    // NOTE: /api/auth includes both legacy (/api/auth/**) and Supabase (/api/auth/supabase/**)
     private static final List<String> PUBLIC_ENDPOINT_PREFIXES = List.of(
-            "/api/auth",    // Auth endpoints (login, register, refresh, logout)
+            "/api/auth",    // Auth endpoints - includes /api/auth/supabase/** (prevents dual JWT validation)
             "/login/oauth2",
             "/oauth2",
             "/login",

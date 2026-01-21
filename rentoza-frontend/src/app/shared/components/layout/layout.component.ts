@@ -200,8 +200,15 @@ export class LayoutComponent implements OnInit {
   }
 
   protected logout(): void {
-    this.authService.logout();
-    this.router.navigate(['/']);
+    this.authService.supabaseLogout().subscribe({
+      next: () => {
+        this.router.navigate(['/']);
+      },
+      error: (err) => {
+        console.error('Logout error (clearing session anyway):', err);
+        this.router.navigate(['/']);
+      },
+    });
   }
 
   protected navigate(route: string): void {

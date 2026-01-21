@@ -75,8 +75,20 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ContentModerationException.class)
     public ResponseEntity<Map<String, Object>> handleContentModeration(ContentModerationException ex) {
-        log.info("Content moderation blocked message: {}", ex.getMessage());
-        return buildErrorResponse(ex.getMessage(), HttpStatus.BAD_REQUEST);
+        log.info("Content moderation blocked message: {} (type: {})", 
+                ex.getMessage(), ex.getViolationType());
+        
+        Map<String, Object> response = new HashMap<>();
+        response.put("timestamp", LocalDateTime.now());
+        response.put("status", HttpStatus.BAD_REQUEST.value());
+        response.put("error", "Bad Request");
+        response.put("errorCode", "CONTENT_MODERATION");
+        response.put("violationType", ex.getViolationType().getCode());
+        response.put("message", ex.getMessage());
+        response.put("userMessage", ex.getUserMessage());
+        response.put("violations", ex.getViolations());
+        
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
     }
 
     @ExceptionHandler(Exception.class)

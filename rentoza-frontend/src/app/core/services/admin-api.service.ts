@@ -347,7 +347,6 @@ export interface AdminSettings {
   sessionTimeout: string;
 }
 
-
 @Injectable({
   providedIn: 'root',
 })
@@ -488,17 +487,19 @@ export class AdminApiService {
    * Download document as binary blob.
    */
   downloadRenterDocument(documentId: number): Observable<Blob> {
-    return this.http.get(
-      `${this.apiUrl}/renter-verifications/documents/${documentId}/download`,
-      { responseType: 'blob' }
-    );
+    return this.http.get(`${this.apiUrl}/renter-verifications/documents/${documentId}/download`, {
+      responseType: 'blob',
+    });
   }
 
   /**
    * Approve renter verification.
    * User will be able to book cars after approval.
    */
-  approveRenterVerification(userId: number, notes?: string): Observable<RenterVerificationActionResponse> {
+  approveRenterVerification(
+    userId: number,
+    notes?: string
+  ): Observable<RenterVerificationActionResponse> {
     return this.http.post<RenterVerificationActionResponse>(
       `${this.apiUrl}/renter-verifications/users/${userId}/approve`,
       { notes }
@@ -509,7 +510,10 @@ export class AdminApiService {
    * Reject renter verification.
    * User must re-submit documents.
    */
-  rejectRenterVerification(userId: number, reason: string): Observable<RenterVerificationActionResponse> {
+  rejectRenterVerification(
+    userId: number,
+    reason: string
+  ): Observable<RenterVerificationActionResponse> {
     return this.http.post<RenterVerificationActionResponse>(
       `${this.apiUrl}/renter-verifications/users/${userId}/reject`,
       { reason }
@@ -520,7 +524,10 @@ export class AdminApiService {
    * Suspend renter verification.
    * For fraud/abuse cases requiring investigation.
    */
-  suspendRenterVerification(userId: number, reason: string): Observable<RenterVerificationActionResponse> {
+  suspendRenterVerification(
+    userId: number,
+    reason: string
+  ): Observable<RenterVerificationActionResponse> {
     return this.http.post<RenterVerificationActionResponse>(
       `${this.apiUrl}/renter-verifications/users/${userId}/suspend`,
       { reason }
@@ -539,7 +546,9 @@ export class AdminApiService {
   /**
    * Retry processing for a stuck document.
    */
-  retryRenterDocumentProcessing(documentId: number): Observable<{ success: boolean; message: string }> {
+  retryRenterDocumentProcessing(
+    documentId: number
+  ): Observable<{ success: boolean; message: string }> {
     return this.http.post<{ success: boolean; message: string }>(
       `${this.apiUrl}/renter-verifications/documents/${documentId}/retry-processing`,
       {}
@@ -789,13 +798,13 @@ export class AdminApiService {
    * Get admin settings
    * TODO: Backend implementation required
    * Endpoint: GET /api/admin/settings
-   * 
+   *
    * For now, returns mock data from localStorage or defaults
    */
   getAdminSettings(): Observable<AdminSettings> {
     // TODO: Replace with actual API call when backend is ready
     // return this.http.get<AdminSettings>(`${this.apiUrl}/settings`);
-    
+
     // Mock implementation with localStorage persistence
     const savedSettings = localStorage.getItem('admin.settings');
     const defaultSettings: AdminSettings = {
@@ -813,9 +822,9 @@ export class AdminApiService {
     };
 
     const settings = savedSettings ? JSON.parse(savedSettings) : defaultSettings;
-    
+
     // Simulate network delay
-    return new Observable(observer => {
+    return new Observable((observer) => {
       setTimeout(() => {
         observer.next(settings);
         observer.complete();
@@ -827,15 +836,15 @@ export class AdminApiService {
    * Update admin settings
    * TODO: Backend implementation required
    * Endpoint: PUT /api/admin/settings
-   * 
+   *
    * For now, saves to localStorage
    */
   updateAdminSettings(settings: AdminSettings): Observable<AdminSettings> {
     // TODO: Replace with actual API call when backend is ready
     // return this.http.put<AdminSettings>(`${this.apiUrl}/settings`, settings);
-    
+
     // Mock implementation with localStorage persistence
-    return new Observable(observer => {
+    return new Observable((observer) => {
       setTimeout(() => {
         try {
           localStorage.setItem('admin.settings', JSON.stringify(settings));

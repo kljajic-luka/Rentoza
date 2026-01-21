@@ -2,6 +2,7 @@ package org.example.chatservice.config;
 
 import lombok.RequiredArgsConstructor;
 import org.example.chatservice.security.JwtAuthenticationFilter;
+import org.example.chatservice.security.SupabaseJwtAuthFilter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -19,13 +20,35 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import java.util.Arrays;
 import java.util.List;
 
+/**
+ * Security Configuration for Dual Authentication
+ * 
+ * <h3>Authentication Strategy:</h3>
+ * <ul>
+ *   <li><strong>User Auth</strong>: Supabase ES256 JWT (SupabaseJwtAuthFilter)</li>
+ *   <li><strong>Service Auth</strong>: Internal HS256 JWT (JwtAuthenticationFilter)</li>
+ * </ul>
+ * 
+ * <h3>Filter Chain Order:</h3>
+ * <ol>
+ *   <li>SupabaseJwtAuthFilter (ES256 validation with JWKS)</li>
+ *   <li>JwtAuthenticationFilter (HS256 validation for internal services)</li>
+ *   <li>UsernamePasswordAuthenticationFilter (Spring Security default)</li>
+ * </ol>
+ * 
+ * <p>Each filter handles its own token type and sets authentication if valid.</p>
+ * 
+ * @author Rentoza Development Team
+ * @since 2.0.0 (Supabase Migration)
+ */
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity(prePostEnabled = true)
 @RequiredArgsConstructor
 public class SecurityConfig {
 
-    private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final SupabaseJwtAuthFilter supabaseJwtAuthFilter;      // Supabase ES256 filter
+    private final JwtAuthenticationFilter jwtAuthenticationFilter;  // Internal service HS256 filter
 
     @Value("${cors.allowed-origins}")
     private String allowedOrigins;
@@ -41,6 +64,10 @@ public class SecurityConfig {
                         .requestMatchers("/api/health").permitAll()
                         .anyRequest().authenticated()
                 )
+                // Dual authentication filter chain
+                // 1. Try Supabase ES256 validation first
+                .addFilterBefore(supabaseJwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                // 2. Try internal service HS256 validation if ES256 fails
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

@@ -6,12 +6,15 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.example.rentoza.deprecated.auth.RefreshTokenRepository;
+
 import java.time.Instant;
 
 /**
  * Scheduled task to automatically clean up expired refresh tokens from the database.
  * Runs daily at 2 AM to minimize impact on production traffic.
  */
+@Deprecated(since = "2.1.0", forRemoval = true)
 @Component
 public class TokenCleanupScheduler {
 

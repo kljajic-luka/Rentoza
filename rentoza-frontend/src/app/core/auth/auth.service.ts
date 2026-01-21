@@ -250,6 +250,168 @@ export class AuthService {
       );
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE 3: Supabase Auth Integration
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Register a new user via Supabase Auth.
+   * Uses the new POST /api/auth/supabase/register endpoint.
+   *
+   * @param payload Registration data (email, password, firstName, lastName, role)
+   * @returns Observable of the newly created user profile
+   *
+   * SECURITY: Password is validated by Supabase Auth, not backend.
+   * Tokens are delivered via HttpOnly cookies (not in JSON body).
+   */
+  supabaseRegister(payload: RegisterRequest): Observable<UserProfile | null> {
+    const context = new HttpContext().set(SKIP_AUTH, true);
+    return this.http
+      .post<AuthResponse & { emailConfirmationPending?: boolean }>(
+        `${this.apiUrl}/supabase/register`,
+        payload,
+        {
+          context,
+          withCredentials: true,
+        }
+      )
+      .pipe(
+        tap((response) => {
+          // CRITICAL: Only persist session if email confirmation is NOT pending
+          // When emailConfirmationPending is true, tokens are null (empty cookies would cause issues)
+          if (!response.emailConfirmationPending) {
+            this.persistSession(response);
+          } else {
+            console.log('📧 Email confirmation pending - session not persisted');
+          }
+        }),
+        map((response) => {
+          // Return null if email confirmation pending - don't try to access user
+          if (response.emailConfirmationPending) {
+            return null;
+          }
+          return this.currentUserSubject.value!;
+        }),
+        catchError((error: HttpErrorResponse) => {
+          console.error('Supabase registration failed:', error);
+
+          if (error.status === 422) {
+            const message = error.error?.message || 'Validation failed';
+            return throwError(() => new Error(message));
+          }
+
+          if (error.status === 400) {
+            return throwError(() => new Error('Invalid registration data'));
+          }
+
+          return throwError(() => new Error('Registration failed'));
+        })
+      );
+  }
+
+  /**
+   * Login via Supabase Auth.
+   * Uses the new POST /api/auth/supabase/login endpoint.
+   *
+   * @param payload Login credentials (email, password)
+   * @returns Observable of the authenticated user profile
+   *
+   * SECURITY: Email/password validated against Supabase Auth.
+   * Tokens are in HttpOnly cookies (not accessible to JS).
+   */
+  supabaseLogin(payload: LoginRequest): Observable<UserProfile> {
+    const context = new HttpContext().set(SKIP_AUTH, true);
+    return this.http
+      .post<AuthResponse>(`${this.apiUrl}/supabase/login`, payload, {
+        context,
+        withCredentials: true,
+      })
+      .pipe(
+        tap((response) => this.persistSession(response)),
+        map(() => this.currentUserSubject.value!),
+        catchError((error: HttpErrorResponse) => {
+          console.error('Supabase login failed:', error);
+
+          if (error.status === 401) {
+            return throwError(() => new Error('Invalid email or password'));
+          }
+
+          if (error.status === 403) {
+            return throwError(() => new Error('Your account has been suspended'));
+          }
+
+          return throwError(() => new Error('Login failed'));
+        })
+      );
+  }
+
+  /**
+   * Logout via Supabase Auth.
+   * Uses the new POST /api/auth/supabase/logout endpoint.
+   * Revokes all Supabase tokens.
+   *
+   * @returns Observable of logout response
+   *
+   * SECURITY: Backend clears HttpOnly cookies.
+   * Supabase tokens are revoked at Supabase level.
+   */
+  supabaseLogout(): Observable<void> {
+    return this.http
+      .post<any>(
+        `${this.apiUrl}/supabase/logout`,
+        {},
+        {
+          withCredentials: true,
+        }
+      )
+      .pipe(
+        tap(() => {
+          console.log('User logged out via Supabase');
+          this.clearSession();
+          this.stopTokenWatcher();
+        }),
+        map(() => undefined),
+        catchError((error: HttpErrorResponse) => {
+          console.warn('Supabase logout error (clearing session anyway):', error);
+          this.clearSession();
+          return of(undefined);
+        })
+      );
+  }
+
+  /**
+   * Handle email confirmation callback.
+   * Called when user clicks email verification link.
+   * Uses the new POST /api/auth/supabase/confirm-email endpoint.
+   *
+   * @param accessToken Supabase access token from email link
+   * @param refreshToken Supabase refresh token (if provided)
+   * @returns Observable of the confirmed user profile
+   */
+  supabaseConfirmEmail(accessToken: string, refreshToken?: string): Observable<UserProfile> {
+    const context = new HttpContext().set(SKIP_AUTH, true);
+    return this.http
+      .post<AuthResponse>(
+        `${this.apiUrl}/supabase/confirm-email`,
+        {
+          accessToken,
+          refreshToken,
+        },
+        {
+          context,
+          withCredentials: true,
+        }
+      )
+      .pipe(
+        tap((response) => this.persistSession(response)),
+        map(() => this.currentUserSubject.value!),
+        catchError((error: HttpErrorResponse) => {
+          console.error('Email confirmation failed:', error);
+          return throwError(() => new Error('Email confirmation failed'));
+        })
+      );
+  }
+
   /**
    * Complete OAuth profile for users with INCOMPLETE registration status.
    * Used when Google OAuth provides limited data (no phone, DOB).
@@ -357,7 +519,7 @@ export class AuthService {
 
     return this.http
       .post<AuthResponse>(
-        `${this.apiUrl}/refresh`,
+        `${this.apiUrl}/supabase/refresh`,
         {},
         {
           context,

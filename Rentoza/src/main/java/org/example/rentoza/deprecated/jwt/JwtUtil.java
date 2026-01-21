@@ -1,4 +1,4 @@
-package org.example.rentoza.security;
+package org.example.rentoza.deprecated.jwt;
 
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.io.Decoders;
@@ -14,6 +14,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Function;
 
+@Deprecated(since = "2.1.0", forRemoval = true)
 @Component
 public class JwtUtil {
 

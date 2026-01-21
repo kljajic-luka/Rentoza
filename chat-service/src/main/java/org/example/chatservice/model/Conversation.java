@@ -9,6 +9,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
+import java.util.Objects;
 
 @Entity
 @Table(name = "conversations")
@@ -22,14 +23,14 @@ public class Conversation {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true)
-    private String bookingId;
+    @Column(name = "booking_id", nullable = false, unique = true)
+    private Long bookingId;  // BIGINT in SQL
 
-    @Column(nullable = false)
-    private String renterId;
+    @Column(name = "renter_id", nullable = false)
+    private Long renterId;  // BIGINT in SQL
 
-    @Column(nullable = false)
-    private String ownerId;
+    @Column(name = "owner_id", nullable = false)
+    private Long ownerId;   // BIGINT in SQL
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -46,9 +47,12 @@ public class Conversation {
     @Column
     private LocalDateTime lastMessageAt;
 
-    // Check if user is participant
-    public boolean isParticipant(String userId) {
-        return renterId.equals(userId) || ownerId.equals(userId);
+    /**
+     * Check if a user is a participant in this conversation.
+     * @param userId User ID (BIGINT from users.id)
+     */
+    public boolean isParticipant(Long userId) {
+        return Objects.equals(renterId, userId) || Objects.equals(ownerId, userId);
     }
 
     // Check if conversation allows messaging

@@ -1,4 +1,4 @@
-package org.example.rentoza.security;
+package org.example.rentoza.deprecated.jwt;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.ServletException;
@@ -30,6 +30,7 @@ import java.util.Map;
  * - Frontend can properly handle 401 and trigger silent token refresh
  * - OAuth2 login flow remains intact for /oauth2/** and /login/oauth2/** endpoints
  */
+@Deprecated(since = "2.1.0", forRemoval = true)
 @Component
 public class JwtAuthenticationEntryPoint implements AuthenticationEntryPoint {
 

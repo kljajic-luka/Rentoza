@@ -16,7 +16,9 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
     // Get the latest message for a conversation (for preview in list)
     Message findFirstByConversationIdOrderByTimestampDesc(Long conversationId);
 
-    @Query("SELECT COUNT(m) FROM Message m WHERE m.conversationId = :conversationId " +
-           "AND m.senderId != :userId AND :userId NOT MEMBER OF m.readBy")
-    long countUnreadMessages(@Param("conversationId") Long conversationId, @Param("userId") String userId);
+    @Query("SELECT COUNT(m) FROM Message m " +
+           "WHERE m.conversationId = :conversationId " +
+           "AND m.senderId != :userId " +
+           "AND NOT EXISTS (SELECT 1 FROM MessageReadReceipt r WHERE r.messageId = m.id AND r.userId = :userId)")
+    long countUnreadMessages(@Param("conversationId") Long conversationId, @Param("userId") Long userId);
 }

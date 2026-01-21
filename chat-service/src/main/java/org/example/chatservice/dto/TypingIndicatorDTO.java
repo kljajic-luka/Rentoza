@@ -18,7 +18,7 @@ public class TypingIndicatorDTO {
      * User ID of the person typing.
      * Set by server from authenticated principal (not trusted from client).
      */
-    private String userId;
+    private Long userId;
 
     /**
      * True if user is currently typing, false if they stopped.

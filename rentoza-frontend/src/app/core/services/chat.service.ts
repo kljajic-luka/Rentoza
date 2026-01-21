@@ -414,11 +414,36 @@ export class ChatService implements OnDestroy {
     );
   }
 
+  /**
+   * Get conversation with message history.
+   * 
+   * Ensures all messages have correct isOwnMessage flag by enriching them
+   * based on the current logged-in user. The backend returns messages
+   * with isOwnMessage calculated for the requester, which is correct for
+   * initial load but should be re-verified to be safe.
+   * 
+   * @param bookingId The booking ID for the conversation
+   * @param page Page number (0-indexed)
+   * @param size Messages per page
+   * @returns Observable<ConversationDTO> with enriched messages
+   */
   getConversation(bookingId: string, page = 0, size = 50): Observable<ConversationDTO> {
     const params = new HttpParams().set('page', page.toString()).set('size', size.toString());
     return this.http
       .get<ConversationDTO>(`${this.chatApiUrl}/conversations/${bookingId}`, { params })
       .pipe(
+        map((conversation) => {
+          // Enrich all messages with correct isOwnMessage flag
+          const currentUser = this.authService.getCurrentUser();
+          
+          if (conversation.messages) {
+            conversation.messages = conversation.messages.map((msg) =>
+              this.enrichMessageWithOwnershipFlag(msg, currentUser?.id)
+            );
+          }
+          
+          return conversation;
+        }),
         tap((conversation) => {
           this.activeConversationSubject.next(conversation);
         }),
@@ -603,32 +628,46 @@ export class ChatService implements OnDestroy {
   // Message Handlers
   // ===========================================================================
 
+  /**
+   * Handle incoming message from WebSocket.
+   * 
+   * CRITICAL: This method ensures isOwnMessage flag is correctly calculated
+   * for the current user. The backend broadcasts with isOwnMessage=false,
+   * so we must recalculate it based on comparing senderId with currentUserId.
+   * 
+   * This fixes the inverted message bug where recipients saw messages
+   * they didn't send on the left side (thinking they sent them).
+   * 
+   * @param message The raw MessageDTO from WebSocket broadcast
+   */
   private handleIncomingMessage(message: MessageDTO): void {
-    this.messageSubject.next(message);
-    this.updateConversationWithNewMessage(message);
+    // CRITICAL: Recalculate isOwnMessage because WebSocket broadcast doesn't know
+    // who is receiving it. Backend sends isOwnMessage=false, frontend calculates the real value.
+    const currentUser = this.authService.getCurrentUser();
+    const correctedMessage = this.enrichMessageWithOwnershipFlag(message, currentUser?.id);
+    
+    this.messageSubject.next(correctedMessage);
+    this.updateConversationWithNewMessage(correctedMessage);
     
     // Check if this is our own message that was sent optimistically
-    const currentUser = this.authService.getCurrentUser();
-    const isOwnMessage = message.senderId?.toString() === currentUser?.id?.toString();
-    
-    if (isOwnMessage) {
+    if (correctedMessage.isOwnMessage) {
       // For own messages, try to find and replace the optimistic version
       const activeConv = this.activeConversationSubject.value;
-      if (activeConv && activeConv.id === message.conversationId) {
+      if (activeConv && activeConv.id === correctedMessage.conversationId) {
         const messages = activeConv.messages || [];
         // Find optimistic message by content match (since optimistic has negative ID)
         const optimisticIdx = messages.findIndex(
-          (m) => m.id < 0 && m.content === message.content && m.optimisticId
+          (m) => m.id < 0 && m.content === correctedMessage.content && m.optimisticId
         );
         
         if (optimisticIdx >= 0) {
           // Replace the optimistic message with the server message
           const updatedMessages = [...messages];
-          updatedMessages[optimisticIdx] = { ...message, status: 'sent' as const };
+          updatedMessages[optimisticIdx] = { ...correctedMessage, status: 'sent' as const };
           this.activeConversationSubject.next({
             ...activeConv,
             messages: updatedMessages,
-            lastMessageAt: message.timestamp,
+            lastMessageAt: correctedMessage.timestamp,
           });
           return; // Don't add duplicate
         }
@@ -636,7 +675,46 @@ export class ChatService implements OnDestroy {
     }
     
     // For other people's messages or if no optimistic found, add normally
-    this.addMessageToActiveConversation(message);
+    this.addMessageToActiveConversation(correctedMessage);
+  }
+
+  /**
+   * Ensure isOwnMessage flag is correctly calculated for the current user.
+   * 
+   * The backend broadcast doesn't know who is receiving the message,
+   * so it sends isOwnMessage=false. We recalculate it locally by comparing
+   * senderId with the current logged-in user's ID.
+   * 
+   * Type-safe comparison:
+   * - Converts both IDs to strings (handles number/string mismatch)
+   * - Handles undefined currentUserId gracefully
+   * - Works with initial load and WebSocket messages
+   * 
+   * @param message The message from WebSocket or API
+   * @param currentUserId The ID of the currently logged-in user
+   * @returns MessageDTO with correct isOwnMessage flag for this user
+   */
+  private enrichMessageWithOwnershipFlag(
+    message: MessageDTO,
+    currentUserId: string | undefined
+  ): MessageDTO {
+    if (!currentUserId) {
+      // If user not authenticated, default to false (safe default)
+      return { ...message, isOwnMessage: false };
+    }
+    
+    // Type-safe comparison
+    // - message.senderId may be number or string from API
+    // - currentUserId is string from AuthService
+    // - Convert both to string for reliable comparison
+    const senderId = message.senderId?.toString();
+    const currentUserIdStr = currentUserId.toString();
+    const isOwn = senderId === currentUserIdStr;
+    
+    return {
+      ...message,
+      isOwnMessage: isOwn,
+    };
   }
 
   private handleMessageStatusUpdate(statusUpdate: MessageStatusUpdate): void {

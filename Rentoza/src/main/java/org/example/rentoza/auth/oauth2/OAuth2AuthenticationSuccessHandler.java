@@ -2,10 +2,10 @@ package org.example.rentoza.auth.oauth2;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.example.rentoza.auth.RefreshTokenServiceEnhanced;
+import org.example.rentoza.deprecated.auth.RefreshTokenServiceEnhanced;
 import org.example.rentoza.config.AppProperties;
 import org.example.rentoza.security.CookieConstants;
-import org.example.rentoza.security.JwtUtil;
+import org.example.rentoza.deprecated.jwt.JwtUtil;
 import org.example.rentoza.user.AuthProvider;
 import org.example.rentoza.user.Role;
 import org.example.rentoza.user.User;

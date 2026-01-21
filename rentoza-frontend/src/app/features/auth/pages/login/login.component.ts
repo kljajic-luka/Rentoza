@@ -59,7 +59,7 @@ export class LoginComponent {
     const payload: LoginRequest = this.form.getRawValue();
 
     this.authService
-      .login(payload)
+      .supabaseLogin(payload)
       .pipe(
         tap((user) => {
           this.toast.success('Dobrodošli nazad! Uspešno ste se prijavili.');

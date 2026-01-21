@@ -65,6 +65,14 @@ public class User {
     @Column(name = "google_id", unique = true, length = 100)
     private String googleId;
 
+    /**
+     * Supabase Auth UUID - links to auth.users(id).
+     * CRITICAL: Required for RLS policies. Set during Supabase registration.
+     * RLS policies check: WHERE auth_uid = auth.uid()
+     */
+    @Column(name = "auth_uid", unique = true)
+    private java.util.UUID authUid;
+
     @Pattern(regexp = "^[0-9]{8,15}$")
     @Column(unique = true)
     private String phone;

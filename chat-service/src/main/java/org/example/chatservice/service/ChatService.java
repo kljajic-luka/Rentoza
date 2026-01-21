@@ -24,6 +24,7 @@ import reactor.core.publisher.Mono;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -37,6 +38,7 @@ public class ChatService {
     private final SimpMessagingTemplate messagingTemplate;
     private final BackendApiClient backendApiClient;
     private final ConversationEnrichmentService enrichmentService;
+    private final ReadReceiptService readReceiptService;
 
     /**
      * Create a conversation with authorization check.
@@ -50,7 +52,7 @@ public class ChatService {
      * @throws ForbiddenException if user is not the renter or owner and not an internal service
      */
     @Transactional
-    public ConversationDTO createConversationSecure(CreateConversationRequest request, String authenticatedUserId, boolean isInternalService) {
+    public ConversationDTO createConversationSecure(CreateConversationRequest request, Long authenticatedUserId, boolean isInternalService) {
         // SECURITY: Internal services (main backend) are trusted to create conversations on behalf of users
         if (isInternalService) {
             log.info("[Security] INTERNAL SERVICE {} creating conversation for booking {} on behalf of users",
@@ -59,7 +61,8 @@ public class ChatService {
         }
         
         // SECURITY: Verify the authenticated user is one of the participants
-        if (!authenticatedUserId.equals(request.getRenterId()) && !authenticatedUserId.equals(request.getOwnerId())) {
+        if (!Objects.equals(authenticatedUserId, request.getRenterId()) && 
+            !Objects.equals(authenticatedUserId, request.getOwnerId())) {
             log.warn("[Security] UNAUTHORIZED: User {} attempted to create conversation for booking {} " +
                     "but is neither renter ({}) nor owner ({})",
                     authenticatedUserId, request.getBookingId(), request.getRenterId(), request.getOwnerId());
@@ -107,7 +110,7 @@ public class ChatService {
     }
 
     @Transactional(readOnly = true)
-    public ConversationDTO getConversation(String bookingId, String userId, int page, int size) {
+    public ConversationDTO getConversation(Long bookingId, Long userId, int page, int size) {
         Conversation conversation = conversationRepository.findByBookingId(bookingId)
                 .orElseThrow(() -> new ConversationNotFoundException("Conversation not found for booking: " + bookingId));
 
@@ -137,7 +140,7 @@ public class ChatService {
     }
 
     @Transactional
-    public MessageDTO sendMessage(String bookingId, String userId, SendMessageRequest request) {
+    public MessageDTO sendMessage(Long bookingId, Long userId, SendMessageRequest request) {
         Conversation conversation = conversationRepository.findByBookingId(bookingId)
                 .orElseThrow(() -> new ConversationNotFoundException("Conversation not found for booking: " + bookingId));
 
@@ -158,9 +161,14 @@ public class ChatService {
                 .mediaUrl(request.getMediaUrl())
                 .build();
 
-        // Sender automatically reads their own message
+        // ✅ CRITICAL FIX: Save in correct order
+        // 1. Save message to get database-generated ID
+        message = messageRepository.save(message);
+
+        // 2. Mark as read by sender (now message.id exists)
         message.markAsReadBy(userId);
 
+        // 3. Save again to persist the read receipt
         message = messageRepository.save(message);
 
         // Update conversation last message time
@@ -170,17 +178,22 @@ public class ChatService {
         log.info("Message sent in conversation {} by user {}", conversation.getId(), userId);
 
         // Send real-time notification via WebSocket
-        MessageDTO messageDTO = toMessageDTO(message, userId);
+        // CRITICAL: Use toMessageDTOForBroadcast() instead of toMessageDTO()
+        // This prevents the inverted message bug where recipients see isOwnMessage=true
+        // for messages they didn't send. Frontend will recalculate isOwnMessage locally.
+        MessageDTO broadcastDTO = toMessageDTOForBroadcast(message);
         messagingTemplate.convertAndSend(
                 "/topic/conversation/" + bookingId,
-                messageDTO
+                broadcastDTO
         );
 
-        return messageDTO;
+        // Return the correct DTO to the sender with isOwnMessage=true
+        MessageDTO senderDTO = toMessageDTO(message, userId);
+        return senderDTO;
     }
 
     @Transactional
-    public void markMessagesAsRead(String bookingId, String userId) {
+    public void markMessagesAsRead(Long bookingId, Long userId) {
         Conversation conversation = conversationRepository.findByBookingId(bookingId)
                 .orElseThrow(() -> new ConversationNotFoundException("Conversation not found for booking: " + bookingId));
 
@@ -188,19 +201,11 @@ public class ChatService {
             throw new ForbiddenException("You are not a participant in this conversation");
         }
 
-        // Get all messages and mark as read
-        Pageable pageable = PageRequest.of(0, 100);
-        Page<Message> messages = messageRepository.findByConversationIdOrderByTimestampDesc(
-                conversation.getId(), pageable);
+        // Use ReadReceiptService for proper persistence to message_read_by table
+        int markedCount = readReceiptService.markMessagesAsRead(conversation.getId(), userId);
 
-        messages.getContent().forEach(msg -> {
-            if (!msg.getSenderId().equals(userId) && !msg.isReadBy(userId)) {
-                msg.markAsReadBy(userId);
-                messageRepository.save(msg);
-            }
-        });
-
-        log.info("Messages marked as read in conversation {} by user {}", conversation.getId(), userId);
+        log.info("Marked {} messages as read in conversation {} by user {}", 
+                markedCount, conversation.getId(), userId);
     }
 
     /**
@@ -211,7 +216,7 @@ public class ChatService {
      * @return true if the user is a participant (renter or owner)
      */
     @Transactional(readOnly = true)
-    public boolean isUserParticipant(String bookingId, String userId) {
+    public boolean isUserParticipant(Long bookingId, Long userId) {
         return conversationRepository.findByBookingId(bookingId)
                 .map(conversation -> conversation.isParticipant(userId))
                 .orElse(false);
@@ -231,7 +236,7 @@ public class ChatService {
      * @throws ForbiddenException if user is not a participant
      */
     @Transactional
-    public void updateConversationStatusSecure(String bookingId, ConversationStatus status, String userId) {
+    public void updateConversationStatusSecure(Long bookingId, ConversationStatus status, Long userId) {
         Conversation conversation = conversationRepository.findByBookingId(bookingId)
                 .orElseThrow(() -> new ConversationNotFoundException("Conversation not found for booking: " + bookingId));
 
@@ -266,7 +271,7 @@ public class ChatService {
      */
     @Deprecated
     @Transactional
-    public void updateConversationStatus(String bookingId, ConversationStatus status) {
+    public void updateConversationStatus(Long bookingId, ConversationStatus status) {
         Conversation conversation = conversationRepository.findByBookingId(bookingId)
                 .orElseThrow(() -> new ConversationNotFoundException("Conversation not found for booking: " + bookingId));
 
@@ -283,7 +288,7 @@ public class ChatService {
     }
 
     @Transactional(readOnly = true)
-    public List<ConversationDTO> getUserConversations(String userId) {
+    public List<ConversationDTO> getUserConversations(Long userId) {
         List<Conversation> conversations = conversationRepository.findByParticipant(userId);
         return conversations.stream()
                 .map(conv -> {
@@ -315,7 +320,7 @@ public class ChatService {
      * @param dto ConversationDTO to enrich
      * @param userId Authenticated user ID (for RLS validation on Main API)
      */
-    private ConversationDTO enrichDtoWithBackendData(ConversationDTO dto, String userId) {
+    private ConversationDTO enrichDtoWithBackendData(ConversationDTO dto, Long userId) {
         long startTime = System.currentTimeMillis();
 
         try {
@@ -324,11 +329,11 @@ public class ChatService {
             // CRITICAL: Use authenticated userId (current user) as actAsUserId for RLS validation
             // The authenticated user must be either the renter OR owner of the conversation/booking
             // Main API will validate: actAsUserId == booking.renterId OR actAsUserId == booking.ownerId
-            String actAsUserId = userId;
+            String actAsUserId = String.valueOf(userId);
 
             // Fetch booking conversation view and user details in parallel
             Mono<org.example.chatservice.dto.client.BookingConversationDTO> bookingConversationMono =
-                    enrichmentService.enrichConversation(dto.getBookingId(), actAsUserId);
+                    enrichmentService.enrichConversation(String.valueOf(dto.getBookingId()), actAsUserId);
 
             Mono<UserDetailsDTO> renterDetailsMono = backendApiClient.getUserDetails(dto.getRenterId());
 
@@ -477,7 +482,7 @@ public class ChatService {
         }
     }
 
-    private ConversationDTO toDTO(Conversation conversation, String userId) {
+    private ConversationDTO toDTO(Conversation conversation, Long userId) {
         return ConversationDTO.builder()
                 .id(conversation.getId())
                 .bookingId(conversation.getBookingId())
@@ -500,7 +505,21 @@ public class ChatService {
                 .build();
     }
 
-    private MessageDTO toMessageDTO(Message message, String userId) {
+    /**
+     * Convert Message to MessageDTO for the specified user.
+     * 
+     * Used for:
+     * - Initial conversation load (REST API response)
+     * - Direct HTTP responses to the requesting user
+     * 
+     * The isOwnMessage flag is calculated relative to the provided userId.
+     * This is correct for API responses because userId is the requester.
+     * 
+     * @param message The message to convert
+     * @param userId The ID of the user requesting the message (for isOwnMessage calculation)
+     * @return MessageDTO with isOwnMessage correctly set for this user
+     */
+    private MessageDTO toMessageDTO(Message message, Long userId) {
         boolean isRead = message.getReadBy() != null && !message.getReadBy().isEmpty();
         
         return MessageDTO.builder()
@@ -516,6 +535,49 @@ public class ChatService {
                 .sentAt(message.getTimestamp()) // Sent time is the creation timestamp
                 .deliveredAt(message.getTimestamp()) // For now, consider delivered immediately
                 .readAt(isRead ? message.getTimestamp() : null) // Only set if actually read
+                .build();
+    }
+
+    /**
+     * Convert Message to MessageDTO for WebSocket broadcast.
+     * 
+     * CRITICAL: This method does NOT set isOwnMessage flag.
+     * Instead, it defaults isOwnMessage to FALSE.
+     * 
+     * WHY:
+     * - WebSocket broadcasts to MULTIPLE users (sender + recipients)
+     * - The isOwnMessage flag is USER-SPECIFIC (different for each receiver)
+     * - Broadcasting a pre-calculated flag assumes all receivers are the SENDER
+     * - This causes the inverted message bug where recipients see their own flag as true
+     * 
+     * SOLUTION:
+     * - Broadcast only the immutable facts: id, senderId, content, etc.
+     * - Let the frontend calculate isOwnMessage by comparing senderId with currentUserId
+     * - Frontend correctly recalculates for each user based on their context
+     * 
+     * Used for:
+     * - WebSocket topic broadcasts (/topic/conversation/X)
+     * - Any message sent to multiple recipients
+     * 
+     * @param message The message to convert
+     * @return MessageDTO with isOwnMessage = false (frontend will recalculate)
+     */
+    private MessageDTO toMessageDTOForBroadcast(Message message) {
+        boolean isRead = message.getReadBy() != null && !message.getReadBy().isEmpty();
+        
+        return MessageDTO.builder()
+                .id(message.getId())
+                .conversationId(message.getConversationId())
+                .senderId(message.getSenderId())  // ✓ Include who sent it (immutable fact)
+                .content(message.getContent())
+                .timestamp(message.getTimestamp())
+                .readBy(message.getReadBy() != null ? message.getReadBy() : Set.of())
+                .mediaUrl(message.getMediaUrl())
+                .isOwnMessage(false)  // ✓ Always false on broadcast - frontend will recalculate based on currentUserId
+                // Ensure all timestamp fields are non-null
+                .sentAt(message.getTimestamp())
+                .deliveredAt(message.getTimestamp())
+                .readAt(isRead ? message.getTimestamp() : null)
                 .build();
     }
 }

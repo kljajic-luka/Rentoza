@@ -38,9 +38,9 @@
     </div>
     } @else { @for (message of messages(); track message.id) {
     <div
-      class="message"
-      [class.own-message]="message.senderId === currentUserId()"
-      [class.other-message]="message.senderId !== currentUserId()"
+     class="message"
+     [class.own-message]="message.isOwnMessage"
+     [class.other-message]="!message.isOwnMessage"
     >
       <div class="message-bubble">
         <div class="message-header">

@@ -1,4 +1,4 @@
-package org.example.rentoza.auth;
+package org.example.rentoza.deprecated.auth;
 
 import jakarta.persistence.*;
 import lombok.*;
@@ -6,17 +6,18 @@ import lombok.*;
 import java.time.Instant;
 
 /**
- * Refresh token entity aligned with Supabase database schema.
- * 
- * <p>Uses denormalized user_email for query efficiency while 
+ * Refresh token aligned with Supabase database schema.
+ *
+ * <p>Uses denormalized user_email for query efficiency while
  * supporting the FK relationship to users table.
  */
+@Deprecated(since = "2.1.0", forRemoval = true)
 @Entity
 @Table(name = "refresh_tokens")
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor
 @Builder
 public class RefreshToken {
-    @Id 
+    @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 

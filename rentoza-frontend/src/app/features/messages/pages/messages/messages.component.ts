@@ -22,6 +22,7 @@ import { Subject, takeUntil, filter, skip } from 'rxjs';
 import { ChatService, AuthenticationError } from '@core/services/chat.service';
 import { AuthService } from '@core/auth/auth.service';
 import { ThemeService } from '@core/services/theme.service';
+import { ToastService } from '@core/services/toast.service';
 import { ConversationDTO, MessageDTO, MessageStatusUpdate } from '@core/models/chat.model';
 
 // Import new components
@@ -65,6 +66,7 @@ export class MessagesComponent implements OnInit, OnDestroy {
   private readonly chatService = inject(ChatService);
   private readonly authService = inject(AuthService);
   readonly themeService = inject(ThemeService);
+  private readonly toast = inject(ToastService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly cdr = inject(ChangeDetectorRef);
@@ -357,7 +359,16 @@ export class MessagesComponent implements OnInit, OnDestroy {
       error: (err) => {
         console.error('Failed to send message:', err);
         this.isSendingMessage.set(false);
-        // Message is queued offline for retry
+        
+        // Handle content moderation errors with user-friendly messages
+        if (err?.error?.errorCode === 'CONTENT_MODERATION') {
+          const userMessage = err.error.userMessage || err.error.message || 'Poruka nije dozvoljena.';
+          this.toast.warning(userMessage);
+        } else if (err?.message === 'Offline - message queued') {
+          this.toast.info('Niste povezani. Poruka će biti poslata kada budete online.');
+        } else {
+          this.toast.error('Poruka nije poslata. Pokušajte ponovo.');
+        }
       },
     });
   }

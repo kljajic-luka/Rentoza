@@ -64,22 +64,26 @@ public class WebSocketSecurityInterceptor implements ChannelInterceptor {
      * Validate that the user is authorized to subscribe to the given destination.
      * 
      * @param destination The STOMP destination (e.g., /topic/conversation/{bookingId})
-     * @param userId The authenticated user ID
+     * @param userIdStr The authenticated user ID as String (from principal.getName())
      * @throws IllegalArgumentException if not authorized
      */
-    private void validateSubscription(String destination, String userId) {
+    private void validateSubscription(String destination, String userIdStr) {
         // Check if this is a conversation-related topic
         if (destination.startsWith("/topic/conversation/")) {
             String bookingId = extractBookingId(destination);
             
             if (bookingId != null) {
-                Optional<Conversation> conversation = conversationRepository.findByBookingId(bookingId);
+                Long bookingIdLong = Long.parseLong(bookingId); // Parse String -> Long
+                Optional<Conversation> conversation = conversationRepository.findByBookingId(bookingIdLong);
                 
                 if (conversation.isEmpty()) {
                     log.warn("[WS Security] Subscription to non-existent conversation: user={}, booking={}", 
-                            userId, bookingId);
+                            userIdStr, bookingId);
                     throw new IllegalArgumentException("Conversation not found");
                 }
+                
+                // Parse userId from String to Long (principal.getName() returns String)
+                Long userId = Long.parseLong(userIdStr);
                 
                 if (!conversation.get().isParticipant(userId)) {
                     log.warn("[WS Security] Unauthorized subscription attempt: user={}, booking={}, participants=[{}, {}]", 

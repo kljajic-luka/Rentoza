@@ -123,6 +123,7 @@ public class SupabaseAuthService {
         user.setLastName(lastName);
         user.setRole(role);
         user.setEnabled(!emailConfirmationPending); // Disabled until email confirmed if pending
+        user.setAuthUid(supabaseId); // ✅ CRITICAL: Required for RLS policies
         user.setLocked(false);
         user.setBanned(false);
         

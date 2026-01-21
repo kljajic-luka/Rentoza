@@ -264,7 +264,8 @@ public class CarDocumentService {
     /**
      * Read the stored document bytes.
      *
-     * <p>Supports legacy rows where {@code documentUrl} may contain an absolute path.
+     * <p>Supports both Supabase Storage and local storage depending on storage mode.
+     * Automatically detects which storage to use based on storage.mode configuration.
      * Never leaks filesystem paths in errors.
      */
     @Transactional(readOnly = true)
@@ -273,8 +274,17 @@ public class CarDocumentService {
             throw new ResourceNotFoundException("Document not found");
         }
         try {
+            // If in Supabase mode and service is available, use Supabase
+            if (isSupabaseMode() && supabaseStorageService.isPresent()) {
+                log.debug("Loading document from Supabase: {}", document.getDocumentUrl());
+                return supabaseStorageService.get().downloadCarDocument(document.getDocumentUrl());
+            }
+            
+            // Otherwise use local storage strategy
+            log.debug("Loading document from local storage: {}", document.getDocumentUrl());
             return storageStrategy.getFile(document.getDocumentUrl());
         } catch (IOException | RuntimeException e) {
+            log.error("Failed to load document content: {}", e.getMessage());
             throw new ResourceNotFoundException("Document file not found");
         }
     }

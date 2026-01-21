@@ -1,5 +1,7 @@
 package org.example.chatservice.controller;
 
+import java.util.Map;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.chatservice.config.RateLimitConfig;
@@ -66,7 +68,8 @@ public class ChatWebSocketController {
             return;
         }
 
-        String userId = principal.getName();
+        String userIdStr = principal.getName();
+        Long userId = Long.parseLong(userIdStr);  // Parse String → Long
 
         // Rate limiting check
         if (!rateLimitConfig.tryConsume(userId)) {
@@ -84,16 +87,16 @@ public class ChatWebSocketController {
         }
 
         try {
-            // Send message through service (handles persistence and authorization)
-            MessageDTO message = chatService.sendMessage(bookingId, userId, request);
+            // Send message through service (handles persistence, authorization, AND WebSocket broadcast)
+            Long bookingIdLong = Long.parseLong(bookingId);
+            MessageDTO message = chatService.sendMessage(bookingIdLong, userId, request);
+            
+            // ✅ DO NOT broadcast here - ChatService.sendMessage() already broadcasts to WebSocket topic
+            // with isOwnMessage=false via toMessageDTOForBroadcast(). This prevents the inverted
+            // messages bug where ALL recipients receive isOwnMessage=true (wrong for non-senders).
+            // Frontend enriches with correct isOwnMessage based on local userId comparison.
 
-            // Broadcast to conversation topic
-            messagingTemplate.convertAndSend(
-                    "/topic/conversation/" + bookingId,
-                    message
-            );
-
-            log.debug("[WS] Message sent in conversation {}: {}", bookingId, message.getId());
+            log.debug("[WS] Message sent via service in conversation {}: {}", bookingId, message.getId());
 
         } catch (Exception e) {
             log.error("[WS] Error sending message in booking {}: {}", bookingId, e.getMessage());
@@ -122,7 +125,8 @@ public class ChatWebSocketController {
             return;
         }
 
-        String userId = principal.getName();
+        String userIdStr = principal.getName();
+        Long userId = Long.parseLong(userIdStr);  // Parse String → Long
         
         // Set the user ID from authenticated principal (don't trust client)
         typingIndicator.setUserId(userId);
@@ -156,10 +160,12 @@ public class ChatWebSocketController {
             return;
         }
 
-        String userId = principal.getName();
+        String userIdStr = principal.getName();
+        Long userId = Long.parseLong(userIdStr);  // Parse String → Long
 
         try {
-            chatService.markMessagesAsRead(bookingId, userId);
+            Long bookingIdLong = Long.parseLong(bookingId);  // Parse String → Long
+            chatService.markMessagesAsRead(bookingIdLong, userId);
 
             // Broadcast read receipt to conversation
             ReadReceiptBroadcast broadcast = new ReadReceiptBroadcast(userId, System.currentTimeMillis());
@@ -178,18 +184,21 @@ public class ChatWebSocketController {
     /**
      * Send error message to specific user.
      */
-    private void sendError(String bookingId, String userId, String errorMessage) {
-        ErrorMessage error = new ErrorMessage(errorMessage, System.currentTimeMillis());
+    private void sendError(String bookingId, Long userId, String errorMessage) {
         messagingTemplate.convertAndSendToUser(
-                userId,
+                String.valueOf(userId),  // Convert Long → String for messaging template
                 "/queue/errors",
-                error
+                Map.of(
+                        "bookingId", bookingId,
+                        "error", errorMessage,
+                        "timestamp", System.currentTimeMillis()
+                )
         );
     }
 
     // Simple DTOs for WebSocket messages
 
-    public record ReadReceiptBroadcast(String userId, long timestamp) {}
+    private record ReadReceiptBroadcast(Long userId, long timestamp) {}
 
     public record ErrorMessage(String message, long timestamp) {}
 }

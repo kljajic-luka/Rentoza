@@ -12,10 +12,10 @@ import java.util.Optional;
 @Repository
 public interface ConversationRepository extends JpaRepository<Conversation, Long> {
 
-    Optional<Conversation> findByBookingId(String bookingId);
+    Optional<Conversation> findByBookingId(Long bookingId);
 
     @Query("SELECT c FROM Conversation c WHERE c.renterId = :userId OR c.ownerId = :userId ORDER BY c.lastMessageAt DESC NULLS LAST, c.createdAt DESC")
-    List<Conversation> findByParticipant(@Param("userId") String userId);
+    List<Conversation> findByParticipant(@Param("userId") Long userId);
 
-    boolean existsByBookingId(String bookingId);
+    boolean existsByBookingId(Long bookingId);
 }

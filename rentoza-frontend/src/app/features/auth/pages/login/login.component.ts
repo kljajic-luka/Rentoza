@@ -72,7 +72,7 @@ export class LoginComponent {
             this.redirectService.redirectAfterLogin(user);
           }
         }),
-        finalize(() => this.isSubmitting.set(false))
+        finalize(() => this.isSubmitting.set(false)),
       )
       .subscribe({
         error: (error: any) => {
@@ -82,13 +82,13 @@ export class LoginComponent {
             this.toast.error(`Nalog je blokiran. ${reason}`);
             return;
           }
-          
+
           // Handle wrong credentials (401 or bad password)
           if (error?.status === 401 || error?.status === 400) {
             this.toast.error('Pogrešan email ili lozinka. Pokušajte ponovo.');
             return;
           }
-          
+
           // For server errors (500, network issues, etc.) - don't show anything
           // Users don't need to see technical errors, just silently fail
           console.error('Login failed with server error:', error?.status);
@@ -97,10 +97,28 @@ export class LoginComponent {
   }
 
   /**
-   * Initiate Google OAuth2 sign-in flow
-   * Redirects user to backend OAuth2 authorization endpoint
+   * Initiate Google OAuth2 sign-in flow via Supabase.
+   *
+   * NEW IMPLEMENTATION: Uses Supabase Auth instead of direct Spring OAuth2.
+   * Redirects user to Google via Supabase Auth.
    */
   signInWithGoogle(): void {
+    // Preserve return URL if exists
+    const returnUrl = this.getReturnUrl();
+    if (returnUrl) {
+      // Store return URL in session storage to retrieve after OAuth2 callback
+      sessionStorage.setItem('oauth2_return_url', returnUrl);
+    }
+
+    // Use new Supabase Google OAuth flow
+    this.authService.loginWithSupabaseGoogle('USER');
+  }
+
+  /**
+   * Legacy Google OAuth sign-in (deprecated).
+   * @deprecated Use signInWithGoogle() which uses Supabase Auth
+   */
+  signInWithGoogleLegacy(): void {
     // CRITICAL: OAuth2 endpoints are at root level (/oauth2/...), not under /api
     // environment.baseApiUrl = 'http://localhost:8080/api'
     // But OAuth2 endpoint is at: http://localhost:8080/oauth2/authorization/google

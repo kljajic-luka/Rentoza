@@ -1,6 +1,8 @@
 package org.example.rentoza.security.supabase;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -176,7 +178,135 @@ public class SupabaseAuthClient {
     }
 
     // =====================================================
-    // 👤 USER MANAGEMENT (Service Role)
+    // � OAUTH2 TOKEN EXCHANGE
+    // =====================================================
+
+    /**
+     * Exchange an OAuth2 authorization code for access and refresh tokens.
+     * 
+     * <p>This is used after the user completes the OAuth2 flow (e.g., Google OAuth)
+     * and Supabase redirects back to our application with an authorization code.
+     * 
+     * <p><b>Security Note:</b> This exchange happens server-side, ensuring the
+     * authorization code is never exposed to the client.
+     * 
+     * @param code The authorization code received from Supabase OAuth callback
+     * @return SupabaseAuthResponse containing access token, refresh token, and user data
+     * @throws SupabaseAuthException if the code exchange fails
+     */
+    public SupabaseAuthResponse exchangeCodeForToken(String code) {
+        String url = supabaseUrl + "/auth/v1/token?grant_type=pkce";
+
+        Map<String, String> body = new HashMap<>();
+        body.put("auth_code", code);
+
+        HttpHeaders headers = createHeaders(anonKey);
+        HttpEntity<Map<String, String>> request = new HttpEntity<>(body, headers);
+
+        try {
+            log.debug("Exchanging authorization code for tokens");
+            ResponseEntity<String> response = restTemplate.postForEntity(url, request, String.class);
+            SupabaseAuthResponse authResponse = parseAuthResponse(response.getBody());
+            log.info("Successfully exchanged authorization code for user: {}", 
+                    authResponse.getUser() != null ? authResponse.getUser().getEmail() : "unknown");
+            return authResponse;
+        } catch (HttpClientErrorException e) {
+            log.error("Authorization code exchange failed: {} - {}", 
+                    e.getStatusCode(), e.getResponseBodyAsString());
+            String errorMsg = parseErrorMessage(e.getResponseBodyAsString());
+            throw new SupabaseAuthException("Failed to exchange authorization code: " + errorMsg, e);
+        }
+    }
+
+    /**
+     * Exchange an OAuth2 authorization code using the authorization_code grant type.
+     * 
+     * <p>Alternative method for non-PKCE flows. Use {@link #exchangeCodeForToken(String)}
+     * for standard PKCE flow.
+     * 
+     * @param code The authorization code received from Supabase OAuth callback
+     * @param redirectUri The redirect URI used in the original authorization request
+     * @return SupabaseAuthResponse containing access token, refresh token, and user data
+     * @throws SupabaseAuthException if the code exchange fails
+     */
+    public SupabaseAuthResponse exchangeCodeForTokenWithRedirect(String code, String redirectUri) {
+        String url = supabaseUrl + "/auth/v1/token?grant_type=authorization_code";
+
+        Map<String, String> body = new HashMap<>();
+        body.put("code", code);
+        if (redirectUri != null && !redirectUri.isBlank()) {
+            body.put("redirect_uri", redirectUri);
+        }
+
+        HttpHeaders headers = createHeaders(anonKey);
+        HttpEntity<Map<String, String>> request = new HttpEntity<>(body, headers);
+
+        try {
+            log.debug("Exchanging authorization code for tokens (with redirect)");
+            ResponseEntity<String> response = restTemplate.postForEntity(url, request, String.class);
+            return parseAuthResponse(response.getBody());
+        } catch (HttpClientErrorException e) {
+            log.error("Authorization code exchange failed: {} - {}", 
+                    e.getStatusCode(), e.getResponseBodyAsString());
+            String errorMsg = parseErrorMessage(e.getResponseBodyAsString());
+            throw new SupabaseAuthException("Failed to exchange authorization code: " + errorMsg, e);
+        }
+    }
+    /**
+     * Get the current user using their access token.
+     * 
+     * <p>This is used for the implicit OAuth flow where the frontend receives
+     * an access token directly. We verify the token with Supabase and retrieve
+     * the user information.
+     * 
+     * @param accessToken Supabase access token (JWT)
+     * @return SupabaseUser with user information
+     * @throws SupabaseAuthException if token is invalid or expired
+     */
+    public SupabaseUser getUser(String accessToken) {
+        String url = supabaseUrl + "/auth/v1/user";
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(accessToken);
+        headers.set("apikey", anonKey);
+
+        HttpEntity<Void> request = new HttpEntity<>(headers);
+
+        try {
+            ResponseEntity<String> response = restTemplate.exchange(
+                    url, HttpMethod.GET, request, String.class);
+
+            if (response.getBody() == null) {
+                log.warn("Empty response from Supabase /auth/v1/user");
+                throw new SupabaseAuthException("Invalid response from authentication server");
+            }
+
+            JsonNode node = objectMapper.readTree(response.getBody());
+            
+            if (node.has("error")) {
+                String error = node.get("error").asText("Unknown error");
+                log.warn("Supabase user lookup error: {}", error);
+                throw new SupabaseAuthException(error);
+            }
+
+            // Parse user from response
+            SupabaseUser user = objectMapper.treeToValue(node, SupabaseUser.class);
+            log.debug("Successfully retrieved user from access token: email={}", user.getEmail());
+            
+            return user;
+        } catch (HttpClientErrorException e) {
+            log.error("User lookup failed: {} - {}", e.getStatusCode(), e.getResponseBodyAsString());
+            if (e.getStatusCode().value() == 401) {
+                throw new SupabaseAuthException("Invalid or expired access token", e);
+            }
+            throw new SupabaseAuthException("Failed to verify access token: " + e.getMessage(), e);
+        } catch (JsonProcessingException e) {
+            log.error("Failed to parse user response from Supabase", e);
+            throw new SupabaseAuthException("Invalid response format", e);
+        }
+    }
+    // =====================================================
+    // �👤 USER MANAGEMENT (Service Role)
     // =====================================================
 
     /**
@@ -418,7 +548,9 @@ public class SupabaseAuthClient {
 
     /**
      * Supabase Auth user representation.
+     * Uses @JsonIgnoreProperties to handle unknown fields from Supabase API gracefully.
      */
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public static class SupabaseUser {
         private UUID id;
         private String email;

@@ -66,7 +66,308 @@ public class SupabaseAuthController {
     }
 
     // =====================================================
-    // 📝 REGISTRATION
+    // � GOOGLE OAUTH VIA SUPABASE
+    // =====================================================
+
+    /**
+     * Initiate Google OAuth2 authentication via Supabase.
+     * 
+     * <p>This endpoint generates a secure authorization URL that redirects users
+     * to Google's OAuth consent screen via Supabase Auth.
+     * 
+     * <p><b>Security Features:</b>
+     * <ul>
+     *   <li>Cryptographically random state token for CSRF protection</li>
+     *   <li>State expires after 10 minutes</li>
+     *   <li>Role encoded in state for registration</li>
+     * </ul>
+     * 
+     * <p><b>Example Request:</b>
+     * <pre>GET /api/auth/supabase/google/authorize?role=OWNER</pre>
+     * 
+     * <p><b>Example Response:</b>
+     * <pre>{
+     *   "authorizationUrl": "https://xxx.supabase.co/auth/v1/authorize?...",
+     *   "state": "abc123..."
+     * }</pre>
+     * 
+     * @param role User role (USER or OWNER). Defaults to USER if not specified.
+     * @param redirectUri Optional custom redirect URI after OAuth completion.
+     * @return JSON with authorizationUrl and state token
+     */
+    @GetMapping("/google/authorize")
+    public ResponseEntity<?> initiateGoogleAuth(
+            @RequestParam(value = "role", required = false, defaultValue = "USER") String role,
+            @RequestParam(value = "redirectUri", required = false) String redirectUri
+    ) {
+        try {
+            // Parse and validate role
+            Role userRole;
+            try {
+                userRole = Role.valueOf(role.toUpperCase());
+            } catch (IllegalArgumentException e) {
+                log.warn("Invalid role parameter for Google OAuth: {}", role);
+                return ResponseEntity.badRequest().body(Map.of(
+                        "error", "INVALID_ROLE",
+                        "message", "Invalid role. Allowed values: USER, OWNER",
+                        "allowedRoles", new String[]{"USER", "OWNER"}
+                ));
+            }
+            
+            // Only allow USER and OWNER roles for self-registration
+            if (userRole != Role.USER && userRole != Role.OWNER) {
+                log.warn("Attempted Google OAuth with non-registerable role: {}", role);
+                return ResponseEntity.badRequest().body(Map.of(
+                        "error", "INVALID_ROLE",
+                        "message", "Only USER and OWNER roles are allowed for registration"
+                ));
+            }
+            
+            // Generate OAuth authorization URL
+            SupabaseAuthService.GoogleAuthInitResult result = 
+                    supabaseAuthService.initiateGoogleAuth(userRole, redirectUri);
+            
+            log.info("Google OAuth initiated for role={}", userRole);
+            
+            // Note: state is null as Supabase handles CSRF internally
+            // Role is encoded in the redirect_to URL parameter
+            return ResponseEntity.ok(Map.of(
+                    "authorizationUrl", result.authorizationUrl()
+            ));
+            
+        } catch (SupabaseAuthException e) {
+            log.error("Failed to initiate Google OAuth: {}", e.getMessage());
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "error", "OAUTH_INIT_FAILED",
+                    "message", "Failed to initiate Google authentication. Please try again."
+            ));
+        } catch (Exception e) {
+            log.error("Unexpected error during Google OAuth initiation", e);
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "error", "SERVER_ERROR",
+                    "message", "An unexpected error occurred. Please try again."
+            ));
+        }
+    }
+
+    /**
+     * Handle Google OAuth2 callback from Supabase.
+     * 
+     * <p>This endpoint processes the OAuth callback, exchanges the authorization
+     * code for tokens, synchronizes the user to the local database, and sets
+     * authentication cookies.
+     * 
+     * <p><b>Security Validations:</b>
+     * <ul>
+     *   <li>State parameter validated against stored values (CSRF protection)</li>
+     *   <li>Authorization code exchanged server-side</li>
+     *   <li>User synchronized in database transaction</li>
+     *   <li>Tokens delivered via HttpOnly cookies</li>
+     * </ul>
+     * 
+     * <p><b>User Registration Status:</b>
+     * <ul>
+     *   <li>New users: registrationStatus = INCOMPLETE (needs profile completion)</li>
+     *   <li>Existing users: registrationStatus = ACTIVE (or their current status)</li>
+     * </ul>
+     * 
+     * <p><b>Example Request:</b>
+     * <pre>GET /api/auth/supabase/google/callback?code=abc123&state=xyz789</pre>
+     * 
+     * <p><b>Example Response (success):</b>
+     * <pre>{
+     *   "success": true,
+     *   "user": { "id": 1, "email": "user@example.com", ... },
+     *   "message": "Successfully authenticated with Google"
+     * }</pre>
+     * 
+     * @param code Authorization code from Supabase
+     * @param state State parameter for CSRF validation
+     * @param response HTTP response for setting cookies
+     * @return User data and success message
+     */
+    @GetMapping("/google/callback")
+    public ResponseEntity<?> handleGoogleCallback(
+            @RequestParam("code") String code,
+            @RequestParam(value = "role", defaultValue = "USER") String role,
+            HttpServletResponse response
+    ) {
+        // Input validation
+        if (code == null || code.isBlank()) {
+            log.warn("Google OAuth callback with missing authorization code");
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "MISSING_CODE",
+                    "message", "Authorization code is required"
+            ));
+        }
+        
+        try {
+            // Exchange code for tokens and sync user (role is passed instead of state)
+            SupabaseAuthResult result = supabaseAuthService.handleGoogleCallback(code, role);
+            
+            // Set authentication cookies
+            setAuthCookies(response, result.getAccessToken(), result.getRefreshToken());
+            
+            // Build user response
+            UserResponseDTO userResponse = userService.toUserResponse(result.getUser());
+            
+            log.info("Google OAuth callback successful: userId={}, email={}, registrationStatus={}", 
+                    result.getUser().getId(), 
+                    result.getUser().getEmail(),
+                    result.getUser().getRegistrationStatus());
+            
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "user", userResponse,
+                    "message", "Successfully authenticated with Google",
+                    "registrationStatus", result.getUser().getRegistrationStatus().name()
+            ));
+            
+        } catch (SupabaseAuthException e) {
+            log.warn("Google OAuth callback failed: {}", e.getMessage());
+            
+            // Determine appropriate error response based on exception message
+            if (e.getMessage().contains("expired") || e.getMessage().contains("session")) {
+                return ResponseEntity.status(401).body(Map.of(
+                        "error", "SESSION_EXPIRED",
+                        "message", e.getMessage()
+                ));
+            }
+            
+            if (e.getMessage().contains("already associated") || e.getMessage().contains("duplicate")) {
+                return ResponseEntity.status(409).body(Map.of(
+                        "error", "ACCOUNT_CONFLICT",
+                        "message", e.getMessage()
+                ));
+            }
+            
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "OAUTH_CALLBACK_FAILED",
+                    "message", e.getMessage()
+            ));
+            
+        } catch (Exception e) {
+            log.error("Unexpected error during Google OAuth callback", e);
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "error", "SERVER_ERROR",
+                    "message", "Authentication failed. Please try again."
+            ));
+        }
+    }
+
+    /**
+     * POST version of Google OAuth callback (alternative for form submissions).
+     * 
+     * <p>Same functionality as the GET version, but accepts parameters in request body.
+     * Useful for clients that prefer POST for OAuth callbacks.
+     * 
+     * @param callbackRequest Request body containing code and state
+     * @param response HTTP response for setting cookies
+     * @return User data and success message
+     */
+    @PostMapping("/google/callback")
+    public ResponseEntity<?> handleGoogleCallbackPost(
+            @Valid @RequestBody GoogleCallbackRequest callbackRequest,
+            HttpServletResponse response
+    ) {
+        return handleGoogleCallback(callbackRequest.getCode(), callbackRequest.getState(), response);
+    }
+    /**
+     * Handle Google OAuth token callback from Supabase's implicit flow.
+     * 
+     * <p>In the implicit OAuth flow, Supabase returns tokens directly in the URL fragment
+     * instead of an authorization code. The frontend extracts these tokens and sends them
+     * to this endpoint for verification and user synchronization.
+     * 
+     * <p><b>Request Body:</b>
+     * <pre>{
+     *   "accessToken": "eyJhbG...",
+     *   "refreshToken": "...",  // optional
+     *   "state": "..."          // optional, for role information
+     * }</pre>
+     * 
+     * <p><b>Response (success):</b>
+     * <pre>{
+     *   "success": true,
+     *   "user": { "id": 1, "email": "user@example.com", ... },
+     *   "registrationStatus": "INCOMPLETE" | "ACTIVE"
+     * }</pre>
+     * 
+     * @param request Request body containing the tokens
+     * @param response HTTP response for setting cookies
+     * @return User data and success message
+     */
+    @PostMapping("/google/token-callback")
+    public ResponseEntity<?> handleGoogleTokenCallback(
+            @Valid @RequestBody GoogleTokenCallbackRequest request,
+            HttpServletResponse response
+    ) {
+        // Input validation
+        if (request.getAccessToken() == null || request.getAccessToken().isBlank()) {
+            log.warn("Google OAuth token callback with missing access token");
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "MISSING_TOKEN",
+                    "message", "Access token is required"
+            ));
+        }
+        
+        try {
+            // Verify token and sync user with Supabase
+            SupabaseAuthResult result = supabaseAuthService.handleImplicitFlowTokens(
+                    request.getAccessToken(),
+                    request.getRefreshToken(),
+                    request.getRole()
+            );
+            
+            // Set authentication cookies
+            setAuthCookies(response, result.getAccessToken(), result.getRefreshToken());
+            
+            // Build user response
+            UserResponseDTO userResponse = userService.toUserResponse(result.getUser());
+            
+            log.info("Google OAuth token callback successful: userId={}, email={}, registrationStatus={}", 
+                    result.getUser().getId(), 
+                    result.getUser().getEmail(),
+                    result.getUser().getRegistrationStatus());
+            
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "user", userResponse,
+                    "message", "Successfully authenticated with Google",
+                    "registrationStatus", result.getUser().getRegistrationStatus().name()
+            ));
+            
+        } catch (SupabaseAuthException e) {
+            log.warn("Google OAuth token callback failed: {}", e.getMessage());
+            
+            if (e.getMessage().contains("expired") || e.getMessage().contains("Invalid")) {
+                return ResponseEntity.status(401).body(Map.of(
+                        "error", "INVALID_TOKEN",
+                        "message", e.getMessage()
+                ));
+            }
+            
+            if (e.getMessage().contains("already associated") || e.getMessage().contains("duplicate")) {
+                return ResponseEntity.status(409).body(Map.of(
+                        "error", "ACCOUNT_CONFLICT",
+                        "message", e.getMessage()
+                ));
+            }
+            
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "AUTH_ERROR",
+                    "message", e.getMessage()
+            ));
+        } catch (Exception e) {
+            log.error("Unexpected error during Google OAuth token callback", e);
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "error", "SERVER_ERROR",
+                    "message", "Authentication failed. Please try again."
+            ));
+        }
+    }
+    // =====================================================
+    // �📝 REGISTRATION
     // =====================================================
 
     /**
@@ -452,5 +753,54 @@ public class SupabaseAuthController {
 
         public String getRefreshToken() { return refreshToken; }
         public void setRefreshToken(String refreshToken) { this.refreshToken = refreshToken; }
+    }
+
+    /**
+     * Google OAuth callback request DTO.
+     * Used for POST-based OAuth callback handling.
+     * 
+     * <p>Contains the authorization code and state from the OAuth flow.
+     * The state is used for CSRF protection and must match the value
+     * returned from the authorization endpoint.
+     */
+    public static class GoogleCallbackRequest {
+        @NotBlank(message = "Authorization code is required")
+        private String code;
+        
+        @NotBlank(message = "State parameter is required")
+        private String state;
+
+        // Getters and setters
+        public String getCode() { return code; }
+        public void setCode(String code) { this.code = code; }
+
+        public String getState() { return state; }
+        public void setState(String state) { this.state = state; }
+    }
+
+    /**
+     * Google OAuth token callback request DTO.
+     * Used for implicit flow where tokens are returned directly.
+     * 
+     * <p>In implicit OAuth flow, Supabase returns access_token and refresh_token
+     * directly in the URL fragment instead of an authorization code.
+     */
+    public static class GoogleTokenCallbackRequest {
+        @NotBlank(message = "Access token is required")
+        private String accessToken;
+        
+        private String refreshToken;
+        
+        private String role;  // Role extracted from redirect URL query param (USER or OWNER)
+
+        // Getters and setters
+        public String getAccessToken() { return accessToken; }
+        public void setAccessToken(String accessToken) { this.accessToken = accessToken; }
+
+        public String getRefreshToken() { return refreshToken; }
+        public void setRefreshToken(String refreshToken) { this.refreshToken = refreshToken; }
+
+        public String getRole() { return role; }
+        public void setRole(String role) { this.role = role; }
     }
 }

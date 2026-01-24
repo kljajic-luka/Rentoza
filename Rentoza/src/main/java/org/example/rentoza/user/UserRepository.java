@@ -51,6 +51,14 @@ public interface UserRepository extends JpaRepository<User,Long> {
      */
     @Query("SELECT CASE WHEN COUNT(u) > 0 THEN true ELSE false END FROM User u WHERE u.jmbgHash = :jmbgHash")
     boolean existsByJmbgHash(@org.springframework.data.repository.query.Param("jmbgHash") String jmbgHash);
+
+    /**
+     * Check if JMBG is registered by a different user (excluding current user).
+     * Used by ProfileCompletionService to allow re-saving same user's data.
+     */
+    @Query("SELECT CASE WHEN COUNT(u) > 0 THEN true ELSE false END FROM User u WHERE u.jmbgHash = :jmbgHash AND u.id != :userId")
+    boolean existsByJmbgHashAndIdNot(@org.springframework.data.repository.query.Param("jmbgHash") String jmbgHash, 
+                                      @org.springframework.data.repository.query.Param("userId") Long userId);
     
     /**
      * Check if PIB is already registered (using Hash).
@@ -58,6 +66,22 @@ public interface UserRepository extends JpaRepository<User,Long> {
      */
     @Query("SELECT CASE WHEN COUNT(u) > 0 THEN true ELSE false END FROM User u WHERE u.pibHash = :pibHash")
     boolean existsByPibHash(@org.springframework.data.repository.query.Param("pibHash") String pibHash);
+
+    /**
+     * Check if PIB is registered by a different user (excluding current user).
+     * Used by ProfileCompletionService to allow re-saving same user's data.
+     */
+    @Query("SELECT CASE WHEN COUNT(u) > 0 THEN true ELSE false END FROM User u WHERE u.pibHash = :pibHash AND u.id != :userId")
+    boolean existsByPibHashAndIdNot(@org.springframework.data.repository.query.Param("pibHash") String pibHash,
+                                     @org.springframework.data.repository.query.Param("userId") Long userId);
+
+    /**
+     * Check if driver license number is registered by a different user (excluding current user).
+     * Used by ProfileCompletionService to prevent duplicate license registrations.
+     */
+    @Query("SELECT CASE WHEN COUNT(u) > 0 THEN true ELSE false END FROM User u WHERE u.driverLicenseNumberHash = :hash AND u.id != :userId")
+    boolean existsByDriverLicenseNumberHashAndIdNot(@org.springframework.data.repository.query.Param("hash") String hash,
+                                                     @org.springframework.data.repository.query.Param("userId") Long userId);
     
     /**
      * Find unverified owners awaiting admin review.
@@ -110,5 +134,16 @@ public interface UserRepository extends JpaRepository<User,Long> {
      */
     @Query("SELECT COUNT(u) FROM User u WHERE u.driverLicenseStatus = 'PENDING_REVIEW'")
     long countPendingDriverLicenseVerifications();
+    
+    // ========== SUPABASE AUTH QUERIES ==========
+    
+    /**
+     * Find user by Supabase Auth UUID.
+     * Used by SupabaseAuthService for OAuth user lookup.
+     * 
+     * @param authUid Supabase Auth user UUID
+     * @return User if found
+     */
+    Optional<User> findByAuthUid(java.util.UUID authUid);
 }
 

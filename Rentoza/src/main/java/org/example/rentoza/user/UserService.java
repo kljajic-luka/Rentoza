@@ -144,15 +144,21 @@ public class UserService {
             throw new IllegalArgumentException("User cannot be null when building response");
         }
 
-        return new UserResponseDTO(
-                user.getId(),
-                user.getFirstName(),
-                user.getLastName(),
-                user.getEmail(),
-                user.getPhone(),
-                user.getAge(),
-                user.getRole() != null ? user.getRole().name() : null
-        );
+        return UserResponseDTO.builder()
+                .id(user.getId())
+                .firstName(user.getFirstName())
+                .lastName(user.getLastName())
+                .email(user.getEmail())
+                .phone(user.getPhone())
+                .age(user.getAge())
+                .role(user.getRole() != null ? user.getRole().name() : null)
+                .registrationStatus(user.getRegistrationStatus() != null 
+                        ? user.getRegistrationStatus().name() 
+                        : "ACTIVE")
+                .ownerType(user.getOwnerType() != null 
+                        ? user.getOwnerType().name() 
+                        : null)
+                .build();
     }
 
     /**

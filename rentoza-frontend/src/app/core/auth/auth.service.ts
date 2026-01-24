@@ -25,6 +25,8 @@ import {
   UserRegisterRequest,
   OwnerRegisterRequest,
   GoogleOAuthCompletionRequest,
+  GoogleAuthInitResponse,
+  SupabaseGoogleCallbackResponse,
 } from '@core/models/auth.model';
 import { UserProfile } from '@core/models/user.model';
 import { UserRole } from '@core/models/user-role.type';
@@ -48,7 +50,7 @@ export class AuthService {
   constructor(
     private readonly http: HttpClient,
     private readonly jwtHelper: JwtHelperService,
-    private readonly injector: Injector
+    private readonly injector: Injector,
   ) {}
 
   /**
@@ -132,7 +134,7 @@ export class AuthService {
                   this.clearSession();
                   this.sessionExpiredSubject.next();
                   return of(null);
-                })
+                }),
               );
             }
 
@@ -144,8 +146,8 @@ export class AuthService {
 
             this.clearSession();
             return of(null);
-          })
-        )
+          }),
+        ),
       );
 
       return backendUser;
@@ -167,7 +169,7 @@ export class AuthService {
         tap((response) => this.persistSession(response)),
         // FIX: Return the normalized user from internal state, not the raw response
         // This ensures 'roles' array is populated correctly for RedirectService
-        map(() => this.currentUserSubject.value!)
+        map(() => this.currentUserSubject.value!),
       );
   }
 
@@ -180,7 +182,7 @@ export class AuthService {
       })
       .pipe(
         tap((response) => this.persistSession(response)),
-        map((response) => response.user as UserProfile)
+        map((response) => response.user as UserProfile),
       );
   }
 
@@ -217,7 +219,7 @@ export class AuthService {
             return null;
           }
           return this.currentUserSubject.value!;
-        })
+        }),
       );
   }
 
@@ -246,7 +248,7 @@ export class AuthService {
       })
       .pipe(
         tap((response) => this.persistSession(response)),
-        map(() => this.currentUserSubject.value!)
+        map(() => this.currentUserSubject.value!),
       );
   }
 
@@ -273,7 +275,7 @@ export class AuthService {
         {
           context,
           withCredentials: true,
-        }
+        },
       )
       .pipe(
         tap((response) => {
@@ -305,7 +307,7 @@ export class AuthService {
           }
 
           return throwError(() => new Error('Registration failed'));
-        })
+        }),
       );
   }
 
@@ -341,7 +343,7 @@ export class AuthService {
           }
 
           return throwError(() => new Error('Login failed'));
-        })
+        }),
       );
   }
 
@@ -362,7 +364,7 @@ export class AuthService {
         {},
         {
           withCredentials: true,
-        }
+        },
       )
       .pipe(
         tap(() => {
@@ -375,7 +377,218 @@ export class AuthService {
           console.warn('Supabase logout error (clearing session anyway):', error);
           this.clearSession();
           return of(undefined);
-        })
+        }),
+      );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // GOOGLE OAUTH VIA SUPABASE
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Initiate Google OAuth2 authentication via Supabase.
+   *
+   * This method:
+   * 1. Calls backend to get the authorization URL and state token
+   * 2. Stores state token in sessionStorage for CSRF validation
+   * 3. Returns the URL for the caller to redirect to
+   *
+   * @param role User role (USER or OWNER). Defaults to USER if not specified.
+   * @returns Observable of GoogleAuthInitResponse containing the authorization URL
+   *
+   * SECURITY: State token is stored in sessionStorage for later validation.
+   * The actual authentication happens via redirect to Google → Supabase → backend.
+   */
+  initiateSupabaseGoogleAuth(role: 'USER' | 'OWNER' = 'USER'): Observable<GoogleAuthInitResponse> {
+    const context = new HttpContext().set(SKIP_AUTH, true);
+
+    // Build callback URL based on current origin for proper redirect handling
+    // This allows the app to work on different hosts (localhost, LAN IP, production)
+    const callbackUrl = `${window.location.origin}/auth/supabase/google/callback`;
+
+    return this.http
+      .get<GoogleAuthInitResponse>(`${this.apiUrl}/supabase/google/authorize`, {
+        params: {
+          role: role,
+          redirectUri: callbackUrl,
+        },
+        context,
+        withCredentials: true,
+      })
+      .pipe(
+        tap((response) => {
+          // Store state in sessionStorage for CSRF validation during callback
+          sessionStorage.setItem('supabase_google_oauth_state', response.state);
+          console.log('🔗 Google OAuth initiated via Supabase, redirecting...');
+        }),
+        catchError((error: HttpErrorResponse) => {
+          console.error('Failed to initiate Google OAuth:', error);
+          if (error.status === 400) {
+            return throwError(() => new Error(error.error?.message || 'Invalid role specified'));
+          }
+          return throwError(() => new Error('Failed to initiate Google authentication'));
+        }),
+      );
+  }
+
+  /**
+   * Redirect user to Google OAuth via Supabase.
+   *
+   * This is a convenience method that combines initiateSupabaseGoogleAuth
+   * with the actual redirect. Use this when you want to trigger the OAuth
+   * flow with a single method call.
+   *
+   * @param role User role (USER or OWNER). Defaults to USER.
+   */
+  loginWithSupabaseGoogle(role: 'USER' | 'OWNER' = 'USER'): void {
+    this.initiateSupabaseGoogleAuth(role)
+      .pipe(take(1))
+      .subscribe({
+        next: (response) => {
+          // Redirect to Google OAuth consent screen
+          window.location.href = response.authorizationUrl;
+        },
+        error: (error) => {
+          console.error('Failed to start Google OAuth:', error);
+          // Let the component handle the error
+        },
+      });
+  }
+
+  /**
+   * Handle Google OAuth callback from Supabase.
+   *
+   * This method:
+   * 1. Validates the state parameter against the stored value (CSRF protection)
+   * 2. Exchanges the authorization code for tokens via backend
+   * 3. Persists the session with the returned user data
+   *
+   * @param code Authorization code from the OAuth callback URL
+   * @param state State parameter from the OAuth callback URL
+   * @returns Observable of the authenticated user profile
+   *
+   * SECURITY: State validation is performed client-side for early failure,
+   * but the actual CSRF protection happens server-side.
+   */
+  handleSupabaseGoogleCallback(code: string, state: string): Observable<UserProfile | null> {
+    // Client-side state validation (server also validates)
+    const storedState = sessionStorage.getItem('supabase_google_oauth_state');
+    if (storedState && storedState !== state) {
+      console.warn('⚠️ OAuth state mismatch - possible CSRF attempt');
+      sessionStorage.removeItem('supabase_google_oauth_state');
+      return throwError(() => new Error('Security validation failed. Please try again.'));
+    }
+
+    // Clear stored state
+    sessionStorage.removeItem('supabase_google_oauth_state');
+
+    const context = new HttpContext().set(SKIP_AUTH, true);
+    return this.http
+      .get<SupabaseGoogleCallbackResponse>(`${this.apiUrl}/supabase/google/callback`, {
+        params: { code, state },
+        context,
+        withCredentials: true,
+      })
+      .pipe(
+        tap((response) => {
+          if (response.success && response.user) {
+            // Convert response to AuthResponse format for persistSession
+            const authResponse: AuthResponse = {
+              authenticated: true,
+              user: response.user as any,
+            };
+            this.persistSession(authResponse);
+            console.log('✅ Google OAuth callback successful:', response.registrationStatus);
+          }
+        }),
+        map((response) => {
+          if (!response.success || !response.user) {
+            return null;
+          }
+          return this.currentUserSubject.value;
+        }),
+        catchError((error: HttpErrorResponse) => {
+          console.error('Google OAuth callback failed:', error);
+
+          if (error.status === 401) {
+            return throwError(() => new Error('Authentication session expired. Please try again.'));
+          }
+
+          if (error.status === 409) {
+            return throwError(
+              () => new Error(error.error?.message || 'Account conflict detected.'),
+            );
+          }
+
+          const message = error.error?.message || 'Google authentication failed. Please try again.';
+          return throwError(() => new Error(message));
+        }),
+      );
+  }
+
+  /**
+   * Handle Supabase implicit OAuth flow callback.
+   *
+   * This is used when Supabase returns tokens directly in the URL fragment
+   * (implicit flow) instead of an authorization code (PKCE flow).
+   *
+   * @param accessToken The Supabase access token from URL fragment
+   * @param refreshToken The Supabase refresh token (optional)
+   * @param role The user role (USER or OWNER) from URL query params
+   * @returns Observable of the authenticated user profile
+   */
+  handleSupabaseImplicitCallback(
+    accessToken: string,
+    refreshToken?: string,
+    role?: string,
+  ): Observable<UserProfile | null> {
+    const context = new HttpContext().set(SKIP_AUTH, true);
+    return this.http
+      .post<SupabaseGoogleCallbackResponse>(
+        `${this.apiUrl}/supabase/google/token-callback`,
+        {
+          accessToken,
+          refreshToken,
+          role: role || 'USER', // Send role instead of state
+        },
+        {
+          context,
+          withCredentials: true,
+        },
+      )
+      .pipe(
+        tap((response) => {
+          if (response.success && response.user) {
+            const authResponse: AuthResponse = {
+              authenticated: true,
+              user: response.user as any,
+            };
+            this.persistSession(authResponse);
+            console.log('✅ Implicit OAuth callback successful:', response.registrationStatus);
+          }
+        }),
+        map((response) => {
+          if (!response.success || !response.user) {
+            return null;
+          }
+          return this.currentUserSubject.value;
+        }),
+        catchError((error: HttpErrorResponse) => {
+          console.error('Implicit OAuth callback failed:', error);
+
+          if (error.status === 401) {
+            return throwError(() => new Error('Invalid or expired token. Please try again.'));
+          }
+
+          if (error.status === 409) {
+            return throwError(
+              () => new Error(error.error?.message || 'Account conflict detected.'),
+            );
+          }
+
+          const message = error.error?.message || 'Google authentication failed. Please try again.';
+          return throwError(() => new Error(message));
+        }),
       );
   }
 
@@ -400,7 +613,7 @@ export class AuthService {
         {
           context,
           withCredentials: true,
-        }
+        },
       )
       .pipe(
         tap((response) => this.persistSession(response)),
@@ -408,7 +621,7 @@ export class AuthService {
         catchError((error: HttpErrorResponse) => {
           console.error('Email confirmation failed:', error);
           return throwError(() => new Error('Email confirmation failed'));
-        })
+        }),
       );
   }
 
@@ -436,7 +649,7 @@ export class AuthService {
       })
       .pipe(
         tap((response) => this.persistSession(response)),
-        map(() => this.currentUserSubject.value!)
+        map(() => this.currentUserSubject.value!),
       );
   }
 
@@ -454,7 +667,7 @@ export class AuthService {
         {
           context,
           withCredentials: true,
-        }
+        },
       )
       .pipe(catchError(() => of(void 0)))
       .subscribe();
@@ -506,7 +719,7 @@ export class AuthService {
     if (this.isRefreshing) {
       return this.refreshSubject.pipe(
         filter((value): value is string => typeof value === 'string' && value.length > 0),
-        take(1)
+        take(1),
       );
     }
 
@@ -524,7 +737,7 @@ export class AuthService {
         {
           context,
           withCredentials: true,
-        }
+        },
       )
       .pipe(
         tap((response) => {
@@ -578,7 +791,7 @@ export class AuthService {
         }),
         finalize(() => {
           this.isRefreshing = false;
-        })
+        }),
       );
   }
 
@@ -593,7 +806,7 @@ export class AuthService {
           id: String(profile.id),
           roles: profile.roles ?? [],
         })),
-        tap((profile) => this.currentUserSubject.next(profile))
+        tap((profile) => this.currentUserSubject.next(profile)),
       );
   }
 
@@ -714,13 +927,16 @@ export class AuthService {
 
     // Extract role from user object (no token decoding - token is HttpOnly)
     const singleRole = (user as any)?.role;
-    const effectiveRoles = singleRole ? [singleRole] : (user as any).roles ?? [];
+    const effectiveRoles = singleRole ? [singleRole] : ((user as any).roles ?? []);
 
     const completeUser: UserProfile = {
       ...user,
       id: String(user.id),
       roles: effectiveRoles,
-    };
+      // CRITICAL: Preserve registrationStatus for profile completion flow
+      registrationStatus: (user as any)?.registrationStatus,
+      ownerType: (user as any)?.ownerType,
+    } as UserProfile;
 
     this.updateUserState(completeUser);
   }
@@ -759,10 +975,11 @@ export class AuthService {
     const normalizedRoles: UserRole[] = Array.isArray(response.roles)
       ? (response.roles as UserRole[])
       : typeof response.roles === 'string'
-      ? (response.roles.split(',') as UserRole[])
-      : [];
+        ? (response.roles.split(',') as UserRole[])
+        : [];
 
-    return {
+    // Map to UserProfile with registrationStatus for profile completion flow
+    const profile: UserProfile & { registrationStatus?: string; ownerType?: string } = {
       id: String(response.id),
       email: response.email,
       firstName: response.firstName,
@@ -771,7 +988,12 @@ export class AuthService {
       age: response.age || undefined,
       avatarUrl: response.avatarUrl || undefined,
       roles: normalizedRoles,
+      // CRITICAL: Include registrationStatus for profile completion guard
+      registrationStatus: response.registrationStatus,
+      ownerType: response.ownerType,
     };
+
+    return profile as UserProfile;
   }
 
   /**
@@ -784,6 +1006,9 @@ export class AuthService {
       ...user,
       id: String(user.id),
       roles: Array.isArray(user.roles) ? user.roles : [],
+      // Preserve critical fields for profile completion flow
+      registrationStatus: (user as any).registrationStatus,
+      ownerType: (user as any).ownerType,
     };
 
     // Update observable only (no localStorage in cookie-only mode)

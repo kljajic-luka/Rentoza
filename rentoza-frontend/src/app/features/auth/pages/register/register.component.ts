@@ -87,7 +87,7 @@ export class RegisterComponent implements OnInit {
   // PHASE 2: Enhanced Registration Feature Flag
   // ═══════════════════════════════════════════════════════════════════════════
   protected readonly isEnhancedRegistration = signal(
-    (environment as { enhancedRegistration?: boolean }).enhancedRegistration ?? true
+    (environment as { enhancedRegistration?: boolean }).enhancedRegistration ?? true,
   );
 
   // Owner type selection (INDIVIDUAL or LEGAL_ENTITY)
@@ -307,20 +307,20 @@ export class RegisterComponent implements OnInit {
               // Email confirmation required
               this.toast.success(
                 'Nalog je uspešno kreiran! Molimo proverite Vaš email za potvrdu naloga.',
-                'Potvrda emaila potrebna'
+                'Potvrda emaila potrebna',
               );
               this.router.navigate(['/auth/login'], {
                 queryParams: { emailConfirmation: 'required' },
               });
             } else {
               this.toast.success(
-                'Dobrodošli u Rentoza zajednicu domaćina! Vaš nalog je kreiran i čeka verifikaciju.'
+                'Dobrodošli u Rentoza zajednicu domaćina! Vaš nalog je kreiran i čeka verifikaciju.',
               );
               // Owner redirects to verification pending or dashboard
               this.redirectService.redirectAfterLogin(user);
             }
           }),
-          finalize(() => this.isSubmitting.set(false))
+          finalize(() => this.isSubmitting.set(false)),
         )
         .subscribe({
           error: (err) => this.handleRegistrationError(err),
@@ -346,7 +346,7 @@ export class RegisterComponent implements OnInit {
               // Email confirmation required - show success message but don't redirect
               this.toast.success(
                 'Nalog je uspešno kreiran! Molimo proverite Vaš email za potvrdu naloga pre prijavljivanja.',
-                'Potvrda emaila potrebna'
+                'Potvrda emaila potrebna',
               );
               // Redirect to login page with message
               this.router.navigate(['/auth/login'], {
@@ -358,7 +358,7 @@ export class RegisterComponent implements OnInit {
               this.redirectService.redirectAfterLogin(user!);
             }
           }),
-          finalize(() => this.isSubmitting.set(false))
+          finalize(() => this.isSubmitting.set(false)),
         )
         .subscribe({
           error: (err) => this.handleRegistrationError(err),
@@ -386,7 +386,7 @@ export class RegisterComponent implements OnInit {
             // Email confirmation required
             this.toast.success(
               'Nalog je uspešno kreiran! Molimo proverite Vaš email za potvrdu naloga.',
-              'Potvrda emaila potrebna'
+              'Potvrda emaila potrebna',
             );
             this.router.navigate(['/auth/login'], {
               queryParams: { emailConfirmation: 'required' },
@@ -395,17 +395,17 @@ export class RegisterComponent implements OnInit {
             this.toast.success(
               this.isOwnerRegistration()
                 ? 'Dobrodošli u Rentoza zajednicu domaćina! Vaš nalog je kreiran.'
-                : 'Dobrodošli u Rentoza! Vaš nalog je uspešno kreiran.'
+                : 'Dobrodošli u Rentoza! Vaš nalog je uspešno kreiran.',
             );
             this.redirectService.redirectAfterLogin(user);
           }
         }),
-        finalize(() => this.isSubmitting.set(false))
+        finalize(() => this.isSubmitting.set(false)),
       )
       .subscribe({
         error: () => {
           this.toast.error(
-            'Registracija nije uspela. Molimo proverite podatke i pokušajte ponovo.'
+            'Registracija nije uspela. Molimo proverite podatke i pokušajte ponovo.',
           );
         },
       });
@@ -433,38 +433,25 @@ export class RegisterComponent implements OnInit {
   }
 
   /**
-   * Initiate Google OAuth2 registration flow
-   * Redirects user to backend OAuth2 authorization endpoint with role context
+   * Initiate Google OAuth2 registration flow via Supabase
+   * Uses the new Supabase Google OAuth implementation
    *
    * ROLE-BASED REGISTRATION:
-   * - For regular users: /oauth2/authorization/google (defaults to USER role)
-   * - For owner registration: /oauth2/authorization/google?role=owner
-   * - Backend's CustomAuthorizationRequestResolver captures the role parameter
-   * - Role is embedded in OAuth2 state parameter for secure propagation
+   * - For regular users: role='USER'
+   * - For owner registration: role='OWNER'
+   * - Backend's SupabaseAuthService handles role provisioning
    * - After Google callback, user is provisioned with the correct role
    */
   registerWithGoogle(): void {
-    // CRITICAL: OAuth2 endpoints are at root level (/oauth2/...), not under /api
-    // environment.baseApiUrl = 'http://localhost:8080/api'
-    // But OAuth2 endpoint is at: http://localhost:8080/oauth2/authorization/google
-    // So we need to strip '/api' and use the base URL only
-    const baseUrl = environment.baseApiUrl.replace('/api', '');
-    let googleAuthUrl = `${baseUrl}/oauth2/authorization/google`;
+    // Determine the role based on registration type
+    const role = this.isOwnerRegistration() ? 'OWNER' : 'USER';
 
-    // CRITICAL: Pass role as query parameter for backend to capture
-    // The backend expects ?role=owner to provision user as OWNER
-    // Without this parameter, users default to USER role
-    if (this.isOwnerRegistration()) {
-      googleAuthUrl += '?role=owner';
-    }
-
-    // Redirect to backend OAuth2 authorization endpoint
-    // Backend will:
-    // 1. Validate and embed role in OAuth2 state parameter
-    // 2. Redirect to Google for authentication
-    // 3. Handle callback and provision user with correct role
-    // 4. Generate JWT with role claim
-    // 5. Redirect to frontend with JWT token
-    window.location.href = googleAuthUrl;
+    // Use the Supabase Google OAuth flow from AuthService
+    // This will:
+    // 1. Call /api/auth/supabase/google/authorize to get the auth URL
+    // 2. Store the state for CSRF validation
+    // 3. Redirect to Google for authentication
+    // 4. Google will redirect back to /auth/supabase/google/callback
+    this.authService.loginWithSupabaseGoogle(role);
   }
 }

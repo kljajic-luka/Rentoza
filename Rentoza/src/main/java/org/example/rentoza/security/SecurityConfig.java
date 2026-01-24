@@ -158,6 +158,8 @@ public class SecurityConfig {
                     .sessionAuthenticationStrategy(new NullAuthenticatedSessionStrategy())
                     .ignoringRequestMatchers(
                         "/api/auth/logout",  // Idempotent - safe without CSRF
+                        "/api/auth/supabase/google/callback",  // OAuth callback from Supabase (PKCE)
+                        "/api/auth/supabase/google/token-callback",  // OAuth token callback (implicit flow)
                         "/uploads/**"         // Static files - no state change
                     )
                 )
@@ -178,7 +180,8 @@ public class SecurityConfig {
                                 "/api/auth/supabase/login",
                                 "/api/auth/supabase/refresh",
                                 "/api/auth/supabase/logout",
-                                "/api/auth/supabase/confirm-email"  // Email verification callback
+                                "/api/auth/supabase/confirm-email",  // Email verification callback
+                                "/api/auth/supabase/google/**"       // Google OAuth via Supabase
                         ).permitAll()
                         // Debug endpoints (for development - consider disabling in production)
                         .requestMatchers("/api/auth/debug/**").permitAll()

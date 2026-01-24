@@ -3,6 +3,7 @@ import { Routes } from '@angular/router';
 import { RoleGuard } from '@core/guards/role.guard';
 import { RoleRedirectGuard } from '@core/guards/role-redirect.guard';
 import { guestGuard } from '@core/guards/guest.guard';
+import { ProfileCompletionGuard } from '@core/guards/profile-completion.guard';
 
 export const routes: Routes = [
   {
@@ -36,14 +37,14 @@ export const routes: Routes = [
         canActivate: [guestGuard],
         loadComponent: () =>
           import('@features/auth/pages/register/register.component').then(
-            (m) => m.RegisterComponent
+            (m) => m.RegisterComponent,
           ),
       },
       {
         path: 'callback',
         loadComponent: () =>
           import('@features/auth/pages/auth-callback/auth-callback.component').then(
-            (m) => m.AuthCallbackComponent
+            (m) => m.AuthCallbackComponent,
           ),
       },
       // ═══════════════════════════════════════════════════════════════════════════
@@ -55,7 +56,7 @@ export const routes: Routes = [
         path: 'confirm',
         loadComponent: () =>
           import('@features/auth/pages/email-confirm/email-confirm.component').then(
-            (m) => m.EmailConfirmComponent
+            (m) => m.EmailConfirmComponent,
           ),
       },
       // ═══════════════════════════════════════════════════════════════════════════
@@ -69,7 +70,20 @@ export const routes: Routes = [
         data: { roles: ['USER', 'OWNER'] },
         loadComponent: () =>
           import('@features/auth/pages/oauth-complete/oauth-complete.component').then(
-            (m) => m.OAuthCompleteComponent
+            (m) => m.OAuthCompleteComponent,
+          ),
+      },
+      // ═══════════════════════════════════════════════════════════════════════════
+      // SUPABASE GOOGLE OAUTH CALLBACK
+      // ═══════════════════════════════════════════════════════════════════════════
+      // Handles Supabase Google OAuth redirect with code and state parameters.
+      // Flow: Google → Supabase → Backend redirect → Frontend callback
+      // The backend returns HttpOnly cookies; this component handles navigation.
+      {
+        path: 'supabase/google/callback',
+        loadComponent: () =>
+          import('@features/auth/pages/supabase-google-callback/supabase-google-callback.component').then(
+            (m) => m.SupabaseGoogleCallbackComponent,
           ),
       },
     ],
@@ -79,7 +93,7 @@ export const routes: Routes = [
     path: 'oauth2/success',
     loadComponent: () =>
       import('@features/auth/pages/auth-callback/auth-callback.component').then(
-        (m) => m.AuthCallbackComponent
+        (m) => m.AuthCallbackComponent,
       ),
   },
   {
@@ -102,20 +116,21 @@ export const routes: Routes = [
         canActivate: [RoleRedirectGuard],
         loadComponent: () =>
           import('@features/cars/pages/car-list/car-list.component').then(
-            (m) => m.CarListComponent
+            (m) => m.CarListComponent,
           ),
       },
       {
         path: ':id',
         loadComponent: () =>
           import('@features/cars/pages/car-detail/car-detail.component').then(
-            (m) => m.CarDetailComponent
+            (m) => m.CarDetailComponent,
           ),
       },
     ],
   },
   {
     path: 'bookings',
+    canActivate: [ProfileCompletionGuard], // Require complete profile for booking actions
     children: [
       {
         path: '',
@@ -123,7 +138,7 @@ export const routes: Routes = [
         data: { roles: ['USER', 'ADMIN'] },
         loadComponent: () =>
           import('@features/bookings/pages/booking-history/booking-history.component').then(
-            (m) => m.BookingHistoryComponent
+            (m) => m.BookingHistoryComponent,
           ),
       },
       {
@@ -132,7 +147,7 @@ export const routes: Routes = [
         data: { roles: ['USER', 'OWNER', 'ADMIN'] },
         loadComponent: () =>
           import('@features/bookings/pages/booking-detail/booking-detail.component').then(
-            (m) => m.BookingDetailComponent
+            (m) => m.BookingDetailComponent,
           ),
       },
       {
@@ -141,7 +156,7 @@ export const routes: Routes = [
         data: { roles: ['USER', 'OWNER', 'ADMIN'] },
         loadComponent: () =>
           import('@features/bookings/check-in/check-in-wizard.component').then(
-            (m) => m.CheckInWizardComponent
+            (m) => m.CheckInWizardComponent,
           ),
       },
       {
@@ -150,7 +165,7 @@ export const routes: Routes = [
         data: { roles: ['USER', 'OWNER', 'ADMIN'] },
         loadComponent: () =>
           import('@features/bookings/check-out/checkout-wizard.component').then(
-            (m) => m.CheckoutWizardComponent
+            (m) => m.CheckoutWizardComponent,
           ),
       },
       {
@@ -159,7 +174,7 @@ export const routes: Routes = [
         data: { roles: ['USER', 'ADMIN'] },
         loadComponent: () =>
           import('@features/bookings/pages/add-review/add-review.component').then(
-            (m) => m.AddReviewComponent
+            (m) => m.AddReviewComponent,
           ),
       },
     ],
@@ -170,7 +185,7 @@ export const routes: Routes = [
     data: { roles: ['USER', 'ADMIN'] },
     loadComponent: () =>
       import('@features/favorites/pages/favorites-list/favorites-list.component').then(
-        (m) => m.FavoritesListComponent
+        (m) => m.FavoritesListComponent,
       ),
   },
   {
@@ -178,20 +193,20 @@ export const routes: Routes = [
     canActivate: [RoleGuard],
     data: { roles: ['USER', 'ADMIN'] },
     loadComponent: () =>
-      import(
-        '@features/renter-verification/pages/renter-verification-page/renter-verification-page.component'
-      ).then((m) => m.RenterVerificationPageComponent),
+      import('@features/renter-verification/pages/renter-verification-page/renter-verification-page.component').then(
+        (m) => m.RenterVerificationPageComponent,
+      ),
   },
   {
     path: 'reviews',
     loadComponent: () =>
       import('@features/reviews/pages/review-list/review-list.component').then(
-        (m) => m.ReviewListComponent
+        (m) => m.ReviewListComponent,
       ),
   },
   {
     path: 'owner',
-    canActivate: [RoleGuard, RoleRedirectGuard],
+    canActivate: [RoleGuard, RoleRedirectGuard, ProfileCompletionGuard], // Require complete profile for owner actions
     data: { roles: ['OWNER', 'ADMIN'] },
     children: [
       {
@@ -203,7 +218,7 @@ export const routes: Routes = [
         path: 'dashboard',
         loadComponent: () =>
           import('@features/owner/pages/dashboard/owner-dashboard.component').then(
-            (m) => m.OwnerDashboardComponent
+            (m) => m.OwnerDashboardComponent,
           ),
       },
       {
@@ -215,43 +230,43 @@ export const routes: Routes = [
         path: 'cars/new',
         loadComponent: () =>
           import('@features/owner/pages/add-car-wizard/add-car-wizard.component').then(
-            (m) => m.AddCarWizardComponent
+            (m) => m.AddCarWizardComponent,
           ),
       },
       {
         path: 'bookings',
         loadComponent: () =>
           import('@features/owner/pages/bookings/owner-bookings.component').then(
-            (m) => m.OwnerBookingsComponent
+            (m) => m.OwnerBookingsComponent,
           ),
       },
       {
         path: 'booking/:id/review',
         loadComponent: () =>
           import('@features/owner/pages/add-review/owner-add-review.component').then(
-            (m) => m.OwnerAddReviewComponent
+            (m) => m.OwnerAddReviewComponent,
           ),
       },
       {
         path: 'earnings',
         loadComponent: () =>
           import('@features/owner/pages/earnings/earnings.component').then(
-            (m) => m.EarningsComponent
+            (m) => m.EarningsComponent,
           ),
       },
       {
         path: 'reviews',
         loadComponent: () =>
           import('@features/owner/pages/reviews/owner-reviews.component').then(
-            (m) => m.OwnerReviewsComponent
+            (m) => m.OwnerReviewsComponent,
           ),
       },
       {
         path: 'verification',
         loadComponent: () =>
-          import(
-            '@features/owner/pages/owner-verification-page/owner-verification-page.component'
-          ).then((m) => m.OwnerVerificationPageComponent),
+          import('@features/owner/pages/owner-verification-page/owner-verification-page.component').then(
+            (m) => m.OwnerVerificationPageComponent,
+          ),
       },
     ],
   },
@@ -278,14 +293,14 @@ export const routes: Routes = [
     data: { roles: ['USER', 'OWNER', 'ADMIN'] },
     loadComponent: () =>
       import('@features/messages/pages/messages/messages.component').then(
-        (m) => m.MessagesComponent
+        (m) => m.MessagesComponent,
       ),
   },
   {
     path: 'owners/:id',
     loadComponent: () =>
       import('@features/owner/pages/owner-profile-page/owner-profile-page.component').then(
-        (m) => m.OwnerProfilePageComponent
+        (m) => m.OwnerProfilePageComponent,
       ),
   },
   {

@@ -95,6 +95,15 @@ export interface GoogleOAuthCompletionRequest {
   /** Age confirmation checkbox */
   confirmsAgeEligibility: boolean;
   // ─────────────────────────────────────────────────────────────────────────
+  // Driver license fields (only if completing as USER/Renter)
+  // ─────────────────────────────────────────────────────────────────────────
+  /** Driver license number - Required for USER role */
+  driverLicenseNumber?: string;
+  /** Driver license expiry date (YYYY-MM-DD) - Required for USER role */
+  driverLicenseExpiryDate?: string;
+  /** Driver license issuing country - Required for USER role */
+  driverLicenseCountry?: string;
+  // ─────────────────────────────────────────────────────────────────────────
   // Optional owner fields (only if completing as OWNER)
   // ─────────────────────────────────────────────────────────────────────────
   /** Owner type - Required if registering as owner */
@@ -158,4 +167,34 @@ export interface EnhancedUserProfile extends UserProfile {
   dateOfBirth?: string;
   /** Owner type if OWNER role */
   ownerType?: OwnerType;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SUPABASE GOOGLE OAUTH TYPES
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Response from Google OAuth initialization via Supabase.
+ * Contains the authorization URL to redirect to and state token for CSRF protection.
+ */
+export interface GoogleAuthInitResponse {
+  /** Full authorization URL to redirect user to (Google via Supabase) */
+  authorizationUrl: string;
+  /** State token for CSRF validation (stored in sessionStorage) */
+  state: string;
+}
+
+/**
+ * Response from Google OAuth callback via Supabase.
+ * Contains the authenticated user and their registration status.
+ */
+export interface SupabaseGoogleCallbackResponse {
+  /** Whether the OAuth flow was successful */
+  success: boolean;
+  /** Authenticated user profile (may have INCOMPLETE registration status) */
+  user: EnhancedUserProfile;
+  /** Success message */
+  message?: string;
+  /** Registration status - INCOMPLETE means user needs to complete profile */
+  registrationStatus: RegistrationStatus;
 }

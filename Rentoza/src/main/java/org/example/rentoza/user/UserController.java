@@ -2,10 +2,12 @@ package org.example.rentoza.user;
 
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
+import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.security.CurrentUser;
 import org.example.rentoza.security.JwtUserPrincipal;
 
 import org.example.rentoza.user.dto.*;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -15,15 +17,19 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/users")
+@Slf4j
 public class UserController {
 
     private final UserService service;
     private final ProfileService profileService;
+    private final ProfileCompletionService profileCompletionService;
     private final CurrentUser currentUser;
 
-    public UserController(UserService service, ProfileService profileService, CurrentUser currentUser) {
+    public UserController(UserService service, ProfileService profileService, 
+                          ProfileCompletionService profileCompletionService, CurrentUser currentUser) {
         this.service = service;
         this.profileService = profileService;
+        this.profileCompletionService = profileCompletionService;
         this.currentUser = currentUser;
     }
 
@@ -32,7 +38,14 @@ public class UserController {
      * Returns authenticated user's complete profile with backend-verified roles
      * Used by frontend for session initialization and role verification
      * 
-     * @return CurrentUserDTO with id, email, roles array, authenticated flag
+     * <p><b>CRITICAL:</b> Must return {@code registrationStatus} for:
+     * <ul>
+     *   <li>Frontend OAuth callback to detect INCOMPLETE profiles</li>
+     *   <li>ProfileCompletionGuard to block critical routes</li>
+     *   <li>Conditional UI rendering based on profile completeness</li>
+     * </ul>
+     * 
+     * @return CurrentUserDTO with id, email, roles array, registrationStatus, authenticated flag
      */
     @GetMapping("/me")
     @PreAuthorize("isAuthenticated()")
@@ -46,18 +59,26 @@ public class UserController {
             var user = service.getUserById(principal.id())
                     .orElseThrow(() -> new EntityNotFoundException("User not found"));
             
-            // Return complete user profile with roles array (not single role string)
-            return ResponseEntity.ok(Map.of(
-                    "id", user.getId(),
-                    "email", user.getEmail(),
-                    "firstName", user.getFirstName(),
-                    "lastName", user.getLastName(),
-                    "phone", user.getPhone() != null ? user.getPhone() : "",
-                    "age", user.getAge() != null ? user.getAge() : 0,
-                    "avatarUrl", user.getAvatarUrl() != null ? user.getAvatarUrl() : "",
-                    "roles", List.of(user.getRole().name()), // ✅ Roles as array
-                    "authenticated", true  // ✅ Backend verification flag
-            ));
+            // Build response map (Map.of() only supports up to 10 entries)
+            java.util.Map<String, Object> response = new java.util.HashMap<>();
+            response.put("id", user.getId());
+            response.put("email", user.getEmail());
+            response.put("firstName", user.getFirstName());
+            response.put("lastName", user.getLastName());
+            response.put("phone", user.getPhone() != null ? user.getPhone() : "");
+            response.put("age", user.getAge() != null ? user.getAge() : 0);
+            response.put("avatarUrl", user.getAvatarUrl() != null ? user.getAvatarUrl() : "");
+            response.put("roles", List.of(user.getRole().name()));
+            response.put("authenticated", true);
+            // CRITICAL: Registration status for profile completion flow
+            response.put("registrationStatus", user.getRegistrationStatus() != null 
+                    ? user.getRegistrationStatus().name() 
+                    : "ACTIVE");
+            response.put("ownerType", user.getOwnerType() != null 
+                    ? user.getOwnerType().name() 
+                    : null);
+            
+            return ResponseEntity.ok(response);
         } catch (RuntimeException e) {
             return ResponseEntity.status(401).body(Map.of(
                     "error", e.getMessage(),
@@ -161,5 +182,163 @@ public class UserController {
         }
     }
 
+    // ========================================================================
+    // PROFILE COMPLETION ENDPOINT (Google OAuth users)
+    // ========================================================================
+
+    /**
+     * POST /api/users/complete-profile - Complete profile for Google OAuth users.
+     * 
+     * <p>This endpoint accepts required fields based on user's role:
+     * <ul>
+     *   <li><b>USER (Renter):</b> phone, dateOfBirth, driverLicenseNumber, driverLicenseExpiryDate, driverLicenseCountry</li>
+     *   <li><b>OWNER (Individual):</b> phone, dateOfBirth, jmbg, bankAccountNumber (optional), agreements</li>
+     *   <li><b>OWNER (Legal Entity):</b> phone, dateOfBirth, pib, bankAccountNumber (required), agreements</li>
+     * </ul>
+     * 
+     * <p><b>Security:</b>
+     * <ul>
+     *   <li>Requires authentication (JWT token via cookie)</li>
+     *   <li>User can only complete their own profile (validated server-side)</li>
+     *   <li>Sensitive fields (JMBG, PIB, license) are encrypted</li>
+     *   <li>Duplicate identifiers return 409 Conflict</li>
+     * </ul>
+     * 
+     * @param principal Authenticated user principal
+     * @param request Profile completion data
+     * @return CompleteProfileResponseDTO with updated status = ACTIVE
+     */
+    @PostMapping("/complete-profile")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> completeProfile(
+            @org.springframework.security.core.annotation.AuthenticationPrincipal JwtUserPrincipal principal,
+            @Valid @RequestBody CompleteProfileRequestDTO request
+    ) {
+        try {
+            Long userId = principal.id();
+            log.info("Profile completion request for userId={}", userId);
+
+            CompleteProfileResponseDTO response = profileCompletionService.completeProfile(userId, request);
+            
+            log.info("Profile completed successfully for userId={}, role={}", 
+                    userId, response.getRole());
+            
+            return ResponseEntity.ok(response);
+
+        } catch (EntityNotFoundException e) {
+            log.warn("Profile completion failed - user not found: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                    "error", "USER_NOT_FOUND",
+                    "message", e.getMessage()
+            ));
+            
+        } catch (ProfileCompletionService.DuplicateIdentifierException e) {
+            log.warn("Profile completion failed - duplicate identifier: {} - {}", 
+                    e.getIdentifierType(), e.getMessage());
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                    "error", "DUPLICATE_IDENTIFIER",
+                    "identifierType", e.getIdentifierType(),
+                    "message", e.getMessage()
+            ));
+            
+        } catch (ProfileCompletionService.ValidationException e) {
+            log.warn("Profile completion failed - validation errors: {}", e.getErrors());
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "VALIDATION_ERROR",
+                    "fieldErrors", e.getErrors(),
+                    "message", "Proverite unete podatke i pokušajte ponovo"
+            ));
+            
+        } catch (ProfileCompletionService.ProfileCompletionException e) {
+            log.warn("Profile completion failed - {}: {}", e.getErrorCode(), e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", e.getErrorCode(),
+                    "message", e.getMessage()
+            ));
+            
+        } catch (Exception e) {
+            log.error("Profile completion failed - unexpected error", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                    "error", "SERVER_ERROR",
+                    "message", "Došlo je do greške. Molimo pokušajte ponovo."
+            ));
+        }
+    }
+
+    /**
+     * GET /api/users/profile-completion-status - Check if profile completion is required.
+     * 
+     * <p>Returns the user's registration status and which fields are missing.
+     * Used by frontend to determine if profile completion modal should be shown.
+     */
+    @GetMapping("/profile-completion-status")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> getProfileCompletionStatus(
+            @org.springframework.security.core.annotation.AuthenticationPrincipal JwtUserPrincipal principal
+    ) {
+        try {
+            User user = service.getUserById(principal.id())
+                    .orElseThrow(() -> new EntityNotFoundException("User not found"));
+
+            boolean isComplete = user.getRegistrationStatus() == RegistrationStatus.ACTIVE;
+            
+            return ResponseEntity.ok(Map.of(
+                    "registrationStatus", user.getRegistrationStatus().name(),
+                    "isComplete", isComplete,
+                    "role", user.getRole().name(),
+                    "ownerType", user.getOwnerType() != null ? user.getOwnerType().name() : "INDIVIDUAL",
+                    "missingFields", getMissingFields(user)
+            ));
+            
+        } catch (EntityNotFoundException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                    "error", "USER_NOT_FOUND",
+                    "message", e.getMessage()
+            ));
+        }
+    }
+
+    /**
+     * Helper to determine which required fields are missing for profile completion.
+     */
+    private List<String> getMissingFields(User user) {
+        List<String> missing = new java.util.ArrayList<>();
+
+        if (user.getPhone() == null || user.getPhone().isBlank()) {
+            missing.add("phone");
+        }
+        if (user.getDateOfBirth() == null) {
+            missing.add("dateOfBirth");
+        }
+
+        if (user.getRole() == Role.USER) {
+            if (user.getDriverLicenseNumber() == null || user.getDriverLicenseNumber().isBlank()) {
+                missing.add("driverLicenseNumber");
+            }
+            if (user.getDriverLicenseExpiryDate() == null) {
+                missing.add("driverLicenseExpiryDate");
+            }
+            if (user.getDriverLicenseCountry() == null || user.getDriverLicenseCountry().isBlank()) {
+                missing.add("driverLicenseCountry");
+            }
+        } else if (user.getRole() == Role.OWNER) {
+            OwnerType ownerType = user.getOwnerType() != null ? user.getOwnerType() : OwnerType.INDIVIDUAL;
+            
+            if (ownerType == OwnerType.INDIVIDUAL) {
+                if (user.getJmbg() == null || user.getJmbg().isBlank()) {
+                    missing.add("jmbg");
+                }
+            } else {
+                if (user.getPib() == null || user.getPib().isBlank()) {
+                    missing.add("pib");
+                }
+                if (user.getBankAccountNumber() == null || user.getBankAccountNumber().isBlank()) {
+                    missing.add("bankAccountNumber");
+                }
+            }
+        }
+
+        return missing;
+    }
 
 }

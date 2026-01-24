@@ -1,5 +1,6 @@
 import { ReviewDirection } from './review.model';
 import { UserRole } from './user-role.type';
+import { RegistrationStatus, OwnerType } from './auth.model';
 
 export interface User {
   id: string;
@@ -15,6 +16,14 @@ export interface UserProfile extends User {
   phone?: string;
   bio?: string;
   createdAt?: string;
+  /**
+   * Registration status for profile completion flow.
+   * INCOMPLETE = Google OAuth user needs to complete profile.
+   * ACTIVE = Fully registered user.
+   */
+  registrationStatus?: RegistrationStatus;
+  /** Owner type (INDIVIDUAL or LEGAL_ENTITY) - only for OWNER role */
+  ownerType?: OwnerType;
 }
 
 export interface ProfileStats {

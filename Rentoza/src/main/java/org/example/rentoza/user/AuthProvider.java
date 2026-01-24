@@ -11,7 +11,18 @@ public enum AuthProvider {
     LOCAL,
 
     /**
-     * Google OAuth2 authentication
+     * Google OAuth2 authentication (legacy - direct Google OAuth)
+     * @deprecated Use SUPABASE for all OAuth authentication
      */
-    GOOGLE
+    @Deprecated
+    GOOGLE,
+
+    /**
+     * Supabase Auth authentication.
+     * Covers all Supabase auth methods including:
+     * - Email/password
+     * - Google OAuth via Supabase
+     * - Other OAuth providers configured in Supabase
+     */
+    SUPABASE
 }

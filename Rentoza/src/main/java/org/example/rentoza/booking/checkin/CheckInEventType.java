@@ -289,6 +289,24 @@ public enum CheckInEventType {
     CHECKOUT_DISPUTE_OPENED,
     
     /**
+     * Guest accepted the damage claim at checkout (VAL-010).
+     * Deposit will be captured for damage charges.
+     * Metadata: {@code {"claimId": 123, "claimAmountRsd": 15000}}
+     * 
+     * @since VAL-010 - Damage Claim Blocks Deposit Release
+     */
+    CHECKOUT_DAMAGE_ACCEPTED,
+    
+    /**
+     * Guest disputed the damage claim at checkout (VAL-010).
+     * Escalates to admin for resolution.
+     * Metadata: {@code {"claimId": 123, "disputeReason": "..."}}
+     * 
+     * @since VAL-010 - Damage Claim Blocks Deposit Release
+     */
+    CHECKOUT_DAMAGE_DISPUTED,
+    
+    /**
      * Checkout completed, trip ended.
      * Triggers transition to COMPLETED status.
      * Metadata: {@code {"endOdometer": 45890, "endFuelLevel": 60, "newDamageReported": false, "totalMileage": 212}}

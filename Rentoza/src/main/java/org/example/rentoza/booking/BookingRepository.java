@@ -772,6 +772,30 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
         @Param("status") BookingStatus status,
         @Param("threshold") java.time.Instant threshold
     );
+    
+    // ========== VAL-010: CHECKOUT DAMAGE DISPUTE TIMEOUT QUERIES ==========
+    
+    /**
+     * Find bookings in CHECKOUT_DAMAGE_DISPUTE status where the deposit hold deadline has passed.
+     * Used by scheduler to detect disputes that need escalation due to guest non-response.
+     * 
+     * @param status BookingStatus.CHECKOUT_DAMAGE_DISPUTE
+     * @param deadline Current time (disputes with holdUntil before this are expired)
+     * @return List of bookings with expired damage disputes
+     * @since VAL-010
+     */
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.car c " +
+           "JOIN FETCH c.owner " +
+           "JOIN FETCH b.renter r " +
+           "LEFT JOIN FETCH b.checkoutDamageClaim " +
+           "WHERE b.status = :status " +
+           "AND b.securityDepositHoldUntil < :deadline " +
+           "ORDER BY b.securityDepositHoldUntil ASC")
+    List<Booking> findByStatusAndSecurityDepositHoldUntilBefore(
+        @Param("status") BookingStatus status,
+        @Param("deadline") java.time.Instant deadline
+    );
 }
 
 

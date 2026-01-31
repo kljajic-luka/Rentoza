@@ -416,6 +416,13 @@ public class DamageClaimService {
             case CHECK_IN_RESOLVED_PROCEED -> "Preuzimanje nastavljeno sa zabeleškom";
             case CHECK_IN_RESOLVED_CANCEL -> "Rezervacija otkazana zbog prijave";
             case CHECK_IN_GUEST_WITHDREW -> "Gost povukao prijavu";
+            // VAL-010: Checkout damage dispute statuses
+            case CHECKOUT_PENDING -> "Šteta na povratku - čeka odgovor gosta";
+            case CHECKOUT_GUEST_ACCEPTED -> "Gost prihvatio štetu na povratku";
+            case CHECKOUT_GUEST_DISPUTED -> "Gost osporio štetu - čeka pregled admina";
+            case CHECKOUT_ADMIN_APPROVED -> "Admin odobrio štetu na povratku";
+            case CHECKOUT_ADMIN_REJECTED -> "Admin odbio štetu na povratku";
+            case CHECKOUT_TIMEOUT_ESCALATED -> "Istek vremena - eskaliran adminu";
         };
 
         return DamageClaimDTO.builder()

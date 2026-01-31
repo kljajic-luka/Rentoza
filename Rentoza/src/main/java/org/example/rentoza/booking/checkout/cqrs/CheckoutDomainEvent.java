@@ -181,6 +181,30 @@ public sealed interface CheckoutDomainEvent {
             UUID sagaId,
             Instant occurredAt
     ) implements CheckoutDomainEvent {}
+    
+    /**
+     * Event: Saga resumed after suspension (VAL-010).
+     * 
+     * <p>Triggered when damage claim is resolved and saga can continue.
+     */
+    record SagaResumed(
+            Long bookingId,
+            UUID sagaId,
+            Instant occurredAt
+    ) implements CheckoutDomainEvent {}
+    
+    /**
+     * Event: Saga suspended due to damage claim (VAL-010).
+     * 
+     * <p>Triggered when checkout validation detects unresolved damage.
+     */
+    record SagaSuspended(
+            Long bookingId,
+            UUID sagaId,
+            Long damageClaimId,
+            String reason,
+            Instant occurredAt
+    ) implements CheckoutDomainEvent {}
 
     // ========== PHOTO EVENTS ==========
 

@@ -12,6 +12,10 @@ import org.example.rentoza.booking.checkin.dto.CheckInPhotoDTO;
 import org.example.rentoza.booking.checkout.cqrs.CheckoutDomainEvent;
 import org.example.rentoza.booking.checkout.dto.*;
 import org.example.rentoza.booking.checkout.saga.CheckoutSagaOrchestrator;
+import org.example.rentoza.booking.dispute.DamageClaim;
+import org.example.rentoza.booking.dispute.DamageClaimRepository;
+import org.example.rentoza.booking.dispute.DamageClaimStatus;
+import org.example.rentoza.booking.dispute.DisputeStage;
 import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.notification.NotificationService;
 import org.example.rentoza.notification.NotificationType;
@@ -63,6 +67,7 @@ public class CheckOutService {
     private final NotificationService notificationService;
     private final CheckoutSagaOrchestrator checkoutSagaOrchestrator;
     private final ApplicationEventPublisher eventPublisher;
+    private final DamageClaimRepository damageClaimRepository;
     
     // Metrics
     private final Counter checkoutInitiatedCounter;
@@ -71,6 +76,7 @@ public class CheckOutService {
     private final Counter damageReportedCounter;
     private final Counter sagaInvokedCounter;
     private final Counter sagaInvocationExceptionsCounter;
+    private final Counter checkoutDamageDisputeCounter;
     private final Timer tripDurationTimer;
 
     @Value("${app.checkout.late.grace-minutes:15}")
@@ -89,6 +95,11 @@ public class CheckOutService {
     
     @Value("${app.checkout.improper-return.mileage-multiplier-threshold:2}")
     private double mileageMultiplierThreshold;
+    
+    // ========== VAL-010: DEPOSIT HOLD DURATION ==========
+    
+    @Value("${app.checkout.damage-dispute.hold-days:7}")
+    private int damageDisputeHoldDays;
 
     public CheckOutService(
             BookingRepository bookingRepository,
@@ -96,6 +107,7 @@ public class CheckOutService {
             CheckInPhotoRepository photoRepository,
             NotificationService notificationService,
             CheckoutSagaOrchestrator checkoutSagaOrchestrator,
+            DamageClaimRepository damageClaimRepository,
             MeterRegistry meterRegistry,
             ApplicationEventPublisher eventPublisher) {
         this.bookingRepository = bookingRepository;
@@ -103,6 +115,7 @@ public class CheckOutService {
         this.photoRepository = photoRepository;
         this.notificationService = notificationService;
         this.checkoutSagaOrchestrator = checkoutSagaOrchestrator;
+        this.damageClaimRepository = damageClaimRepository;
         this.eventPublisher = eventPublisher;
         
         this.checkoutInitiatedCounter = Counter.builder("checkout.initiated")
@@ -127,6 +140,10 @@ public class CheckOutService {
         
         this.sagaInvocationExceptionsCounter = Counter.builder("checkout.saga.invocation.exceptions")
                 .description("Exceptions thrown during saga invocation")
+                .register(meterRegistry);
+        
+        this.checkoutDamageDisputeCounter = Counter.builder("checkout.damage.dispute")
+                .description("Checkout damage disputes initiated (VAL-010)")
                 .register(meterRegistry);
         
         this.tripDurationTimer = Timer.builder("trip.duration")
@@ -448,6 +465,18 @@ public class CheckOutService {
             booking.setDamageClaimAmount(dto.getEstimatedDamageCostRsd());
             booking.setDamageClaimStatus("PENDING");
             
+            // ================================================================
+            // VAL-010: Block deposit release when damage is reported
+            // ================================================================
+            // Set deposit hold until dispute is resolved (7 days default)
+            booking.setSecurityDepositHoldReason("DAMAGE_CLAIM");
+            booking.setSecurityDepositHoldUntil(Instant.now().plus(Duration.ofDays(7)));
+            booking.setSecurityDepositReleased(false);
+            
+            // Create DamageClaim entity for checkout damage dispute
+            DamageClaim checkoutClaim = createCheckoutDamageClaim(booking, dto, userId);
+            booking.setCheckoutDamageClaim(checkoutClaim);
+            
             eventService.recordEvent(
                 booking,
                 booking.getCheckoutSessionId(),
@@ -457,12 +486,15 @@ public class CheckOutService {
                 Map.of(
                     "damageDescription", dto.getDamageDescription() != null ? dto.getDamageDescription() : "",
                     "estimatedCostRsd", dto.getEstimatedDamageCostRsd() != null ? dto.getEstimatedDamageCostRsd() : 0,
-                    "photoIds", dto.getDamagePhotoIds() != null ? dto.getDamagePhotoIds() : List.of()
+                    "photoIds", dto.getDamagePhotoIds() != null ? dto.getDamagePhotoIds() : List.of(),
+                    "depositHoldUntil", booking.getSecurityDepositHoldUntil().toString(),
+                    "claimId", checkoutClaim.getId()
                 )
             );
             
             damageReportedCounter.increment();
-            log.info("[CheckOut] Damage reported for booking {}: {}", booking.getId(), dto.getDamageDescription());
+            log.info("[CheckOut] Damage reported for booking {} - deposit HELD until {}", 
+                booking.getId(), booking.getSecurityDepositHoldUntil());
         }
         
         // Record confirmation event
@@ -494,13 +526,32 @@ public class CheckOutService {
                 Instant.now()
         ));
         
-        // Complete checkout if no dispute
-        // Handle null-safe check for Boolean wrapper type
-        if (booking.getNewDamageReported() == null || !booking.getNewDamageReported() || dto.getConditionAccepted()) {
-            completeCheckout(booking, userId);
+        // ================================================================
+        // VAL-010: Damage reported blocks checkout completion
+        // ================================================================
+        // If damage is reported and guest hasn't accepted the claim,
+        // transition to CHECKOUT_DAMAGE_DISPUTE instead of COMPLETED.
+        // This ensures the deposit is held until dispute is resolved.
+        if (booking.getNewDamageReported() != null && booking.getNewDamageReported()) {
+            if (dto.getConditionAccepted()) {
+                // Guest already accepted damage claim (unusual but possible via admin)
+                // Proceed to complete checkout with damage charges
+                log.info("[CheckOut] Damage reported but guest accepted - completing checkout with charges");
+                completeCheckout(booking, userId);
+            } else {
+                // Transition to damage dispute state - deposit held
+                booking.setStatus(BookingStatus.CHECKOUT_DAMAGE_DISPUTE);
+                bookingRepository.save(booking);
+                
+                log.warn("[CheckOut] Damage dispute initiated for booking {} - deposit HELD, status: CHECKOUT_DAMAGE_DISPUTE",
+                    booking.getId());
+                
+                // Notify guest about damage claim and deposit hold
+                notifyGuestDamageReported(booking);
+            }
         } else {
-            // Notify guest about damage claim
-            notifyGuestDamageReported(booking);
+            // No damage - complete checkout normally
+            completeCheckout(booking, userId);
         }
         
         return mapToStatusDTO(booking, userId);
@@ -931,5 +982,149 @@ public class CheckOutService {
             log.error("[CheckOut] Failed to publish event {}: {}", 
                     event.getClass().getSimpleName(), e.getMessage());
         }
+    }
+
+    // ========== VAL-010: CHECKOUT DAMAGE CLAIM CREATION ==========
+
+    /**
+     * Create a DamageClaim entity for checkout damage dispute.
+     * 
+     * <p><b>VAL-010:</b> Damage claim blocks deposit release.</p>
+     * 
+     * @param booking The booking with reported damage
+     * @param dto The host checkout confirmation with damage details
+     * @param userId The host's user ID
+     * @return Created DamageClaim entity (persisted)
+     */
+    private DamageClaim createCheckoutDamageClaim(Booking booking, HostCheckOutConfirmationDTO dto, Long userId) {
+        DamageClaim claim = DamageClaim.builder()
+                .booking(booking)
+                .status(DamageClaimStatus.CHECKOUT_PENDING)
+                .disputeStage(DisputeStage.CHECKOUT)
+                .description(dto.getDamageDescription())
+                .claimedAmount(dto.getEstimatedDamageCostRsd())
+                .host(booking.getCar().getOwner())
+                .guest(booking.getRenter())
+                .createdAt(Instant.now())
+                .build();
+        
+        claim = damageClaimRepository.save(claim);
+        
+        checkoutDamageDisputeCounter.increment();
+        log.info("[CheckOut] Created checkout damage claim {} for booking {}: {} RSD",
+                claim.getId(), booking.getId(), dto.getEstimatedDamageCostRsd());
+        
+        return claim;
+    }
+
+    /**
+     * Guest accepts the damage claim, allowing deposit capture and checkout completion.
+     * 
+     * @param bookingId Booking ID
+     * @param userId Guest's user ID
+     */
+    @Transactional
+    public void acceptDamageClaim(Long bookingId, Long userId) {
+        Booking booking = bookingRepository.findByIdWithRelations(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking not found: " + bookingId));
+        
+        if (booking.getStatus() != BookingStatus.CHECKOUT_DAMAGE_DISPUTE) {
+            throw new IllegalStateException("Booking is not in damage dispute state");
+        }
+        
+        if (!isGuest(booking, userId)) {
+            throw new AccessDeniedException("Only the guest can accept damage claims");
+        }
+        
+        DamageClaim claim = booking.getCheckoutDamageClaim();
+        if (claim != null) {
+            claim.setStatus(DamageClaimStatus.CHECKOUT_GUEST_ACCEPTED);
+            claim.setResolvedAt(Instant.now());
+            damageClaimRepository.save(claim);
+        }
+        
+        booking.setDamageClaimStatus("ACCEPTED");
+        booking.setSecurityDepositResolvedAt(Instant.now());
+        
+        eventService.recordEvent(
+            booking,
+            booking.getCheckoutSessionId(),
+            CheckInEventType.CHECKOUT_DAMAGE_ACCEPTED,
+            userId,
+            CheckInActorRole.GUEST,
+            Map.of(
+                "claimId", claim != null ? claim.getId() : "N/A",
+                "claimAmountRsd", booking.getDamageClaimAmount() != null ? booking.getDamageClaimAmount() : BigDecimal.ZERO
+            )
+        );
+        
+        log.info("[CheckOut] Guest accepted damage claim for booking {} - completing checkout", booking.getId());
+        
+        // Now complete checkout with damage charges captured from deposit
+        completeCheckout(booking, userId);
+    }
+
+    /**
+     * Guest disputes the damage claim (escalates to admin).
+     * 
+     * @param bookingId Booking ID
+     * @param userId Guest's user ID
+     * @param disputeReason Guest's dispute reason
+     */
+    @Transactional
+    public void disputeDamageClaim(Long bookingId, Long userId, String disputeReason) {
+        Booking booking = bookingRepository.findByIdWithRelations(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking not found: " + bookingId));
+        
+        if (booking.getStatus() != BookingStatus.CHECKOUT_DAMAGE_DISPUTE) {
+            throw new IllegalStateException("Booking is not in damage dispute state");
+        }
+        
+        if (!isGuest(booking, userId)) {
+            throw new AccessDeniedException("Only the guest can dispute damage claims");
+        }
+        
+        DamageClaim claim = booking.getCheckoutDamageClaim();
+        if (claim != null) {
+            claim.setStatus(DamageClaimStatus.CHECKOUT_GUEST_DISPUTED);
+            claim.setDisputeReason(disputeReason);
+            claim.setEscalated(true);
+            claim.setEscalatedAt(Instant.now());
+            damageClaimRepository.save(claim);
+        }
+        
+        booking.setDamageClaimStatus("ESCALATED");
+        
+        eventService.recordEvent(
+            booking,
+            booking.getCheckoutSessionId(),
+            CheckInEventType.CHECKOUT_DAMAGE_DISPUTED,
+            userId,
+            CheckInActorRole.GUEST,
+            Map.of(
+                "claimId", claim != null ? claim.getId() : "N/A",
+                "disputeReason", disputeReason != null ? disputeReason : ""
+            )
+        );
+        
+        bookingRepository.save(booking);
+        
+        // Notify admin about escalation
+        notifyAdminDamageDispute(booking);
+        
+        log.warn("[CheckOut] Guest disputed damage claim for booking {} - escalated to admin", booking.getId());
+    }
+
+    /**
+     * Notify admin about damage dispute escalation.
+     */
+    private void notifyAdminDamageDispute(Booking booking) {
+        log.warn("[CheckOut] ADMIN ALERT: Checkout damage dispute escalated for booking {}. " +
+                "Host: {}, Guest: {}, Claim Amount: {} RSD",
+                booking.getId(),
+                booking.getCar().getOwner().getEmail(),
+                booking.getRenter().getEmail(),
+                booking.getDamageClaimAmount());
+        // Admin notification will be handled via NotificationService in admin module
     }
 }

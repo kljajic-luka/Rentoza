@@ -118,6 +118,23 @@ public enum BookingStatus {
      */
     CHECKOUT_HOST_COMPLETE,
     
+    /**
+     * Host has reported new damage at checkout, deposit is held pending resolution.
+     * 
+     * <p><b>VAL-010:</b> Damage claim blocks deposit release.</p>
+     * 
+     * <p>Possible transitions:</p>
+     * <ul>
+     *   <li>Admin resolves in favor of host → deposit captured, COMPLETED</li>
+     *   <li>Admin resolves in favor of guest → deposit released, COMPLETED</li>
+     *   <li>Guest accepts damage claim → deposit captured, COMPLETED</li>
+     *   <li>Timeout (7 days) → auto-escalate to admin</li>
+     * </ul>
+     * 
+     * @since VAL-010 - Damage Claim Blocks Deposit Release
+     */
+    CHECKOUT_DAMAGE_DISPUTE,
+    
     /** Trip finished successfully (checkout completed) */
     COMPLETED,
     

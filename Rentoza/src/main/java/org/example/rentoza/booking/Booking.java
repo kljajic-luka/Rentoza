@@ -7,6 +7,7 @@ import org.example.rentoza.booking.cancellation.CancellationRecord;
 import org.example.rentoza.booking.checkin.CheckInEvent;
 import org.example.rentoza.booking.checkin.CheckInIdVerification;
 import org.example.rentoza.booking.checkin.CheckInPhoto;
+import org.example.rentoza.booking.dispute.DamageClaim;
 import org.example.rentoza.car.Car;
 import org.example.rentoza.common.GeoPoint;
 import org.example.rentoza.user.User;
@@ -520,6 +521,56 @@ public class Booking {
      */
     @Column(name = "damage_claim_status", length = 20)
     private String damageClaimStatus;
+
+    // ========== DEPOSIT HOLD (VAL-010) ==========
+
+    /**
+     * Reason why security deposit is being held.
+     * Set when damage is reported at checkout.
+     * 
+     * <p>Values: DAMAGE_CLAIM, DISPUTE, LATE_RETURN_EXCESSIVE</p>
+     * 
+     * @since VAL-010 - Damage Claim Blocks Deposit Release
+     */
+    @Column(name = "security_deposit_hold_reason", length = 50)
+    private String securityDepositHoldReason;
+
+    /**
+     * Timestamp until which the deposit will be held.
+     * After this time, scheduler may auto-resolve or escalate.
+     * Default: 7 days from damage report.
+     * 
+     * @since VAL-010 - Damage Claim Blocks Deposit Release
+     */
+    @Column(name = "security_deposit_hold_until")
+    private Instant securityDepositHoldUntil;
+
+    /**
+     * Whether the security deposit has been released.
+     * Set to true when deposit is released (either to renter or captured for owner).
+     * 
+     * @since VAL-010 - Damage Claim Blocks Deposit Release
+     */
+    @Column(name = "security_deposit_released")
+    private Boolean securityDepositReleased;
+
+    /**
+     * Timestamp when the security deposit was released or captured.
+     * 
+     * @since VAL-010 - Damage Claim Blocks Deposit Release
+     */
+    @Column(name = "security_deposit_resolved_at")
+    private Instant securityDepositResolvedAt;
+
+    /**
+     * Reference to the checkout damage claim (if any).
+     * Links to DamageClaim entity for full dispute workflow.
+     * 
+     * @since VAL-010 - Damage Claim Blocks Deposit Release
+     */
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "checkout_damage_claim_id")
+    private DamageClaim checkoutDamageClaim;
 
     // ========== LATE RETURN TRACKING ==========
 

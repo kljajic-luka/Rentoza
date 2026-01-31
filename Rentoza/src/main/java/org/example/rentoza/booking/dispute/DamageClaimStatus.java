@@ -98,20 +98,61 @@ public enum DamageClaimStatus {
      * Guest withdrew their check-in dispute.
      * Either accepted condition or self-cancelled booking.
      */
-    CHECK_IN_GUEST_WITHDREW;
+    CHECK_IN_GUEST_WITHDREW,
+    
+    // ========== CHECKOUT DAMAGE DISPUTE STATUSES (VAL-010) ==========
+    
+    /**
+     * Host reported damage at checkout, awaiting guest response (VAL-010).
+     * Guest has 7 days to accept or dispute the claim.
+     * Deposit is held until resolution.
+     */
+    CHECKOUT_PENDING,
+    
+    /**
+     * Guest accepted the damage claim at checkout (VAL-010).
+     * Deposit will be captured to cover damage charges.
+     */
+    CHECKOUT_GUEST_ACCEPTED,
+    
+    /**
+     * Guest disputed the damage claim at checkout (VAL-010).
+     * Escalated to admin for resolution.
+     */
+    CHECKOUT_GUEST_DISPUTED,
+    
+    /**
+     * Admin resolved checkout damage dispute - host claim approved (VAL-010).
+     * Deposit captured for damage payment.
+     */
+    CHECKOUT_ADMIN_APPROVED,
+    
+    /**
+     * Admin resolved checkout damage dispute - host claim rejected (VAL-010).
+     * Deposit released back to guest.
+     */
+    CHECKOUT_ADMIN_REJECTED,
+    
+    /**
+     * Checkout dispute timed out (7 days) - auto-escalated to admin (VAL-010).
+     */
+    CHECKOUT_TIMEOUT_ESCALATED;
     
     /**
       * Check if the claim is still open (awaiting action).
       */
     public boolean isOpen() {
-        return this == PENDING || this == DISPUTED || this == CHECK_IN_DISPUTE_PENDING;
+        return this == PENDING || this == DISPUTED || this == CHECK_IN_DISPUTE_PENDING ||
+               this == CHECKOUT_PENDING || this == CHECKOUT_GUEST_DISPUTED ||
+               this == CHECKOUT_TIMEOUT_ESCALATED;
     }
     
     /**
      * Check if the claim was approved (any method).
      */
     public boolean isApproved() {
-        return this == ACCEPTED_BY_GUEST || this == AUTO_APPROVED || this == ADMIN_APPROVED;
+        return this == ACCEPTED_BY_GUEST || this == AUTO_APPROVED || this == ADMIN_APPROVED ||
+               this == CHECKOUT_GUEST_ACCEPTED || this == CHECKOUT_ADMIN_APPROVED;
     }
     
     /**
@@ -127,7 +168,9 @@ public enum DamageClaimStatus {
     public boolean isResolved() {
         return this == PAID || this == ADMIN_REJECTED || this == CANCELLED ||
                this == CHECK_IN_RESOLVED_PROCEED || this == CHECK_IN_RESOLVED_CANCEL ||
-               this == CHECK_IN_GUEST_WITHDREW;
+               this == CHECK_IN_GUEST_WITHDREW ||
+               this == CHECKOUT_GUEST_ACCEPTED || this == CHECKOUT_ADMIN_APPROVED ||
+               this == CHECKOUT_ADMIN_REJECTED;
     }
     
     /**
@@ -136,6 +179,23 @@ public enum DamageClaimStatus {
     public boolean isCheckInDispute() {
         return this == CHECK_IN_DISPUTE_PENDING || this == CHECK_IN_RESOLVED_PROCEED ||
                this == CHECK_IN_RESOLVED_CANCEL || this == CHECK_IN_GUEST_WITHDREW;
+    }
+    
+    /**
+     * Check if this is a checkout damage dispute (VAL-010).
+     */
+    public boolean isCheckoutDispute() {
+        return this == CHECKOUT_PENDING || this == CHECKOUT_GUEST_ACCEPTED ||
+               this == CHECKOUT_GUEST_DISPUTED || this == CHECKOUT_ADMIN_APPROVED ||
+               this == CHECKOUT_ADMIN_REJECTED || this == CHECKOUT_TIMEOUT_ESCALATED;
+    }
+    
+    /**
+     * Check if deposit should be held for this status.
+     */
+    public boolean requiresDepositHold() {
+        return this == CHECKOUT_PENDING || this == CHECKOUT_GUEST_DISPUTED ||
+               this == CHECKOUT_TIMEOUT_ESCALATED;
     }
 }
 

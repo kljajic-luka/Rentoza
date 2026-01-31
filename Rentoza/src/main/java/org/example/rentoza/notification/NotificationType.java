@@ -151,6 +151,13 @@ public enum NotificationType {
      * Sent to both guest (renter) and host (owner).
      */
     DISPUTE_RESOLVED,
+    
+    /**
+     * Triggered when a dispute is escalated to admin for review (VAL-010).
+     * Sent to both parties and admin notification queue.
+     * @since VAL-010
+     */
+    DISPUTE_ESCALATED,
 
     // ==========================================================================
     // RENTER VERIFICATION NOTIFICATIONS

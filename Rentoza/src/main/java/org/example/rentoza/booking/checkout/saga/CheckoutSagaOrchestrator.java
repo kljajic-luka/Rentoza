@@ -304,8 +304,55 @@ public class CheckoutSagaOrchestrator {
         }
     }
 
+    /**
+     * Validate return data and check for blockers.
+     * 
+     * <h2>VAL-010: Damage Claims Block Deposit Release</h2>
+     * <p>If booking is in CHECKOUT_DAMAGE_DISPUTE status or has an unresolved
+     * checkout damage claim, the saga MUST be suspended until resolved.</p>
+     * 
+     * @throws IllegalStateException if validation fails or saga should be suspended
+     */
     private void executeValidateReturn(CheckoutSagaState saga) {
         Booking booking = loadBooking(saga.getBookingId());
+
+        // ================================================================
+        // VAL-010: CHECK FOR UNRESOLVED DAMAGE CLAIMS
+        // ================================================================
+        // If the host reported damage at checkout, we MUST NOT proceed with
+        // deposit release until the dispute is resolved. This is critical
+        // for protecting hosts from unrecompensed damage.
+        
+        if (booking.getStatus() == BookingStatus.CHECKOUT_DAMAGE_DISPUTE) {
+            log.info("[Saga] Suspending saga {} - booking {} has unresolved damage claim",
+                    saga.getSagaId(), saga.getBookingId());
+            saga.setStatus(SagaStatus.SUSPENDED);
+            saga.setErrorMessage("Checkout damage claim pending resolution");
+            throw new IllegalStateException(
+                    "Cannot proceed with checkout: damage claim awaiting resolution");
+        }
+        
+        // Also check if there's an unresolved checkout damage claim linked
+        if (booking.getCheckoutDamageClaim() != null && 
+                booking.getCheckoutDamageClaim().getStatus().requiresDepositHold()) {
+            log.warn("[Saga] Blocking saga {} - checkout damage claim {} requires deposit hold",
+                    saga.getSagaId(), booking.getCheckoutDamageClaim().getId());
+            saga.setStatus(SagaStatus.SUSPENDED);
+            saga.setErrorMessage("Deposit held for damage claim #" + booking.getCheckoutDamageClaim().getId());
+            throw new IllegalStateException(
+                    "Deposit release blocked: damage claim #" + booking.getCheckoutDamageClaim().getId() + " pending");
+        }
+        
+        // Check deposit hold flag
+        if (Boolean.FALSE.equals(booking.getSecurityDepositReleased()) && 
+                booking.getSecurityDepositHoldReason() != null) {
+            log.info("[Saga] Saga {} blocked - deposit held for: {}",
+                    saga.getSagaId(), booking.getSecurityDepositHoldReason());
+            saga.setStatus(SagaStatus.SUSPENDED);
+            saga.setErrorMessage("Deposit held: " + booking.getSecurityDepositHoldReason());
+            throw new IllegalStateException(
+                    "Deposit release blocked: " + booking.getSecurityDepositHoldReason());
+        }
 
         // Validate checkout data exists
         if (booking.getEndOdometer() == null) {
@@ -316,7 +363,6 @@ public class CheckoutSagaOrchestrator {
         }
 
         // TODO: Validate checkout photos exist
-        // TODO: Check for unresolved damage claims
 
         log.debug("[Saga] Validation passed for booking {}", saga.getBookingId());
     }
@@ -758,6 +804,72 @@ public class CheckoutSagaOrchestrator {
         log.info("[Saga] Retrying saga {} (attempt {})", sagaId, saga.getRetryCount());
 
         return executeSaga(saga);
+    }
+    
+    // ========== VAL-010: DAMAGE DISPUTE RESOLUTION ==========
+    
+    /**
+     * Resume a suspended saga after damage claim resolution (VAL-010).
+     * 
+     * <p>Called when:
+     * <ul>
+     *   <li>Guest accepts damage claim - deposit captured, then resume</li>
+     *   <li>Guest disputes and admin resolves - appropriate action, then resume</li>
+     *   <li>Timeout escalation resolved by admin</li>
+     * </ul>
+     * 
+     * @param bookingId Booking with resolved damage claim
+     * @return Resumed saga state
+     * @throws ResourceNotFoundException if no suspended saga exists
+     * @throws IllegalStateException if saga is not suspended
+     */
+    @Transactional
+    public CheckoutSagaState resumeSuspendedSaga(Long bookingId) {
+        CheckoutSagaState saga = sagaRepository.findActiveSagaForBooking(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "No active saga found for booking: " + bookingId));
+        
+        if (saga.getStatus() != SagaStatus.SUSPENDED) {
+            throw new IllegalStateException(
+                    "Saga is not suspended. Current status: " + saga.getStatus());
+        }
+        
+        // Verify booking is no longer blocked
+        Booking booking = loadBooking(bookingId);
+        if (booking.getStatus() == BookingStatus.CHECKOUT_DAMAGE_DISPUTE) {
+            throw new IllegalStateException(
+                    "Cannot resume saga: booking still in CHECKOUT_DAMAGE_DISPUTE status");
+        }
+        
+        log.info("[Saga] Resuming suspended saga {} for booking {} after damage resolution",
+                saga.getSagaId(), bookingId);
+        
+        // Reset saga state
+        saga.setStatus(SagaStatus.PENDING);
+        saga.setErrorMessage(null);
+        saga.setUpdatedAt(Instant.now());
+        
+        // Continue from validation step (will pass this time)
+        saga.setCurrentStep(CheckoutSagaStep.VALIDATE_RETURN);
+        
+        // Publish resume event
+        publishEvent(new CheckoutDomainEvent.SagaResumed(
+                bookingId,
+                saga.getSagaId(),
+                Instant.now()
+        ));
+        
+        return executeSaga(saga);
+    }
+    
+    /**
+     * Check if a booking has a suspended saga due to damage claim.
+     */
+    @Transactional(readOnly = true)
+    public boolean hasSuspendedSaga(Long bookingId) {
+        return sagaRepository.findActiveSagaForBooking(bookingId)
+                .map(saga -> saga.getStatus() == SagaStatus.SUSPENDED)
+                .orElse(false);
     }
 
     /**

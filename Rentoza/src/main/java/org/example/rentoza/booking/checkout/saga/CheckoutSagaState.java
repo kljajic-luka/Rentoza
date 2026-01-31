@@ -260,6 +260,12 @@ public class CheckoutSagaState {
         /**
          * Saga failed (may be retryable).
          */
-        FAILED
+        FAILED,
+        
+        /**
+         * Saga suspended awaiting external resolution (VAL-010).
+         * Used when damage claim blocks deposit release.
+         */
+        SUSPENDED
     }
 }

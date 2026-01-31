@@ -135,4 +135,57 @@ public class AdminDisputeController {
         disputeService.resolveCheckInDispute(id, request, principal);
         return ResponseEntity.ok().build();
     }
+    
+    // ==================== VAL-010: CHECKOUT DAMAGE DISPUTE ENDPOINTS ====================
+    
+    /**
+     * GET /api/admin/disputes/checkout/pending
+     * List all pending checkout damage disputes that need admin review.
+     * These are disputes where guest contested host's damage claim.
+     */
+    @GetMapping("/checkout/pending")
+    public PagedModel<EntityModel<AdminDisputeListDto>> listPendingCheckoutDisputes(
+            @PageableDefault(size = 20, sort = "createdAt", direction = DESC) Pageable pageable) {
+        
+        Page<AdminDisputeListDto> page = disputeService.listPendingCheckoutDisputes(pageable);
+        return hateoasAssembler.toModel(page);
+    }
+    
+    /**
+     * POST /api/admin/disputes/checkout/{id}/resolve
+     * Resolve a checkout damage dispute.
+     * 
+     * <h2>VAL-010: Damage Claims Block Deposit Release</h2>
+     * 
+     * Decision options:
+     * - APPROVE: Host's damage claim approved, deposit captured for damage payment
+     * - REJECT: Host's claim rejected, deposit released back to guest
+     * - PARTIAL: Partial approval - reduced damage amount
+     * 
+     * After resolution, the checkout saga will resume.
+     */
+    @PostMapping("/checkout/{id}/resolve")
+    public ResponseEntity<CheckoutDisputeResolutionResponseDTO> resolveCheckoutDispute(
+            @PathVariable Long id,
+            @RequestBody @Valid CheckoutDisputeResolutionDTO request,
+            @AuthenticationPrincipal User principal) {
+        
+        log.info("[VAL-010] Admin {} resolving checkout damage dispute {} with decision {}",
+                principal.getId(), id, request.getDecision());
+        
+        CheckoutDisputeResolutionResponseDTO response = disputeService.resolveCheckoutDispute(id, request, principal);
+        return ResponseEntity.ok(response);
+    }
+    
+    /**
+     * GET /api/admin/disputes/checkout/{bookingId}/timeline
+     * Get the complete dispute timeline for a checkout damage claim.
+     * Includes: damage report, guest response, evidence, escalation, resolution.
+     */
+    @GetMapping("/checkout/{bookingId}/timeline")
+    public ResponseEntity<CheckoutDisputeTimelineDTO> getCheckoutDisputeTimeline(
+            @PathVariable Long bookingId) {
+        
+        return ResponseEntity.ok(disputeService.getCheckoutDisputeTimeline(bookingId));
+    }
 }

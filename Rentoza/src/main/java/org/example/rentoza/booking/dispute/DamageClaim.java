@@ -207,6 +207,15 @@ public class DamageClaim {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "resolved_by_user_id")
     private User resolvedBy;
+    
+    // ========== VAL-010: CHECKOUT DAMAGE DISPUTE FIELDS ==========
+    
+    /**
+     * Reason given by guest when disputing checkout damage claim.
+     * @since VAL-010
+     */
+    @Column(name = "dispute_reason", columnDefinition = "TEXT")
+    private String disputeReason;
 
     // ========== PAYMENT ==========
 
@@ -352,6 +361,78 @@ public class DamageClaim {
         this.status = DamageClaimStatus.PAID;
         this.paymentReference = paymentRef;
         this.paidAt = Instant.now();
+    }
+    
+    // ========== VAL-010: CHECKOUT DAMAGE DISPUTE METHODS ==========
+    
+    /**
+     * Check if this is a checkout stage damage claim.
+     * @since VAL-010
+     */
+    public boolean isCheckoutDispute() {
+        return disputeStage == DisputeStage.CHECKOUT;
+    }
+    
+    /**
+     * Guest accepts checkout damage claim (VAL-010).
+     * Deposit will be captured for damage payment.
+     */
+    public void acceptCheckoutDamage() {
+        this.status = DamageClaimStatus.CHECKOUT_GUEST_ACCEPTED;
+        this.guestRespondedAt = Instant.now();
+        this.approvedAmount = this.claimedAmount;
+    }
+    
+    /**
+     * Guest disputes checkout damage claim (VAL-010).
+     * Escalates to admin for resolution.
+     */
+    public void disputeCheckoutDamage(String reason) {
+        this.status = DamageClaimStatus.CHECKOUT_GUEST_DISPUTED;
+        this.guestRespondedAt = Instant.now();
+        this.disputeReason = reason;
+    }
+    
+    /**
+     * Get evidence photo IDs as list (parses JSON string).
+     * @since VAL-010
+     */
+    public List<String> getEvidencePhotoIdsList() {
+        if (evidencePhotoIds == null || evidencePhotoIds.isBlank()) {
+            return List.of();
+        }
+        // Parse JSON array string - simple parsing for ["id1", "id2"] format
+        String trimmed = evidencePhotoIds.trim();
+        if (trimmed.startsWith("[")) {
+            trimmed = trimmed.substring(1);
+        }
+        if (trimmed.endsWith("]")) {
+            trimmed = trimmed.substring(0, trimmed.length() - 1);
+        }
+        if (trimmed.isBlank()) {
+            return List.of();
+        }
+        return java.util.Arrays.stream(trimmed.split(","))
+                .map(s -> s.trim().replace("\"", ""))
+                .filter(s -> !s.isBlank())
+                .toList();
+    }
+    
+    /**
+     * Set evidence photo IDs from list (serializes to JSON string).
+     * @since VAL-010
+     */
+    public void setEvidencePhotoIdsList(List<String> photoIds) {
+        if (photoIds == null || photoIds.isEmpty()) {
+            this.evidencePhotoIds = null;
+        } else {
+            this.evidencePhotoIds = "[" + 
+                    photoIds.stream()
+                            .map(id -> "\"" + id + "\"")
+                            .reduce((a, b) -> a + "," + b)
+                            .orElse("") + 
+                    "]";
+        }
     }
 }
 

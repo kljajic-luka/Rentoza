@@ -8,6 +8,7 @@ import org.example.rentoza.booking.BookingRepository;
 import org.example.rentoza.booking.BookingStatus;
 import org.example.rentoza.car.Car;
 import org.example.rentoza.car.CarRepository;
+import org.example.rentoza.config.timezone.SerbiaTimeZone;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
 import org.springframework.cache.annotation.Cacheable;
@@ -65,18 +66,18 @@ public class AdminAnalyticsService {
     public RevenueTrendDto getRevenueTrend(String period, LocalDate startDate, LocalDate endDate) {
         log.debug("Calculating revenue trend: {} from {} to {}", period, startDate, endDate);
         
-        Instant startInstant = startDate.atStartOfDay(ZoneId.systemDefault()).toInstant();
-        Instant endInstant = endDate.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant();
+        LocalDateTime startDateTime = startDate.atStartOfDay();
+        LocalDateTime endDateTime = endDate.atTime(23, 59, 59, 999999999);
         
         // Fetch all completed bookings in range
         List<Booking> bookings = bookingRepo.findByStatusAndApprovedAtBetween(
-            BookingStatus.COMPLETED, startInstant, endInstant
+            BookingStatus.COMPLETED, startDateTime, endDateTime
         );
         
         // Group by period
         Map<LocalDate, List<Booking>> groupedBookings = bookings.stream()
             .collect(Collectors.groupingBy(b -> {
-                LocalDate date = b.getApprovedAt().atZone(ZoneId.systemDefault()).toLocalDate();
+                LocalDate date = b.getApprovedAt().toLocalDate();
                 return normalizeToPeriod(date, period);
             }));
         
@@ -137,8 +138,8 @@ public class AdminAnalyticsService {
         LocalDate cohortStart = cohort.atDay(1);
         LocalDate cohortEnd = cohort.atEndOfMonth();
         
-        Instant cohortStartInstant = cohortStart.atStartOfDay(ZoneId.systemDefault()).toInstant();
-        Instant cohortEndInstant = cohortEnd.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant();
+        Instant cohortStartInstant = SerbiaTimeZone.toStartOfDayInstant(cohortStart);
+        Instant cohortEndInstant = SerbiaTimeZone.toEndOfDayInstant(cohortEnd);
         
         // Get users who signed up in this cohort
         List<User> cohortUsers = userRepo.findByCreatedAtBetween(cohortStartInstant, cohortEndInstant);
@@ -160,8 +161,8 @@ public class AdminAnalyticsService {
             LocalDate monthStart = targetMonth.atDay(1);
             LocalDate monthEnd = targetMonth.atEndOfMonth();
             
-            Instant monthStartInstant = monthStart.atStartOfDay(ZoneId.systemDefault()).toInstant();
-            Instant monthEndInstant = monthEnd.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant();
+            Instant monthStartInstant = SerbiaTimeZone.toStartOfDayInstant(monthStart);
+            Instant monthEndInstant = SerbiaTimeZone.toEndOfDayInstant(monthEnd);
             
             // Count active users (made at least 1 booking this month)
             List<Booking> monthBookings = bookingRepo.findByCreatedAtBetween(
@@ -214,11 +215,11 @@ public class AdminAnalyticsService {
     public TopPerformersDto getTopPerformers(int topN, LocalDate startDate, LocalDate endDate) {
         log.debug("Finding top {} performers from {} to {}", topN, startDate, endDate);
         
-        Instant startInstant = startDate.atStartOfDay(ZoneId.systemDefault()).toInstant();
-        Instant endInstant = endDate.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant();
+        LocalDateTime startDateTime = startDate.atStartOfDay();
+        LocalDateTime endDateTime = endDate.atTime(23, 59, 59, 999999999);
         
         List<Booking> completedBookings = bookingRepo.findByStatusAndApprovedAtBetween(
-            BookingStatus.COMPLETED, startInstant, endInstant
+            BookingStatus.COMPLETED, startDateTime, endDateTime
         );
         
         // Group by host

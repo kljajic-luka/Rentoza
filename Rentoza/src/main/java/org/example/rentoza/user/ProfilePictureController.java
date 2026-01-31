@@ -119,8 +119,13 @@ public class ProfilePictureController {
 
             Long userId = principal.id();
 
+            // Get current avatar URL before deletion
+            String currentAvatarUrl = userService.getUserById(userId)
+                    .map(user -> user.getAvatarUrl())
+                    .orElse(null);
+
             // Delete the file
-            profilePictureService.deleteProfilePicture(userId);
+            profilePictureService.deleteProfilePicture(userId, currentAvatarUrl);
 
             // Clear avatarUrl in database
             userService.updateAvatarUrl(userId, null);

@@ -129,6 +129,27 @@ public class AppProperties {
          */
         private java.util.Map<String, EndpointLimit> endpoints = new java.util.HashMap<>();
 
+        /**
+         * Trusted proxy IP addresses for X-Forwarded-For validation.
+         * Only requests from these IPs will honor the X-Forwarded-For header.
+         * Leave empty to trust all proxies (NOT RECOMMENDED for production).
+         * 
+         * Common values:
+         * - 127.0.0.1 - Local loopback
+         * - 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 - Private networks
+         * - Load balancer IPs
+         * - CDN edge server IPs
+         */
+        private java.util.Set<String> trustedProxies = new java.util.HashSet<>();
+
+        public java.util.Set<String> getTrustedProxies() {
+            return trustedProxies;
+        }
+
+        public void setTrustedProxies(java.util.Set<String> trustedProxies) {
+            this.trustedProxies = trustedProxies;
+        }
+
         public boolean isEnabled() {
             return enabled;
         }

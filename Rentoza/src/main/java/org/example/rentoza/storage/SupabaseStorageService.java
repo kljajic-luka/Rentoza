@@ -320,6 +320,27 @@ public class SupabaseStorageService {
     }
     
     /**
+     * Upload user avatar from processed byte array.
+     * 
+     * @param userId User ID
+     * @param imageBytes Processed JPEG bytes
+     * @return Public URL
+     * @throws IOException if upload fails
+     */
+    public String uploadUserAvatarBytes(Long userId, byte[] imageBytes) throws IOException {
+        if (imageBytes == null || imageBytes.length == 0) {
+            throw new IllegalArgumentException("Image bytes cannot be empty");
+        }
+        
+        String filename = "avatar_" + Instant.now().toEpochMilli() + ".jpg";
+        String storagePath = String.format("users/%d/avatar/%s", userId, filename);
+        
+        uploadToSupabase(BUCKET_USER_AVATARS, storagePath, imageBytes, "image/jpeg");
+        
+        return getPublicUrl(BUCKET_USER_AVATARS, storagePath);
+    }
+    
+    /**
      * Delete old avatar when uploading new one.
      */
     public void deleteUserAvatar(String storagePath) {

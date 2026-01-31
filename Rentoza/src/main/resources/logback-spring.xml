@@ -171,7 +171,7 @@
         <logger name="org.thymeleaf" level="WARN"/>
 
         <!-- External libraries - ERROR only -->
-        <logger name="com.mysql" level="ERROR"/>
+        <logger name="org.postgresql" level="ERROR"/>
         <logger name="org.apache" level="ERROR"/>
 
         <!-- Root logger - WARN to catch unexpected issues -->

@@ -76,7 +76,7 @@ public class OwnerProfileService {
                 .lastName(owner.getLastName()) // Public profile shows full name usually, or First + Last Initial
                 .avatarUrl(owner.getAvatarUrl())
                 .joinDate(owner.getCreatedAt() != null ? 
-                        java.time.LocalDateTime.ofInstant(owner.getCreatedAt(), java.time.ZoneId.systemDefault())
+                        org.example.rentoza.config.timezone.SerbiaTimeZone.toLocalDateTime(owner.getCreatedAt())
                         .format(JOIN_DATE_FORMATTER) : "")
                 .about("Hi, I'm " + owner.getFirstName() + "! I love hosting on Rentoza.") // Placeholder if no bio field
                 .averageRating(averageRating != null ? averageRating : 0.0)

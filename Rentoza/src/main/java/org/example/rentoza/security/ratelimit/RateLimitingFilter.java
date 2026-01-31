@@ -13,6 +13,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Rate limiting filter using token bucket algorithm.
@@ -36,6 +37,7 @@ import java.util.List;
  * - Protects refresh token endpoint from spamming
  * - Prevents public API scraping/DoS
  * - Thread-safe atomic operations via InMemoryRateLimitService
+ * - X-Forwarded-For validation prevents IP spoofing
  * 
  * Redis Migration:
  * - Current implementation uses in-memory storage (ConcurrentHashMap)
@@ -53,6 +55,21 @@ public class RateLimitingFilter extends OncePerRequestFilter {
     private final RateLimitService rateLimitService;
     private final AppProperties appProperties;
     private final JwtUtil jwtUtil;
+
+    /**
+     * Common private network CIDR ranges.
+     * These are automatically trusted when no explicit trustedProxies are configured.
+     */
+    private static final List<String> DEFAULT_TRUSTED_NETWORKS = List.of(
+            "127.0.0.1",        // Loopback
+            "::1",              // IPv6 loopback
+            "10.",              // Class A private (10.0.0.0/8)
+            "172.16.", "172.17.", "172.18.", "172.19.",
+            "172.20.", "172.21.", "172.22.", "172.23.",
+            "172.24.", "172.25.", "172.26.", "172.27.",
+            "172.28.", "172.29.", "172.30.", "172.31.", // Class B private (172.16.0.0/12)
+            "192.168."          // Class C private (192.168.0.0/16)
+    );
 
     // Paths that bypass rate limiting
     private static final List<String> EXCLUDED_PATHS = List.of(
@@ -210,21 +227,74 @@ public class RateLimitingFilter extends OncePerRequestFilter {
     }
 
     /**
-     * Extract client IP address with X-Forwarded-For support.
+     * Extract client IP address with X-Forwarded-For validation.
      * 
-     * PRODUCTION: If behind load balancer/proxy, use X-Forwarded-For header
-     * SECURITY: Validate X-Forwarded-For to prevent IP spoofing
+     * SECURITY: Only trusts X-Forwarded-For from configured trusted proxies.
+     * This prevents IP spoofing attacks where malicious clients set fake headers.
+     * 
+     * Logic:
+     * 1. Get the direct connection IP (remoteAddr)
+     * 2. If remoteAddr is a trusted proxy, use X-Forwarded-For client IP
+     * 3. Otherwise, use remoteAddr directly
+     * 
+     * @param request The HTTP request
+     * @return The validated client IP address
      */
     private String extractIpAddress(HttpServletRequest request) {
-        String xForwardedFor = request.getHeader("X-Forwarded-For");
-        if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
-            // X-Forwarded-For: client, proxy1, proxy2
-            // Take first IP (original client)
-            return xForwardedFor.split(",")[0].trim();
+        String remoteAddr = request.getRemoteAddr();
+        
+        // Only trust X-Forwarded-For if the direct connection is from a trusted proxy
+        if (isTrustedProxy(remoteAddr)) {
+            String xForwardedFor = request.getHeader("X-Forwarded-For");
+            if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
+                // X-Forwarded-For: client, proxy1, proxy2
+                // Take first IP (original client)
+                String clientIp = xForwardedFor.split(",")[0].trim();
+                log.debug("Trusted proxy {} forwarding request from client {}", remoteAddr, clientIp);
+                return clientIp;
+            }
+        } else {
+            // Log if untrusted source tries to use X-Forwarded-For
+            String xForwardedFor = request.getHeader("X-Forwarded-For");
+            if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
+                log.warn("⚠️ Ignoring X-Forwarded-For from untrusted source: {}. Header value: {}", 
+                        remoteAddr, xForwardedFor);
+            }
         }
 
-        // Direct connection (no proxy)
-        return request.getRemoteAddr();
+        // Use direct connection IP
+        return remoteAddr;
+    }
+
+    /**
+     * Check if an IP address is from a trusted proxy.
+     * 
+     * Trust hierarchy:
+     * 1. If app.rate-limit.trusted-proxies is configured, use that list
+     * 2. Otherwise, trust common private network ranges (for development)
+     * 
+     * PRODUCTION RECOMMENDATION: Always configure explicit trusted-proxies
+     */
+    private boolean isTrustedProxy(String ipAddress) {
+        if (ipAddress == null) {
+            return false;
+        }
+
+        Set<String> configuredProxies = appProperties.getRateLimit().getTrustedProxies();
+
+        // If explicit proxies are configured, use them
+        if (configuredProxies != null && !configuredProxies.isEmpty()) {
+            return configuredProxies.contains(ipAddress);
+        }
+
+        // No explicit config - trust private network ranges (dev-friendly default)
+        for (String prefix : DEFAULT_TRUSTED_NETWORKS) {
+            if (ipAddress.startsWith(prefix) || ipAddress.equals(prefix)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

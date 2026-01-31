@@ -23,9 +23,9 @@ import java.util.Random;
  *   <li>Privacy obfuscation for unbooked guests</li>
  * </ul>
  * 
- * <p><b>Coordinate Order Warning:</b>
- * MySQL ST_Distance_Sphere uses POINT(longitude, latitude), NOT POINT(lat, lon).
- * All native queries must use: {@code POINT(c.location_longitude, c.location_latitude)}
+ * <p><b>Coordinate Order:</b>
+ * PostGIS ST_DistanceSphere uses standard (longitude, latitude) order.
+ * Native queries use: {@code ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)}
  * 
  * <p><b>Serbia Bounds:</b>
  * <ul>

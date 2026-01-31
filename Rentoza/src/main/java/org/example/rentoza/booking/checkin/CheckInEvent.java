@@ -93,7 +93,7 @@ public class CheckInEvent {
 
     /**
      * Server-side timestamp when event was recorded.
-     * TIMESTAMP(3) in MySQL for millisecond precision.
+     * TIMESTAMP(3) for millisecond precision.
      * Stored as UTC, displayed as Europe/Belgrade.
      */
     @Column(name = "event_timestamp", nullable = false, updatable = false, columnDefinition = "TIMESTAMP(3)")

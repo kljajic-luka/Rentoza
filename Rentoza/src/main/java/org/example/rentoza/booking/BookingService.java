@@ -880,7 +880,7 @@ public class BookingService {
      * are automatically marked as COMPLETED, keeping the database aligned with
      * the unified completion logic used in review validation.
      */
-    @Scheduled(cron = "0 0 * * * *") // Every hour at minute 0
+    @Scheduled(cron = "0 0 * * * *", zone = "Europe/Belgrade") // Every hour at minute 0
     @Transactional
     public void autoCompleteOverdueBookings() {
         LocalDateTime now = LocalDateTime.now();

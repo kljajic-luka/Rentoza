@@ -179,8 +179,8 @@ public class GlobalExceptionHandler {
 
         Map<String, Object> body = new HashMap<>();
         body.put("timestamp", Instant.now().toString());
-        body.put("error", "Too many requests");
-        body.put("message", ex.getMessage());
+        body.put("error", "RATE_LIMIT_EXCEEDED");
+        body.put("message", "Previše zahteva. Pokušajte ponovo za " + ex.getRetryAfterSeconds() + " sekundi.");
         body.put("retryAfterSeconds", ex.getRetryAfterSeconds());
 
         // Add Retry-After header (HTTP standard)

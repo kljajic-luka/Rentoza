@@ -7,13 +7,12 @@ import java.io.IOException;
 /**
  * Strategy interface for document storage.
  * 
- * <p>Allows switching between local storage (dev) and S3 (production)
- * without changing service logic.
+ * <p>All documents are stored in Supabase Storage for secure, 
+ * scalable cloud storage.
  * 
- * <p>Usage:
+ * <p>Implementation:
  * <ul>
- *   <li>LocalDocumentStorageStrategy - Development/alpha testing</li>
- *   <li>S3DocumentStorageStrategy - Production (future)</li>
+ *   <li>SupabaseDocumentStorageStrategy - Primary storage via Supabase</li>
  * </ul>
  */
 public interface DocumentStorageStrategy {
@@ -54,12 +53,11 @@ public interface DocumentStorageStrategy {
     boolean exists(String path);
     
     /**
-     * Get public URL for file (if applicable).
-     * For local storage, returns file:// or relative path.
-     * For S3, returns signed URL.
+     * Get public URL for file.
+     * Returns signed URL from Supabase Storage.
      * 
      * @param path Stored file path
-     * @return Accessible URL
+     * @return Accessible signed URL
      */
     String getPublicUrl(String path);
 }

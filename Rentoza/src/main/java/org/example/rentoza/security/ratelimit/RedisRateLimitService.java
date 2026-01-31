@@ -1,52 +1,59 @@
 package org.example.rentoza.security.ratelimit;
 
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Primary;
+import org.springframework.data.redis.core.Cursor;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Supplier;
 
 /**
- * Redis-backed rate limiting service using token bucket algorithm.
+ * Production-ready Redis-backed rate limiting service.
  * 
- * DISTRIBUTED DEPLOYMENTS:
- * - Stores rate limit counters in Redis instead of in-memory
- * - Ensures consistent rate limits across multiple application instances
- * - Uses atomic Lua scripts for thread-safe counter operations
+ * <h2>Features</h2>
+ * <ul>
+ *   <li>Atomic Lua script for thread-safe counter operations</li>
+ *   <li>Circuit breaker for Redis failure isolation</li>
+ *   <li>Micrometer metrics for observability</li>
+ *   <li>Fail-open strategy for graceful degradation</li>
+ *   <li>SCAN-based cleanup (non-blocking)</li>
+ * </ul>
  * 
- * Algorithm: Sliding Window Counter (simpler than token bucket for Redis)
- * - Each key (IP/user) has a counter with TTL = window duration
- * - Counter increments atomically using Redis INCR
- * - TTL auto-expiration prevents memory leaks
+ * <h2>Circuit Breaker States</h2>
+ * <pre>
+ * CLOSED (normal)     → Redis healthy, all requests checked
+ * OPEN (tripped)      → Redis failing, requests bypass rate limiting (fail-open)
+ * HALF_OPEN (testing) → Trying Redis again, 3 probe requests
+ * </pre>
  * 
- * Fallback Strategy: FAIL OPEN
- * - If Redis is unavailable, requests are ALLOWED (not blocked)
- * - Logs ERROR for monitoring/alerting
- * - Rationale: Better UX than blocking all users during Redis outage
+ * <h2>Metrics Exposed</h2>
+ * <ul>
+ *   <li>rate_limit.allowed - Requests that passed rate limiting</li>
+ *   <li>rate_limit.blocked - Requests blocked by rate limiting</li>
+ *   <li>rate_limit.redis.latency - Redis operation latency</li>
+ *   <li>rate_limit.redis.errors - Redis operation errors</li>
+ *   <li>rate_limit.circuit.state - Current circuit breaker state</li>
+ * </ul>
  * 
- * ACTIVATION:
- * - Requires app.redis.enabled=true in application properties
- * - Without this flag, InMemoryRateLimitService is used (development default)
- * 
- * Production Requirements:
- * - Redis 6.0+ recommended (for better memory management)
- * - Redis Sentinel or Cluster for HA
- * - Password authentication enabled
- * 
- * Configuration:
- * - app.redis.enabled=true: Enable Redis rate limiting
- * - app.rate-limit.redis-key-prefix: Namespace for rate limit keys
- * - spring.data.redis.*: Redis connection settings
- * 
- * @author Rentoza Security Team
- * @since Phase 2.3 - Redis Rate Limiting
+ * @author Rentoza Platform Team
+ * @since Phase 3.0 - Production Redis Hardening
  */
 @Service
 @Primary
@@ -57,6 +64,15 @@ public class RedisRateLimitService implements RateLimitService {
 
     private final RedisTemplate<String, String> redisTemplate;
     private final String keyPrefix;
+    private final CircuitBreaker circuitBreaker;
+
+    // ========== METRICS ==========
+    private final Counter allowedCounter;
+    private final Counter blockedCounter;
+    private final Counter redisErrorCounter;
+    private final Counter circuitOpenBypassCounter;
+    private final Timer redisLatencyTimer;
+    private final AtomicLong circuitStateGauge;
 
     /**
      * Lua script for atomic increment with TTL.
@@ -80,7 +96,10 @@ public class RedisRateLimitService implements RateLimitService {
 
     public RedisRateLimitService(
             RedisTemplate<String, String> redisTemplate,
+            MeterRegistry meterRegistry,
+            CircuitBreakerRegistry circuitBreakerRegistry,
             @Value("${app.rate-limit.redis-key-prefix:rate_limit}") String keyPrefix) {
+        
         this.redisTemplate = redisTemplate;
         this.keyPrefix = keyPrefix;
 
@@ -89,109 +108,227 @@ public class RedisRateLimitService implements RateLimitService {
         this.incrementScript.setScriptText(INCREMENT_SCRIPT);
         this.incrementScript.setResultType(Long.class);
 
+        // ========== CIRCUIT BREAKER SETUP ==========
+        // Get or create circuit breaker with production-ready config
+        CircuitBreakerConfig cbConfig = CircuitBreakerConfig.custom()
+                .slidingWindowType(CircuitBreakerConfig.SlidingWindowType.COUNT_BASED)
+                .slidingWindowSize(10)                          // Last 10 calls
+                .minimumNumberOfCalls(5)                        // Need 5 calls before evaluating
+                .failureRateThreshold(50)                       // Open at 50% failure rate
+                .slowCallRateThreshold(80)                      // Open at 80% slow call rate
+                .slowCallDurationThreshold(Duration.ofMillis(500))  // Slow = > 500ms
+                .waitDurationInOpenState(Duration.ofSeconds(30))    // Stay open for 30s
+                .permittedNumberOfCallsInHalfOpenState(3)           // Allow 3 test calls
+                .automaticTransitionFromOpenToHalfOpenEnabled(true)
+                .recordExceptions(Exception.class)
+                .ignoreExceptions()  // Don't ignore any exceptions
+                .build();
+
+        this.circuitBreaker = circuitBreakerRegistry.circuitBreaker("redis-rate-limit", cbConfig);
+
+        // Log circuit breaker state changes
+        circuitBreaker.getEventPublisher()
+                .onStateTransition(event -> log.warn("🔌 Redis Circuit Breaker: {} → {}", 
+                        event.getStateTransition().getFromState(),
+                        event.getStateTransition().getToState()));
+
+        // ========== METRICS SETUP ==========
+        this.allowedCounter = Counter.builder("rate_limit.allowed")
+                .description("Requests that passed rate limiting")
+                .tag("service", "rate-limit")
+                .register(meterRegistry);
+
+        this.blockedCounter = Counter.builder("rate_limit.blocked")
+                .description("Requests blocked by rate limiting")
+                .tag("service", "rate-limit")
+                .register(meterRegistry);
+
+        this.redisErrorCounter = Counter.builder("rate_limit.redis.errors")
+                .description("Redis operation errors")
+                .tag("service", "rate-limit")
+                .register(meterRegistry);
+
+        this.circuitOpenBypassCounter = Counter.builder("rate_limit.circuit.bypass")
+                .description("Requests bypassed due to circuit breaker open")
+                .tag("service", "rate-limit")
+                .register(meterRegistry);
+
+        this.redisLatencyTimer = Timer.builder("rate_limit.redis.latency")
+                .description("Redis operation latency")
+                .tag("service", "rate-limit")
+                .publishPercentiles(0.5, 0.95, 0.99)
+                .register(meterRegistry);
+
+        // Gauge for circuit breaker state (0=closed, 1=open, 2=half-open)
+        this.circuitStateGauge = new AtomicLong(0);
+        Gauge.builder("rate_limit.circuit.state", circuitStateGauge, AtomicLong::get)
+                .description("Circuit breaker state (0=closed, 1=open, 2=half-open)")
+                .tag("service", "rate-limit")
+                .register(meterRegistry);
+
         log.info("✅ RedisRateLimitService initialized with key prefix: {}", keyPrefix);
+        log.info("   ✅ Circuit breaker: enabled");
+        log.info("   ✅ Metrics: enabled");
     }
 
     @Override
     public boolean allowRequest(String key, int limit, int windowSeconds) {
         String redisKey = buildRedisKey(key, windowSeconds);
 
+        // Update circuit state gauge
+        updateCircuitStateGauge();
+
+        // Use circuit breaker to protect against Redis failures
+        Supplier<Boolean> redisCheck = () -> executeRateLimitCheck(redisKey, limit, windowSeconds);
+
         try {
-            // Execute atomic increment with TTL
-            Long currentCount = redisTemplate.execute(
-                    incrementScript,
-                    Collections.singletonList(redisKey),
-                    String.valueOf(windowSeconds)
-            );
+            boolean allowed = circuitBreaker.executeSupplier(redisCheck);
 
-            if (currentCount == null) {
-                // Unexpected null response - fail open for UX
-                log.error("⚠️ Redis returned null for rate limit key: {}. Failing OPEN.", redisKey);
-                return true;
-            }
-
-            boolean allowed = currentCount <= limit;
-
-            if (!allowed) {
-                log.warn("🚫 Rate limit exceeded: key={}, count={}, limit={}, window={}s",
-                        key, currentCount, limit, windowSeconds);
+            // Record metrics
+            if (allowed) {
+                allowedCounter.increment();
+            } else {
+                blockedCounter.increment();
             }
 
             return allowed;
 
+        } catch (io.github.resilience4j.circuitbreaker.CallNotPermittedException e) {
+            // Circuit is OPEN - fail open (allow request)
+            circuitOpenBypassCounter.increment();
+            log.debug("🔌 Circuit breaker OPEN - bypassing rate limit for key: {}", key);
+            return true;
+
         } catch (Exception e) {
-            // Redis unavailable - FAIL OPEN (allow request)
-            log.error("❌ Redis error during rate limit check for key: {}. Failing OPEN. Error: {}",
-                    redisKey, e.getMessage());
+            // Unexpected exception - fail open
+            redisErrorCounter.increment();
+            log.error("❌ Unexpected error in rate limit check for key: {}. Failing OPEN. Error: {}",
+                    key, e.getMessage());
             return true;
         }
     }
 
+    /**
+     * Execute the actual Redis rate limit check with timing.
+     */
+    private boolean executeRateLimitCheck(String redisKey, int limit, int windowSeconds) {
+        return redisLatencyTimer.record(() -> {
+            try {
+                Long currentCount = redisTemplate.execute(
+                        incrementScript,
+                        Collections.singletonList(redisKey),
+                        String.valueOf(windowSeconds)
+                );
+
+                if (currentCount == null) {
+                    log.error("⚠️ Redis returned null for rate limit key: {}. Failing OPEN.", redisKey);
+                    throw new RuntimeException("Redis returned null");
+                }
+
+                boolean allowed = currentCount <= limit;
+
+                if (!allowed) {
+                    log.warn("🚫 Rate limit exceeded: key={}, count={}, limit={}, window={}s",
+                            redisKey, currentCount, limit, windowSeconds);
+                }
+
+                return allowed;
+
+            } catch (Exception e) {
+                redisErrorCounter.increment();
+                log.error("❌ Redis error during rate limit check: {}", e.getMessage());
+                throw e;  // Let circuit breaker handle it
+            }
+        });
+    }
+
     @Override
     public int getCurrentCount(String key) {
-        // Try to get count from Redis (check multiple window sizes)
-        for (int windowSeconds : List.of(60, 300, 3600)) {
-            String redisKey = buildRedisKey(key, windowSeconds);
-            try {
+        try {
+            for (int windowSeconds : List.of(60, 300, 3600)) {
+                String redisKey = buildRedisKey(key, windowSeconds);
                 String value = redisTemplate.opsForValue().get(redisKey);
                 if (value != null) {
                     return Integer.parseInt(value);
                 }
-            } catch (Exception e) {
-                log.debug("Error getting count for key {}: {}", redisKey, e.getMessage());
             }
+        } catch (Exception e) {
+            log.debug("Error getting count for key {}: {}", key, e.getMessage());
         }
         return 0;
     }
 
     @Override
     public long getRemainingSeconds(String key) {
-        // Try to get TTL from Redis (check multiple window sizes)
-        for (int windowSeconds : List.of(60, 300, 3600)) {
-            String redisKey = buildRedisKey(key, windowSeconds);
-            try {
+        try {
+            for (int windowSeconds : List.of(60, 300, 3600)) {
+                String redisKey = buildRedisKey(key, windowSeconds);
                 Long ttl = redisTemplate.getExpire(redisKey);
                 if (ttl != null && ttl > 0) {
                     return ttl;
                 }
-            } catch (Exception e) {
-                log.debug("Error getting TTL for key {}: {}", redisKey, e.getMessage());
             }
+        } catch (Exception e) {
+            log.debug("Error getting TTL for key {}: {}", key, e.getMessage());
         }
         return 0;
     }
 
+    /**
+     * Reset all rate limit keys using SCAN (non-blocking).
+     * 
+     * Uses SCAN instead of KEYS to avoid blocking Redis.
+     * KEYS * is O(N) and blocks ALL Redis operations during execution.
+     * SCAN is cursor-based and yields to other operations.
+     */
     @Override
     public void reset() {
         try {
-            // Delete all keys with our prefix (use with caution!)
-            var keys = redisTemplate.keys(keyPrefix + ":*");
-            if (keys != null && !keys.isEmpty()) {
-                redisTemplate.delete(keys);
-                log.info("🔄 Cleared {} rate limit keys from Redis", keys.size());
+            String pattern = keyPrefix + ":*";
+            ScanOptions scanOptions = ScanOptions.scanOptions()
+                    .match(pattern)
+                    .count(100)  // Process 100 keys per iteration
+                    .build();
+
+            int deletedCount = 0;
+            try (Cursor<String> cursor = redisTemplate.scan(scanOptions)) {
+                while (cursor.hasNext()) {
+                    String key = cursor.next();
+                    redisTemplate.delete(key);
+                    deletedCount++;
+                }
             }
+
+            log.info("🔄 Cleared {} rate limit keys from Redis using SCAN", deletedCount);
+
         } catch (Exception e) {
-            log.error("Error clearing rate limit keys: {}", e.getMessage());
+            log.error("❌ Error clearing rate limit keys: {}", e.getMessage());
         }
     }
 
     /**
      * Build Redis key with namespace and window identifier.
-     * 
-     * Format: rate_limit:{key}:{windowSeconds}
-     * Example: rate_limit:ip:192.168.1.1:60
-     * 
-     * Window-based keys allow different rate limits for the same client.
      */
     private String buildRedisKey(String key, int windowSeconds) {
         return keyPrefix + ":" + key + ":" + windowSeconds;
     }
 
     /**
+     * Update circuit state gauge for metrics.
+     */
+    private void updateCircuitStateGauge() {
+        switch (circuitBreaker.getState()) {
+            case CLOSED -> circuitStateGauge.set(0);
+            case OPEN -> circuitStateGauge.set(1);
+            case HALF_OPEN -> circuitStateGauge.set(2);
+            case DISABLED -> circuitStateGauge.set(3);
+            case FORCED_OPEN -> circuitStateGauge.set(4);
+            case METRICS_ONLY -> circuitStateGauge.set(5);
+        }
+    }
+
+    /**
      * Check if Redis connection is healthy.
-     * Used for health checks and monitoring.
-     * 
-     * @return true if Redis is reachable
      */
     public boolean isHealthy() {
         try {
@@ -203,5 +340,19 @@ public class RedisRateLimitService implements RateLimitService {
             log.warn("Redis health check failed: {}", e.getMessage());
             return false;
         }
+    }
+
+    /**
+     * Get current circuit breaker state for monitoring.
+     */
+    public String getCircuitBreakerState() {
+        return circuitBreaker.getState().name();
+    }
+
+    /**
+     * Get circuit breaker metrics for monitoring.
+     */
+    public CircuitBreaker.Metrics getCircuitBreakerMetrics() {
+        return circuitBreaker.getMetrics();
     }
 }

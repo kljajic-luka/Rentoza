@@ -170,6 +170,39 @@ public class User {
     @JoinColumn(name = "banned_by")
     private User bannedBy;
 
+    // ========== ACCOUNT LOCKOUT FIELDS (VAL-038 Security) ==========
+    
+    /**
+     * Counter for consecutive failed login attempts.
+     * Resets to 0 on successful login.
+     * Lockout thresholds: 3 attempts = 5min, 5 attempts = 15min, 7+ attempts = 30min.
+     */
+    @Column(name = "failed_login_attempts", nullable = false)
+    private int failedLoginAttempts = 0;
+    
+    /**
+     * Timestamp until which the account is locked.
+     * NULL means account is not locked.
+     * Account auto-unlocks when Instant.now() > lockedUntil.
+     */
+    @Column(name = "locked_until")
+    private Instant lockedUntil;
+    
+    /**
+     * Timestamp of the most recent failed login attempt.
+     * Used for audit trail and security analysis.
+     */
+    @Column(name = "last_failed_login_at")
+    private Instant lastFailedLoginAt;
+    
+    /**
+     * IP address of the most recent failed login attempt.
+     * IPv6-compatible (max 45 characters).
+     * Used for security monitoring and rate limiting.
+     */
+    @Column(name = "last_failed_login_ip", length = 45)
+    private String lastFailedLoginIp;
+
     // ========== OWNER VERIFICATION FIELDS (Serbian Compliance) ==========
     
     /**
@@ -581,5 +614,90 @@ public class User {
     public void setVerifiedDateOfBirth(LocalDate dob) {
         this.dateOfBirth = dob;
         this.dobVerified = true;
+    }
+
+    // ========== ACCOUNT LOCKOUT METHODS (VAL-038 Security) ==========
+    
+    /**
+     * Check if account is currently locked due to failed login attempts.
+     * Account is locked if lockedUntil is not null AND in the future.
+     * 
+     * @return true if account is locked and lockout hasn't expired
+     */
+    public boolean isAccountLocked() {
+        return lockedUntil != null && Instant.now().isBefore(lockedUntil);
+    }
+    
+    /**
+     * Get remaining lockout duration in human-readable format.
+     * 
+     * @return formatted string like "5 minutes" or "30 seconds"
+     */
+    public String getRemainingLockoutTime() {
+        if (!isAccountLocked()) {
+            return "0 seconds";
+        }
+        long seconds = java.time.Duration.between(Instant.now(), lockedUntil).getSeconds();
+        if (seconds >= 60) {
+            return (seconds / 60) + " minutes";
+        }
+        return seconds + " seconds";
+    }
+    
+    /**
+     * Increment failed login counter and apply progressive lockout.
+     * Lockout schedule:
+     * - 3 failed attempts: lock for 5 minutes
+     * - 5 failed attempts: lock for 15 minutes  
+     * - 7+ failed attempts: lock for 30 minutes
+     * 
+     * @param clientIp IP address of the failed login attempt
+     */
+    public void incrementFailedLoginAttempts(String clientIp) {
+        this.failedLoginAttempts++;
+        this.lastFailedLoginAt = Instant.now();
+        this.lastFailedLoginIp = clientIp;
+        
+        // Progressive lockout thresholds
+        if (this.failedLoginAttempts >= 7) {
+            this.lockedUntil = Instant.now().plusSeconds(30 * 60); // 30 minutes
+        } else if (this.failedLoginAttempts >= 5) {
+            this.lockedUntil = Instant.now().plusSeconds(15 * 60); // 15 minutes
+        } else if (this.failedLoginAttempts >= 3) {
+            this.lockedUntil = Instant.now().plusSeconds(5 * 60);  // 5 minutes
+        }
+    }
+    
+    /**
+     * Reset failed login attempts on successful login.
+     * Clears lockout, attempt counter, and audit fields.
+     */
+    public void resetFailedLoginAttempts() {
+        this.failedLoginAttempts = 0;
+        this.lockedUntil = null;
+        this.lastFailedLoginAt = null;
+        this.lastFailedLoginIp = null;
+    }
+    
+    /**
+     * Check if account has exceeded warning threshold (before lockout).
+     * Used to display warning messages.
+     * 
+     * @return true if 2+ failed attempts (warning before 3rd triggers lock)
+     */
+    public boolean shouldWarnAboutLockout() {
+        return this.failedLoginAttempts >= 2 && !isAccountLocked();
+    }
+    
+    /**
+     * Get number of remaining attempts before lockout escalation.
+     * 
+     * @return attempts remaining before next lockout level
+     */
+    public int getRemainingAttemptsBeforeLockout() {
+        if (failedLoginAttempts < 3) return 3 - failedLoginAttempts;
+        if (failedLoginAttempts < 5) return 5 - failedLoginAttempts;
+        if (failedLoginAttempts < 7) return 7 - failedLoginAttempts;
+        return 0; // Already at max lockout
     }
 }

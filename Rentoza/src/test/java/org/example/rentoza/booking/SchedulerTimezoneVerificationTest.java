@@ -4,12 +4,16 @@ import org.example.rentoza.admin.service.AdminDashboardService;
 import org.example.rentoza.auth.TokenCleanupScheduler;
 import org.example.rentoza.booking.checkin.CheckInScheduler;
 import org.example.rentoza.booking.checkout.CheckOutScheduler;
+import org.example.rentoza.config.timezone.SerbiaTimeZone;
 import org.example.rentoza.notification.NotificationService;
+import org.example.rentoza.user.verification.RenterDocumentRetentionScheduler;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.scheduling.annotation.Scheduled;
 
 import java.lang.reflect.Method;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -61,15 +65,55 @@ class SchedulerTimezoneVerificationTest {
     }
 
     @Test
-    @DisplayName("All @Scheduled methods in booking package have timezone specified")
+    @DisplayName("RenterDocumentRetentionScheduler must have Europe/Belgrade timezone on all methods")
+    void renterDocumentRetentionSchedulerHasCorrectTimezones() {
+        verifySchedulerTimezone(RenterDocumentRetentionScheduler.class, "cleanupExpiredSelfies");
+        verifySchedulerTimezone(RenterDocumentRetentionScheduler.class, "cleanupRejectedDocuments");
+        verifySchedulerTimezone(RenterDocumentRetentionScheduler.class, "anonymizeOldDocuments");
+    }
+
+    @Test
+    @DisplayName("BookingService.autoCompleteOverdueBookings must have Europe/Belgrade timezone")
+    void bookingServiceAutoCompleteHasCorrectTimezone() {
+        verifySchedulerTimezone(BookingService.class, "autoCompleteOverdueBookings");
+    }
+
+    @Test
+    @DisplayName("SerbiaTimeZone utility returns correct timezone")
+    void serbiaTimeZoneUtilityIsCorrect() {
+        // Verify ZONE_ID_STRING matches expected
+        assertThat(SerbiaTimeZone.ZONE_ID_STRING)
+                .as("SerbiaTimeZone.ZONE_ID_STRING must be 'Europe/Belgrade'")
+                .isEqualTo("Europe/Belgrade");
+        
+        // Verify ZONE_ID is valid
+        assertThat(SerbiaTimeZone.ZONE_ID)
+                .as("SerbiaTimeZone.ZONE_ID must be a valid ZoneId")
+                .isEqualTo(ZoneId.of("Europe/Belgrade"));
+        
+        // Verify now() uses Serbian timezone
+        LocalDateTime now = SerbiaTimeZone.now();
+        LocalDateTime expectedNow = LocalDateTime.now(SerbiaTimeZone.ZONE_ID);
+        
+        // Allow 1 second tolerance
+        assertThat(java.time.Duration.between(now, expectedNow).abs().getSeconds())
+                .as("SerbiaTimeZone.now() must return current Serbian time")
+                .isLessThan(2);
+    }
+
+    @Test
+    @DisplayName("All @Scheduled methods in application have timezone specified")
     void allBookingSchedulersHaveTimezone() {
         List<String> missingTimezone = new ArrayList<>();
         
-        // Classes to check
+        // Classes to check - all schedulers in application
         Class<?>[] schedulerClasses = {
             BookingScheduler.class,
+            BookingService.class,
             CheckInScheduler.class,
-            CheckOutScheduler.class
+            CheckOutScheduler.class,
+            TokenCleanupScheduler.class,
+            RenterDocumentRetentionScheduler.class
         };
 
         for (Class<?> clazz : schedulerClasses) {

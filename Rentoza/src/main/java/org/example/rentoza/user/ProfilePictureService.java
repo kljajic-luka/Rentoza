@@ -1,11 +1,11 @@
 package org.example.rentoza.user;
 
-import jakarta.annotation.PostConstruct;
 import net.coobird.thumbnailator.Thumbnails;
+import org.example.rentoza.storage.SupabaseStorageService;
 import org.example.rentoza.user.dto.ProfilePictureResultDTO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -15,15 +15,12 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
-import java.time.Instant;
 import java.util.Set;
 
 /**
  * Service for handling profile picture uploads with security-first approach.
+ *
+ * <p>All profile pictures are stored in Supabase Storage (user-avatars bucket).
  *
  * Security measures:
  * - MIME type validation (JPEG, PNG, WebP only)
@@ -31,7 +28,6 @@ import java.util.Set;
  * - File size limit (4MB max)
  * - EXIF metadata stripping (removes GPS, camera info, timestamps)
  * - Image resizing and compression (reduces attack surface)
- * - Deterministic filenames ({userId}.jpg - prevents path traversal)
  */
 @Service
 public class ProfilePictureService {
@@ -61,21 +57,12 @@ public class ProfilePictureService {
             "image/tiff"        // Complex format, security concerns
     );
 
-    @Value("${upload.dir:uploads}")
-    private String uploadDir;
-
-    private Path profilePicturesDir;
-
-    @PostConstruct
-    public void init() {
-        profilePicturesDir = Paths.get(uploadDir, "profile-pictures");
-        try {
-            Files.createDirectories(profilePicturesDir);
-            log.info("✅ Profile pictures directory initialized: {}", profilePicturesDir.toAbsolutePath());
-        } catch (IOException e) {
-            log.error("❌ Failed to create profile pictures directory: {}", e.getMessage());
-            throw new RuntimeException("Failed to initialize profile pictures storage", e);
-        }
+    private final SupabaseStorageService supabaseStorageService;
+    
+    @Autowired
+    public ProfilePictureService(SupabaseStorageService supabaseStorageService) {
+        this.supabaseStorageService = supabaseStorageService;
+        log.info("✅ Profile pictures storage initialized (SUPABASE mode)");
     }
 
     /**
@@ -100,20 +87,10 @@ public class ProfilePictureService {
             // Step 3: Process the image (resize, compress, strip metadata)
             byte[] processedImage = processImage(fileBytes);
 
-            // Step 4: Save to disk with deterministic filename
-            String filename = userId + ".jpg";
-            Path targetPath = profilePicturesDir.resolve(filename);
+            // Step 4: Upload to Supabase Storage
+            String profilePictureUrl = supabaseStorageService.uploadUserAvatarBytes(userId, processedImage);
 
-            // Atomic write using temp file + move
-            Path tempPath = profilePicturesDir.resolve(filename + ".tmp");
-            Files.copy(new ByteArrayInputStream(processedImage), tempPath, StandardCopyOption.REPLACE_EXISTING);
-            Files.move(tempPath, targetPath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-
-            // Step 5: Generate URL with cache-busting timestamp
-            String timestamp = String.valueOf(Instant.now().toEpochMilli());
-            String profilePictureUrl = "/uploads/profile-pictures/" + filename + "?t=" + timestamp;
-
-            log.info("✅ Profile picture saved for user {}: {} ({} bytes → {} bytes)",
+            log.info("✅ Profile picture uploaded for user {}: {} ({} bytes → {} bytes)",
                     userId, profilePictureUrl, fileBytes.length, processedImage.length);
 
             return new ProfilePictureResultDTO(profilePictureUrl);
@@ -322,18 +299,16 @@ public class ProfilePictureService {
     }
 
     /**
-     * Delete profile picture for a user (optional cleanup method).
+     * Delete profile picture for a user from Supabase Storage.
      */
-    public void deleteProfilePicture(Long userId) {
-        String filename = userId + ".jpg";
-        Path targetPath = profilePicturesDir.resolve(filename);
-
-        try {
-            if (Files.deleteIfExists(targetPath)) {
+    public void deleteProfilePicture(Long userId, String currentAvatarUrl) {
+        if (currentAvatarUrl != null && !currentAvatarUrl.isBlank()) {
+            try {
+                supabaseStorageService.deleteUserAvatar(currentAvatarUrl);
                 log.info("🗑️ Deleted profile picture for user {}", userId);
+            } catch (Exception e) {
+                log.warn("⚠️ Failed to delete profile picture for user {}: {}", userId, e.getMessage());
             }
-        } catch (IOException e) {
-            log.warn("⚠️ Failed to delete profile picture for user {}: {}", userId, e.getMessage());
         }
     }
 

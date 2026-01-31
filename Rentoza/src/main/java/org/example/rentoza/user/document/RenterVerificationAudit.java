@@ -2,6 +2,7 @@ package org.example.rentoza.user.document;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.example.rentoza.config.timezone.SerbiaTimeZone;
 import org.example.rentoza.user.DriverLicenseStatus;
 import org.example.rentoza.user.User;
 
@@ -113,7 +114,7 @@ public class RenterVerificationAudit {
      */
     @Column(name = "created_at", nullable = false, updatable = false)
     @Builder.Default
-    private LocalDateTime createdAt = LocalDateTime.now();
+    private LocalDateTime createdAt = SerbiaTimeZone.now();
     
     // ================= HELPER METHODS =================
     

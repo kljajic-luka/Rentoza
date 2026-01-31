@@ -2,6 +2,7 @@ package org.example.rentoza.car;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.example.rentoza.config.timezone.SerbiaTimeZone;
 import org.example.rentoza.user.User;
 
 import java.time.LocalDate;
@@ -87,7 +88,7 @@ public class CarDocument {
      */
     @Column(name = "upload_date", nullable = false, updatable = false)
     @Builder.Default
-    private LocalDateTime uploadDate = LocalDateTime.now();
+    private LocalDateTime uploadDate = SerbiaTimeZone.now();
     
     /**
      * When document expires.
@@ -128,7 +129,7 @@ public class CarDocument {
      * Check if document is expired.
      */
     public boolean isExpired() {
-        return expiryDate != null && expiryDate.isBefore(LocalDate.now());
+        return expiryDate != null && expiryDate.isBefore(SerbiaTimeZone.today());
     }
     
     /**
@@ -136,8 +137,8 @@ public class CarDocument {
      */
     public boolean willExpireWithin(int days) {
         if (expiryDate == null) return false;
-        LocalDate warningDate = LocalDate.now().plusDays(days);
-        return expiryDate.isBefore(warningDate) && expiryDate.isAfter(LocalDate.now());
+        LocalDate warningDate = SerbiaTimeZone.today().plusDays(days);
+        return expiryDate.isBefore(warningDate) && expiryDate.isAfter(SerbiaTimeZone.today());
     }
     
     /**
@@ -145,13 +146,13 @@ public class CarDocument {
      */
     public long getDaysUntilExpiry() {
         if (expiryDate == null) return Long.MAX_VALUE;
-        return java.time.temporal.ChronoUnit.DAYS.between(LocalDate.now(), expiryDate);
+        return java.time.temporal.ChronoUnit.DAYS.between(SerbiaTimeZone.today(), expiryDate);
     }
     
     @PrePersist
     public void prePersist() {
         if (uploadDate == null) {
-            uploadDate = LocalDateTime.now();
+            uploadDate = SerbiaTimeZone.now();
         }
     }
 }

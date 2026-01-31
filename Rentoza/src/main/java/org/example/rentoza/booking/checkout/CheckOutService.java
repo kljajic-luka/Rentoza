@@ -9,6 +9,7 @@ import org.example.rentoza.booking.BookingRepository;
 import org.example.rentoza.booking.BookingStatus;
 import org.example.rentoza.booking.checkin.*;
 import org.example.rentoza.booking.checkin.dto.CheckInPhotoDTO;
+import org.example.rentoza.booking.checkout.cqrs.CheckoutDomainEvent;
 import org.example.rentoza.booking.checkout.dto.*;
 import org.example.rentoza.booking.checkout.saga.CheckoutSagaOrchestrator;
 import org.example.rentoza.exception.ResourceNotFoundException;
@@ -16,6 +17,7 @@ import org.example.rentoza.notification.NotificationService;
 import org.example.rentoza.notification.NotificationType;
 import org.example.rentoza.notification.dto.CreateNotificationRequestDTO;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -60,6 +62,7 @@ public class CheckOutService {
     private final CheckInPhotoRepository photoRepository;
     private final NotificationService notificationService;
     private final CheckoutSagaOrchestrator checkoutSagaOrchestrator;
+    private final ApplicationEventPublisher eventPublisher;
     
     // Metrics
     private final Counter checkoutInitiatedCounter;
@@ -93,12 +96,14 @@ public class CheckOutService {
             CheckInPhotoRepository photoRepository,
             NotificationService notificationService,
             CheckoutSagaOrchestrator checkoutSagaOrchestrator,
-            MeterRegistry meterRegistry) {
+            MeterRegistry meterRegistry,
+            ApplicationEventPublisher eventPublisher) {
         this.bookingRepository = bookingRepository;
         this.eventService = eventService;
         this.photoRepository = photoRepository;
         this.notificationService = notificationService;
         this.checkoutSagaOrchestrator = checkoutSagaOrchestrator;
+        this.eventPublisher = eventPublisher;
         
         this.checkoutInitiatedCounter = Counter.builder("checkout.initiated")
                 .description("Checkout processes initiated")
@@ -211,6 +216,16 @@ public class CheckOutService {
         
         checkoutInitiatedCounter.increment();
         log.info("[CheckOut] Checkout initiated for booking {}, earlyReturn={}", bookingId, isEarlyReturn);
+        
+        // Publish CQRS event for read model sync
+        publishEvent(new CheckoutDomainEvent.CheckoutWindowOpened(
+                bookingId,
+                booking.getCar().getId(),
+                booking.getRenter().getId(),
+                booking.getCar().getOwner().getId(),
+                isEarlyReturn,
+                Instant.now()
+        ));
         
         // Notify other party
         if (isGuest(booking, userId)) {
@@ -376,6 +391,16 @@ public class CheckOutService {
         guestCompletedCounter.increment();
         log.info("[CheckOut] Guest completed checkout for booking {}", booking.getId());
         
+        // Publish CQRS event for read model sync
+        publishEvent(new CheckoutDomainEvent.GuestCheckoutCompleted(
+                booking.getId(),
+                booking.getRenter().getId(),
+                dto.getEndOdometerReading(),
+                dto.getEndFuelLevelPercent(),
+                booking.getLateReturnMinutes(),
+                Instant.now()
+        ));
+        
         // Notify host
         notifyHostGuestCompleted(booking);
         
@@ -458,6 +483,16 @@ public class CheckOutService {
         
         hostConfirmedCounter.increment();
         log.info("[CheckOut] Host confirmed checkout for booking {}", booking.getId());
+        
+        // Publish CQRS event for read model sync
+        publishEvent(new CheckoutDomainEvent.HostCheckoutCompleted(
+                booking.getId(),
+                booking.getCar().getOwner().getId(),
+                booking.getNewDamageReported() != null && booking.getNewDamageReported(),
+                dto.getDamageDescription(),
+                dto.getEstimatedDamageCostRsd() != null ? dto.getEstimatedDamageCostRsd().intValue() : null,
+                Instant.now()
+        ));
         
         // Complete checkout if no dispute
         // Handle null-safe check for Boolean wrapper type
@@ -880,5 +915,21 @@ public class CheckOutService {
         int dailyLimit = 200; // Default 200km per day
         
         return (int) (days * dailyLimit);
+    }
+    
+    // ========== CQRS EVENT PUBLISHING ==========
+    
+    /**
+     * Publish a checkout domain event for CQRS read model synchronization.
+     * Non-critical: failures are logged but don't block the checkout workflow.
+     */
+    private void publishEvent(CheckoutDomainEvent event) {
+        try {
+            eventPublisher.publishEvent(event);
+            log.debug("[CheckOut] Published event: {}", event.getClass().getSimpleName());
+        } catch (Exception e) {
+            log.error("[CheckOut] Failed to publish event {}: {}", 
+                    event.getClass().getSimpleName(), e.getMessage());
+        }
     }
 }

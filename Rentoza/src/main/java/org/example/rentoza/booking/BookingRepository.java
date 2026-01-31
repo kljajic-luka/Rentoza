@@ -747,8 +747,8 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
            "WHERE b.status = :status AND b.approvedAt BETWEEN :start AND :end")
     List<Booking> findByStatusAndApprovedAtBetween(
         @Param("status") BookingStatus status,
-        @Param("start") java.time.Instant start,
-        @Param("end") java.time.Instant end
+        @Param("start") java.time.LocalDateTime start,
+        @Param("end") java.time.LocalDateTime end
     );
 }
 

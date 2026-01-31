@@ -144,20 +144,17 @@ public interface CarRepository extends JpaRepository<Car, Long>, JpaSpecificatio
     @EntityGraph(attributePaths = {"owner"})
     List<Car> findByOwnerIdAndAvailableTrue(Long ownerId);
 
-    // ========== GEOSPATIAL QUERIES (SPATIAL INDEX Optimized) ==========
-    // These methods use MySQL SPATIAL INDEX for efficient proximity searches
-    // CRITICAL: MySQL POINT uses (longitude, latitude) order - not (lat, lon)!
+    // ========== GEOSPATIAL QUERIES (PostGIS) ==========
+    // These methods use PostGIS for efficient proximity searches
 
     /**
      * Find available cars within a radius of a given location.
-     * Uses native MySQL ST_Distance_Sphere for accurate distance calculation.
+     * Uses Haversine-based distance calculation (compatible with PostgreSQL).
      * 
      * PERFORMANCE:
-     * - Uses SPATIAL INDEX on location_point column (generated POINT)
+     * - Uses indexes on location columns
      * - Returns only cars with valid geospatial coordinates
      * - Ordered by distance ascending (closest first)
-     * 
-     * IMPORTANT: MySQL POINT is POINT(longitude, latitude) - X=lon, Y=lat
      * 
      * @param latitude  Center point latitude (Y coordinate)
      * @param longitude Center point longitude (X coordinate)

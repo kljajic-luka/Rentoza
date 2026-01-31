@@ -117,12 +117,12 @@ public class DeliveryPoi {
 
     @PrePersist
     protected void onCreate() {
-        this.createdAt = LocalDateTime.now();
+        this.createdAt = org.example.rentoza.config.timezone.SerbiaTimeZone.now();
     }
 
     @PreUpdate
     protected void onUpdate() {
-        this.updatedAt = LocalDateTime.now();
+        this.updatedAt = org.example.rentoza.config.timezone.SerbiaTimeZone.now();
     }
 
     // ========== CONSTRUCTORS ==========

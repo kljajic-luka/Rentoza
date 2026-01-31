@@ -21,9 +21,6 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -68,12 +65,6 @@ public class GuestCheckInPhotoService {
     private final PhotoRejectionService photoRejectionService;
     private final PhotoGuidanceService photoGuidanceService;
     private final SupabaseStorageService supabaseStorageService;
-
-    @Value("${storage.mode:local}")
-    private String storageMode;
-
-    @Value("${app.checkin.photo.upload-dir:uploads/checkin}")
-    private String uploadDir;
 
     @Value("${app.checkin.photo.max-size-mb:3}")
     private int maxSizeMb;
@@ -341,33 +332,24 @@ public class GuestCheckInPhotoService {
         );
         String storageKey = String.format("guest-checkin/%s/%s", sessionId, filename);
         
-        // ========== STORAGE MODE: Supabase or Local Filesystem ==========
+        // ========== STORAGE: Supabase Storage ==========
         String contentType = photoItem.getMimeType() != null ? photoItem.getMimeType() : "image/jpeg";
         
-        if ("supabase".equalsIgnoreCase(storageMode)) {
-            // Upload to Supabase Storage
-            try {
-                storageKey = supabaseStorageService.uploadCheckInPhotoBytes(
-                    booking.getId(),
-                    "guest",
-                    photoItem.getPhotoType().name(),
-                    photoBytes,
-                    contentType
-                );
-                log.info("[GuestCheckIn] Photo uploaded to Supabase: booking={}, type={}, key={}",
-                    booking.getId(), photoItem.getPhotoType(), storageKey);
-            } catch (IOException e) {
-                log.error("[GuestCheckIn] Supabase upload failed for booking {}: {}",
-                    booking.getId(), e.getMessage(), e);
-                throw e;
-            }
-        } else {
-            // Legacy: Local filesystem storage (deprecated, for migration only)
-            log.warn("[GuestCheckIn] Using LOCAL filesystem storage (deprecated): storage.mode={}", storageMode);
-            Path uploadPath = Paths.get(uploadDir.replace("checkin", "guest-checkin"), sessionId);
-            Files.createDirectories(uploadPath);
-            Path filePath = uploadPath.resolve(filename);
-            Files.write(filePath, photoBytes);
+        // Upload to Supabase Storage
+        try {
+            storageKey = supabaseStorageService.uploadCheckInPhotoBytes(
+                booking.getId(),
+                "guest",
+                photoItem.getPhotoType().name(),
+                photoBytes,
+                contentType
+            );
+            log.info("[GuestCheckIn] Photo uploaded to Supabase: booking={}, type={}, key={}",
+                booking.getId(), photoItem.getPhotoType(), storageKey);
+        } catch (IOException e) {
+            log.error("[GuestCheckIn] Supabase upload failed for booking {}: {}",
+                booking.getId(), e.getMessage(), e);
+            throw e;
         }
         
         // Create entity

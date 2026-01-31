@@ -10,12 +10,14 @@ import org.example.rentoza.booking.BookingStatus;
 import org.example.rentoza.booking.checkin.CheckInActorRole;
 import org.example.rentoza.booking.checkin.CheckInEventService;
 import org.example.rentoza.booking.checkin.CheckInEventType;
+import org.example.rentoza.booking.checkout.cqrs.CheckoutDomainEvent;
 import org.example.rentoza.booking.checkout.saga.CheckoutSagaState.SagaStatus;
 import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.notification.NotificationService;
 import org.example.rentoza.notification.NotificationType;
 import org.example.rentoza.notification.dto.CreateNotificationRequestDTO;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -68,6 +70,7 @@ public class CheckoutSagaOrchestrator {
     private final BookingRepository bookingRepository;
     private final NotificationService notificationService;
     private final CheckInEventService eventService;
+    private final ApplicationEventPublisher eventPublisher;
 
     // Metrics
     private final Counter sagaStartedCounter;
@@ -112,11 +115,13 @@ public class CheckoutSagaOrchestrator {
             BookingRepository bookingRepository,
             NotificationService notificationService,
             CheckInEventService eventService,
+            ApplicationEventPublisher eventPublisher,
             MeterRegistry meterRegistry) {
         this.sagaRepository = sagaRepository;
         this.bookingRepository = bookingRepository;
         this.notificationService = notificationService;
         this.eventService = eventService;
+        this.eventPublisher = eventPublisher;
 
         this.sagaStartedCounter = Counter.builder("checkout.saga.started")
                 .description("Checkout sagas started")
@@ -206,6 +211,13 @@ public class CheckoutSagaOrchestrator {
         sagaStartedCounter.increment();
         log.info("[Saga] Created saga {} for booking {}", saga.getSagaId(), bookingId);
 
+        // Publish CQRS event
+        publishEvent(new CheckoutDomainEvent.SagaStarted(
+                bookingId,
+                saga.getSagaId(),
+                Instant.now()
+        ));
+
         // Start execution
         return executeSaga(saga);
     }
@@ -244,6 +256,16 @@ public class CheckoutSagaOrchestrator {
 
                 sagaCompletedCounter.increment();
                 log.info("[Saga] Completed saga {} for booking {}", saga.getSagaId(), saga.getBookingId());
+
+                // Publish CQRS event for saga completion
+                Booking booking = loadBooking(saga.getBookingId());
+                publishEvent(new CheckoutDomainEvent.BookingCompleted(
+                        saga.getBookingId(),
+                        saga.getSagaId(),
+                        booking.getTotalAmount(),
+                        booking.getDurationDays(),
+                        Instant.now()
+                ));
 
                 // Notify parties
                 notifySagaCompleted(saga);
@@ -604,6 +626,15 @@ public class CheckoutSagaOrchestrator {
 
         saga.setStatus(SagaStatus.COMPENSATING);
 
+        // Publish CQRS event for compensation start
+        publishEvent(new CheckoutDomainEvent.SagaCompensating(
+                saga.getBookingId(),
+                saga.getSagaId(),
+                saga.getFailedAtStep() != null ? saga.getFailedAtStep().name() : "UNKNOWN",
+                saga.getErrorMessage(),
+                Instant.now()
+        ));
+
         try {
             // Compensate in reverse order
             CheckoutSagaStep stepToCompensate = saga.getLastCompletedStep();
@@ -735,5 +766,23 @@ public class CheckoutSagaOrchestrator {
     @Transactional(readOnly = true)
     public Optional<CheckoutSagaState> getSagaStatus(Long bookingId) {
         return sagaRepository.findActiveSagaForBooking(bookingId);
+    }
+
+    // ========== CQRS EVENT PUBLISHING ==========
+
+    /**
+     * Publish a checkout domain event for CQRS read model synchronization.
+     * 
+     * <p>Events are published asynchronously and consumed by view sync listeners.
+     */
+    private void publishEvent(CheckoutDomainEvent event) {
+        try {
+            eventPublisher.publishEvent(event);
+            log.debug("[Saga] Published event: {}", event.getClass().getSimpleName());
+        } catch (Exception e) {
+            // Log but don't fail the saga - event publishing is non-critical
+            log.error("[Saga] Failed to publish event {}: {}", 
+                    event.getClass().getSimpleName(), e.getMessage());
+        }
     }
 }

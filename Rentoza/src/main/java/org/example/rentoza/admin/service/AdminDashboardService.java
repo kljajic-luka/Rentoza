@@ -10,6 +10,7 @@ import org.example.rentoza.booking.BookingRepository;
 import org.example.rentoza.booking.BookingStatus;
 import org.example.rentoza.booking.dispute.DamageClaimRepository;
 import org.example.rentoza.car.CarRepository;
+import org.example.rentoza.config.timezone.SerbiaTimeZone;
 import org.example.rentoza.user.UserRepository;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -20,7 +21,6 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 
 /**
@@ -70,14 +70,14 @@ public class AdminDashboardService {
     public DashboardKpiDto getDashboardKpis() {
         log.debug("Calculating dashboard KPIs (cache miss)");
         
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = SerbiaTimeZone.now();
         LocalDateTime startOfMonth = now.withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0);
         LocalDateTime startOfLastMonth = startOfMonth.minusMonths(1);
         LocalDateTime endOfLastMonth = startOfMonth.minusSeconds(1);
         
-        Instant startOfMonthInstant = startOfMonth.atZone(ZoneId.systemDefault()).toInstant();
-        Instant startOfLastMonthInstant = startOfLastMonth.atZone(ZoneId.systemDefault()).toInstant();
-        Instant endOfLastMonthInstant = endOfLastMonth.atZone(ZoneId.systemDefault()).toInstant();
+        Instant startOfMonthInstant = SerbiaTimeZone.toInstant(startOfMonth);
+        Instant startOfLastMonthInstant = SerbiaTimeZone.toInstant(startOfLastMonth);
+        Instant endOfLastMonthInstant = SerbiaTimeZone.toInstant(endOfLastMonth);
         
         // ==================== REAL-TIME METRICS ====================
         

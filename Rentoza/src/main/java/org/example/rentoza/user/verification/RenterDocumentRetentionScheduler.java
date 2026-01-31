@@ -3,6 +3,7 @@ package org.example.rentoza.user.verification;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.car.storage.DocumentStorageStrategy;
+import org.example.rentoza.config.timezone.SerbiaTimeZone;
 import org.example.rentoza.user.document.RenterDocument;
 import org.example.rentoza.user.document.RenterDocumentRepository;
 import org.example.rentoza.user.document.RenterDocumentType;
@@ -90,7 +91,7 @@ public class RenterDocumentRetentionScheduler {
      * <p>Deletes selfie documents (biometric data) that have exceeded
      * the retention period. This is critical for GDPR compliance.
      */
-    @Scheduled(cron = "${app.renter-verification.selfie-cleanup-cron:0 0 4 * * *}")
+    @Scheduled(cron = "${app.renter-verification.selfie-cleanup-cron:0 0 4 * * *}", zone = SerbiaTimeZone.ZONE_ID_STRING)
     @Transactional
     public void cleanupExpiredSelfies() {
         if (!retentionCleanupEnabled) {
@@ -100,7 +101,7 @@ public class RenterDocumentRetentionScheduler {
         
         log.info("Starting selfie retention cleanup job");
         
-        LocalDateTime cutoff = LocalDateTime.now().minusDays(selfieRetentionDays);
+        LocalDateTime cutoff = SerbiaTimeZone.now().minusDays(selfieRetentionDays);
         
         // Find selfies older than retention period
         List<RenterDocument> expiredSelfies = documentRepository.findAll().stream()
@@ -126,7 +127,7 @@ public class RenterDocumentRetentionScheduler {
                 log.info("Deleted expired selfie: documentId={}, userId={}, age={} days",
                     selfie.getId(), 
                     selfie.getUser() != null ? selfie.getUser().getId() : "unknown",
-                    java.time.temporal.ChronoUnit.DAYS.between(selfie.getCreatedAt(), LocalDateTime.now()));
+                    java.time.temporal.ChronoUnit.DAYS.between(selfie.getCreatedAt(), SerbiaTimeZone.now()));
                     
             } catch (Exception e) {
                 errorCount.incrementAndGet();
@@ -145,7 +146,7 @@ public class RenterDocumentRetentionScheduler {
      * These are kept briefly for dispute resolution but should not be 
      * stored indefinitely.
      */
-    @Scheduled(cron = "${app.renter-verification.rejected-cleanup-cron:0 30 4 * * *}")
+    @Scheduled(cron = "${app.renter-verification.rejected-cleanup-cron:0 30 4 * * *}", zone = SerbiaTimeZone.ZONE_ID_STRING)
     @Transactional
     public void cleanupRejectedDocuments() {
         if (!retentionCleanupEnabled) {
@@ -155,7 +156,7 @@ public class RenterDocumentRetentionScheduler {
         
         log.info("Starting rejected document retention cleanup job");
         
-        LocalDateTime cutoff = LocalDateTime.now().minusDays(rejectedDocumentRetentionDays);
+        LocalDateTime cutoff = SerbiaTimeZone.now().minusDays(rejectedDocumentRetentionDays);
         
         // Find rejected documents older than retention period
         List<RenterDocument> rejectedDocs = documentRepository.findAll().stream()
@@ -197,7 +198,7 @@ public class RenterDocumentRetentionScheduler {
      * <p>For audit trail requirements, some documents are anonymized rather
      * than deleted. This removes PII while preserving verification history.
      */
-    @Scheduled(cron = "${app.renter-verification.anonymize-cron:0 0 5 1 * *}")
+    @Scheduled(cron = "${app.renter-verification.anonymize-cron:0 0 5 1 * *}", zone = SerbiaTimeZone.ZONE_ID_STRING)
     @Transactional
     public void anonymizeOldDocuments() {
         if (!retentionCleanupEnabled) {
@@ -208,7 +209,7 @@ public class RenterDocumentRetentionScheduler {
         log.info("Starting document anonymization job");
         
         // Anonymize documents older than 1 year but keep metadata
-        LocalDateTime cutoff = LocalDateTime.now().minusYears(1);
+        LocalDateTime cutoff = SerbiaTimeZone.now().minusYears(1);
         
         List<RenterDocument> oldDocuments = documentRepository.findAll().stream()
             .filter(d -> d.getCreatedAt().isBefore(cutoff))

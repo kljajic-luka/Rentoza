@@ -20,9 +20,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -64,9 +61,7 @@ public class HostCheckoutPhotoService {
     private final CheckInEventService eventService;
     private final ExifValidationService exifValidationService;
     private final PhotoRejectionService photoRejectionService;
-
-    @Value("${app.checkout.photo.upload-dir:uploads/checkout}")
-    private String uploadDir;
+    private final org.example.rentoza.storage.SupabaseStorageService supabaseStorageService;
 
     @Value("${app.checkout.photo.max-size-mb:10}")
     private int maxSizeMb;
@@ -352,15 +347,25 @@ public class HostCheckoutPhotoService {
             System.currentTimeMillis(),
             UUID.randomUUID().toString().substring(0, 8)
         );
-        String storageKey = String.format("host-checkout/%s/%s", sessionId, filename);
         
-        // Ensure directory exists
-        Path uploadPath = Paths.get(uploadDir.replace("checkout", "host-checkout"), sessionId);
-        Files.createDirectories(uploadPath);
-        
-        // Save file
-        Path filePath = uploadPath.resolve(filename);
-        Files.write(filePath, photoBytes);
+        // Upload to Supabase Storage
+        String storageKey;
+        String contentType = photoItem.getMimeType() != null ? photoItem.getMimeType() : "image/jpeg";
+        try {
+            storageKey = supabaseStorageService.uploadCheckInPhotoBytes(
+                booking.getId(),
+                "host",
+                photoItem.getPhotoType().name(),
+                photoBytes,
+                contentType
+            );
+            log.info("[HostCheckout] Photo uploaded to Supabase: booking={}, type={}, key={}",
+                booking.getId(), photoItem.getPhotoType(), storageKey);
+        } catch (IOException e) {
+            log.error("[HostCheckout] Supabase upload failed for booking {}: {}",
+                booking.getId(), e.getMessage(), e);
+            throw e;
+        }
         
         // Create entity
         HostCheckoutPhoto photo = HostCheckoutPhoto.builder()

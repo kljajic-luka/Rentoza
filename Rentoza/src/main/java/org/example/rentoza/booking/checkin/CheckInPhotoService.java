@@ -25,9 +25,6 @@ import org.example.rentoza.booking.photo.PiiPhotoStorageService;
 
 import java.io.IOException;
 import java.math.BigDecimal;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -63,12 +60,6 @@ public class CheckInPhotoService {
     private final ApplicationEventPublisher eventPublisher;
     private final SupabaseStorageService supabaseStorageService;
     private final PiiPhotoStorageService piiPhotoStorageService;  // P0-2: PII enforcement
-
-    @Value("${storage.mode:local}")
-    private String storageMode;
-
-    @Value("${app.checkin.photo.upload-dir:uploads/checkin}")
-    private String uploadDir;
 
     @Value("${app.checkin.photo.max-size-mb:10}")
     private int maxSizeMb;
@@ -335,33 +326,23 @@ public class CheckInPhotoService {
             bucket = CheckInPhoto.StorageBucket.CHECKIN_STANDARD;
         }
         
-        // ========== STORAGE MODE: Supabase or Local Filesystem ==========
-        if ("supabase".equalsIgnoreCase(storageMode)) {
-            // Upload to Supabase Storage
-            try {
-                String party = booking.getCar().getOwner().getId().equals(user.getId()) ? "host" : "guest";
-                storageKey = supabaseStorageService.uploadCheckInPhotoBytes(
-                    booking.getId(),
-                    party,
-                    photoType.name(),
-                    photoBytes,
-                    contentType
-                );
-                log.info("[CheckIn] Photo uploaded to Supabase: booking={}, type={}, key={}",
-                    booking.getId(), photoType, storageKey);
-            } catch (IOException e) {
-                log.error("[CheckIn] Supabase upload failed for booking {}: {}",
-                    booking.getId(), e.getMessage(), e);
-                throw e;
-            }
-        } else {
-            // Legacy: Local filesystem storage (deprecated, for migration only)
-            log.warn("[CheckIn] Using LOCAL filesystem storage (deprecated): storage.mode={}", storageMode);
-            String baseDir = photoType.isCheckoutPhoto() ? uploadDir.replace("checkin", "checkout") : uploadDir;
-            Path uploadPath = Paths.get(baseDir, sessionId);
-            Files.createDirectories(uploadPath);
-            Path filePath = uploadPath.resolve(filename);
-            Files.write(filePath, photoBytes);
+        // ========== STORAGE: Supabase Storage ==========
+        // Upload to Supabase Storage
+        try {
+            String party = booking.getCar().getOwner().getId().equals(user.getId()) ? "host" : "guest";
+            storageKey = supabaseStorageService.uploadCheckInPhotoBytes(
+                booking.getId(),
+                party,
+                photoType.name(),
+                photoBytes,
+                contentType
+            );
+            log.info("[CheckIn] Photo uploaded to Supabase: booking={}, type={}, key={}",
+                booking.getId(), photoType, storageKey);
+        } catch (IOException e) {
+            log.error("[CheckIn] Supabase upload failed for booking {}: {}",
+                booking.getId(), e.getMessage(), e);
+            throw e;
         }
         
         // Create photo entity

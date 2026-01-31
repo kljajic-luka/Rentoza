@@ -4,7 +4,7 @@ import org.example.rentoza.storage.SupabaseStorageService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Profile;
+import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -13,13 +13,14 @@ import java.io.IOException;
 /**
  * Supabase Storage implementation for car documents.
  * 
- * <p>Active when storage.mode=supabase or in production profiles.
+ * <p>This is the primary document storage strategy using Supabase Storage
+ * for secure, scalable cloud storage. All documents are stored in Supabase.
  * 
  * <p>Stores documents in the 'car-documents' bucket with structure:
  * cars/{carId}/documents/{documentType}/{filename}
  */
 @Service
-@Profile({"supabase", "prod", "production"})
+@Primary
 public class SupabaseDocumentStorageStrategy implements DocumentStorageStrategy {
     
     private static final Logger log = LoggerFactory.getLogger(SupabaseDocumentStorageStrategy.class);

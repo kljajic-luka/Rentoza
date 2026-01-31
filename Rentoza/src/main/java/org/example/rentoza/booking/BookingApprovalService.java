@@ -4,6 +4,7 @@ import jakarta.persistence.OptimisticLockException;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.example.rentoza.booking.cqrs.BookingDomainEvent;
 import org.example.rentoza.booking.dto.BookingRequestDTO;
 import org.example.rentoza.booking.dto.BookingResponseDTO;
 import org.example.rentoza.chat.ChatServiceClient;
@@ -15,10 +16,12 @@ import org.example.rentoza.notification.dto.CreateNotificationRequestDTO;
 import org.example.rentoza.security.InternalServiceJwtUtil;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -38,6 +41,7 @@ public class BookingApprovalService {
     private final NotificationService notificationService;
     private final ChatServiceClient chatServiceClient;
     private final InternalServiceJwtUtil internalServiceJwtUtil;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * Approve a pending booking request.
@@ -104,6 +108,14 @@ public class BookingApprovalService {
             Booking savedBooking = bookingRepository.save(booking);
             log.info("Booking approved: bookingId={}, ownerId={}, renterId={}, carId={}, approvedAt={}", 
                     bookingId, ownerId, booking.getRenter().getId(), booking.getCar().getId(), booking.getApprovedAt());
+
+            // Publish CQRS event for read model sync
+            publishEvent(new BookingDomainEvent.BookingApproved(
+                    bookingId,
+                    ownerId,
+                    booking.getPaymentVerificationRef(),
+                    Instant.now()
+            ));
 
             // Simulate payment authorization (placeholder)
             log.debug("💳 [SIMULATED] Payment authorized for booking {} with ref {}", 
@@ -177,6 +189,14 @@ public class BookingApprovalService {
                     bookingId, ownerId, booking.getRenter().getId(), booking.getCar().getId(), 
                     booking.getDeclinedAt(), booking.getDeclineReason());
 
+            // Publish CQRS event for read model sync
+            publishEvent(new BookingDomainEvent.BookingDeclined(
+                    bookingId,
+                    ownerId,
+                    booking.getDeclineReason(),
+                    Instant.now()
+            ));
+
             // Send notification to guest (renter)
             sendDeclineNotification(savedBooking);
 
@@ -231,6 +251,14 @@ public class BookingApprovalService {
             log.info("Booking auto-expired: bookingId={}, renterId={}, carId={}, decisionDeadline={}", 
                     booking.getId(), booking.getRenter().getId(), booking.getCar().getId(), 
                     booking.getDecisionDeadlineAt());
+
+            // Publish CQRS event for read model sync
+            publishEvent(new BookingDomainEvent.BookingExpired(
+                    booking.getId(),
+                    booking.getRenter().getId(),
+                    booking.getCar().getOwner().getId(),
+                    Instant.now()
+            ));
 
             // Notify guest
             sendExpiryNotification(booking);
@@ -330,6 +358,22 @@ public class BookingApprovalService {
         } catch (Exception e) {
             log.error("[ApprovalService] Failed to create chat conversation for booking {}", booking.getId(), e);
             // Don't fail approval if chat creation fails - log and continue
+        }
+    }
+
+    // ========== CQRS EVENT PUBLISHING ==========
+
+    /**
+     * Publish a booking domain event for CQRS read model synchronization.
+     * Non-critical: failures are logged but don't block the approval workflow.
+     */
+    private void publishEvent(BookingDomainEvent event) {
+        try {
+            eventPublisher.publishEvent(event);
+            log.debug("[ApprovalService] Published event: {}", event.getClass().getSimpleName());
+        } catch (Exception e) {
+            log.error("[ApprovalService] Failed to publish event {}: {}", 
+                    event.getClass().getSimpleName(), e.getMessage());
         }
     }
 }

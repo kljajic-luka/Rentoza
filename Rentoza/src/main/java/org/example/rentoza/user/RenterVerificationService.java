@@ -557,8 +557,8 @@ public class RenterVerificationService {
         
         // Factor 1: Account age (new accounts = higher risk)
         long accountAgeDays = ChronoUnit.DAYS.between(
-            user.getCreatedAt().atZone(java.time.ZoneId.systemDefault()).toLocalDate(),
-            LocalDate.now());
+            org.example.rentoza.config.timezone.SerbiaTimeZone.toLocalDateTime(user.getCreatedAt()).toLocalDate(),
+            org.example.rentoza.config.timezone.SerbiaTimeZone.today());
         if (accountAgeDays < newAccountThresholdDays) {
             riskScore += 30;
         } else if (accountAgeDays < 90) {

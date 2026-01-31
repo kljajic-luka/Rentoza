@@ -75,7 +75,7 @@ public class GuestBookingMapper {
                 .firstName(renter.getFirstName())
                 .lastInitial(formatLastInitial(renter.getLastName()))
                 .joinDate(renter.getCreatedAt() != null ? 
-                        java.time.LocalDateTime.ofInstant(renter.getCreatedAt(), java.time.ZoneId.systemDefault())
+                        org.example.rentoza.config.timezone.SerbiaTimeZone.toLocalDateTime(renter.getCreatedAt())
                         .format(JOIN_DATE_FORMATTER) : "")
                 
                 // Verification Status

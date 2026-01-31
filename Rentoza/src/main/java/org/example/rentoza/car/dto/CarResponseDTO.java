@@ -153,7 +153,7 @@ public class CarResponseDTO {
 
     private String formatJoinDate(java.time.Instant createdAt) {
         if (createdAt == null) return "";
-        return java.time.LocalDateTime.ofInstant(createdAt, java.time.ZoneId.systemDefault())
+        return org.example.rentoza.config.timezone.SerbiaTimeZone.toLocalDateTime(createdAt)
                 .format(java.time.format.DateTimeFormatter.ofPattern("MMM yyyy", java.util.Locale.ENGLISH));
     }
 

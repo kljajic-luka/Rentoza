@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 import org.example.rentoza.car.DocumentVerificationStatus;
+import org.example.rentoza.config.timezone.SerbiaTimeZone;
 import org.example.rentoza.user.User;
 
 import java.math.BigDecimal;
@@ -103,7 +104,7 @@ public class RenterDocument {
      */
     @Column(name = "upload_date", nullable = false, updatable = false)
     @Builder.Default
-    private LocalDateTime uploadDate = LocalDateTime.now();
+    private LocalDateTime uploadDate = SerbiaTimeZone.now();
     
     /**
      * When document expires (for licenses, IDs).
@@ -191,15 +192,15 @@ public class RenterDocument {
     
     @Column(name = "created_at", nullable = false, updatable = false)
     @Builder.Default
-    private LocalDateTime createdAt = LocalDateTime.now();
+    private LocalDateTime createdAt = SerbiaTimeZone.now();
     
     @Column(name = "updated_at", nullable = false)
     @Builder.Default
-    private LocalDateTime updatedAt = LocalDateTime.now();
+    private LocalDateTime updatedAt = SerbiaTimeZone.now();
     
     @PreUpdate
     protected void onUpdate() {
-        this.updatedAt = LocalDateTime.now();
+        this.updatedAt = SerbiaTimeZone.now();
     }
     
     // ================= HELPER METHODS =================
@@ -208,7 +209,7 @@ public class RenterDocument {
      * Check if document is expired.
      */
     public boolean isExpired() {
-        return expiryDate != null && expiryDate.isBefore(LocalDate.now());
+        return expiryDate != null && expiryDate.isBefore(SerbiaTimeZone.today());
     }
     
     /**
@@ -216,8 +217,8 @@ public class RenterDocument {
      */
     public boolean willExpireWithin(int days) {
         if (expiryDate == null) return false;
-        LocalDate warningDate = LocalDate.now().plusDays(days);
-        return expiryDate.isBefore(warningDate) && expiryDate.isAfter(LocalDate.now());
+        LocalDate warningDate = SerbiaTimeZone.today().plusDays(days);
+        return expiryDate.isBefore(warningDate) && expiryDate.isAfter(SerbiaTimeZone.today());
     }
     
     /**
@@ -225,7 +226,7 @@ public class RenterDocument {
      */
     public long getDaysUntilExpiry() {
         if (expiryDate == null) return Long.MAX_VALUE;
-        return java.time.temporal.ChronoUnit.DAYS.between(LocalDate.now(), expiryDate);
+        return java.time.temporal.ChronoUnit.DAYS.between(SerbiaTimeZone.today(), expiryDate);
     }
     
     /**

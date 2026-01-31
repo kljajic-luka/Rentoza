@@ -165,7 +165,7 @@ public class AdminUserService {
         
         targetUser.setBanned(true);
         targetUser.setBanReason(reason);
-        targetUser.setBannedAt(java.time.LocalDateTime.now());
+        targetUser.setBannedAt(org.example.rentoza.config.timezone.SerbiaTimeZone.now());
         userRepo.save(targetUser);
         
         // Audit log

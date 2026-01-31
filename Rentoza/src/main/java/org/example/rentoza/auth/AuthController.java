@@ -10,6 +10,7 @@ import org.example.rentoza.security.CookieConstants;
 
 import org.example.rentoza.deprecated.jwt.JwtUtil;
 import org.example.rentoza.user.User;
+import org.example.rentoza.user.UserRepository;
 import org.example.rentoza.user.UserService;
 import org.example.rentoza.user.dto.AuthResponseDTO;
 import org.example.rentoza.user.dto.UserLoginDTO;
@@ -44,6 +45,7 @@ public class AuthController {
     private static final Logger log = LoggerFactory.getLogger(AuthController.class);
 
     private final UserService userService;
+    private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final RefreshTokenServiceEnhanced refreshTokenService;
@@ -54,12 +56,14 @@ public class AuthController {
     private long jwtExpirationMs;
 
     public AuthController(UserService userService,
+                          UserRepository userRepository,
                           PasswordEncoder passwordEncoder,
                           JwtUtil jwtUtil,
                           RefreshTokenServiceEnhanced refreshTokenService,
                           AppProperties appProperties,
                           CsrfTokenRepository csrfTokenRepository) {
         this.userService = userService;
+        this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
         this.refreshTokenService = refreshTokenService;
@@ -199,18 +203,8 @@ public class AuthController {
         
         User user = userOpt.get();
         
-        // SECURITY: Validate password using BCrypt constant-time comparison
-//        if (!passwordEncoder.matches(dto.getPassword(), user.getPassword())) {
-//            log.warn("Invalid password attempt for user: email={}", dto.getEmail());
-//            // Generic error message to prevent credential enumeration
-//            return ResponseEntity.status(401).body(Map.of(
-//                "error", "INVALID_CREDENTIALS",
-//                "message", "Pogrešna email adresa ili lozinka."
-//            ));
-//        }
-        
-        // SECURITY: Check if user is banned BEFORE issuing any tokens
-        // This prevents banned users from getting cookies stored
+        // SECURITY: Check if user is banned FIRST (admin action takes priority)
+        // Banned users cannot login regardless of password or lockout status
         if (user.isBanned()) {
             log.warn("Banned user attempted login: email={}", dto.getEmail());
             String banReason = user.getBanReason() != null ? user.getBanReason() : "Contact support for details.";
@@ -220,10 +214,62 @@ public class AuthController {
             ));
         }
         
+        // SECURITY (VAL-038): Check if account is locked due to failed attempts
+        if (user.isAccountLocked()) {
+            log.warn("SECURITY: Login blocked - account locked. email={}, remaining={}",
+                    dto.getEmail(), user.getRemainingLockoutTime());
+            return ResponseEntity.status(403).body(Map.of(
+                "error", "ACCOUNT_LOCKED",
+                "message", "Nalog je privremeno zaključan. Pokušajte ponovo za " + user.getRemainingLockoutTime() + ".",
+                "lockedUntil", user.getLockedUntil().toString(),
+                "remainingTime", user.getRemainingLockoutTime()
+            ));
+        }
+        
+        // SECURITY: Validate password using BCrypt constant-time comparison
+        if (!passwordEncoder.matches(dto.getPassword(), user.getPassword())) {
+            // VAL-038: Increment failed attempts and apply progressive lockout
+            String clientIp = getClientIp(request);
+            user.incrementFailedLoginAttempts(clientIp);
+            userRepository.save(user);
+            
+            log.warn("SECURITY: Invalid password attempt. email={}, attempts={}, locked={}, ip={}",
+                    dto.getEmail(), user.getFailedLoginAttempts(), user.isAccountLocked(), clientIp);
+            
+            // Provide lockout warning or locked message
+            if (user.isAccountLocked()) {
+                return ResponseEntity.status(403).body(Map.of(
+                    "error", "ACCOUNT_LOCKED",
+                    "message", "Previše neuspelih pokušaja. Nalog je zaključan na " + user.getRemainingLockoutTime() + ".",
+                    "lockedUntil", user.getLockedUntil().toString(),
+                    "remainingTime", user.getRemainingLockoutTime()
+                ));
+            }
+            
+            // Warning message with remaining attempts
+            int remaining = user.getRemainingAttemptsBeforeLockout();
+            String warningMsg = remaining > 0 
+                ? String.format(" Preostalo pokušaja: %d.", remaining)
+                : "";
+            
+            return ResponseEntity.status(401).body(Map.of(
+                "error", "INVALID_CREDENTIALS",
+                "message", "Pogrešna email adresa ili lozinka." + warningMsg,
+                "remainingAttempts", remaining
+            ));
+        }
+        
         // SECURITY FIX: Revoke all existing tokens before issuing new ones
         // This prevents old token chains from causing false theft detection
         // when browser sends stale cookies from previous sessions
         refreshTokenService.revokeAll(user.getEmail(), "NEW_LOGIN_SESSION");
+        
+        // VAL-038: Reset failed login attempts on successful authentication
+        if (user.getFailedLoginAttempts() > 0) {
+            user.resetFailedLoginAttempts();
+            userRepository.save(user);
+            log.info("SECURITY: Reset failed login attempts for user: email={}", dto.getEmail());
+        }
         
         String accessToken = jwtUtil.generateToken(user.getEmail(), user.getRole().name(), user.getId());
 
@@ -365,5 +411,26 @@ public class AuthController {
             token = csrfTokenRepository.generateToken(request);
         }
         csrfTokenRepository.saveToken(token, request, response);
+    }
+    
+    /**
+     * Extract client IP address from request, handling reverse proxy headers.
+     * Checks X-Forwarded-For first (from load balancers/proxies), then falls back to remote address.
+     * 
+     * @param request HTTP request
+     * @return Client IP address (IPv4 or IPv6)
+     */
+    private String getClientIp(HttpServletRequest request) {
+        String xForwardedFor = request.getHeader("X-Forwarded-For");
+        if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
+            // X-Forwarded-For can contain multiple IPs: "client, proxy1, proxy2"
+            // First IP is the original client
+            return xForwardedFor.split(",")[0].trim();
+        }
+        String xRealIp = request.getHeader("X-Real-IP");
+        if (xRealIp != null && !xRealIp.isEmpty()) {
+            return xRealIp.trim();
+        }
+        return request.getRemoteAddr();
     }
 }

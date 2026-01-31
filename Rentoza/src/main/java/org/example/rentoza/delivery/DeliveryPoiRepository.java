@@ -32,12 +32,10 @@ public interface DeliveryPoiRepository extends JpaRepository<DeliveryPoi, Long> 
 
     /**
      * Find all POIs that contain a given point within their radius.
-     * Uses MySQL ST_Distance_Sphere for accurate distance calculation.
+     * Uses PostGIS ST_DistanceSphere for accurate distance calculation.
      * 
      * Returns POIs ordered by priority (descending) so the highest-priority
      * POI can be selected for fee calculation.
-     * 
-     * CRITICAL: MySQL POINT uses (longitude, latitude) order!
      * 
      * @param latitude  Point latitude
      * @param longitude Point longitude

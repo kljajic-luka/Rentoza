@@ -1,7 +1,7 @@
 package org.example.rentoza.car;
 
 import org.example.rentoza.admin.dto.DocumentReviewDto;
-import org.example.rentoza.car.storage.DocumentStorageStrategy;
+import org.example.rentoza.config.timezone.SerbiaTimeZone;
 import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.exception.ValidationException;
 import org.example.rentoza.storage.SupabaseStorageService;
@@ -9,7 +9,6 @@ import org.example.rentoza.user.User;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -21,11 +20,12 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.HexFormat;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 
 /**
  * Service for car document management (Serbian compliance).
+ * 
+ * <p>All documents are stored in Supabase Storage.
  * 
  * <p>Handles:
  * <ul>
@@ -52,22 +52,16 @@ public class CarDocumentService {
     
     private final CarDocumentRepository documentRepository;
     private final CarRepository carRepository;
-    private final DocumentStorageStrategy storageStrategy;
-    private final Optional<SupabaseStorageService> supabaseStorageService;
-    
-    @Value("${storage.mode:local}")
-    private String storageMode;
+    private final SupabaseStorageService supabaseStorageService;
     
     @Autowired
     public CarDocumentService(
             CarDocumentRepository documentRepository,
             CarRepository carRepository,
-            DocumentStorageStrategy storageStrategy,
-            @Autowired(required = false) SupabaseStorageService supabaseStorageService) {
+            SupabaseStorageService supabaseStorageService) {
         this.documentRepository = documentRepository;
         this.carRepository = carRepository;
-        this.storageStrategy = storageStrategy;
-        this.supabaseStorageService = Optional.ofNullable(supabaseStorageService);
+        this.supabaseStorageService = supabaseStorageService;
     }
     
     // ==================== DOCUMENT UPLOAD ====================
@@ -122,20 +116,11 @@ public class CarDocumentService {
                 documentRepository.delete(existing);
             });
         
-        // Upload to storage - use Supabase service if available and in supabase mode
+        // Upload to Supabase Storage
         String documentUrl;
-        if (isSupabaseMode() && supabaseStorageService.isPresent()) {
-            // Supabase path: cars/{carId}/documents/{docType}/{filename}
-            documentUrl = supabaseStorageService.get().uploadCarDocument(carId, type.name(), file);
-            log.debug("Uploaded to Supabase: {}", documentUrl);
-        } else {
-            // Local storage path: cars/{carId}/documents/{type}_{timestamp}.{ext}
-            String storagePath = String.format("cars/%d/documents/%s_%d.%s",
-                carId, type.name().toLowerCase(), System.currentTimeMillis(),
-                getFileExtension(file.getOriginalFilename()));
-            documentUrl = storageStrategy.uploadFile(file, storagePath);
-            log.debug("Uploaded to local storage: {}", documentUrl);
-        }
+        // Supabase path: cars/{carId}/documents/{docType}/{filename}
+        documentUrl = supabaseStorageService.uploadCarDocument(carId, type.name(), file);
+        log.debug("Uploaded to Supabase: {}", documentUrl);
         
         // Calculate file hash for integrity
         String hash = calculateSha256(file.getBytes());
@@ -149,7 +134,7 @@ public class CarDocumentService {
             .documentHash(hash)
             .fileSize(file.getSize())
             .mimeType(file.getContentType())
-            .uploadDate(LocalDateTime.now())
+            .uploadDate(SerbiaTimeZone.now())
             .expiryDate(effectiveExpiry)
             .status(DocumentVerificationStatus.PENDING)
             .build();
@@ -183,14 +168,14 @@ public class CarDocumentService {
         
         document.setStatus(DocumentVerificationStatus.VERIFIED);
         document.setVerifiedBy(admin);
-        document.setVerifiedAt(LocalDateTime.now());
+        document.setVerifiedAt(SerbiaTimeZone.now());
         document.setRejectionReason(null);
         
         documentRepository.save(document);
         
         // Update car document verification timestamp
         Car car = document.getCar();
-        car.setDocumentsVerifiedAt(LocalDateTime.now());
+        car.setDocumentsVerifiedAt(SerbiaTimeZone.now());
         car.setDocumentsVerifiedBy(admin);
         carRepository.save(car);
         
@@ -215,7 +200,7 @@ public class CarDocumentService {
         
         document.setStatus(DocumentVerificationStatus.REJECTED);
         document.setVerifiedBy(admin);
-        document.setVerifiedAt(LocalDateTime.now());
+        document.setVerifiedAt(SerbiaTimeZone.now());
         document.setRejectionReason(reason);
         
         documentRepository.save(document);
@@ -262,10 +247,9 @@ public class CarDocumentService {
     }
 
     /**
-     * Read the stored document bytes.
+     * Read the stored document bytes from Supabase Storage.
      *
-     * <p>Supports both Supabase Storage and local storage depending on storage mode.
-     * Automatically detects which storage to use based on storage.mode configuration.
+     * <p>All documents are stored in Supabase Storage.
      * Never leaks filesystem paths in errors.
      */
     @Transactional(readOnly = true)
@@ -274,15 +258,8 @@ public class CarDocumentService {
             throw new ResourceNotFoundException("Document not found");
         }
         try {
-            // If in Supabase mode and service is available, use Supabase
-            if (isSupabaseMode() && supabaseStorageService.isPresent()) {
-                log.debug("Loading document from Supabase: {}", document.getDocumentUrl());
-                return supabaseStorageService.get().downloadCarDocument(document.getDocumentUrl());
-            }
-            
-            // Otherwise use local storage strategy
-            log.debug("Loading document from local storage: {}", document.getDocumentUrl());
-            return storageStrategy.getFile(document.getDocumentUrl());
+            log.debug("Loading document from Supabase: {}", document.getDocumentUrl());
+            return supabaseStorageService.downloadCarDocument(document.getDocumentUrl());
         } catch (IOException | RuntimeException e) {
             log.error("Failed to load document content: {}", e.getMessage());
             throw new ResourceNotFoundException("Document file not found");
@@ -347,15 +324,6 @@ public class CarDocumentService {
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException("SHA-256 not available", e);
         }
-    }
-    
-    /**
-     * Check if storage mode is set to supabase.
-     */
-    private boolean isSupabaseMode() {
-        return "supabase".equalsIgnoreCase(storageMode) 
-                || "prod".equalsIgnoreCase(storageMode)
-                || "production".equalsIgnoreCase(storageMode);
     }
     
     private void updateCarExpiryDates(Car car, DocumentType type, LocalDate expiryDate) {

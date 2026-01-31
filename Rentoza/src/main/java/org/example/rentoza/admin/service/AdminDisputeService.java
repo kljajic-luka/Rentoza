@@ -76,12 +76,9 @@ public class AdminDisputeService {
 
             // Date range filter
             if (filters.getStartDate() != null) {
-                // Convert LocalDateTime to Instant if needed. Entity uses Instant.
-                // Assuming DTO passes LocalDateTime -> Convert to Instant at Filter level if possible or here
-                // For simplicity, assuming Filter passes LocalDateTime and we convert zone
-                // Actually Plan used LocalDateTime in Filter, Entity has Instant.
+                // Convert LocalDateTime to Instant using Serbian timezone
                 predicates.add(cb.greaterThanOrEqualTo(root.get("createdAt"), 
-                    filters.getStartDate().atZone(java.time.ZoneId.systemDefault()).toInstant()));
+                    org.example.rentoza.config.timezone.SerbiaTimeZone.toInstant(filters.getStartDate())));
             }
 
             return cb.and(predicates.toArray(new Predicate[0]));

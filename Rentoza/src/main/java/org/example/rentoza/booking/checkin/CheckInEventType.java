@@ -636,5 +636,29 @@ public enum CheckInEventType {
      * 
      * @since Phase 4I - Begun Notifications
      */
-    CHECKOUT_GUEST_BEGUN
+    CHECKOUT_GUEST_BEGUN,
+    
+    // ========== VAL-004 PHASE 6: CHECK-IN DISPUTE TIMEOUT ==========
+    
+    /**
+     * Check-in dispute escalated to senior admin due to 24h timeout.
+     * Trip is still viable (>24h until start), so only escalation needed.
+     * 
+     * <p>Metadata: {@code {"disputeId": 123, "hoursUntilTrip": 36,
+     *                       "reason": "No admin response within 24h"}}
+     * 
+     * @since VAL-004 Phase 6 - Timeout Handling
+     */
+    DISPUTE_ESCALATED,
+    
+    /**
+     * Check-in dispute auto-cancelled due to timeout with imminent trip start.
+     * Trip start time passed or is within 24h, booking cancelled with full refund.
+     * 
+     * <p>Metadata: {@code {"disputeId": 123, "reason": "Admin did not respond within 24h, trip start imminent",
+     *                       "refundProcessed": true}}
+     * 
+     * @since VAL-004 Phase 6 - Timeout Handling
+     */
+    DISPUTE_TIMEOUT_AUTO_CANCEL
 }

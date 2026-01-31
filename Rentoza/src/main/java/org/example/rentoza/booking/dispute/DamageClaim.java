@@ -174,6 +174,27 @@ public class DamageClaim {
     @Column(name = "cancellation_reason", length = 100)
     private String cancellationReason;
     
+    // ========== ESCALATION TRACKING (VAL-004 Phase 6) ==========
+    
+    /**
+     * Whether dispute was escalated to senior admin due to timeout.
+     */
+    @Column(name = "escalated")
+    @Builder.Default
+    private Boolean escalated = false;
+    
+    /**
+     * Timestamp when dispute was escalated to senior admin.
+     */
+    @Column(name = "escalated_at")
+    private Instant escalatedAt;
+    
+    /**
+     * Resolution notes from admin/system.
+     */
+    @Column(name = "resolution_notes", columnDefinition = "TEXT")
+    private String resolutionNotes;
+    
     /**
      * When the dispute was resolved (admin action).
      */

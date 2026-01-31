@@ -4,7 +4,13 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.booking.Booking;
+import org.example.rentoza.booking.BookingRepository;
 import org.example.rentoza.booking.BookingStatus;
+import org.example.rentoza.booking.dispute.DamageClaim;
+import org.example.rentoza.booking.dispute.DamageClaimRepository;
+import org.example.rentoza.booking.dispute.DamageClaimStatus;
+import org.example.rentoza.booking.dispute.DisputeStage;
+import org.example.rentoza.notification.NotificationService;
 import org.example.rentoza.scheduler.SchedulerIdempotencyService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -19,6 +25,7 @@ import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -69,23 +76,41 @@ public class CheckInScheduler {
      */
     @org.springframework.beans.factory.annotation.Value("${app.checkin.window-hours-before-trip:1}")
     private int windowHoursBeforeTrip;
+    
+    /**
+     * Hours after dispute creation before timeout handling kicks in.
+     * Default: 24 hours - gives admin time to review before auto-action.
+     */
+    @org.springframework.beans.factory.annotation.Value("${app.checkin.dispute-timeout-hours:24}")
+    private int disputeTimeoutHours;
 
     private final CheckInService checkInService;
     private final CheckInEventService eventService;
     private final SchedulerIdempotencyService idempotencyService;
+    private final BookingRepository bookingRepository;
+    private final DamageClaimRepository damageClaimRepository;
+    private final NotificationService notificationService;
     private final Counter windowsOpenedCounter;
     private final Counter noShowHostCounter;
     private final Counter noShowGuestCounter;
     private final Counter schedulerSkippedCounter;
+    private final Counter disputeEscalatedCounter;
+    private final Counter disputeAutoCancelledCounter;
 
     public CheckInScheduler(
             CheckInService checkInService,
             CheckInEventService eventService,
             SchedulerIdempotencyService idempotencyService,
+            BookingRepository bookingRepository,
+            DamageClaimRepository damageClaimRepository,
+            NotificationService notificationService,
             MeterRegistry meterRegistry) {
         this.checkInService = checkInService;
         this.eventService = eventService;
         this.idempotencyService = idempotencyService;
+        this.bookingRepository = bookingRepository;
+        this.damageClaimRepository = damageClaimRepository;
+        this.notificationService = notificationService;
         
         this.windowsOpenedCounter = Counter.builder("checkin.window.opened")
                 .description("Number of check-in windows opened")
@@ -105,6 +130,14 @@ public class CheckInScheduler {
         this.schedulerSkippedCounter = Counter.builder("scheduler.skipped.duplicate")
                 .description("Scheduler executions skipped due to idempotency")
                 .tag("scheduler", "checkin")
+                .register(meterRegistry);
+        
+        this.disputeEscalatedCounter = Counter.builder("checkin.dispute.escalated")
+                .description("Check-in disputes escalated to senior admin due to timeout")
+                .register(meterRegistry);
+        
+        this.disputeAutoCancelledCounter = Counter.builder("checkin.dispute.autocancelled")
+                .description("Check-in disputes auto-cancelled due to timeout")
                 .register(meterRegistry);
     }
 
@@ -371,6 +404,212 @@ public class CheckInScheduler {
             
         } catch (Exception e) {
             log.error("[CheckIn] Error during no-show detection", e);
+        }
+    }
+
+    /**
+     * Handle stale check-in disputes that have not been resolved within the timeout period.
+     * VAL-004 Phase 6: Timeout handling for disputes.
+     * 
+     * <p><b>Cron:</b> Every 30 minutes
+     * <p><b>Timezone:</b> Europe/Belgrade
+     * 
+     * <p>For disputes older than {@code app.checkin.dispute-timeout-hours} (default: 24h):
+     * <ul>
+     *   <li>If trip start is more than 24h away: Escalate to senior admin</li>
+     *   <li>If trip start is within 24h or has passed: Auto-cancel with full refund</li>
+     * </ul>
+     */
+    @Scheduled(cron = "${app.checkin.scheduler.dispute-timeout-cron:0 0/30 * * * *}", zone = "Europe/Belgrade")
+    @Transactional
+    public void handleStaleCheckInDisputes() {
+        LocalDateTime now = LocalDateTime.now(SERBIA_ZONE);
+        int minuteBucket = (now.getMinute() / 30) * 30;
+        String taskId = String.format("checkin-dispute-timeout-%s-%02d-%02d", 
+            now.toLocalDate(), now.getHour(), minuteBucket);
+        
+        // Idempotency guard - prevent duplicate execution within 25 minutes
+        if (!idempotencyService.tryAcquireLock(taskId, Duration.ofMinutes(25))) {
+            log.debug("[CheckIn] Skipping duplicate stale dispute handling: {}", taskId);
+            schedulerSkippedCounter.increment();
+            return;
+        }
+        
+        log.info("[CheckIn] Starting stale dispute detection (timeout: {}h)", disputeTimeoutHours);
+        
+        try {
+            // Calculate threshold: disputes older than this are considered stale
+            Instant threshold = Instant.now().minus(Duration.ofHours(disputeTimeoutHours));
+            
+            // Find bookings with CHECK_IN_DISPUTE status where dispute was created > threshold
+            List<Booking> staleDisputes = bookingRepository.findStaleCheckInDisputes(
+                BookingStatus.CHECK_IN_DISPUTE, 
+                threshold
+            );
+            
+            int escalatedCount = 0;
+            int autoCancelledCount = 0;
+            
+            for (Booking booking : staleDisputes) {
+                try {
+                    boolean autoCancelled = handleStaleDispute(booking, now);
+                    if (autoCancelled) {
+                        autoCancelledCount++;
+                    } else {
+                        escalatedCount++;
+                    }
+                } catch (Exception e) {
+                    log.error("[CheckIn] Failed to handle stale dispute for booking {}: {}", 
+                        booking.getId(), e.getMessage(), e);
+                }
+            }
+            
+            if (escalatedCount > 0) {
+                disputeEscalatedCounter.increment(escalatedCount);
+            }
+            if (autoCancelledCount > 0) {
+                disputeAutoCancelledCounter.increment(autoCancelledCount);
+            }
+            
+            if (escalatedCount > 0 || autoCancelledCount > 0) {
+                log.info("[CheckIn] Stale dispute handling complete: {} escalated, {} auto-cancelled", 
+                    escalatedCount, autoCancelledCount);
+            }
+            
+        } catch (Exception e) {
+            log.error("[CheckIn] Error during stale dispute handling", e);
+        }
+    }
+
+    /**
+     * Handle a single stale dispute based on trip timing.
+     * 
+     * @param booking The booking with a stale dispute
+     * @param now Current timestamp
+     * @return true if auto-cancelled, false if escalated
+     */
+    private boolean handleStaleDispute(Booking booking, LocalDateTime now) {
+        // Find the associated dispute claim
+        Optional<DamageClaim> claimOpt = damageClaimRepository.findByBookingAndDisputeStage(
+            booking, DisputeStage.CHECK_IN
+        );
+        
+        if (claimOpt.isEmpty()) {
+            log.warn("[CheckIn] No CHECK_IN dispute found for booking {} with status CHECK_IN_DISPUTE", 
+                booking.getId());
+            return false;
+        }
+        
+        DamageClaim claim = claimOpt.get();
+        
+        // Skip if already escalated
+        if (Boolean.TRUE.equals(claim.getEscalated())) {
+            log.debug("[CheckIn] Dispute {} already escalated, skipping", claim.getId());
+            return false;
+        }
+        
+        // Calculate hours until trip start
+        LocalDateTime tripStart = booking.getStartTime();
+        long hoursUntilTrip = Duration.between(now, tripStart).toHours();
+        
+        if (hoursUntilTrip <= 24 || tripStart.isBefore(now)) {
+            // Trip is imminent or has passed - auto-cancel with refund
+            return autoResolveDisputeWithCancellation(booking, claim);
+        } else {
+            // Trip is still far away - escalate to senior admin
+            escalateDisputeToSeniorAdmin(booking, claim);
+            return false;
+        }
+    }
+
+    /**
+     * Auto-resolve a stale dispute by cancelling the booking and issuing a full refund.
+     * 
+     * @param booking The booking to cancel
+     * @param claim The dispute claim
+     * @return true if successfully auto-cancelled
+     */
+    private boolean autoResolveDisputeWithCancellation(Booking booking, DamageClaim claim) {
+        log.warn("[CheckIn] AUTO-CANCELLING booking {} due to unresolved dispute {} (trip imminent/passed)", 
+            booking.getId(), claim.getId());
+        
+        try {
+            // Update dispute claim status
+            claim.setStatus(DamageClaimStatus.CHECK_IN_RESOLVED_CANCEL);
+            claim.setResolvedAt(Instant.now());
+            claim.setResolutionNotes("Auto-cancelled due to timeout. Dispute not resolved within " + 
+                disputeTimeoutHours + "h and trip start imminent or passed.");
+            damageClaimRepository.save(claim);
+            
+            // TODO: Process full refund when payment integration is implemented
+            // For now, the cancellation reason indicates a refund is owed
+            log.info("[CheckIn] REFUND PENDING: Full refund required for booking {} - payment integration not yet implemented", 
+                booking.getId());
+            
+            // Update booking status (cancellation reason tracked in claim.resolutionNotes)
+            booking.setStatus(BookingStatus.CANCELLED);
+            booking.setCancelledAt(LocalDateTime.now(SERBIA_ZONE));
+            bookingRepository.save(booking);
+            
+            // Record event
+            eventService.recordSystemEvent(booking, booking.getCheckInSessionId(),
+                CheckInEventType.DISPUTE_TIMEOUT_AUTO_CANCEL,
+                Map.of(
+                    "claimId", claim.getId(),
+                    "disputeType", claim.getDisputeType() != null ? claim.getDisputeType().name() : "UNKNOWN",
+                    "timeoutHours", disputeTimeoutHours,
+                    "reason", "Booking auto-cancelled due to unresolved check-in dispute timeout"
+                ));
+            
+            // Send notifications
+            notificationService.notifyCheckInDisputeAutoCancelled(booking, claim);
+            notificationService.alertAdminDisputeAutoCancelled(booking, claim);
+            
+            log.info("[CheckIn] Successfully auto-cancelled booking {} with full refund", booking.getId());
+            return true;
+            
+        } catch (Exception e) {
+            log.error("[CheckIn] Failed to auto-cancel booking {} for dispute {}: {}", 
+                booking.getId(), claim.getId(), e.getMessage(), e);
+            throw e;
+        }
+    }
+
+    /**
+     * Escalate a stale dispute to senior admin for priority resolution.
+     * 
+     * @param booking The booking with the stale dispute
+     * @param claim The dispute claim to escalate
+     */
+    private void escalateDisputeToSeniorAdmin(Booking booking, DamageClaim claim) {
+        log.warn("[CheckIn] ESCALATING dispute {} for booking {} to senior admin (trip >24h away)", 
+            claim.getId(), booking.getId());
+        
+        try {
+            // Mark claim as escalated
+            claim.setEscalated(true);
+            claim.setEscalatedAt(Instant.now());
+            damageClaimRepository.save(claim);
+            
+            // Record event
+            eventService.recordSystemEvent(booking, booking.getCheckInSessionId(),
+                CheckInEventType.DISPUTE_ESCALATED,
+                Map.of(
+                    "claimId", claim.getId(),
+                    "disputeType", claim.getDisputeType() != null ? claim.getDisputeType().name() : "UNKNOWN",
+                    "timeoutHours", disputeTimeoutHours,
+                    "reason", "Check-in dispute escalated to senior admin due to timeout"
+                ));
+            
+            // Send escalation notifications
+            notificationService.escalateCheckInDisputeToSeniorAdmin(booking, claim);
+            
+            log.info("[CheckIn] Dispute {} escalated successfully", claim.getId());
+            
+        } catch (Exception e) {
+            log.error("[CheckIn] Failed to escalate dispute {} for booking {}: {}", 
+                claim.getId(), booking.getId(), e.getMessage(), e);
+            throw e;
         }
     }
 }

@@ -85,6 +85,23 @@ public interface DamageClaimRepository extends JpaRepository<DamageClaim, Long>,
      */
     @Query("SELECT COUNT(c) FROM DamageClaim c WHERE c.status IN ('PENDING', 'DISPUTED')")
     Long countOpenDisputes();
+    
+    // ========== VAL-004 PHASE 6: CHECK-IN DISPUTE QUERIES ==========
+    
+    /**
+     * Find check-in dispute for a booking by dispute stage.
+     * Used by timeout handler to find pending check-in disputes.
+     * 
+     * @param booking The booking
+     * @param disputeStage The dispute stage (CHECK_IN or CHECKOUT)
+     * @return Optional dispute claim
+     */
+    @Query("SELECT c FROM DamageClaim c WHERE c.booking = :booking AND c.disputeStage = :disputeStage " +
+           "AND c.status = 'CHECK_IN_DISPUTE_PENDING' ORDER BY c.createdAt DESC")
+    Optional<DamageClaim> findByBookingAndDisputeStage(
+        @Param("booking") org.example.rentoza.booking.Booking booking, 
+        @Param("disputeStage") DisputeStage disputeStage
+    );
 }
 
 

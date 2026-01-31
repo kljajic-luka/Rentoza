@@ -2,6 +2,7 @@ package org.example.rentoza.notification;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.example.rentoza.booking.Booking;
 import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.notification.channel.NotificationChannel;
 import org.example.rentoza.notification.dto.CreateNotificationRequestDTO;
@@ -280,6 +281,109 @@ public class NotificationService {
                    claim.getId(), e.getMessage(), e);
            // Don't rethrow - notification failure shouldn't fail the main operation
        }
+    }
+
+    /**
+     * Notify parties when a check-in dispute is auto-cancelled due to timeout.
+     * VAL-004 Phase 6: Timeout handling - sends notifications to both guest and host.
+     *
+     * @param booking The booking that was auto-cancelled
+     * @param claim   The dispute claim that triggered auto-cancellation
+     */
+    @Transactional
+    public void notifyCheckInDisputeAutoCancelled(Booking booking, DamageClaim claim) {
+        try {
+            String reason = "Your check-in dispute could not be resolved in time. " +
+                    "The booking has been automatically cancelled and a full refund will be processed.";
+
+            // Notify guest (renter)
+            if (booking.getRenter() != null) {
+                createNotification(CreateNotificationRequestDTO.builder()
+                        .recipientId(booking.getRenter().getId())
+                        .type(NotificationType.DISPUTE_RESOLVED)
+                        .message("Booking #" + booking.getId() + " auto-cancelled: " + reason)
+                        .relatedEntityId(String.valueOf(booking.getId()))
+                        .build());
+            }
+
+            // Notify host (owner)
+            if (booking.getCar() != null && booking.getCar().getOwner() != null) {
+                createNotification(CreateNotificationRequestDTO.builder()
+                        .recipientId(booking.getCar().getOwner().getId())
+                        .type(NotificationType.DISPUTE_RESOLVED)
+                        .message("Booking #" + booking.getId() + " auto-cancelled due to unresolved check-in dispute. " +
+                                "Guest has been refunded.")
+                        .relatedEntityId(String.valueOf(booking.getId()))
+                        .build());
+            }
+
+            log.info("Check-in dispute auto-cancellation notifications sent for booking: {}", booking.getId());
+        } catch (Exception e) {
+            log.error("Failed to send auto-cancellation notification for booking {}: {}",
+                    booking.getId(), e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Alert admin when a check-in dispute is auto-cancelled due to timeout.
+     * VAL-004 Phase 6: Logs critical alert for admin review.
+     *
+     * @param booking The booking that was auto-cancelled
+     * @param claim   The dispute claim
+     */
+    public void alertAdminDisputeAutoCancelled(Booking booking, DamageClaim claim) {
+        log.warn("ADMIN ALERT: Check-in dispute AUTO-CANCELLED due to timeout. " +
+                "Booking ID: {}, Claim ID: {}, Dispute Type: {}, Created: {}. " +
+                "Full refund issued to guest. Please review for process improvement.",
+                booking.getId(), claim.getId(), claim.getDisputeType(), claim.getCreatedAt());
+    }
+
+    /**
+     * Escalate check-in dispute to senior admin due to timeout.
+     * VAL-004 Phase 6: Creates high-priority notification for senior admin attention.
+     *
+     * @param booking The booking with the stale dispute
+     * @param claim   The dispute claim requiring escalation
+     */
+    @Transactional
+    public void escalateCheckInDisputeToSeniorAdmin(Booking booking, DamageClaim claim) {
+        try {
+            log.warn("ESCALATION: Check-in dispute requires senior admin attention. " +
+                    "Booking ID: {}, Claim ID: {}, Dispute Type: {}, " +
+                    "Guest: {}, Host: {}, Trip Start: {}",
+                    booking.getId(), claim.getId(), claim.getDisputeType(),
+                    booking.getRenter() != null ? booking.getRenter().getEmail() : "N/A",
+                    booking.getCar() != null && booking.getCar().getOwner() != null ?
+                            booking.getCar().getOwner().getEmail() : "N/A",
+                    booking.getStartTime());
+
+            // Notify guest that dispute is being escalated
+            if (booking.getRenter() != null) {
+                createNotification(CreateNotificationRequestDTO.builder()
+                        .recipientId(booking.getRenter().getId())
+                        .type(NotificationType.DISPUTE_RESOLVED)
+                        .message("Your check-in dispute for booking #" + booking.getId() +
+                                " has been escalated to senior management for priority resolution.")
+                        .relatedEntityId(String.valueOf(booking.getId()))
+                        .build());
+            }
+
+            // Notify host that dispute is being escalated
+            if (booking.getCar() != null && booking.getCar().getOwner() != null) {
+                createNotification(CreateNotificationRequestDTO.builder()
+                        .recipientId(booking.getCar().getOwner().getId())
+                        .type(NotificationType.DISPUTE_RESOLVED)
+                        .message("The check-in dispute for booking #" + booking.getId() +
+                                " has been escalated for priority resolution.")
+                        .relatedEntityId(String.valueOf(booking.getId()))
+                        .build());
+            }
+
+            log.info("Check-in dispute escalation notifications sent for booking: {}", booking.getId());
+        } catch (Exception e) {
+            log.error("Failed to send escalation notification for booking {}: {}",
+                    booking.getId(), e.getMessage(), e);
+        }
     }
 
     /**

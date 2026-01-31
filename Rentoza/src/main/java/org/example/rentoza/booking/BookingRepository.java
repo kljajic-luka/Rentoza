@@ -750,6 +750,28 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
         @Param("start") java.time.LocalDateTime start,
         @Param("end") java.time.LocalDateTime end
     );
+    
+    // ========== VAL-004 PHASE 6: CHECK-IN DISPUTE TIMEOUT QUERIES ==========
+    
+    /**
+     * Find bookings in CHECK_IN_DISPUTE status that haven't been updated in the threshold period.
+     * Used by scheduler to detect stale disputes needing escalation or auto-cancellation.
+     * 
+     * @param status BookingStatus.CHECK_IN_DISPUTE
+     * @param threshold Instant representing 24 hours ago
+     * @return List of bookings with stale disputes, ordered by trip start (most urgent first)
+     */
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.car c " +
+           "JOIN FETCH c.owner " +
+           "JOIN FETCH b.renter r " +
+           "WHERE b.status = :status " +
+           "AND b.updatedAt < :threshold " +
+           "ORDER BY b.startTime ASC")
+    List<Booking> findStaleCheckInDisputes(
+        @Param("status") BookingStatus status,
+        @Param("threshold") java.time.Instant threshold
+    );
 }
 
 

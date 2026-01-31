@@ -72,13 +72,39 @@ public enum DamageClaimStatus {
     /**
       * Claim has been archived (historical record).
       */
-    ARCHIVED;
+    ARCHIVED,
+    
+    // ========== CHECK-IN DISPUTE STATUSES (VAL-004) ==========
+    
+    /**
+     * Guest has disputed pre-existing damage at check-in.
+     * Awaiting admin review. Booking is in CHECK_IN_DISPUTE status.
+     */
+    CHECK_IN_DISPUTE_PENDING,
+    
+    /**
+     * Admin resolved: Damage noted, trip proceeds.
+     * Guest liability waived for documented damage.
+     */
+    CHECK_IN_RESOLVED_PROCEED,
+    
+    /**
+     * Admin resolved: Booking cancelled.
+     * Full refund issued to guest due to undisclosed damage.
+     */
+    CHECK_IN_RESOLVED_CANCEL,
+    
+    /**
+     * Guest withdrew their check-in dispute.
+     * Either accepted condition or self-cancelled booking.
+     */
+    CHECK_IN_GUEST_WITHDREW;
     
     /**
       * Check if the claim is still open (awaiting action).
       */
     public boolean isOpen() {
-        return this == PENDING || this == DISPUTED;
+        return this == PENDING || this == DISPUTED || this == CHECK_IN_DISPUTE_PENDING;
     }
     
     /**
@@ -99,7 +125,17 @@ public enum DamageClaimStatus {
      * Check if the claim is resolved (no further action needed).
      */
     public boolean isResolved() {
-        return this == PAID || this == ADMIN_REJECTED || this == CANCELLED;
+        return this == PAID || this == ADMIN_REJECTED || this == CANCELLED ||
+               this == CHECK_IN_RESOLVED_PROCEED || this == CHECK_IN_RESOLVED_CANCEL ||
+               this == CHECK_IN_GUEST_WITHDREW;
+    }
+    
+    /**
+     * Check if this is a check-in stage dispute.
+     */
+    public boolean isCheckInDispute() {
+        return this == CHECK_IN_DISPUTE_PENDING || this == CHECK_IN_RESOLVED_PROCEED ||
+               this == CHECK_IN_RESOLVED_CANCEL || this == CHECK_IN_GUEST_WITHDREW;
     }
 }
 

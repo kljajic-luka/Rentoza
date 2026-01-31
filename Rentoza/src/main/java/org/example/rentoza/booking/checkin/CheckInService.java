@@ -10,6 +10,11 @@ import org.example.rentoza.booking.BookingRepository;
 import org.example.rentoza.booking.BookingStatus;
 import org.example.rentoza.booking.checkin.dto.*;
 import org.example.rentoza.booking.checkin.GeofenceService.GeofenceResult;
+import org.example.rentoza.booking.dispute.DamageClaim;
+import org.example.rentoza.booking.dispute.DamageClaimRepository;
+import org.example.rentoza.booking.dispute.DamageClaimStatus;
+import org.example.rentoza.booking.dispute.DisputeStage;
+import org.example.rentoza.booking.dispute.DisputeType;
 import org.example.rentoza.car.Car;
 import org.example.rentoza.common.GeoPoint;
 import org.example.rentoza.exception.ResourceNotFoundException;
@@ -18,6 +23,7 @@ import org.example.rentoza.notification.NotificationType;
 import org.example.rentoza.notification.dto.CreateNotificationRequestDTO;
 import org.example.rentoza.security.LockboxEncryptionService;
 import org.example.rentoza.user.User;
+import org.example.rentoza.user.UserRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.security.access.AccessDeniedException;
@@ -31,6 +37,7 @@ import org.example.rentoza.config.FeatureFlags;
 import org.example.rentoza.user.dto.BookingEligibilityDTO;
 import java.time.*;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -70,6 +77,10 @@ public class CheckInService {
     private final LockboxEncryptionService lockboxEncryptionService;
     private final RenterVerificationService renterVerificationService;
     private final FeatureFlags featureFlags;
+    
+    // VAL-004: Dependencies for check-in dispute flow
+    private final DamageClaimRepository damageClaimRepository;
+    private final UserRepository userRepository;
     
     private static final int REQUIRED_GUEST_PHOTO_TYPES = 8;
     
@@ -127,6 +138,8 @@ public class CheckInService {
             LockboxEncryptionService lockboxEncryptionService,
             RenterVerificationService renterVerificationService,
             FeatureFlags featureFlags,
+            DamageClaimRepository damageClaimRepository,
+            UserRepository userRepository,
             MeterRegistry meterRegistry) {
         this.bookingRepository = bookingRepository;
         this.eventService = eventService;
@@ -137,6 +150,8 @@ public class CheckInService {
         this.lockboxEncryptionService = lockboxEncryptionService;
         this.renterVerificationService = renterVerificationService;
         this.featureFlags = featureFlags;
+        this.damageClaimRepository = damageClaimRepository;
+        this.userRepository = userRepository;
         
         this.hostCompletedCounter = Counter.builder("checkin.host.completed")
                 .description("Host check-in completions")
@@ -376,7 +391,10 @@ public class CheckInService {
     // ========== GUEST WORKFLOW ==========
 
     /**
-     * Guest acknowledges vehicle condition.
+     * Guest acknowledges vehicle condition or raises a dispute.
+     * 
+     * <p><b>VAL-004 Enhancement:</b> If guest disputes pre-existing damage,
+     * creates a DamageClaim and puts booking into CHECK_IN_DISPUTE status.
      */
     @Transactional
     public CheckInStatusDTO acknowledgeCondition(GuestConditionAcknowledgmentDTO dto, Long userId) {
@@ -388,25 +406,32 @@ public class CheckInService {
             throw new AccessDeniedException("Samo gost može potvrditi stanje vozila");
         }
         
-        // Validate status
-        if (booking.getStatus() != BookingStatus.CHECK_IN_HOST_COMPLETE) {
+        // Validate status - allow CHECK_IN_HOST_COMPLETE or CHECK_IN_DISPUTE (for re-submission after dispute declined)
+        if (booking.getStatus() != BookingStatus.CHECK_IN_HOST_COMPLETE &&
+            booking.getStatus() != BookingStatus.CHECK_IN_DISPUTE) {
             throw new IllegalStateException(
                 "Domaćin još nije završio prijem. Trenutni status: " + booking.getStatus());
         }
-        
-        if (!dto.getConditionAccepted()) {
-            throw new IllegalArgumentException("Morate potvrditi stanje vozila da biste nastavili");
-        }
-        
-        // Update booking
-        booking.setGuestCheckInCompletedAt(Instant.now());
-        booking.setStatus(BookingStatus.CHECK_IN_COMPLETE);
         
         // Set guest location
         if (dto.getGuestLatitude() != null && dto.getGuestLongitude() != null) {
             booking.setGuestCheckInLatitude(BigDecimal.valueOf(dto.getGuestLatitude()));
             booking.setGuestCheckInLongitude(BigDecimal.valueOf(dto.getGuestLongitude()));
         }
+        
+        // VAL-004: Check if guest is disputing pre-existing damage
+        if (Boolean.TRUE.equals(dto.getDisputePreExistingDamage())) {
+            return handleCheckInDispute(booking, dto, userId);
+        }
+        
+        // Normal flow: condition accepted
+        if (!dto.getConditionAccepted()) {
+            throw new IllegalArgumentException("Morate potvrditi stanje vozila ili prijaviti štetu da biste nastavili");
+        }
+        
+        // Update booking
+        booking.setGuestCheckInCompletedAt(Instant.now());
+        booking.setStatus(BookingStatus.CHECK_IN_COMPLETE);
         
         // Record event
         eventService.recordEvent(
@@ -461,6 +486,117 @@ public class CheckInService {
         notifyHandshakeReady(booking);
         
         return mapToStatusDTO(booking, userId);
+    }
+    
+    /**
+     * VAL-004: Handle guest check-in dispute for undisclosed pre-existing damage.
+     * Creates a DamageClaim and notifies admin for review.
+     */
+    private CheckInStatusDTO handleCheckInDispute(Booking booking, GuestConditionAcknowledgmentDTO dto, Long userId) {
+        User guest = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Korisnik nije pronađen"));
+        
+        // Determine dispute type
+        DisputeType disputeType = DisputeType.PRE_EXISTING_DAMAGE;
+        if (dto.getDisputeType() != null) {
+            try {
+                disputeType = DisputeType.valueOf(dto.getDisputeType().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                log.warn("Invalid dispute type '{}', defaulting to PRE_EXISTING_DAMAGE", dto.getDisputeType());
+            }
+        }
+        
+        // Create damage claim for check-in dispute
+        DamageClaim dispute = DamageClaim.builder()
+                .booking(booking)
+                .host(booking.getCar().getOwner())
+                .guest(booking.getRenter())
+                .reportedBy(guest)
+                .description(dto.getDamageDisputeDescription())
+                .status(DamageClaimStatus.CHECK_IN_DISPUTE_PENDING)
+                .disputeStage(DisputeStage.CHECK_IN)
+                .disputeType(disputeType)
+                .disputedPhotoIds(dto.getDisputedPhotoIds() != null ? new ArrayList<>(dto.getDisputedPhotoIds()) : new ArrayList<>())
+                .claimedAmount(BigDecimal.ZERO) // No monetary claim yet
+                .createdAt(Instant.now())
+                .build();
+        
+        damageClaimRepository.save(dispute);
+        
+        // Update booking status
+        booking.setStatus(BookingStatus.CHECK_IN_DISPUTE);
+        bookingRepository.save(booking);
+        
+        // Record event
+        eventService.recordEvent(
+            booking,
+            booking.getCheckInSessionId(),
+            CheckInEventType.GUEST_CONDITION_ACKNOWLEDGED,
+            userId,
+            CheckInActorRole.GUEST,
+            Map.of(
+                "conditionAccepted", false,
+                "disputeRaised", true,
+                "disputeType", disputeType.name(),
+                "disputeDescription", dto.getDamageDisputeDescription(),
+                "disputedPhotoIds", dto.getDisputedPhotoIds() != null ? dto.getDisputedPhotoIds().toString() : "[]"
+            )
+        );
+        
+        log.info("[CheckIn] Guest raised check-in dispute for booking {}. Dispute ID: {}", 
+                booking.getId(), dispute.getId());
+        
+        // Notify admin
+        notifyAdminCheckInDispute(booking, dispute);
+        
+        // Notify host about dispute
+        notifyHostCheckInDispute(booking, dispute);
+        
+        return mapToStatusDTO(booking, userId);
+    }
+    
+    /**
+     * VAL-004: Notify admin about check-in dispute requiring review.
+     */
+    private void notifyAdminCheckInDispute(Booking booking, DamageClaim dispute) {
+        try {
+            // Log instead of system notification - admin will see in dispute queue
+            log.warn("[VAL-004] URGENT: Check-in dispute raised for booking {}. Dispute ID: {}. " +
+                    "Guest: {} {}. Vehicle: {} {}. Description: {}",
+                    booking.getId(),
+                    dispute.getId(),
+                    booking.getRenter().getFirstName(),
+                    booking.getRenter().getLastName(),
+                    booking.getCar().getBrand(),
+                    booking.getCar().getModel(),
+                    dispute.getDescription());
+        } catch (Exception e) {
+            log.error("Failed to log admin notification for check-in dispute for booking {}", booking.getId(), e);
+        }
+    }
+    
+    /**
+     * VAL-004: Notify host that guest raised a dispute about vehicle condition.
+     */
+    private void notifyHostCheckInDispute(Booking booking, DamageClaim dispute) {
+        try {
+            CreateNotificationRequestDTO notification = CreateNotificationRequestDTO.builder()
+                    .recipientId(booking.getCar().getOwner().getId())
+                    .type(NotificationType.HOTSPOT_MARKED) // Reusing existing type for damage-related notification
+                    .message(String.format(
+                        "⚠️ Gost %s je prijavio neprijavljenu štetu na vašem vozilu %s %s. " +
+                        "Preuzimanje je pauzirano dok admin ne pregleda prijavu.",
+                        booking.getRenter().getFirstName(),
+                        booking.getCar().getBrand(),
+                        booking.getCar().getModel()
+                    ))
+                    .relatedEntityId(String.valueOf(booking.getId()))
+                    .build();
+            
+            notificationService.createNotification(notification);
+        } catch (Exception e) {
+            log.error("Failed to notify host about check-in dispute for booking {}", booking.getId(), e);
+        }
     }
 
     // ========== HANDSHAKE ==========

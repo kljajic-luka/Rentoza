@@ -411,6 +411,11 @@ public class DamageClaimService {
             case CANCELLED -> "Otkazano";
             case REQUIRES_MANUAL_REVIEW -> "Zahteva ručni pregled";
             case ARCHIVED -> "Arhivirano";
+            // VAL-004: Check-in dispute statuses
+            case CHECK_IN_DISPUTE_PENDING -> "Prijava prilikom preuzimanja - na čekanju";
+            case CHECK_IN_RESOLVED_PROCEED -> "Preuzimanje nastavljeno sa zabeleškom";
+            case CHECK_IN_RESOLVED_CANCEL -> "Rezervacija otkazana zbog prijave";
+            case CHECK_IN_GUEST_WITHDREW -> "Gost povukao prijavu";
         };
 
         return DamageClaimDTO.builder()

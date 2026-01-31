@@ -9,12 +9,20 @@ import org.hibernate.annotations.UpdateTimestamp;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 
 /**
- * Damage claim entity for post-trip dispute resolution.
+ * Damage claim entity for dispute resolution at check-in or checkout.
  * 
- * <p>Created when a host reports damage during checkout.
- * Tracks the full lifecycle from claim to resolution.
+ * <p>Supports two dispute stages:
+ * <ul>
+ *   <li><b>CHECK_IN:</b> Guest reports pre-existing damage (VAL-004)</li>
+ *   <li><b>CHECKOUT:</b> Host reports damage after trip</li>
+ * </ul>
+ * 
+ * <p>Tracks the full lifecycle from claim to resolution.
+ * 
+ * @since VAL-004 - Extended for check-in disputes
  */
 @Entity
 @Table(name = "damage_claims", indexes = {
@@ -34,8 +42,10 @@ public class DamageClaim {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "booking_id", nullable = false, unique = true)
+    // Changed from @OneToOne to @ManyToOne to allow multiple claims per booking
+    // (e.g., check-in dispute + checkout claim on same booking)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "booking_id", nullable = false)
     private Booking booking;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -45,6 +55,41 @@ public class DamageClaim {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "guest_id", nullable = false)
     private User guest;
+    
+    // ========== DISPUTE STAGE & TYPE (VAL-004) ==========
+    
+    /**
+     * Stage in booking lifecycle when dispute was raised.
+     * CHECK_IN = pre-existing damage, CHECKOUT = damage during trip.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "dispute_stage", nullable = false)
+    @Builder.Default
+    private DisputeStage disputeStage = DisputeStage.CHECKOUT;
+    
+    /**
+     * Category of dispute (PRE_EXISTING_DAMAGE, CHECKOUT_DAMAGE, etc.).
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "dispute_type", nullable = false)
+    @Builder.Default
+    private DisputeType disputeType = DisputeType.CHECKOUT_DAMAGE;
+    
+    /**
+     * User who initiated the claim.
+     * Guest for check-in disputes, host for checkout claims.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "reported_by_user_id")
+    private User reportedBy;
+    
+    /**
+     * Photo IDs guest flagged as showing undisclosed damage.
+     * Only used for check-in disputes (DisputeStage.CHECK_IN).
+     */
+    @Column(name = "disputed_photo_ids", columnDefinition = "BIGINT[]")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.ARRAY)
+    private List<Long> disputedPhotoIds;
 
     // ========== CLAIM DETAILS ==========
 
@@ -110,6 +155,37 @@ public class DamageClaim {
 
     @Column(name = "admin_notes", columnDefinition = "TEXT")
     private String adminNotes;
+    
+    /**
+     * Documented pre-existing damage items when resolved with PROCEED_WITH_DAMAGE_NOTED.
+     * Guest liability is waived for these specific items.
+     * 
+     * @since VAL-004
+     */
+    @Column(name = "documented_damage", columnDefinition = "TEXT")
+    private String documentedDamage;
+    
+    /**
+     * Reason code when booking is cancelled due to dispute resolution.
+     * E.g., "ADMIN_CANCELLED_UNDISCLOSED_DAMAGE"
+     * 
+     * @since VAL-004
+     */
+    @Column(name = "cancellation_reason", length = 100)
+    private String cancellationReason;
+    
+    /**
+     * When the dispute was resolved (admin action).
+     */
+    @Column(name = "resolved_at")
+    private Instant resolvedAt;
+    
+    /**
+     * Admin who resolved the dispute.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "resolved_by_user_id")
+    private User resolvedBy;
 
     // ========== PAYMENT ==========
 
@@ -152,7 +228,60 @@ public class DamageClaim {
      * Check if claim requires admin review.
      */
     public boolean needsAdminReview() {
-        return status == DamageClaimStatus.DISPUTED;
+        return status == DamageClaimStatus.DISPUTED || 
+               status == DamageClaimStatus.CHECK_IN_DISPUTE_PENDING;
+    }
+    
+    // ========== CHECK-IN DISPUTE METHODS (VAL-004) ==========
+    
+    /**
+     * Check if this is a check-in stage dispute.
+     */
+    public boolean isCheckInDispute() {
+        return disputeStage == DisputeStage.CHECK_IN;
+    }
+    
+    /**
+     * Resolve check-in dispute: Proceed with damage noted.
+     * Documents pre-existing damage and waives guest liability.
+     */
+    public void resolveCheckInProceed(User admin, String notes, String documentedItems) {
+        this.status = DamageClaimStatus.CHECK_IN_RESOLVED_PROCEED;
+        this.resolvedBy = admin;
+        this.resolvedAt = Instant.now();
+        this.adminNotes = notes;
+        this.documentedDamage = documentedItems;
+    }
+    
+    /**
+     * Resolve check-in dispute: Cancel booking.
+     * Initiates full refund to guest.
+     */
+    public void resolveCheckInCancel(User admin, String notes, String reason) {
+        this.status = DamageClaimStatus.CHECK_IN_RESOLVED_CANCEL;
+        this.resolvedBy = admin;
+        this.resolvedAt = Instant.now();
+        this.adminNotes = notes;
+        this.cancellationReason = reason;
+    }
+    
+    /**
+     * Decline check-in dispute (no undisclosed damage found).
+     * Guest must accept condition or self-cancel.
+     */
+    public void declineCheckInDispute(User admin, String notes) {
+        this.status = DamageClaimStatus.ADMIN_REJECTED;
+        this.resolvedBy = admin;
+        this.resolvedAt = Instant.now();
+        this.adminNotes = notes;
+    }
+    
+    /**
+     * Guest withdrew their check-in dispute.
+     */
+    public void withdrawCheckInDispute() {
+        this.status = DamageClaimStatus.CHECK_IN_GUEST_WITHDREW;
+        this.resolvedAt = Instant.now();
     }
 
     /**

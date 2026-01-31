@@ -10,11 +10,17 @@ import org.example.rentoza.admin.entity.AdminAction;
 import org.example.rentoza.admin.entity.DisputeResolution;
 import org.example.rentoza.admin.entity.ResourceType;
 import org.example.rentoza.admin.repository.DisputeResolutionRepository;
+import org.example.rentoza.booking.Booking;
+import org.example.rentoza.booking.BookingRepository;
+import org.example.rentoza.booking.BookingStatus;
 import org.example.rentoza.booking.dispute.DamageClaim;
 import org.example.rentoza.booking.dispute.DamageClaimRepository;
 import org.example.rentoza.booking.dispute.DamageClaimStatus;
+import org.example.rentoza.booking.dispute.DisputeStage;
 import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.notification.NotificationService;
+import org.example.rentoza.notification.NotificationType;
+import org.example.rentoza.notification.dto.CreateNotificationRequestDTO;
 import org.example.rentoza.payment.BookingPaymentService;
 import org.example.rentoza.user.User;
 import org.springframework.data.domain.Page;
@@ -41,6 +47,7 @@ public class AdminDisputeService {
     private final AdminAuditService auditService;
     private final NotificationService notificationService;
     private final BookingPaymentService paymentService;
+    private final BookingRepository bookingRepository;
 
     // ==================== DISPUTE LISTING ====================
 
@@ -298,5 +305,185 @@ public class AdminDisputeService {
                 String.format("Invalid status transition: %s -> %s", currentStatus, targetStatus)
             );
         }
+    }
+    
+    // ==================== VAL-004: CHECK-IN DISPUTE RESOLUTION ====================
+    
+    /**
+     * Resolve a check-in dispute raised by a guest.
+     * 
+     * <p>Admin can choose from three resolution options:
+     * <ul>
+     *   <li>PROCEED - Document damage, waive guest liability, continue trip</li>
+     *   <li>CANCEL - Cancel booking with full refund to guest</li>
+     *   <li>DECLINE - Reject dispute (guest must accept or self-cancel)</li>
+     * </ul>
+     *
+     * @param disputeId The damage claim ID
+     * @param resolution The resolution decision and notes
+     * @param admin The admin making the decision
+     */
+    public void resolveCheckInDispute(Long disputeId, CheckInDisputeResolutionDTO resolution, User admin) {
+        DamageClaim dispute = damageClaimRepo.findById(disputeId)
+                .orElseThrow(() -> new ResourceNotFoundException("Prijava nije pronađena"));
+        
+        // Validate this is a check-in dispute
+        if (dispute.getDisputeStage() != DisputeStage.CHECK_IN) {
+            throw new IllegalArgumentException("Ova prijava nije vezana za check-in fazu");
+        }
+        
+        if (dispute.getStatus() != DamageClaimStatus.CHECK_IN_DISPUTE_PENDING) {
+            throw new IllegalArgumentException("Prijava je već rešena. Trenutni status: " + dispute.getStatus());
+        }
+        
+        Booking booking = dispute.getBooking();
+        String beforeState = auditService.toJson(dispute);
+        
+        switch (resolution.getDecision()) {
+            case PROCEED -> resolveCheckInProceed(dispute, booking, resolution, admin);
+            case CANCEL -> resolveCheckInCancel(dispute, booking, resolution, admin);
+            case DECLINE -> resolveCheckInDecline(dispute, booking, resolution, admin);
+        }
+        
+        // Save dispute
+        damageClaimRepo.save(dispute);
+        bookingRepository.save(booking);
+        
+        // Audit log
+        auditService.logAction(
+            admin,
+            AdminAction.DISPUTE_RESOLVED,
+            ResourceType.DISPUTE,
+            disputeId,
+            beforeState,
+            auditService.toJson(dispute),
+            "Check-in dispute: " + resolution.getDecision().name() + " - " + resolution.getNotes()
+        );
+        
+        log.info("[VAL-004] Check-in dispute {} resolved by admin {} with decision: {}", 
+                disputeId, admin.getId(), resolution.getDecision());
+    }
+    
+    /**
+     * PROCEED: Document damage and continue with booking.
+     * Guest is waived from liability for this pre-existing damage.
+     */
+    private void resolveCheckInProceed(DamageClaim dispute, Booking booking, 
+                                       CheckInDisputeResolutionDTO resolution, User admin) {
+        dispute.resolveCheckInProceed(admin, resolution.getNotes(), resolution.getDocumentedDamage());
+        
+        // Return booking to CHECK_IN_COMPLETE status
+        booking.setStatus(BookingStatus.CHECK_IN_COMPLETE);
+        booking.setGuestCheckInCompletedAt(Instant.now());
+        
+        // Notify both parties
+        notifyCheckInDisputeResolved(booking, dispute, "PROCEED", 
+            "Prijava je prihvaćena. Šteta je zabeležena i gost nije odgovoran za nju. Možete nastaviti sa preuzimanjem.");
+    }
+    
+    /**
+     * CANCEL: Cancel booking with full refund to guest.
+     */
+    private void resolveCheckInCancel(DamageClaim dispute, Booking booking, 
+                                      CheckInDisputeResolutionDTO resolution, User admin) {
+        dispute.resolveCheckInCancel(admin, resolution.getNotes(), resolution.getCancellationReason());
+        
+        // Cancel booking
+        booking.setStatus(BookingStatus.CANCELLED);
+        booking.setCancelledAt(java.time.LocalDateTime.now());
+        
+        // Process refund
+        try {
+            paymentService.processFullRefund(booking.getId(), "Check-in dispute: " + resolution.getCancellationReason());
+        } catch (Exception e) {
+            log.error("Failed to process refund for booking {} after check-in dispute cancellation", 
+                    booking.getId(), e);
+            // Continue - manual refund will be needed
+        }
+        
+        // Notify both parties
+        notifyCheckInDisputeResolved(booking, dispute, "CANCEL", 
+            "Rezervacija je otkazana zbog prijavljene štete. Gost dobija potpuni povraćaj sredstava.");
+    }
+    
+    /**
+     * DECLINE: Reject the dispute (no undisclosed damage found).
+     * Guest must accept condition or self-cancel.
+     */
+    private void resolveCheckInDecline(DamageClaim dispute, Booking booking, 
+                                       CheckInDisputeResolutionDTO resolution, User admin) {
+        dispute.declineCheckInDispute(admin, resolution.getNotes());
+        
+        // Return booking to HOST_COMPLETE - guest must re-submit acknowledgment
+        booking.setStatus(BookingStatus.CHECK_IN_HOST_COMPLETE);
+        
+        // Notify guest they need to re-acknowledge or cancel
+        notifyCheckInDisputeDeclined(booking, dispute, resolution.getNotes());
+    }
+    
+    /**
+     * Notify both parties about check-in dispute resolution.
+     */
+    private void notifyCheckInDisputeResolved(Booking booking, DamageClaim dispute, 
+                                               String decision, String message) {
+        try {
+            // Notify guest (renter)
+            CreateNotificationRequestDTO guestNotification = CreateNotificationRequestDTO.builder()
+                    .recipientId(booking.getRenter().getId())
+                    .type(NotificationType.DISPUTE_RESOLVED)
+                    .message("Prijava stanja vozila je rešena: " + message)
+                    .relatedEntityId(String.valueOf(booking.getId()))
+                    .build();
+            notificationService.createNotification(guestNotification);
+            
+            // Notify host (car owner)
+            CreateNotificationRequestDTO hostNotification = CreateNotificationRequestDTO.builder()
+                    .recipientId(booking.getCar().getOwner().getId())
+                    .type(NotificationType.DISPUTE_RESOLVED)
+                    .message("Prijava gosta za rezervaciju #" + booking.getId() + " je rešena: " + decision)
+                    .relatedEntityId(String.valueOf(booking.getId()))
+                    .build();
+            notificationService.createNotification(hostNotification);
+            
+        } catch (Exception e) {
+            log.error("Failed to notify users about check-in dispute resolution", e);
+        }
+    }
+    
+    /**
+     * Notify guest that their dispute was declined.
+     */
+    private void notifyCheckInDisputeDeclined(Booking booking, DamageClaim dispute, String adminNotes) {
+        try {
+            CreateNotificationRequestDTO notification = CreateNotificationRequestDTO.builder()
+                    .recipientId(booking.getRenter().getId())
+                    .type(NotificationType.DISPUTE_RESOLVED)
+                    .message("⚠️ Vaša prijava stanja vozila je odbijena. " +
+                            "Admin je pregledao prijavu i nije pronašao neprijavljenu štetu. " +
+                            "Molimo vas da prihvatite stanje vozila ili otkažete rezervaciju. " +
+                            (adminNotes != null ? "Napomena: " + adminNotes : ""))
+                    .relatedEntityId(String.valueOf(booking.getId()))
+                    .build();
+            notificationService.createNotification(notification);
+            
+        } catch (Exception e) {
+            log.error("Failed to notify guest about declined check-in dispute", e);
+        }
+    }
+    
+    /**
+     * Get all pending check-in disputes for admin review.
+     */
+    @Transactional(readOnly = true)
+    public Page<AdminDisputeListDto> listPendingCheckInDisputes(Pageable pageable) {
+        Specification<DamageClaim> spec = (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            predicates.add(cb.equal(root.get("disputeStage").as(String.class), DisputeStage.CHECK_IN.name()));
+            predicates.add(cb.equal(root.get("status").as(String.class), DamageClaimStatus.CHECK_IN_DISPUTE_PENDING.name()));
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+        
+        Page<DamageClaim> disputes = damageClaimRepo.findAll(spec, pageable);
+        return disputes.map(this::toAdminDisputeListDto);
     }
 }

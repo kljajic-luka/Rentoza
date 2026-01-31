@@ -103,4 +103,36 @@ public class AdminDisputeController {
         disputeService.escalateDispute(id, request.getReason(), principal);
         return ResponseEntity.ok().build();
     }
+    
+    // ==================== VAL-004: CHECK-IN DISPUTE ENDPOINTS ====================
+    
+    /**
+     * GET /api/admin/disputes/check-in/pending
+     * List all pending check-in disputes that need admin review.
+     */
+    @GetMapping("/check-in/pending")
+    public PagedModel<EntityModel<AdminDisputeListDto>> listPendingCheckInDisputes(
+            @PageableDefault(size = 20, sort = "createdAt", direction = DESC) Pageable pageable) {
+        
+        Page<AdminDisputeListDto> page = disputeService.listPendingCheckInDisputes(pageable);
+        return hateoasAssembler.toModel(page);
+    }
+    
+    /**
+     * POST /api/admin/disputes/check-in/{id}/resolve
+     * Resolve a check-in dispute with one of three decisions:
+     * - PROCEED: Document damage and continue booking
+     * - CANCEL: Cancel booking with full refund
+     * - DECLINE: Reject dispute (guest must accept or self-cancel)
+     */
+    @PostMapping("/check-in/{id}/resolve")
+    public ResponseEntity<Void> resolveCheckInDispute(
+            @PathVariable Long id,
+            @RequestBody @Valid CheckInDisputeResolutionDTO request,
+            @AuthenticationPrincipal User principal) {
+        
+        log.info("[VAL-004] Admin {} resolving check-in dispute {}", principal.getId(), id);
+        disputeService.resolveCheckInDispute(id, request, principal);
+        return ResponseEntity.ok().build();
+    }
 }

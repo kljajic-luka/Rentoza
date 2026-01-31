@@ -75,6 +75,21 @@ public enum BookingStatus {
      */
     CHECK_IN_COMPLETE,
     
+    /**
+     * Guest has disputed pre-existing damage during check-in.
+     * Admin must review before trip can proceed.
+     * 
+     * <p>Resolution options:
+     * <ul>
+     *   <li>CANCEL_BOOKING → CANCELLED (full refund)</li>
+     *   <li>PROCEED_WITH_DAMAGE_NOTED → CHECK_IN_COMPLETE (trip continues)</li>
+     *   <li>DECLINE_DISPUTE → CHECK_IN_HOST_COMPLETE (guest must accept or cancel)</li>
+     * </ul>
+     * 
+     * @since VAL-004 - Guest Check-In Dispute Flow
+     */
+    CHECK_IN_DISPUTE,
+    
     // ========== TRIP PHASE ==========
     
     /**

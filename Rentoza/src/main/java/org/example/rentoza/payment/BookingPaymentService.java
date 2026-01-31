@@ -329,6 +329,16 @@ public class BookingPaymentService {
         return result;
     }
     
+    /**
+     * VAL-004: Process full refund for booking (total price).
+     * Used when canceling booking due to check-in disputes.
+     */
+    @Transactional
+    public PaymentResult processFullRefund(Long bookingId, String reason) {
+        Booking booking = getBooking(bookingId);
+        return processRefund(bookingId, booking.getTotalPrice(), reason);
+    }
+    
     // ========== HOST PAYOUT (Admin-triggered) ==========
     
     /**

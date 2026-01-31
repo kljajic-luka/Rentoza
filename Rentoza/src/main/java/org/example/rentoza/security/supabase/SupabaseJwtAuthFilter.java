@@ -67,8 +67,10 @@ public class SupabaseJwtAuthFilter extends OncePerRequestFilter {
             "/car-images",
             "/check-in-photos",
             "/user-avatars",
-            "/documents",
-            "/actuator"         // Health checks
+            "/documents"
+            // Issue 1.3: Removed "/actuator" - now handled by SecurityConfig RBAC rules
+            // /actuator/health and /actuator/info are public
+            // /actuator/metrics, /actuator/env, etc. require ADMIN role
     );
 
     public SupabaseJwtAuthFilter(

@@ -3,10 +3,12 @@ package org.example.rentoza.config;
 import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.exception.UserOverlapException;
 import org.example.rentoza.exception.BookingConflictException;
+import org.example.rentoza.exception.ValidationException;
 import org.example.rentoza.security.ratelimit.RateLimitExceededException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.CannotAcquireLockException;
+import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DeadlockLoserDataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -21,6 +23,7 @@ import org.springframework.validation.FieldError;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 @ControllerAdvice
 public class GlobalExceptionHandler {
@@ -66,13 +69,94 @@ public class GlobalExceptionHandler {
                 .body(body);
     }
 
+    /**
+     * Handle all uncaught exceptions with sanitized error response.
+     * 
+     * <p><b>SECURITY (Issue 1.1):</b> Never expose internal details to clients:
+     * <ul>
+     *   <li>No SQL errors (e.g., "ORA-00942: table or view does not exist")</li>
+     *   <li>No stack traces (e.g., "NullPointerException at BookingService:423")</li>
+     *   <li>No internal paths (e.g., "/var/rentoza/config/secrets.yml")</li>
+     * </ul>
+     * 
+     * <p>Response format:
+     * <pre>
+     * {
+     *   "timestamp": "2026-01-31T12:00:00Z",
+     *   "error": "Internal Server Error",
+     *   "message": "Došlo je do greške. Molimo pokušajte ponovo.",
+     *   "correlationId": "ERR-a1b2c3d4",
+     *   "support": "Za pomoć, navedite ID greške: ERR-a1b2c3d4"
+     * }
+     * </pre>
+     * 
+     * <p>Full exception details are logged server-side with correlationId for debugging.
+     */
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<Map<String, String>> handleGeneralError(Exception ex) {
-        log.error("Unhandled exception occurred", ex); // Log full stack trace
-        Map<String, String> body = new HashMap<>();
-        body.put("error", "Server error");
-        body.put("message", ex.getMessage());
+    public ResponseEntity<Map<String, Object>> handleGeneralError(Exception ex) {
+        // Generate unique correlation ID for support tracking
+        String correlationId = "ERR-" + UUID.randomUUID().toString().substring(0, 8);
+        
+        // Log full exception with correlation ID (server-side only)
+        log.error("[{}] Unhandled exception: type={}, message={}", 
+                correlationId, ex.getClass().getSimpleName(), ex.getMessage(), ex);
+        
+        // Build sanitized response (no internal details exposed)
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", Instant.now().toString());
+        body.put("error", "Internal Server Error");
+        body.put("message", "Došlo je do greške. Molimo pokušajte ponovo.");
+        body.put("correlationId", correlationId);
+        body.put("support", "Za pomoć, navedite ID greške: " + correlationId);
+        
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(body);
+    }
+
+    /**
+     * Handle database access exceptions with sanitized response.
+     * 
+     * <p><b>SECURITY:</b> Database errors often contain sensitive information:
+     * <ul>
+     *   <li>Table/column names</li>
+     *   <li>SQL syntax details</li>
+     *   <li>Connection strings</li>
+     * </ul>
+     * 
+     * <p>Returns generic message with correlation ID for support.
+     */
+    @ExceptionHandler(DataAccessException.class)
+    public ResponseEntity<Map<String, Object>> handleDatabaseError(DataAccessException ex) {
+        String correlationId = "DB-" + UUID.randomUUID().toString().substring(0, 8);
+        
+        log.error("[{}] Database error: type={}, message={}", 
+                correlationId, ex.getClass().getSimpleName(), ex.getMessage(), ex);
+        
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", Instant.now().toString());
+        body.put("error", "Database Error");
+        body.put("message", "Došlo je do greške sa bazom podataka. Molimo pokušajte ponovo.");
+        body.put("correlationId", correlationId);
+        body.put("support", "Za pomoć, navedite ID greške: " + correlationId);
+        
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(body);
+    }
+
+    /**
+     * Handle application-level validation exceptions.
+     * 
+     * <p>These exceptions contain user-friendly Serbian messages that ARE safe to expose.
+     * Example: "Email adresa je već registrovana"
+     */
+    @ExceptionHandler(ValidationException.class)
+    public ResponseEntity<Map<String, Object>> handleValidationException(ValidationException ex) {
+        log.warn("Validation error: {}", ex.getMessage());
+        
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", Instant.now().toString());
+        body.put("error", "Validation Error");
+        body.put("message", ex.getMessage()); // Safe - these are user-facing messages
+        
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
     }
 
     /**

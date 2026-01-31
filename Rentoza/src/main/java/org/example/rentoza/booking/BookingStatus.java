@@ -160,5 +160,79 @@ public enum BookingStatus {
     EXPIRED,
     
     /** System auto-expired due to host inactivity (48h or trip-start buffer) */
-    EXPIRED_SYSTEM
+    EXPIRED_SYSTEM;
+    
+    // ========== HELPER METHODS ==========
+    
+    /**
+     * Check if this status is in the check-in phase or later.
+     * 
+     * <p>Used for license plate visibility timing (VAL-1.2):
+     * License plate should only be shown to guests once check-in window opens,
+     * not when booking is merely ACTIVE (up to 48h before trip).</p>
+     * 
+     * <p>Statuses considered check-in phase or later:</p>
+     * <ul>
+     *   <li>CHECK_IN_OPEN - Window opened</li>
+     *   <li>CHECK_IN_HOST_COMPLETE - Host done</li>
+     *   <li>CHECK_IN_COMPLETE - Both done</li>
+     *   <li>CHECK_IN_DISPUTE - Dispute in progress</li>
+     *   <li>IN_TRIP - Trip active</li>
+     *   <li>CHECKOUT_OPEN - Checkout started</li>
+     *   <li>CHECKOUT_GUEST_COMPLETE - Guest done</li>
+     *   <li>CHECKOUT_HOST_COMPLETE - Host confirmed</li>
+     *   <li>CHECKOUT_DAMAGE_DISPUTE - Damage dispute</li>
+     *   <li>COMPLETED - Trip finished</li>
+     * </ul>
+     * 
+     * @return true if guest should see license plate
+     * @since Issue 1.2 - License Plate Visibility Timing
+     */
+    public boolean isCheckInPhaseOrLater() {
+        return switch (this) {
+            case CHECK_IN_OPEN,
+                 CHECK_IN_HOST_COMPLETE,
+                 CHECK_IN_COMPLETE,
+                 CHECK_IN_DISPUTE,
+                 IN_TRIP,
+                 CHECKOUT_OPEN,
+                 CHECKOUT_GUEST_COMPLETE,
+                 CHECKOUT_HOST_COMPLETE,
+                 CHECKOUT_DAMAGE_DISPUTE,
+                 COMPLETED -> true;
+            default -> false;
+        };
+    }
+    
+    /**
+     * Check if this status is a terminal state (no further transitions possible).
+     * 
+     * @return true if booking lifecycle is complete
+     */
+    public boolean isTerminal() {
+        return switch (this) {
+            case COMPLETED,
+                 CANCELLED,
+                 DECLINED,
+                 EXPIRED,
+                 EXPIRED_SYSTEM,
+                 NO_SHOW_HOST,
+                 NO_SHOW_GUEST -> true;
+            default -> false;
+        };
+    }
+    
+    /**
+     * Check if this status allows cancellation by the guest.
+     * 
+     * @return true if guest can cancel
+     */
+    public boolean isCancellableByGuest() {
+        return switch (this) {
+            case PENDING_APPROVAL,
+                 ACTIVE,
+                 APPROVED -> true;
+            default -> false;
+        };
+    }
 }

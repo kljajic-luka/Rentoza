@@ -22,11 +22,27 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 @Service
 @Slf4j
 public class ReviewService {
+
+    /**
+     * Mutual Review Visibility Timeout.
+     * Reviews are hidden until both parties submit, OR this timeout passes.
+     * This prevents one party from waiting indefinitely to see the other's review.
+     */
+    private static final int REVIEW_VISIBILITY_TIMEOUT_DAYS = 7;
+    
+    /**
+     * Issue 3.2 - Fake Review Detection: Velocity Limits
+     * Maximum reviews a user can submit in a time window.
+     * Prevents automated/bulk fake review attacks.
+     */
+    private static final int MAX_REVIEWS_PER_HOUR = 5;
+    private static final int MAX_REVIEWS_PER_DAY = 10;
 
     private final ReviewRepository repo;
     private final CarRepository carRepo;
@@ -53,11 +69,40 @@ public class ReviewService {
         this.bookingService = bookingService;
         this.currentUser = currentUser;
     }
+    
+    /**
+     * Issue 3.2 - Fake Review Detection: Check velocity limits.
+     * Throws exception if user is submitting reviews too quickly.
+     * 
+     * @param reviewerId The reviewer's ID
+     * @throws RuntimeException if velocity limits exceeded
+     */
+    private void checkReviewVelocity(Long reviewerId) {
+        Instant oneHourAgo = Instant.now().minus(1, ChronoUnit.HOURS);
+        Instant oneDayAgo = Instant.now().minus(24, ChronoUnit.HOURS);
+        
+        long reviewsLastHour = repo.countReviewsByReviewerSince(reviewerId, oneHourAgo);
+        if (reviewsLastHour >= MAX_REVIEWS_PER_HOUR) {
+            log.warn("[FakeReviewDetection] User {} exceeded hourly review limit: {} reviews in last hour", 
+                    reviewerId, reviewsLastHour);
+            throw new RuntimeException("Previše recenzija u kratkom vremenskom periodu. Molimo pokušajte kasnije.");
+        }
+        
+        long reviewsLastDay = repo.countReviewsByReviewerSince(reviewerId, oneDayAgo);
+        if (reviewsLastDay >= MAX_REVIEWS_PER_DAY) {
+            log.warn("[FakeReviewDetection] User {} exceeded daily review limit: {} reviews in last 24h", 
+                    reviewerId, reviewsLastDay);
+            throw new RuntimeException("Dostigli ste dnevni limit za recenzije. Molimo pokušajte sutra.");
+        }
+    }
 
     @Transactional
     public Review addReview(ReviewRequestDTO dto, String reviewerEmail) {
         var reviewer = userRepo.findByEmail(reviewerEmail)
                 .orElseThrow(() -> new RuntimeException("Reviewer not found"));
+
+        // Issue 3.2 - Fake Review Detection: Velocity check
+        checkReviewVelocity(reviewer.getId());
 
         if (dto.getRating() < 1 || dto.getRating() > 5) {
             throw new RuntimeException("Rating must be between 1 and 5.");
@@ -168,9 +213,28 @@ public class ReviewService {
         review.setCreatedAt(Instant.now());
         return review;
     }
-
+    
+    /**
+     * Get reviews for a car (public view).
+     * 
+     * <p><b>Issue 3.1 - Mutual Review Visibility:</b></p>
+     * A review is only visible if:
+     * <ol>
+     *   <li>Both renter and owner have submitted reviews for the same booking, OR</li>
+     *   <li>7 days have passed since the review was created (timeout)</li>
+     * </ol>
+     * 
+     * This prevents:
+     * <ul>
+     *   <li>Retaliation reviews (seeing a bad review and responding in kind)</li>
+     *   <li>Gaming the system (waiting to see the other's review first)</li>
+     * </ul>
+     */
     public List<ReviewResponseDTO> getReviewsForCar(Long carId) {
-        var reviews = repo.findByCarIdAndDirection(carId, ReviewDirection.FROM_USER);
+        // Calculate visibility timeout (reviews older than 7 days are always visible)
+        Instant visibilityTimeout = Instant.now().minus(REVIEW_VISIBILITY_TIMEOUT_DAYS, ChronoUnit.DAYS);
+        
+        var reviews = repo.findVisibleByCarIdAndDirection(carId, ReviewDirection.FROM_USER, visibilityTimeout);
 
         return reviews.stream()
                 .map(this::toResponse)
@@ -229,6 +293,9 @@ public class ReviewService {
         // 1. Get authenticated renter
         User renter = userRepo.findByEmail(renterEmail)
                 .orElseThrow(() -> new RuntimeException("User not found"));
+
+        // Issue 3.2 - Fake Review Detection: Velocity check
+        checkReviewVelocity(renter.getId());
 
         // 2. Get booking and verify ownership + status
         Booking booking = bookingRepo.findById(dto.getBookingId())
@@ -313,6 +380,9 @@ public class ReviewService {
         // 1. Get authenticated owner
         User owner = userRepo.findByEmail(ownerEmail)
                 .orElseThrow(() -> new RuntimeException("User not found"));
+
+        // Issue 3.2 - Fake Review Detection: Velocity check
+        checkReviewVelocity(owner.getId());
 
         // 2. Get booking and verify ownership + status
         Booking booking = bookingRepo.findById(dto.getBookingId())

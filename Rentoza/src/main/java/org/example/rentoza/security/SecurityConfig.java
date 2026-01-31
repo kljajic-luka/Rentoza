@@ -164,6 +164,17 @@ public class SecurityConfig {
                     )
                 )
                 .authorizeHttpRequests(auth -> auth
+                        // ============ ACTUATOR ENDPOINTS (Issue 1.3 - Security Hardening) ============
+                        // Health endpoint is public for load balancer health checks
+                        .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
+                        // Info endpoint is semi-public (minimal app info)
+                        .requestMatchers("/actuator/info").permitAll()
+                        // Prometheus metrics endpoint (needs to be accessible by monitoring systems)
+                        // Protected by network security (internal network only) - see firewall rules
+                        .requestMatchers("/actuator/prometheus").permitAll()
+                        // Sensitive actuator endpoints require ADMIN role
+                        .requestMatchers("/actuator/**").hasRole("ADMIN")
+                        
                         // Public auth endpoints (local + OAuth2)
                         .requestMatchers(
                                 "/api/auth/login",

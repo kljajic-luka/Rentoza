@@ -67,6 +67,27 @@ public interface ReviewRepository extends JpaRepository<Review, Long> {
     boolean existsByCarIdAndReviewerEmailIgnoreCase(Long carId, String reviewerEmail);
     boolean existsByCarAndReviewerAndDirection(Car car, User reviewer, ReviewDirection direction);
     boolean existsByBookingAndDirection(Booking booking, ReviewDirection direction);
+    
+    // ========== FAKE REVIEW DETECTION (Issue 3.2) ==========
+    
+    /**
+     * Count reviews submitted by a user in the last N hours.
+     * Used for velocity checking to detect suspicious review patterns.
+     * 
+     * @param reviewerId The reviewer's ID
+     * @param since The cutoff time
+     * @return Number of reviews submitted since the cutoff
+     */
+    @Query("""
+            SELECT COUNT(r)
+            FROM Review r
+            WHERE r.reviewer.id = :reviewerId
+              AND r.createdAt >= :since
+            """)
+    long countReviewsByReviewerSince(
+            @Param("reviewerId") Long reviewerId,
+            @Param("since") Instant since
+    );
 
     @Query("SELECT r FROM Review r WHERE r.booking.id IN :bookingIds AND r.direction = :direction")
     List<Review> findByBookingIdInAndDirection(@Param("bookingIds") List<Long> bookingIds, @Param("direction") ReviewDirection direction);
@@ -174,5 +195,78 @@ public interface ReviewRepository extends JpaRepository<Review, Long> {
     @org.springframework.data.jpa.repository.Modifying
     @Query("UPDATE Review r SET r.reviewee = NULL WHERE r.reviewee.id = :revieweeId")
     int anonymizeReviewsByRevieweeId(@Param("revieweeId") Long revieweeId);
+    
+    // ========== MUTUAL REVIEW VISIBILITY (Issue 3.1) ==========
+    
+    /**
+     * Check if the other party has submitted their review for a booking.
+     * Used for mutual review visibility - reviews are hidden until BOTH parties submit.
+     * 
+     * @param bookingId The booking ID
+     * @param direction The direction to check for (opposite of the viewer's review)
+     * @return true if the other party has submitted their review
+     */
+    @Query("""
+            SELECT CASE WHEN COUNT(r) > 0 THEN true ELSE false END
+            FROM Review r
+            WHERE r.booking.id = :bookingId
+              AND r.direction = :direction
+            """)
+    boolean existsOtherReview(
+            @Param("bookingId") Long bookingId,
+            @Param("direction") ReviewDirection direction
+    );
+    
+    /**
+     * Find both reviews for a booking (if they exist).
+     * Used to check mutual review completion.
+     * 
+     * @param bookingId The booking ID
+     * @return List of 0-2 reviews (FROM_USER and/or FROM_OWNER)
+     */
+    @Query("""
+            SELECT r
+            FROM Review r
+            JOIN FETCH r.reviewer
+            JOIN FETCH r.reviewee
+            WHERE r.booking.id = :bookingId
+            ORDER BY r.direction
+            """)
+    List<Review> findByBookingId(@Param("bookingId") Long bookingId);
+    
+    /**
+     * Find reviews for a car that should be visible.
+     * A review is visible if:
+     * 1. Both parties have submitted reviews for the same booking, OR
+     * 2. 7 days have passed since the review was created (timeout)
+     * 
+     * @param carId The car ID
+     * @param direction The review direction (FROM_USER for car reviews)
+     * @param visibilityTimeout Reviews older than this are always visible
+     * @return List of visible reviews
+     */
+    @Query("""
+            SELECT DISTINCT r
+            FROM Review r
+            JOIN FETCH r.reviewer
+            JOIN FETCH r.reviewee
+            JOIN FETCH r.car c
+            WHERE c.id = :carId
+              AND r.direction = :direction
+              AND (
+                  r.createdAt < :visibilityTimeout
+                  OR EXISTS (
+                      SELECT 1 FROM Review otherReview 
+                      WHERE otherReview.booking.id = r.booking.id 
+                        AND otherReview.direction = 'FROM_OWNER'
+                  )
+              )
+            ORDER BY r.createdAt DESC
+            """)
+    List<Review> findVisibleByCarIdAndDirection(
+            @Param("carId") Long carId,
+            @Param("direction") ReviewDirection direction,
+            @Param("visibilityTimeout") java.time.Instant visibilityTimeout
+    );
 }
 

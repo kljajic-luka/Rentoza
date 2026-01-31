@@ -31,6 +31,13 @@ public class TripExtension {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+    
+    /**
+     * Issue 3.3 - Data Integrity: Optimistic locking for concurrent updates.
+     * Prevents lost updates when multiple requests modify the same extension.
+     */
+    @Version
+    private Long version;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "booking_id", nullable = false)

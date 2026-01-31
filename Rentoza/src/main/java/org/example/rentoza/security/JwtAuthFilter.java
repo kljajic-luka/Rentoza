@@ -43,8 +43,10 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             "/login/oauth2",
             "/oauth2",
             "/login",
-            "/uploads",
-            "/actuator"     // Health checks
+            "/uploads"
+            // Issue 1.3: Removed "/actuator" - now handled by SecurityConfig RBAC rules
+            // /actuator/health and /actuator/info are public
+            // /actuator/metrics, /actuator/env, etc. require ADMIN role
     );
     
     // Specific GET endpoints that are public (exact paths or patterns)

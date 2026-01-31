@@ -1099,10 +1099,11 @@ public class BookingService {
         // 4. Map to DTO
         Car car = booking.getCar();
         
-        // License Plate Visibility Rule
-        // Exposed if: (Status is ACTIVE) AND (User is Renter OR Owner OR Admin)
-        // Note: Owner/Admin always see it in other views, but for this specific DTO logic:
-        boolean showLicensePlate = (booking.getStatus() == BookingStatus.ACTIVE) || isOwner || isAdmin;
+        // License Plate Visibility Rule (Issue 1.2 - Privacy)
+        // Guests should NOT see license plate when booking is ACTIVE (up to 48h before trip).
+        // Only show when check-in window opens (T-1h before trip start) or later phases.
+        // Owner and Admin always see the license plate.
+        boolean showLicensePlate = booking.getStatus().isCheckInPhaseOrLater() || isOwner || isAdmin;
         String licensePlate = showLicensePlate ? car.getLicensePlate() : null;
 
         // 5. Resolve Pickup Location (with car home fallback for legacy bookings)

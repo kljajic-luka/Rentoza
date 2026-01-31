@@ -40,6 +40,13 @@ public class User {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+    
+    /**
+     * Issue 3.3 - Data Integrity: Optimistic locking for concurrent updates.
+     * Prevents lost updates when multiple requests modify the same user.
+     */
+    @Version
+    private Long version;
 
     @Size(min = 3, max = 50)
     @Column(nullable = false)

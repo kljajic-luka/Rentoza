@@ -376,11 +376,16 @@ public class Car {
     @JoinColumn(name = "owner_id", nullable = false)
     private User owner;
 
-    @OneToMany(mappedBy = "car", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    // P0-3 FIX: REMOVED CascadeType.ALL - bookings must NEVER be cascade-deleted with car.
+    // Car deletion is blocked by service layer if active bookings exist.
+    // Historical bookings are retained for legal/financial audit purposes.
+    @OneToMany(mappedBy = "car", fetch = FetchType.LAZY)
     @JsonIgnore
     private List<Booking> bookings = new ArrayList<>();
 
-    @OneToMany(mappedBy = "car", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    // P0-3 FIX: REMOVED CascadeType.ALL - reviews are historical data.
+    // Reviews should be retained even if car is removed for user reputation tracking.
+    @OneToMany(mappedBy = "car", fetch = FetchType.LAZY)
     @JsonIgnore
     private List<Review> reviews = new ArrayList<>();
 

@@ -680,14 +680,17 @@ public class CheckOutService {
 
     /**
      * Find bookings that need checkout window opened (trip end reached).
+     * 
+     * P0-5 FIX: Uses optimized indexed query instead of loading all bookings.
      */
     @Transactional(readOnly = true)
     public List<Booking> findBookingsForCheckoutOpening(LocalDate endDate) {
-        return bookingRepository.findAll().stream()
-                .filter(b -> b.getStatus() == BookingStatus.IN_TRIP)
-                .filter(b -> b.getCheckoutSessionId() == null)
-                .filter(b -> !b.getEndDate().isAfter(endDate))
-                .collect(Collectors.toList());
+        // Convert LocalDate to LocalDateTime for the query (end of day)
+        LocalDateTime endDateTime = endDate.atTime(23, 59, 59);
+        return bookingRepository.findBookingsNeedingCheckoutOpening(
+            BookingStatus.IN_TRIP,
+            endDateTime
+        );
     }
 
     // ========== NOTIFICATION METHODS ==========

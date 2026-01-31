@@ -500,6 +500,8 @@ public class BookingService {
      * Get all booking IDs.
      * ADMIN-ONLY: This method is for internal/admin use only.
      * 
+     * P0-5 FIX: Uses optimized ID-only query instead of loading full entities.
+     * 
      * @return List of all booking IDs
      */
     public List<Long> getAllBookingIds() {
@@ -510,9 +512,7 @@ public class BookingService {
             );
         }
         
-        return repo.findAll().stream()
-                .map(Booking::getId)
-                .collect(Collectors.toList());
+        return repo.findAllBookingIds();
     }
 
     /**

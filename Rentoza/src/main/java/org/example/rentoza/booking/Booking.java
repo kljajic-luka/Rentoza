@@ -75,17 +75,20 @@ public class Booking {
     private boolean prepaidRefuel = false;
 
     @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 50)
     private BookingStatus status = BookingStatus.PENDING_APPROVAL;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "car_id")
+    // P0-4 FIX: Booking MUST have a car - added nullable = false
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "car_id", nullable = false)
     private Car car;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "renter_id")
+    // P0-4 FIX: Booking MUST have a renter - added nullable = false
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "renter_id", nullable = false)
     private User renter;
 
-    // Host approval/decline tracking
+    // Host approval/decline tracking (nullable - only set when approved)
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "approved_by")
     private User approvedBy;

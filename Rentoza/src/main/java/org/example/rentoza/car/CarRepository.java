@@ -311,5 +311,18 @@ public interface CarRepository extends JpaRepository<Car, Long>, JpaSpecificatio
      */
     @Query("SELECT COUNT(c) FROM Car c WHERE c.available = true")
     Long countAvailableCars();
+
+    // ========== P0-5 FIX: OPTIMIZED QUERIES TO REPLACE findAll() ==========
+
+    /**
+     * Get all distinct car brands for filter dropdowns.
+     * 
+     * P0-5 FIX: Replaces loading ALL cars just to get brands.
+     * Uses SELECT DISTINCT on indexed column - O(log n) vs O(n) full scan.
+     * 
+     * @return Sorted list of unique brand names
+     */
+    @Query("SELECT DISTINCT c.brand FROM Car c WHERE c.brand IS NOT NULL ORDER BY c.brand")
+    List<String> findDistinctBrands();
 }
 

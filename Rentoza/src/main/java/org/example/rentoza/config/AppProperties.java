@@ -34,10 +34,11 @@ public class AppProperties {
         /**
          * Allowed origins for CORS requests (comma-separated).
          * Example: "https://rentoza.rs,https://www.rentoza.rs"
+         * 
+         * SECURITY: In production, MUST be set via environment variable CORS_ORIGINS.
+         * Default is for local development only.
          */
-        private String allowedOrigins = "http://localhost:4200";
-        //FOR DEVELOPMENT CHECK ON OTHER DEVICES
-        //private String allowedOrigins = "http://*:4200";
+        private String allowedOrigins = "https://localhost:4200";
 
         public String getAllowedOrigins() {
             return allowedOrigins;
@@ -52,6 +53,29 @@ public class AppProperties {
          */
         public String[] getAllowedOriginsArray() {
             return allowedOrigins.split(",");
+        }
+
+        /**
+         * P0-2 FIX: Check if CORS contains insecure wildcard or development origins.
+         * @return true if configuration is production-safe
+         */
+        public boolean isProductionSafe() {
+            if (allowedOrigins == null || allowedOrigins.isBlank()) {
+                return false;
+            }
+            // Wildcards are never allowed
+            if (allowedOrigins.contains("*")) {
+                return false;
+            }
+            // HTTP (non-secure) origins are not allowed in production
+            // Exception: localhost for development
+            for (String origin : getAllowedOriginsArray()) {
+                String trimmed = origin.trim().toLowerCase();
+                if (trimmed.startsWith("http://") && !trimmed.contains("localhost")) {
+                    return false;
+                }
+            }
+            return true;
         }
     }
 

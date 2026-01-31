@@ -482,14 +482,12 @@ public class CarService {
     }
 
     /**
-     * Get all distinct car makes from the database
-     * Used for filter dropdowns
+     * Get all distinct car makes from the database.
+     * Used for filter dropdowns.
+     * 
+     * P0-5 FIX: Uses optimized DISTINCT query instead of loading all cars.
      */
     public List<String> getAllMakes() {
-        return repo.findAll().stream()
-                .map(Car::getBrand)
-                .distinct()
-                .sorted()
-                .collect(Collectors.toList());
+        return repo.findDistinctBrands();
     }
 }

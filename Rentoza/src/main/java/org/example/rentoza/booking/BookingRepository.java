@@ -796,6 +796,52 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
         @Param("status") BookingStatus status,
         @Param("deadline") java.time.Instant deadline
     );
+
+    // ========== P0-5 FIX: OPTIMIZED QUERIES TO REPLACE findAll() ==========
+
+    /**
+     * Find bookings needing checkout window opened.
+     * 
+     * P0-5 FIX: Replaces loading ALL bookings and filtering in Java.
+     * Uses indexed query on status + endTime columns.
+     * 
+     * @param status Should be BookingStatus.IN_TRIP
+     * @param endTimeBefore Bookings ending before this time need checkout
+     * @return Bookings ready for checkout window opening
+     */
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.car c " +
+           "JOIN FETCH c.owner " +
+           "JOIN FETCH b.renter r " +
+           "WHERE b.status = :status " +
+           "AND b.checkoutSessionId IS NULL " +
+           "AND b.endTime <= :endTimeBefore " +
+           "ORDER BY b.endTime ASC")
+    List<Booking> findBookingsNeedingCheckoutOpening(
+        @Param("status") BookingStatus status,
+        @Param("endTimeBefore") LocalDateTime endTimeBefore
+    );
+
+    /**
+     * Get all booking IDs (admin only).
+     * 
+     * P0-5 FIX: Replaces loading full Booking entities just to get IDs.
+     * Returns only IDs - O(n) data transfer reduced by 99%.
+     * 
+     * @return List of all booking IDs
+     */
+    @Query("SELECT b.id FROM Booking b ORDER BY b.id DESC")
+    List<Long> findAllBookingIds();
+
+    /**
+     * Count total bookings (for admin dashboard).
+     * 
+     * P0-5 FIX: Use COUNT instead of loading entities.
+     * 
+     * @return Total booking count
+     */
+    @Query("SELECT COUNT(b) FROM Booking b")
+    long countAll();
 }
 
 

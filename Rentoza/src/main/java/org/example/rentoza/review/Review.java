@@ -66,23 +66,27 @@ public class Review {
     @Column(nullable = false, length = 20)
     private ReviewDirection direction = ReviewDirection.FROM_USER;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "car_id")
+    // P0-4 FIX: Review MUST reference a car
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "car_id", nullable = false)
     @JsonIgnore
     private Car car;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "reviewer_id")
+    // P0-4 FIX: Review MUST have a reviewer
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "reviewer_id", nullable = false)
     @JsonIgnore
     private User reviewer;
 
+    // Reviewee can be null for car-only reviews
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "reviewee_id")
     @JsonIgnore
     private User reviewee;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "booking_id")
+    // P0-4 FIX: Review MUST be tied to a booking
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "booking_id", nullable = false)
     @JsonIgnore
     private Booking booking;
 }

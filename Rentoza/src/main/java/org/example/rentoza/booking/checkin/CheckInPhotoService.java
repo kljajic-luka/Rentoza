@@ -22,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import org.example.rentoza.storage.SupabaseStorageService;
 import org.example.rentoza.booking.photo.PiiPhotoStorageService;
+import org.example.rentoza.util.ExifStrippingService;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -60,9 +61,15 @@ public class CheckInPhotoService {
     private final ApplicationEventPublisher eventPublisher;
     private final SupabaseStorageService supabaseStorageService;
     private final PiiPhotoStorageService piiPhotoStorageService;  // P0-2: PII enforcement
+    private final ExifStrippingService exifStrippingService;      // VAL-001: EXIF privacy
 
     @Value("${app.checkin.photo.max-size-mb:10}")
     private int maxSizeMb;
+    
+    // ========== VAL-001: EXIF AUDIT BACKUP CONFIGURATION ==========
+    
+    @Value("${app.checkin.photos.audit-backup.enabled:true}")
+    private boolean auditBackupEnabled;
     
     // ========== PHASE 4E: PHOTO DEADLINE CONFIGURATION ==========
     
@@ -326,18 +333,47 @@ public class CheckInPhotoService {
             bucket = CheckInPhoto.StorageBucket.CHECKIN_STANDARD;
         }
         
+        // ========== VAL-001: EXIF GPS Privacy Protection ==========
+        // Strip EXIF metadata before public upload to prevent GPS exposure
+        // Original with EXIF is stored in admin-only audit bucket for disputes
+        String auditStorageKey = null;
+        String party = booking.getCar().getOwner().getId().equals(user.getId()) ? "host" : "guest";
+        
         // ========== STORAGE: Supabase Storage ==========
-        // Upload to Supabase Storage
         try {
-            String party = booking.getCar().getOwner().getId().equals(user.getId()) ? "host" : "guest";
+            // Step 1: Upload original to audit bucket (if enabled)
+            if (auditBackupEnabled) {
+                try {
+                    auditStorageKey = supabaseStorageService.uploadCheckInPhotoToAuditBucket(
+                        booking.getId(),
+                        party,
+                        photoType.name(),
+                        photoBytes,  // Original with EXIF
+                        contentType
+                    );
+                    log.info("[VAL-001] Audit backup uploaded: booking={}, type={}, key={}",
+                        booking.getId(), photoType, auditStorageKey);
+                } catch (Exception e) {
+                    // Fail-open: Don't block upload if audit backup fails
+                    log.warn("[VAL-001] Audit backup failed (continuing): booking={}, error={}",
+                        booking.getId(), e.getMessage());
+                }
+            }
+            
+            // Step 2: Strip EXIF metadata from photo
+            byte[] strippedBytes = exifStrippingService.stripExifMetadata(photoBytes, contentType);
+            log.debug("[VAL-001] EXIF stripped: booking={}, original={} bytes, stripped={} bytes",
+                booking.getId(), photoBytes.length, strippedBytes.length);
+            
+            // Step 3: Upload stripped photo to public bucket
             storageKey = supabaseStorageService.uploadCheckInPhotoBytes(
                 booking.getId(),
                 party,
                 photoType.name(),
-                photoBytes,
+                strippedBytes,  // EXIF removed for privacy
                 contentType
             );
-            log.info("[CheckIn] Photo uploaded to Supabase: booking={}, type={}, key={}",
+            log.info("[CheckIn] Photo uploaded to Supabase (EXIF stripped): booking={}, type={}, key={}",
                 booking.getId(), photoType, storageKey);
         } catch (IOException e) {
             log.error("[CheckIn] Supabase upload failed for booking {}: {}",
@@ -352,6 +388,7 @@ public class CheckInPhotoService {
                 .photoType(photoType)
                 .storageBucket(bucket)
                 .storageKey(storageKey)
+                .auditStorageKey(auditStorageKey)  // VAL-001: Original with EXIF
                 .originalFilename(file.getOriginalFilename())
                 .mimeType(contentType)
                 .fileSizeBytes((int) file.getSize())

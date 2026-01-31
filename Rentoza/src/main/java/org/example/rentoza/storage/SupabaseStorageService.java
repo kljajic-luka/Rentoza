@@ -265,6 +265,45 @@ public class SupabaseStorageService {
             throw new IllegalArgumentException("Image file too large (max 10MB)");
         }
     }
+    
+    // ============================================================================
+    // CHECK-IN AUDIT PHOTOS (Private bucket - Admin-only for disputes) - VAL-001
+    // ============================================================================
+    
+    public static final String BUCKET_CHECK_IN_AUDIT = "checkin-audit";
+    
+    /**
+     * Upload original check-in photo with EXIF to admin-only audit bucket.
+     * 
+     * <p>Used for dispute resolution where GPS/timestamp evidence is needed.
+     * This bucket is private and only accessible by admins.
+     * 
+     * @param bookingId Booking ID
+     * @param party "host" or "guest"
+     * @param photoType Photo type
+     * @param photoBytes Original photo bytes with EXIF metadata
+     * @param contentType MIME type
+     * @return Storage path in audit bucket
+     * @throws IOException if upload fails
+     * @since VAL-001 - EXIF GPS Privacy Stripping
+     */
+    public String uploadCheckInPhotoToAuditBucket(Long bookingId, String party, String photoType,
+            byte[] photoBytes, String contentType) throws IOException {
+        validateImageBytes(photoBytes, contentType);
+        
+        String extension = getExtension(contentType);
+        String filename = "audit_" + UUID.randomUUID().toString().substring(0, 12) + "." + extension;
+        String storagePath = String.format("bookings/%d/%s/%s/%s", 
+                bookingId, party.toLowerCase(), photoType, filename);
+        
+        uploadToSupabase(BUCKET_CHECK_IN_AUDIT, storagePath, photoBytes, contentType);
+        
+        log.info("[Storage] Uploaded audit photo with EXIF: bucket={}, path={}, size={} bytes",
+                BUCKET_CHECK_IN_AUDIT, storagePath, photoBytes.length);
+        
+        return storagePath;
+    }
+    
     // ============================================================================
     // RENTER DOCUMENTS (Private bucket - KYC verification)
     // ============================================================================

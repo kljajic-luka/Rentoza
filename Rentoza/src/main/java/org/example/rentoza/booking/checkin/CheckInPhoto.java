@@ -88,6 +88,16 @@ public class CheckInPhoto {
     @Column(name = "storage_key", length = 500, nullable = false)
     private String storageKey;
 
+    /**
+     * Path to original photo with EXIF in admin-only audit bucket.
+     * Used for dispute resolution where GPS/timestamp evidence is needed.
+     * NULL if audit backup is disabled or not applicable.
+     * 
+     * @since VAL-001 - EXIF GPS Privacy Stripping
+     */
+    @Column(name = "audit_storage_key")
+    private String auditStorageKey;
+
     // ========== FILE METADATA ==========
 
     /**

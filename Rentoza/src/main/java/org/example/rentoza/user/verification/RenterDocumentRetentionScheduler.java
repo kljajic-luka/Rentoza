@@ -103,11 +103,8 @@ public class RenterDocumentRetentionScheduler {
         
         LocalDateTime cutoff = SerbiaTimeZone.now().minusDays(selfieRetentionDays);
         
-        // Find selfies older than retention period
-        List<RenterDocument> expiredSelfies = documentRepository.findAll().stream()
-            .filter(d -> d.getType() == RenterDocumentType.SELFIE)
-            .filter(d -> d.getCreatedAt().isBefore(cutoff))
-            .toList();
+        // P0-5 FIX: Use optimized database query instead of findAll().stream().filter()
+        List<RenterDocument> expiredSelfies = documentRepository.findSelfiesOlderThan(cutoff);
         
         AtomicInteger deletedCount = new AtomicInteger(0);
         AtomicInteger errorCount = new AtomicInteger(0);
@@ -158,11 +155,8 @@ public class RenterDocumentRetentionScheduler {
         
         LocalDateTime cutoff = SerbiaTimeZone.now().minusDays(rejectedDocumentRetentionDays);
         
-        // Find rejected documents older than retention period
-        List<RenterDocument> rejectedDocs = documentRepository.findAll().stream()
-            .filter(d -> d.getProcessingStatus() == RenterDocument.ProcessingStatus.FAILED)
-            .filter(d -> d.getCreatedAt().isBefore(cutoff))
-            .toList();
+        // P0-5 FIX: Use optimized database query instead of findAll().stream().filter()
+        List<RenterDocument> rejectedDocs = documentRepository.findRejectedDocumentsOlderThan(cutoff);
         
         AtomicInteger deletedCount = new AtomicInteger(0);
         AtomicInteger errorCount = new AtomicInteger(0);
@@ -211,11 +205,8 @@ public class RenterDocumentRetentionScheduler {
         // Anonymize documents older than 1 year but keep metadata
         LocalDateTime cutoff = SerbiaTimeZone.now().minusYears(1);
         
-        List<RenterDocument> oldDocuments = documentRepository.findAll().stream()
-            .filter(d -> d.getCreatedAt().isBefore(cutoff))
-            .filter(d -> d.getDocumentUrl() != null) // Only those with files
-            .filter(d -> d.getType() != RenterDocumentType.SELFIE) // Selfies already deleted
-            .toList();
+        // P0-5 FIX: Use optimized database query instead of findAll().stream().filter()
+        List<RenterDocument> oldDocuments = documentRepository.findDocumentsForAnonymization(cutoff);
         
         AtomicInteger anonymizedCount = new AtomicInteger(0);
         
@@ -262,24 +253,13 @@ public class RenterDocumentRetentionScheduler {
      * @return Map of retention statistics
      */
     public java.util.Map<String, Object> getRetentionStats() {
-        LocalDateTime selfieCutoff = LocalDateTime.now().minusDays(selfieRetentionDays);
-        LocalDateTime rejectedCutoff = LocalDateTime.now().minusDays(rejectedDocumentRetentionDays);
+        LocalDateTime selfieCutoff = SerbiaTimeZone.now().minusDays(selfieRetentionDays);
+        LocalDateTime rejectedCutoff = SerbiaTimeZone.now().minusDays(rejectedDocumentRetentionDays);
         
-        List<RenterDocument> allDocs = documentRepository.findAll();
-        
-        long pendingSelfies = allDocs.stream()
-            .filter(d -> d.getType() == RenterDocumentType.SELFIE)
-            .filter(d -> d.getCreatedAt().isBefore(selfieCutoff))
-            .count();
-            
-        long pendingRejected = allDocs.stream()
-            .filter(d -> d.getProcessingStatus() == RenterDocument.ProcessingStatus.FAILED)
-            .filter(d -> d.getCreatedAt().isBefore(rejectedCutoff))
-            .count();
-            
-        long totalSelfies = allDocs.stream()
-            .filter(d -> d.getType() == RenterDocumentType.SELFIE)
-            .count();
+        // P0-5 FIX: Use optimized count queries instead of loading all records
+        long pendingSelfies = documentRepository.countSelfiesOlderThan(selfieCutoff);
+        long pendingRejected = documentRepository.countRejectedDocumentsOlderThan(rejectedCutoff);
+        long totalSelfies = documentRepository.countTotalSelfies();
         
         return java.util.Map.of(
             "selfieRetentionDays", selfieRetentionDays,

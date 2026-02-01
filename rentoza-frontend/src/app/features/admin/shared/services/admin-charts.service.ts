@@ -1,6 +1,8 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, of, delay } from 'rxjs';
+import { Observable, of } from 'rxjs';
+import { catchError } from 'rxjs/operators';
+import { environment } from '../../../../../environments/environment';
 
 /**
  * Data structure for revenue chart
@@ -23,15 +25,16 @@ export interface TripActivityData {
 /**
  * Service for fetching admin dashboard chart data
  * 
- * TODO: Backend Implementation Required
- * - Implement GET /api/admin/charts/revenue?months={months}&currencyCode={code}
- * - Implement GET /api/admin/charts/trips?weeks={weeks}
+ * P1-5 FIX: Now uses real backend API instead of mock data.
  * 
- * Current implementation uses mock data for development.
- * Replace mock data with actual HTTP calls when backend endpoints are ready.
+ * Backend Endpoints:
+ * - GET /api/admin/charts/revenue?months={months}&currencyCode={code}
+ * - GET /api/admin/charts/trips?weeks={weeks}
  */
 @Injectable({ providedIn: 'root' })
 export class AdminChartsService {
+  private readonly apiUrl = environment.apiUrl || '';
+  
   constructor(private http: HttpClient) {}
 
   /**
@@ -39,16 +42,18 @@ export class AdminChartsService {
    * 
    * @param months Number of months to fetch (3, 6, or 12)
    * @returns Observable of revenue chart data
-   * 
-   * TODO: Replace mock data with actual API call:
-   * return this.http.get<RevenueChartData>(`/api/admin/charts/revenue?months=${months}&currencyCode=RSD`);
    */
   getRevenueChart(months: number = 6): Observable<RevenueChartData> {
-    // Mock data - replace with real API call when backend is ready
-    const mockData = this.generateMockRevenueData(months);
-    
-    // Simulate network delay for realistic loading states
-    return of(mockData).pipe(delay(800));
+    return this.http.get<RevenueChartData>(
+      `${this.apiUrl}/api/admin/charts/revenue`,
+      { params: { months: months.toString(), currencyCode: 'RSD' } }
+    ).pipe(
+      catchError((error) => {
+        console.error('Failed to fetch revenue chart data:', error);
+        // Return empty data on error to prevent UI crash
+        return of({ labels: [], totalRevenue: [], currencyCode: 'RSD' });
+      })
+    );
   }
 
   /**
@@ -56,81 +61,17 @@ export class AdminChartsService {
    * 
    * @param weeks Number of weeks to fetch (default: 6)
    * @returns Observable of trip activity data
-   * 
-   * TODO: Replace mock data with actual API call:
-   * return this.http.get<TripActivityData>(`/api/admin/charts/trips?weeks=${weeks}`);
    */
   getTripActivity(weeks: number = 6): Observable<TripActivityData> {
-    // Mock data - replace with real API call when backend is ready
-    const mockData = this.generateMockTripData(weeks);
-    
-    // Simulate network delay for realistic loading states
-    return of(mockData).pipe(delay(600));
-  }
-
-  /**
-   * Generates mock revenue data for development
-   * TODO: Remove this method when backend API is implemented
-   */
-  private generateMockRevenueData(months: number): RevenueChartData {
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const currentMonth = new Date().getMonth();
-    
-    const labels: string[] = [];
-    const totalRevenue: number[] = [];
-    
-    for (let i = months - 1; i >= 0; i--) {
-      const monthIndex = (currentMonth - i + 12) % 12;
-      labels.push(monthNames[monthIndex]);
-      
-      // Generate realistic-looking revenue data with growth trend
-      const baseRevenue = 12000;
-      const growthFactor = 1 + (months - i) * 0.08;
-      const randomVariation = Math.random() * 3000;
-      totalRevenue.push(Math.round(baseRevenue * growthFactor + randomVariation));
-    }
-    
-    return {
-      labels,
-      totalRevenue,
-      currencyCode: 'RSD'
-    };
-  }
-
-  /**
-   * Generates mock trip activity data for development
-   * TODO: Remove this method when backend API is implemented
-   */
-  private generateMockTripData(weeks: number): TripActivityData {
-    const labels: string[] = [];
-    const completedTrips: number[] = [];
-    const canceledTrips: number[] = [];
-    
-    const currentDate = new Date();
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    
-    for (let i = weeks - 1; i >= 0; i--) {
-      const weekDate = new Date(currentDate);
-      weekDate.setDate(weekDate.getDate() - (i * 7));
-      
-      const month = monthNames[weekDate.getMonth()];
-      const weekOfMonth = Math.ceil(weekDate.getDate() / 7);
-      labels.push(`${month} W${weekOfMonth}`);
-      
-      // Generate realistic trip data with upward trend
-      const baseTrips = 45;
-      const trendFactor = 1 + ((weeks - i) * 0.05);
-      const randomVariation = Math.floor(Math.random() * 10);
-      completedTrips.push(Math.round(baseTrips * trendFactor + randomVariation));
-      
-      // Canceled trips are typically much lower
-      canceledTrips.push(Math.floor(Math.random() * 5) + 1);
-    }
-    
-    return {
-      labels,
-      completedTrips,
-      canceledTrips
-    };
+    return this.http.get<TripActivityData>(
+      `${this.apiUrl}/api/admin/charts/trips`,
+      { params: { weeks: weeks.toString() } }
+    ).pipe(
+      catchError((error) => {
+        console.error('Failed to fetch trip activity data:', error);
+        // Return empty data on error to prevent UI crash
+        return of({ labels: [], completedTrips: [], canceledTrips: [] });
+      })
+    );
   }
 }

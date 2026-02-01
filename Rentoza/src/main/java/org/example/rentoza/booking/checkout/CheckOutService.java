@@ -667,6 +667,21 @@ public class CheckOutService {
                 )
             );
             
+            // Send late return notification to both parties
+            notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                    .recipientId(booking.getRenter().getId())
+                    .type(NotificationType.LATE_RETURN_DETECTED)
+                    .message(String.format("Vraćanje vozila kasni %d minuta. Dodatna naknada može biti obračunata.", lateMinutes))
+                    .relatedEntityId(String.valueOf(booking.getId()))
+                    .build());
+            
+            notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                    .recipientId(booking.getCar().getOwner().getId())
+                    .type(NotificationType.LATE_RETURN_DETECTED)
+                    .message(String.format("Gost vraća vozilo sa zakašnjenjem od %d minuta.", lateMinutes))
+                    .relatedEntityId(String.valueOf(booking.getId()))
+                    .build());
+            
             log.info("[CheckOut] Late return detected for booking {}: {} minutes late (fee calculation delegated to saga)",
                 booking.getId(), lateMinutes);
         } else if (now.isBefore(scheduledReturn)) {

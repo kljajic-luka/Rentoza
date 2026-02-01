@@ -172,9 +172,21 @@ public class CheckOutScheduler {
             
             for (Booking booking : bookingsNeedingReminder) {
                 if (booking.getStatus() == BookingStatus.CHECKOUT_OPEN) {
-                    // TODO: Send reminder notification
-                    log.info("[CheckOutScheduler] Would send checkout reminder for booking {}", booking.getId());
-                    checkoutReminderSentCounter.increment();
+                    try {
+                        // Send reminder notification to guest
+                        notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                                .recipientId(booking.getRenter().getId())
+                                .type(NotificationType.CHECKOUT_REMINDER)
+                                .message("Podsetnik: Molimo vratite vozilo i završite checkout.")
+                                .relatedEntityId(String.valueOf(booking.getId()))
+                                .build());
+                        
+                        log.info("[CheckOutScheduler] Sent checkout reminder for booking {}", booking.getId());
+                        checkoutReminderSentCounter.increment();
+                    } catch (Exception e) {
+                        log.error("[CheckOutScheduler] Failed to send reminder for booking {}: {}",
+                            booking.getId(), e.getMessage());
+                    }
                 }
             }
         } catch (Exception e) {
@@ -227,9 +239,29 @@ public class CheckOutScheduler {
                     ).toHours();
                     
                     if (hoursOverdue >= 24) {
-                        // TODO: Escalate to admin, calculate significant late fees
-                        log.warn("[CheckOutScheduler] OVERDUE RETURN: Booking {} is {} hours overdue!",
-                            booking.getId(), hoursOverdue);
+                        try {
+                            // Send late return notification to guest
+                            notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                                    .recipientId(booking.getRenter().getId())
+                                    .type(NotificationType.LATE_RETURN_DETECTED)
+                                    .message(String.format("Vozilo kasni %d sati! Molimo vratite vozilo hitno ili kontaktirajte podršku.", hoursOverdue))
+                                    .relatedEntityId(String.valueOf(booking.getId()))
+                                    .build());
+                            
+                            // Send late return notification to host
+                            notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                                    .recipientId(booking.getCar().getOwner().getId())
+                                    .type(NotificationType.LATE_RETURN_DETECTED)
+                                    .message(String.format("Vozilo kasni %d sati sa vraćanjem. Eskaliramo podršci.", hoursOverdue))
+                                    .relatedEntityId(String.valueOf(booking.getId()))
+                                    .build());
+                            
+                            log.warn("[CheckOutScheduler] OVERDUE RETURN: Booking {} is {} hours overdue - notifications sent",
+                                booking.getId(), hoursOverdue);
+                        } catch (Exception e) {
+                            log.error("[CheckOutScheduler] Failed to send late return notification for booking {}: {}",
+                                booking.getId(), e.getMessage());
+                        }
                     }
                 }
             }

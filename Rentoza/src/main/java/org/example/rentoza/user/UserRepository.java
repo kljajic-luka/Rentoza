@@ -145,5 +145,44 @@ public interface UserRepository extends JpaRepository<User,Long> {
      * @return User if found
      */
     Optional<User> findByAuthUid(java.util.UUID authUid);
+    
+    // ========== LICENSE EXPIRY QUERIES ==========
+    
+    /**
+     * Find users with driver license expiring between two dates.
+     * Used by LicenseExpiryScheduler to send expiry warnings.
+     * 
+     * @param startDate Start of expiry date range (exclusive - tomorrow or later)
+     * @param endDate End of expiry date range (inclusive)
+     * @return List of users whose licenses expire in this range
+     */
+    @Query("""
+        SELECT u FROM User u 
+        WHERE u.driverLicenseExpiryDate > :startDate 
+        AND u.driverLicenseExpiryDate <= :endDate
+        AND u.driverLicenseStatus = 'APPROVED'
+        ORDER BY u.driverLicenseExpiryDate ASC
+        """)
+    List<User> findUsersWithLicenseExpiringBetween(
+        @org.springframework.data.repository.query.Param("startDate") java.time.LocalDate startDate,
+        @org.springframework.data.repository.query.Param("endDate") java.time.LocalDate endDate
+    );
+    
+    /**
+     * Find users with expired driver licenses.
+     * Used by LicenseExpiryScheduler to send expired notifications.
+     * 
+     * @param date Date to check against (typically today)
+     * @return List of users whose licenses have expired
+     */
+    @Query("""
+        SELECT u FROM User u 
+        WHERE u.driverLicenseExpiryDate < :date
+        AND u.driverLicenseStatus = 'APPROVED'
+        ORDER BY u.driverLicenseExpiryDate DESC
+        """)
+    List<User> findUsersWithLicenseExpiredBefore(
+        @org.springframework.data.repository.query.Param("date") java.time.LocalDate date
+    );
 }
 

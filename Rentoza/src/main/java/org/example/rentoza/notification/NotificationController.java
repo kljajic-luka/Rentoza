@@ -244,6 +244,51 @@ public class NotificationController {
                     .body(Map.of("error", "Failed to create batch notifications"));
         }
     }
+    
+    /**
+     * Internal endpoint for new message notifications from chat microservice.
+     * Requires INTERNAL_SERVICE authority.
+     *
+     * @param request New message notification request
+     * @return Accepted response
+     */
+    @PostMapping("/internal/new-message")
+    @PreAuthorize("hasAuthority('INTERNAL_SERVICE')")
+    public ResponseEntity<?> createNewMessageNotification(@Valid @RequestBody NewMessageNotificationRequest request) {
+        try {
+            log.info("Received NEW_MESSAGE notification request: recipientId={}, bookingId={}", 
+                    request.recipientId(), request.bookingId());
+            
+            String message = request.senderName() != null 
+                    ? String.format("%s: %s", request.senderName(), request.messagePreview())
+                    : request.messagePreview();
+            
+            notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                    .recipientId(request.recipientId())
+                    .type(NotificationType.NEW_MESSAGE)
+                    .message(message)
+                    .relatedEntityId(String.valueOf(request.bookingId()))
+                    .build());
+            
+            return ResponseEntity.accepted()
+                    .body(Map.of("message", "New message notification created"));
+
+        } catch (Exception e) {
+            log.error("Failed to create new message notification: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to create notification"));
+        }
+    }
+    
+    /**
+     * Request DTO for new message notifications from chat service.
+     */
+    public record NewMessageNotificationRequest(
+            Long recipientId,
+            Long bookingId,
+            String senderName,
+            String messagePreview
+    ) {}
 
     /**
      * Extract user ID from JWT token.

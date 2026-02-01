@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.Instant;
 import java.util.List;
 
 public interface ReviewRepository extends JpaRepository<Review, Long> {
@@ -89,7 +90,16 @@ public interface ReviewRepository extends JpaRepository<Review, Long> {
             @Param("since") Instant since
     );
 
-    @Query("SELECT r FROM Review r WHERE r.booking.id IN :bookingIds AND r.direction = :direction")
+    // P1-6 FIX: Added JOIN FETCH to prevent N+1 queries
+    @Query("""
+            SELECT DISTINCT r FROM Review r
+            JOIN FETCH r.reviewer
+            JOIN FETCH r.reviewee
+            JOIN FETCH r.car
+            JOIN FETCH r.booking
+            WHERE r.booking.id IN :bookingIds 
+              AND r.direction = :direction
+            """)
     List<Review> findByBookingIdInAndDirection(@Param("bookingIds") List<Long> bookingIds, @Param("direction") ReviewDirection direction);
 
     @Query("""

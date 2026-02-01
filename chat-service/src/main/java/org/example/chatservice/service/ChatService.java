@@ -186,6 +186,20 @@ public class ChatService {
                 "/topic/conversation/" + bookingId,
                 broadcastDTO
         );
+        
+        // Send NEW_MESSAGE notification to the other participant (for offline users)
+        Long recipientId = userId.equals(conversation.getRenterId()) 
+                ? conversation.getOwnerId() 
+                : conversation.getRenterId();
+        String messagePreview = request.getContent().length() > 50 
+                ? request.getContent().substring(0, 47) + "..." 
+                : request.getContent();
+        backendApiClient.sendNewMessageNotification(
+                recipientId, 
+                bookingId, 
+                "Korisnik", // Sender name - could be enriched
+                messagePreview
+        ).subscribe(); // Fire and forget - don't block message delivery
 
         // Return the correct DTO to the sender with isOwnMessage=true
         MessageDTO senderDTO = toMessageDTO(message, userId);

@@ -388,26 +388,20 @@ public class SecurityConfig {
 
         c.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         
-        // ============================================================================
-        // PRODUCTION: Uncomment the line below and remove the DEV TESTING block
-        // c.setAllowedHeaders(List.of("Authorization", "Content-Type", "Cache-Control", "X-XSRF-TOKEN", "X-CSRF-TOKEN"));
-        // ============================================================================
-        
-        // ============================================================================
-        // DEV TESTING: Extended headers for Phase 3 API optimization testing
-        // TODO: Remove this block and uncomment PRODUCTION line above before deployment
+        // P0-2 FIX: Production CORS configuration with all required headers
+        // Includes Phase 3 API optimization headers (idempotency, ETags) as these are
+        // production features, not dev-only testing.
         c.setAllowedHeaders(List.of(
-                "Authorization", 
-                "Content-Type", 
-                "Cache-Control", 
-                "X-XSRF-TOKEN", 
-                "X-CSRF-TOKEN",
-                "X-Idempotency-Key",  // Phase 3: Idempotency support for POST/PUT requests
-                "If-None-Match",       // Phase 3: ETag conditional GET support
-                "If-Match"             // Phase 3: ETag conditional PUT support
+                "Authorization",       // OAuth2/JWT authentication
+                "Content-Type",        // Request body type
+                "Cache-Control",       // Cache directives
+                "X-XSRF-TOKEN",        // CSRF protection (Angular)
+                "X-CSRF-TOKEN",        // CSRF protection (alternative)
+                "X-Idempotency-Key",   // Idempotency for POST/PUT requests
+                "If-None-Match",       // ETag conditional GET support
+                "If-Match"             // ETag conditional PUT support (optimistic locking)
         ));
         c.setExposedHeaders(List.of("ETag", "X-Request-Id"));  // Allow frontend to read ETag responses
-        // ============================================================================
         
         c.setAllowCredentials(true); // Required for cookies
         c.setMaxAge(3600L); // Cache preflight requests for 1 hour

@@ -147,4 +147,45 @@ public class BackendApiClient {
                     return Mono.just(org.example.chatservice.dto.client.BookingConversationDTO.createFallback(bookingId));
                 });
     }
+    
+    /**
+     * Send a new message notification to the main backend.
+     * 
+     * This notifies the recipient (offline or inactive) that they have
+     * a new chat message. The main backend handles notification delivery
+     * via push, email, etc.
+     * 
+     * @param recipientId User ID to notify
+     * @param bookingId Related booking ID
+     * @param senderName Name of the message sender
+     * @param messagePreview Preview of the message content
+     * @return Mono<Void> completing when notification is sent
+     */
+    public Mono<Void> sendNewMessageNotification(Long recipientId, Long bookingId, String senderName, String messagePreview) {
+        logger.info("📤 Sending NEW_MESSAGE notification to user {} for booking {}", recipientId, bookingId);
+        
+        return webClient.post()
+                .uri("/api/internal/notifications/new-message")
+                .bodyValue(new NewMessageNotificationRequest(recipientId, bookingId, senderName, messagePreview))
+                .retrieve()
+                .bodyToMono(Void.class)
+                .doOnSuccess(v -> logger.info("✅ NEW_MESSAGE notification sent to user {}", recipientId))
+                .doOnError(error -> logger.error("❌ Failed to send NEW_MESSAGE notification to user {}: {}",
+                        recipientId, error.getMessage()))
+                .onErrorResume(e -> {
+                    // Don't fail the message send if notification fails
+                    logger.warn("⚠️ Notification delivery failed, message was still sent");
+                    return Mono.empty();
+                });
+    }
+    
+    /**
+     * DTO for new message notification request.
+     */
+    public record NewMessageNotificationRequest(
+            Long recipientId,
+            Long bookingId,
+            String senderName,
+            String messagePreview
+    ) {}
 }

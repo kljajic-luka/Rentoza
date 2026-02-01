@@ -231,4 +231,73 @@ public interface RenterDocumentRepository extends JpaRepository<RenterDocument, 
         AND d.createdAt < :cutoff
         """)
     void deleteOldSelfies(@Param("cutoff") LocalDateTime cutoff);
+    
+    // ==================== P0-5 FIX: OPTIMIZED RETENTION QUERIES ====================
+    // These replace findAll().stream().filter() patterns in RenterDocumentRetentionScheduler
+    
+    /**
+     * Find selfies older than cutoff date for retention cleanup.
+     * P0-5 FIX: Database-level filtering instead of findAll().stream().filter()
+     */
+    @Query("""
+        SELECT d FROM RenterDocument d 
+        WHERE d.type = org.example.rentoza.user.document.RenterDocumentType.SELFIE 
+        AND d.createdAt < :cutoff
+        """)
+    List<RenterDocument> findSelfiesOlderThan(@Param("cutoff") LocalDateTime cutoff);
+    
+    /**
+     * Find rejected documents older than cutoff date for retention cleanup.
+     * P0-5 FIX: Database-level filtering instead of findAll().stream().filter()
+     */
+    @Query("""
+        SELECT d FROM RenterDocument d 
+        WHERE d.processingStatus = org.example.rentoza.user.document.RenterDocument.ProcessingStatus.FAILED 
+        AND d.createdAt < :cutoff
+        """)
+    List<RenterDocument> findRejectedDocumentsOlderThan(@Param("cutoff") LocalDateTime cutoff);
+    
+    /**
+     * Find old documents with files for anonymization (excluding selfies).
+     * P0-5 FIX: Database-level filtering instead of findAll().stream().filter()
+     */
+    @Query("""
+        SELECT d FROM RenterDocument d 
+        WHERE d.createdAt < :cutoff 
+        AND d.documentUrl IS NOT NULL 
+        AND d.type != org.example.rentoza.user.document.RenterDocumentType.SELFIE
+        """)
+    List<RenterDocument> findDocumentsForAnonymization(@Param("cutoff") LocalDateTime cutoff);
+    
+    /**
+     * Count selfies pending deletion (for stats).
+     * P0-5 FIX: Database aggregation instead of loading all records.
+     */
+    @Query("""
+        SELECT COUNT(d) FROM RenterDocument d 
+        WHERE d.type = org.example.rentoza.user.document.RenterDocumentType.SELFIE 
+        AND d.createdAt < :cutoff
+        """)
+    long countSelfiesOlderThan(@Param("cutoff") LocalDateTime cutoff);
+    
+    /**
+     * Count rejected documents pending deletion (for stats).
+     * P0-5 FIX: Database aggregation instead of loading all records.
+     */
+    @Query("""
+        SELECT COUNT(d) FROM RenterDocument d 
+        WHERE d.processingStatus = org.example.rentoza.user.document.RenterDocument.ProcessingStatus.FAILED 
+        AND d.createdAt < :cutoff
+        """)
+    long countRejectedDocumentsOlderThan(@Param("cutoff") LocalDateTime cutoff);
+    
+    /**
+     * Count total selfies (for stats).
+     * P0-5 FIX: Database aggregation instead of loading all records.
+     */
+    @Query("""
+        SELECT COUNT(d) FROM RenterDocument d 
+        WHERE d.type = org.example.rentoza.user.document.RenterDocumentType.SELFIE
+        """)
+    long countTotalSelfies();
 }

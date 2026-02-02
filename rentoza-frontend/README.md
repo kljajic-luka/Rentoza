@@ -73,3 +73,51 @@ Dedicated environment files live in `src/environments/` with `baseApiUrl` precon
 - Hook services to real backend DTOs once the API contracts are final.
 - Extend guards or route data as additional roles/permissions emerge.
 - Add e2e coverage (e.g., Cypress or Playwright) when workflows stabilize.
+
+## Legal & Privacy
+
+### Legal Pages
+
+The application includes GDPR-compliant legal pages for the beta testing phase:
+
+| Route | Component | Description |
+|-------|-----------|-------------|
+| `/privacy` | `PrivacyPolicyComponent` | Privacy policy covering data collection, processing, third-party services, user rights, and GDPR compliance |
+| `/beta-terms` | `BetaTermsComponent` | Beta terms and conditions including disclaimer, tester responsibilities, and feedback usage |
+
+**Location:** `src/app/features/legal/pages/`
+
+### Footer Links
+
+Legal links are displayed in the site footer (`src/app/shared/components/layout/`) and include:
+- Privacy Policy
+- Beta Terms
+- Contact email
+
+### Auth Pages
+
+Login and registration pages include:
+- **Beta Notice Banner**: Informs users this is a private friends-and-family beta
+- **Legal Links**: "By signing in/registering, you agree to our Beta Terms & Privacy Policy"
+
+### Cookie Consent
+
+Currently **not required** because:
+- No third-party analytics (Google Analytics, Facebook Pixel, etc.)
+- No advertising cookies
+- Only essential session cookies for authentication
+
+The Privacy Policy includes a statement: *"We currently do not use analytics or advertising cookies. If this changes, this page will be updated."*
+
+If analytics are added in the future, implement a cookie consent banner that:
+1. Blocks analytics scripts until consent is given
+2. Provides Accept/Reject options
+3. Stores preference in localStorage
+4. Does not show again after user makes a choice
+
+### Backend PII Protection
+
+The Spring Boot backend includes:
+- `PiiMaskingConverter` in logback configuration
+- Masks emails, phone numbers, and credit card numbers in logs
+- Tokens logged only as hashes (first 10 chars)

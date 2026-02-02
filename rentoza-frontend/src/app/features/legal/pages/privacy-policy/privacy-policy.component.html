@@ -1,0 +1,696 @@
+<div class="privacy-container">
+  <!-- Language Toggle -->
+  <button class="lang-toggle" (click)="toggleLanguage()" type="button">
+    <mat-icon>translate</mat-icon>
+    @if (currentLang() === 'sr') {
+      <span>English</span>
+    } @else {
+      <span>Srpski</span>
+    }
+  </button>
+
+  <mat-card class="privacy-card">
+    <mat-card-header>
+      <mat-icon mat-card-avatar class="header-icon">privacy_tip</mat-icon>
+      @if (currentLang() === 'sr') {
+        <mat-card-title>Politika Privatnosti</mat-card-title>
+        <mat-card-subtitle>Poslednje ažuriranje: {{ lastUpdated }}</mat-card-subtitle>
+      } @else {
+        <mat-card-title>Privacy Policy</mat-card-title>
+        <mat-card-subtitle>Last updated: {{ lastUpdatedEn }}</mat-card-subtitle>
+      }
+    </mat-card-header>
+
+    <mat-card-content>
+      <!-- ═══════════════════════════════════════════════════════════════════════════
+           SERBIAN VERSION
+           ═══════════════════════════════════════════════════════════════════════════ -->
+      @if (currentLang() === 'sr') {
+        <!-- Uvod -->
+        <section class="policy-section">
+          <h2>
+            <mat-icon>info</mat-icon>
+            Uvod
+          </h2>
+          <p>
+            Dobrodošli na Rentoza! Ova politika privatnosti objašnjava kako prikupljamo, koristimo i
+            štitimo vaše lične podatke kada koristite našu platformu za iznajmljivanje automobila
+            između korisnika. Posvećeni smo transparentnosti u vezi sa našim praksama obrade
+            podataka, posebno tokom ove faze beta testiranja.
+          </p>
+          <p>
+            <strong>Ovo je beta verzija servisa</strong> namenjena testiranju od strane prijatelja i
+            porodice. Ozbiljno shvatamo vašu privatnost čak i tokom rane faze razvoja.
+          </p>
+        </section>
+
+        <mat-divider></mat-divider>
+
+        <!-- Podaci koje prikupljamo -->
+        <section class="policy-section">
+          <h2>
+            <mat-icon>folder_open</mat-icon>
+            Koje podatke prikupljamo
+          </h2>
+
+          <h3>Podaci o nalogu</h3>
+          <ul>
+            <li>
+              <strong>Email adresa</strong> — Za kreiranje naloga, prijavu i osnovnu komunikaciju
+            </li>
+            <li>
+              <strong>Ime</strong> — Za identifikaciju na platformi i u komunikaciji vezanoj za
+              rezervacije
+            </li>
+            <li>
+              <strong>Broj telefona</strong> (opcionalno) — Za koordinaciju između iznajmljivača i
+              vlasnika
+            </li>
+            <li>
+              <strong>Profilna fotografija</strong> (opcionalno) — Za izgradnju poverenja između
+              korisnika
+            </li>
+          </ul>
+
+          <h3>Podaci o korišćenju</h3>
+          <ul>
+            <li>
+              <strong>Istorija rezervacija</strong> — Evidencija iznajmljivanja koje ste napravili
+              ili primili
+            </li>
+            <li>
+              <strong>Pretrage</strong> — Šta pretražujete kako bismo poboljšali pronalaženje vozila
+            </li>
+            <li><strong>Poruke</strong> — Komunikacija između iznajmljivača i vlasnika vozila</li>
+            <li>
+              <strong>Ocene i recenzije</strong> — Povratne informacije koje pružate o
+              iznajmljivanjima
+            </li>
+          </ul>
+
+          <h3>Tehnički podaci</h3>
+          <ul>
+            <li>
+              <strong>Log podaci</strong> — IP adrese, tip pretraživača i vreme pristupa za
+              bezbednost i otklanjanje grešaka
+            </li>
+            <li>
+              <strong>Izveštaji o greškama</strong> — Tehničke informacije kada nešto pođe po zlu
+              (za ispravku bagova)
+            </li>
+            <li><strong>Podaci o uređaju</strong> — Osnovni tip uređaja za prilagođeni dizajn</li>
+          </ul>
+
+          <h3>Podaci vlasnika vozila</h3>
+          <ul>
+            <li>
+              <strong>Detalji vozila</strong> — Marka, model, godina, fotografije, lokacija i
+              dostupnost
+            </li>
+            <li>
+              <strong>Informacije o ceni</strong> — Dnevne cene i uslovi iznajmljivanja koje
+              postavljate
+            </li>
+          </ul>
+
+          <div class="info-box">
+            <mat-icon>lightbulb</mat-icon>
+            <p>
+              <strong>Šta NE prikupljamo:</strong> Ne prikupljamo podatke o platnim karticama (nema
+              plaćanja u beta verziji), brojeve ličnih dokumenata, zdravstvene podatke ili podatke
+              dece mlađe od 16 godina.
+            </p>
+          </div>
+        </section>
+
+        <mat-divider></mat-divider>
+
+        <!-- Pravni osnov -->
+        <section class="policy-section">
+          <h2>
+            <mat-icon>gavel</mat-icon>
+            Zašto obrađujemo vaše podatke (pravni osnov)
+          </h2>
+
+          <ul>
+            <li>
+              <strong>Izvršenje ugovora</strong> — Da bismo pružili uslugu iznajmljivanja automobila
+              za koju ste se registrovali, uključujući upravljanje rezervacijama, porukama i
+              korisničkim nalozima.
+            </li>
+            <li>
+              <strong>Legitimni interes</strong> — Za poboljšanje platforme, ispravljanje grešaka,
+              obezbeđivanje sigurnosti i sprečavanje prevare. Balansiramo ove interese sa vašim
+              pravima na privatnost.
+            </li>
+            <li>
+              <strong>Pristanak</strong> — Za opcione funkcije poput marketinških komunikacija
+              (trenutno nema), prvo ćemo zatražiti vašu izričitu saglasnost.
+            </li>
+            <li>
+              <strong>Zakonske obaveze</strong> — Za usklađenost sa važećim zakonima kada je to
+              potrebno.
+            </li>
+          </ul>
+        </section>
+
+        <mat-divider></mat-divider>
+
+        <!-- Treće strane -->
+        <section class="policy-section">
+          <h2>
+            <mat-icon>cloud</mat-icon>
+            Servisi trećih strana koje koristimo
+          </h2>
+          <p>Koristimo sledeće pouzdane servise za rad Rentoza platforme:</p>
+
+          <div class="processor-grid">
+            <div class="processor-card">
+              <strong>Supabase</strong>
+              <span>Baza podataka i autentifikacija</span>
+              <small>EU (Frankfurt) / US infrastruktura</small>
+            </div>
+            <div class="processor-card">
+              <strong>Google Cloud (Cloud Run)</strong>
+              <span>Hosting bekenda</span>
+              <small>EU (Belgija) region</small>
+            </div>
+            <div class="processor-card">
+              <strong>Firebase</strong>
+              <span>Hosting frontenda</span>
+              <small>Globalni CDN sa obradom u EU</small>
+            </div>
+            <div class="processor-card">
+              <strong>Google OAuth</strong>
+              <span>Društvena prijava (opcionalno)</span>
+              <small>Primenjuju se Google-ovi standardni uslovi privatnosti</small>
+            </div>
+          </div>
+
+          <div class="info-box info-box--success">
+            <mat-icon>verified</mat-icon>
+            <p>
+              <strong>Bez analitike i praćenja:</strong> Trenutno ne koristimo Google Analytics,
+              Facebook Pixel ili bilo koje kolačiće za oglašavanje/praćenje trećih strana. Ako se
+              ovo promeni, ažuriraćemo ovu politiku i zatražiti vašu saglasnost.
+            </p>
+          </div>
+        </section>
+
+        <mat-divider></mat-divider>
+
+        <!-- Lokacija podataka -->
+        <section class="policy-section">
+          <h2>
+            <mat-icon>public</mat-icon>
+            Gde se čuvaju vaši podaci
+          </h2>
+          <p>Vaši podaci se prvenstveno čuvaju i obrađuju u <strong>Evropskoj uniji</strong>:</p>
+          <ul>
+            <li>Serveri baze podataka: EU (Frankfurt, Nemačka)</li>
+            <li>Backend API: EU (Belgija)</li>
+            <li>
+              Neki infrastrukturni servisi mogu obrađivati podatke u SAD u skladu sa EU-US Data
+              Privacy Framework-om
+            </li>
+          </ul>
+          <p>
+            Svi naši pružaoci usluga održavaju odgovarajuće sigurnosne mere i, gde je primenjivo,
+            standardne ugovorne klauzule za međunarodni prenos podataka.
+          </p>
+        </section>
+
+        <mat-divider></mat-divider>
+
+        <!-- Zadržavanje podataka -->
+        <section class="policy-section">
+          <h2>
+            <mat-icon>schedule</mat-icon>
+            Koliko dugo čuvamo vaše podatke
+          </h2>
+          <ul>
+            <li>
+              <strong>Aktivni nalozi:</strong> Podaci se čuvaju dok je vaš nalog aktivan i do
+              {{ dataRetentionMonths }} meseci nakon brisanja naloga za pravne/revizijske svrhe.
+            </li>
+            <li>
+              <strong>Evidencija rezervacija:</strong> Čuva se tokom trajanja beta verzije plus
+              {{ dataRetentionMonths }} meseci.
+            </li>
+            <li><strong>Tehnički logovi:</strong> Automatski se brišu nakon 90 dana.</li>
+            <li>
+              <strong>Beta podaci:</strong> Pošto je ovo beta verzija, svi podaci mogu biti obrisani
+              prilikom prelaska na produkciju. Obavestićemo vas unapred.
+            </li>
+          </ul>
+        </section>
+
+        <mat-divider></mat-divider>
+
+        <!-- Vaša prava -->
+        <section class="policy-section">
+          <h2>
+            <mat-icon>person</mat-icon>
+            Vaša prava
+          </h2>
+          <p>Prema GDPR-u i srpskom Zakonu o zaštiti podataka o ličnosti, imate pravo na:</p>
+          <ul>
+            <li><strong>Pristup</strong> — Zatražite kopiju vaših ličnih podataka</li>
+            <li><strong>Ispravku</strong> — Ispravite netačne ili nepotpune podatke</li>
+            <li>
+              <strong>Brisanje</strong> — Zatražite brisanje vaših podataka ("pravo na zaborav")
+            </li>
+            <li>
+              <strong>Prenosivost podataka</strong> — Primite vaše podatke u strukturiranom,
+              mašinski čitljivom formatu
+            </li>
+            <li>
+              <strong>Prigovor</strong> — Prigovorite obradi zasnovanoj na legitimnom interesu
+            </li>
+            <li>
+              <strong>Povlačenje saglasnosti</strong> — Gde je obrada zasnovana na saglasnosti,
+              povucite je u bilo kom trenutku
+            </li>
+          </ul>
+
+          <div class="action-box">
+            <mat-icon>email</mat-icon>
+            <div>
+              <p>Za ostvarivanje bilo kog od ovih prava, kontaktirajte nas na:</p>
+              <a href="mailto:{{ contactEmail }}" class="contact-link">{{ contactEmail }}</a>
+              <p class="response-time">Nastojimo da odgovorimo u roku od 30 dana.</p>
+            </div>
+          </div>
+        </section>
+
+        <mat-divider></mat-divider>
+
+        <!-- Deca -->
+        <section class="policy-section">
+          <h2>
+            <mat-icon>child_care</mat-icon>
+            Privatnost dece
+          </h2>
+          <p>
+            Rentoza <strong>nije namenjena korisnicima mlađim od 16 godina</strong>. Ne prikupljamo
+            svesno lične podatke od dece. Ako verujete da nam je dete dalo lične podatke, molimo vas
+            da nas odmah kontaktirate na <a href="mailto:{{ contactEmail }}">{{ contactEmail }}</a
+            >, i obrisaćemo ih.
+          </p>
+        </section>
+
+        <mat-divider></mat-divider>
+
+        <!-- Bezbednost -->
+        <section class="policy-section">
+          <h2>
+            <mat-icon>security</mat-icon>
+            Kako štitimo vaše podatke
+          </h2>
+          <ul>
+            <li>Svi podaci se prenose preko HTTPS-a (TLS 1.3 enkripcija)</li>
+            <li>Lozinke se hešuju, nikada se ne čuvaju u čistom tekstu</li>
+            <li>Pristup bazi podataka je ograničen i nadgledan</li>
+            <li>Redovne bezbednosne provere tokom razvoja</li>
+            <li>
+              Princip minimalnog prikupljanja podataka — prikupljamo samo ono što nam je potrebno
+            </li>
+          </ul>
+        </section>
+
+        <mat-divider></mat-divider>
+
+        <!-- Promene -->
+        <section class="policy-section">
+          <h2>
+            <mat-icon>update</mat-icon>
+            Promene ove politike
+          </h2>
+          <p>
+            Možemo ažurirati ovu politiku privatnosti kako se Rentoza razvija. Za značajne promene,
+            obavestićemo vas putem emaila ili istaknutog obaveštenja na platformi. Datum "Poslednje
+            ažuriranje" na vrhu označava kada je politika poslednji put revidirana.
+          </p>
+        </section>
+
+        <mat-divider></mat-divider>
+
+        <!-- Kontakt -->
+        <section class="policy-section">
+          <h2>
+            <mat-icon>contact_mail</mat-icon>
+            Kontaktirajte nas
+          </h2>
+          <p>
+            Ako imate pitanja o ovoj politici privatnosti ili našim praksama obrade podataka, molimo
+            kontaktirajte:
+          </p>
+          <div class="contact-info">
+            <p><strong>Rentoza</strong></p>
+            <p>
+              Email: <a href="mailto:{{ contactEmail }}">{{ contactEmail }}</a>
+            </p>
+            <p>Srbija</p>
+          </div>
+        </section>
+
+        <!-- Navigacija -->
+        <div class="page-footer">
+          <a mat-button routerLink="/beta-terms" color="primary">
+            <mat-icon>article</mat-icon>
+            Pročitajte Beta Uslove
+          </a>
+          <a mat-button routerLink="/" color="primary">
+            <mat-icon>home</mat-icon>
+            Nazad na početnu
+          </a>
+        </div>
+      }
+
+      <!-- ═══════════════════════════════════════════════════════════════════════════
+           ENGLISH VERSION
+           ═══════════════════════════════════════════════════════════════════════════ -->
+      @if (currentLang() === 'en') {
+        <!-- Introduction -->
+        <section class="policy-section">
+          <h2>
+            <mat-icon>info</mat-icon>
+            Introduction
+          </h2>
+          <p>
+            Welcome to Rentoza! This privacy policy explains how we collect, use, and protect your
+            personal data when you use our peer-to-peer car rental platform. We're committed to
+            being transparent about our data practices, especially during this beta testing phase.
+          </p>
+          <p>
+            <strong>This is a beta service</strong> intended for friends and family testing. We take
+            your privacy seriously even during early development.
+          </p>
+        </section>
+
+        <mat-divider></mat-divider>
+
+        <!-- Data We Collect -->
+        <section class="policy-section">
+          <h2>
+            <mat-icon>folder_open</mat-icon>
+            What Data We Collect
+          </h2>
+
+          <h3>Account Information</h3>
+          <ul>
+            <li>
+              <strong>Email address</strong> — For account creation, login, and essential
+              communications
+            </li>
+            <li>
+              <strong>Name</strong> — To identify you on the platform and in booking communications
+            </li>
+            <li>
+              <strong>Phone number</strong> (optional) — For booking coordination between renters
+              and owners
+            </li>
+            <li><strong>Profile photo</strong> (optional) — To help build trust between users</li>
+          </ul>
+
+          <h3>Usage Data</h3>
+          <ul>
+            <li><strong>Booking history</strong> — Records of rentals you've made or received</li>
+            <li>
+              <strong>Search queries</strong> — What you search for to improve vehicle matching
+            </li>
+            <li><strong>Messages</strong> — Communications between renters and vehicle owners</li>
+            <li><strong>Reviews and ratings</strong> — Feedback you provide about rentals</li>
+          </ul>
+
+          <h3>Technical Data</h3>
+          <ul>
+            <li>
+              <strong>Log data</strong> — IP addresses, browser type, and access times for security
+              and debugging
+            </li>
+            <li>
+              <strong>Error reports</strong> — Technical information when something goes wrong (to
+              fix bugs)
+            </li>
+            <li><strong>Device information</strong> — Basic device type for responsive design</li>
+          </ul>
+
+          <h3>Vehicle Owner Data</h3>
+          <ul>
+            <li>
+              <strong>Vehicle details</strong> — Make, model, year, photos, location, and
+              availability
+            </li>
+            <li><strong>Pricing information</strong> — Daily rates and rental terms you set</li>
+          </ul>
+
+          <div class="info-box">
+            <mat-icon>lightbulb</mat-icon>
+            <p>
+              <strong>What we DON'T collect:</strong> We do not collect payment card details (no
+              payments in beta), government ID numbers, health data, or data from children under 16.
+            </p>
+          </div>
+        </section>
+
+        <mat-divider></mat-divider>
+
+        <!-- Legal Basis -->
+        <section class="policy-section">
+          <h2>
+            <mat-icon>gavel</mat-icon>
+            Why We Process Your Data (Legal Basis)
+          </h2>
+
+          <ul>
+            <li>
+              <strong>Contract Performance</strong> — To provide the car rental service you signed
+              up for, including managing bookings, messages, and user accounts.
+            </li>
+            <li>
+              <strong>Legitimate Interest</strong> — To improve the platform, fix bugs, ensure
+              security, and prevent fraud. We balance these interests against your privacy rights.
+            </li>
+            <li>
+              <strong>Consent</strong> — For optional features like marketing communications (none
+              currently), we'll ask your explicit permission first.
+            </li>
+            <li>
+              <strong>Legal Obligations</strong> — To comply with applicable laws when required.
+            </li>
+          </ul>
+        </section>
+
+        <mat-divider></mat-divider>
+
+        <!-- Third-Party Processors -->
+        <section class="policy-section">
+          <h2>
+            <mat-icon>cloud</mat-icon>
+            Third-Party Services We Use
+          </h2>
+          <p>We use the following trusted services to operate Rentoza:</p>
+
+          <div class="processor-grid">
+            <div class="processor-card">
+              <strong>Supabase</strong>
+              <span>Database & Authentication</span>
+              <small>EU (Frankfurt) / US infrastructure</small>
+            </div>
+            <div class="processor-card">
+              <strong>Google Cloud (Cloud Run)</strong>
+              <span>Backend Hosting</span>
+              <small>EU (Belgium) region</small>
+            </div>
+            <div class="processor-card">
+              <strong>Firebase</strong>
+              <span>Frontend Hosting</span>
+              <small>Global CDN with EU processing</small>
+            </div>
+            <div class="processor-card">
+              <strong>Google OAuth</strong>
+              <span>Social Login (Optional)</span>
+              <small>Google's standard privacy terms apply</small>
+            </div>
+          </div>
+
+          <div class="info-box info-box--success">
+            <mat-icon>verified</mat-icon>
+            <p>
+              <strong>No Analytics or Ad Tracking:</strong> We currently do not use Google
+              Analytics, Facebook Pixel, or any third-party advertising/tracking cookies. If this
+              changes, we will update this policy and request your consent.
+            </p>
+          </div>
+        </section>
+
+        <mat-divider></mat-divider>
+
+        <!-- Data Location -->
+        <section class="policy-section">
+          <h2>
+            <mat-icon>public</mat-icon>
+            Where Your Data Is Stored
+          </h2>
+          <p>Your data is primarily stored and processed in the <strong>European Union</strong>:</p>
+          <ul>
+            <li>Database servers: EU (Frankfurt, Germany)</li>
+            <li>Backend API: EU (Belgium)</li>
+            <li>
+              Some infrastructure services may process data in the US under EU-US Data Privacy
+              Framework compliance
+            </li>
+          </ul>
+          <p>
+            All our service providers maintain appropriate security measures and, where applicable,
+            Standard Contractual Clauses for international data transfers.
+          </p>
+        </section>
+
+        <mat-divider></mat-divider>
+
+        <!-- Data Retention -->
+        <section class="policy-section">
+          <h2>
+            <mat-icon>schedule</mat-icon>
+            How Long We Keep Your Data
+          </h2>
+          <ul>
+            <li>
+              <strong>Active accounts:</strong> Data is retained while your account is active and
+              for up to {{ dataRetentionMonths }} months after account deletion for legal/audit
+              purposes.
+            </li>
+            <li>
+              <strong>Booking records:</strong> Kept for the duration of the beta plus
+              {{ dataRetentionMonths }} months.
+            </li>
+            <li><strong>Technical logs:</strong> Automatically deleted after 90 days.</li>
+            <li>
+              <strong>Beta data:</strong> As this is a beta, all data may be deleted when
+              transitioning to production. We will notify you in advance.
+            </li>
+          </ul>
+        </section>
+
+        <mat-divider></mat-divider>
+
+        <!-- Your Rights -->
+        <section class="policy-section">
+          <h2>
+            <mat-icon>person</mat-icon>
+            Your Rights
+          </h2>
+          <p>Under GDPR and Serbian data protection law, you have the right to:</p>
+          <ul>
+            <li><strong>Access</strong> — Request a copy of your personal data</li>
+            <li><strong>Rectification</strong> — Correct inaccurate or incomplete data</li>
+            <li>
+              <strong>Erasure</strong> — Request deletion of your data ("right to be forgotten")
+            </li>
+            <li>
+              <strong>Data Portability</strong> — Receive your data in a structured,
+              machine-readable format
+            </li>
+            <li><strong>Object</strong> — Object to processing based on legitimate interest</li>
+            <li>
+              <strong>Withdraw Consent</strong> — Where processing is based on consent, withdraw it
+              anytime
+            </li>
+          </ul>
+
+          <div class="action-box">
+            <mat-icon>email</mat-icon>
+            <div>
+              <p>To exercise any of these rights, contact us at:</p>
+              <a href="mailto:{{ contactEmail }}" class="contact-link">{{ contactEmail }}</a>
+              <p class="response-time">We aim to respond within 30 days.</p>
+            </div>
+          </div>
+        </section>
+
+        <mat-divider></mat-divider>
+
+        <!-- Children -->
+        <section class="policy-section">
+          <h2>
+            <mat-icon>child_care</mat-icon>
+            Children's Privacy
+          </h2>
+          <p>
+            Rentoza is <strong>not intended for users under 16 years of age</strong>. We do not
+            knowingly collect personal data from children. If you believe a child has provided us
+            with personal data, please contact us immediately at
+            <a href="mailto:{{ contactEmail }}">{{ contactEmail }}</a
+            >, and we will delete it.
+          </p>
+        </section>
+
+        <mat-divider></mat-divider>
+
+        <!-- Security -->
+        <section class="policy-section">
+          <h2>
+            <mat-icon>security</mat-icon>
+            How We Protect Your Data
+          </h2>
+          <ul>
+            <li>All data transmitted over HTTPS (TLS 1.3 encryption)</li>
+            <li>Passwords are hashed, never stored in plain text</li>
+            <li>Database access restricted and monitored</li>
+            <li>Regular security reviews during development</li>
+            <li>Minimal data collection principle — we only collect what we need</li>
+          </ul>
+        </section>
+
+        <mat-divider></mat-divider>
+
+        <!-- Changes -->
+        <section class="policy-section">
+          <h2>
+            <mat-icon>update</mat-icon>
+            Changes to This Policy
+          </h2>
+          <p>
+            We may update this privacy policy as Rentoza evolves. For significant changes, we will
+            notify you via email or a prominent notice on the platform. The "Last updated" date at
+            the top indicates when the policy was last revised.
+          </p>
+        </section>
+
+        <mat-divider></mat-divider>
+
+        <!-- Contact -->
+        <section class="policy-section">
+          <h2>
+            <mat-icon>contact_mail</mat-icon>
+            Contact Us
+          </h2>
+          <p>
+            If you have questions about this privacy policy or our data practices, please contact:
+          </p>
+          <div class="contact-info">
+            <p><strong>Rentoza</strong></p>
+            <p>
+              Email: <a href="mailto:{{ contactEmail }}">{{ contactEmail }}</a>
+            </p>
+            <p>Serbia</p>
+          </div>
+        </section>
+
+        <!-- Navigation -->
+        <div class="page-footer">
+          <a mat-button routerLink="/beta-terms" color="primary">
+            <mat-icon>article</mat-icon>
+            Read Beta Terms
+          </a>
+          <a mat-button routerLink="/" color="primary">
+            <mat-icon>home</mat-icon>
+            Back to Home
+          </a>
+        </div>
+      }
+    </mat-card-content>
+  </mat-card>
+</div>

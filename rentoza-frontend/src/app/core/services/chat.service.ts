@@ -61,7 +61,7 @@ export class ChatService implements OnDestroy {
   private readonly webSocketService = inject(WebSocketService);
   private readonly authService = inject(AuthService);
   private readonly toast = inject(ToastService);
-  private readonly chatApiUrl = environment.chatApiUrl || 'http://localhost:8081/api';
+  private readonly chatApiUrl = environment.chatApiUrl;
 
   // Subjects for reactive streams
   private messageSubject = new Subject<MessageDTO>();
@@ -271,7 +271,7 @@ export class ChatService implements OnDestroy {
 
     const messages = activeConv.messages || [];
     const updatedMessages = messages.map((msg) =>
-      msg.optimisticId === optimisticId ? { ...serverMessage, status: 'sent' as const } : msg
+      msg.optimisticId === optimisticId ? { ...serverMessage, status: 'sent' as const } : msg,
     );
 
     this.activeConversationSubject.next({
@@ -289,7 +289,7 @@ export class ChatService implements OnDestroy {
 
     const messages = activeConv.messages || [];
     const updatedMessages = messages.map((msg) =>
-      msg.optimisticId === optimisticId ? { ...msg, status: 'failed' as const } : msg
+      msg.optimisticId === optimisticId ? { ...msg, status: 'failed' as const } : msg,
     );
 
     this.activeConversationSubject.next({
@@ -363,9 +363,7 @@ export class ChatService implements OnDestroy {
         this.updateOfflineQueueItem(item.id, { status: 'sending' });
 
         // Attempt to send
-        await firstValueFrom(
-          this.sendMessage(item.bookingId, { content: item.content })
-        );
+        await firstValueFrom(this.sendMessage(item.bookingId, { content: item.content }));
 
         // Success - remove from queue
         this.removeFromOfflineQueue(item.id);
@@ -381,7 +379,7 @@ export class ChatService implements OnDestroy {
 
   private updateOfflineQueueItem(id: string, updates: Partial<OfflineQueueItem>): void {
     const queue = this.offlineQueueSubject.value.map((item) =>
-      item.id === id ? { ...item, ...updates } : item
+      item.id === id ? { ...item, ...updates } : item,
     );
     this.offlineQueueSubject.next(queue);
     this.saveOfflineQueue();
@@ -410,18 +408,18 @@ export class ChatService implements OnDestroy {
         const conversations = this.conversationsSubject.value;
         this.conversationsSubject.next([conversation, ...conversations]);
       }),
-      catchError(this.handleError.bind(this))
+      catchError(this.handleError.bind(this)),
     );
   }
 
   /**
    * Get conversation with message history.
-   * 
+   *
    * Ensures all messages have correct isOwnMessage flag by enriching them
    * based on the current logged-in user. The backend returns messages
    * with isOwnMessage calculated for the requester, which is correct for
    * initial load but should be re-verified to be safe.
-   * 
+   *
    * @param bookingId The booking ID for the conversation
    * @param page Page number (0-indexed)
    * @param size Messages per page
@@ -435,20 +433,20 @@ export class ChatService implements OnDestroy {
         map((conversation) => {
           // Enrich all messages with correct isOwnMessage flag
           const currentUser = this.authService.getCurrentUser();
-          
+
           if (conversation.messages) {
             conversation.messages = conversation.messages.map((msg) =>
-              this.enrichMessageWithOwnershipFlag(msg, currentUser?.id)
+              this.enrichMessageWithOwnershipFlag(msg, currentUser?.id),
             );
           }
-          
+
           return conversation;
         }),
         tap((conversation) => {
           this.activeConversationSubject.next(conversation);
         }),
         shareReplay(1),
-        catchError(this.handleError.bind(this))
+        catchError(this.handleError.bind(this)),
       );
   }
 
@@ -465,14 +463,18 @@ export class ChatService implements OnDestroy {
         catchError((error) => {
           this.toast.error('Poruka nije poslata. Pokušajte ponovo.');
           return this.handleError(error);
-        })
+        }),
       );
   }
 
   /**
    * Send message with optimistic update and offline fallback
    */
-  sendMessageOptimistic(bookingId: string, content: string, conversationId: number): Observable<MessageDTO> {
+  sendMessageOptimistic(
+    bookingId: string,
+    content: string,
+    conversationId: number,
+  ): Observable<MessageDTO> {
     // Create optimistic message
     const optimisticMsg = this.createOptimisticMessage(content, conversationId);
 
@@ -504,7 +506,7 @@ export class ChatService implements OnDestroy {
         this.markOptimisticMessageFailed(optimisticMsg.optimisticId!);
         this.queueOfflineMessage(bookingId, content);
         return throwError(() => error);
-      })
+      }),
     );
   }
 
@@ -525,7 +527,7 @@ export class ChatService implements OnDestroy {
       tap(() => {
         const conversations = this.conversationsSubject.value;
         const updated = conversations.map((conv) =>
-          conv.bookingId === bookingId ? { ...conv, unreadCount: 0 } : conv
+          conv.bookingId === bookingId ? { ...conv, unreadCount: 0 } : conv,
         );
         this.conversationsSubject.next(updated);
 
@@ -534,7 +536,7 @@ export class ChatService implements OnDestroy {
           this.activeConversationSubject.next({ ...activeConv, unreadCount: 0 });
         }
       }),
-      catchError(this.handleError.bind(this))
+      catchError(this.handleError.bind(this)),
     );
   }
 
@@ -546,16 +548,18 @@ export class ChatService implements OnDestroy {
     return this.http.get<ConversationDTO[]>(`${this.chatApiUrl}/conversations`).pipe(
       map((conversations) => {
         // RBAC: Verify ownership before accepting conversations
-        const validated = conversations.filter(conv => {
+        const validated = conversations.filter((conv) => {
           // Convert all IDs to strings for reliable comparison
           const convOwnerId = conv.ownerId?.toString();
           const convRenterId = conv.renterId?.toString();
-          
+
           const isOwner = convOwnerId === userId;
           const isRenter = convRenterId === userId;
-          
+
           if (!isOwner && !isRenter) {
-            console.warn(`[SECURITY] User ${userId} received unauthorized conversation ${conv.id} (owner: ${convOwnerId}, renter: ${convRenterId})`);
+            console.warn(
+              `[SECURITY] User ${userId} received unauthorized conversation ${conv.id} (owner: ${convOwnerId}, renter: ${convRenterId})`,
+            );
             return false; // Filter out unauthorized conversations
           }
           return true;
@@ -563,7 +567,7 @@ export class ChatService implements OnDestroy {
 
         // Remove any duplicates (defensive)
         const uniqueIds = new Set<number>();
-        const deduplicated = validated.filter(conv => {
+        const deduplicated = validated.filter((conv) => {
           if (uniqueIds.has(conv.id)) {
             console.warn(`[SECURITY] Duplicate conversation ${conv.id} received`);
             return false;
@@ -586,7 +590,7 @@ export class ChatService implements OnDestroy {
       catchError((error) => {
         this.toast.error('Neuspešno učitavanje konverzacija. Pokušajte ponovo.');
         return this.handleError(error);
-      })
+      }),
     );
   }
 
@@ -594,7 +598,7 @@ export class ChatService implements OnDestroy {
     bookingId: string,
     renterId: string,
     ownerId: string,
-    initialMessage?: string
+    initialMessage?: string,
   ): Promise<ConversationDTO> {
     try {
       return await firstValueFrom(this.getConversation(bookingId));
@@ -630,14 +634,14 @@ export class ChatService implements OnDestroy {
 
   /**
    * Handle incoming message from WebSocket.
-   * 
+   *
    * CRITICAL: This method ensures isOwnMessage flag is correctly calculated
    * for the current user. The backend broadcasts with isOwnMessage=false,
    * so we must recalculate it based on comparing senderId with currentUserId.
-   * 
+   *
    * This fixes the inverted message bug where recipients saw messages
    * they didn't send on the left side (thinking they sent them).
-   * 
+   *
    * @param message The raw MessageDTO from WebSocket broadcast
    */
   private handleIncomingMessage(message: MessageDTO): void {
@@ -645,10 +649,10 @@ export class ChatService implements OnDestroy {
     // who is receiving it. Backend sends isOwnMessage=false, frontend calculates the real value.
     const currentUser = this.authService.getCurrentUser();
     const correctedMessage = this.enrichMessageWithOwnershipFlag(message, currentUser?.id);
-    
+
     this.messageSubject.next(correctedMessage);
     this.updateConversationWithNewMessage(correctedMessage);
-    
+
     // Check if this is our own message that was sent optimistically
     if (correctedMessage.isOwnMessage) {
       // For own messages, try to find and replace the optimistic version
@@ -657,9 +661,9 @@ export class ChatService implements OnDestroy {
         const messages = activeConv.messages || [];
         // Find optimistic message by content match (since optimistic has negative ID)
         const optimisticIdx = messages.findIndex(
-          (m) => m.id < 0 && m.content === correctedMessage.content && m.optimisticId
+          (m) => m.id < 0 && m.content === correctedMessage.content && m.optimisticId,
         );
-        
+
         if (optimisticIdx >= 0) {
           // Replace the optimistic message with the server message
           const updatedMessages = [...messages];
@@ -673,36 +677,36 @@ export class ChatService implements OnDestroy {
         }
       }
     }
-    
+
     // For other people's messages or if no optimistic found, add normally
     this.addMessageToActiveConversation(correctedMessage);
   }
 
   /**
    * Ensure isOwnMessage flag is correctly calculated for the current user.
-   * 
+   *
    * The backend broadcast doesn't know who is receiving the message,
    * so it sends isOwnMessage=false. We recalculate it locally by comparing
    * senderId with the current logged-in user's ID.
-   * 
+   *
    * Type-safe comparison:
    * - Converts both IDs to strings (handles number/string mismatch)
    * - Handles undefined currentUserId gracefully
    * - Works with initial load and WebSocket messages
-   * 
+   *
    * @param message The message from WebSocket or API
    * @param currentUserId The ID of the currently logged-in user
    * @returns MessageDTO with correct isOwnMessage flag for this user
    */
   private enrichMessageWithOwnershipFlag(
     message: MessageDTO,
-    currentUserId: string | undefined
+    currentUserId: string | undefined,
   ): MessageDTO {
     if (!currentUserId) {
       // If user not authenticated, default to false (safe default)
       return { ...message, isOwnMessage: false };
     }
-    
+
     // Type-safe comparison
     // - message.senderId may be number or string from API
     // - currentUserId is string from AuthService
@@ -710,7 +714,7 @@ export class ChatService implements OnDestroy {
     const senderId = message.senderId?.toString();
     const currentUserIdStr = currentUserId.toString();
     const isOwn = senderId === currentUserIdStr;
-    
+
     return {
       ...message,
       isOwnMessage: isOwn,
@@ -776,7 +780,7 @@ export class ChatService implements OnDestroy {
     const activeConv = this.activeConversationSubject.value;
     if (activeConv && activeConv.id === message.conversationId) {
       const messages = activeConv.messages || [];
-      
+
       // Check for duplicate by ID or by optimisticId match
       // This prevents duplicates when:
       // 1. WebSocket delivers a message that was already added optimistically
@@ -791,7 +795,7 @@ export class ChatService implements OnDestroy {
         }
         return false;
       });
-      
+
       if (!isDuplicate) {
         this.activeConversationSubject.next({
           ...activeConv,

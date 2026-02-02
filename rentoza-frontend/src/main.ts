@@ -87,9 +87,17 @@ bootstrapApplication(App, {
       JwtModule.forRoot({
         config: {
           tokenGetter: () => null,
-          allowedDomains: ['localhost:8080', 'localhost:8081'], // Allow both main API and chat service
+          // Dynamic domains from environment - extract hostname from full URLs
+          allowedDomains: [
+            ...new Set(
+              [
+                new URL(environment.baseUrl || environment.baseApiUrl).hostname,
+                new URL(environment.chatApiUrl).hostname,
+              ].filter(Boolean),
+            ),
+          ],
         },
-      })
+      }),
     ),
     provideHttpClient(
       withXsrfConfiguration({
@@ -103,7 +111,7 @@ bootstrapApplication(App, {
         idempotencyInterceptor,
         httpCacheInterceptor,
         errorResponseInterceptor,
-      ])
+      ]),
     ),
     provideNativeDateAdapter(),
     provideToastr({

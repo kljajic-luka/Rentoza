@@ -1,0 +1,546 @@
+<div class="beta-terms-container">
+  <!-- Language Toggle -->
+  <button class="lang-toggle" (click)="toggleLanguage()" type="button">
+    <mat-icon>translate</mat-icon>
+    @if (currentLang() === 'sr') {
+      <span>English</span>
+    } @else {
+      <span>Srpski</span>
+    }
+  </button>
+
+  <mat-card class="beta-terms-card">
+    <mat-card-header>
+      <mat-icon mat-card-avatar class="header-icon">science</mat-icon>
+      @if (currentLang() === 'sr') {
+        <mat-card-title>Beta Uslovi Korišćenja</mat-card-title>
+        <mat-card-subtitle>Poslednje ažuriranje: {{ lastUpdated }}</mat-card-subtitle>
+      } @else {
+        <mat-card-title>Beta Terms & Conditions</mat-card-title>
+        <mat-card-subtitle>Last updated: {{ lastUpdatedEn }}</mat-card-subtitle>
+      }
+    </mat-card-header>
+
+    <mat-card-content>
+      <!-- ═══════════════════════════════════════════════════════════════════════════
+           SERBIAN VERSION
+           ═══════════════════════════════════════════════════════════════════════════ -->
+      @if (currentLang() === 'sr') {
+        <!-- Beta obaveštenje -->
+        <section class="terms-section highlight-section">
+          <div class="beta-banner">
+            <mat-icon>warning</mat-icon>
+            <div>
+              <h2>Ovo je Beta Verzija</h2>
+              <p>
+                Hvala vam što učestvujete u Rentoza beta testiranju! Korišćenjem ovog servisa,
+                potvrđujete da je ovo rana verzija naše platforme namenjena testiranju i
+                prikupljanju povratnih informacija.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <mat-divider></mat-divider>
+
+        <!-- Šta znači Beta -->
+        <section class="terms-section">
+          <h2>
+            <mat-icon>build</mat-icon>
+            Šta znači "Beta"
+          </h2>
+          <ul>
+            <li>
+              <strong>U razvoju</strong> — Platforma se aktivno gradi. Funkcije mogu biti nepotpune,
+              značajno se promeniti ili biti potpuno uklonjene.
+            </li>
+            <li>
+              <strong>Može sadržati greške</strong> — Uprkos našim najboljim naporima, možete naići
+              na greške, padove ili neočekivano ponašanje. Molimo vas da ih prijavite!
+            </li>
+            <li>
+              <strong>Nema garancije dostupnosti</strong> — Servis može biti nedostupan zbog
+              održavanja, ažuriranja ili tehničkih problema bez prethodne najave.
+            </li>
+            <li>
+              <strong>Podaci mogu biti resetovani</strong> — Vaš nalog, rezervacije, poruke i sav
+              sadržaj koji kreirate mogu biti obrisani ili resetovani u bilo kom trenutku tokom beta
+              faze.
+            </li>
+          </ul>
+        </section>
+
+        <mat-divider></mat-divider>
+
+        <!-- Bez garancije -->
+        <section class="terms-section">
+          <h2>
+            <mat-icon>gpp_maybe</mat-icon>
+            Bez Garancije
+          </h2>
+          <div class="legal-notice">
+            <p>
+              Rentoza beta se pruža <strong>"KAKVA JESTE"</strong> i
+              <strong>"KAKO JE DOSTUPNA"</strong>
+              bez bilo kakvih garancija, bilo izričitih ili podrazumevanih. Ovo uključuje, ali nije
+              ograničeno na, podrazumevane garancije prodajnosti, pogodnosti za određenu svrhu i
+              nekršenja prava.
+            </p>
+            <p>
+              Ne garantujemo da će servis biti neprekidan, pravovremen, siguran ili bez grešaka.
+            </p>
+          </div>
+        </section>
+
+        <mat-divider></mat-divider>
+
+        <!-- Samo za testiranje -->
+        <section class="terms-section">
+          <h2>
+            <mat-icon>science</mat-icon>
+            Samo za Testiranje i Povratne Informacije
+          </h2>
+          <p>Ova beta verzija je namenjena isključivo za:</p>
+          <ul>
+            <li>Testiranje funkcionalnosti platforme i korisničkog iskustva</li>
+            <li>Pružanje povratnih informacija koje nam pomažu da se poboljšamo</li>
+            <li>Identifikovanje grešaka i problema pre javnog lansiranja</li>
+          </ul>
+          <div class="warning-box">
+            <mat-icon>warning</mat-icon>
+            <p>
+              <strong>NEMOJTE se oslanjati na ovu beta verziju za kritične svrhe.</strong>
+              Ne koristite je za stvarna iznajmljivanja vozila gde bi neuspeh mogao izazvati
+              značajne probleme. Ovo je testno okruženje.
+            </p>
+          </div>
+        </section>
+
+        <mat-divider></mat-divider>
+
+        <!-- Odgovornosti testera -->
+        <section class="terms-section">
+          <h2>
+            <mat-icon>assignment_ind</mat-icon>
+            Vaše Odgovornosti kao Beta Testera
+          </h2>
+          <p>Učešćem u ovoj beta verziji, slažete se da:</p>
+
+          <h3>✅ Treba</h3>
+          <ul class="do-list">
+            <li>Koristite samo svoje prave informacije gde je to neophodno za testiranje</li>
+            <li>
+              Prijavljujete greške, probleme i sugestije kako biste nam pomogli da se poboljšamo
+            </li>
+            <li>Budete strpljivi sa nesavršenostima — aktivno radimo na njima</li>
+            <li>Čuvate svoje pristupne podatke bezbednim</li>
+          </ul>
+
+          <h3>❌ Nemojte</h3>
+          <ul class="dont-list">
+            <li>Postavljati ilegalan, uvredljiv ili štetan sadržaj</li>
+            <li>
+              Deliti veoma osetljive podatke (lična dokumenta, brojeve bankovnih/kreditnih kartica,
+              itd.)
+            </li>
+            <li>Pokušavati da hakujete, iskoristite ili obrnuto inženjerirate sistem</li>
+            <li>Koristiti automatizovane botove ili skripte bez dozvole</li>
+            <li>Deliti pristupne podatke sa drugima</li>
+            <li>Koristiti platformu za bilo kakvu nezakonitu svrhu</li>
+          </ul>
+        </section>
+
+        <mat-divider></mat-divider>
+
+        <!-- Pristup i prekid -->
+        <section class="terms-section">
+          <h2>
+            <mat-icon>block</mat-icon>
+            Pristup i Prekid
+          </h2>
+          <ul>
+            <li>
+              Zadržavamo pravo da <strong>prekinemo beta pristup</strong> u bilo kom trenutku, iz
+              bilo kog razloga, bez prethodne najave.
+            </li>
+            <li>
+              Možemo <strong>obrisati korisničke podatke</strong> po sopstvenom nahođenju, posebno
+              prilikom prelaska sa beta na produkcijsku verziju.
+            </li>
+            <li>
+              Beta pristup je <strong>samo po pozivu</strong> i ne bi trebalo da se javno deli.
+            </li>
+            <li>Beta period nema garantovano trajanje i može se završiti u bilo kom trenutku.</li>
+          </ul>
+        </section>
+
+        <mat-divider></mat-divider>
+
+        <!-- Povratne informacije -->
+        <section class="terms-section">
+          <h2>
+            <mat-icon>feedback</mat-icon>
+            Povratne Informacije i Sugestije
+          </h2>
+          <p>
+            Vaše povratne informacije su izuzetno dragocene! Pružanjem sugestija, ideja, prijava
+            grešaka ili drugih povratnih informacija tokom beta testiranja:
+          </p>
+          <ul>
+            <li>
+              Dajete nam neekskluzivnu, besplatnu, trajnu licencu za korišćenje, modifikovanje i
+              ugrađivanje vaših povratnih informacija u proizvod.
+            </li>
+            <li>
+              Razumete da nema posebne kompenzacije za povratne informacije pružene tokom beta
+              testiranja.
+            </li>
+            <li>Potvrđujete da možemo nezavisno razviti slične ideje ili funkcije.</li>
+          </ul>
+          <p>
+            Cenimo svaku povratnu informaciju i potrudićemo se da rešimo uobičajene probleme i
+            implementiramo vredne sugestije.
+          </p>
+        </section>
+
+        <mat-divider></mat-divider>
+
+        <!-- Ograničenje odgovornosti -->
+        <section class="terms-section">
+          <h2>
+            <mat-icon>shield</mat-icon>
+            Ograničenje Odgovornosti
+          </h2>
+          <div class="legal-notice">
+            <p>
+              U maksimalnom obimu dozvoljenom zakonom, Rentoza i njeni operateri neće biti odgovorni
+              za bilo kakvu indirektnu, slučajnu, posebnu, posledičnu ili kaznenu štetu, ili bilo
+              kakav gubitak profita ili prihoda, bilo da je nastao direktno ili indirektno, ili bilo
+              kakav gubitak podataka, korišćenja, ugleda ili drugih nematerijalnih gubitaka koji
+              proizilaze iz:
+            </p>
+            <ul>
+              <li>Vašeg korišćenja ili nemogućnosti korišćenja beta servisa</li>
+              <li>Bilo kakvog neovlašćenog pristupa ili korišćenja vaših podataka</li>
+              <li>Bilo kakvih grešaka ili prekida u servisu</li>
+              <li>Bilo kakvog sadržaja ili ponašanja korisnika trećih strana</li>
+            </ul>
+          </div>
+        </section>
+
+        <mat-divider></mat-divider>
+
+        <!-- Promene -->
+        <section class="terms-section">
+          <h2>
+            <mat-icon>update</mat-icon>
+            Promene Ovih Uslova
+          </h2>
+          <p>
+            Možemo ažurirati ove beta uslove kako projekat evoluira. Nastavak korišćenja beta
+            verzije nakon objave promena predstavlja prihvatanje novih uslova. Značajne promene će
+            biti saopštene putem emaila ili obaveštenja na platformi.
+          </p>
+        </section>
+
+        <mat-divider></mat-divider>
+
+        <!-- Kontakt -->
+        <section class="terms-section">
+          <h2>
+            <mat-icon>contact_support</mat-icon>
+            Pitanja ili Nedoumice?
+          </h2>
+          <p>
+            Ako imate pitanja o ovim uslovima ili naiđete na bilo kakve probleme tokom testiranja,
+            molimo vas da nas kontaktirate:
+          </p>
+          <div class="contact-box">
+            <mat-icon>email</mat-icon>
+            <a href="mailto:{{ contactEmail }}">{{ contactEmail }}</a>
+          </div>
+        </section>
+
+        <!-- Prihvatanje -->
+        <section class="terms-section acceptance-section">
+          <div class="acceptance-box">
+            <mat-icon>check_circle</mat-icon>
+            <p>
+              Korišćenjem Rentoza platforme, potvrđujete da ste pročitali, razumeli i da se slažete
+              sa ovim Beta Uslovima i našom <a routerLink="/privacy">Politikom Privatnosti</a>.
+            </p>
+          </div>
+        </section>
+
+        <!-- Navigacija -->
+        <div class="page-footer">
+          <a mat-button routerLink="/privacy" color="primary">
+            <mat-icon>privacy_tip</mat-icon>
+            Pročitajte Politiku Privatnosti
+          </a>
+          <a mat-button routerLink="/" color="primary">
+            <mat-icon>home</mat-icon>
+            Nazad na početnu
+          </a>
+        </div>
+      }
+
+      <!-- ═══════════════════════════════════════════════════════════════════════════
+           ENGLISH VERSION
+           ═══════════════════════════════════════════════════════════════════════════ -->
+      @if (currentLang() === 'en') {
+        <!-- Beta Notice -->
+        <section class="terms-section highlight-section">
+          <div class="beta-banner">
+            <mat-icon>warning</mat-icon>
+            <div>
+              <h2>This is a Beta Version</h2>
+              <p>
+                Thank you for participating in the Rentoza beta! By using this service, you
+                acknowledge that this is an early version of our platform intended for testing and
+                feedback.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <mat-divider></mat-divider>
+
+        <!-- What Beta Means -->
+        <section class="terms-section">
+          <h2>
+            <mat-icon>build</mat-icon>
+            What "Beta" Means
+          </h2>
+          <ul>
+            <li>
+              <strong>Under Development</strong> — The platform is actively being built. Features
+              may be incomplete, change significantly, or be removed entirely.
+            </li>
+            <li>
+              <strong>May Contain Bugs</strong> — Despite our best efforts, you may encounter
+              errors, crashes, or unexpected behavior. Please report them!
+            </li>
+            <li>
+              <strong>No Uptime Guarantee</strong> — The service may be unavailable for maintenance,
+              updates, or due to technical issues without advance notice.
+            </li>
+            <li>
+              <strong>Data May Be Reset</strong> — Your account, bookings, messages, and any content
+              you create may be deleted or reset at any time during the beta phase.
+            </li>
+          </ul>
+        </section>
+
+        <mat-divider></mat-divider>
+
+        <!-- No Warranty -->
+        <section class="terms-section">
+          <h2>
+            <mat-icon>gpp_maybe</mat-icon>
+            No Warranty
+          </h2>
+          <div class="legal-notice">
+            <p>
+              The Rentoza beta is provided <strong>"AS IS"</strong> and
+              <strong>"AS AVAILABLE"</strong>
+              without warranties of any kind, whether express or implied. This includes, but is not
+              limited to, implied warranties of merchantability, fitness for a particular purpose,
+              and non-infringement.
+            </p>
+            <p>
+              We do not warrant that the service will be uninterrupted, timely, secure, or
+              error-free.
+            </p>
+          </div>
+        </section>
+
+        <mat-divider></mat-divider>
+
+        <!-- Testing Only -->
+        <section class="terms-section">
+          <h2>
+            <mat-icon>science</mat-icon>
+            For Testing & Feedback Only
+          </h2>
+          <p>This beta is intended exclusively for:</p>
+          <ul>
+            <li>Testing platform functionality and user experience</li>
+            <li>Providing feedback to help us improve</li>
+            <li>Identifying bugs and issues before public launch</li>
+          </ul>
+          <div class="warning-box">
+            <mat-icon>warning</mat-icon>
+            <p>
+              <strong>Do NOT rely on this beta for critical purposes.</strong>
+              Do not use it for actual vehicle rentals where failure would cause significant
+              problems. This is a test environment.
+            </p>
+          </div>
+        </section>
+
+        <mat-divider></mat-divider>
+
+        <!-- Tester Responsibilities -->
+        <section class="terms-section">
+          <h2>
+            <mat-icon>assignment_ind</mat-icon>
+            Your Responsibilities as a Beta Tester
+          </h2>
+          <p>By participating in this beta, you agree to:</p>
+
+          <h3>✅ Do</h3>
+          <ul class="do-list">
+            <li>Use your own real information only where necessary for testing</li>
+            <li>Report bugs, issues, and suggestions to help us improve</li>
+            <li>Be patient with imperfections — we're actively working on them</li>
+            <li>Keep your login credentials secure</li>
+          </ul>
+
+          <h3>❌ Don't</h3>
+          <ul class="dont-list">
+            <li>Upload illegal, offensive, or harmful content</li>
+            <li>Share highly sensitive data (government IDs, bank/credit card numbers, etc.)</li>
+            <li>Attempt to hack, exploit, or reverse-engineer the system</li>
+            <li>Use automated bots or scripts without permission</li>
+            <li>Share access credentials with others</li>
+            <li>Use the platform for any unlawful purpose</li>
+          </ul>
+        </section>
+
+        <mat-divider></mat-divider>
+
+        <!-- Access Termination -->
+        <section class="terms-section">
+          <h2>
+            <mat-icon>block</mat-icon>
+            Access & Termination
+          </h2>
+          <ul>
+            <li>
+              We reserve the right to <strong>terminate beta access</strong> at any time, for any
+              reason, without prior notice.
+            </li>
+            <li>
+              We may <strong>delete user data</strong> at our discretion, particularly when
+              transitioning from beta to production.
+            </li>
+            <li>
+              Beta access is <strong>invitation-only</strong> and should not be shared publicly.
+            </li>
+            <li>The beta period has no guaranteed duration and may end at any time.</li>
+          </ul>
+        </section>
+
+        <mat-divider></mat-divider>
+
+        <!-- Feedback -->
+        <section class="terms-section">
+          <h2>
+            <mat-icon>feedback</mat-icon>
+            Feedback & Suggestions
+          </h2>
+          <p>
+            Your feedback is incredibly valuable! By providing suggestions, ideas, bug reports, or
+            other feedback during the beta:
+          </p>
+          <ul>
+            <li>
+              You grant us a non-exclusive, royalty-free, perpetual license to use, modify, and
+              incorporate your feedback into the product.
+            </li>
+            <li>
+              You understand there is no separate compensation for feedback provided during beta
+              testing.
+            </li>
+            <li>You acknowledge that we may independently develop similar ideas or features.</li>
+          </ul>
+          <p>
+            We appreciate every piece of feedback and will do our best to address common issues and
+            implement valuable suggestions.
+          </p>
+        </section>
+
+        <mat-divider></mat-divider>
+
+        <!-- Limitation of Liability -->
+        <section class="terms-section">
+          <h2>
+            <mat-icon>shield</mat-icon>
+            Limitation of Liability
+          </h2>
+          <div class="legal-notice">
+            <p>
+              To the maximum extent permitted by law, Rentoza and its operators shall not be liable
+              for any indirect, incidental, special, consequential, or punitive damages, or any loss
+              of profits or revenues, whether incurred directly or indirectly, or any loss of data,
+              use, goodwill, or other intangible losses resulting from:
+            </p>
+            <ul>
+              <li>Your use or inability to use the beta service</li>
+              <li>Any unauthorized access to or use of your data</li>
+              <li>Any bugs, errors, or interruptions in the service</li>
+              <li>Any content or conduct of third-party users</li>
+            </ul>
+          </div>
+        </section>
+
+        <mat-divider></mat-divider>
+
+        <!-- Changes -->
+        <section class="terms-section">
+          <h2>
+            <mat-icon>update</mat-icon>
+            Changes to These Terms
+          </h2>
+          <p>
+            We may update these beta terms as the project evolves. Continued use of the beta after
+            changes are posted constitutes acceptance of the new terms. Significant changes will be
+            communicated via email or platform notice.
+          </p>
+        </section>
+
+        <mat-divider></mat-divider>
+
+        <!-- Contact -->
+        <section class="terms-section">
+          <h2>
+            <mat-icon>contact_support</mat-icon>
+            Questions or Concerns?
+          </h2>
+          <p>
+            If you have questions about these terms or encounter any issues during testing, please
+            reach out:
+          </p>
+          <div class="contact-box">
+            <mat-icon>email</mat-icon>
+            <a href="mailto:{{ contactEmail }}">{{ contactEmail }}</a>
+          </div>
+        </section>
+
+        <!-- Acceptance -->
+        <section class="terms-section acceptance-section">
+          <div class="acceptance-box">
+            <mat-icon>check_circle</mat-icon>
+            <p>
+              By using Rentoza, you confirm that you have read, understood, and agree to these Beta
+              Terms and our <a routerLink="/privacy">Privacy Policy</a>.
+            </p>
+          </div>
+        </section>
+
+        <!-- Navigation -->
+        <div class="page-footer">
+          <a mat-button routerLink="/privacy" color="primary">
+            <mat-icon>privacy_tip</mat-icon>
+            Read Privacy Policy
+          </a>
+          <a mat-button routerLink="/" color="primary">
+            <mat-icon>home</mat-icon>
+            Back to Home
+          </a>
+        </div>
+      }
+    </mat-card-content>
+  </mat-card>
+</div>

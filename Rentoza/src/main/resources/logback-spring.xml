@@ -52,39 +52,12 @@
     </appender>
 
     <!-- =============================================================================
-         FILE APPENDER (Production - Rolling)
-         ============================================================================= -->
-    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>${LOG_FILE:-logs/application.log}</file>
-        <encoder>
-            <pattern>${LOG_PATTERN}</pattern>
-            <charset>UTF-8</charset>
-        </encoder>
-        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
-            <!-- Rollover daily -->
-            <fileNamePattern>${LOG_FILE_DIR:-logs}/application-%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
-            <!-- Each file max 10MB -->
-            <maxFileSize>10MB</maxFileSize>
-            <!-- Keep 30 days of history -->
-            <maxHistory>30</maxHistory>
-            <!-- Total size cap of 1GB -->
-            <totalSizeCap>1GB</totalSizeCap>
-        </rollingPolicy>
-    </appender>
-
-    <!-- =============================================================================
          ASYNC APPENDERS (Better Performance for Production)
          ============================================================================= -->
     <appender name="ASYNC_CONSOLE" class="ch.qos.logback.classic.AsyncAppender">
         <queueSize>512</queueSize>
         <discardingThreshold>0</discardingThreshold>
         <appender-ref ref="CONSOLE"/>
-    </appender>
-
-    <appender name="ASYNC_FILE" class="ch.qos.logback.classic.AsyncAppender">
-        <queueSize>512</queueSize>
-        <discardingThreshold>0</discardingThreshold>
-        <appender-ref ref="FILE"/>
     </appender>
 
     <!-- =============================================================================
@@ -143,7 +116,6 @@
         <!-- Rentoza Application - INFO for business-critical events only -->
         <logger name="org.example.rentoza" level="INFO" additivity="false">
             <appender-ref ref="ASYNC_CONSOLE"/>
-            <appender-ref ref="ASYNC_FILE"/>
         </logger>
 
         <!-- Spring Framework - WARN or ERROR only -->
@@ -175,9 +147,9 @@
         <logger name="org.apache" level="ERROR"/>
 
         <!-- Root logger - WARN to catch unexpected issues -->
+        <!-- Console only for Cloud Run - no file logging -->
         <root level="WARN">
             <appender-ref ref="ASYNC_CONSOLE"/>
-            <appender-ref ref="ASYNC_FILE"/>
         </root>
     </springProfile>
 

@@ -41,9 +41,9 @@
         <logger name="org.springframework.web" level="WARN"/>
         <logger name="org.springframework.data.r2dbc" level="WARN"/>
         <logger name="io.r2dbc.postgresql" level="WARN"/>
+        <!-- Console only for Cloud Run - no file logging -->
         <root level="WARN">
             <appender-ref ref="CONSOLE"/>
-            <appender-ref ref="FILE"/>
         </root>
     </springProfile>
 

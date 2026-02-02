@@ -118,10 +118,28 @@
       <section class="layout-router">
         <router-outlet />
       </section>
+
+      <!-- Site Footer with Legal Links -->
+      <footer class="site-footer">
+        <div class="footer-content">
+          <div class="footer-brand">
+            <span class="footer-logo">Rentoza</span>
+            <span class="footer-tagline">Beta Testiranje</span>
+          </div>
+          <nav class="footer-links">
+            <a routerLink="/privacy" class="footer-link">Politika Privatnosti</a>
+            <span class="footer-separator">•</span>
+            <a routerLink="/beta-terms" class="footer-link">Beta Uslovi</a>
+            <span class="footer-separator">•</span>
+            <a href="mailto:support@rentoza.rs" class="footer-link">Kontakt</a>
+          </nav>
+          <p class="footer-copyright">© 2026 Rentoza. Sva prava zadržana.</p>
+        </div>
+      </footer>
     </mat-sidenav-content>
   </mat-sidenav-container>
 </ng-container>
 
 <ng-template #adminLayout>
-    <router-outlet />
+  <router-outlet />
 </ng-template>

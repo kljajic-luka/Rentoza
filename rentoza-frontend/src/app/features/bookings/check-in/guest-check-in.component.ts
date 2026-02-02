@@ -32,6 +32,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { Subject, debounceTime } from 'rxjs';
 
@@ -76,6 +77,7 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
     MatChipsModule,
     MatSnackBarModule,
     MatProgressSpinnerModule,
+    MatTooltipModule,
     GuidedPhotoCaptureComponent,
     PhotoComparisonComponent,
     ReadOnlyPickupLocationComponent,
@@ -86,49 +88,50 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
     <div class="guest-check-in">
       <!-- Vehicle info header -->
       @if (status?.car) {
-      <mat-card class="vehicle-card">
-        @if (status?.car?.imageUrl) {
-        <img [src]="status!.car.imageUrl" [alt]="vehicleTitle()" class="vehicle-image" />
-        }
-        <mat-card-content>
-          <h3>{{ vehicleTitle() }}</h3>
-          <div class="vehicle-details">
-            <span><mat-icon>speed</mat-icon> {{ status?.odometerReading | number }} km</span>
-            <span><mat-icon>local_gas_station</mat-icon> {{ status?.fuelLevelPercent }}%</span>
-          </div>
-        </mat-card-content>
-      </mat-card>
+        <mat-card class="vehicle-card">
+          @if (status?.car?.imageUrl) {
+            <img [src]="status!.car.imageUrl" [alt]="vehicleTitle()" class="vehicle-image" />
+          }
+          <mat-card-content>
+            <h3>{{ vehicleTitle() }}</h3>
+            <div class="vehicle-details">
+              <span><mat-icon>speed</mat-icon> {{ status?.odometerReading | number }} km</span>
+              <span><mat-icon>local_gas_station</mat-icon> {{ status?.fuelLevelPercent }}%</span>
+            </div>
+          </mat-card-content>
+        </mat-card>
       }
 
       <!-- Pickup Location Section (shows where to meet the host) -->
       @if (pickupLocationData()) {
-      <div class="pickup-location-section">
-        <div class="section-header small"></div>
-        <app-readonly-pickup-location
-          [pickupLocation]="pickupLocationData()!"
-          [mode]="'standard'"
-        />
-        <p class="gps-helper-text">
-          <mat-icon>info</mat-icon>
-          <span
-            >GPS lokacija vozila se automatski određuje iz fotografija radi revizijskog traga</span
-          >
-        </p>
-      </div>
+        <div class="pickup-location-section">
+          <div class="section-header small"></div>
+          <app-readonly-pickup-location
+            [pickupLocation]="pickupLocationData()!"
+            [mode]="'standard'"
+          />
+          <p class="gps-helper-text">
+            <mat-icon>info</mat-icon>
+            <span
+              >GPS lokacija vozila se automatski određuje iz fotografija radi revizijskog
+              traga</span
+            >
+          </p>
+        </div>
       }
 
       <!-- Warning banner: Host photos incomplete or have rejections (only shown in comparison) -->
       @if (hasPhotosWithIssues() && guestPhotosComplete()) {
-      <div class="photo-issues-warning">
-        <mat-icon>warning</mat-icon>
-        <div class="warning-content">
-          <span class="warning-title">Nepotpune fotografije domaćina</span>
-          <span class="warning-message">
-            Neke fotografije od domaćina imaju probleme sa validacijom. Pregledajte pažljivo u
-            poređenju ispod.
-          </span>
+        <div class="photo-issues-warning">
+          <mat-icon>warning</mat-icon>
+          <div class="warning-content">
+            <span class="warning-title">Nepotpune fotografije domaćina</span>
+            <span class="warning-message">
+              Neke fotografije od domaćina imaju probleme sa validacijom. Pregledajte pažljivo u
+              poređenju ispod.
+            </span>
+          </div>
         </div>
-      </div>
       }
 
       <!-- ═══════════════════════════════════════════════════════════════════════════
@@ -136,87 +139,120 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
            Guest takes their own comparison photos for dispute resolution
            ═══════════════════════════════════════════════════════════════════════════ -->
       @if (dualPartyPhotosEnabled && !guestPhotosComplete()) {
-      <div class="dual-party-section">
-        <div class="section-header">
-          <mat-icon>add_a_photo</mat-icon>
-          <div>
-            <h2>Vaše fotografije vozila</h2>
-            <p>Uslikajte vozilo za dodatnu dokumentaciju</p>
+        <div class="dual-party-section">
+          <div class="section-header">
+            <mat-icon>add_a_photo</mat-icon>
+            <div>
+              <h2>Vaše fotografije vozila</h2>
+              <p>Uslikajte vozilo za dodatnu dokumentaciju</p>
+            </div>
+            @if (!dualPartyPhotosRequired) {
+              <mat-chip class="optional-badge">Opciono</mat-chip>
+            }
           </div>
-          @if (!dualPartyPhotosRequired) {
-          <mat-chip class="optional-badge">Opciono</mat-chip>
+
+          @if (!showGuidedCapture()) {
+            <!-- Start capture button -->
+            <mat-card class="capture-prompt-card">
+              <mat-card-content>
+                <div class="capture-prompt">
+                  <mat-icon>camera_enhance</mat-icon>
+                  <div class="prompt-text">
+                    <h4>Dokumentujte stanje vozila</h4>
+                    <p>
+                      Snimite fotografije vozila iz svih uglova. Ove fotografije služe kao dokaz u
+                      slučaju neslaganja.
+                    </p>
+                  </div>
+                </div>
+                <div class="capture-actions">
+                  <button
+                    mat-raised-button
+                    color="primary"
+                    (click)="startGuidedCapture()"
+                    class="start-capture-btn"
+                  >
+                    <mat-icon>photo_camera</mat-icon>
+                    Započni snimanje
+                  </button>
+                  @if (!dualPartyPhotosRequired) {
+                    <button mat-stroked-button (click)="skipGuestPhotos()" class="skip-btn">
+                      Preskoči
+                    </button>
+                  }
+                </div>
+                @if (guestPhotosProgress() > 0) {
+                  <div class="progress-indicator">
+                    <mat-icon>check_circle</mat-icon>
+                    <span>{{ guestPhotosProgress() }}% završeno</span>
+                  </div>
+                }
+              </mat-card-content>
+            </mat-card>
+          } @else {
+            <!-- Guided photo capture component -->
+            <app-guided-photo-capture
+              [bookingId]="bookingId"
+              [mode]="'guest-checkin'"
+              [restoredState]="restoredCaptureState()"
+              (captureComplete)="onGuestPhotosComplete($event)"
+              (captureCancelled)="onGuestPhotosCancelled()"
+            />
           }
         </div>
-
-        @if (!showGuidedCapture()) {
-        <!-- Start capture button -->
-        <mat-card class="capture-prompt-card">
-          <mat-card-content>
-            <div class="capture-prompt">
-              <mat-icon>camera_enhance</mat-icon>
-              <div class="prompt-text">
-                <h4>Dokumentujte stanje vozila</h4>
-                <p>
-                  Snimite fotografije vozila iz svih uglova. Ove fotografije služe kao dokaz u
-                  slučaju neslaganja.
-                </p>
-              </div>
-            </div>
-            <div class="capture-actions">
-              <button
-                mat-raised-button
-                color="primary"
-                (click)="startGuidedCapture()"
-                class="start-capture-btn"
-              >
-                <mat-icon>photo_camera</mat-icon>
-                Započni snimanje
-              </button>
-              @if (!dualPartyPhotosRequired) {
-              <button mat-stroked-button (click)="skipGuestPhotos()" class="skip-btn">
-                Preskoči
-              </button>
-              }
-            </div>
-            @if (guestPhotosProgress() > 0) {
-            <div class="progress-indicator">
-              <mat-icon>check_circle</mat-icon>
-              <span>{{ guestPhotosProgress() }}% završeno</span>
-            </div>
-            }
-          </mat-card-content>
-        </mat-card>
-        } @else {
-        <!-- Guided photo capture component -->
-        <app-guided-photo-capture
-          [bookingId]="bookingId"
-          [mode]="'guest-checkin'"
-          [restoredState]="restoredCaptureState()"
-          (captureComplete)="onGuestPhotosComplete($event)"
-          (captureCancelled)="onGuestPhotosCancelled()"
-        />
-        }
-      </div>
       }
 
-      <!-- Photo comparison (after guest photos are complete) -->
+      <!-- Photo comparison (PRIVACY-FIRST: opt-in after guest photos complete) -->
       @if (dualPartyPhotosEnabled && guestPhotosComplete() && hasPhotosToCompare()) {
-      <div class="comparison-section">
-        <div class="section-header">
-          <mat-icon>compare</mat-icon>
-          <div>
-            <h2>Upoređivanje fotografija</h2>
-            <p>Pregledajte razlike između fotografija domaćina i vaših</p>
-          </div>
-        </div>
+        <div class="comparison-section">
+          @if (!showPhotoComparison()) {
+            <!-- Collapsed state - show toggle button -->
+            <mat-card class="comparison-toggle-card">
+              <mat-card-content>
+                <div class="comparison-toggle-content">
+                  <mat-icon class="toggle-icon">compare</mat-icon>
+                  <div class="toggle-text">
+                    <h4>Upoređivanje fotografija</h4>
+                    <p>Pregledajte razlike između vaših i domaćinovih fotografija (opciono)</p>
+                  </div>
+                </div>
+                <button
+                  mat-stroked-button
+                  color="primary"
+                  (click)="togglePhotoComparison()"
+                  class="toggle-btn"
+                >
+                  <mat-icon>visibility</mat-icon>
+                  Prikaži poređenje
+                </button>
+              </mat-card-content>
+            </mat-card>
+          } @else {
+            <!-- Expanded state - show full comparison -->
+            <div class="section-header">
+              <mat-icon>compare</mat-icon>
+              <div>
+                <h2>Upoređivanje fotografija</h2>
+                <p>Pregledajte razlike između fotografija domaćina i vaših</p>
+              </div>
+              <button
+                mat-icon-button
+                (click)="togglePhotoComparison()"
+                class="collapse-btn"
+                matTooltip="Sakrij poređenje"
+              >
+                <mat-icon>expand_less</mat-icon>
+              </button>
+            </div>
 
-        <app-photo-comparison
-          [hostPhotos]="status?.vehiclePhotos ?? []"
-          [guestPhotos]="guestCapturedPhotos()"
-          (continue)="onComparisonContinue()"
-          (reportDiscrepancy)="onReportDiscrepancy()"
-        />
-      </div>
+            <app-photo-comparison
+              [hostPhotos]="status?.vehiclePhotos ?? []"
+              [guestPhotos]="guestCapturedPhotos()"
+              (continue)="onComparisonContinue()"
+              (reportDiscrepancy)="onReportDiscrepancy()"
+            />
+          }
+        </div>
       }
 
       <!-- Condition acknowledgment -->
@@ -236,29 +272,29 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
 
             <!-- Report damage option (simplified - photos serve as documentation) -->
             @if (!conditionForm.get('conditionAccepted')?.value) {
-            <div class="damage-section">
-              <div class="damage-info">
-                <mat-icon>info_outline</mat-icon>
-                <p>
-                  Ukoliko primetite bilo kakvo oštećenje, vaše fotografije služe kao dokumentacija.
-                  Dodajte komentar ispod za dodatne informacije.
-                </p>
-              </div>
+              <div class="damage-section">
+                <div class="damage-info">
+                  <mat-icon>info_outline</mat-icon>
+                  <p>
+                    Ukoliko primetite bilo kakvo oštećenje, vaše fotografije služe kao
+                    dokumentacija. Dodajte komentar ispod za dodatne informacije.
+                  </p>
+                </div>
 
-              <!-- Comment for damage -->
-              <mat-form-field appearance="outline" class="full-width">
-                <mat-label>Opis uočenih problema (opciono)</mat-label>
-                <textarea
-                  matInput
-                  formControlName="conditionComment"
-                  rows="3"
-                  placeholder="Opišite uočeno oštećenje ili problem..."
-                ></textarea>
-                <mat-hint
-                  >Vaše fotografije su glavni dokaz - komentar je dodatna informacija</mat-hint
-                >
-              </mat-form-field>
-            </div>
+                <!-- Comment for damage -->
+                <mat-form-field appearance="outline" class="full-width">
+                  <mat-label>Opis uočenih problema (opciono)</mat-label>
+                  <textarea
+                    matInput
+                    formControlName="conditionComment"
+                    rows="3"
+                    placeholder="Opišite uočeno oštećenje ili problem..."
+                  ></textarea>
+                  <mat-hint
+                    >Vaše fotografije su glavni dokaz - komentar je dodatna informacija</mat-hint
+                  >
+                </mat-form-field>
+              </div>
             }
           </form>
         </mat-card-content>
@@ -266,51 +302,51 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
 
       <!-- Lockbox section (if available) -->
       @if (status?.lockboxAvailable && !lockboxCode()) {
-      <mat-card class="lockbox-card">
-        <mat-card-content>
-          <div class="lockbox-header">
-            <mat-icon>lock</mat-icon>
-            <div>
-              <h4>Lockbox pristup</h4>
-              <p>Vozilo je dostupno sa lockbox-om</p>
+        <mat-card class="lockbox-card">
+          <mat-card-content>
+            <div class="lockbox-header">
+              <mat-icon>lock</mat-icon>
+              <div>
+                <h4>Lockbox pristup</h4>
+                <p>Vozilo je dostupno sa lockbox-om</p>
+              </div>
             </div>
-          </div>
-          <button
-            mat-stroked-button
-            color="primary"
-            [disabled]="!status?.geofenceValid || checkInService.isLoading()"
-            (click)="revealLockboxCode()"
-          >
-            @if (!status?.geofenceValid) {
-            <ng-container>
-              <mat-icon>location_off</mat-icon>
-              Pristupite bliže vozilu
-            </ng-container>
-            } @else {
-            <ng-container>
-              <mat-icon>visibility</mat-icon>
-              Prikaži kod
-            </ng-container>
+            <button
+              mat-stroked-button
+              color="primary"
+              [disabled]="!status?.geofenceValid || checkInService.isLoading()"
+              (click)="revealLockboxCode()"
+            >
+              @if (!status?.geofenceValid) {
+                <ng-container>
+                  <mat-icon>location_off</mat-icon>
+                  Pristupite bliže vozilu
+                </ng-container>
+              } @else {
+                <ng-container>
+                  <mat-icon>visibility</mat-icon>
+                  Prikaži kod
+                </ng-container>
+              }
+            </button>
+            @if (!status?.geofenceValid && status?.geofenceDistanceMeters) {
+              <p class="distance-info">
+                Udaljenost: {{ status?.geofenceDistanceMeters | number: '1.0-0' }}m
+              </p>
             }
-          </button>
-          @if (!status?.geofenceValid && status?.geofenceDistanceMeters) {
-          <p class="distance-info">
-            Udaljenost: {{ status?.geofenceDistanceMeters | number : '1.0-0' }}m
-          </p>
-          }
-        </mat-card-content>
-      </mat-card>
+          </mat-card-content>
+        </mat-card>
       }
 
       <!-- Revealed lockbox code -->
       @if (lockboxCode()) {
-      <mat-card class="lockbox-revealed">
-        <mat-card-content>
-          <mat-icon>lock_open</mat-icon>
-          <div class="code">{{ lockboxCode() }}</div>
-          <p>Unesite ovaj kod u lockbox</p>
-        </mat-card-content>
-      </mat-card>
+        <mat-card class="lockbox-revealed">
+          <mat-card-content>
+            <mat-icon>lock_open</mat-icon>
+            <div class="code">{{ lockboxCode() }}</div>
+            <p>Unesite ovaj kod u lockbox</p>
+          </mat-card-content>
+        </mat-card>
       }
 
       <!-- Submit button -->
@@ -323,26 +359,28 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
           class="submit-button"
         >
           @if (checkInService.isLoading()) {
-          <mat-spinner diameter="24"></mat-spinner>
-          } @else if (!conditionForm.get('conditionAccepted')?.value &&
-          conditionForm.get('conditionComment')?.value?.trim()) {
-          <ng-container>
-            <mat-icon>report</mat-icon>
-            Prijavi problem
-          </ng-container>
+            <mat-spinner diameter="24"></mat-spinner>
+          } @else if (
+            !conditionForm.get('conditionAccepted')?.value &&
+            conditionForm.get('conditionComment')?.value?.trim()
+          ) {
+            <ng-container>
+              <mat-icon>report</mat-icon>
+              Prijavi problem
+            </ng-container>
           } @else {
-          <ng-container>
-            <mat-icon>check</mat-icon>
-            Potvrdi stanje vozila
-          </ng-container>
+            <ng-container>
+              <mat-icon>check</mat-icon>
+              Potvrdi stanje vozila
+            </ng-container>
           }
         </button>
 
         @if (!canSubmit() && locationRequired && !geolocationService.hasPosition()) {
-        <p class="submit-hint">
-          <mat-icon>location_off</mat-icon>
-          Potreban je pristup lokaciji za potvrdu
-        </p>
+          <p class="submit-hint">
+            <mat-icon>location_off</mat-icon>
+            Potreban je pristup lokaciji za potvrdu
+          </p>
         }
       </div>
     </div>
@@ -941,6 +979,87 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
       .comparison-section .section-header mat-icon {
         color: #ff9800;
       }
+
+      /* Privacy-First: Comparison Toggle Card */
+      .comparison-toggle-card {
+        background: var(--color-surface, #ffffff);
+        border: 1px dashed var(--color-border-subtle, #e0e0e0);
+        border-radius: 12px;
+      }
+
+      :host-context(.dark-theme) .comparison-toggle-card,
+      :host-context(.theme-dark) .comparison-toggle-card {
+        background: rgba(30, 41, 59, 0.6);
+        border-color: rgba(94, 117, 168, 0.3);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .comparison-toggle-card {
+          background: rgba(30, 41, 59, 0.6);
+          border-color: rgba(94, 117, 168, 0.3);
+        }
+      }
+
+      .comparison-toggle-content {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 16px;
+      }
+
+      .comparison-toggle-content .toggle-icon {
+        font-size: 36px;
+        width: 36px;
+        height: 36px;
+        color: #ff9800;
+        opacity: 0.8;
+      }
+
+      .comparison-toggle-content .toggle-text h4 {
+        margin: 0 0 4px;
+        font-size: 16px;
+        color: var(--color-text-primary, #212121);
+      }
+
+      .comparison-toggle-content .toggle-text p {
+        margin: 0;
+        font-size: 13px;
+        color: var(--color-text-muted, #757575);
+      }
+
+      :host-context(.dark-theme) .comparison-toggle-content .toggle-text h4,
+      :host-context(.theme-dark) .comparison-toggle-content .toggle-text h4 {
+        color: rgba(226, 232, 240, 0.95);
+      }
+
+      :host-context(.dark-theme) .comparison-toggle-content .toggle-text p,
+      :host-context(.theme-dark) .comparison-toggle-content .toggle-text p {
+        color: rgba(148, 163, 184, 0.85);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .comparison-toggle-content .toggle-text h4 {
+          color: rgba(226, 232, 240, 0.95);
+        }
+        .comparison-toggle-content .toggle-text p {
+          color: rgba(148, 163, 184, 0.85);
+        }
+      }
+
+      .toggle-btn {
+        width: 100%;
+      }
+
+      .comparison-section .section-header {
+        position: relative;
+      }
+
+      .collapse-btn {
+        position: absolute;
+        right: 0;
+        top: 50%;
+        transform: translateY(-50%);
+      }
     `,
   ],
 })
@@ -980,10 +1099,14 @@ export class GuestCheckInComponent implements OnInit, OnDestroy {
   private _restoredCaptureState = signal<CaptureState | undefined>(undefined);
   private _hasUnsavedPhotos = signal(false);
 
+  // PRIVACY-FIRST: Photo comparison is opt-in, not automatic
+  private _showPhotoComparison = signal(false);
+
   // Public readonly signals
   lockboxCode = this._lockboxCode.asReadonly();
   conditionAccepted = this._conditionAccepted.asReadonly();
   showGuidedCapture = this._showGuidedCapture.asReadonly();
+  showPhotoComparison = this._showPhotoComparison.asReadonly();
   guestPhotosComplete = computed(() => this._guestPhotosComplete() || this._guestPhotosSkipped());
   guestCapturedPhotos = this._guestCapturedPhotos.asReadonly();
   restoredCaptureState = this._restoredCaptureState.asReadonly();
@@ -1084,7 +1207,7 @@ export class GuestCheckInComponent implements OnInit, OnDestroy {
   private async checkForSavedSession(): Promise<void> {
     const sessionInfo = await this.persistenceService.checkForSavedSession(
       this.bookingId,
-      'guest-checkin'
+      'guest-checkin',
     );
 
     if (sessionInfo.exists) {
@@ -1181,7 +1304,7 @@ export class GuestCheckInComponent implements OnInit, OnDestroy {
     if (!photos || photos.length === 0) return false;
     return photos.some(
       (photo: CheckInPhotoDTO) =>
-        photo.exifValidationStatus?.startsWith('REJECTED') || photo.accepted === false
+        photo.exifValidationStatus?.startsWith('REJECTED') || photo.accepted === false,
     );
   }
 
@@ -1286,7 +1409,7 @@ export class GuestCheckInComponent implements OnInit, OnDestroy {
         this.bookingId,
         accepted,
         comment,
-        [] // No hotspots - dual-party photos now serve as documentation
+        [], // No hotspots - dual-party photos now serve as documentation
       )
       .subscribe({
         next: () => {
@@ -1390,6 +1513,15 @@ export class GuestCheckInComponent implements OnInit, OnDestroy {
   onComparisonContinue(): void {
     // User is satisfied with the comparison, proceed to condition acknowledgment
     console.log('[GuestCheckIn] Comparison complete, proceeding to acknowledgment');
+    // Collapse the comparison view after confirmation
+    this._showPhotoComparison.set(false);
+  }
+
+  /**
+   * Toggle photo comparison visibility (privacy-first: opt-in).
+   */
+  togglePhotoComparison(): void {
+    this._showPhotoComparison.update((v) => !v);
   }
 
   /**

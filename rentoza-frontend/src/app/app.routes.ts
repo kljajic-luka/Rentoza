@@ -303,6 +303,26 @@ export const routes: Routes = [
         (m) => m.OwnerProfilePageComponent,
       ),
   },
+  // ═══════════════════════════════════════════════════════════════════════════
+  // LEGAL PAGES - Privacy Policy & Beta Terms
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Publicly accessible, no authentication required
+  {
+    path: 'privacy',
+    loadComponent: () =>
+      import('@features/legal/pages/privacy-policy/privacy-policy.component').then(
+        (m) => m.PrivacyPolicyComponent,
+      ),
+    title: 'Privacy Policy - Rentoza',
+  },
+  {
+    path: 'beta-terms',
+    loadComponent: () =>
+      import('@features/legal/pages/beta-terms/beta-terms.component').then(
+        (m) => m.BetaTermsComponent,
+      ),
+    title: 'Beta Terms - Rentoza',
+  },
   {
     path: '**',
     loadComponent: () =>

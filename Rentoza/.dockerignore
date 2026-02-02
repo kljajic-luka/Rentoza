@@ -1,0 +1,45 @@
+# =============================================================================
+# Rentoza Backend - Docker Ignore
+# =============================================================================
+# Exclude unnecessary files from Docker context for faster builds
+
+# Build outputs
+target/
+!target/*.jar
+*.class
+
+# IDE files
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+docs/
+logs/
+
+# Test files
+src/test/
+
+# Local configuration
+.env
+.env.local
+*.properties.local
+application-local.properties
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Uploads (runtime data)
+uploads/
+user-uploads/
+
+# Maven wrapper (we copy it explicitly)
+# Don't ignore .mvn - we need it for the build

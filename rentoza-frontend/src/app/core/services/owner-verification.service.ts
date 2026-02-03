@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { environment } from '@environments/environment';
 
 export type OwnerType = 'INDIVIDUAL' | 'LEGAL_ENTITY';
 
@@ -26,7 +27,7 @@ export interface LegalEntityVerificationRequest {
   providedIn: 'root',
 })
 export class OwnerVerificationService {
-  private apiUrl = '/api/users/me/owner-verification';
+  private apiUrl = `${environment.baseApiUrl}/users/me/owner-verification`;
 
   constructor(private http: HttpClient) {}
 

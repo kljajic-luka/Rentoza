@@ -43,6 +43,14 @@ export class AuthService {
   private tokenWatcherInterval: ReturnType<typeof setInterval> | null = null;
   private favoritesLoadedForSession = false;
 
+  /**
+   * SECURITY FIX: Track whether we've had a successful session.
+   * Only emit sessionExpired$ if there was a previous active session.
+   * This prevents showing "session expired" toast when a user visits
+   * the site for the first time without any cookies.
+   */
+  private hasHadActiveSession = false;
+
   readonly currentUser$ = this.currentUserSubject.asObservable();
   readonly accessToken$ = this.accessTokenSubject.asObservable();
   readonly sessionExpired$ = this.sessionExpiredSubject.asObservable();
@@ -755,6 +763,9 @@ export class AuthService {
           // Persist user data (not token - that's in HttpOnly cookie)
           this.persistSession(response);
 
+          // Mark that we've had an active session (for session expired detection)
+          this.hasHadActiveSession = true;
+
           // Signal success (we don't have the token value, but session is valid)
           this.refreshSubject.next('session-refreshed');
           console.log('✅ [AUTH] Token refresh successful');
@@ -774,7 +785,13 @@ export class AuthService {
           if (error.status === 401) {
             console.log('🔒 Refresh token expired or invalid - session ended');
             this.clearSession();
-            this.sessionExpiredSubject.next(); // Emit session expired event
+            // SECURITY FIX: Only show session expired if there was a previous session
+            // This prevents false "session expired" toasts for first-time visitors
+            if (this.hasHadActiveSession) {
+              this.sessionExpiredSubject.next(); // Emit session expired event
+            } else {
+              console.log('ℹ️ No prior session - skipping session expired notification');
+            }
             return of(null);
           }
 
@@ -786,7 +803,10 @@ export class AuthService {
           }
 
           this.clearSession();
-          this.sessionExpiredSubject.next(); // Emit session expired event on other errors
+          // SECURITY FIX: Only show session expired if there was a previous session
+          if (this.hasHadActiveSession) {
+            this.sessionExpiredSubject.next(); // Emit session expired event on other errors
+          }
           return throwError(() => error);
         }),
         finalize(() => {
@@ -939,6 +959,9 @@ export class AuthService {
     } as UserProfile;
 
     this.updateUserState(completeUser);
+
+    // Mark that we've had an active session (for session expired detection)
+    this.hasHadActiveSession = true;
   }
 
   private hydrateUserFromBackend(): void {
@@ -947,13 +970,17 @@ export class AuthService {
       .subscribe({
         next: (profile) => {
           this.updateUserState(profile);
+          this.hasHadActiveSession = true;
           console.log('✅ Session hydrated via /api/users/me');
         },
         error: (error: HttpErrorResponse) => {
           console.error('❌ Failed to hydrate user after refresh:', error);
           if (error.status === 401) {
             this.clearSession();
-            this.sessionExpiredSubject.next();
+            // SECURITY FIX: Only show session expired if there was a previous session
+            if (this.hasHadActiveSession) {
+              this.sessionExpiredSubject.next();
+            }
           }
         },
       });

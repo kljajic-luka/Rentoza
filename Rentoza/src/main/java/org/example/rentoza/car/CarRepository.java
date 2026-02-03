@@ -58,6 +58,8 @@ public interface CarRepository extends JpaRepository<Car, Long>, JpaSpecificatio
     @EntityGraph(attributePaths = {"owner"})
     List<Car> findByAvailableFalse();
 
+    long countByListingStatus(ListingStatus status);
+
     // ========== DETAIL VIEWS (WITH features/addOns - Full Data) ==========
     // These methods eagerly load collections for single-car views
     

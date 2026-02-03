@@ -1,8 +1,13 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpEvent, HttpRequest } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { environment } from '@environments/environment';
 
-export type DocumentType = 'REGISTRATION' | 'TECHNICAL_INSPECTION' | 'LIABILITY_INSURANCE' | 'AUTHORIZATION';
+export type DocumentType =
+  | 'REGISTRATION'
+  | 'TECHNICAL_INSPECTION'
+  | 'LIABILITY_INSURANCE'
+  | 'AUTHORIZATION';
 export type DocumentStatus = 'PENDING' | 'VERIFIED' | 'REJECTED' | 'EXPIRED_AUTO';
 
 export interface CarDocument {
@@ -30,10 +35,10 @@ export interface DocumentComplianceStatus {
 }
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class CarDocumentService {
-  private apiUrl = '/api/cars';
+  private apiUrl = `${environment.baseApiUrl}/cars`;
 
   constructor(private http: HttpClient) {}
 
@@ -41,10 +46,10 @@ export class CarDocumentService {
    * Upload document with progress tracking.
    */
   uploadDocument(
-    carId: number, 
-    file: File, 
+    carId: number,
+    file: File,
     type: DocumentType,
-    expiryDate?: string
+    expiryDate?: string,
   ): Observable<HttpEvent<CarDocument>> {
     const formData = new FormData();
     formData.append('file', file);
@@ -53,12 +58,9 @@ export class CarDocumentService {
       formData.append('expiryDate', expiryDate);
     }
 
-    const req = new HttpRequest(
-      'POST',
-      `${this.apiUrl}/${carId}/documents`,
-      formData,
-      { reportProgress: true }
-    );
+    const req = new HttpRequest('POST', `${this.apiUrl}/${carId}/documents`, formData, {
+      reportProgress: true,
+    });
 
     return this.http.request<CarDocument>(req);
   }

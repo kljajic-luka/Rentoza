@@ -51,6 +51,7 @@ import {
   CarSearchResult,
   DEFAULT_MAP_CENTER,
 } from '@core/services/location.service';
+import { HomeStats, PublicStatsService } from '@core/services/public-stats.service';
 import { FavoriteButtonComponent } from '@shared/components/favorite-button/favorite-button.component';
 import {
   LocationPickerComponent,
@@ -88,6 +89,7 @@ import {
 export class HomeComponent implements OnInit, OnDestroy {
   private readonly carService = inject(CarService);
   private readonly locationService = inject(LocationService);
+  private readonly publicStatsService = inject(PublicStatsService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly cdr = inject(ChangeDetectorRef);
@@ -107,6 +109,9 @@ export class HomeComponent implements OnInit, OnDestroy {
   geocodeSuggestions: GeocodeSuggestion[] = [];
   isLoadingGeocode = false;
   isGettingLocation = false; // Geolocation loading state
+
+  // === HOMEPAGE STATS ===
+  homeStats: HomeStats | null = null;
 
   // === GEOSPATIAL SEARCH STATE ===
   searchCenter: LocationCoordinates = {
@@ -156,6 +161,7 @@ export class HomeComponent implements OnInit, OnDestroy {
 
     // Restore search state from URL query params (supports page refresh)
     this.restoreSearchStateFromUrl();
+    this.loadHomeStats();
 
     this.navigationSubscription = this.router.events
       .pipe(filter((event) => event instanceof NavigationEnd))
@@ -320,7 +326,7 @@ export class HomeComponent implements OnInit, OnDestroy {
           this.isLoadingGeocode = true;
           this.cdr.markForCheck();
           return this.locationService.geocodeAddress(query);
-        })
+        }),
       )
       .subscribe((suggestions) => {
         this.geocodeSuggestions = suggestions;
@@ -508,7 +514,7 @@ export class HomeComponent implements OnInit, OnDestroy {
         enableHighAccuracy: true,
         timeout: 10000,
         maximumAge: 60000,
-      }
+      },
     );
   }
 
@@ -658,13 +664,13 @@ export class HomeComponent implements OnInit, OnDestroy {
     const startDateTime = new Date(this.searchStartDate as Date);
     startDateTime.setHours(
       parseInt(this.searchStartTime.split(':')[0]),
-      parseInt(this.searchStartTime.split(':')[1])
+      parseInt(this.searchStartTime.split(':')[1]),
     );
 
     const endDateTime = new Date(this.searchEndDate as Date);
     endDateTime.setHours(
       parseInt(this.searchEndTime.split(':')[0]),
-      parseInt(this.searchEndTime.split(':')[1])
+      parseInt(this.searchEndTime.split(':')[1]),
     );
 
     if (endDateTime <= startDateTime) {
@@ -712,7 +718,7 @@ export class HomeComponent implements OnInit, OnDestroy {
     this.carService.searchAvailableCars(params).subscribe({
       next: (response) => {
         // Map Car[] to CarSearchResult[] for compatibility with existing template
-        this.searchResults = response.content.map(car => this.mapCarToSearchResult(car));
+        this.searchResults = response.content.map((car) => this.mapCarToSearchResult(car));
         this.carMarkers = this.createCarMarkers(this.searchResults);
         this.isSearching = false;
 
@@ -829,5 +835,42 @@ export class HomeComponent implements OnInit, OnDestroy {
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
+  }
+
+  private loadHomeStats(): void {
+    this.publicStatsService
+      .getHomeStats()
+      .pipe(take(1))
+      .subscribe({
+        next: (stats) => {
+          this.homeStats = stats;
+          this.cdr.markForCheck();
+        },
+        error: () => {
+          this.homeStats = null;
+          this.cdr.markForCheck();
+        },
+      });
+  }
+
+  protected formatRating(rating?: number | null): string {
+    if (!rating || Number.isNaN(rating)) {
+      return '—';
+    }
+    return `${rating.toFixed(1)}★`;
+  }
+
+  protected formatVerifiedCount(count?: number | null): string {
+    if (count === null || count === undefined || Number.isNaN(count)) {
+      return '—';
+    }
+    if (count >= 1000) {
+      return `${(count / 1000).toFixed(1)}k+`;
+    }
+    return `${count}+`;
+  }
+
+  protected formatSupportAvailability(value?: string | null): string {
+    return value?.trim() ? value : '24/7';
   }
 }

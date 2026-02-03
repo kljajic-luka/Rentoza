@@ -256,11 +256,24 @@ public class CarService {
         boolean hasActiveBooking = false;
         
         if (currentUserId != null) {
-            // Check for active booking (APPROVED, IN_TRIP, etc.)
+            // Check for approved/active booking (user should see exact location if booking is approved)
+            // Includes: APPROVED, ACTIVE, CHECK_IN_OPEN, CHECK_IN_HOST_COMPLETE, 
+            //           CHECK_IN_COMPLETE, IN_TRIP, CHECKOUT_OPEN, CHECKOUT_GUEST_COMPLETE, 
+            //           CHECKOUT_HOST_COMPLETE
             hasActiveBooking = bookingRepo.findByCarIdAndRenterEmailIgnoreCaseAndStatusIn(
                 car.getId(),
                 currentUser.email(),
-                List.of(BookingStatus.ACTIVE, BookingStatus.IN_TRIP)
+                List.of(
+                    BookingStatus.APPROVED,
+                    BookingStatus.ACTIVE, 
+                    BookingStatus.CHECK_IN_OPEN,
+                    BookingStatus.CHECK_IN_HOST_COMPLETE,
+                    BookingStatus.CHECK_IN_COMPLETE,
+                    BookingStatus.IN_TRIP,
+                    BookingStatus.CHECKOUT_OPEN,
+                    BookingStatus.CHECKOUT_GUEST_COMPLETE,
+                    BookingStatus.CHECKOUT_HOST_COMPLETE
+                )
             ).stream().findAny().isPresent();
         }
         

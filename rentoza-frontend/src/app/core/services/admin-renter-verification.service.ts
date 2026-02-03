@@ -12,6 +12,7 @@ import {
   RejectVerificationRequest,
   SuspendVerificationRequest,
 } from '@core/models/renter-verification.model';
+import { environment } from '@environments/environment';
 
 /**
  * Admin service for managing renter verification queue.
@@ -42,7 +43,7 @@ import {
 export class AdminRenterVerificationService {
   private readonly http = inject(HttpClient);
 
-  private readonly API_BASE = '/api/admin/renter-verifications';
+  private readonly API_BASE = `${environment.baseApiUrl}/admin/renter-verifications`;
 
   // ============================================================================
   // QUEUE METHODS
@@ -55,7 +56,7 @@ export class AdminRenterVerificationService {
    * @returns Observable of paged results
    */
   getPendingVerifications(
-    params: VerificationQueueParams = {}
+    params: VerificationQueueParams = {},
   ): Observable<PagedRenterVerifications> {
     let httpParams = new HttpParams();
 
@@ -122,10 +123,10 @@ export class AdminRenterVerificationService {
    */
   getDocumentSignedUrl(documentId: number): Observable<{ url: string; expiresAt: string }> {
     return this.http
-      .post<{ url: string; expiresAt: string }>(
-        `${this.API_BASE}/documents/${documentId}/signed-url`,
-        {}
-      )
+      .post<{
+        url: string;
+        expiresAt: string;
+      }>(`${this.API_BASE}/documents/${documentId}/signed-url`, {})
       .pipe(shareReplay({ bufferSize: 1, refCount: true }));
   }
 

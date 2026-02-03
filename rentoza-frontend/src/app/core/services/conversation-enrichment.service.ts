@@ -31,6 +31,16 @@ export class ConversationEnrichmentService {
       return of(conversation);
     }
 
+    // Guard against null IDs - return conversation as-is with placeholder names
+    if (!conversation.ownerId || !conversation.renterId) {
+      console.warn(`[Enrichment] Conversation ${conversation.id} has null ownerId or renterId`);
+      return of({
+        ...conversation,
+        renterName: conversation.renterName || 'Unknown User',
+        ownerName: conversation.ownerName || 'Unknown User',
+      });
+    }
+
     // Fetch booking details and user names in parallel
     return forkJoin({
       booking: this.getBookingDetails(conversation.bookingId),
@@ -50,7 +60,7 @@ export class ConversationEnrichmentService {
       catchError((error) => {
         console.error('[ConversationEnrichment] Error enriching conversation:', error);
         return of(conversation); // Return original on error
-      })
+      }),
     );
   }
 
@@ -69,7 +79,7 @@ export class ConversationEnrichmentService {
       catchError((error) => {
         console.error('[ConversationEnrichment] Error enriching conversations:', error);
         return of(conversations); // Return original on error
-      })
+      }),
     );
   }
 
@@ -116,7 +126,7 @@ export class ConversationEnrichmentService {
       catchError((err) => {
         console.error(`[Enrichment] Failed to fetch booking ${bookingId}`, err);
         return of(null);
-      })
+      }),
     );
   }
 

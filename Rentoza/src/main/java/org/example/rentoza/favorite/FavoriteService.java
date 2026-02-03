@@ -294,7 +294,9 @@ public class FavoriteService {
                 .carModel(car != null ? car.getModel() : null)
                 .carYear(car != null ? car.getYear() : null)
                 .carPricePerDay(car != null ? car.getPricePerDay() : null)
-                .carLocation(car != null ? car.getLocation() : null)
+                // Privacy protection: Only show city name, not exact address
+                // Full address is revealed only after booking is approved
+                .carLocation(car != null ? getCityOnly(car) : null)
                 .carImageUrl(car != null ? car.getImageUrl() : null)
                 .carAvailable(car != null ? car.isAvailable() : null)
                 .createdAt(favorite.getCreatedAt())
@@ -308,6 +310,48 @@ public class FavoriteService {
             boolean isFavorited,
             String message
     ) {}
+
+    /**
+     * Get only the city name from a car for privacy protection.
+     * Full addresses are only shown after booking approval.
+     * 
+     * @param car the car to extract city from
+     * @return city name only, or extracted city from legacy location field
+     */
+    private String getCityOnly(Car car) {
+        // First, try to get city from geospatial location (preferred)
+        if (car.getLocationGeoPoint() != null && car.getLocationGeoPoint().getCity() != null) {
+            return car.getLocationGeoPoint().getCity();
+        }
+        
+        // Fallback: extract city from legacy location string
+        // Format example: "34, marije mage magazinović, centar, rosulje, užice, gradska opština užice"
+        // The city is typically the last meaningful part before municipality
+        String location = car.getLocation();
+        if (location != null && !location.isBlank()) {
+            String[] parts = location.split(",");
+            // Try to find city - usually it's near the end, skip municipality parts
+            for (int i = parts.length - 1; i >= 0; i--) {
+                String part = parts[i].trim().toLowerCase();
+                // Skip administrative parts like "gradska opština...", "opština...", "okrug..."
+                if (!part.contains("opština") && !part.contains("okrug") && 
+                    !part.contains("gradska") && !part.isBlank()) {
+                    // Capitalize first letter
+                    return capitalizeFirst(parts[i].trim());
+                }
+            }
+        }
+        
+        return "Srbija"; // Ultimate fallback
+    }
+
+    /**
+     * Capitalize first letter of a string.
+     */
+    private String capitalizeFirst(String s) {
+        if (s == null || s.isEmpty()) return s;
+        return s.substring(0, 1).toUpperCase() + s.substring(1).toLowerCase();
+    }
 
     private void logUserContext(String action, Long userId) {
         String email = "unknown";

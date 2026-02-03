@@ -101,11 +101,17 @@ public class ResourceHandlerConfig implements WebMvcConfigurer {
                 .setCacheControl(CacheControl.noStore()
                         .mustRevalidate());
 
-        // Legacy /uploads/** handler (backward compatibility)
-        // Deprecated - use specific paths above for new code
-        registry.addResourceHandler("/uploads/**")
-                .addResourceLocations("file:" + uploadPath + "/")
-                .setCacheControl(CacheControl.maxAge(1, TimeUnit.HOURS));
+        // DEPRECATED: Legacy /uploads/** handler removed.
+        // Profile pictures now use Supabase Storage (user-avatars bucket).
+        // Old URLs like /uploads/profile-pictures/{id}.jpg no longer work.
+        // See: SupabaseStorageService.uploadUserAvatarBytes()
+        //
+        // Note: If you need to serve legacy files during migration,
+        // uncomment the handler below and ensure the upload directory exists.
+        //
+        // registry.addResourceHandler("/uploads/**")
+        //         .addResourceLocations("file:" + uploadPath + "/")
+        //         .setCacheControl(CacheControl.maxAge(1, TimeUnit.HOURS));
 
         log.info("[ResourceHandler] Static resource handlers configured successfully");
     }

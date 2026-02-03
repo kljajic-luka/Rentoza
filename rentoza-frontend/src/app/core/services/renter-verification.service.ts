@@ -21,6 +21,7 @@ import {
   isApproved,
   isTerminal,
 } from '@core/models/renter-verification.model';
+import { environment } from '@environments/environment';
 
 /**
  * Service for managing renter driver license verification.
@@ -51,7 +52,7 @@ import {
 export class RenterVerificationService {
   private readonly http = inject(HttpClient);
 
-  private readonly API_BASE = '/api/users';
+  private readonly API_BASE = `${environment.baseApiUrl}/users`;
 
   // ============================================================================
   // STATE MANAGEMENT
@@ -184,7 +185,7 @@ export class RenterVerificationService {
           }
           this.error.set('Greška pri učitavanju statusa verifikacije');
           return EMPTY;
-        })
+        }),
       )
       .subscribe();
   }
@@ -220,7 +221,7 @@ export class RenterVerificationService {
     licenseFront: File,
     licenseBack: File,
     expiryDate?: string,
-    selfie?: File
+    selfie?: File,
   ): Observable<RenterVerificationProfile> {
     // Client-side validation
     const validationError = this.validateLicenseFiles(licenseFront, licenseBack);
@@ -249,7 +250,7 @@ export class RenterVerificationService {
         {
           reportProgress: true,
           observe: 'events',
-        }
+        },
       )
       .pipe(
         tap((event) => {
@@ -276,7 +277,7 @@ export class RenterVerificationService {
           this.isUploading.set(false);
           this.uploadProgress.set(0);
           return this.handleUploadError(err);
-        })
+        }),
       );
   }
 
@@ -292,7 +293,7 @@ export class RenterVerificationService {
   resubmitLicense(
     licenseFront: File,
     licenseBack: File,
-    expiryDate?: string
+    expiryDate?: string,
   ): Observable<RenterVerificationProfile> {
     return this.submitLicense(licenseFront, licenseBack, expiryDate);
   }
@@ -327,7 +328,7 @@ export class RenterVerificationService {
             licenseExpiresBeforeTripEnd: false,
             daysUntilExpiry: null,
           });
-        })
+        }),
       );
   }
 
@@ -390,19 +391,19 @@ export class RenterVerificationService {
     // Calculate backoff interval
     const interval = Math.min(
       this.BASE_POLL_INTERVAL * Math.pow(2, Math.floor(this.pollAttempt / 3)),
-      this.MAX_POLL_INTERVAL
+      this.MAX_POLL_INTERVAL,
     );
 
     timer(interval)
       .pipe(
         takeUntil(this.stopPolling$),
         switchMap(() =>
-          this.http.get<RenterVerificationProfile>(`${this.API_BASE}/me/verification`)
+          this.http.get<RenterVerificationProfile>(`${this.API_BASE}/me/verification`),
         ),
         catchError(() => {
           // On error, continue polling but increment attempt
           return EMPTY;
-        })
+        }),
       )
       .subscribe({
         next: (status) => {

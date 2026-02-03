@@ -1,10 +1,4 @@
-import {
-  Component,
-  input,
-  output,
-  computed,
-  ChangeDetectionStrategy,
-} from '@angular/core';
+import { Component, input, output, computed, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -26,13 +20,7 @@ import { ConversationDTO } from '@core/models/chat.model';
 @Component({
   selector: 'app-chat-header',
   standalone: true,
-  imports: [
-    CommonModule,
-    MatIconModule,
-    MatButtonModule,
-    MatMenuModule,
-    MatTooltipModule,
-  ],
+  imports: [CommonModule, MatIconModule, MatButtonModule, MatMenuModule, MatTooltipModule],
   template: `
     <header class="chat-header">
       <!-- Mobile back button -->
@@ -49,7 +37,13 @@ import { ConversationDTO } from '@core/models/chat.model';
       <!-- Participant info -->
       <div class="participant-section">
         <div class="avatar" [style.background]="profilePicUrl() ? 'transparent' : avatarColor()">
-          <img *ngIf="profilePicUrl()" [src]="profilePicUrl()" class="avatar-img" alt="Profile" (error)="onImageError($event)" />
+          <img
+            *ngIf="profilePicUrl()"
+            [src]="profilePicUrl()"
+            class="avatar-img"
+            alt="Profile"
+            (error)="onImageError($event)"
+          />
           <span *ngIf="!profilePicUrl()" class="avatar-initials">{{ avatarInitials() }}</span>
         </div>
 
@@ -70,11 +64,7 @@ import { ConversationDTO } from '@core/models/chat.model';
         </span>
 
         <!-- Action menu -->
-        <button
-          mat-icon-button
-          [matMenuTriggerFor]="actionMenu"
-          aria-label="More options"
-        >
+        <button mat-icon-button [matMenuTriggerFor]="actionMenu" aria-label="More options">
           <mat-icon>more_vert</mat-icon>
         </button>
 
@@ -103,206 +93,208 @@ import { ConversationDTO } from '@core/models/chat.model';
       </div>
     </div>
   `,
-  styles: [`
-    :host {
-      display: block;
-    }
-
-    .chat-header {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 16px 20px;
-      background-color: #ffffff;
-      border-bottom: 1px solid #e8e8e8;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
-    }
-
-    .back-button {
-      flex-shrink: 0;
-      margin-left: -8px;
-    }
-
-    .participant-section {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      flex: 1;
-      min-width: 0;
-    }
-
-    .avatar {
-      width: 44px;
-      height: 44px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-      overflow: hidden;
-
-      .avatar-img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        border-radius: 50%;
+  styles: [
+    `
+      :host {
+        display: block;
       }
 
-      .avatar-initials {
-        font-size: 15px;
-        font-weight: 600;
-        color: #ffffff;
-        text-transform: uppercase;
-      }
-    }
-
-    .participant-details {
-      flex: 1;
-      min-width: 0;
-    }
-
-    .participant-name {
-      margin: 0;
-      font-size: 17px;
-      font-weight: 700;
-      color: #1a1a1a;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .trip-context {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      margin-top: 2px;
-      font-size: 13px;
-      color: #666;
-
-      .context-icon {
-        font-size: 14px;
-        width: 14px;
-        height: 14px;
-        color: #888;
-      }
-    }
-
-    .header-actions {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-shrink: 0;
-    }
-
-    .trip-status {
-      font-size: 11px;
-      padding: 5px 10px;
-      border-radius: 12px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.4px;
-
-      &.status-current {
-        background-color: #e8f5e9;
-        color: #2e7d32;
-      }
-
-      &.status-future {
-        background-color: #e3f2fd;
-        color: #1565c0;
-      }
-
-      &.status-past {
-        background-color: #f5f5f5;
-        color: #757575;
-      }
-
-      &.status-unknown {
-        background-color: #fff3e0;
-        color: #ef6c00;
-      }
-
-      &.status-unavailable {
-        background-color: #ffebee;
-        color: #c62828;
-      }
-    }
-
-    .booking-context-card {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 16px;
-      padding: 12px 20px;
-      background-color: #f8f9fa;
-      border-bottom: 1px solid #e8e8e8;
-    }
-
-    .context-item {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 13px;
-      color: #555;
-
-      mat-icon {
-        font-size: 16px;
-        width: 16px;
-        height: 16px;
-        color: #666;
-      }
-    }
-
-    // Dark theme
-    :host-context(.dark-theme) {
       .chat-header {
-        background-color: #1e1e1e;
-        border-bottom-color: #333;
-        box-shadow: none;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 16px 20px;
+        background-color: #ffffff;
+        border-bottom: 1px solid #e8e8e8;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+      }
+
+      .back-button {
+        flex-shrink: 0;
+        margin-left: -8px;
+      }
+
+      .participant-section {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        flex: 1;
+        min-width: 0;
+      }
+
+      .avatar {
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        overflow: hidden;
+
+        .avatar-img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          border-radius: 50%;
+        }
+
+        .avatar-initials {
+          font-size: 15px;
+          font-weight: 600;
+          color: #ffffff;
+          text-transform: uppercase;
+        }
+      }
+
+      .participant-details {
+        flex: 1;
+        min-width: 0;
       }
 
       .participant-name {
-        color: #e0e0e0;
+        margin: 0;
+        font-size: 17px;
+        font-weight: 700;
+        color: #1a1a1a;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
 
       .trip-context {
-        color: #b0b0b0;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        margin-top: 2px;
+        font-size: 13px;
+        color: #666;
 
         .context-icon {
+          font-size: 14px;
+          width: 14px;
+          height: 14px;
           color: #888;
+        }
+      }
+
+      .header-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+      }
+
+      .trip-status {
+        font-size: 11px;
+        padding: 5px 10px;
+        border-radius: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+
+        &.status-current {
+          background-color: #e8f5e9;
+          color: #2e7d32;
+        }
+
+        &.status-future {
+          background-color: #e3f2fd;
+          color: #1565c0;
+        }
+
+        &.status-past {
+          background-color: #f5f5f5;
+          color: #757575;
+        }
+
+        &.status-unknown {
+          background-color: #fff3e0;
+          color: #ef6c00;
+        }
+
+        &.status-unavailable {
+          background-color: #ffebee;
+          color: #c62828;
         }
       }
 
       .booking-context-card {
-        background-color: #252525;
-        border-bottom-color: #333;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        padding: 12px 20px;
+        background-color: #f8f9fa;
+        border-bottom: 1px solid #e8e8e8;
       }
 
       .context-item {
-        color: #b0b0b0;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        color: #555;
 
         mat-icon {
-          color: #888;
+          font-size: 16px;
+          width: 16px;
+          height: 16px;
+          color: #666;
         }
       }
 
-      .trip-status {
-        &.status-current {
-          background-color: #1b5e20;
-          color: #a5d6a7;
+      // Dark theme
+      :host-context(.dark-theme) {
+        .chat-header {
+          background-color: #1e1e1e;
+          border-bottom-color: #333;
+          box-shadow: none;
         }
 
-        &.status-future {
-          background-color: #0d47a1;
-          color: #90caf9;
+        .participant-name {
+          color: #e0e0e0;
         }
 
-        &.status-past {
-          background-color: #333;
-          color: #9e9e9e;
+        .trip-context {
+          color: #b0b0b0;
+
+          .context-icon {
+            color: #888;
+          }
+        }
+
+        .booking-context-card {
+          background-color: #252525;
+          border-bottom-color: #333;
+        }
+
+        .context-item {
+          color: #b0b0b0;
+
+          mat-icon {
+            color: #888;
+          }
+        }
+
+        .trip-status {
+          &.status-current {
+            background-color: #1b5e20;
+            color: #a5d6a7;
+          }
+
+          &.status-future {
+            background-color: #0d47a1;
+            color: #90caf9;
+          }
+
+          &.status-past {
+            background-color: #333;
+            color: #9e9e9e;
+          }
         }
       }
-    }
-  `],
+    `,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ChatHeaderComponent {
@@ -322,7 +314,8 @@ export class ChatHeaderComponent {
     if (!conv) return '';
 
     const userId = this.currentUserId();
-    const isOwner = conv.ownerId === userId;
+    // Defensive null check for ownerId
+    const isOwner = conv.ownerId ? conv.ownerId === userId : false;
 
     if (isOwner && conv.renterName && conv.renterName !== 'Renter') {
       return conv.renterName;
@@ -347,14 +340,23 @@ export class ChatHeaderComponent {
     const conv = this.conversation();
     if (!conv) return null;
     const userId = this.currentUserId();
-    const isOwner = conv.ownerId === userId;
+    // Defensive null check for ownerId
+    const isOwner = conv.ownerId ? conv.ownerId === userId : false;
     return isOwner ? conv.renterProfilePicUrl : conv.ownerProfilePicUrl;
   });
 
   avatarColor = computed(() => {
     const colors = [
-      '#1abc9c', '#2ecc71', '#3498db', '#9b59b6', '#34495e',
-      '#16a085', '#27ae60', '#2980b9', '#8e44ad', '#2c3e50',
+      '#1abc9c',
+      '#2ecc71',
+      '#3498db',
+      '#9b59b6',
+      '#34495e',
+      '#16a085',
+      '#27ae60',
+      '#2980b9',
+      '#8e44ad',
+      '#2c3e50',
     ];
     const name = this.participantName();
     const index = name.charCodeAt(0) % colors.length;

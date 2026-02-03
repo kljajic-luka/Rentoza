@@ -244,7 +244,7 @@ export class BookingDialogComponent implements OnInit {
       .getCarAvailability(Number(this.data.car.id), now.toISOString(), endDate.toISOString())
       .pipe(
         takeUntilDestroyed(this.destroyRef),
-        finalize(() => this.isLoadingAvailability.set(false))
+        finalize(() => this.isLoadingAvailability.set(false)),
       )
       .subscribe({
         next: (ranges) => {
@@ -326,11 +326,11 @@ export class BookingDialogComponent implements OnInit {
     // Check if entire range [start, end] overlaps with unavailable range
     const startDateTime = combineDateTime(
       start,
-      this.bookingForm.value.startTime || this.defaultStartTime
+      this.bookingForm.value.startTime || this.defaultStartTime,
     );
     const endDateTime = combineDateTime(
       date,
-      this.bookingForm.value.endTime || this.defaultEndTime
+      this.bookingForm.value.endTime || this.defaultEndTime,
     );
 
     return !this.isRangeUnavailable(startDateTime, endDateTime);
@@ -472,7 +472,7 @@ export class BookingDialogComponent implements OnInit {
       this.snackBar.open(
         'Podaci vozača nisu kompletni. Molimo ažurirajte svoj profil.',
         'Zatvori',
-        { duration: 5000, panelClass: ['snackbar-error'] }
+        { duration: 5000, panelClass: ['snackbar-error'] },
       );
       return;
     }
@@ -539,7 +539,7 @@ export class BookingDialogComponent implements OnInit {
       this.snackBar.open(
         'Molimo izaberite validnu lokaciju preuzimanja unutar dozvoljenog radijusa.',
         'Zatvori',
-        { duration: 5000, panelClass: ['snackbar-error'] }
+        { duration: 5000, panelClass: ['snackbar-error'] },
       );
       return;
     }
@@ -577,7 +577,7 @@ export class BookingDialogComponent implements OnInit {
           this.snackBar.open(
             'Ovaj termin je upravo rezervisan. Molimo izaberite drugi termin.',
             'Zatvori',
-            { duration: 5000, panelClass: ['snackbar-error'] }
+            { duration: 5000, panelClass: ['snackbar-error'] },
           );
           this.isSubmitting.set(false);
         }
@@ -587,12 +587,14 @@ export class BookingDialogComponent implements OnInit {
           this.snackBar.open(
             'Ovaj termin je upravo rezervisan. Molimo izaberite drugi termin.',
             'Zatvori',
-            { duration: 5000, panelClass: ['snackbar-error'] }
+            { duration: 5000, panelClass: ['snackbar-error'] },
           );
         } else {
-          const errorMessage = error.error?.message || 'Greška pri proveri dostupnosti.';
+          // Backend may return {error: "..."} or {message: "..."} - check both
+          const errorMessage =
+            error.error?.message || error.error?.error || 'Greška pri proveri dostupnosti.';
           this.snackBar.open(errorMessage, 'Zatvori', {
-            duration: 5000,
+            duration: 8000,
             panelClass: ['snackbar-error'],
           });
         }
@@ -608,7 +610,7 @@ export class BookingDialogComponent implements OnInit {
           this.snackBar.open(
             'Vaš zahtev za rezervaciju je poslat! Čekamo odobrenje domaćina.',
             'Zatvori',
-            { duration: 5000, panelClass: ['snackbar-info'] }
+            { duration: 5000, panelClass: ['snackbar-info'] },
           );
         } else {
           this.snackBar.open('Vaša rezervacija je uspešno potvrđena!', 'Zatvori', {
@@ -630,19 +632,19 @@ export class BookingDialogComponent implements OnInit {
             case 'LICENSE_NOT_VERIFIED':
               // User needs to verify license - redirect to verification page
               this.handleVerificationRedirect(
-                'Potrebna je verifikacija vozačke dozvole pre rezervacije.'
+                'Potrebna je verifikacija vozačke dozvole pre rezervacije.',
               );
               return;
             case 'LICENSE_EXPIRED':
               // License has expired - redirect to verification for renewal
               this.handleVerificationRedirect(
-                'Vaša vozačka dozvola je istekla. Molimo obnovite verifikaciju.'
+                'Vaša vozačka dozvola je istekla. Molimo obnovite verifikaciju.',
               );
               return;
             case 'LICENSE_EXPIRES_BEFORE_TRIP':
               // License expires before trip ends
               this.handleVerificationRedirect(
-                'Vaša vozačka dozvola ističe pre završetka putovanja. Molimo obnovite dozvolu.'
+                'Vaša vozačka dozvola ističe pre završetka putovanja. Molimo obnovite dozvolu.',
               );
               return;
             case 'VERIFICATION_PENDING':
@@ -651,7 +653,7 @@ export class BookingDialogComponent implements OnInit {
                 .open(
                   'Vaša verifikacija je u toku. Molimo sačekajte odobrenje.',
                   'Pogledaj status',
-                  { duration: 8000, panelClass: ['snackbar-warning'] }
+                  { duration: 8000, panelClass: ['snackbar-warning'] },
                 )
                 .onAction()
                 .subscribe(() => {
@@ -663,7 +665,7 @@ export class BookingDialogComponent implements OnInit {
             case 'VERIFICATION_REJECTED':
               // Previous verification was rejected
               this.handleVerificationRedirect(
-                'Vaša prethodna verifikacija je odbijena. Molimo pošaljite ponovo.'
+                'Vaša prethodna verifikacija je odbijena. Molimo pošaljite ponovo.',
               );
               return;
             case 'ACCOUNT_SUSPENDED':
@@ -671,13 +673,14 @@ export class BookingDialogComponent implements OnInit {
               this.snackBar.open(
                 'Vaš nalog je suspendovan. Kontaktirajte podršku za pomoć.',
                 'Zatvori',
-                { duration: 8000, panelClass: ['snackbar-error'] }
+                { duration: 8000, panelClass: ['snackbar-error'] },
               );
               this.isSubmitting.set(false);
               return;
             default:
-              // Generic 403 error
-              errorMessage = error.error?.message || 'Nemate dozvolu za ovu akciju.';
+              // Generic 403 error - check both error.message and error.error
+              errorMessage =
+                error.error?.message || error.error?.error || 'Nemate dozvolu za ovu akciju.';
           }
         } else if (error.status === 409) {
           switch (errorCode) {
@@ -692,14 +695,19 @@ export class BookingDialogComponent implements OnInit {
                 'Molimo izaberite drugi termin.';
               break;
             default:
-              errorMessage = error.error?.message || 'Rezervacija nije moguća zbog konflikta.';
+              errorMessage =
+                error.error?.message ||
+                error.error?.error ||
+                'Rezervacija nije moguća zbog konflikta.';
           }
         } else {
-          errorMessage = error.error?.message || 'Greška pri kreiranju rezervacije.';
+          // Backend may return {error: "..."} or {message: "..."} - check both
+          errorMessage =
+            error.error?.message || error.error?.error || 'Greška pri kreiranju rezervacije.';
         }
 
         this.snackBar.open(errorMessage, 'Zatvori', {
-          duration: 6000,
+          duration: 8000, // Increased duration for longer error messages
           panelClass: ['snackbar-error'],
         });
         this.isSubmitting.set(false);

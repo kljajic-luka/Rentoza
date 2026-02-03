@@ -30,6 +30,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             @NonNull FilterChain filterChain
     ) throws ServletException, IOException {
 
+        // Skip if authentication already set (e.g., by SupabaseJwtAuthFilter)
+        if (SecurityContextHolder.getContext().getAuthentication() != null) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
         final String jwt = resolveToken(request);
 
         if (jwt == null || jwt.isBlank()) {

@@ -107,12 +107,13 @@ public class CarResponseDTO {
                 this.locationAddress = null;  // Hide exact address
                 this.location = this.locationCity != null 
                     ? capitalizeLocation(this.locationCity) 
-                    : capitalizeLocation(car.getLocation());
+                    : extractCityFromLegacyLocation(car.getLocation());
             }
         } else {
-            // Fallback to legacy location field (city name)
-            this.location = capitalizeLocation(car.getLocation());
-            this.locationCity = car.getLocation();
+            // Fallback to legacy location field - extract city only for privacy
+            String cityName = extractCityFromLegacyLocation(car.getLocation());
+            this.location = capitalizeLocation(cityName);
+            this.locationCity = cityName;
             this.locationLatitude = null;
             this.locationLongitude = null;
             this.locationAddress = null;
@@ -183,5 +184,39 @@ public class CarResponseDTO {
         }
 
         return result.toString();
+    }
+
+    /**
+     * Extract city name from legacy location string for privacy protection.
+     * 
+     * <p>Legacy location format example: 
+     * "34, marije mage magazinović, centar, rosulje, užice, gradska opština užice"
+     * 
+     * <p>City is typically near the end, before municipality/region parts.
+     * We skip administrative parts like "gradska opština...", "opština...", "okrug...".
+     * 
+     * @param location The legacy full address string
+     * @return The extracted city name, or "Srbija" as fallback
+     */
+    private String extractCityFromLegacyLocation(String location) {
+        if (location == null || location.isBlank()) {
+            return "Srbija";  // Ultimate fallback
+        }
+        
+        String[] parts = location.split(",");
+        
+        // Try to find city - usually near the end, skip municipality parts
+        for (int i = parts.length - 1; i >= 0; i--) {
+            String part = parts[i].trim().toLowerCase();
+            // Skip administrative parts
+            if (!part.contains("opština") && 
+                !part.contains("okrug") && 
+                !part.contains("gradska") &&
+                !part.isBlank()) {
+                return parts[i].trim();
+            }
+        }
+        
+        return "Srbija";  // Ultimate fallback
     }
 }

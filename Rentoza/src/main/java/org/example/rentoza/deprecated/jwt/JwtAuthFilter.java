@@ -47,7 +47,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             "/oauth2",
             "/login",
             "/uploads",
-            "/actuator"     // Health checks
+            "/actuator",     // Health checks
+            "/api/public"
     );
     
     // Specific GET endpoints that are public (exact paths or patterns)

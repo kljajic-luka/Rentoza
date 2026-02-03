@@ -62,7 +62,8 @@ public class CarController {
                     .orElseThrow(() -> new RuntimeException("Owner not found: " + principal.getUsername()));
 
             Car saved = service.addCar(dto, owner);
-            return ResponseEntity.ok(new CarResponseDTO(saved));
+            // Return DTO with exact location for the owner who just added the car
+            return ResponseEntity.ok(new CarResponseDTO(saved, true, owner.getId()));
 
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
@@ -92,7 +93,8 @@ public class CarController {
                     .orElseThrow(() -> new RuntimeException("Owner not found: " + principal.getUsername()));
 
             Car saved = service.addCarWithLocalImages(dto, owner, images);
-            return ResponseEntity.ok(new CarResponseDTO(saved));
+            // Return DTO with exact location for the owner who just added the car
+            return ResponseEntity.ok(new CarResponseDTO(saved, true, owner.getId()));
 
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));

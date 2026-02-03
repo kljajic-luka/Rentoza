@@ -159,15 +159,19 @@
       </div>
       <div class="hero__stats">
         <div>
-          <span class="stat__value">4.9★</span>
+          <span class="stat__value">{{ formatRating(homeStats?.guestSatisfactionRating) }}</span>
           <span class="stat__label">Zadovoljstvo gostiju</span>
         </div>
         <div>
-          <span class="stat__value">1.2k+</span>
+          <span class="stat__value">{{
+            formatVerifiedCount(homeStats?.verifiedVehiclesCount)
+          }}</span>
           <span class="stat__label">Verifikovanih vozila</span>
         </div>
         <div>
-          <span class="stat__value">24/7</span>
+          <span class="stat__value">{{
+            formatSupportAvailability(homeStats?.supportAvailability)
+          }}</span>
           <span class="stat__label">Podrška vozačima</span>
         </div>
       </div>
@@ -265,7 +269,7 @@
           <span class="chip">{{ car.year }}</span>
           <div class="distance-badge" *ngIf="car.distanceKm">
             <mat-icon>near_me</mat-icon>
-            {{ car.distanceKm | number : '1.1-1' }} km
+            {{ car.distanceKm | number: '1.1-1' }} km
           </div>
         </div>
         <div class="search-result-card__body">
@@ -284,7 +288,7 @@
           </div>
         </div>
         <div class="search-result-card__footer">
-          <span class="price">{{ car.pricePerDay | number : '1.0-0' }} RSD/dan</span>
+          <span class="price">{{ car.pricePerDay | number: '1.0-0' }} RSD/dan</span>
           <span class="delivery-badge" *ngIf="car.deliveryAvailable">
             <mat-icon>local_shipping</mat-icon>
             Dostava
@@ -346,7 +350,7 @@
       <div class="featured__body">
         <div class="featured__header">
           <h3>{{ car.make }} {{ car.model }}</h3>
-          <span class="price">{{ car.pricePerDay | number : '1.0-0' }} RSD/dan</span>
+          <span class="price">{{ car.pricePerDay | number: '1.0-0' }} RSD/dan</span>
         </div>
         <p class="meta">
           <mat-icon class="meta-icon">place</mat-icon>

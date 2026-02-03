@@ -51,6 +51,13 @@ public interface ReviewRepository extends JpaRepository<Review, Long> {
     );
 
     @Query("""
+            SELECT AVG(r.rating)
+            FROM Review r
+            WHERE r.direction = :direction
+            """)
+    Double findAverageRatingByDirection(@Param("direction") ReviewDirection direction);
+
+    @Query("""
             SELECT DISTINCT r
             FROM Review r
             JOIN FETCH r.reviewer

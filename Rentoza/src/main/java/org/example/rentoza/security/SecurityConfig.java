@@ -234,6 +234,9 @@ public class SecurityConfig {
                         // Location search must be public for guest users browsing cars/homepage
                         .requestMatchers(HttpMethod.GET, "/api/locations/**").permitAll()
 
+                        // ============ PUBLIC HOMEPAGE STATS ============
+                        .requestMatchers(HttpMethod.GET, "/api/public/home-stats").permitAll()
+
                         // User endpoints - must come before catch-all rules
                         .requestMatchers("/api/users/me").authenticated()
                         .requestMatchers(HttpMethod.PATCH, "/api/users/me").authenticated()

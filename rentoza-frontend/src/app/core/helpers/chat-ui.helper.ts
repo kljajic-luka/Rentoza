@@ -17,7 +17,8 @@ export class ChatUiHelper {
    * @returns ChatDisplayInfo containing localized title, subtitle, and status label
    */
   static getDisplayInfo(conv: ConversationDTO, currentUserId: string): ChatDisplayInfo {
-    const isOwner = conv.ownerId === currentUserId;
+    // Defensive null check - API might return null ownerId in edge cases
+    const isOwner = conv.ownerId ? conv.ownerId === currentUserId : false;
     const tripStatus = this.getTripStatus(conv);
     const carInfo = this.getCarInfo(conv);
 
@@ -130,7 +131,7 @@ export class ChatUiHelper {
    * Helper to determine trip status (current, future, past)
    */
   private static getTripStatus(
-    conv: ConversationDTO
+    conv: ConversationDTO,
   ): 'current' | 'future' | 'past' | 'unknown' | 'unavailable' {
     if (conv.tripStatus) {
       const status = conv.tripStatus.toLowerCase();

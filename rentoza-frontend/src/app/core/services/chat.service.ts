@@ -547,8 +547,17 @@ export class ChatService implements OnDestroy {
 
     return this.http.get<ConversationDTO[]>(`${this.chatApiUrl}/conversations`).pipe(
       map((conversations) => {
+        // Filter out malformed conversations with null IDs
+        const validConversations = conversations.filter((conv) => {
+          if (!conv.ownerId || !conv.renterId) {
+            console.warn(`[DATA] Skipping conversation ${conv.id} with null ownerId or renterId`);
+            return false;
+          }
+          return true;
+        });
+
         // RBAC: Verify ownership before accepting conversations
-        const validated = conversations.filter((conv) => {
+        const validated = validConversations.filter((conv) => {
           // Convert all IDs to strings for reliable comparison
           const convOwnerId = conv.ownerId?.toString();
           const convRenterId = conv.renterId?.toString();

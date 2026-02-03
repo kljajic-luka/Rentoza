@@ -24,7 +24,7 @@ import java.util.Map;
  * Endpoint:
  * POST /api/users/me/profile-picture
  *   - Accepts multipart/form-data with "file" parameter
- *   - Returns { profilePictureUrl: "/uploads/profile-pictures/{userId}.jpg?t={timestamp}" }
+ *   - Returns { profilePictureUrl: "https://{supabase-project}.supabase.co/storage/v1/object/public/user-avatars/..." }
  */
 @RestController
 @RequestMapping("/api/users/me")

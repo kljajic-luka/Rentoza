@@ -233,6 +233,38 @@ export class RegisterComponent implements OnInit {
     bankControl?.updateValueAndValidity();
   }
 
+  /**
+   * Switch to renter registration mode.
+   * Updates query parameters to reflect the selection and manages form state.
+   */
+  switchToRenter(): void {
+    if (this.isOwnerRegistration()) {
+      this.router.navigate([], {
+        relativeTo: this.route,
+        queryParams: { role: 'USER' },
+        queryParamsHandling: 'merge',
+      });
+      this.isOwnerRegistration.set(false);
+      this.resetFormsForMode(false);
+    }
+  }
+
+  /**
+   * Switch to owner registration mode.
+   * Updates query parameters to reflect the selection and manages form state.
+   */
+  switchToOwner(): void {
+    if (!this.isOwnerRegistration()) {
+      this.router.navigate([], {
+        relativeTo: this.route,
+        queryParams: { role: 'OWNER' },
+        queryParamsHandling: 'merge',
+      });
+      this.isOwnerRegistration.set(true);
+      this.resetFormsForMode(true);
+    }
+  }
+
   submit(): void {
     // Validate main form
     if (this.form.invalid) {

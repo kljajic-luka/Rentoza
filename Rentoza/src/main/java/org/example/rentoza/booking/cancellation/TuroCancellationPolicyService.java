@@ -200,6 +200,7 @@ public class TuroCancellationPolicyService implements CancellationPolicyService 
             .processedAt(now)
             .hoursBeforeTripStart(hoursBeforeTripStart)
             .originalTotalPrice(originalTotal)
+            .bookingTotal(originalTotal)
             .dailyRateSnapshot(dailyRate)
             .penaltyAmount(calc.penaltyAmount)
             .refundToGuest(calc.refundToGuest)

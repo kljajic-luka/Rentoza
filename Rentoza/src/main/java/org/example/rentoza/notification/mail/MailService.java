@@ -97,7 +97,9 @@ public class MailService {
 
         // Check if credentials are configured
         if (!credentialsConfigured) {
-            log.debug("Skipping email send - credentials not configured (recipient: {}, type: {})", to, type);
+            log.warn("❌ EMAIL DISABLED - Credentials not configured. MAIL_USERNAME={}, MAIL_PASSWORD={}",
+                    mailUsername != null ? "SET" : "MISSING",
+                    mailPassword != null ? "SET" : "MISSING");
             return CompletableFuture.completedFuture(null);
         }
 
@@ -118,7 +120,13 @@ public class MailService {
                         type);
             }
 
-            String htmlContent = buildEmailContent(message, type, relatedEntityId);
+                String templateName = getTemplateForType(type);
+                log.info("📧 Preparing to send email | To: {} | Subject: {} | Template: {}",
+                    to,
+                    subject,
+                    templateName);
+
+                String htmlContent = buildEmailContent(message, type, relatedEntityId);
 
             MimeMessage mimeMessage = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
@@ -134,13 +142,17 @@ public class MailService {
                 log.info("✅ Test email sent successfully to {} (originally intended for {})",
                         finalRecipient, originalRecipient);
             } else {
-                log.info("Email notification sent successfully to {} for type {}", finalRecipient, type);
+                log.info("✅ Email sent successfully | To: {} | Subject: {}", finalRecipient, finalSubject);
             }
 
             return CompletableFuture.completedFuture(null);
 
         } catch (MessagingException e) {
-            log.error("Failed to send email to {}: {}", to, e.getMessage(), e);
+            log.error("❌ Email send failed | To: {} | Subject: {} | Error: {}",
+                    to,
+                    subject,
+                    e.getMessage(),
+                    e);
             return CompletableFuture.failedFuture(e);
         }
     }

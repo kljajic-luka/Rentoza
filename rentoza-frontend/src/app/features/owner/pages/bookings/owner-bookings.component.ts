@@ -79,7 +79,7 @@ export class OwnerBookingsComponent implements OnInit {
           const isValid = user !== null && !!(user.email || user.id);
           return isValid;
         }),
-        take(1)
+        take(1),
       )
       .subscribe({
         next: (user) => {
@@ -116,16 +116,23 @@ export class OwnerBookingsComponent implements OnInit {
                 const endTime = new Date(booking.endTime);
 
                 // Categorize based on times AND status
+                // 0. Terminal states (cancelled/declined/expired) should never appear as upcoming
+                if (
+                  ['CANCELLED', 'DECLINED', 'EXPIRED', 'EXPIRED_SYSTEM'].includes(booking.status)
+                ) {
+                  completed.push(booking);
+                }
                 // 1. Completed: End time has passed OR status indicates completion
                 // BUT: Exclude checkout statuses (they need action even if endTime passed)
-                if (
+                else if (
                   (endTime < now || booking.status === 'COMPLETED') &&
                   !['CHECKOUT_OPEN', 'CHECKOUT_GUEST_COMPLETE', 'CHECKOUT_HOST_COMPLETE'].includes(
-                    booking.status
+                    booking.status,
                   ) &&
                   booking.status !== 'CANCELLED' &&
                   booking.status !== 'DECLINED' &&
-                  booking.status !== 'EXPIRED'
+                  booking.status !== 'EXPIRED' &&
+                  booking.status !== 'EXPIRED_SYSTEM'
                 ) {
                   completed.push(booking);
                 }
@@ -134,10 +141,10 @@ export class OwnerBookingsComponent implements OnInit {
                 else if (
                   (startTime > now || booking.status === 'PENDING_APPROVAL') &&
                   !['CHECK_IN_OPEN', 'CHECK_IN_HOST_COMPLETE', 'CHECK_IN_COMPLETE'].includes(
-                    booking.status
+                    booking.status,
                   ) &&
                   !['CHECKOUT_OPEN', 'CHECKOUT_GUEST_COMPLETE', 'CHECKOUT_HOST_COMPLETE'].includes(
-                    booking.status
+                    booking.status,
                   )
                 ) {
                   upcoming.push(booking);
@@ -146,10 +153,10 @@ export class OwnerBookingsComponent implements OnInit {
                 else if (
                   (startTime <= now && endTime >= now) ||
                   ['CHECK_IN_OPEN', 'CHECK_IN_HOST_COMPLETE', 'CHECK_IN_COMPLETE'].includes(
-                    booking.status
+                    booking.status,
                   ) ||
                   ['CHECKOUT_OPEN', 'CHECKOUT_GUEST_COMPLETE', 'CHECKOUT_HOST_COMPLETE'].includes(
-                    booking.status
+                    booking.status,
                   )
                 ) {
                   active.push(booking);
@@ -359,7 +366,7 @@ export class OwnerBookingsComponent implements OnInit {
       userRole: 'HOST',
       carInfo: car ? `${car.brand || ''} ${car.model}`.trim() : 'Vozilo',
       tripDates: `${new Date(booking.startTime).toLocaleDateString('sr-RS')} - ${new Date(
-        booking.endTime
+        booking.endTime,
       ).toLocaleDateString('sr-RS')}`,
     };
 
@@ -387,24 +394,24 @@ export class OwnerBookingsComponent implements OnInit {
   }
 
   protected openBookingDetails(booking: Booking): void {
-    import(
-      '../../dialogs/owner-booking-details-dialog/owner-booking-details-dialog.component'
-    ).then(({ OwnerBookingDetailsDialogComponent }) => {
-      const dialogRef = this.dialog.open(OwnerBookingDetailsDialogComponent, {
-        width: '800px',
-        maxWidth: '95vw',
-        maxHeight: '90vh',
-        data: { bookingId: booking.id },
-        panelClass: 'owner-booking-details-dialog-panel',
-      });
+    import('../../dialogs/owner-booking-details-dialog/owner-booking-details-dialog.component').then(
+      ({ OwnerBookingDetailsDialogComponent }) => {
+        const dialogRef = this.dialog.open(OwnerBookingDetailsDialogComponent, {
+          width: '800px',
+          maxWidth: '95vw',
+          maxHeight: '90vh',
+          data: { bookingId: booking.id },
+          panelClass: 'owner-booking-details-dialog-panel',
+        });
 
-      // Optional: Refresh bookings if actions were taken in dialog (e.g. cancellation)
-      dialogRef.afterClosed().subscribe((result) => {
-        if (result?.refresh) {
-          this.loadOwnerBookings();
-        }
-      });
-    });
+        // Optional: Refresh bookings if actions were taken in dialog (e.g. cancellation)
+        dialogRef.afterClosed().subscribe((result) => {
+          if (result?.refresh) {
+            this.loadOwnerBookings();
+          }
+        });
+      },
+    );
   }
 
   // Helper for template calculations
@@ -507,7 +514,7 @@ export class OwnerBookingsComponent implements OnInit {
           {
             duration: 4000,
             panelClass: ['snackbar-success'],
-          }
+          },
         );
 
         // Remove from processing set
@@ -589,7 +596,7 @@ export class OwnerBookingsComponent implements OnInit {
           {
             duration: 4000,
             panelClass: ['snackbar-info'],
-          }
+          },
         );
 
         // Remove from processing set

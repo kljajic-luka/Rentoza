@@ -1,6 +1,8 @@
 package org.example.rentoza.booking;
 
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.booking.cancellation.CancellationPolicyService;
 import org.example.rentoza.booking.cancellation.CancellationReason;
@@ -731,8 +733,8 @@ public class BookingService {
             request.notes()
         );
         
-        // Send notifications
-        sendCancellationNotifications(booking, result);
+        // Send notifications only after successful commit
+        runAfterCommit(() -> sendCancellationNotifications(booking, result));
         
         return result;
     }
@@ -806,6 +808,22 @@ public class BookingService {
                 booking.getId(), result.cancelledBy());
         } catch (Exception e) {
             log.error("Failed to send cancellation notifications: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Ensure side effects (emails/notifications) execute only after a successful commit.
+     */
+    private void runAfterCommit(Runnable action) {
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    action.run();
+                }
+            });
+        } else {
+            action.run();
         }
     }
 

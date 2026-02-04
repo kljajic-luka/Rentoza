@@ -131,6 +131,13 @@ public class CancellationRecord {
     private BigDecimal originalTotalPrice;
 
     /**
+     * Total booking amount at time of cancellation (including fees/extensions).
+     * Stored separately from {@code originalTotalPrice} for audit comparisons.
+     */
+    @Column(name = "booking_total", nullable = false, precision = 19, scale = 2)
+    private BigDecimal bookingTotal;
+
+    /**
      * Daily rate snapshot at time of cancellation.
      * Used for penalty calculations (1-day penalty for short trips).
      */

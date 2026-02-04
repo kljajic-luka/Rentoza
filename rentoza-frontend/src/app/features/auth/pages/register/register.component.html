@@ -12,22 +12,128 @@
   </div>
 
   <div class="auth__intro">
-    <h1>
-      {{ isOwnerRegistration() ? 'Postanite Rentoza domaćin' : 'Kreirajte svoj Rentoza nalog' }}
-    </h1>
-    <p>
-      {{
-        isOwnerRegistration()
-          ? 'Podelite svoje vozilo sa pouzdanim vozačima i zarađujte bez napora.'
-          : 'Pridružite se zajednici entuzijasta i otključajte premijum iskustva vožnje.'
-      }}
-    </p>
+    <h1>Kreirajte svoj Rentoza nalog</h1>
+    <p>Izaberite vrstu naloga koja vam najbolje odgovara</p>
   </div>
 
-  <mat-card class="auth-card">
+  <!-- Dual Card Layout: Renter vs Owner -->
+  <div class="auth-cards-container">
+    <!-- Renter Card -->
+    <mat-card
+      class="auth-card auth-card--renter"
+      [class.auth-card--active]="!isOwnerRegistration()"
+      role="region"
+      aria-label="Registracija za iznajmljivače vozila"
+    >
+      <div class="auth-card__selector">
+        <button
+          type="button"
+          mat-icon-button
+          (click)="switchToRenter()"
+          [attr.aria-pressed]="!isOwnerRegistration()"
+          class="card-selector-btn"
+          aria-label="Odaberite iznajmljivanje kao vrstu naloga"
+        >
+          <mat-icon>radio_button_checked</mat-icon>
+        </button>
+      </div>
+
+      <mat-card-header>
+        <div mat-card-avatar class="auth-card__avatar auth-card__avatar--renter">
+          <mat-icon>person</mat-icon>
+        </div>
+        <mat-card-title>Iznajmljivač</mat-card-title>
+        <mat-card-subtitle>Pronađi i iznajmi vozilo</mat-card-subtitle>
+      </mat-card-header>
+
+      <div class="card-benefits">
+        <div class="benefit">
+          <mat-icon>search</mat-icon>
+          <span>Pronađite vozilo po vašoj meri</span>
+        </div>
+        <div class="benefit">
+          <mat-icon>verified</mat-icon>
+          <span>Proveren i siguran booking</span>
+        </div>
+        <div class="benefit">
+          <mat-icon>support_agent</mat-icon>
+          <span>24/7 korisničku podršku</span>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        mat-raised-button
+        color="primary"
+        (click)="switchToRenter()"
+        class="select-button"
+        [class.selected]="!isOwnerRegistration()"
+      >
+        {{ !isOwnerRegistration() ? 'Odabrano' : 'Odaberite' }}
+      </button>
+    </mat-card>
+
+    <!-- Owner Card -->
+    <mat-card
+      class="auth-card auth-card--owner"
+      [class.auth-card--active]="isOwnerRegistration()"
+      role="region"
+      aria-label="Registracija za vlasnike vozila"
+    >
+      <div class="auth-card__selector">
+        <button
+          type="button"
+          mat-icon-button
+          (click)="switchToOwner()"
+          [attr.aria-pressed]="isOwnerRegistration()"
+          class="card-selector-btn"
+          aria-label="Odaberite iznajmljivanje vozila kao vrstu naloga"
+        >
+          <mat-icon>radio_button_checked</mat-icon>
+        </button>
+      </div>
+
+      <mat-card-header>
+        <div mat-card-avatar class="auth-card__avatar auth-card__avatar--owner">
+          <mat-icon>directions_car</mat-icon>
+        </div>
+        <mat-card-title>Domaćin</mat-card-title>
+        <mat-card-subtitle>Iznajmite vaše vozilo</mat-card-subtitle>
+      </mat-card-header>
+
+      <div class="card-benefits">
+        <div class="benefit">
+          <mat-icon>trending_up</mat-icon>
+          <span>Zarađujte od vašeg vozila</span>
+        </div>
+        <div class="benefit">
+          <mat-icon>shield</mat-icon>
+          <span>Zaštita i osiguranje vozila</span>
+        </div>
+        <div class="benefit">
+          <mat-icon>calendar_month</mat-icon>
+          <span>Fleksibilan raspored iznajmljivanja</span>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        mat-raised-button
+        color="accent"
+        (click)="switchToOwner()"
+        class="select-button"
+        [class.selected]="isOwnerRegistration()"
+      >
+        {{ isOwnerRegistration() ? 'Odabrano' : 'Odaberite' }}
+      </button>
+    </mat-card>
+  </div>
+
+  <!-- Registration Form Card -->
+  <mat-card class="auth-card auth-card--form">
     <mat-card-header>
       <div mat-card-avatar class="auth-card__avatar">
-        <mat-icon>person_add</mat-icon>
+        <mat-icon>{{ isOwnerRegistration() ? 'business' : 'person_add' }}</mat-icon>
       </div>
       <mat-card-title>
         {{ isOwnerRegistration() ? 'Registrujte se kao domaćin' : 'Kreirajte nalog' }}
@@ -314,14 +420,13 @@
         }
 
         <button mat-raised-button color="primary" type="submit" [disabled]="isSubmitting()">
-          <mat-progress-spinner
-            *ngIf="isSubmitting()"
-            diameter="20"
-            mode="indeterminate"
-          ></mat-progress-spinner>
-          <span *ngIf="!isSubmitting()">
-            {{ isOwnerRegistration() ? 'Postani domaćin' : 'Kreiraj nalog' }}
-          </span>
+          @if (isSubmitting()) {
+            <mat-progress-spinner diameter="20" mode="indeterminate"></mat-progress-spinner>
+          } @else {
+            <span>
+              {{ isOwnerRegistration() ? 'Postani domaćin' : 'Kreiraj nalog' }}
+            </span>
+          }
         </button>
       </form>
 

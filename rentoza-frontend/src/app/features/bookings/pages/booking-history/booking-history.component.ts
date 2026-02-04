@@ -15,11 +15,12 @@ import { BookingService } from '@core/services/booking.service';
 import { isBookingCompleted } from '@core/utils/booking.utils';
 import { BookingDetailsDialogComponent } from '../../booking-details-dialog/booking-details-dialog.component';
 
-type BookingCategory = 'upcoming' | 'ongoing' | 'past';
+type BookingCategory = 'upcoming' | 'ongoing' | 'cancelled' | 'past';
 
 interface CategorizedBookings {
   upcoming: UserBooking[];
   ongoing: UserBooking[];
+  cancelled: UserBooking[];
   past: UserBooking[];
 }
 
@@ -61,8 +62,16 @@ export class BookingHistoryComponent {
         const startTime = new Date(booking.startTime);
         const endTime = new Date(booking.endTime);
 
+        if (this.isCancelledStatus(booking.status)) {
+          acc.cancelled.push(booking);
+        }
+        // Terminal non-cancel states should never appear in upcoming
+        else if (this.isTerminalStatus(booking.status)) {
+          acc.past.push(booking);
+        }
+
         // Use unified completion check to determine if booking is completed
-        if (isBookingCompleted(booking)) {
+        else if (isBookingCompleted(booking)) {
           acc.past.push(booking);
         }
         // ====================================================================
@@ -83,7 +92,7 @@ export class BookingHistoryComponent {
 
         return acc;
       },
-      { upcoming: [], ongoing: [], past: [] }
+      { upcoming: [], ongoing: [], cancelled: [], past: [] },
     );
   });
 
@@ -105,7 +114,7 @@ export class BookingHistoryComponent {
   /**
    * Check if a booking is in progress based on its status.
    * This includes trips that have started or are in checkout phase.
-   * 
+   *
    * @param status The booking status from the backend
    * @return true if booking is actively in progress
    */
@@ -114,11 +123,19 @@ export class BookingHistoryComponent {
       'CHECK_IN_OPEN',
       'CHECK_IN_HOST_COMPLETE',
       'CHECK_IN_COMPLETE',
-      'IN_TRIP',  // Trip actively started - critical for the fix
+      'IN_TRIP', // Trip actively started - critical for the fix
       'CHECKOUT_OPEN',
       'CHECKOUT_GUEST_COMPLETE',
-      'CHECKOUT_HOST_COMPLETE'
+      'CHECKOUT_HOST_COMPLETE',
     ].includes(status);
+  }
+
+  private isCancelledStatus(status: string): boolean {
+    return status === 'CANCELLED';
+  }
+
+  private isTerminalStatus(status: string): boolean {
+    return ['DECLINED', 'EXPIRED', 'EXPIRED_SYSTEM'].includes(status);
   }
 
   protected getTimeIndicator(booking: UserBooking, category: BookingCategory): string {
@@ -131,6 +148,8 @@ export class BookingHistoryComponent {
       return `Počinje za ${this.getTimeUntil(startTime, now)}`;
     } else if (category === 'ongoing') {
       return `Preostalo vreme: ${this.getTimeUntil(endTime, now)}`;
+    } else if (category === 'cancelled') {
+      return 'Otkazano';
     } else {
       return `Završeno pre ${this.getTimeSince(endTime, now)}`;
     }

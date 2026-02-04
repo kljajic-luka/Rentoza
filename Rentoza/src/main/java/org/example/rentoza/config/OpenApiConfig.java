@@ -39,7 +39,7 @@ public class OpenApiConfig {
                         .description("Enterprise Car Rental Platform API - Serbia")
                         .contact(new Contact()
                                 .name("Rentoza Team")
-                                .email("support@rentoza.rs"))
+                                .email("rentozzza@gmail.com"))
                         .license(new License()
                                 .name("Proprietary")
                                 .url("https://rentoza.rs/terms")))

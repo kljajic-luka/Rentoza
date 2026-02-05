@@ -136,7 +136,23 @@ fi
 # Update cloudbuild.yaml
 if [ -f "infrastructure/gcp/cloudbuild.yaml" ]; then
     sed -i '' 's|Rentoza/|apps/backend/|g' infrastructure/gcp/cloudbuild.yaml
-    echo -e "${GREEN}✓ Updated cloudbuild.yaml paths${NC}"
+    sed -i '' 's|chat-service/|apps/chat-service/|g' infrastructure/gcp/cloudbuild.yaml
+    # Fix min-instances from 0 to 1 (cold start fix)
+    sed -i '' "s|--min-instances'$|--min-instances|g" infrastructure/gcp/cloudbuild.yaml
+    sed -i '' "s|'0'$|'1'|" infrastructure/gcp/cloudbuild.yaml
+    echo -e "${GREEN}✓ Updated cloudbuild.yaml paths and min-instances${NC}"
+fi
+
+# Update GitHub Actions Lighthouse CI
+if [ -f ".github/workflows/lighthouse-ci.yml" ]; then
+    sed -i '' 's|rentoza-frontend|apps/frontend|g' .github/workflows/lighthouse-ci.yml
+    echo -e "${GREEN}✓ Updated lighthouse-ci.yml paths${NC}"
+fi
+
+# Update load-env.sh for new location
+if [ -f "infrastructure/scripts/load-env.sh" ]; then
+    sed -i '' 's|/Users/kljaja01/Developer/Rentoza/.env.local|$(dirname "$0")/../../.env.local|g' infrastructure/scripts/load-env.sh
+    echo -e "${GREEN}✓ Updated load-env.sh env file path${NC}"
 fi
 
 echo ""
@@ -234,11 +250,19 @@ echo -e "${GREEN}║                    RESTRUCTURE COMPLETE!                   
 echo -e "${GREEN}╚═══════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 echo -e "${YELLOW}Next steps:${NC}"
-echo "  1. Review changes:     git status"
-echo "  2. Test backend build: cd apps/backend && ./mvnw clean package -DskipTests"
-echo "  3. Test frontend:      cd apps/frontend && npm run build"
-echo "  4. Commit:             git commit -m 'refactor: restructure project layout'"
-echo "  5. Push:               git push origin main"
+echo "  1. Review changes:       git status"
+echo "  2. Test backend build:   cd apps/backend && ./mvnw clean package -DskipTests"
+echo "  3. Test frontend build:  cd apps/frontend && npm run build"
+echo "  4. Test chat build:      cd apps/chat-service && ./mvnw clean package -DskipTests"
+echo "  5. Commit changes:       git add -A && git commit -m 'refactor: restructure project layout'"
+echo "  6. Push to remote:       git push origin main"
 echo ""
-echo -e "${RED}⚠️  IMPORTANT: Update any CI/CD triggers that reference old paths!${NC}"
+echo -e "${BLUE}📋 Files automatically updated by this script:${NC}"
+echo "  • infrastructure/gcp/cloudbuild.yaml (paths + min-instances=1)"
+echo "  • infrastructure/gcp/deploy-backend-secure.sh (backend path)"
+echo "  • .github/workflows/lighthouse-ci.yml (frontend paths)"
+echo "  • infrastructure/scripts/load-env.sh (env file path)"
+echo ""
+echo -e "${GREEN}✅ Production is UNAFFECTED - deployed images remain unchanged${NC}"
+echo -e "${GREEN}✅ Next deployment will use new paths automatically${NC}"
 echo ""

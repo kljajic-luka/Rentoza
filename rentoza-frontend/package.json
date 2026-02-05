@@ -4,8 +4,9 @@
   "scripts": {
     "ng": "ng",
     "start": "ng serve --host 0.0.0.0 --configuration development",
-    "build": "ng build",
-    "build:prod": "ng build --configuration=production && node scripts/remove-console-logs.js dist/rentoza-frontend/browser",
+    "build": "ng build --configuration=production && node scripts/remove-console-logs.js dist/rentoza-frontend/browser",
+    "build:dev": "ng build --configuration=development",
+    "build:prod": "npm run build",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "test:e2e": "playwright test",
@@ -14,7 +15,9 @@
     "test:e2e:debug": "playwright test --debug",
     "test:e2e:report": "playwright show-report",
     "lint": "ng lint",
-    "generate-icons": "node generate-icons.js"
+    "generate-icons": "node generate-icons.js",
+    "predeploy": "npm run build",
+    "deploy": "firebase deploy --only hosting"
   },
   "prettier": {
     "printWidth": 100,

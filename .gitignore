@@ -61,9 +61,22 @@ deploy-backend-secure.sh
 *.key
 *.crt
 
-# Development notes
-Development-summarisation-files/
-docs/
-Rentoza/uploads
-Rentoza/user-uploads
-AFTER_DEPLOYMENT_MDS
+# Uploads (user-generated content)
+Rentoza/uploads/
+Rentoza/user-uploads/
+
+# Logs
+*.log
+logs/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Archive (optional - remove this line if you want archive tracked)
+# archive/
+
+# Database backups
+database/backups/

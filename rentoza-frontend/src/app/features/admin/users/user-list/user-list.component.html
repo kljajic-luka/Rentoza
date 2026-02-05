@@ -101,12 +101,32 @@
 
           <ng-container matColumnDef="ownerVerification">
             <th mat-header-cell *matHeaderCellDef mat-sort-header="ownerVerificationSubmittedAt">
-              Owner Verification
+              Verification
             </th>
             <td mat-cell *matCellDef="let user">
-              <span [class]="getOwnerVerificationBadge(user.ownerVerificationStatus)">
-                {{ getOwnerVerificationLabel(user.ownerVerificationStatus) }}
-              </span>
+              <!-- OWNER role: Show actual verification status -->
+              <ng-container *ngIf="user.role === 'OWNER'">
+                <span [class]="getOwnerVerificationBadge(user.ownerVerificationStatus)">
+                  {{ getOwnerVerificationLabel(user.ownerVerificationStatus) }}
+                </span>
+              </ng-container>
+
+              <!-- USER role: Show renter indicator -->
+              <ng-container *ngIf="user.role === 'USER'">
+                <span
+                  class="badge badge-muted"
+                  matTooltip="Renter account - owner verification not required"
+                >
+                  Renter
+                </span>
+              </ng-container>
+
+              <!-- ADMIN role: Show admin indicator -->
+              <ng-container *ngIf="user.role === 'ADMIN'">
+                <span class="badge badge-admin" matTooltip="Admin - verification not applicable">
+                  N/A
+                </span>
+              </ng-container>
             </td>
           </ng-container>
 

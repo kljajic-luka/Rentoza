@@ -10,8 +10,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DeadlockLoserDataAccessException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import jakarta.persistence.OptimisticLockException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authorization.AuthorizationDeniedException;
@@ -66,6 +69,52 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .header("Retry-After", "1")
+                .body(body);
+    }
+
+    /**
+     * Handle optimistic locking failures gracefully.
+     * 
+     * <p><b>BUG-006:</b> When concurrent updates occur on the same entity (e.g., two users
+     * editing the same booking), JPA throws OptimisticLockException. Instead of failing
+     * with a 500, we return 409 Conflict with a clear retry message.
+     * 
+     * <p><b>Use cases:</b>
+     * <ul>
+     *   <li>Booking status updates (owner and renter editing simultaneously)</li>
+     *   <li>Vehicle details updates</li>
+     *   <li>User profile updates</li>
+     *   <li>Damage claim resolutions</li>
+     * </ul>
+     * 
+     * <p><b>Frontend handling:</b>
+     * <ul>
+     *   <li>Check for error.code === 'STALE_DATA'</li>
+     *   <li>Refresh the entity and prompt user to resubmit changes</li>
+     *   <li>Show user-friendly message: "Data has been modified by another user"</li>
+     * </ul>
+     * 
+     * @param ex The optimistic locking exception
+     * @return 409 Conflict with Retry-After header and Serbian message
+     */
+    @ExceptionHandler({
+        OptimisticLockingFailureException.class, 
+        ObjectOptimisticLockingFailureException.class,
+        OptimisticLockException.class  // JPA-level exception
+    })
+    public ResponseEntity<Map<String, Object>> handleOptimisticLockException(Exception ex) {
+        log.warn("Optimistic lock failure detected: {}", ex.getMessage());
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", Instant.now().toString());
+        body.put("error", "Conflict");
+        body.put("code", "STALE_DATA");
+        body.put("message", "Podaci su izmenjeni od strane drugog korisnika. Molimo osvežite stranicu i pokušajte ponovo.");
+        body.put("messageEn", "Data has been modified by another user. Please refresh and try again.");
+        body.put("retryable", true);
+
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .header("Retry-After", "0")
                 .body(body);
     }
 

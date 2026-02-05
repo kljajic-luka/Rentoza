@@ -102,6 +102,43 @@ public interface DamageClaimRepository extends JpaRepository<DamageClaim, Long>,
         @Param("booking") org.example.rentoza.booking.Booking booking, 
         @Param("disputeStage") DisputeStage disputeStage
     );
+
+    // ========== BUG-007: DEPOSIT RELEASE BLOCKING ==========
+    
+    /**
+     * Check if booking has any damage claims that block deposit release.
+     * 
+     * <p><b>VAL-010:</b> Deposit MUST NOT be released while any claims are:
+     * <ul>
+     *   <li>PENDING - Awaiting guest response</li>
+     *   <li>DISPUTED - Under admin review</li>
+     *   <li>ACCEPTED_BY_GUEST - Accepted but payment not yet processed</li>
+     *   <li>AUTO_APPROVED - Auto-approved but payment pending</li>
+     *   <li>ADMIN_APPROVED - Admin approved but payment pending</li>
+     *   <li>ESCALATED - Under senior review</li>
+     * </ul>
+     * 
+     * <p>Only PAID and ADMIN_REJECTED claims allow deposit release.
+     * 
+     * @param bookingId The booking ID
+     * @return true if there are claims blocking deposit release
+     */
+    @Query("SELECT CASE WHEN COUNT(c) > 0 THEN true ELSE false END FROM DamageClaim c " +
+           "WHERE c.booking.id = :bookingId " +
+           "AND c.status IN ('PENDING', 'DISPUTED', 'ACCEPTED_BY_GUEST', 'AUTO_APPROVED', 'ADMIN_APPROVED', 'ESCALATED')")
+    boolean hasClaimsBlockingDepositRelease(@Param("bookingId") Long bookingId);
+
+    /**
+     * Get all active (non-resolved) claims for a booking.
+     * Used to inform the user why deposit release is blocked.
+     * 
+     * @param bookingId The booking ID
+     * @return List of active damage claims
+     */
+    @Query("SELECT c FROM DamageClaim c WHERE c.booking.id = :bookingId " +
+           "AND c.status IN ('PENDING', 'DISPUTED', 'ACCEPTED_BY_GUEST', 'AUTO_APPROVED', 'ADMIN_APPROVED', 'ESCALATED') " +
+           "ORDER BY c.createdAt DESC")
+    List<DamageClaim> findActiveClaimsByBookingId(@Param("bookingId") Long bookingId);
 }
 
 

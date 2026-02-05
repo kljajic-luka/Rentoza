@@ -603,12 +603,15 @@ public class CheckInService {
 
     /**
      * Confirm handshake (both parties must confirm to start trip).
-     * Uses pessimistic locking to prevent race conditions.
+     * Uses pessimistic locking to prevent race conditions when both parties confirm simultaneously.
+     * 
+     * CRITICAL: The pessimistic lock (SELECT FOR UPDATE) ensures only one transaction can
+     * modify the booking at a time, preventing duplicate IN_TRIP transitions.
      */
     @Transactional
     public CheckInStatusDTO confirmHandshake(HandshakeConfirmationDTO dto, Long userId) {
-        // Acquire pessimistic lock
-        Booking booking = bookingRepository.findById(dto.getBookingId())
+        // Acquire pessimistic lock to prevent race conditions during concurrent handshake confirmations
+        Booking booking = bookingRepository.findByIdWithLock(dto.getBookingId())
                 .orElseThrow(() -> new ResourceNotFoundException("Rezervacija nije pronađena"));
         
         // Idempotency check

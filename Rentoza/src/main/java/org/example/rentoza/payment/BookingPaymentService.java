@@ -153,10 +153,37 @@ public class BookingPaymentService {
     /**
      * Release security deposit (no damage).
      * Called at checkout when no issues.
+     * 
+     * <p><b>BUG-007 / VAL-010:</b> Deposit MUST NOT be released if there are pending damage claims.
+     * This prevents the guest from receiving the deposit back while a damage dispute is ongoing.
+     * 
+     * <p><b>Blocking Statuses:</b>
+     * <ul>
+     *   <li>PENDING - Awaiting guest response</li>
+     *   <li>DISPUTED - Under admin review</li>
+     *   <li>ACCEPTED_BY_GUEST - Accepted but payment pending</li>
+     *   <li>AUTO_APPROVED - Auto-approved but payment pending</li>
+     *   <li>ADMIN_APPROVED - Admin approved but payment pending</li>
+     *   <li>ESCALATED - Under senior review</li>
+     * </ul>
+     * 
+     * @param bookingId The booking ID
+     * @param authorizationId The deposit authorization ID
+     * @return PaymentResult indicating success or failure
+     * @throws IllegalStateException if deposit release is blocked by pending claims
      */
     @Transactional
     public PaymentResult releaseDeposit(Long bookingId, String authorizationId) {
         Booking booking = getBooking(bookingId);
+
+        // BUG-007: Check for pending damage claims before releasing deposit
+        if (damageClaimRepository.hasClaimsBlockingDepositRelease(bookingId)) {
+            log.warn("[Payment] Deposit release BLOCKED for booking {} - pending damage claims exist", bookingId);
+            throw new IllegalStateException(
+                "Depozit ne može biti vraćen dok postoje nerešene prijave štete. " +
+                "Molimo sačekajte razrešenje svih prijava."
+            );
+        }
 
         PaymentResult result = paymentProvider.releaseAuthorization(authorizationId);
 

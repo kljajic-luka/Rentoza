@@ -114,6 +114,10 @@ function extractUserFriendlyMessage(error: HttpErrorResponse): string {
         return 'Ne možete rezervisati dva vozila u isto vreme. Već imate aktivnu ili čekajuću rezervaciju za ovaj period.';
       case 'CAR_UNAVAILABLE':
         return 'Ovaj automobil je već rezervisan za izabrane datume. Molimo izaberite druge datume.';
+      case 'STALE_DATA':
+        return 'Podaci su izmenjeni od strane drugog korisnika. Molimo osvežite stranicu i pokušajte ponovo.';
+      case 'DB_DEADLOCK':
+        return 'Server je privremeno zauzet. Molimo pokušajte ponovo.';
       default:
         return (
           error.error?.message || 'Ova radnja nije moguća zbog konflikta sa trenutnim stanjem.'

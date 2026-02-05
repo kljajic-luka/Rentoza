@@ -12,6 +12,7 @@ import { MatMenuModule } from '@angular/material/menu';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatDialogModule, MatDialog } from '@angular/material/dialog';
 import { MatSelectModule } from '@angular/material/select';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router, RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { debounceTime, distinctUntilChanged, Subject, take } from 'rxjs';
@@ -41,6 +42,7 @@ import { AdminStateService } from '../../../../core/services/admin-state.service
     MatProgressSpinnerModule,
     MatDialogModule,
     MatSelectModule,
+    MatTooltipModule,
   ],
   templateUrl: './user-list.component.html',
   styleUrls: ['../../admin-shared.styles.scss', './user-list.component.scss'],

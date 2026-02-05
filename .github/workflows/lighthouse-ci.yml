@@ -19,21 +19,21 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: rentoza-frontend/package-lock.json
+          cache-dependency-path: apps/frontend/package-lock.json
 
       - name: Install dependencies
-        working-directory: rentoza-frontend
+        working-directory: apps/frontend
         run: npm ci
 
       - name: Build production
-        working-directory: rentoza-frontend
+        working-directory: apps/frontend
         run: npm run build -- --configuration production
 
       - name: Install Lighthouse CI
         run: npm install -g @lhci/cli@0.13.x
 
       - name: Run Lighthouse CI
-        working-directory: rentoza-frontend
+        working-directory: apps/frontend
         run: |
           lhci autorun --config=lighthouserc.json || echo "Lighthouse CI completed with warnings"
 
@@ -42,18 +42,18 @@ jobs:
         if: always()
         with:
           name: lighthouse-results
-          path: rentoza-frontend/.lighthouseci
+          path: apps/frontend/.lighthouseci
           retention-days: 30
 
       - name: Check bundle size
-        working-directory: rentoza-frontend
+        working-directory: apps/frontend
         run: |
           echo "📦 Bundle Size Check"
-          INITIAL_SIZE=$(du -sh dist/rentoza-frontend/browser | awk '{print $1}')
+          INITIAL_SIZE=$(du -sh dist/apps/frontend/browser | awk '{print $1}')
           echo "Total bundle size: $INITIAL_SIZE"
           
           # Check if any JS files exceed 1.5MB
-          find dist/rentoza-frontend/browser -name "*.js" -size +1500k -exec ls -lh {} \; | while read -r line; do
+          find dist/apps/frontend/browser -name "*.js" -size +1500k -exec ls -lh {} \; | while read -r line; do
             echo "⚠️  Large file detected: $line"
             exit 1
           done
@@ -66,7 +66,7 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const resultsPath = 'rentoza-frontend/.lighthouseci/manifest.json';
+            const resultsPath = 'apps/frontend/.lighthouseci/manifest.json';
             
             if (fs.existsSync(resultsPath)) {
               const manifest = JSON.parse(fs.readFileSync(resultsPath, 'utf8'));

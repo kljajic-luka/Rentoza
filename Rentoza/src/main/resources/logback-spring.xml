@@ -61,6 +61,24 @@
     </appender>
 
     <!-- =============================================================================
+         JSON APPENDER FOR CLOUD RUN (Production - GCP Structured Logging)
+         ============================================================================= -->
+    <!-- Uses custom JsonLogLayout for Google Cloud Logging integration -->
+    <appender name="JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <layout class="org.example.rentoza.config.logging.JsonLogLayout">
+            <serviceName>rentoza-backend</serviceName>
+            <serviceVersion>${SERVICE_VERSION:-1.0.0}</serviceVersion>
+        </layout>
+    </appender>
+    
+    <appender name="ASYNC_JSON_CONSOLE" class="ch.qos.logback.classic.AsyncAppender">
+        <queueSize>1024</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <includeCallerData>true</includeCallerData>
+        <appender-ref ref="JSON_CONSOLE"/>
+    </appender>
+
+    <!-- =============================================================================
          DEVELOPMENT PROFILE CONFIGURATION
          ============================================================================= -->
     <springProfile name="dev">
@@ -114,8 +132,9 @@
          ============================================================================= -->
     <springProfile name="prod">
         <!-- Rentoza Application - INFO for business-critical events only -->
+        <!-- Uses JSON structured logging for Google Cloud Logging integration -->
         <logger name="org.example.rentoza" level="INFO" additivity="false">
-            <appender-ref ref="ASYNC_CONSOLE"/>
+            <appender-ref ref="ASYNC_JSON_CONSOLE"/>
         </logger>
 
         <!-- Spring Framework - WARN or ERROR only -->
@@ -147,9 +166,9 @@
         <logger name="org.apache" level="ERROR"/>
 
         <!-- Root logger - WARN to catch unexpected issues -->
-        <!-- Console only for Cloud Run - no file logging -->
+        <!-- JSON Console for Cloud Run - structured logging for GCP -->
         <root level="WARN">
-            <appender-ref ref="ASYNC_CONSOLE"/>
+            <appender-ref ref="ASYNC_JSON_CONSOLE"/>
         </root>
     </springProfile>
 

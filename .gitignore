@@ -48,12 +48,19 @@ build/
 .env.local
 .env.*.local
 
+# Cloud Run environment files with secrets (CRITICAL - NEVER COMMIT)
+**/cloudrun-env.yaml
+!**/cloudrun-env.yaml.template
+**/cloudrun-env-*.yaml
+deploy-backend-secure.sh
+
 # Certificates and keystores
 *.jks
 *.p12
 *.pem
 *.key
 *.crt
+
 # Development notes
 Development-summarisation-files/
 docs/

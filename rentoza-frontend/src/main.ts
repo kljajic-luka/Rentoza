@@ -32,6 +32,7 @@ import { authTokenInterceptor } from '@core/auth/token.interceptor';
 import { errorResponseInterceptor } from '@core/interceptors/error.interceptor';
 import { httpCacheInterceptor } from '@core/interceptors/http-cache.interceptor';
 import { idempotencyInterceptor } from '@core/interceptors/idempotency.interceptor';
+import { retryInterceptor } from '@core/interceptors/retry.interceptor';
 import { AuthService } from '@core/auth/auth.service';
 import { PerformanceMonitoringService } from '@core/services/performance-monitoring.service';
 import { OverlayThemeService } from '@core/services/overlay-theme.service';
@@ -88,12 +89,19 @@ bootstrapApplication(App, {
         config: {
           tokenGetter: () => null,
           // Dynamic domains from environment - extract hostname from full URLs
+          // For relative URLs (like '/api'), use current window.location.hostname
           allowedDomains: [
             ...new Set(
               [
-                new URL(environment.baseUrl || environment.baseApiUrl).hostname,
-                new URL(environment.chatApiUrl).hostname,
-              ].filter(Boolean),
+                environment.baseUrl && environment.baseUrl.startsWith('http')
+                  ? new URL(environment.baseUrl).hostname
+                  : environment.baseApiUrl?.startsWith('http')
+                    ? new URL(environment.baseApiUrl).hostname
+                    : window.location.hostname,
+                environment.chatApiUrl?.startsWith('http')
+                  ? new URL(environment.chatApiUrl).hostname
+                  : undefined,
+              ].filter(Boolean) as string[],
             ),
           ],
         },
@@ -104,11 +112,13 @@ bootstrapApplication(App, {
         cookieName: 'XSRF-TOKEN',
         headerName: 'X-XSRF-TOKEN',
       }),
-      // Interceptor order matters: auth → idempotency → cache → error
-      // Idempotency must run after auth (needs user context) but before error handling
+      // Interceptor order matters: auth → idempotency → retry → cache → error
+      // Retry must run after auth but before error handling, so transient failures
+      // are retried transparently before showing errors to users
       withInterceptors([
         authTokenInterceptor,
         idempotencyInterceptor,
+        retryInterceptor,
         httpCacheInterceptor,
         errorResponseInterceptor,
       ]),

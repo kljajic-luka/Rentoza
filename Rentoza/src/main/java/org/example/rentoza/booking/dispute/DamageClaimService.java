@@ -143,6 +143,8 @@ public class DamageClaimService {
                 .evidencePhotoIds(serializePhotoIds(evidencePhotoIds))
                 .status(DamageClaimStatus.PENDING)
                 .responseDeadline(Instant.now().plus(Duration.ofHours(responseHours)))
+                .initiator(ClaimInitiator.OWNER)
+                .reportedBy(booking.getCar().getOwner())
                 .build();
 
         claim = claimRepository.save(claim);
@@ -159,6 +161,88 @@ public class DamageClaimService {
                 .relatedEntityId(String.valueOf(bookingId))
                 .build());
 
+        return mapToDTO(claim);
+    }
+    
+    // ========== GUEST CLAIM (Phase 4) ==========
+    
+    /**
+     * Guest files a counter-claim or independent damage claim.
+     * 
+     * <p>Use cases:
+     * <ul>
+     *   <li>Counter-claim: Host filed damage claim, guest disagrees and provides counter-evidence</li>
+     *   <li>Independent: Guest reports issue not raised by host (vehicle problems, service issues)</li>
+     * </ul>
+     * 
+     * @param bookingId Booking associated with the claim
+     * @param description Detailed description of the issue
+     * @param claimedAmount Requested compensation amount
+     * @param disputeType Category of the dispute
+     * @param evidencePhotoIds Photo evidence IDs
+     * @param guestUserId Current guest user ID
+     * @return Created claim DTO
+     * @throws AccessDeniedException if user is not the renter on this booking
+     * @since Phase 4 - Guest Dispute Capability
+     */
+    @Transactional
+    public DamageClaimDTO createGuestClaim(
+            Long bookingId,
+            String description,
+            BigDecimal claimedAmount,
+            DisputeType disputeType,
+            List<Long> evidencePhotoIds,
+            Long guestUserId) {
+        
+        Booking booking = bookingRepository.findByIdWithRelations(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Rezervacija nije pronađena"));
+        
+        // Validate guest is the renter
+        if (!booking.getRenter().getId().equals(guestUserId)) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Samo zakupac može podneti reklamaciju kao gost");
+        }
+        
+        User guest = userRepository.findById(guestUserId)
+                .orElseThrow(() -> new ResourceNotFoundException("Korisnik nije pronađen"));
+        
+        // Note: Guests CAN file claims even if host already filed one (counter-claim scenario)
+        // Admin will review both claims and make a decision
+        
+        DamageClaim claim = DamageClaim.builder()
+                .booking(booking)
+                .host(booking.getCar().getOwner())
+                .guest(booking.getRenter())
+                .description(description)
+                .claimedAmount(claimedAmount)
+                .disputeType(disputeType)
+                .evidencePhotoIds(serializePhotoIds(evidencePhotoIds))
+                .status(DamageClaimStatus.PENDING)
+                .responseDeadline(Instant.now().plus(Duration.ofHours(responseHours)))
+                .initiator(ClaimInitiator.USER)
+                .reportedBy(guest)
+                .disputeStage(DisputeStage.CHECKOUT) // Guest claims are post-checkout disputes
+                .build();
+        
+        claim = claimRepository.save(claim);
+        
+        claimCreatedCounter.increment();
+        log.info("[DamageClaim] Guest claim created for booking {}: {} RSD (type: {})", 
+                bookingId, claimedAmount, disputeType);
+        
+        // Notify host about guest claim
+        notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                .recipientId(booking.getCar().getOwner().getId())
+                .type(NotificationType.CHECKOUT_DAMAGE_REPORTED) // Reuse existing type
+                .message(String.format("Gost je podneo reklamaciju od %.0f RSD. Pregled je potreban.",
+                        claimedAmount.doubleValue()))
+                .relatedEntityId(String.valueOf(bookingId))
+                .build());
+        
+        // Notify admin for immediate review
+        // Note: In production, consider sending to admin notification channel
+        log.info("[DamageClaim] Guest claim {} awaits admin review", claim.getId());
+        
         return mapToDTO(claim);
     }
 
@@ -356,10 +440,14 @@ public class DamageClaimService {
         return hostClaims.stream().map(this::mapToDTO).toList();
     }
 
+    /**
+     * Get claims awaiting admin review (admin-only endpoint).
+     * Includes admin notes and review details.
+     */
     @Transactional(readOnly = true)
     public List<DamageClaimDTO> getClaimsAwaitingReview() {
         return claimRepository.findAwaitingAdminReview().stream()
-                .map(this::mapToDTO)
+                .map(claim -> mapToDTO(claim, true)) // Include admin fields
                 .toList();
     }
 
@@ -399,6 +487,19 @@ public class DamageClaimService {
     }
 
     private DamageClaimDTO mapToDTO(DamageClaim claim) {
+        return mapToDTO(claim, false);
+    }
+    
+    /**
+     * Map DamageClaim entity to DTO.
+     * 
+     * @param claim Entity to map
+     * @param includeAdminFields If true, includes admin-only fields (adminNotes, reviewedBy).
+     *                          Should only be true for admin endpoints.
+     * @return DTO with appropriate field visibility
+     * @since Phase 4 - Privacy Leak Fix
+     */
+    private DamageClaimDTO mapToDTO(DamageClaim claim, boolean includeAdminFields) {
         String statusDisplay = switch (claim.getStatus()) {
             case PENDING -> "Na čekanju";
             case ACCEPTED_BY_GUEST -> "Prihvaćeno";
@@ -445,8 +546,9 @@ public class DamageClaimService {
                 .responseDeadline(toLocalDateTime(claim.getResponseDeadline()))
                 .guestResponse(claim.getGuestResponse())
                 .guestRespondedAt(toLocalDateTime(claim.getGuestRespondedAt()))
-                .adminNotes(claim.getAdminNotes())
-                .reviewedAt(toLocalDateTime(claim.getReviewedAt()))
+                // Phase 4 Privacy Fix: Only expose admin notes to admin endpoints
+                .adminNotes(includeAdminFields ? claim.getAdminNotes() : null)
+                .reviewedAt(includeAdminFields ? toLocalDateTime(claim.getReviewedAt()) : null)
                 .paymentReference(claim.getPaymentReference())
                 .paidAt(toLocalDateTime(claim.getPaidAt()))
                 .createdAt(toLocalDateTime(claim.getCreatedAt()))

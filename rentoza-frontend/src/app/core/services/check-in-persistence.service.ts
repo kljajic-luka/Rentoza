@@ -128,6 +128,9 @@ export class CheckInPersistenceService implements OnDestroy {
   private readonly tabId = generateUUID();
   private activeLocks = new Map<number, string>(); // bookingId -> tabId
 
+  // Takeover callback for multi-tab coordination
+  private _takeoverCallback: ((denied: boolean) => void) | null = null;
+
   // Promise that resolves when database is ready
   private dbReadyPromise: Promise<void>;
   private dbReadyResolve!: () => void;
@@ -179,7 +182,7 @@ export class CheckInPersistenceService implements OnDestroy {
     mode: CaptureState['mode'],
     currentIndex: number,
     currentPhase: CaptureState['currentPhase'],
-    capturedPhotos: PersistedPhoto[]
+    capturedPhotos: PersistedPhoto[],
   ): Promise<boolean> {
     if (this._hasQuotaError()) {
       console.warn('[Persistence] Quota error - skipping save');
@@ -202,7 +205,7 @@ export class CheckInPersistenceService implements OnDestroy {
       await this.saveToStore(CAPTURE_STATE_STORE, state);
       this.broadcastStateUpdate(bookingId);
       console.log(
-        `[Persistence] Saved capture state: ${capturedPhotos.length} photos for booking ${bookingId}`
+        `[Persistence] Saved capture state: ${capturedPhotos.length} photos for booking ${bookingId}`,
       );
       return true;
     } catch (error) {
@@ -221,7 +224,7 @@ export class CheckInPersistenceService implements OnDestroy {
    */
   async loadCaptureState(
     bookingId: number,
-    mode: CaptureState['mode']
+    mode: CaptureState['mode'],
   ): Promise<CaptureState | null> {
     const id = `capture-${bookingId}-${mode}`;
     const state = await this.loadFromStore<CaptureState>(CAPTURE_STATE_STORE, id);
@@ -254,7 +257,7 @@ export class CheckInPersistenceService implements OnDestroy {
    */
   async checkForSavedSession(
     bookingId: number,
-    mode: CaptureState['mode']
+    mode: CaptureState['mode'],
   ): Promise<SavedSessionInfo> {
     console.log(`[Persistence] Checking for saved session: booking=${bookingId}, mode=${mode}`);
 
@@ -278,7 +281,7 @@ export class CheckInPersistenceService implements OnDestroy {
       state.tabId !== this.tabId && this.activeLocks.get(bookingId) === state.tabId;
 
     console.log(
-      `[Persistence] Found saved session: ${state.capturedPhotos.length} photos, ${minutesAgo} min ago`
+      `[Persistence] Found saved session: ${state.capturedPhotos.length} photos, ${minutesAgo} min ago`,
     );
 
     return {
@@ -303,7 +306,7 @@ export class CheckInPersistenceService implements OnDestroy {
   async saveFormState(
     bookingId: number,
     mode: FormState['mode'],
-    formData: Partial<Omit<FormState, 'id' | 'bookingId' | 'mode' | 'savedAt'>>
+    formData: Partial<Omit<FormState, 'id' | 'bookingId' | 'mode' | 'savedAt'>>,
   ): Promise<void> {
     const state: FormState = {
       id: `form-${bookingId}-${mode}`,
@@ -407,7 +410,7 @@ export class CheckInPersistenceService implements OnDestroy {
       }, 2000);
 
       // Store callback to handle denial
-      (this as any)._takeoverCallback = (denied: boolean) => {
+      this._takeoverCallback = (denied: boolean) => {
         clearTimeout(timeout);
         resolve(!denied);
       };
@@ -622,7 +625,7 @@ export class CheckInPersistenceService implements OnDestroy {
       // localStorage fallback
       localStorage.setItem(
         BROADCAST_CHANNEL_NAME,
-        JSON.stringify({ ...message, timestamp: Date.now() })
+        JSON.stringify({ ...message, timestamp: Date.now() }),
       );
     }
   }
@@ -674,9 +677,9 @@ export class CheckInPersistenceService implements OnDestroy {
 
       case 'TAKEOVER_DENIED':
         // Our takeover request was denied
-        if ((this as any)._takeoverCallback) {
-          (this as any)._takeoverCallback(true);
-          delete (this as any)._takeoverCallback;
+        if (this._takeoverCallback) {
+          this._takeoverCallback(true);
+          this._takeoverCallback = null;
         }
         break;
 

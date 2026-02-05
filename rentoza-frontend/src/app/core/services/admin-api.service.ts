@@ -28,6 +28,18 @@ export interface DashboardKpiDto {
   calculatedAt: string;
 }
 
+export interface RecentBookingDto {
+  id: number;
+  carTitle: string;
+  renterName: string;
+  ownerName: string;
+  status: string;
+  startDate: string;
+  endDate: string;
+  totalPrice: number;
+  createdAt: string;
+}
+
 export interface AdminUserDto {
   id: number;
   email: string;
@@ -47,9 +59,15 @@ export interface AdminUserDetailDto extends AdminUserDto {
   totalBookings: number;
   completedBookings: number;
   cancelledBookings: number;
+  disputedBookings?: number;
   totalCars: number;
+  activeCars?: number;
   riskFactors: string[];
   recentAdminActions: any[];
+
+  // Timestamps
+  createdAt: string; // ISO date - when user registered
+  updatedAt?: string; // ISO date - last profile update
 
   // Owner verification review fields (masked only)
   ownerType?: 'INDIVIDUAL' | 'LEGAL_ENTITY';
@@ -58,6 +76,16 @@ export interface AdminUserDetailDto extends AdminUserDto {
   isIdentityVerified?: boolean;
   ownerVerificationSubmittedAt?: string;
   maskedBankAccountNumber?: string;
+
+  // Ban details
+  banReason?: string;
+  bannedAt?: string;
+  bannedByName?: string;
+
+  // Reviews & Ratings
+  reviewsGiven?: number;
+  reviewsReceived?: number;
+  averageRating?: number;
 }
 
 export interface OwnerVerificationRejectRequest {
@@ -360,6 +388,20 @@ export class AdminApiService {
     return this.http.get<DashboardKpiDto>(`${this.apiUrl}/dashboard/kpis`);
   }
 
+  /**
+   * Get recent bookings for dashboard overview.
+   * Returns the most recent bookings for quick admin reference.
+   */
+  getRecentBookings(limit: number = 5): Observable<RecentBookingDto[]> {
+    const params = new HttpParams().set('limit', limit.toString());
+    return this.http
+      .get<RecentBookingDto[]>(`${this.apiUrl}/dashboard/recent-bookings`, { params })
+      .pipe(
+        // If endpoint doesn't exist yet, return empty array
+        map((bookings) => bookings || []),
+      );
+  }
+
   // ==================== USER MANAGEMENT ====================
 
   getUsers(
@@ -367,7 +409,7 @@ export class AdminApiService {
     size: number = 20,
     search?: string,
     pageUrl?: string,
-    sort?: string
+    sort?: string,
   ): Observable<PaginatedResponse<AdminUserDto>> {
     const url = pageUrl ?? `${this.apiUrl}/users`;
     let options: { params?: HttpParams } = {};
@@ -431,7 +473,7 @@ export class AdminApiService {
   getRenterVerificationQueue(
     page: number = 0,
     size: number = 20,
-    sortBy: 'newest' | 'oldest' | 'riskLevel' = 'newest'
+    sortBy: 'newest' | 'oldest' | 'riskLevel' = 'newest',
   ): Observable<PagedRenterVerificationResponse> {
     const params = new HttpParams()
       .set('page', page.toString())
@@ -440,7 +482,7 @@ export class AdminApiService {
 
     return this.http.get<PagedRenterVerificationResponse>(
       `${this.apiUrl}/renter-verifications/pending`,
-      { params }
+      { params },
     );
   }
 
@@ -449,7 +491,7 @@ export class AdminApiService {
    */
   getRenterVerificationStats(): Observable<RenterVerificationQueueStats> {
     return this.http.get<RenterVerificationQueueStats>(
-      `${this.apiUrl}/renter-verifications/pending/stats`
+      `${this.apiUrl}/renter-verifications/pending/stats`,
     );
   }
 
@@ -459,7 +501,7 @@ export class AdminApiService {
    */
   getRenterVerificationDetails(userId: number): Observable<RenterVerificationProfileDto> {
     return this.http.get<RenterVerificationProfileDto>(
-      `${this.apiUrl}/renter-verifications/users/${userId}`
+      `${this.apiUrl}/renter-verifications/users/${userId}`,
     );
   }
 
@@ -468,7 +510,7 @@ export class AdminApiService {
    */
   getRenterDocument(documentId: number): Observable<RenterDocumentDto> {
     return this.http.get<RenterDocumentDto>(
-      `${this.apiUrl}/renter-verifications/documents/${documentId}`
+      `${this.apiUrl}/renter-verifications/documents/${documentId}`,
     );
   }
 
@@ -479,7 +521,7 @@ export class AdminApiService {
   getRenterDocumentSignedUrl(documentId: number): Observable<SignedUrlResponse> {
     return this.http.post<SignedUrlResponse>(
       `${this.apiUrl}/renter-verifications/documents/${documentId}/signed-url`,
-      {}
+      {},
     );
   }
 
@@ -498,11 +540,11 @@ export class AdminApiService {
    */
   approveRenterVerification(
     userId: number,
-    notes?: string
+    notes?: string,
   ): Observable<RenterVerificationActionResponse> {
     return this.http.post<RenterVerificationActionResponse>(
       `${this.apiUrl}/renter-verifications/users/${userId}/approve`,
-      { notes }
+      { notes },
     );
   }
 
@@ -512,11 +554,11 @@ export class AdminApiService {
    */
   rejectRenterVerification(
     userId: number,
-    reason: string
+    reason: string,
   ): Observable<RenterVerificationActionResponse> {
     return this.http.post<RenterVerificationActionResponse>(
       `${this.apiUrl}/renter-verifications/users/${userId}/reject`,
-      { reason }
+      { reason },
     );
   }
 
@@ -526,11 +568,11 @@ export class AdminApiService {
    */
   suspendRenterVerification(
     userId: number,
-    reason: string
+    reason: string,
   ): Observable<RenterVerificationActionResponse> {
     return this.http.post<RenterVerificationActionResponse>(
       `${this.apiUrl}/renter-verifications/users/${userId}/suspend`,
-      { reason }
+      { reason },
     );
   }
 
@@ -539,7 +581,7 @@ export class AdminApiService {
    */
   getRenterVerificationAudits(userId: number): Observable<RenterVerificationAuditItem[]> {
     return this.http.get<RenterVerificationAuditItem[]>(
-      `${this.apiUrl}/renter-verifications/users/${userId}/audits`
+      `${this.apiUrl}/renter-verifications/users/${userId}/audits`,
     );
   }
 
@@ -547,11 +589,11 @@ export class AdminApiService {
    * Retry processing for a stuck document.
    */
   retryRenterDocumentProcessing(
-    documentId: number
+    documentId: number,
   ): Observable<{ success: boolean; message: string }> {
     return this.http.post<{ success: boolean; message: string }>(
       `${this.apiUrl}/renter-verifications/documents/${documentId}/retry-processing`,
-      {}
+      {},
     );
   }
 
@@ -565,7 +607,7 @@ export class AdminApiService {
     page: number = 0,
     size: number = 20,
     search?: string,
-    pageUrl?: string
+    pageUrl?: string,
   ): Observable<PaginatedResponse<AdminCarDto>> {
     const url = pageUrl ?? `${this.apiUrl}/cars`;
     let options: { params?: HttpParams } = {};
@@ -625,7 +667,7 @@ export class AdminApiService {
   verifyDocument(
     documentId: number,
     approved: boolean,
-    rejectionReason?: string
+    rejectionReason?: string,
   ): Observable<DocumentReviewDto> {
     return this.http.post<DocumentReviewDto>(`${this.apiUrl}/documents/${documentId}/verify`, {
       approved,
@@ -638,7 +680,7 @@ export class AdminApiService {
   listDisputes(
     page: number = 0,
     size: number = 20,
-    status?: string
+    status?: string,
   ): Observable<PaginatedResponse<AdminDisputeListDto>> {
     let params = new HttpParams().set('page', page.toString()).set('size', size.toString());
 
@@ -667,7 +709,7 @@ export class AdminApiService {
 
   getPayoutQueue(
     page: number = 0,
-    size: number = 20
+    size: number = 20,
   ): Observable<PaginatedResponse<PayoutQueueDto>> {
     const params = new HttpParams().set('page', page.toString()).set('size', size.toString());
 
@@ -687,7 +729,7 @@ export class AdminApiService {
   retryPayout(bookingId: number): Observable<{ message: string }> {
     return this.http.post<{ message: string }>(
       `${this.apiUrl}/financial/payouts/${bookingId}/retry`,
-      {}
+      {},
     );
   }
 
@@ -696,7 +738,7 @@ export class AdminApiService {
   getRevenueTrend(
     period: 'DAILY' | 'WEEKLY' | 'MONTHLY',
     startDate: string,
-    endDate: string
+    endDate: string,
   ): Observable<RevenueTrendDto> {
     const params = new HttpParams()
       .set('period', period)
@@ -726,7 +768,7 @@ export class AdminApiService {
   // ==================== AUDIT LOGS ====================
 
   searchAuditLogs(
-    searchParams: AuditLogSearchParams
+    searchParams: AuditLogSearchParams,
   ): Observable<PaginatedResponse<AdminAuditLogDto>> {
     let params = new HttpParams()
       .set('page', (searchParams.page ?? 0).toString())
@@ -754,15 +796,14 @@ export class AdminApiService {
     resourceType: string,
     resourceId: number,
     page: number = 0,
-    size: number = 20
+    size: number = 20,
   ): Observable<PaginatedResponse<AdminAuditLogDto>> {
     const params = new HttpParams().set('page', page.toString()).set('size', size.toString());
 
     return this.http
-      .get<HateoasPage<AdminAuditLogDto>>(
-        `${this.apiUrl}/audit/resource/${resourceType}/${resourceId}`,
-        { params }
-      )
+      .get<
+        HateoasPage<AdminAuditLogDto>
+      >(`${this.apiUrl}/audit/resource/${resourceType}/${resourceId}`, { params })
       .pipe(map((response) => this.normalizePage(response)));
   }
 
@@ -795,66 +836,32 @@ export class AdminApiService {
   // ==================== ADMIN SETTINGS ====================
 
   /**
-   * Get admin settings
-   * TODO: Backend implementation required
-   * Endpoint: GET /api/admin/settings
+   * Get admin settings from backend.
+   * Backend creates default settings on first access if none exist.
    *
-   * For now, returns mock data from localStorage or defaults
+   * @returns Observable<AdminSettings> with current settings
    */
   getAdminSettings(): Observable<AdminSettings> {
-    // TODO: Replace with actual API call when backend is ready
-    // return this.http.get<AdminSettings>(`${this.apiUrl}/settings`);
-
-    // Mock implementation with localStorage persistence
-    const savedSettings = localStorage.getItem('admin.settings');
-    const defaultSettings: AdminSettings = {
-      emailNotifications: true,
-      pushNotifications: false,
-      smsNotifications: false,
-      weeklyReport: true,
-      monthlyReport: false,
-      reportFormat: 'pdf',
-      timezone: 'Europe/Belgrade',
-      currencyFormat: 'RSD',
-      twoFactorEnabled: false,
-      loginAlerts: true,
-      sessionTimeout: '60',
-    };
-
-    const settings = savedSettings ? JSON.parse(savedSettings) : defaultSettings;
-
-    // Simulate network delay
-    return new Observable((observer) => {
-      setTimeout(() => {
-        observer.next(settings);
-        observer.complete();
-      }, 300);
-    });
+    return this.http.get<AdminSettings>(`${this.apiUrl}/settings`);
   }
 
   /**
-   * Update admin settings
-   * TODO: Backend implementation required
-   * Endpoint: PUT /api/admin/settings
+   * Update admin settings on backend.
    *
-   * For now, saves to localStorage
+   * @param settings New settings values (all fields required)
+   * @returns Observable<AdminSettings> with updated settings
    */
   updateAdminSettings(settings: AdminSettings): Observable<AdminSettings> {
-    // TODO: Replace with actual API call when backend is ready
-    // return this.http.put<AdminSettings>(`${this.apiUrl}/settings`, settings);
+    return this.http.put<AdminSettings>(`${this.apiUrl}/settings`, settings);
+  }
 
-    // Mock implementation with localStorage persistence
-    return new Observable((observer) => {
-      setTimeout(() => {
-        try {
-          localStorage.setItem('admin.settings', JSON.stringify(settings));
-          observer.next(settings);
-          observer.complete();
-        } catch (error) {
-          observer.error(error);
-        }
-      }, 500); // Simulate network delay
-    });
+  /**
+   * Reset admin settings to default values.
+   *
+   * @returns Observable<AdminSettings> with default settings
+   */
+  resetAdminSettings(): Observable<AdminSettings> {
+    return this.http.post<AdminSettings>(`${this.apiUrl}/settings/reset`, {});
   }
 
   private normalizePage<T>(response: HateoasPage<T>): PaginatedResponse<T> {

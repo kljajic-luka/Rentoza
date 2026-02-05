@@ -44,7 +44,7 @@
                 [ngClass]="{
                   'risk-low': (user.riskScore || 0) < 30,
                   'risk-med': (user.riskScore || 0) >= 30 && (user.riskScore || 0) < 70,
-                  'risk-high': (user.riskScore || 0) >= 70
+                  'risk-high': (user.riskScore || 0) >= 70,
                 }"
               ></div>
             </div>
@@ -88,11 +88,26 @@
         <mat-card-content class="stack">
           <div class="row between">
             <span class="muted">Member Since</span>
-            <span class="strong">Dec 2024</span>
+            <span class="strong">{{ user.createdAt | date: 'mediumDate' }}</span>
           </div>
           <div class="row between">
-            <span class="muted">Last Login</span>
-            <span class="strong">Yesterday</span>
+            <span class="muted">Last Updated</span>
+            <span class="strong">{{ user.updatedAt | date: 'mediumDate' }}</span>
+          </div>
+          <div class="row between" *ngIf="user.totalBookings !== undefined">
+            <span class="muted">Total Bookings</span>
+            <span class="strong"
+              >{{ user.totalBookings }} ({{ user.completedBookings }} completed)</span
+            >
+          </div>
+          <div class="row between" *ngIf="user.averageRating">
+            <span class="muted">Rating</span>
+            <span class="strong"
+              >★ {{ user.averageRating | number: '1.1-1' }} ({{
+                user.reviewsReceived
+              }}
+              reviews)</span
+            >
           </div>
           <div class="row between">
             <span class="muted">ID Verification</span>
@@ -118,7 +133,7 @@
 
           <div class="row between" *ngIf="user.ownerVerificationSubmittedAt">
             <span class="muted">Submitted</span>
-            <span class="strong">{{ user.ownerVerificationSubmittedAt | date : 'medium' }}</span>
+            <span class="strong">{{ user.ownerVerificationSubmittedAt | date: 'medium' }}</span>
           </div>
 
           <div class="row between" *ngIf="user.maskedBankAccountNumber">

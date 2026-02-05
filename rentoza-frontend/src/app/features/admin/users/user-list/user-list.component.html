@@ -32,6 +32,38 @@
           <mat-icon>close</mat-icon>
         </button>
       </mat-form-field>
+
+      <!-- Status Filter -->
+      <mat-form-field appearance="outline" class="filter-field">
+        <mat-label>Status</mat-label>
+        <mat-select [(ngModel)]="statusFilter" (selectionChange)="onFilterChange()">
+          <mat-option value="">All</mat-option>
+          <mat-option value="active">Active</mat-option>
+          <mat-option value="banned">Banned</mat-option>
+        </mat-select>
+      </mat-form-field>
+
+      <!-- Role Filter -->
+      <mat-form-field appearance="outline" class="filter-field">
+        <mat-label>Role</mat-label>
+        <mat-select [(ngModel)]="roleFilter" (selectionChange)="onFilterChange()">
+          <mat-option value="">All Roles</mat-option>
+          <mat-option value="ADMIN">Admin</mat-option>
+          <mat-option value="OWNER">Owner</mat-option>
+          <mat-option value="USER">User</mat-option>
+        </mat-select>
+      </mat-form-field>
+
+      <!-- Verification Filter -->
+      <mat-form-field appearance="outline" class="filter-field">
+        <mat-label>Verification</mat-label>
+        <mat-select [(ngModel)]="verificationFilter" (selectionChange)="onFilterChange()">
+          <mat-option value="">All</mat-option>
+          <mat-option value="PENDING_REVIEW">Pending</mat-option>
+          <mat-option value="VERIFIED">Verified</mat-option>
+          <mat-option value="NOT_SUBMITTED">Not Submitted</mat-option>
+        </mat-select>
+      </mat-form-field>
     </div>
 
     <div *ngIf="loading$ | async" class="row between" style="padding: 14px 0">
@@ -97,7 +129,7 @@
                     [ngClass]="{
                       'risk-low': user.riskScore < 30,
                       'risk-med': user.riskScore >= 30 && user.riskScore < 70,
-                      'risk-high': user.riskScore >= 70
+                      'risk-high': user.riskScore >= 70,
                     }"
                   ></div>
                 </div>

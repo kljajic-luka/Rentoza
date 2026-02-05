@@ -13,6 +13,7 @@ import { MatBadgeModule } from '@angular/material/badge';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { FormsModule } from '@angular/forms';
 import { AdminStateService } from '../../../core/services/admin-state.service';
 import { DashboardKpiDto } from '../../../core/services/admin-api.service';
 import { AuthService } from '../../../core/auth/auth.service';
@@ -33,13 +34,14 @@ import { ThemeService } from '../../../core/services/theme.service';
     MatMenuModule,
     MatDividerModule,
     MatTooltipModule,
+    FormsModule,
   ],
   template: `
     <mat-sidenav-container class="admin-shell safe-area">
-      <mat-sidenav 
+      <mat-sidenav
         #sidenav
-        class="admin-sidenav" 
-        [mode]="(sidenavMode$ | async) || 'side'" 
+        class="admin-sidenav"
+        [mode]="(sidenavMode$ | async) || 'side'"
         [opened]="(sidenavMode$ | async) === 'side' ? true : (sidenavOpened$ | async)"
         (closedStart)="onSidenavClosed()"
       >
@@ -88,7 +90,7 @@ import { ThemeService } from '../../../core/services/theme.service';
           </div>
         </div>
 
-          <div class="sidenav-scroll">
+        <div class="sidenav-scroll">
           <div class="nav-section">
             <div class="nav-label">Overview</div>
             <a
@@ -186,16 +188,16 @@ import { ThemeService } from '../../../core/services/theme.service';
       <mat-sidenav-content class="admin-content">
         <mat-toolbar class="admin-toolbar" color="primary">
           <!-- Show hamburger menu button only on mobile -->
-          <button 
-            *ngIf="(sidenavMode$ | async) === 'over'" 
-            mat-icon-button 
+          <button
+            *ngIf="(sidenavMode$ | async) === 'over'"
+            mat-icon-button
             (click)="sidenav.toggle()"
             aria-label="Toggle navigation menu"
             class="sidebar-toggle"
           >
             <mat-icon>menu</mat-icon>
           </button>
-          
+
           <div class="toolbar-left">
             <div class="breadcrumb">
               <span class="crumb-root">Admin Portal</span>
@@ -205,19 +207,45 @@ import { ThemeService } from '../../../core/services/theme.service';
             <div class="toolbar-title">{{ currentRoute }}</div>
           </div>
 
+          <div class="global-search" *ngIf="!isSearchExpanded">
+            <button mat-icon-button (click)="expandSearch()" aria-label="Search">
+              <mat-icon>search</mat-icon>
+            </button>
+          </div>
+          <div class="global-search-expanded" *ngIf="isSearchExpanded">
+            <mat-icon class="search-icon">search</mat-icon>
+            <input
+              #searchInput
+              type="text"
+              placeholder="Search users, cars, bookings..."
+              [(ngModel)]="globalSearchTerm"
+              (keyup.enter)="performGlobalSearch()"
+              (keyup.escape)="collapseSearch()"
+            />
+            <button mat-icon-button (click)="collapseSearch()" aria-label="Close search">
+              <mat-icon>close</mat-icon>
+            </button>
+          </div>
+
           <div class="toolbar-actions">
             <button mat-icon-button aria-label="Alerts" matBadge="3" matBadgeColor="warn">
               <mat-icon>notifications</mat-icon>
             </button>
 
             <!-- Theme Toggle Button -->
-            <button 
-              mat-icon-button 
+            <button
+              mat-icon-button
               (click)="toggleTheme()"
-              [matTooltip]="themeService.theme() === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'"
-              [attr.aria-label]="themeService.theme() === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
+              [matTooltip]="
+                themeService.theme() === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'
+              "
+              [attr.aria-label]="
+                themeService.theme() === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'
+              "
             >
-              <mat-icon>{{ themeService.theme() === 'dark' ? 'light_mode' : 'dark_mode' }}</mat-icon>
+              <mat-icon>{{
+                themeService.theme() === 'dark' ? 'light_mode' : 'dark_mode'
+              }}</mat-icon>
             </button>
 
             <button mat-icon-button [matMenuTriggerFor]="profileMenu" aria-label="Profile">
@@ -248,7 +276,11 @@ export class AdminLayoutComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>();
   currentRoute = 'Dashboard';
   kpis$: Observable<DashboardKpiDto | null>;
-  
+
+  // Global search
+  isSearchExpanded = false;
+  globalSearchTerm = '';
+
   // Responsive sidebar observables
   sidenavMode$: Observable<'side' | 'over'>;
   sidenavOpened$ = new BehaviorSubject<boolean>(true);
@@ -258,24 +290,24 @@ export class AdminLayoutComponent implements OnInit, OnDestroy {
     private adminState: AdminStateService,
     private authService: AuthService,
     private breakpointObserver: BreakpointObserver,
-    public themeService: ThemeService
+    public themeService: ThemeService,
   ) {
     this.kpis$ = this.adminState.dashboardKpi$;
-    
+
     // Set up responsive sidebar behavior
     this.sidenavMode$ = this.breakpointObserver
       .observe(Breakpoints.Handset) // < 768px
       .pipe(
-        map(result => result.matches ? ('over' as const) : ('side' as const)),
+        map((result) => (result.matches ? ('over' as const) : ('side' as const))),
         startWith('side' as 'side' | 'over'),
-        shareReplay(1)
+        shareReplay(1),
       );
-    
+
     this.router.events
       .pipe(
         filter((event): event is NavigationEnd => event instanceof NavigationEnd),
         map((event) => this.mapRouteLabel(event.urlAfterRedirects)),
-        takeUntil(this.destroy$)
+        takeUntil(this.destroy$),
       )
       .subscribe((label) => (this.currentRoute = label));
   }
@@ -285,7 +317,7 @@ export class AdminLayoutComponent implements OnInit, OnDestroy {
   }
 
   onSidenavClosed(): void {
-    this.sidenavMode$.pipe(takeUntil(this.destroy$)).subscribe(mode => {
+    this.sidenavMode$.pipe(takeUntil(this.destroy$)).subscribe((mode) => {
       if (mode === 'over') {
         this.sidenavOpened$.next(false);
       }
@@ -294,6 +326,26 @@ export class AdminLayoutComponent implements OnInit, OnDestroy {
 
   toggleTheme(): void {
     this.themeService.toggle();
+  }
+
+  expandSearch(): void {
+    this.isSearchExpanded = true;
+  }
+
+  collapseSearch(): void {
+    this.isSearchExpanded = false;
+    this.globalSearchTerm = '';
+  }
+
+  performGlobalSearch(): void {
+    if (this.globalSearchTerm.trim()) {
+      // Navigate to users page with search term for now
+      // Can be extended to a dedicated search results page
+      this.router.navigate(['/admin/users'], {
+        queryParams: { search: this.globalSearchTerm.trim() },
+      });
+      this.collapseSearch();
+    }
   }
 
   logout(): void {

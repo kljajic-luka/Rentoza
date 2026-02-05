@@ -1,5 +1,14 @@
 package org.example.rentoza.booking;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.example.rentoza.booking.dto.BookingRequestDTO;
 import org.example.rentoza.booking.dto.BookingResponseDTO;
@@ -26,6 +35,8 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/api/bookings")
+@Tag(name = "Bookings", description = "Booking creation, management, and cancellation")
+@SecurityRequirement(name = "bearerAuth")
 public class BookingController {
 
     private static final Logger log = LoggerFactory.getLogger(BookingController.class);
@@ -42,6 +53,17 @@ public class BookingController {
      * Get current user's bookings.
      * RLS-ENFORCED: User can only see their own bookings.
      */
+    @Operation(
+            summary = "Get my bookings",
+            description = "Retrieve all bookings for the currently authenticated user. " +
+                    "Includes both past and upcoming bookings."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Bookings retrieved successfully",
+                    content = @Content(schema = @Schema(implementation = UserBookingResponseDTO.class))),
+            @ApiResponse(responseCode = "401", description = "Unauthorized - valid JWT required"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
     @GetMapping("/me")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<UserBookingResponseDTO>> getMyBookings(@org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal) {
@@ -58,9 +80,42 @@ public class BookingController {
      * Create a new booking.
      * RLS-ENFORCED: Authenticated users can create bookings (renter extracted from JWT).
      */
+    @Operation(
+            summary = "Create a booking",
+            description = """
+                    Create a new booking request for a vehicle.
+                    
+                    **Business Rules:**
+                    - Minimum booking lead time: 2 hours
+                    - Minimum trip duration: 1 day
+                    - Maximum trip duration: 30 days
+                    - Renter must be 21+ years old
+                    - Renter must have valid driver's license
+                    
+                    **Booking States:**
+                    - PENDING_APPROVAL → Awaiting host approval
+                    - APPROVED → Host approved, ready for trip
+                    - REJECTED → Host declined the request
+                    """
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Booking created successfully",
+                    content = @Content(schema = @Schema(implementation = BookingResponseDTO.class))),
+            @ApiResponse(responseCode = "400", description = "Invalid request - validation failed",
+                    content = @Content(examples = @ExampleObject(
+                            value = "{\"error\": \"Trip duration exceeds maximum allowed (30 days)\"}"))),
+            @ApiResponse(responseCode = "409", description = "Conflict - car already booked for dates")
+    })
     @PostMapping
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<?> createBooking(@jakarta.validation.Valid @RequestBody BookingRequestDTO dto, @org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal) {
+    public ResponseEntity<?> createBooking(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "Booking details",
+                    required = true,
+                    content = @Content(schema = @Schema(implementation = BookingRequestDTO.class))
+            )
+            @jakarta.validation.Valid @RequestBody BookingRequestDTO dto,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal) {
         try {
             Booking booking = service.createBooking(dto, principal.getUsername());
             return ResponseEntity.ok(new BookingResponseDTO(booking));
@@ -73,9 +128,19 @@ public class BookingController {
      * Get bookings for a specific user by email.
      * RLS-ENFORCED: User can only access their own bookings (verified at service layer).
      */
+    @Operation(
+            summary = "Get user bookings by email",
+            description = "Retrieve bookings for a specific user. User can only access their own bookings.",
+            deprecated = true
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Bookings retrieved"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - cannot access other users' bookings")
+    })
     @GetMapping("/user/{email}")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<?> getUserBookings(
+            @Parameter(description = "User email address", example = "user@example.com")
             @PathVariable String email,
             @org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal
     ) {
@@ -96,36 +161,45 @@ public class BookingController {
      * RLS-ENFORCED: Only car owner can view bookings (verified at service layer).
      * SpEL expression ensures user has OWNER role and service validates actual ownership.
      */
+    @Operation(
+            summary = "Get bookings for a car",
+            description = "Retrieve all bookings for a specific car. Only accessible by car owner or admin."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Bookings retrieved"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - not car owner")
+    })
     @GetMapping("/car/{carId}")
     @PreAuthorize("hasAnyRole('OWNER', 'ADMIN')")
-    public ResponseEntity<List<BookingResponseDTO>> getBookingsForCar(@PathVariable Long carId) {
+    public ResponseEntity<List<BookingResponseDTO>> getBookingsForCar(
+            @Parameter(description = "Car ID", example = "123")
+            @PathVariable Long carId) {
         return ResponseEntity.ok(service.getBookingsForCar(carId));
     }
 
     /**
      * Get public-safe booking slots for a specific car (calendar availability).
-     * 
-     * Purpose:
-     * - Allow renters/guests to see which dates are booked without exposing sensitive data
-     * - Enables calendar UI to grey out unavailable dates
-     * - Returns minimal data: carId, startDate, endDate only
-     * 
-     * Security:
-     * - @PreAuthorize("permitAll()") → accessible to authenticated and unauthenticated users
-     * - No PII exposure (no renter, owner, or pricing information)
-     * - Only returns ACTIVE/CONFIRMED bookings (no cancelled/pending)
-     * - Rate-limited to 60 requests/minute (configured in application properties)
-     * 
-     * RLS Compliance:
-     * - Does NOT violate RLS because it exposes no owner-only or renter-only data
-     * - Full booking details remain secured in /api/bookings/car/{carId} (OWNER/ADMIN only)
-     * 
-     * @param carId Car ID to fetch booking slots for
-     * @return List of BookingSlotDTO with only date ranges
      */
+    @Operation(
+            summary = "Get public booking slots",
+            description = """
+                    Get booked date ranges for a car (public access).
+                    
+                    **Use case:** Calendar UI to show unavailable dates.
+                    
+                    **Returns:** Only date ranges, no personal information.
+                    """,
+            security = {}  // No auth required
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Booking slots retrieved",
+                    content = @Content(schema = @Schema(implementation = org.example.rentoza.booking.dto.BookingSlotDTO.class)))
+    })
     @GetMapping("/car/{carId}/public")
     @PreAuthorize("permitAll()")
-    public ResponseEntity<List<org.example.rentoza.booking.dto.BookingSlotDTO>> getPublicBookingsForCar(@PathVariable Long carId) {
+    public ResponseEntity<List<org.example.rentoza.booking.dto.BookingSlotDTO>> getPublicBookingsForCar(
+            @Parameter(description = "Car ID", example = "123")
+            @PathVariable Long carId) {
         try {
             List<org.example.rentoza.booking.dto.BookingSlotDTO> slots = service.getPublicBookedSlots(carId);
             return ResponseEntity.ok(slots);
@@ -140,9 +214,21 @@ public class BookingController {
      * RLS-ENFORCED: Only renter, car owner, or admin can view booking.
      * Uses BookingSecurityService for SpEL-based access control.
      */
+    @Operation(
+            summary = "Get booking by ID",
+            description = "Retrieve booking details. Accessible by booking renter, car owner, or admin."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Booking found",
+                    content = @Content(schema = @Schema(implementation = BookingResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Booking not found"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - not authorized to view this booking")
+    })
     @GetMapping("/{id}")
     @PreAuthorize("@bookingSecurity.canAccessBooking(#id, authentication.principal.id) or hasRole('ADMIN')")
-    public ResponseEntity<?> getBookingById(@PathVariable Long id) {
+    public ResponseEntity<?> getBookingById(
+            @Parameter(description = "Booking ID", example = "456")
+            @PathVariable Long id) {
         try {
             Booking booking = service.getBookingById(id);
             return ResponseEntity.ok(new BookingResponseDTO(booking));
@@ -165,30 +251,17 @@ public class BookingController {
 
     /**
      * Get conversation-safe booking summary for chat enrichment.
-     * 
-     * Purpose:
-     * - Enable chat microservice to enrich conversations with booking context
-     * - Show "Future trip with 2020 BMW X5" in chat UI
-     * - Support service-to-service trust with user assertion
-     * 
-     * Security:
-     * - RLS-ENFORCED: Only renter, car owner, or INTERNAL_SERVICE with X-Act-As-User-Id
-     * - User assertion: X-Act-As-User-Id must match booking participant (renterId or ownerId)
-     * - No PII exposure: Returns BookingConversationDTO (no renter/owner names, emails, pricing)
-     * - Rate-limited: 120 req/min (IP) + 300 req/min (INTERNAL_SERVICE)
-     * 
-     * Access Patterns:
-     * - Direct JWT: Authenticated user requests their own booking context
-     * - Service-to-service: Chat service calls with X-Internal-Service-Token + X-Act-As-User-Id
-     * 
-     * @param id Booking ID
-     * @param actAsUserIdHeader X-Act-As-User-Id header (required for INTERNAL_SERVICE, ignored for direct JWT)
-     * @return BookingConversationDTO with conversation-safe booking summary
      */
+    @Operation(
+            summary = "Get booking for chat context",
+            description = "Get minimal booking info for chat enrichment. Used by chat microservice."
+    )
     @GetMapping("/{id}/conversation-view")
     @PreAuthorize("hasAuthority('INTERNAL_SERVICE') or @bookingSecurity.canAccessBooking(#id, authentication?.principal?.id)")
     public ResponseEntity<?> getConversationView(
+            @Parameter(description = "Booking ID")
             @PathVariable Long id,
+            @Parameter(description = "User ID for service-to-service calls", hidden = true)
             @RequestHeader(value = "X-Act-As-User-Id", required = false) String actAsUserIdHeader
     ) {
         log.debug("[ConversationView] Request for bookingId={}", id);

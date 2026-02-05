@@ -3,11 +3,14 @@ package org.example.rentoza.admin.controller;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.admin.dto.DashboardKpiDto;
+import org.example.rentoza.admin.dto.RecentBookingDto;
 import org.example.rentoza.admin.service.AdminDashboardService;
 import org.example.rentoza.security.CurrentUser;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 /**
  * Admin Dashboard Controller.
@@ -80,5 +83,23 @@ public class AdminDashboardController {
         dashboardService.saveMetricsSnapshot();
         
         return ResponseEntity.ok("Metrics snapshot saved successfully");
+    }
+
+    /**
+     * Get recent bookings for dashboard overview.
+     * 
+     * <p>Returns the most recent bookings for quick admin reference.
+     * 
+     * @param limit Maximum number of bookings to return (default 5)
+     * @return List of recent bookings
+     */
+    @GetMapping("/recent-bookings")
+    public ResponseEntity<List<RecentBookingDto>> getRecentBookings(
+            @RequestParam(defaultValue = "5") int limit) {
+        log.debug("Admin {} requesting recent bookings (limit={})", currentUser.id(), limit);
+        
+        List<RecentBookingDto> bookings = dashboardService.getRecentBookings(Math.min(limit, 20));
+        
+        return ResponseEntity.ok(bookings);
     }
 }

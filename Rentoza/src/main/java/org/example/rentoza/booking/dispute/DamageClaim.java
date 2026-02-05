@@ -76,6 +76,17 @@ public class DamageClaim {
     private DisputeType disputeType = DisputeType.CHECKOUT_DAMAGE;
     
     /**
+     * Identifies who initiated the claim (HOST, GUEST, or ADMIN).
+     * Used for reporting, notifications, and resolution workflows.
+     * 
+     * @since Phase 4 - Guest Dispute Capability
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "initiator", nullable = false)
+    @Builder.Default
+    private ClaimInitiator initiator = ClaimInitiator.OWNER;
+    
+    /**
      * User who initiated the claim.
      * Guest for check-in disputes, host for checkout claims.
      */

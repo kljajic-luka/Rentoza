@@ -27,6 +27,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.web.multipart.MultipartFile;
 
 @Service
@@ -499,7 +500,9 @@ public class CarService {
      * Used for filter dropdowns.
      * 
      * P0-5 FIX: Uses optimized DISTINCT query instead of loading all cars.
+     * PERFORMANCE: Results cached for 24h (carMakes cache in RedisCacheConfig).
      */
+    @Cacheable(value = "carMakes", key = "'all-makes'", unless = "#result.isEmpty()")
     public List<String> getAllMakes() {
         return repo.findDistinctBrands();
     }

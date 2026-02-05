@@ -210,6 +210,29 @@ public class User {
     @Column(name = "last_failed_login_ip", length = 45)
     private String lastFailedLoginIp;
 
+    // ========== GDPR COMPLIANCE FIELDS (Article 17 - Right to Erasure) ==========
+    
+    /**
+     * Scheduled deletion timestamp (GDPR Article 17).
+     * When set, account will be permanently anonymized after this date.
+     * Grace period: 30 days (user can cancel during this time).
+     */
+    @Column(name = "deletion_scheduled_at")
+    private LocalDateTime deletionScheduledAt;
+    
+    /**
+     * User-provided reason for account deletion (optional, for analytics).
+     */
+    @Column(name = "deletion_reason", length = 500)
+    private String deletionReason;
+    
+    /**
+     * Whether user data has been permanently anonymized (soft delete completed).
+     * Once true, user entity is retained only for referential integrity.
+     */
+    @Column(name = "is_deleted", nullable = false)
+    private boolean deleted = false;
+
     // ========== OWNER VERIFICATION FIELDS (Serbian Compliance) ==========
     
     /**

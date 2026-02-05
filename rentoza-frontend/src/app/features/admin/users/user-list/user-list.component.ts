@@ -11,6 +11,7 @@ import { MatChipsModule } from '@angular/material/chips';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatDialogModule, MatDialog } from '@angular/material/dialog';
+import { MatSelectModule } from '@angular/material/select';
 import { Router, RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { debounceTime, distinctUntilChanged, Subject, take } from 'rxjs';
@@ -18,6 +19,7 @@ import { AdminUserDto } from '../../../../core/services/admin-api.service';
 import { AdminNotificationService } from '../../../../core/services/admin-notification.service';
 import { ExportService } from '../../../../core/services/export.service';
 import { BanUserDialogComponent } from '../../shared/dialogs/ban-user-dialog/ban-user-dialog.component';
+import { UnbanUserDialogComponent } from '../../shared/dialogs/unban-user-dialog/unban-user-dialog.component';
 import { AdminStateService } from '../../../../core/services/admin-state.service';
 
 @Component({
@@ -38,6 +40,7 @@ import { AdminStateService } from '../../../../core/services/admin-state.service
     MatMenuModule,
     MatProgressSpinnerModule,
     MatDialogModule,
+    MatSelectModule,
   ],
   templateUrl: './user-list.component.html',
   styleUrls: ['../../admin-shared.styles.scss', './user-list.component.scss'],
@@ -66,6 +69,11 @@ export class UserListComponent implements OnInit {
   searchTerm = '';
   private searchSubject = new Subject<string>();
 
+  // Filter state
+  statusFilter = '';
+  roleFilter = '';
+  verificationFilter = '';
+
   // Pagination state
   pageIndex = 0;
   pageSize = 20;
@@ -93,6 +101,11 @@ export class UserListComponent implements OnInit {
   onSearch(term: string) {
     this.searchTerm = term;
     this.searchSubject.next(term);
+  }
+
+  onFilterChange() {
+    this.pageIndex = 0; // Reset to first page on filter change
+    this.loadUsers(this.searchTerm);
   }
 
   onPageChange(event: PageEvent) {
@@ -198,14 +211,21 @@ export class UserListComponent implements OnInit {
   }
 
   unbanUser(user: AdminUserDto): void {
-    if (!confirm(`Unban ${user.email}?`)) return;
+    const dialogRef = this.dialog.open(UnbanUserDialogComponent, {
+      width: '480px',
+      data: { email: user.email },
+    });
 
-    this.adminState.unbanUser(user.id).subscribe({
-      next: () => {
-        this.notification.showSuccess('User unbanned successfully');
-        this.loadUsers(this.searchTerm);
-      },
-      error: () => this.notification.showError('Failed to unban user'),
+    dialogRef.afterClosed().subscribe((confirmed) => {
+      if (confirmed) {
+        this.adminState.unbanUser(user.id).subscribe({
+          next: () => {
+            this.notification.showSuccess('User unbanned successfully');
+            this.loadUsers(this.searchTerm);
+          },
+          error: () => this.notification.showError('Failed to unban user'),
+        });
+      }
     });
   }
 }

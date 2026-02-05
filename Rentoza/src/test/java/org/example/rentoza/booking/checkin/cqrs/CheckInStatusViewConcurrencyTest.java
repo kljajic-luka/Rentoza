@@ -8,6 +8,8 @@ import org.example.rentoza.user.User;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
@@ -58,6 +60,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 @ActiveProfiles("test")
 @Transactional
 class CheckInStatusViewConcurrencyTest {
+
+    private static final Logger log = LoggerFactory.getLogger(CheckInStatusViewConcurrencyTest.class);
 
     @Autowired
     private CheckInStatusViewRepository viewRepository;
@@ -140,7 +144,7 @@ class CheckInStatusViewConcurrencyTest {
                     successCount.incrementAndGet();
                 } catch (Exception e) {
                     errorCount.incrementAndGet();
-                    System.err.println("Error in concurrent upsert: " + e.getMessage());
+                    log.debug("Error in concurrent upsert: {}", e.getMessage());
                 } finally {
                     completionLatch.countDown();
                 }
@@ -175,9 +179,8 @@ class CheckInStatusViewConcurrencyTest {
                 .as("Version should be incremented 10 times")
                 .isEqualTo(10);
 
-        System.out.println("✅ Race condition fix validated: 10 concurrent upserts succeeded");
-        System.out.println("   Final photo_count: " + view.getPhotoCount());
-        System.out.println("   Final version: " + view.getVersion());
+        log.debug("Race condition fix validated: 10 concurrent upserts succeeded, photo_count={}, version={}",
+                view.getPhotoCount(), view.getVersion());
     }
 
     /**
@@ -243,7 +246,7 @@ class CheckInStatusViewConcurrencyTest {
                 .as("Photo count must be exactly 20")
                 .isEqualTo(20);
 
-        System.out.println("✅ Stress test passed: 20 concurrent upserts, photo_count = 20");
+        log.debug("Stress test passed: 20 concurrent upserts, photo_count={}", view.getPhotoCount());
     }
 
     /**
@@ -300,7 +303,7 @@ class CheckInStatusViewConcurrencyTest {
         assertThat(view.getGeofenceDistanceMeters()).isEqualTo(120);
         assertThat(view.getPhotoCount()).isEqualTo(1);
 
-        System.out.println("✅ All 19 denormalized fields populated correctly on INSERT");
+        log.debug("All 19 denormalized fields populated correctly on INSERT");
     }
 
     /**
@@ -344,7 +347,7 @@ class CheckInStatusViewConcurrencyTest {
                 .as("version should increment on UPDATE")
                 .isEqualTo(1);
 
-        System.out.println("✅ UPDATE path correctly increments photo_count and version");
+        log.debug("UPDATE path correctly increments photo_count and version");
     }
 
     // ========== Helper Methods ==========

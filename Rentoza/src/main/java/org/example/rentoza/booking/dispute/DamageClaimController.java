@@ -93,6 +93,39 @@ public class DamageClaimController {
         return ResponseEntity.ok(claim);
     }
 
+    // ========== GUEST CLAIM ENDPOINTS (Phase 4) ==========
+    
+    /**
+     * Guest files a counter-claim or independent damage claim.
+     * 
+     * <p>Use cases:
+     * <ul>
+     *   <li>Counter-claim: Host filed damage claim, guest disagrees and files counter-evidence</li>
+     *   <li>Independent: Guest reports issue not raised by host (e.g., vehicle problems during trip)</li>
+     * </ul>
+     * 
+     * @since Phase 4 - Guest Dispute Capability
+     */
+    @PostMapping("/api/disputes/guest-claim")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<DamageClaimDTO> createGuestClaim(
+            @Valid @RequestBody GuestClaimRequest request) {
+        
+        Long guestId = currentUser.id();
+        log.info("[DamageClaim] Guest {} filing claim for booking {}", guestId, request.getBookingId());
+        
+        DamageClaimDTO claim = claimService.createGuestClaim(
+                request.getBookingId(),
+                request.getDescription(),
+                request.getClaimedAmount(),
+                request.getDisputeType(),
+                request.getEvidencePhotoIds(),
+                guestId
+        );
+        
+        return ResponseEntity.status(HttpStatus.CREATED).body(claim);
+    }
+
     // ========== ADMIN ENDPOINTS ==========
 
     @GetMapping("/api/admin/damage-claims/review")
@@ -136,6 +169,31 @@ public class DamageClaimController {
     public static class GuestResponseRequest {
         @NotBlank(message = "Odgovor je obavezan")
         private String response;
+    }
+    
+    /**
+     * Request DTO for guest-initiated claims.
+     * 
+     * @since Phase 4 - Guest Dispute Capability
+     */
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class GuestClaimRequest {
+        @NotNull(message = "Booking ID je obavezan")
+        private Long bookingId;
+        
+        @NotBlank(message = "Opis je obavezan")
+        private String description;
+        
+        @NotNull(message = "Iznos je obavezan")
+        @Positive(message = "Iznos mora biti pozitivan")
+        private BigDecimal claimedAmount;
+        
+        @NotNull(message = "Tip spora je obavezan")
+        private DisputeType disputeType;
+        
+        private List<Long> evidencePhotoIds;
     }
 
     @Data

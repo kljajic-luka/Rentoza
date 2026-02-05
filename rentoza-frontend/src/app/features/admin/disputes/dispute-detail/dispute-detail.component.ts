@@ -217,12 +217,16 @@ export class DisputeDetailComponent implements OnInit {
   }
 
   formatCurrency(amount: number): string {
-    return `R ${amount.toFixed(2)}`;
+    const formatted = amount.toLocaleString('sr-RS', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    });
+    return `${formatted} RSD`;
   }
 
   formatDate(dateString: string | undefined): string {
     if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleString('en-ZA', {
+    return new Date(dateString).toLocaleString('sr-RS', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',

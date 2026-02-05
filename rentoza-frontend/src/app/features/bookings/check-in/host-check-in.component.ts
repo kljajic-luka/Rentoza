@@ -71,6 +71,12 @@ import {
   RecoveryDialogData,
   RecoveryDialogResult,
 } from './check-in-recovery-dialog/check-in-recovery-dialog.component';
+import {
+  DamageReportStepComponent,
+  FileSelectedEvent,
+  RemoveSlotEvent,
+  RetryEvent,
+} from './components/damage-report-step/damage-report-step.component';
 
 const PHOTO_SLOTS: PhotoSlot[] = [
   { type: 'HOST_EXTERIOR_FRONT', label: 'Prednja strana', icon: 'directions_car', required: true },
@@ -104,69 +110,71 @@ const PHOTO_SLOTS: PhotoSlot[] = [
     ReadOnlyPickupLocationComponent,
     GuidedPhotoCaptureComponent,
     CheckInRecoveryDialogComponent,
+    DamageReportStepComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="host-check-in" [class.readonly-mode]="readOnly">
       <!-- Read-only banner -->
       @if (readOnly) {
-      <div class="readonly-banner">
-        <mat-icon>visibility</mat-icon>
-        <span>Pregled unetih podataka (samo za čitanje)</span>
-      </div>
+        <div class="readonly-banner">
+          <mat-icon>visibility</mat-icon>
+          <span>Pregled unetih podataka (samo za čitanje)</span>
+        </div>
       }
 
       <!-- Phase 4A: Check-in Timing Restriction Banner -->
       @if (status?.timingBlocked) {
-      <div class="timing-blocked-banner">
-        <mat-icon>schedule</mat-icon>
-        <div class="timing-content">
-          <span class="timing-title">Check-in još nije dozvoljen</span>
-          <span class="timing-message">{{
-            status?.timingBlockedMessage || 'Check-in moguć najranije 1 sat pre početka rezervacije'
-          }}</span>
-          @if (status?.minutesUntilCheckInAllowed) {
-          <span class="timing-countdown">
-            <mat-icon>hourglass_empty</mat-icon>
-            Preostalo: {{ formatMinutes(status?.minutesUntilCheckInAllowed!) }}
-          </span>
-          }
+        <div class="timing-blocked-banner">
+          <mat-icon>schedule</mat-icon>
+          <div class="timing-content">
+            <span class="timing-title">Check-in još nije dozvoljen</span>
+            <span class="timing-message">{{
+              status?.timingBlockedMessage ||
+                'Check-in moguć najranije 1 sat pre početka rezervacije'
+            }}</span>
+            @if (status?.minutesUntilCheckInAllowed) {
+              <span class="timing-countdown">
+                <mat-icon>hourglass_empty</mat-icon>
+                Preostalo: {{ formatMinutes(status?.minutesUntilCheckInAllowed!) }}
+              </span>
+            }
+          </div>
         </div>
-      </div>
       }
 
       <!-- Phase 4C: No-Show Grace Period Info -->
       @if (status?.noShowGraceMinutes && !readOnly) {
-      <div class="grace-period-info" [class.short-trip]="status?.isShortTrip">
-        <mat-icon>info_outline</mat-icon>
-        <span>
-          Gost ima {{ status?.noShowGraceMinutes }} min. tolerancije za kašnjenje
-          {{ status?.isShortTrip ? '(kratka rezervacija)' : '' }}
-        </span>
-      </div>
+        <div class="grace-period-info" [class.short-trip]="status?.isShortTrip">
+          <mat-icon>info_outline</mat-icon>
+          <span>
+            Gost ima {{ status?.noShowGraceMinutes }} min. tolerancije za kašnjenje
+            {{ status?.isShortTrip ? '(kratka rezervacija)' : '' }}
+          </span>
+        </div>
       }
 
       <!-- Pickup Location Section (shows where car should be picked up) -->
       @if (pickupLocationData()) {
-      <div class="pickup-location-section">
-        <div class="section-header small">
-          <mat-icon>location_on</mat-icon>
-          <div>
-            <h3>Lokacija preuzimanja</h3>
-            <p>Mesto gde gost preuzima vozilo</p>
+        <div class="pickup-location-section">
+          <div class="section-header small">
+            <mat-icon>location_on</mat-icon>
+            <div>
+              <h3>Lokacija preuzimanja</h3>
+              <p>Mesto gde gost preuzima vozilo</p>
+            </div>
           </div>
+          <app-readonly-pickup-location
+            [pickupLocation]="pickupLocationData()!"
+            [mode]="'compact'"
+            [varianceStatus]="status?.varianceStatus ?? null"
+            [varianceMeters]="status?.pickupLocationVarianceMeters ?? null"
+          />
+          <p class="gps-helper-text">
+            <mat-icon>info</mat-icon>
+            <span>GPS iz fotografija nam pomaže da održimo revizijski trag lokacije vozila</span>
+          </p>
         </div>
-        <app-readonly-pickup-location
-          [pickupLocation]="pickupLocationData()!"
-          [mode]="'compact'"
-          [varianceStatus]="status?.varianceStatus ?? null"
-          [varianceMeters]="status?.pickupLocationVarianceMeters ?? null"
-        />
-        <p class="gps-helper-text">
-          <mat-icon>info</mat-icon>
-          <span>GPS iz fotografija nam pomaže da održimo revizijski trag lokacije vozila</span>
-        </p>
-      </div>
       }
 
       <!-- Header -->
@@ -180,437 +188,333 @@ const PHOTO_SLOTS: PhotoSlot[] = [
 
       <!-- Guided Capture Mode (shown when active) -->
       @if (showGuidedCapture() && !readOnly) {
-      <app-guided-photo-capture
-        [bookingId]="bookingId"
-        [mode]="'host-checkin'"
-        [restoredState]="_restoredCaptureState()"
-        (captureComplete)="onGuidedCaptureComplete($event)"
-        (captureCancelled)="onGuidedCaptureCancelled()"
-      />
+        <app-guided-photo-capture
+          [bookingId]="bookingId"
+          [mode]="'host-checkin'"
+          [restoredState]="_restoredCaptureState()"
+          (captureComplete)="onGuidedCaptureComplete($event)"
+          (captureCancelled)="onGuidedCaptureCancelled()"
+        />
       } @else {
-      <!-- Manual Capture Mode (default or after guided capture) -->
+        <!-- Manual Capture Mode (default or after guided capture) -->
 
-      <!-- Start guided capture prompt (only when no photos yet) -->
-      @if (!readOnly && photoStats().completed === 0) {
-      <mat-card class="capture-prompt-card">
-        <mat-card-content>
-          <div class="capture-prompt">
-            <mat-icon>camera_enhance</mat-icon>
-            <div class="prompt-text">
-              <h4>Snimite fotografije vozila</h4>
-              <p>Vođeno snimanje vas vodi kroz sve potrebne uglove sa prikazom silueta.</p>
-            </div>
-          </div>
-          <div class="capture-actions">
-            <button
-              mat-raised-button
-              color="primary"
-              (click)="startGuidedCapture()"
-              class="start-capture-btn"
-            >
+        <!-- Start guided capture prompt (only when no photos yet) -->
+        @if (!readOnly && photoStats().completed === 0) {
+          <mat-card class="capture-prompt-card">
+            <mat-card-content>
+              <div class="capture-prompt">
+                <mat-icon>camera_enhance</mat-icon>
+                <div class="prompt-text">
+                  <h4>Snimite fotografije vozila</h4>
+                  <p>Vođeno snimanje vas vodi kroz sve potrebne uglove sa prikazom silueta.</p>
+                </div>
+              </div>
+              <div class="capture-actions">
+                <button
+                  mat-raised-button
+                  color="primary"
+                  (click)="startGuidedCapture()"
+                  class="start-capture-btn"
+                >
+                  <mat-icon>photo_camera</mat-icon>
+                  Započni vođeno snimanje
+                </button>
+                <button mat-stroked-button (click)="useManualCapture()" class="manual-btn">
+                  Ručno snimanje
+                </button>
+              </div>
+            </mat-card-content>
+          </mat-card>
+        }
+
+        <!-- Continue guided capture button (when partially done) -->
+        @if (!readOnly && photoStats().completed > 0 && !photoStats().allRequiredComplete) {
+          <div class="continue-capture-bar">
+            <span>{{ photoStats().completed }}/{{ photoStats().total }} fotografija snimljeno</span>
+            <button mat-stroked-button color="primary" (click)="startGuidedCapture()">
               <mat-icon>photo_camera</mat-icon>
-              Započni vođeno snimanje
-            </button>
-            <button mat-stroked-button (click)="useManualCapture()" class="manual-btn">
-              Ručno snimanje
+              Nastavi snimanje
             </button>
           </div>
-        </mat-card-content>
-      </mat-card>
-      }
+        }
 
-      <!-- Continue guided capture button (when partially done) -->
-      @if (!readOnly && photoStats().completed > 0 && !photoStats().allRequiredComplete) {
-      <div class="continue-capture-bar">
-        <span>{{ photoStats().completed }}/{{ photoStats().total }} fotografija snimljeno</span>
-        <button mat-stroked-button color="primary" (click)="startGuidedCapture()">
-          <mat-icon>photo_camera</mat-icon>
-          Nastavi snimanje
-        </button>
-      </div>
-      }
+        <!-- Required Photo grid (show when in manual mode or has photos) -->
+        @if (showManualGrid() || photoStats().completed > 0 || readOnly) {
+          <div class="photo-grid">
+            @for (vm of photoSlotViewModels(); track vm.slot.type) {
+              <div
+                class="photo-slot"
+                [class.completed]="vm.isCompleted"
+                [class.uploading]="vm.isUploading"
+                [class.error]="false"
+                [class.rejected]="vm.isRejected"
+                [class.location-mismatch]="vm.locationMismatch"
+                [class.readonly]="readOnly"
+                (click)="readOnly ? null : triggerFileInput(vm.slot.type)"
+              >
+                <!-- Thumbnail or placeholder -->
+                @if (vm.previewUrl) {
+                  <img
+                    appLazyImg
+                    [lazySrc]="vm.previewUrl"
+                    [alt]="vm.slot.label"
+                    class="photo-preview"
+                  />
+                  <!-- Minimal success badge (replaces full overlay) -->
+                  <div class="success-badge">
+                    <mat-icon>check_circle</mat-icon>
+                  </div>
+                  <!-- Remove/Replace button - hidden in readOnly mode -->
+                  @if (!readOnly) {
+                    <button
+                      mat-mini-fab
+                      color="warn"
+                      class="remove-photo-btn"
+                      (click)="removePhoto($event, vm.slot.type)"
+                      aria-label="Ukloni fotografiju"
+                    >
+                      <mat-icon>close</mat-icon>
+                    </button>
+                  }
+                } @else {
+                  <div class="photo-placeholder">
+                    <mat-icon>{{ vm.slot.icon }}</mat-icon>
+                    <span>{{ vm.slot.label }}</span>
+                    @if (vm.slot.required) {
+                      <span class="required-badge">Obavezno</span>
+                    }
+                  </div>
+                }
 
-      <!-- Required Photo grid (show when in manual mode or has photos) -->
-      @if (showManualGrid() || photoStats().completed > 0 || readOnly) {
-      <div class="photo-grid">
-        @for (vm of photoSlotViewModels(); track vm.slot.type) {
-        <div
-          class="photo-slot"
-          [class.completed]="vm.isCompleted"
-          [class.uploading]="vm.isUploading"
-          [class.error]="false"
-          [class.rejected]="vm.isRejected"
-          [class.location-mismatch]="vm.locationMismatch"
-          [class.readonly]="readOnly"
-          (click)="readOnly ? null : triggerFileInput(vm.slot.type)"
-        >
-          <!-- Thumbnail or placeholder -->
-          @if (vm.previewUrl) {
-          <img appLazyImg [lazySrc]="vm.previewUrl" [alt]="vm.slot.label" class="photo-preview" />
-          <!-- Minimal success badge (replaces full overlay) -->
-          <div class="success-badge">
-            <mat-icon>check_circle</mat-icon>
-          </div>
-          <!-- Remove/Replace button - hidden in readOnly mode -->
-          @if (!readOnly) {
-          <button
-            mat-mini-fab
-            color="warn"
-            class="remove-photo-btn"
-            (click)="removePhoto($event, vm.slot.type)"
-            aria-label="Ukloni fotografiju"
-          >
-            <mat-icon>close</mat-icon>
-          </button>
-          } } @else {
-          <div class="photo-placeholder">
-            <mat-icon>{{ vm.slot.icon }}</mat-icon>
-            <span>{{ vm.slot.label }}</span>
-            @if (vm.slot.required) {
-            <span class="required-badge">Obavezno</span>
+                <!-- Upload progress -->
+                @if (vm.isUploading) {
+                  <div class="upload-progress">
+                    <mat-progress-bar mode="determinate" [value]="vm.progress"></mat-progress-bar>
+                    <span>{{ vm.progress }}%</span>
+                  </div>
+                }
+
+                <!-- Rejection state with retry button (EXIF validation failure - ORANGE) -->
+                @if (vm.isRejected) {
+                  <div class="rejection-overlay" [class.location-fraud]="vm.locationMismatch">
+                    <mat-icon>{{ vm.locationMismatch ? 'location_off' : 'warning' }}</mat-icon>
+                    <span class="rejection-reason">{{ vm.rejectionReason }}</span>
+                    @if (vm.distanceMeters) {
+                      <span class="distance-badge">{{ vm.distanceMeters }}m od automobila</span>
+                    }
+                    <span class="rejection-hint">{{ vm.remediationHint }}</span>
+                    <button
+                      mat-button
+                      class="retry-btn rejection-retry"
+                      (click)="retryUpload($event, vm.slot.type)"
+                    >
+                      <mat-icon>camera_alt</mat-icon>
+                      Pokušaj ponovo
+                    </button>
+                  </div>
+                }
+
+                <!-- Hidden file input -->
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  [id]="'file-' + vm.slot.type"
+                  (change)="onFileSelected($event, vm.slot.type, vm.slot.type)"
+                  hidden
+                />
+              </div>
             }
           </div>
-          }
 
-          <!-- Upload progress -->
-          @if (vm.isUploading) {
-          <div class="upload-progress">
-            <mat-progress-bar mode="determinate" [value]="vm.progress"></mat-progress-bar>
-            <span>{{ vm.progress }}%</span>
-          </div>
-          }
-
-          <!-- Rejection state with retry button (EXIF validation failure - ORANGE) -->
-          @if (vm.isRejected) {
-          <div class="rejection-overlay" [class.location-fraud]="vm.locationMismatch">
-            <mat-icon>{{ vm.locationMismatch ? 'location_off' : 'warning' }}</mat-icon>
-            <span class="rejection-reason">{{ vm.rejectionReason }}</span>
-            @if (vm.distanceMeters) {
-            <span class="distance-badge">{{ vm.distanceMeters }}m od automobila</span>
+          <!-- Progress summary -->
+          <div class="progress-summary">
+            <span>{{ photoStats().completed }}/{{ photoStats().total }} fotografija</span>
+            @if (photoStats().locationMismatchCount > 0) {
+              <span class="location-warning">
+                <mat-icon>location_off</mat-icon>
+                {{ photoStats().locationMismatchCount }} lokacijska neslaganja
+              </span>
             }
-            <span class="rejection-hint">{{ vm.remediationHint }}</span>
-            <button
-              mat-button
-              class="retry-btn rejection-retry"
-              (click)="retryUpload($event, vm.slot.type)"
+            <mat-progress-bar
+              mode="determinate"
+              [value]="(photoStats().completed / photoStats().total) * 100"
             >
-              <mat-icon>camera_alt</mat-icon>
-              Pokušaj ponovo
-            </button>
+            </mat-progress-bar>
           </div>
-          }
-
-          <!-- Hidden file input -->
-          <input
-            type="file"
-            accept="image/*"
-            capture="environment"
-            [id]="'file-' + vm.slot.type"
-            (change)="onFileSelected($event, vm.slot.type, vm.slot.type)"
-            hidden
-          />
-        </div>
         }
-      </div>
-
-      <!-- Progress summary -->
-      <div class="progress-summary">
-        <span>{{ photoStats().completed }}/{{ photoStats().total }} fotografija</span>
-        @if (photoStats().locationMismatchCount > 0) {
-        <span class="location-warning">
-          <mat-icon>location_off</mat-icon>
-          {{ photoStats().locationMismatchCount }} lokacijska neslaganja
-        </span>
-        }
-        <mat-progress-bar
-          mode="determinate"
-          [value]="(photoStats().completed / photoStats().total) * 100"
-        >
-        </mat-progress-bar>
-      </div>
-      }
-      <!-- End photo-grid @if -->
+        <!-- End photo-grid @if -->
       }
       <!-- End guided capture @else -->
 
-      <!-- Damage Photos Section (hidden in readOnly if no damage photos exist) -->
-      @if (!readOnly || damagePhotos().length > 0) {
-      <div class="damage-section">
-        <div class="section-header small">
-          <mat-icon>report_problem</mat-icon>
-          <div>
-            <h3>Postojeća oštećenja {{ readOnly ? '' : '(opciono)' }}</h3>
-            <p>
-              {{
-                readOnly
-                  ? 'Dokumentovana oštećenja'
-                  : 'Dokumentujte postojeće ogrebotine, ulubljenja i sl.'
-              }}
-            </p>
-          </div>
-        </div>
-
-        <!-- Damage photo grid -->
-        @if (damageSlotViewModels().length > 0) {
-        <div class="photo-grid damage-grid">
-          @for (vm of damageSlotViewModels(); track $index) {
-          <div
-            class="photo-slot damage-slot"
-            [class.completed]="vm.isCompleted"
-            [class.uploading]="vm.isUploading"
-            [class.error]="false"
-            [class.rejected]="vm.isRejected"
-            [class.location-mismatch]="vm.locationMismatch"
-            [class.readonly]="readOnly"
-            (click)="readOnly ? null : triggerFileInput(damagePhotos()[$index].id)"
-          >
-            @if (vm.previewUrl) {
-            <img appLazyImg [lazySrc]="vm.previewUrl" alt="Oštećenje" class="photo-preview" />
-            <div class="success-badge">
-              <mat-icon>check_circle</mat-icon>
-            </div>
-            @if (!readOnly) {
-            <button
-              mat-mini-fab
-              color="warn"
-              class="remove-photo-btn"
-              (click)="removeDamagePhoto($event, damagePhotos()[$index].id)"
-              aria-label="Ukloni fotografiju"
-            >
-              <mat-icon>close</mat-icon>
-            </button>
-            } } @else {
-            <div class="photo-placeholder">
-              <mat-icon>add_a_photo</mat-icon>
-              <span>Oštećenje</span>
-              <button
-                mat-icon-button
-                class="delete-slot-btn"
-                (click)="removeDamagePhoto($event, damagePhotos()[$index].id)"
-                aria-label="Ukloni slot"
-              >
-                <mat-icon>delete</mat-icon>
-              </button>
-            </div>
-            } @if (vm.isUploading) {
-            <div class="upload-progress">
-              <mat-progress-bar mode="determinate" [value]="vm.progress"></mat-progress-bar>
-              <span>{{ vm.progress }}%</span>
-            </div>
-            } @if (vm.isRejected) {
-            <div class="rejection-overlay" [class.location-fraud]="vm.locationMismatch">
-              <mat-icon>{{ vm.locationMismatch ? 'location_off' : 'warning' }}</mat-icon>
-              <span class="rejection-reason">{{ vm.rejectionReason }}</span>
-              @if (vm.distanceMeters) {
-              <span class="distance-badge">{{ vm.distanceMeters }}m od automobila</span>
-              }
-              <span class="rejection-hint">{{ vm.remediationHint }}</span>
-              <button
-                mat-button
-                class="retry-btn rejection-retry"
-                (click)="retryUpload($event, damagePhotos()[$index].id)"
-              >
-                <mat-icon>camera_alt</mat-icon>
-                Ponovo
-              </button>
-            </div>
-            }
-
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              [id]="'file-' + damagePhotos()[$index].id"
-              (change)="
-                onFileSelected($event, damagePhotos()[$index].id, damagePhotos()[$index].photoType)
-              "
-              hidden
-            />
-          </div>
-          }
-        </div>
-        }
-
-        <!-- Add damage photo button (hidden in readOnly mode) -->
-        @if (!readOnly) { @if (damagePhotos().length < maxDamagePhotos) {
-        <button
-          mat-stroked-button
-          color="accent"
-          class="add-damage-btn"
-          [class.near-limit]="damagePhotos().length >= 8"
-          (click)="addDamagePhoto()"
-        >
-          <mat-icon>add_a_photo</mat-icon>
-          Dodaj fotografiju oštećenja @if (damagePhotos().length >= 8) {
-          <span class="limit-counter">({{ damagePhotos().length }}/{{ maxDamagePhotos }})</span>
-          }
-        </button>
-        @if (damagePhotos().length >= 8) {
-        <p class="damage-warning-hint">
-          <mat-icon>info</mat-icon>
-          Preostalo još {{ maxDamagePhotos - damagePhotos().length }} fotografija
-        </p>
-        } } @else {
-        <div class="damage-limit-reached">
-          <mat-icon>block</mat-icon>
-          <p class="damage-limit-hint">
-            Maksimalan broj fotografija oštećenja dostignut ({{ maxDamagePhotos }})
-          </p>
-        </div>
-        } }
-      </div>
-      }
+      <!-- Damage Photos Section - Extracted Component -->
+      <app-damage-report-step
+        [damageSlots]="damagePhotos()"
+        [damageSlotViewModels]="damageSlotViewModels()"
+        [maxDamagePhotos]="maxDamagePhotos"
+        [readOnly]="readOnly"
+        (addDamageSlot)="addDamagePhoto()"
+        (removeDamageSlot)="onDamageSlotRemove($event)"
+        (triggerCapture)="triggerFileInput($event)"
+        (fileSelected)="onDamageFileSelected($event)"
+        (retryUpload)="onDamageRetry($event)"
+      />
 
       <!-- Vehicle details: Edit mode (form) vs Read-only mode (presentation) -->
       @if (readOnly) {
-      <!-- Read-only presentation mode -->
-      <div class="review-section">
-        <div class="section-header small">
-          <mat-icon>assignment</mat-icon>
-          <div>
-            <h3>Podaci o vozilu</h3>
-            <p>Uneti podaci pri check-inu</p>
-          </div>
-        </div>
-
-        <div class="review-data-grid">
-          <div class="review-data-item">
-            <mat-icon>speed</mat-icon>
-            <div class="review-data-content">
-              <span class="review-data-label">Kilometraža</span>
-              <span class="review-data-value">{{ status?.odometerReading | number }} km</span>
+        <!-- Read-only presentation mode -->
+        <div class="review-section">
+          <div class="section-header small">
+            <mat-icon>assignment</mat-icon>
+            <div>
+              <h3>Podaci o vozilu</h3>
+              <p>Uneti podaci pri check-inu</p>
             </div>
           </div>
 
-          <div class="review-data-item">
-            <mat-icon>local_gas_station</mat-icon>
-            <div class="review-data-content">
-              <span class="review-data-label">Nivo goriva</span>
-              <div class="fuel-display">
-                <div class="fuel-bar">
-                  <div class="fuel-fill" [style.width.%]="status?.fuelLevelPercent || 0"></div>
-                </div>
-                <span class="review-data-value">{{ status?.fuelLevelPercent || 0 }}%</span>
+          <div class="review-data-grid">
+            <div class="review-data-item">
+              <mat-icon>speed</mat-icon>
+              <div class="review-data-content">
+                <span class="review-data-label">Kilometraža</span>
+                <span class="review-data-value">{{ status?.odometerReading | number }} km</span>
               </div>
             </div>
-          </div>
 
-          @if (status?.lockboxAvailable) {
-          <div class="review-data-item">
-            <mat-icon>lock</mat-icon>
-            <div class="review-data-content">
-              <span class="review-data-label">Lockbox</span>
-              <span class="review-data-value">Dostupan</span>
-            </div>
-          </div>
-          }
-        </div>
-      </div>
-      } @else {
-      <!-- Edit mode (form) -->
-      <mat-expansion-panel [expanded]="photoStats().allRequiredComplete">
-        <mat-expansion-panel-header>
-          <mat-panel-title>
-            <mat-icon>edit</mat-icon>
-            Podaci o vozilu
-          </mat-panel-title>
-        </mat-expansion-panel-header>
-
-        <form [formGroup]="detailsForm" class="details-form">
-          <!-- Odometer -->
-          <mat-form-field appearance="outline" class="full-width">
-            <mat-label>Trenutna kilometraža</mat-label>
-            <input
-              matInput
-              type="number"
-              formControlName="odometerReading"
-              placeholder="npr. 45230"
-            />
-            <span matSuffix>km</span>
-            <mat-hint>Unesite vrednost sa odometra</mat-hint>
-            @if (detailsForm.get('odometerReading')?.hasError('required')) {
-            <mat-error>Kilometraža je obavezna</mat-error>
-            } @if (detailsForm.get('odometerReading')?.hasError('min')) {
-            <mat-error>Kilometraža mora biti pozitivna</mat-error>
-            }
-          </mat-form-field>
-
-          <!-- Fuel level -->
-          <div class="fuel-section">
-            <label>Nivo goriva: {{ detailsForm.get('fuelLevelPercent')?.value }}%</label>
-            <div class="fuel-slider">
+            <div class="review-data-item">
               <mat-icon>local_gas_station</mat-icon>
-              <mat-slider min="0" max="100" step="5" discrete class="fuel-slider-input">
-                <input matSliderThumb formControlName="fuelLevelPercent" />
-              </mat-slider>
-              <span class="fuel-value">{{ detailsForm.get('fuelLevelPercent')?.value }}%</span>
+              <div class="review-data-content">
+                <span class="review-data-label">Nivo goriva</span>
+                <div class="fuel-display">
+                  <div class="fuel-bar">
+                    <div class="fuel-fill" [style.width.%]="status?.fuelLevelPercent || 0"></div>
+                  </div>
+                  <span class="review-data-value">{{ status?.fuelLevelPercent || 0 }}%</span>
+                </div>
+              </div>
             </div>
-            <div class="fuel-markers">
-              <span>Prazan</span>
-              <span>1/4</span>
-              <span>1/2</span>
-              <span>3/4</span>
-              <span>Pun</span>
-            </div>
-          </div>
 
-          <!-- Lockbox code (optional) -->
-          <mat-form-field appearance="outline" class="full-width">
-            <mat-label>Lockbox kod (opciono)</mat-label>
-            <input matInput type="text" formControlName="lockboxCode" placeholder="npr. 1234" />
-            <mat-hint>Unesite ako je vozilo dostupno sa lockbox-om</mat-hint>
-          </mat-form-field>
-        </form>
-      </mat-expansion-panel>
+            @if (status?.lockboxAvailable) {
+              <div class="review-data-item">
+                <mat-icon>lock</mat-icon>
+                <div class="review-data-content">
+                  <span class="review-data-label">Lockbox</span>
+                  <span class="review-data-value">Dostupan</span>
+                </div>
+              </div>
+            }
+          </div>
+        </div>
+      } @else {
+        <!-- Edit mode (form) -->
+        <mat-expansion-panel [expanded]="photoStats().allRequiredComplete">
+          <mat-expansion-panel-header>
+            <mat-panel-title>
+              <mat-icon>edit</mat-icon>
+              Podaci o vozilu
+            </mat-panel-title>
+          </mat-expansion-panel-header>
+
+          <form [formGroup]="detailsForm" class="details-form">
+            <!-- Odometer -->
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Trenutna kilometraža</mat-label>
+              <input
+                matInput
+                type="number"
+                formControlName="odometerReading"
+                placeholder="npr. 45230"
+              />
+              <span matSuffix>km</span>
+              <mat-hint>Unesite vrednost sa odometra</mat-hint>
+              @if (detailsForm.get('odometerReading')?.hasError('required')) {
+                <mat-error>Kilometraža je obavezna</mat-error>
+              }
+              @if (detailsForm.get('odometerReading')?.hasError('min')) {
+                <mat-error>Kilometraža mora biti pozitivna</mat-error>
+              }
+            </mat-form-field>
+
+            <!-- Fuel level -->
+            <div class="fuel-section">
+              <label>Nivo goriva: {{ detailsForm.get('fuelLevelPercent')?.value }}%</label>
+              <div class="fuel-slider">
+                <mat-icon>local_gas_station</mat-icon>
+                <mat-slider min="0" max="100" step="5" discrete class="fuel-slider-input">
+                  <input matSliderThumb formControlName="fuelLevelPercent" />
+                </mat-slider>
+                <span class="fuel-value">{{ detailsForm.get('fuelLevelPercent')?.value }}%</span>
+              </div>
+              <div class="fuel-markers">
+                <span>Prazan</span>
+                <span>1/4</span>
+                <span>1/2</span>
+                <span>3/4</span>
+                <span>Pun</span>
+              </div>
+            </div>
+
+            <!-- Lockbox code (optional) -->
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Lockbox kod (opciono)</mat-label>
+              <input matInput type="text" formControlName="lockboxCode" placeholder="npr. 1234" />
+              <mat-hint>Unesite ako je vozilo dostupno sa lockbox-om</mat-hint>
+            </mat-form-field>
+          </form>
+        </mat-expansion-panel>
       }
 
       <!-- Submit button (hidden in readOnly mode) -->
       @if (!readOnly) {
-      <div class="submit-section">
-        <button
-          mat-raised-button
-          color="primary"
-          [disabled]="!canSubmit()"
-          (click)="submitHostCheckIn()"
-          class="submit-button"
-        >
-          @if (checkInService.isLoading()) {
-          <ng-container>
-            <mat-icon class="spin">sync</mat-icon>
-            Slanje...
-          </ng-container>
-          } @else {
-          <ng-container>
-            <mat-icon>send</mat-icon>
-            Pošalji na pregled gostu
-          </ng-container>
-          }
-        </button>
+        <div class="submit-section">
+          <button
+            mat-raised-button
+            color="primary"
+            [disabled]="!canSubmit()"
+            (click)="submitHostCheckIn()"
+            class="submit-button"
+          >
+            @if (checkInService.isLoading()) {
+              <ng-container>
+                <mat-icon class="spin">sync</mat-icon>
+                Slanje...
+              </ng-container>
+            } @else {
+              <ng-container>
+                <mat-icon>send</mat-icon>
+                Pošalji na pregled gostu
+              </ng-container>
+            }
+          </button>
 
-        @if (!canSubmit()) {
-        <p class="submit-hint">
-          @if (!photoStats().allRequiredComplete) { Slikajte sve obavezne fotografije ({{
-            photoStats().completed
-          }}/{{ photoStats().total }}) } @else if (detailsForm.invalid) { Popunite podatke o vozilu
-          (kilometraža je obavezna) } @else if (checkInService.isLoading()) {
-          <mat-icon class="spin">sync</mat-icon>
-          Učitavanje u toku... }
-        </p>
-        }
-      </div>
+          @if (!canSubmit()) {
+            <p class="submit-hint">
+              @if (!photoStats().allRequiredComplete) {
+                Slikajte sve obavezne fotografije ({{ photoStats().completed }}/{{
+                  photoStats().total
+                }})
+              } @else if (detailsForm.invalid) {
+                Popunite podatke o vozilu (kilometraža je obavezna)
+              } @else if (checkInService.isLoading()) {
+                <mat-icon class="spin">sync</mat-icon>
+                Učitavanje u toku...
+              }
+            </p>
+          }
+        </div>
       } @else {
-      <!-- Back button in readOnly mode -->
-      <div class="submit-section">
-        <button
-          mat-stroked-button
-          color="primary"
-          (click)="backFromReview.emit()"
-          class="submit-button"
-        >
-          <mat-icon>arrow_back</mat-icon>
-          Nazad na čekanje
-        </button>
-      </div>
+        <!-- Back button in readOnly mode -->
+        <div class="submit-section">
+          <button
+            mat-stroked-button
+            color="primary"
+            (click)="backFromReview.emit()"
+            class="submit-button"
+          >
+            <mat-icon>arrow_back</mat-icon>
+            Nazad na čekanje
+          </button>
+        </div>
       }
     </div>
   `,
@@ -1846,7 +1750,7 @@ export class HostCheckInComponent implements OnInit, OnChanges, OnDestroy {
     try {
       const savedSession = await this.persistenceService.checkForSavedSession(
         this.bookingId,
-        'host-checkin'
+        'host-checkin',
       );
 
       if (!savedSession.exists) return;
@@ -2034,6 +1938,30 @@ export class HostCheckInComponent implements OnInit, OnChanges, OnDestroy {
     this.damagePhotos.update((slots) => slots.filter((s) => s.id !== slotId));
   }
 
+  // ========== DAMAGE REPORT COMPONENT EVENT HANDLERS ==========
+  // These methods bridge DamageReportStepComponent events to existing methods
+
+  /**
+   * Handle damage slot removal from DamageReportStepComponent.
+   */
+  onDamageSlotRemove(event: RemoveSlotEvent): void {
+    this.removeDamagePhoto(event.event, event.slotId);
+  }
+
+  /**
+   * Handle file selection from DamageReportStepComponent.
+   */
+  onDamageFileSelected(event: FileSelectedEvent): void {
+    this.onFileSelected(event.event, event.slotId, event.photoType as CheckInPhotoType);
+  }
+
+  /**
+   * Handle retry from DamageReportStepComponent.
+   */
+  onDamageRetry(event: RetryEvent): void {
+    this.retryUpload(event.event, event.slotId);
+  }
+
   // ========== SVELTE-INSPIRED HELPER METHODS ==========
   // Pure functions for view model derivation (called only during computed signal evaluation)
 
@@ -2044,7 +1972,7 @@ export class HostCheckInComponent implements OnInit, OnChanges, OnDestroy {
   private normalizePhotoUrl(
     slotId: string,
     previews: Map<string, string>,
-    slotProgress: PhotoUploadProgress | undefined
+    slotProgress: PhotoUploadProgress | undefined,
   ): string | null {
     // Always prefer local blob preview
     const localPreview = previews.get(slotId);
@@ -2148,7 +2076,7 @@ export class HostCheckInComponent implements OnInit, OnChanges, OnDestroy {
         this.bookingId,
         file,
         photo.photoType,
-        photo.photoType as CheckInPhotoType
+        photo.photoType as CheckInPhotoType,
       );
     }
 
@@ -2180,7 +2108,7 @@ export class HostCheckInComponent implements OnInit, OnChanges, OnDestroy {
         this.bookingId,
         odometerReading,
         fuelLevelPercent,
-        lockboxCode || undefined
+        lockboxCode || undefined,
       )
       .subscribe({
         next: () => {

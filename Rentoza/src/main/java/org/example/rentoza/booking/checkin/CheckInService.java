@@ -77,6 +77,7 @@ public class CheckInService {
     private final LockboxEncryptionService lockboxEncryptionService;
     private final RenterVerificationService renterVerificationService;
     private final FeatureFlags featureFlags;
+    private final CheckInValidationService validationService;
     
     // VAL-004: Dependencies for check-in dispute flow
     private final DamageClaimRepository damageClaimRepository;
@@ -138,6 +139,7 @@ public class CheckInService {
             LockboxEncryptionService lockboxEncryptionService,
             RenterVerificationService renterVerificationService,
             FeatureFlags featureFlags,
+            CheckInValidationService validationService,
             DamageClaimRepository damageClaimRepository,
             UserRepository userRepository,
             MeterRegistry meterRegistry) {
@@ -150,6 +152,7 @@ public class CheckInService {
         this.lockboxEncryptionService = lockboxEncryptionService;
         this.renterVerificationService = renterVerificationService;
         this.featureFlags = featureFlags;
+        this.validationService = validationService;
         this.damageClaimRepository = damageClaimRepository;
         this.userRepository = userRepository;
         
@@ -188,7 +191,8 @@ public class CheckInService {
         Booking booking = bookingRepository.findByIdWithRelations(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Rezervacija nije pronađena"));
         
-        validateAccess(booking, userId);
+        // Delegate to validation service
+        validationService.validateAccess(booking, userId);
         
         return mapToStatusDTO(booking, userId);
     }
@@ -212,10 +216,8 @@ public class CheckInService {
         Booking booking = bookingRepository.findByIdWithRelations(dto.getBookingId())
                 .orElseThrow(() -> new ResourceNotFoundException("Rezervacija nije pronađena"));
         
-        // Validate host access
-        if (!isHost(booking, userId)) {
-            throw new AccessDeniedException("Samo vlasnik vozila može završiti prijem");
-        }
+        // Validate host access (delegated to validation service)
+        validationService.validateHostAccess(booking, userId);
         
         // Validate status
         if (booking.getStatus() != BookingStatus.CHECK_IN_OPEN) {
@@ -228,7 +230,7 @@ public class CheckInService {
         // Ensures check-in cannot be completed more than 1 hour before trip start.
         // This prevents insurance coverage gaps where the vehicle is handed over
         // before the policy's effective start time.
-        validateCheckInTiming(booking, userId, CheckInActorRole.HOST);
+        validationService.validateCheckInTiming(booking, userId, CheckInActorRole.HOST);
         
         // Validate photos
         long validPhotoTypes = photoRepository.countRequiredHostPhotoTypes(booking.getId());
@@ -401,10 +403,8 @@ public class CheckInService {
         Booking booking = bookingRepository.findByIdWithRelations(dto.getBookingId())
                 .orElseThrow(() -> new ResourceNotFoundException("Rezervacija nije pronađena"));
         
-        // Validate guest access
-        if (!isGuest(booking, userId)) {
-            throw new AccessDeniedException("Samo gost može potvrditi stanje vozila");
-        }
+        // Validate guest access (delegated to validation service)
+        validationService.validateGuestAccess(booking, userId);
         
         // Validate status - allow CHECK_IN_HOST_COMPLETE or CHECK_IN_DISPUTE (for re-submission after dispute declined)
         if (booking.getStatus() != BookingStatus.CHECK_IN_HOST_COMPLETE &&

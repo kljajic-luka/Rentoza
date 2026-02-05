@@ -3,9 +3,11 @@ package org.example.rentoza.admin.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.admin.dto.DashboardKpiDto;
+import org.example.rentoza.admin.dto.RecentBookingDto;
 import org.example.rentoza.admin.entity.AdminMetrics;
 import org.example.rentoza.admin.repository.AdminMetricsRepository;
 import org.example.rentoza.admin.repository.AdminUserRepository;
+import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingRepository;
 import org.example.rentoza.booking.BookingStatus;
 import org.example.rentoza.booking.dispute.DamageClaimRepository;
@@ -13,6 +15,8 @@ import org.example.rentoza.car.CarRepository;
 import org.example.rentoza.config.timezone.SerbiaTimeZone;
 import org.example.rentoza.user.UserRepository;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +26,8 @@ import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Admin Dashboard Service for real-time KPI calculation.
@@ -323,5 +329,21 @@ public class AdminDashboardService {
         }
         
         return Math.max(score, 0); // Minimum 0
+    }
+
+    /**
+     * Get recent bookings for dashboard overview.
+     * 
+     * @param limit Maximum number of bookings to return
+     * @return List of recent bookings with basic info
+     */
+    public List<RecentBookingDto> getRecentBookings(int limit) {
+        PageRequest pageRequest = PageRequest.of(0, limit, Sort.by(Sort.Direction.DESC, "createdAt"));
+        
+        List<Booking> bookings = bookingRepo.findAll(pageRequest).getContent();
+        
+        return bookings.stream()
+            .map(RecentBookingDto::fromEntity)
+            .collect(Collectors.toList());
     }
 }

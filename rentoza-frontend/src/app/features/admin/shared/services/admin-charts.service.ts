@@ -45,7 +45,7 @@ export class AdminChartsService {
    */
   getRevenueChart(months: number = 6): Observable<RevenueChartData> {
     return this.http
-      .get<RevenueChartData>(`${this.apiUrl}/api/admin/charts/revenue`, {
+      .get<RevenueChartData>(`${this.apiUrl}/admin/charts/revenue`, {
         params: { months: months.toString(), currencyCode: 'RSD' },
       })
       .pipe(
@@ -65,7 +65,7 @@ export class AdminChartsService {
    */
   getTripActivity(weeks: number = 6): Observable<TripActivityData> {
     return this.http
-      .get<TripActivityData>(`${this.apiUrl}/api/admin/charts/trips`, {
+      .get<TripActivityData>(`${this.apiUrl}/admin/charts/trips`, {
         params: { weeks: weeks.toString() },
       })
       .pipe(

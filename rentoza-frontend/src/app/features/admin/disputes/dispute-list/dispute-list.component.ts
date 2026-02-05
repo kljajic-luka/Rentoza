@@ -145,11 +145,15 @@ export class DisputeListComponent implements OnInit {
   }
 
   formatCurrency(cents: number): string {
-    return `R ${(cents / 100).toFixed(2)}`;
+    const amount = (cents / 100).toLocaleString('sr-RS', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    });
+    return `${amount} RSD`;
   }
 
   formatDate(dateString: string): string {
-    return new Date(dateString).toLocaleDateString('en-ZA', {
+    return new Date(dateString).toLocaleDateString('sr-RS', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',

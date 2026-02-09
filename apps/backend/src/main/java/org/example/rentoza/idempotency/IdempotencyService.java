@@ -1,28 +1,30 @@
 package org.example.rentoza.idempotency;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
 /**
- * Enterprise-grade idempotency service using Redis for distributed caching.
+ * Enterprise-grade idempotency service facade.
  * 
- * <h2>Phase 1 Critical Fix: Idempotency Protection</h2>
+ * <h2>Architecture</h2>
+ * <p>This service delegates to an {@link IdempotencyStore} implementation:
+ * <ul>
+ *   <li>{@link InMemoryIdempotencyService} - When Redis is disabled (default)</li>
+ *   <li>{@link RedisIdempotencyService} - When Redis is enabled</li>
+ * </ul>
+ * 
+ * <h2>Purpose</h2>
  * <p>Prevents duplicate operations during network retries or double-clicks:
  * <ul>
  *   <li>Payment processing (duplicate charges)</li>
@@ -33,14 +35,14 @@ import java.util.regex.Pattern;
  * <h2>Implementation Pattern</h2>
  * <pre>
  * Request 1: X-Idempotency-Key: uuid-123
- *   → Check Redis: NOT_FOUND
+ *   → Check store: NOT_FOUND
  *   → Store PROCESSING state
  *   → Execute operation
  *   → Store COMPLETED with response
  *   → Return 200 OK
  * 
  * Request 2: X-Idempotency-Key: uuid-123 (retry)
- *   → Check Redis: FOUND (COMPLETED)
+ *   → Check store: FOUND (COMPLETED)
  *   → Return cached response (200 OK)
  *   → Operation NOT re-executed
  * </pre>
@@ -53,22 +55,40 @@ import java.util.regex.Pattern;
  *   <li>PROCESSING state prevents concurrent duplicate execution</li>
  * </ul>
  * 
- * @see IdempotencyInterceptor for HTTP header extraction
+ * <h2>Configuration</h2>
+ * <pre>
+ * # Use in-memory storage (default)
+ * app.redis.enabled=false
+ * 
+ * # Use Redis storage
+ * app.redis.enabled=true
+ * spring.data.redis.host=your-redis-host
+ * </pre>
+ * 
+ * @author Rentoza Platform Team
+ * @since Phase 3.1 - Redis Configuration Hardening
  */
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class IdempotencyService {
 
-    private static final String REDIS_PREFIX = "idempotency:";
-    private static final Duration DEFAULT_TTL = Duration.ofHours(24);
     private static final Pattern UUID_PATTERN = Pattern.compile(
             "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
             Pattern.CASE_INSENSITIVE
     );
 
-    private final StringRedisTemplate redisTemplate;
-    private final ObjectMapper objectMapper;
+    private final IdempotencyStore store;
+
+    /**
+     * Constructor with store injection.
+     * Spring will inject the appropriate implementation based on configuration.
+     * 
+     * @param store The idempotency store implementation (Redis or In-Memory)
+     */
+    public IdempotencyService(IdempotencyStore store) {
+        this.store = store;
+        log.info("✅ [Idempotency] Service initialized with {} storage", store.getStorageType());
+    }
 
     /**
      * Check if a request with this idempotency key has been processed.
@@ -78,44 +98,7 @@ public class IdempotencyService {
      * @return Optional containing cached result if previously processed
      */
     public Optional<IdempotencyResult> checkIdempotency(String idempotencyKey, Long userId) {
-        if (idempotencyKey == null || idempotencyKey.isBlank()) {
-            return Optional.empty(); // No key = no idempotency check
-        }
-
-        // Validate key format (UUID v4)
-        if (!isValidIdempotencyKey(idempotencyKey)) {
-            log.warn("[Idempotency] Invalid key format rejected: {} for user {}", 
-                    maskKey(idempotencyKey), userId);
-            throw new InvalidIdempotencyKeyException("Idempotency key must be a valid UUID v4");
-        }
-
-        String redisKey = buildRedisKey(idempotencyKey, userId);
-        String cached = redisTemplate.opsForValue().get(redisKey);
-
-        if (cached == null) {
-            return Optional.empty();
-        }
-
-        try {
-            IdempotencyResult result = objectMapper.readValue(cached, IdempotencyResult.class);
-            
-            // If still processing, indicate conflict
-            if (result.getStatus() == IdempotencyStatus.PROCESSING) {
-                log.info("[Idempotency] Request in progress: {} for user {}", 
-                        maskKey(idempotencyKey), userId);
-                return Optional.of(result);
-            }
-
-            log.info("[Idempotency] Returning cached result for key: {} user: {}", 
-                    maskKey(idempotencyKey), userId);
-            return Optional.of(result);
-            
-        } catch (JsonProcessingException e) {
-            log.error("[Idempotency] Failed to deserialize cached result: {}", e.getMessage());
-            // Delete corrupted cache entry
-            redisTemplate.delete(redisKey);
-            return Optional.empty();
-        }
+        return store.checkIdempotency(idempotencyKey, userId);
     }
 
     /**
@@ -127,39 +110,7 @@ public class IdempotencyService {
      * @return true if lock acquired, false if already processing
      */
     public boolean markProcessing(String idempotencyKey, Long userId, String operationType) {
-        if (idempotencyKey == null || idempotencyKey.isBlank()) {
-            return true; // No key = proceed without idempotency
-        }
-
-        String redisKey = buildRedisKey(idempotencyKey, userId);
-        
-        IdempotencyResult processing = IdempotencyResult.builder()
-                .status(IdempotencyStatus.PROCESSING)
-                .operationType(operationType)
-                .startedAt(Instant.now())
-                .build();
-
-        try {
-            String json = objectMapper.writeValueAsString(processing);
-            
-            // SETNX: Only set if not exists (atomic lock acquisition)
-            Boolean acquired = redisTemplate.opsForValue()
-                    .setIfAbsent(redisKey, json, DEFAULT_TTL);
-            
-            if (Boolean.TRUE.equals(acquired)) {
-                log.debug("[Idempotency] Lock acquired for key: {} user: {} operation: {}", 
-                        maskKey(idempotencyKey), userId, operationType);
-                return true;
-            }
-            
-            log.info("[Idempotency] Lock not acquired (duplicate): {} user: {}", 
-                    maskKey(idempotencyKey), userId);
-            return false;
-            
-        } catch (JsonProcessingException e) {
-            log.error("[Idempotency] Failed to serialize processing state: {}", e.getMessage());
-            return true; // Fail open - allow request to proceed
-        }
+        return store.markProcessing(idempotencyKey, userId, operationType);
     }
 
     /**
@@ -172,7 +123,7 @@ public class IdempotencyService {
      */
     public void storeSuccess(String idempotencyKey, Long userId, 
                              HttpStatus httpStatus, Object responseBody) {
-        storeResult(idempotencyKey, userId, IdempotencyStatus.COMPLETED, httpStatus, responseBody, null);
+        store.storeSuccess(idempotencyKey, userId, httpStatus, responseBody);
     }
 
     /**
@@ -185,24 +136,34 @@ public class IdempotencyService {
      */
     public void storeFailure(String idempotencyKey, Long userId, 
                              HttpStatus httpStatus, String errorMessage) {
-        storeResult(idempotencyKey, userId, IdempotencyStatus.FAILED, httpStatus, null, errorMessage);
+        store.storeFailure(idempotencyKey, userId, httpStatus, errorMessage);
     }
 
     /**
      * Remove idempotency record (cleanup after transient errors).
+     * 
+     * @param idempotencyKey Client-provided UUID
+     * @param userId Current authenticated user ID
      */
     public void remove(String idempotencyKey, Long userId) {
-        if (idempotencyKey == null || idempotencyKey.isBlank()) {
-            return;
-        }
-        
-        String redisKey = buildRedisKey(idempotencyKey, userId);
-        redisTemplate.delete(redisKey);
-        log.debug("[Idempotency] Removed key: {} for user: {}", maskKey(idempotencyKey), userId);
+        store.remove(idempotencyKey, userId);
     }
 
     /**
+     * Get the underlying storage type.
+     * 
+     * @return "Redis" or "In-Memory"
+     */
+    public String getStorageType() {
+        return store.getStorageType();
+    }
+
+    // ========== STATIC UTILITY METHODS ==========
+
+    /**
      * Generate a new idempotency key (utility for clients).
+     * 
+     * @return A new UUID v4 string
      */
     public static String generateKey() {
         return UUID.randomUUID().toString();
@@ -210,63 +171,15 @@ public class IdempotencyService {
 
     /**
      * Validate idempotency key format (UUID v4).
+     * 
+     * @param key The key to validate
+     * @return true if valid UUID v4 format
      */
     public static boolean isValidIdempotencyKey(String key) {
         if (key == null || key.isBlank()) {
             return false;
         }
         return UUID_PATTERN.matcher(key).matches();
-    }
-
-    // ========== PRIVATE METHODS ==========
-
-    private void storeResult(String idempotencyKey, Long userId, IdempotencyStatus status,
-                             HttpStatus httpStatus, Object responseBody, String errorMessage) {
-        if (idempotencyKey == null || idempotencyKey.isBlank()) {
-            return;
-        }
-
-        String redisKey = buildRedisKey(idempotencyKey, userId);
-        
-        IdempotencyResult result = IdempotencyResult.builder()
-                .status(status)
-                .httpStatus(httpStatus.value())
-                .responseBody(responseBody != null ? serializeResponseBody(responseBody) : null)
-                .errorMessage(errorMessage)
-                .completedAt(Instant.now())
-                .build();
-
-        try {
-            String json = objectMapper.writeValueAsString(result);
-            redisTemplate.opsForValue().set(redisKey, json, DEFAULT_TTL);
-            
-            log.debug("[Idempotency] Stored {} result for key: {} user: {}", 
-                    status, maskKey(idempotencyKey), userId);
-            
-        } catch (JsonProcessingException e) {
-            log.error("[Idempotency] Failed to serialize result: {}", e.getMessage());
-        }
-    }
-
-    private String serializeResponseBody(Object body) {
-        try {
-            return objectMapper.writeValueAsString(body);
-        } catch (JsonProcessingException e) {
-            log.warn("[Idempotency] Failed to serialize response body: {}", e.getMessage());
-            return null;
-        }
-    }
-
-    private String buildRedisKey(String idempotencyKey, Long userId) {
-        // Scope by user to prevent cross-user replay attacks
-        return REDIS_PREFIX + userId + ":" + idempotencyKey;
-    }
-
-    private String maskKey(String key) {
-        if (key == null || key.length() < 8) {
-            return "***";
-        }
-        return key.substring(0, 8) + "...";
     }
 
     // ========== INNER CLASSES ==========

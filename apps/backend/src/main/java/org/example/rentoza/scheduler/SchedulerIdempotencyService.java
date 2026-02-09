@@ -1,103 +1,99 @@
 package org.example.rentoza.scheduler;
 
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.core.StringRedisTemplate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import jakarta.annotation.PostConstruct;
 import java.time.Duration;
-import java.time.Instant;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 
 /**
- * Service for ensuring scheduler idempotency.
+ * Facade service for scheduler lock operations.
  * 
- * <p>Prevents duplicate execution of scheduled tasks in clustered environments
- * or when schedulers accidentally fire multiple times (e.g., due to DST transitions).
- * 
- * <h3>How it works:</h3>
- * <ol>
- *   <li>Before executing a task, check if a lock exists for the task ID</li>
- *   <li>If no lock exists, acquire lock with TTL and execute</li>
- *   <li>If lock exists and not expired, skip execution</li>
- * </ol>
- * 
- * <h3>Storage Options:</h3>
- * <ul>
- *   <li><b>Redis:</b> Used when available (clustered deployments)</li>
- *   <li><b>In-Memory:</b> Fallback for single-instance deployments</li>
- * </ul>
+ * <p>This service provides a clean API for scheduled tasks to prevent
+ * concurrent execution across multiple application instances. It delegates
+ * to the appropriate {@link SchedulerLockStore} implementation based on
+ * the application configuration.</p>
  * 
  * <h3>Usage Example:</h3>
  * <pre>{@code
- * @Scheduled(cron = "0 0 * * * *", zone = "Europe/Belgrade")
- * public void hourlyTask() {
- *     String taskId = "checkout-window-" + LocalDate.now();
- *     
- *     if (idempotencyService.tryAcquireLock(taskId, Duration.ofHours(1))) {
- *         try {
- *             // ... actual task logic
- *         } finally {
- *             // Lock auto-expires via TTL, no explicit release needed
- *         }
- *     } else {
- *         log.debug("Skipping duplicate execution: {}", taskId);
+ * @Scheduled(fixedRate = 60000)
+ * public void myScheduledTask() {
+ *     if (!schedulerIdempotencyService.tryAcquireLock("my-task", Duration.ofMinutes(5))) {
+ *         log.debug("Task already running on another instance");
+ *         return;
+ *     }
+ *     try {
+ *         // Execute task logic
+ *     } finally {
+ *         schedulerIdempotencyService.releaseLock("my-task");
  *     }
  * }
  * }</pre>
  * 
- * <p><b>Phase 3 - Enterprise Hardening:</b> Part of Time Window Logic Improvement Plan
+ * <h3>Architecture:</h3>
+ * <ul>
+ *   <li><b>InMemorySchedulerLockStore</b>: Default when Redis is disabled</li>
+ *   <li><b>RedisSchedulerLockStore</b>: Distributed locks when Redis is enabled</li>
+ * </ul>
  * 
- * @since 2026-01 (Phase 3)
+ * @see SchedulerLockStore
+ * @see InMemorySchedulerLockStore
+ * @see RedisSchedulerLockStore
  */
 @Service
-@Slf4j
-@RequiredArgsConstructor
 public class SchedulerIdempotencyService {
 
-    private static final String LOCK_PREFIX = "scheduler:lock:";
+    private static final Logger log = LoggerFactory.getLogger(SchedulerIdempotencyService.class);
+
+    private final SchedulerLockStore lockStore;
 
     /**
-     * Redis template - may be null if Redis is not configured.
-     */
-    private final StringRedisTemplate redisTemplate;
-
-    /**
-     * In-memory fallback storage for non-clustered deployments.
-     */
-    private final ConcurrentMap<String, Instant> inMemoryLocks = new ConcurrentHashMap<>();
-
-    /**
-     * Try to acquire an idempotency lock for a scheduled task.
+     * Constructor injection ensures the correct implementation is used.
+     * Spring will select based on @Primary and @ConditionalOnProperty annotations.
      * 
-     * <p>Uses Redis if available, falls back to in-memory storage.
+     * @param lockStore The scheduler lock store implementation
+     */
+    public SchedulerIdempotencyService(SchedulerLockStore lockStore) {
+        this.lockStore = lockStore;
+    }
+
+    @PostConstruct
+    public void init() {
+        log.info("[SchedulerIdempotency] Initialized with {} storage", lockStore.getStorageType());
+    }
+
+    /**
+     * Attempt to acquire a distributed lock for a scheduled task.
      * 
-     * @param taskId Unique identifier for this task execution (e.g., "checkout-window-2026-01-02")
-     * @param ttl How long the lock should be held (prevents re-execution within this window)
-     * @return true if lock was acquired (task should execute), false if already locked (skip)
+     * <p>This method provides distributed mutex functionality for scheduled tasks.
+     * When multiple instances of the application are running, only one will
+     * successfully acquire the lock and execute the task.</p>
+     * 
+     * @param taskId Unique identifier for the scheduled task (e.g., "payment-reminder", "cleanup-job")
+     * @param ttl Time-to-live for the lock - should be longer than expected task duration
+     * @return true if lock was acquired (caller should execute task), false if another instance holds the lock
      */
     public boolean tryAcquireLock(String taskId, Duration ttl) {
         if (taskId == null || taskId.isBlank()) {
-            log.warn("[Idempotency] Invalid taskId provided, allowing execution");
+            log.warn("[SchedulerIdempotency] Invalid taskId provided, allowing execution");
             return true;
         }
 
         try {
-            if (isRedisAvailable()) {
-                return tryAcquireRedisLock(taskId, ttl);
-            } else {
-                return tryAcquireInMemoryLock(taskId, ttl);
-            }
+            return lockStore.tryAcquireLock(taskId, ttl);
         } catch (Exception e) {
-            log.warn("[Idempotency] Error checking lock for {}, allowing execution: {}", 
+            log.warn("[SchedulerIdempotency] Error acquiring lock for {}, allowing execution: {}", 
                     taskId, e.getMessage());
-            return true; // Fail open - better to execute twice than not at all
+            // Fail open - better to execute twice than not at all
+            return true;
         }
     }
 
     /**
-     * Check if a task is currently locked (without attempting to acquire).
+     * Check if a task is currently locked without attempting to acquire.
+     * 
+     * <p>Useful for monitoring or deciding whether to skip a task invocation.</p>
      * 
      * @param taskId Task identifier
      * @return true if task is locked (should not execute)
@@ -108,20 +104,19 @@ public class SchedulerIdempotencyService {
         }
 
         try {
-            if (isRedisAvailable()) {
-                String key = LOCK_PREFIX + taskId;
-                return Boolean.TRUE.equals(redisTemplate.hasKey(key));
-            } else {
-                return isInMemoryLocked(taskId);
-            }
+            return lockStore.isLocked(taskId);
         } catch (Exception e) {
-            log.warn("[Idempotency] Error checking lock status for {}: {}", taskId, e.getMessage());
+            log.warn("[SchedulerIdempotency] Error checking lock status for {}: {}", 
+                    taskId, e.getMessage());
             return false;
         }
     }
 
     /**
-     * Manually release a lock (typically not needed - locks auto-expire).
+     * Manually release a lock before its TTL expires.
+     * 
+     * <p>Typically not needed as locks auto-expire, but useful when a task
+     * completes early and you want to allow the next execution sooner.</p>
      * 
      * @param taskId Task identifier
      */
@@ -131,101 +126,20 @@ public class SchedulerIdempotencyService {
         }
 
         try {
-            if (isRedisAvailable()) {
-                String key = LOCK_PREFIX + taskId;
-                redisTemplate.delete(key);
-                log.debug("[Idempotency] Released Redis lock: {}", taskId);
-            } else {
-                inMemoryLocks.remove(taskId);
-                log.debug("[Idempotency] Released in-memory lock: {}", taskId);
-            }
+            lockStore.releaseLock(taskId);
         } catch (Exception e) {
-            log.warn("[Idempotency] Error releasing lock for {}: {}", taskId, e.getMessage());
+            log.warn("[SchedulerIdempotency] Error releasing lock for {}: {}", 
+                    taskId, e.getMessage());
         }
     }
 
     /**
-     * Clean up expired in-memory locks.
-     * Called periodically to prevent memory leaks.
+     * Get the storage type currently in use.
+     * Useful for diagnostics and logging.
+     * 
+     * @return Storage type identifier
      */
-    public void cleanupExpiredLocks() {
-        Instant now = Instant.now();
-        int removed = 0;
-
-        var iterator = inMemoryLocks.entrySet().iterator();
-        while (iterator.hasNext()) {
-            var entry = iterator.next();
-            if (entry.getValue().isBefore(now)) {
-                iterator.remove();
-                removed++;
-            }
-        }
-
-        if (removed > 0) {
-            log.debug("[Idempotency] Cleaned up {} expired in-memory locks", removed);
-        }
-    }
-
-    // ========================================================================
-    // PRIVATE METHODS
-    // ========================================================================
-
-    private boolean isRedisAvailable() {
-        try {
-            return redisTemplate != null && redisTemplate.getConnectionFactory() != null;
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    private boolean tryAcquireRedisLock(String taskId, Duration ttl) {
-        String key = LOCK_PREFIX + taskId;
-        String value = Instant.now().toString();
-
-        // SET NX (only if not exists) with TTL
-        Boolean acquired = redisTemplate.opsForValue()
-                .setIfAbsent(key, value, ttl);
-
-        if (Boolean.TRUE.equals(acquired)) {
-            log.debug("[Idempotency] Acquired Redis lock: {} (TTL: {})", taskId, ttl);
-            return true;
-        } else {
-            log.debug("[Idempotency] Lock already held: {} - skipping execution", taskId);
-            return false;
-        }
-    }
-
-    private boolean tryAcquireInMemoryLock(String taskId, Duration ttl) {
-        Instant now = Instant.now();
-        Instant expiresAt = now.plus(ttl);
-
-        // Clean up expired locks first
-        cleanupExpiredLocks();
-
-        // Try to acquire lock
-        Instant existingExpiry = inMemoryLocks.get(taskId);
-        
-        if (existingExpiry != null && existingExpiry.isAfter(now)) {
-            log.debug("[Idempotency] In-memory lock already held: {} (expires: {})", 
-                    taskId, existingExpiry);
-            return false;
-        }
-
-        // Acquire new lock
-        inMemoryLocks.put(taskId, expiresAt);
-        log.debug("[Idempotency] Acquired in-memory lock: {} (expires: {})", taskId, expiresAt);
-        return true;
-    }
-
-    private boolean isInMemoryLocked(String taskId) {
-        Instant expiry = inMemoryLocks.get(taskId);
-        if (expiry == null) {
-            return false;
-        }
-        if (expiry.isBefore(Instant.now())) {
-            inMemoryLocks.remove(taskId);
-            return false;
-        }
-        return true;
+    public String getStorageType() {
+        return lockStore.getStorageType();
     }
 }

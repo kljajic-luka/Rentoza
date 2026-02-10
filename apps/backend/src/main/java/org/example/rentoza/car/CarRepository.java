@@ -68,11 +68,13 @@ public interface CarRepository extends JpaRepository<Car, Long>, JpaSpecificatio
      * Use for: Car Detail Page, Edit Car Form
      * 
      * PERFORMANCE:
-     * - Single query using LEFT JOIN FETCH for all collections
-     * - Prevents LazyInitializationException in service layer
-     * - Optimized for single-entity retrieval
+     * - Eagerly loads owner, features, addOns via EntityGraph
+     * - Images loaded LAZILY (separate query) to avoid Cartesian product
+     *   when multiple collections are JOIN FETCHed simultaneously
+     *   (Set collections deduplicate but List<CarImage> does not)
+     * - Caller MUST be @Transactional to access images lazily
      */
-    @EntityGraph(attributePaths = {"owner", "features", "addOns", "images"})
+    @EntityGraph(attributePaths = {"owner", "features", "addOns"})
     @Query("SELECT c FROM Car c WHERE c.id = :id")
     Optional<Car> findWithDetailsById(@Param("id") Long id);
 

@@ -502,8 +502,12 @@ public class Car {
             }
             return List.of();
         }
+        // IMPORTANT: .distinct() guards against Hibernate Cartesian product
+        // duplication when multiple collections are eagerly fetched together.
+        // The @OrderBy("displayOrder ASC") on images ensures consistent ordering.
         return images.stream()
                 .map(CarImage::getImageUrl)
+                .distinct()
                 .toList();
     }
 

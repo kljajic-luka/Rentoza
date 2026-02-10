@@ -44,133 +44,134 @@ import { ReadOnlyPickupLocationComponent } from '../../components/readonly-picku
     <div class="booking-detail-page">
       <!-- Loading -->
       @if (isLoading()) {
-      <div class="loading-container">
-        <mat-spinner diameter="48"></mat-spinner>
-        <p>Učitavanje rezervacije...</p>
-      </div>
+        <div class="loading-container">
+          <mat-spinner diameter="48"></mat-spinner>
+          <p>Učitavanje rezervacije...</p>
+        </div>
       }
 
       <!-- Error -->
       @if (error()) {
-      <div class="error-container">
-        <mat-icon>error</mat-icon>
-        <h2>Greška</h2>
-        <p>{{ error() }}</p>
-        <button mat-raised-button color="primary" (click)="loadBooking()">Pokušaj ponovo</button>
-      </div>
+        <div class="error-container">
+          <mat-icon>error</mat-icon>
+          <h2>Greška</h2>
+          <p>{{ error() }}</p>
+          <button mat-raised-button color="primary" (click)="loadBooking()">Pokušaj ponovo</button>
+        </div>
       }
 
       <!-- Content -->
       @if (booking() && !isLoading()) {
-      <header class="page-header">
-        <button mat-icon-button (click)="goBack()">
-          <mat-icon>arrow_back</mat-icon>
-        </button>
-        <h1>Rezervacija #{{ booking()?.id }}</h1>
-      </header>
+        <header class="page-header">
+          <button mat-icon-button (click)="goBack()">
+            <mat-icon>arrow_back</mat-icon>
+          </button>
+          <h1>Rezervacija #{{ booking()?.id }}</h1>
+        </header>
 
-      <!-- Status badge -->
-      <mat-chip-set class="status-chips">
-        <mat-chip [class]="'status-' + booking()?.status?.toLowerCase()">
-          {{ getStatusLabel(booking()?.status) }}
-        </mat-chip>
-      </mat-chip-set>
+        <!-- Status badge -->
+        <mat-chip-set class="status-chips">
+          <mat-chip [class]="'status-' + booking()?.status?.toLowerCase()">
+            {{ getStatusLabel(booking()?.status) }}
+          </mat-chip>
+        </mat-chip-set>
 
-      <!-- Live countdown banner -->
-      @if (countdownText()) {
-      <div class="countdown-banner" [class.checkout-prep]="isCheckoutPrep()">
-        <mat-icon>{{ countdownIcon() }}</mat-icon>
-        <span>{{ countdownText() }}</span>
-      </div>
-      }
-
-      <!-- Car info -->
-      <mat-card class="car-card">
-        @if (booking()?.primaryImageUrl) {
-        <img [src]="booking()?.primaryImageUrl" [alt]="carTitle()" class="car-image" />
-        }
-        <mat-card-content>
-          <h3>{{ carTitle() }}</h3>
-          <p class="car-owner">
-            <mat-icon>person</mat-icon>
-            {{ booking()?.hostName || 'Domaćin' }}
-          </p>
-        </mat-card-content>
-      </mat-card>
-
-      <!-- Dates -->
-      <mat-card class="dates-card">
-        <mat-card-content>
-          <div class="date-row">
-            <mat-icon>event</mat-icon>
-            <div>
-              <span class="label">Od</span>
-              <span class="value">{{ booking()?.startTime | date : 'dd.MM.yyyy HH:mm' }}</span>
-            </div>
+        <!-- Live countdown banner -->
+        @if (countdownText()) {
+          <div class="countdown-banner" [class.checkout-prep]="isCheckoutPrep()">
+            <mat-icon>{{ countdownIcon() }}</mat-icon>
+            <span>{{ countdownText() }}</span>
           </div>
-          <mat-divider></mat-divider>
-          <div class="date-row">
-            <mat-icon>event</mat-icon>
-            <div>
-              <span class="label">Do</span>
-              <span class="value">{{ booking()?.endTime | date : 'dd.MM.yyyy HH:mm' }}</span>
-            </div>
-          </div>
-        </mat-card-content>
-      </mat-card>
-
-      <!-- Pickup Location -->
-      @if (pickupLocationData()) {
-      <div class="pickup-location-section">
-        <app-readonly-pickup-location
-          [pickupLocation]="pickupLocationData()"
-          [showDeliveryInfo]="hasDeliveryInfo()"
-          [deliveryDistance]="booking()?.deliveryDistanceKm ?? null"
-          [deliveryFee]="booking()?.deliveryFeeCalculated ?? null"
-          mode="standard"
-        />
-      </div>
-      }
-
-      <!-- Pricing -->
-      <mat-card class="pricing-card">
-        <mat-card-content>
-          <h4>Cena</h4>
-          <div class="price-row">
-            <span>Ukupno</span>
-            <span class="price">{{ booking()?.totalPrice | currency : 'EUR' }}</span>
-          </div>
-        </mat-card-content>
-      </mat-card>
-
-      <!-- Actions -->
-      <div class="actions">
-        @if (canCheckIn()) {
-        <button
-          mat-raised-button
-          color="primary"
-          [routerLink]="['/bookings', booking()?.id, 'check-in']"
-          class="check-in-button"
-        >
-          <mat-icon>login</mat-icon>
-          Započni Check-in
-        </button>
-        } @if (canReview()) {
-        <button
-          mat-stroked-button
-          color="accent"
-          [routerLink]="['/bookings', booking()?.id, 'review']"
-        >
-          <mat-icon>rate_review</mat-icon>
-          Ostavi recenziju
-        </button>
         }
 
-        <button mat-stroked-button [routerLink]="['/messages']">
-          <mat-icon>chat</mat-icon>
-          Poruke
-        </button>
-      </div>
+        <!-- Car info -->
+        <mat-card class="car-card">
+          @if (booking()?.primaryImageUrl) {
+            <img [src]="booking()?.primaryImageUrl" [alt]="carTitle()" class="car-image" />
+          }
+          <mat-card-content>
+            <h3>{{ carTitle() }}</h3>
+            <p class="car-owner">
+              <mat-icon>person</mat-icon>
+              {{ booking()?.hostName || 'Domaćin' }}
+            </p>
+          </mat-card-content>
+        </mat-card>
+
+        <!-- Dates -->
+        <mat-card class="dates-card">
+          <mat-card-content>
+            <div class="date-row">
+              <mat-icon>event</mat-icon>
+              <div>
+                <span class="label">Od</span>
+                <span class="value">{{ booking()?.startTime | date: 'dd.MM.yyyy HH:mm' }}</span>
+              </div>
+            </div>
+            <mat-divider></mat-divider>
+            <div class="date-row">
+              <mat-icon>event</mat-icon>
+              <div>
+                <span class="label">Do</span>
+                <span class="value">{{ booking()?.endTime | date: 'dd.MM.yyyy HH:mm' }}</span>
+              </div>
+            </div>
+          </mat-card-content>
+        </mat-card>
+
+        <!-- Pickup Location -->
+        @if (pickupLocationData()) {
+          <div class="pickup-location-section">
+            <app-readonly-pickup-location
+              [pickupLocation]="pickupLocationData()"
+              [showDeliveryInfo]="hasDeliveryInfo()"
+              [deliveryDistance]="booking()?.deliveryDistanceKm ?? null"
+              [deliveryFee]="booking()?.deliveryFeeCalculated ?? null"
+              mode="standard"
+            />
+          </div>
+        }
+
+        <!-- Pricing -->
+        <mat-card class="pricing-card">
+          <mat-card-content>
+            <h4>Cena</h4>
+            <div class="price-row">
+              <span>Ukupno</span>
+              <span class="price">{{ booking()?.totalPrice | currency: 'EUR' }}</span>
+            </div>
+          </mat-card-content>
+        </mat-card>
+
+        <!-- Actions -->
+        <div class="actions">
+          @if (canCheckIn()) {
+            <button
+              mat-raised-button
+              color="primary"
+              [routerLink]="['/bookings', booking()?.id, 'check-in']"
+              class="check-in-button"
+            >
+              <mat-icon>login</mat-icon>
+              Započni Check-in
+            </button>
+          }
+          @if (canReview()) {
+            <button
+              mat-stroked-button
+              color="accent"
+              [routerLink]="['/bookings', booking()?.id, 'review']"
+            >
+              <mat-icon>rate_review</mat-icon>
+              Ostavi recenziju
+            </button>
+          }
+
+          <button mat-stroked-button [routerLink]="['/messages']">
+            <mat-icon>chat</mat-icon>
+            Poruke
+          </button>
+        </div>
       }
     </div>
   `,
@@ -242,8 +243,13 @@ import { ReadOnlyPickupLocationComponent } from '../../components/readonly-picku
       }
 
       @keyframes pulse-detail {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.78; }
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.78;
+        }
       }
 
       .status-confirmed {
@@ -488,7 +494,17 @@ export class BookingDetailComponent implements OnInit {
     const status = b.status;
 
     // Upcoming (before trip starts)
-    if (['PENDING_APPROVAL', 'ACTIVE', 'APPROVED', 'CHECK_IN_OPEN', 'CHECK_IN_HOST_COMPLETE', 'CHECK_IN_COMPLETE'].includes(status) && start.getTime() > now.getTime()) {
+    if (
+      [
+        'PENDING_APPROVAL',
+        'ACTIVE',
+        'APPROVED',
+        'CHECK_IN_OPEN',
+        'CHECK_IN_HOST_COMPLETE',
+        'CHECK_IN_COMPLETE',
+      ].includes(status) &&
+      start.getTime() > now.getTime()
+    ) {
       return `Počinje za ${this.formatDuration(start.getTime() - now.getTime())}`;
     }
 

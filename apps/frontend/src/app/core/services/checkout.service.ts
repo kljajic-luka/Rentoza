@@ -124,7 +124,7 @@ export class CheckoutService {
       'isHost:',
       isHost,
       'isGuest:',
-      isGuest
+      isGuest,
     );
     return 'NOT_READY';
   });
@@ -147,7 +147,7 @@ export class CheckoutService {
         this._isLoading.set(false);
         this._error.set(this.extractErrorMessage(err));
         return throwError(() => err);
-      })
+      }),
     );
   }
 
@@ -164,7 +164,7 @@ export class CheckoutService {
           // Stop polling when checkout is complete
           return !status || status.status !== 'COMPLETED';
         }),
-        switchMap(() => this.loadStatus(bookingId).pipe(catchError(() => of(null))))
+        switchMap(() => this.loadStatus(bookingId).pipe(catchError(() => of(null)))),
       )
       .subscribe();
   }
@@ -190,7 +190,7 @@ export class CheckoutService {
     return this.http
       .post<CheckOutStatusDTO>(
         `${this.apiUrl}/${bookingId}/checkout/initiate?earlyReturn=${earlyReturn}`,
-        {}
+        {},
       )
       .pipe(
         tap((status) => {
@@ -201,7 +201,7 @@ export class CheckoutService {
           this._isLoading.set(false);
           this._error.set(this.extractErrorMessage(err));
           return throwError(() => err);
-        })
+        }),
       );
   }
 
@@ -236,7 +236,7 @@ export class CheckoutService {
           progress: 0,
           error: 'Kompresija nije uspela',
         });
-      }
+      },
     );
   }
 
@@ -244,7 +244,7 @@ export class CheckoutService {
     bookingId: number,
     blob: Blob,
     slotId: string,
-    photoType: CheckInPhotoType
+    photoType: CheckInPhotoType,
   ): void {
     const formData = new FormData();
     formData.append('file', blob, `${photoType}_${Date.now()}.jpg`);
@@ -324,7 +324,7 @@ export class CheckoutService {
     bookingId: number,
     endOdometer: number,
     endFuelLevel: number,
-    comment?: string
+    comment?: string,
   ): Observable<CheckOutStatusDTO> {
     this._isLoading.set(true);
 
@@ -353,7 +353,7 @@ export class CheckoutService {
           this._isLoading.set(false);
           this._error.set(this.extractErrorMessage(err));
           return throwError(() => err);
-        })
+        }),
       );
   }
 
@@ -366,13 +366,17 @@ export class CheckoutService {
     bookingId: number,
     file: File,
     slotId: string,
-    photoType: CheckInPhotoType
+    photoType: CheckInPhotoType,
   ): void {
+    // Create client-side preview URL for immediate display (same as guest upload)
+    const previewUrl = URL.createObjectURL(file);
+
     this.updateProgress(slotId, {
       slotId,
       photoType,
       state: 'compressing',
       progress: 0,
+      previewUrl,
     });
 
     this.compressionService.compressImage(file, { targetSizeKB: 500 }).then(
@@ -386,7 +390,7 @@ export class CheckoutService {
           progress: 0,
           error: 'Kompresija nije uspela',
         });
-      }
+      },
     );
   }
 
@@ -394,7 +398,7 @@ export class CheckoutService {
     bookingId: number,
     blob: Blob,
     slotId: string,
-    photoType: CheckInPhotoType
+    photoType: CheckInPhotoType,
   ): void {
     const formData = new FormData();
     formData.append('file', blob, `${photoType}_${Date.now()}.jpg`);
@@ -446,7 +450,7 @@ export class CheckoutService {
       estimatedCostRsd: number;
       photoIds?: number[];
     },
-    notes?: string
+    notes?: string,
   ): Observable<CheckOutStatusDTO> {
     this._isLoading.set(true);
 
@@ -477,7 +481,7 @@ export class CheckoutService {
           this._isLoading.set(false);
           this._error.set(this.extractErrorMessage(err));
           return throwError(() => err);
-        })
+        }),
       );
   }
 

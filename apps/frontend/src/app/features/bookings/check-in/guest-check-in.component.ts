@@ -249,6 +249,7 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
             <app-photo-comparison
               [hostPhotos]="status?.vehiclePhotos ?? []"
               [guestPhotos]="guestCapturedPhotos()"
+              [sessionId]="status?.checkInSessionId"
               (continue)="onComparisonContinue()"
               (reportDiscrepancy)="onReportDiscrepancy()"
             />
@@ -1514,7 +1515,7 @@ export class GuestCheckInComponent implements OnInit, OnDestroy {
           const confirmedPhotos: CheckInPhotoDTO[] = response.processedPhotos.map((p) => ({
             photoId: p.photoId ?? 0,
             photoType: p.photoType,
-            url: p.photoUrl ?? '',
+            url: p.url ?? '',
             uploadedAt: new Date().toISOString(),
             exifValidationStatus: (p.exifValidationStatus as ExifValidationStatus) ?? 'VALID',
             exifValidationMessage: null,

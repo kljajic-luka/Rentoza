@@ -181,7 +181,8 @@ export interface ProcessedPhotoDTO {
   accepted: boolean;
   rejectionReason?: string;
   exifValidationStatus?: string;
-  photoUrl?: string;
+  /** Photo URL from backend (matches CheckInPhotoDTO.url serialization) */
+  url?: string;
 }
 
 export interface PhotoDiscrepancySummaryDTO {

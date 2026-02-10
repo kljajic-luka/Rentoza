@@ -349,9 +349,19 @@ export class CheckInService implements OnDestroy {
           this._uploadedPhotoIds.set(ids);
 
           const progress = new Map(this._uploadProgress());
+          const damageCounters = new Map<string, number>();
           status.vehiclePhotos.forEach((photo) => {
-            progress.set(photo.photoType, {
-              slotId: photo.photoType,
+            const isDamage = photo.photoType.includes('DAMAGE');
+            let slotId: string;
+            if (isDamage) {
+              const count = (damageCounters.get(photo.photoType) ?? 0) + 1;
+              damageCounters.set(photo.photoType, count);
+              slotId = `${photo.photoType}-${photo.photoId}`;
+            } else {
+              slotId = photo.photoType;
+            }
+            progress.set(slotId, {
+              slotId,
               photoType: photo.photoType,
               state: 'complete',
               progress: 100,
@@ -402,11 +412,23 @@ export class CheckInService implements OnDestroy {
           if (status.vehiclePhotos) {
             const ids = status.vehiclePhotos.map((p) => p.photoId);
             this._uploadedPhotoIds.set(ids);
-            // Mark existing photos as complete (slotId = photoType for required photos)
+            // Mark existing photos as complete
+            // Required photos use photoType as slotId; damage photos need unique keys
+            // to prevent overwriting when multiple photos share the same photoType
             const progress = new Map(this._uploadProgress());
+            const damageCounters = new Map<string, number>();
             status.vehiclePhotos.forEach((photo) => {
-              progress.set(photo.photoType, {
-                slotId: photo.photoType, // Required photos use photoType as slotId
+              const isDamage = photo.photoType.includes('DAMAGE');
+              let slotId: string;
+              if (isDamage) {
+                const count = (damageCounters.get(photo.photoType) ?? 0) + 1;
+                damageCounters.set(photo.photoType, count);
+                slotId = `${photo.photoType}-${photo.photoId}`;
+              } else {
+                slotId = photo.photoType;
+              }
+              progress.set(slotId, {
+                slotId,
                 photoType: photo.photoType,
                 state: 'complete',
                 progress: 100,

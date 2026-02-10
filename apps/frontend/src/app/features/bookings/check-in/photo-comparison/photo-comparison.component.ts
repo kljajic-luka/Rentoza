@@ -67,127 +67,142 @@ export interface PhotoComparisonPair {
 
       <!-- Discrepancy Summary -->
       @if (discrepancySummary()) {
-      <div class="discrepancy-summary" [class]="discrepancySummary()!.severity.toLowerCase()">
-        <div class="summary-icon">
-          @switch (discrepancySummary()!.severity) { @case ('CRITICAL') {
-          <mat-icon>error</mat-icon>
-          } @case ('HIGH') {
-          <mat-icon>warning</mat-icon>
-          } @case ('MEDIUM') {
-          <mat-icon>info</mat-icon>
-          } @default {
-          <mat-icon>check_circle</mat-icon>
-          } }
+        <div class="discrepancy-summary" [class]="discrepancySummary()!.severity.toLowerCase()">
+          <div class="summary-icon">
+            @switch (discrepancySummary()!.severity) {
+              @case ('CRITICAL') {
+                <mat-icon>error</mat-icon>
+              }
+              @case ('HIGH') {
+                <mat-icon>warning</mat-icon>
+              }
+              @case ('MEDIUM') {
+                <mat-icon>info</mat-icon>
+              }
+              @default {
+                <mat-icon>check_circle</mat-icon>
+              }
+            }
+          </div>
+          <div class="summary-content">
+            <span class="summary-title">
+              {{ discrepancySummary()!.totalDiscrepancies }}
+              {{
+                discrepancySummary()!.totalDiscrepancies === 1
+                  ? 'razlika pronađena'
+                  : 'razlike pronađene'
+              }}
+            </span>
+            <span class="summary-message">
+              @switch (discrepancySummary()!.severity) {
+                @case ('CRITICAL') {
+                  Kritične razlike zahtevaju pažnju pre nastavka.
+                }
+                @case ('HIGH') {
+                  Značajne razlike pronađene. Pregledajte sa domaćinom.
+                }
+                @case ('MEDIUM') {
+                  Manje razlike primećene. Možete nastaviti.
+                }
+                @default {
+                  Bez značajnih razlika.
+                }
+              }
+            </span>
+          </div>
         </div>
-        <div class="summary-content">
-          <span class="summary-title">
-            {{ discrepancySummary()!.totalDiscrepancies }}
-            {{
-              discrepancySummary()!.totalDiscrepancies === 1
-                ? 'razlika pronađena'
-                : 'razlike pronađene'
-            }}
-          </span>
-          <span class="summary-message">
-            @switch (discrepancySummary()!.severity) { @case ('CRITICAL') { Kritične razlike
-            zahtevaju pažnju pre nastavka. } @case ('HIGH') { Značajne razlike pronađene.
-            Pregledajte sa domaćinom. } @case ('MEDIUM') { Manje razlike primećene. Možete
-            nastaviti. } @default { Bez značajnih razlika. } }
-          </span>
-        </div>
-      </div>
       }
 
       <!-- Photo Grid -->
       <div class="photos-grid">
         @for (pair of photoComparisons(); track pair.photoType) {
-        <mat-card class="photo-pair-card" [class.has-discrepancy]="pair.hasDiscrepancy">
-          <mat-card-header>
-            <mat-card-title>{{ getPhotoTypeName(pair.photoType) }}</mat-card-title>
-            @if (pair.hasDiscrepancy) {
-            <mat-chip color="warn">
-              <mat-icon>warning</mat-icon>
-              Razlika
-            </mat-chip>
-            }
-          </mat-card-header>
+          <mat-card class="photo-pair-card" [class.has-discrepancy]="pair.hasDiscrepancy">
+            <mat-card-header>
+              <mat-card-title>{{ getPhotoTypeName(pair.photoType) }}</mat-card-title>
+              @if (pair.hasDiscrepancy) {
+                <mat-chip color="warn">
+                  <mat-icon>warning</mat-icon>
+                  Razlika
+                </mat-chip>
+              }
+            </mat-card-header>
 
-          <mat-card-content>
-            <div class="photo-columns">
-              <!-- Host Photo -->
-              <div class="photo-column">
-                <label>Domaćin</label>
-                @if (pair.hostPhotoUrl) {
-                <img
-                  [src]="pair.hostPhotoUrl"
-                  [alt]="'Domaćin - ' + pair.photoType"
-                  (click)="openPhotoViewer(pair.hostPhotoUrl!)"
-                  class="comparison-photo"
-                />
-                } @else {
-                <div class="no-photo">
-                  <mat-icon>image_not_supported</mat-icon>
-                  <span>Nema fotografije</span>
+            <mat-card-content>
+              <div class="photo-columns">
+                <!-- Host Photo -->
+                <div class="photo-column">
+                  <label>Domaćin</label>
+                  @if (pair.hostPhotoUrl) {
+                    <img
+                      [src]="pair.hostPhotoUrl"
+                      [alt]="'Domaćin - ' + pair.photoType"
+                      (click)="openPhotoViewer(pair.hostPhotoUrl!)"
+                      class="comparison-photo"
+                    />
+                  } @else {
+                    <div class="no-photo">
+                      <mat-icon>image_not_supported</mat-icon>
+                      <span>Nema fotografije</span>
+                    </div>
+                  }
                 </div>
-                }
-              </div>
 
-              <!-- Comparison Indicator -->
-              <div class="comparison-indicator">
-                @if (pair.hasDiscrepancy) {
-                <mat-icon class="discrepancy-icon">compare</mat-icon>
-                } @else {
-                <mat-icon class="match-icon">check</mat-icon>
-                }
-              </div>
-
-              <!-- Guest Photo -->
-              <div class="photo-column">
-                <label>Vaša fotografija</label>
-                @if (pair.guestPhotoUrl) {
-                <img
-                  [src]="pair.guestPhotoUrl"
-                  [alt]="'Gost - ' + pair.photoType"
-                  (click)="openPhotoViewer(pair.guestPhotoUrl!)"
-                  class="comparison-photo"
-                />
-                } @else {
-                <div class="no-photo">
-                  <mat-icon>image_not_supported</mat-icon>
-                  <span>Nema fotografije</span>
+                <!-- Comparison Indicator -->
+                <div class="comparison-indicator">
+                  @if (pair.hasDiscrepancy) {
+                    <mat-icon class="discrepancy-icon">compare</mat-icon>
+                  } @else {
+                    <mat-icon class="match-icon">check</mat-icon>
+                  }
                 </div>
-                }
-              </div>
-            </div>
 
-            <!-- Discrepancy Details -->
-            @if (pair.discrepancy) {
-            <div class="discrepancy-details">
-              <mat-icon>info</mat-icon>
-              <span>{{ pair.discrepancy.description }}</span>
-            </div>
-            }
-          </mat-card-content>
-        </mat-card>
+                <!-- Guest Photo -->
+                <div class="photo-column">
+                  <label>Vaša fotografija</label>
+                  @if (pair.guestPhotoUrl) {
+                    <img
+                      [src]="pair.guestPhotoUrl"
+                      [alt]="'Gost - ' + pair.photoType"
+                      (click)="openPhotoViewer(pair.guestPhotoUrl!)"
+                      class="comparison-photo"
+                    />
+                  } @else {
+                    <div class="no-photo">
+                      <mat-icon>image_not_supported</mat-icon>
+                      <span>Nema fotografije</span>
+                    </div>
+                  }
+                </div>
+              </div>
+
+              <!-- Discrepancy Details -->
+              @if (pair.discrepancy) {
+                <div class="discrepancy-details">
+                  <mat-icon>info</mat-icon>
+                  <span>{{ pair.discrepancy.description }}</span>
+                </div>
+              }
+            </mat-card-content>
+          </mat-card>
         }
       </div>
 
       <!-- Action Buttons -->
       <div class="comparison-actions">
         @if (hasBlockingDiscrepancies()) {
-        <p class="blocking-message">
-          <mat-icon>block</mat-icon>
-          Morate rešiti kritične razlike pre nastavka
-        </p>
-        <button mat-flat-button color="warn" (click)="reportDiscrepancy.emit()">
-          <mat-icon>report</mat-icon>
-          Prijavi problem
-        </button>
+          <p class="blocking-message">
+            <mat-icon>block</mat-icon>
+            Morate rešiti kritične razlike pre nastavka
+          </p>
+          <button mat-flat-button color="warn" (click)="reportDiscrepancy.emit()">
+            <mat-icon>report</mat-icon>
+            Prijavi problem
+          </button>
         } @else {
-        <button mat-flat-button color="primary" (click)="continue.emit()">
-          <mat-icon>check</mat-icon>
-          Potvrdi i nastavi
-        </button>
+          <button mat-flat-button color="primary" (click)="continue.emit()">
+            <mat-icon>check</mat-icon>
+            Potvrdi i nastavi
+          </button>
         }
       </div>
     </div>
@@ -440,11 +455,11 @@ export class PhotoComparisonComponent {
     // Debug: Log incoming photos
     console.log(
       '[PhotoComparison] Host photos:',
-      this.hostPhotos.map((p) => ({ type: p.photoType, url: p.url?.substring(0, 50) }))
+      this.hostPhotos.map((p) => ({ type: p.photoType, url: p.url?.substring(0, 50) })),
     );
     console.log(
       '[PhotoComparison] Guest photos:',
-      this.guestPhotos.map((p) => ({ type: p.photoType, url: p.url?.substring(0, 50) }))
+      this.guestPhotos.map((p) => ({ type: p.photoType, url: p.url?.substring(0, 50) })),
     );
     console.log('[PhotoComparison] SessionId:', this.sessionId);
 
@@ -456,15 +471,15 @@ export class PhotoComparisonComponent {
       const guestPhoto = this.guestPhotos.find((p) => p.photoType === guestType);
 
       const discrepancy = this.discrepancies.find(
-        (d) => d.photoType === guestType || d.photoType === hostType
+        (d) => d.photoType === guestType || d.photoType === hostType,
       );
 
       const hostUrl = hostPhoto ? this.getHostPhotoUrl(hostPhoto) : undefined;
       console.log(
         `[PhotoComparison] ${baseType}: hostPhoto=${!!hostPhoto}, hostUrl=${hostUrl?.substring(
           0,
-          80
-        )}`
+          80,
+        )}`,
       );
 
       pairs.push({
@@ -486,11 +501,14 @@ export class PhotoComparisonComponent {
     if (this.discrepancies.length === 0) return null;
 
     const severityOrder = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'];
-    const maxSeverity = this.discrepancies.reduce((max, d) => {
-      const maxIndex = severityOrder.indexOf(max);
-      const currentIndex = severityOrder.indexOf(d.severity);
-      return currentIndex < maxIndex ? d.severity : max;
-    }, 'LOW' as PhotoDiscrepancySummaryDTO['severity']);
+    const maxSeverity = this.discrepancies.reduce(
+      (max, d) => {
+        const maxIndex = severityOrder.indexOf(max);
+        const currentIndex = severityOrder.indexOf(d.severity);
+        return currentIndex < maxIndex ? d.severity : max;
+      },
+      'LOW' as PhotoDiscrepancySummaryDTO['severity'],
+    );
 
     return {
       totalDiscrepancies: this.discrepancies.length,
@@ -521,48 +539,51 @@ export class PhotoComparisonComponent {
    * Uses the check-in photo API endpoint.
    * Transforms storage path to proper API URL.
    */
-  private getHostPhotoUrl(photo: CheckInPhotoDTO): string {
+  /**
+   * Resolve any photo URL to a displayable format.
+   * Handles: signed URLs (https://), data URLs, storage key paths, and fallbacks.
+   */
+  private resolvePhotoUrl(photo: CheckInPhotoDTO): string {
     const url = photo.url;
+    if (!url) return '';
 
-    // If URL is already absolute, return as-is
-    if (url && url.startsWith('http')) {
-      return url;
+    // Absolute signed URLs from Supabase — use as-is
+    if (url.startsWith('http')) return url;
+
+    // Local data URLs (base64 previews before upload) — use as-is
+    if (url.startsWith('data:')) return url;
+
+    // Legacy fallback: transform storage key paths to backend API URLs
+    const baseUrl = environment.baseApiUrl.replace(/\/$/, '');
+
+    if (url.startsWith('checkin/')) {
+      return `${baseUrl}/checkin/photos/${url.replace(/^checkin\//, '')}`;
+    }
+    if (url.startsWith('guest-checkin/')) {
+      return `${baseUrl}/guest-checkin/photos/${url.replace(/^guest-checkin\//, '')}`;
+    }
+    if (url.startsWith('checkout/')) {
+      return `${baseUrl}/checkout/photos/${url.replace(/^checkout\//, '')}`;
+    }
+    if (url.startsWith('host-checkout/')) {
+      return `${baseUrl}/checkout/photos/${url.replace(/^host-checkout\//, '')}`;
+    }
+    if (url.startsWith('bookings/')) {
+      // Storage key format: bookings/{id}/{party}/{type}/{filename}
+      // Generate a signed URL via the backend photo-signing endpoint
+      return `${baseUrl}/photos/signed?key=${encodeURIComponent(url)}`;
     }
 
-    // If it's a data URL (shouldn't happen for host photos, but handle it)
-    if (url?.startsWith('data:')) {
-      return url;
-    }
-
-    // Transform storage path to API URL
-    if (url) {
-      const baseUrl = environment.baseApiUrl.replace(/\/$/, ''); // Remove trailing slash
-      // Strip "checkin/" prefix if present (storage key format)
-      const pathSegment = url.replace(/^checkin\//, '');
-      return `${baseUrl}/checkin/photos/${pathSegment}`;
-    }
-
-    // Fallback: use sessionId and photoId if available
-    if (this.sessionId && photo.photoId) {
-      return `${environment.baseApiUrl}/checkin/photos/${this.sessionId}/${photo.photoId}`;
-    }
-
-    return '';
+    // Generic fallback
+    return `${baseUrl}/${url}`;
   }
 
-  /**
-   * Get URL for guest photo (may be local data URL or backend URL).
-   * Guest photos captured during session are stored as data URLs.
-   * After submission, they have backend URLs.
-   */
-  private getGuestPhotoUrl(photo: CheckInPhotoDTO): string {
-    // Check if it's a local data URL (captured but not yet submitted)
-    if (photo.url?.startsWith('data:')) {
-      return photo.url;
-    }
+  private getHostPhotoUrl(photo: CheckInPhotoDTO): string {
+    return this.resolvePhotoUrl(photo);
+  }
 
-    // Otherwise, use the guest-checkin photos endpoint
-    return `${environment.baseApiUrl}/guest-checkin/photos/${this.sessionId}/${photo.photoId}`;
+  private getGuestPhotoUrl(photo: CheckInPhotoDTO): string {
+    return this.resolvePhotoUrl(photo);
   }
 
   protected openPhotoViewer(photoUrl: string): void {

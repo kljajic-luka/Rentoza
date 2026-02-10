@@ -189,10 +189,11 @@ public enum CheckInPhotoType {
     
     /**
      * Check if this photo type is a host upload (vs guest or checkout).
+     * Excludes HOST_CHECKOUT_* types which belong to the checkout phase.
      * @return true if uploaded by host during check-in
      */
     public boolean isHostPhoto() {
-        return name().startsWith("HOST_");
+        return name().startsWith("HOST_") && !name().startsWith("HOST_CHECKOUT_");
     }
     
     /**

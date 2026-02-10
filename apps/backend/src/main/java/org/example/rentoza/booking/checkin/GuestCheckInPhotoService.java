@@ -17,8 +17,11 @@ import org.springframework.transaction.annotation.Transactional;
 import org.example.rentoza.storage.SupabaseStorageService;
 
 import javax.imageio.ImageIO;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -238,21 +241,46 @@ public class GuestCheckInPhotoService {
                 String.format("Fotografija je prevelika. Maksimum: %dMB", maxSizeMb));
         }
         
-        // Validate image dimensions (prevents memory exhaustion on mobile)
+        // Validate and auto-resize image dimensions if needed
         try {
             BufferedImage img = ImageIO.read(new ByteArrayInputStream(photoBytes));
             if (img == null) {
                 throw new IllegalArgumentException("Nije moguće pročitati fotografiju. Proverite format slike.");
             }
             if (img.getWidth() > maxWidthPixels || img.getHeight() > maxHeightPixels) {
-                throw new IllegalArgumentException(
-                    String.format("Rezolucija fotografije je prevelika (%dx%d). Maksimum: %dx%d piksela. " +
-                        "Molimo smanjite veličinu slike ili omogućite kompresiju u aplikaciji.",
-                        img.getWidth(), img.getHeight(), maxWidthPixels, maxHeightPixels));
+                // Auto-resize instead of rejecting - preserves evidence for liability
+                log.info("[GuestCheckIn] Image {}x{} exceeds max {}x{}, auto-resizing", 
+                    img.getWidth(), img.getHeight(), maxWidthPixels, maxHeightPixels);
+                
+                // Calculate scaled dimensions preserving aspect ratio
+                double widthRatio = (double) maxWidthPixels / img.getWidth();
+                double heightRatio = (double) maxHeightPixels / img.getHeight();
+                double scale = Math.min(widthRatio, heightRatio);
+                
+                int newWidth = (int) (img.getWidth() * scale);
+                int newHeight = (int) (img.getHeight() * scale);
+                
+                // Create resized image with high quality
+                BufferedImage resizedImg = new BufferedImage(newWidth, newHeight, BufferedImage.TYPE_INT_RGB);
+                Graphics2D g2d = resizedImg.createGraphics();
+                g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+                g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+                g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2d.drawImage(img, 0, 0, newWidth, newHeight, null);
+                g2d.dispose();
+                
+                // Convert back to bytes
+                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                ImageIO.write(resizedImg, "jpg", baos);
+                photoBytes = baos.toByteArray();
+                
+                log.info("[GuestCheckIn] Image resized from {}x{} to {}x{}, new size: {} bytes", 
+                    img.getWidth(), img.getHeight(), newWidth, newHeight, photoBytes.length);
+            } else {
+                log.debug("[GuestCheckIn] Image dimensions validated: {}x{}", img.getWidth(), img.getHeight());
             }
-            log.debug("[GuestCheckIn] Image dimensions validated: {}x{}", img.getWidth(), img.getHeight());
         } catch (IOException e) {
-            log.warn("[GuestCheckIn] Failed to read image dimensions: {}", e.getMessage());
+            log.warn("[GuestCheckIn] Failed to read/resize image: {}", e.getMessage());
             // Continue processing - EXIF validation will catch corrupt images
         }
         

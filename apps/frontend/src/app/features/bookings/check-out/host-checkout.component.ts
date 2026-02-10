@@ -99,7 +99,10 @@ import { environment } from '@environments/environment';
               <div class="photo-section">
                 @if (status?.checkInPhotos?.length) {
                   <div class="photo-grid">
-                    @for (photo of status!.checkInPhotos; track photo.photoId) {
+                    @for (
+                      photo of status!.checkInPhotos;
+                      track photo.photoType + '-' + photo.photoId
+                    ) {
                       <div class="photo-item" (click)="openPhoto(photo.url)">
                         <img
                           [src]="getPhotoUrl(photo.url)"
@@ -121,7 +124,10 @@ import { environment } from '@environments/environment';
               <div class="photo-section">
                 @if (status?.checkoutPhotos?.length) {
                   <div class="photo-grid">
-                    @for (photo of status!.checkoutPhotos; track photo.photoId) {
+                    @for (
+                      photo of status!.checkoutPhotos;
+                      track photo.photoType + '-' + photo.photoId
+                    ) {
                       <div class="photo-item" (click)="openPhoto(photo.url)">
                         <img
                           [src]="getPhotoUrl(photo.url)"
@@ -202,7 +208,20 @@ import { environment } from '@environments/environment';
                           @if (getDamagePhotoProgress(i); as progress) {
                             @if (progress.state === 'complete') {
                               <div class="uploaded-preview">
-                                <img [src]="getPhotoUrl(progress.result?.url || '')" alt="" />
+                                <img
+                                  [src]="
+                                    progress.previewUrl || getPhotoUrl(progress.result?.url || '')
+                                  "
+                                  alt=""
+                                />
+                              </div>
+                            } @else if (progress.previewUrl) {
+                              <div class="uploaded-preview uploading">
+                                <img [src]="progress.previewUrl" alt="" class="uploading-preview" />
+                                <mat-progress-bar
+                                  mode="determinate"
+                                  [value]="progress.progress"
+                                ></mat-progress-bar>
                               </div>
                             } @else {
                               <mat-progress-bar
@@ -476,6 +495,16 @@ export class HostCheckoutComponent {
     if (url.startsWith('checkout/')) {
       const pathSegment = url.replace(/^checkout\//, '');
       return `${baseUrl}/checkout/photos/${pathSegment}`;
+    }
+
+    if (url.startsWith('host-checkout/')) {
+      const pathSegment = url.replace(/^host-checkout\//, '');
+      return `${baseUrl}/checkout/photos/${pathSegment}`;
+    }
+
+    if (url.startsWith('bookings/')) {
+      // Storage key format: bookings/{id}/{party}/{type}/{filename}
+      return `${baseUrl}/photos/signed?key=${encodeURIComponent(url)}`;
     }
 
     // Fallback for any other format

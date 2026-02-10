@@ -76,7 +76,7 @@ import { environment } from '@environments/environment';
 
             @if (status?.checkInPhotos?.length) {
               <div class="photo-grid">
-                @for (photo of status!.checkInPhotos; track photo.photoId) {
+                @for (photo of status!.checkInPhotos; track photo.photoType + '-' + photo.photoId) {
                   <div class="photo-item" (click)="openPhoto(photo.url)">
                     <img [src]="getPhotoUrl(photo.url)" [alt]="getPhotoLabel(photo.photoType)" />
                     <span class="label">{{ getPhotoLabel(photo.photoType) }}</span>
@@ -1058,6 +1058,16 @@ export class GuestCheckoutComponent implements OnInit {
     if (url.startsWith('checkout/')) {
       const pathSegment = url.replace(/^checkout\//, '');
       return `${baseUrl}/checkout/photos/${pathSegment}`;
+    }
+
+    if (url.startsWith('host-checkout/')) {
+      const pathSegment = url.replace(/^host-checkout\//, '');
+      return `${baseUrl}/checkout/photos/${pathSegment}`;
+    }
+
+    if (url.startsWith('bookings/')) {
+      // Storage key format: bookings/{id}/{party}/{type}/{filename}
+      return `${baseUrl}/photos/signed?key=${encodeURIComponent(url)}`;
     }
 
     // Fallback for any other format

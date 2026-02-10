@@ -988,7 +988,7 @@ public class CheckOutService {
             return "check-in-photos";
         }
         return switch (bucket) {
-            case CHECKIN_PII -> "checkin-pii";
+            case CHECKIN_PII -> "check-in-pii";
             case CHECKIN_STANDARD -> "check-in-photos";
         };
     }
@@ -1001,7 +1001,7 @@ public class CheckOutService {
             return "check-in-photos";
         }
         return switch (bucket) {
-            case CHECKIN_PII -> "checkin-pii";
+            case CHECKIN_PII -> "check-in-pii";
             case CHECKIN_STANDARD -> "check-in-photos";
         };
     }

@@ -16,7 +16,13 @@ import {
   ChangeDetectionStrategy,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
+import {
+  FormsModule,
+  ReactiveFormsModule,
+  FormBuilder,
+  FormGroup,
+  Validators,
+} from '@angular/forms';
 
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -95,7 +101,10 @@ import { environment } from '@environments/environment';
                   <div class="photo-grid">
                     @for (photo of status!.checkInPhotos; track photo.photoId) {
                       <div class="photo-item" (click)="openPhoto(photo.url)">
-                        <img [src]="getPhotoUrl(photo.url)" [alt]="getPhotoLabel(photo.photoType)">
+                        <img
+                          [src]="getPhotoUrl(photo.url)"
+                          [alt]="getPhotoLabel(photo.photoType)"
+                        />
                         <span class="label">{{ getPhotoLabel(photo.photoType) }}</span>
                       </div>
                     }
@@ -114,7 +123,10 @@ import { environment } from '@environments/environment';
                   <div class="photo-grid">
                     @for (photo of status!.checkoutPhotos; track photo.photoId) {
                       <div class="photo-item" (click)="openPhoto(photo.url)">
-                        <img [src]="getPhotoUrl(photo.url)" [alt]="getPhotoLabel(photo.photoType)">
+                        <img
+                          [src]="getPhotoUrl(photo.url)"
+                          [alt]="getPhotoLabel(photo.photoType)"
+                        />
                         <span class="label">{{ getPhotoLabel(photo.photoType) }}</span>
                       </div>
                     }
@@ -142,18 +154,16 @@ import { environment } from '@environments/environment';
               </div>
 
               <div class="action-buttons">
-                <button 
-                  mat-raised-button 
+                <button
+                  mat-raised-button
                   color="primary"
                   [disabled]="!conditionAccepted || isSubmitting()"
-                  (click)="confirmCheckout()">
+                  (click)="confirmCheckout()"
+                >
                   <mat-icon>check_circle</mat-icon>
                   Potvrdi checkout
                 </button>
-                <button 
-                  mat-stroked-button 
-                  color="warn"
-                  (click)="showDamageReport()">
+                <button mat-stroked-button color="warn" (click)="showDamageReport()">
                   <mat-icon>report_problem</mat-icon>
                   Prijavi oštećenje
                 </button>
@@ -169,16 +179,17 @@ import { environment } from '@environments/environment';
                 <form [formGroup]="damageForm">
                   <mat-form-field appearance="outline" class="full-width">
                     <mat-label>Opis oštećenja</mat-label>
-                    <textarea 
-                      matInput 
-                      formControlName="description" 
+                    <textarea
+                      matInput
+                      formControlName="description"
                       rows="4"
-                      placeholder="Opišite uočena oštećenja..."></textarea>
+                      placeholder="Opišite uočena oštećenja..."
+                    ></textarea>
                   </mat-form-field>
 
                   <mat-form-field appearance="outline">
                     <mat-label>Procenjena šteta (RSD)</mat-label>
-                    <input matInput type="number" formControlName="estimatedCost" min="0">
+                    <input matInput type="number" formControlName="estimatedCost" min="0" />
                     <span matSuffix>RSD</span>
                   </mat-form-field>
 
@@ -191,10 +202,13 @@ import { environment } from '@environments/environment';
                           @if (getDamagePhotoProgress(i); as progress) {
                             @if (progress.state === 'complete') {
                               <div class="uploaded-preview">
-                                <img [src]="getPhotoUrl(progress.result?.url || '')" alt="">
+                                <img [src]="getPhotoUrl(progress.result?.url || '')" alt="" />
                               </div>
                             } @else {
-                              <mat-progress-bar mode="determinate" [value]="progress.progress"></mat-progress-bar>
+                              <mat-progress-bar
+                                mode="determinate"
+                                [value]="progress.progress"
+                              ></mat-progress-bar>
                             }
                           } @else {
                             <button mat-icon-button (click)="triggerDamageUpload(i)">
@@ -206,7 +220,8 @@ import { environment } from '@environments/environment';
                             accept="image/*"
                             [id]="'damage-upload-' + i"
                             (change)="onDamageFileSelected($event, i)"
-                            hidden>
+                            hidden
+                          />
                         </div>
                       }
                     </div>
@@ -219,19 +234,21 @@ import { environment } from '@environments/environment';
                 </form>
 
                 <div class="action-buttons">
-                  <button mat-button (click)="cancelDamageReport()">
-                    Odustani
-                  </button>
-                  <button 
-                    mat-raised-button 
+                  <button mat-button (click)="cancelDamageReport()">Odustani</button>
+                  <button
+                    mat-raised-button
                     color="warn"
                     [disabled]="!damageForm.valid || isSubmitting()"
-                    (click)="submitDamageReport()">
+                    (click)="submitDamageReport()"
+                  >
                     <span [class.hidden]="isSubmitting()">
                       <mat-icon>send</mat-icon>
                       Prijavi i završi checkout
                     </span>
-                    <mat-progress-bar *ngIf="isSubmitting()" mode="indeterminate"></mat-progress-bar>
+                    <mat-progress-bar
+                      *ngIf="isSubmitting()"
+                      mode="indeterminate"
+                    ></mat-progress-bar>
                   </button>
                 </div>
               </div>
@@ -241,166 +258,168 @@ import { environment } from '@environments/environment';
       </mat-card>
     </div>
   `,
-  styles: [`
-    .host-checkout {
-      padding: 16px 0;
-    }
-
-    mat-card-header {
-      margin-bottom: 16px;
-
-      mat-icon[mat-card-avatar] {
-        background: var(--primary-color);
-        color: white;
-        border-radius: 50%;
-        padding: 8px;
-        font-size: 24px;
-        width: 40px;
-        height: 40px;
-      }
-    }
-
-    .trip-summary {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 24px;
-      padding: 16px;
-      background: var(--surface-color);
-      border-radius: 8px;
-      margin-bottom: 16px;
-
-      .summary-row {
-        display: flex;
-        gap: 8px;
-
-        &.late {
-          color: var(--warn-color);
-        }
-
-        .negative {
-          color: var(--warn-color);
-        }
-      }
-    }
-
-    .photo-tabs {
-      margin: 16px 0;
-    }
-
-    .photo-section {
-      padding: 16px 0;
-    }
-
-    .photo-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-      gap: 12px;
-    }
-
-    .photo-item {
-      position: relative;
-      aspect-ratio: 4/3;
-      border-radius: 8px;
-      overflow: hidden;
-      cursor: pointer;
-      background: var(--surface-color);
-
-      img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
+  styles: [
+    `
+      .host-checkout {
+        padding: 16px 0;
       }
 
-      .label {
-        position: absolute;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        padding: 4px 8px;
-        background: rgba(0, 0, 0, 0.6);
-        color: white;
-        font-size: 0.7rem;
-      }
-    }
+      mat-card-header {
+        margin-bottom: 16px;
 
-    .empty-state {
-      text-align: center;
-      padding: 32px;
-      color: var(--text-secondary);
-    }
-
-    .confirmation-section {
-      padding: 16px 0;
-
-      h3 {
-        margin: 0 0 16px;
-      }
-    }
-
-    .condition-check {
-      margin-bottom: 24px;
-    }
-
-    .action-buttons {
-      display: flex;
-      gap: 16px;
-      flex-wrap: wrap;
-    }
-
-    .damage-form {
-      h4 {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        margin: 0 0 16px;
-      }
-
-      .full-width {
-        width: 100%;
-      }
-
-      .damage-photos {
-        margin: 16px 0;
-
-        p {
-          margin: 0 0 8px;
-          font-size: 0.875rem;
-          color: var(--text-secondary);
+        mat-icon[mat-card-avatar] {
+          background: var(--primary-color);
+          color: white;
+          border-radius: 50%;
+          padding: 8px;
+          font-size: 24px;
+          width: 40px;
+          height: 40px;
         }
       }
 
-      .photo-upload-row {
+      .trip-summary {
         display: flex;
-        gap: 12px;
-      }
-
-      .damage-upload-slot {
-        width: 80px;
-        height: 80px;
-        border: 2px dashed var(--border-color);
+        flex-wrap: wrap;
+        gap: 24px;
+        padding: 16px;
+        background: var(--surface-color);
         border-radius: 8px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        overflow: hidden;
+        margin-bottom: 16px;
 
-        .uploaded-preview {
-          width: 100%;
-          height: 100%;
+        .summary-row {
+          display: flex;
+          gap: 8px;
 
-          img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
+          &.late {
+            color: var(--warn-color);
+          }
+
+          .negative {
+            color: var(--warn-color);
           }
         }
       }
-    }
 
-    .hidden {
-      display: none;
-    }
-  `],
+      .photo-tabs {
+        margin: 16px 0;
+      }
+
+      .photo-section {
+        padding: 16px 0;
+      }
+
+      .photo-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        gap: 12px;
+      }
+
+      .photo-item {
+        position: relative;
+        aspect-ratio: 4/3;
+        border-radius: 8px;
+        overflow: hidden;
+        cursor: pointer;
+        background: var(--surface-color);
+
+        img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+
+        .label {
+          position: absolute;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          padding: 4px 8px;
+          background: rgba(0, 0, 0, 0.6);
+          color: white;
+          font-size: 0.7rem;
+        }
+      }
+
+      .empty-state {
+        text-align: center;
+        padding: 32px;
+        color: var(--text-secondary);
+      }
+
+      .confirmation-section {
+        padding: 16px 0;
+
+        h3 {
+          margin: 0 0 16px;
+        }
+      }
+
+      .condition-check {
+        margin-bottom: 24px;
+      }
+
+      .action-buttons {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+
+      .damage-form {
+        h4 {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin: 0 0 16px;
+        }
+
+        .full-width {
+          width: 100%;
+        }
+
+        .damage-photos {
+          margin: 16px 0;
+
+          p {
+            margin: 0 0 8px;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+          }
+        }
+
+        .photo-upload-row {
+          display: flex;
+          gap: 12px;
+        }
+
+        .damage-upload-slot {
+          width: 80px;
+          height: 80px;
+          border: 2px dashed var(--border-color);
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          overflow: hidden;
+
+          .uploaded-preview {
+            width: 100%;
+            height: 100%;
+
+            img {
+              width: 100%;
+              height: 100%;
+              object-fit: cover;
+            }
+          }
+        }
+      }
+
+      .hidden {
+        display: none;
+      }
+    `,
+  ],
 })
 export class HostCheckoutComponent {
   @Input() bookingId!: number;
@@ -497,7 +516,7 @@ export class HostCheckoutComponent {
       this.bookingId,
       file,
       slotId,
-      'HOST_CHECKOUT_DAMAGE_EVIDENCE'
+      'HOST_CHECKOUT_DAMAGE_EVIDENCE',
     );
     input.value = '';
   }
@@ -513,24 +532,24 @@ export class HostCheckoutComponent {
 
     this._isSubmitting.set(true);
 
-    this.checkoutService.confirmHostCheckout(
-      this.bookingId,
-      true // conditionAccepted
-    ).subscribe({
-      next: () => {
-        this._isSubmitting.set(false);
-        this.snackBar.open('Checkout uspešno potvrđen!', 'OK', { duration: 3000 });
-        this.confirmed.emit();
-      },
-      error: (err) => {
-        this._isSubmitting.set(false);
-        this.snackBar.open(
-          err?.error?.message || 'Greška pri potvrđivanju checkout-a',
-          'OK',
-          { duration: 5000 }
-        );
-      },
-    });
+    this.checkoutService
+      .confirmHostCheckout(
+        this.bookingId,
+        true, // conditionAccepted
+      )
+      .subscribe({
+        next: () => {
+          this._isSubmitting.set(false);
+          this.snackBar.open('Checkout uspešno potvrđen!', 'OK', { duration: 3000 });
+          this.confirmed.emit();
+        },
+        error: (err) => {
+          this._isSubmitting.set(false);
+          this.snackBar.open(err?.error?.message || 'Greška pri potvrđivanju checkout-a', 'OK', {
+            duration: 5000,
+          });
+        },
+      });
   }
 
   submitDamageReport(): void {
@@ -548,30 +567,31 @@ export class HostCheckoutComponent {
       }
     }
 
-    this.checkoutService.confirmHostCheckout(
-      this.bookingId,
-      false, // conditionAccepted = false due to damage
-      {
-        description,
-        estimatedCostRsd: estimatedCost,
-        photoIds,
-      },
-      notes
-    ).subscribe({
-      next: () => {
-        this._isSubmitting.set(false);
-        this.snackBar.open('Oštećenje prijavljeno. Gost će biti obavešten.', 'OK', { duration: 3000 });
-        this.confirmed.emit();
-      },
-      error: (err) => {
-        this._isSubmitting.set(false);
-        this.snackBar.open(
-          err?.error?.message || 'Greška pri prijavi oštećenja',
-          'OK',
-          { duration: 5000 }
-        );
-      },
-    });
+    this.checkoutService
+      .confirmHostCheckout(
+        this.bookingId,
+        false, // conditionAccepted = false due to damage
+        {
+          description,
+          estimatedCostRsd: estimatedCost,
+          photoIds,
+        },
+        notes,
+      )
+      .subscribe({
+        next: () => {
+          this._isSubmitting.set(false);
+          this.snackBar.open('Oštećenje prijavljeno. Gost će biti obavešten.', 'OK', {
+            duration: 3000,
+          });
+          this.confirmed.emit();
+        },
+        error: (err) => {
+          this._isSubmitting.set(false);
+          this.snackBar.open(err?.error?.message || 'Greška pri prijavi oštećenja', 'OK', {
+            duration: 5000,
+          });
+        },
+      });
   }
 }
-

@@ -75,19 +75,19 @@ import { environment } from '@environments/environment';
             </p>
 
             @if (status?.checkInPhotos?.length) {
-            <div class="photo-grid">
-              @for (photo of status!.checkInPhotos; track photo.photoId) {
-              <div class="photo-item" (click)="openPhoto(photo.url)">
-                <img [src]="getPhotoUrl(photo.url)" [alt]="getPhotoLabel(photo.photoType)" />
-                <span class="label">{{ getPhotoLabel(photo.photoType) }}</span>
+              <div class="photo-grid">
+                @for (photo of status!.checkInPhotos; track photo.photoId) {
+                  <div class="photo-item" (click)="openPhoto(photo.url)">
+                    <img [src]="getPhotoUrl(photo.url)" [alt]="getPhotoLabel(photo.photoType)" />
+                    <span class="label">{{ getPhotoLabel(photo.photoType) }}</span>
+                  </div>
+                }
               </div>
-              }
-            </div>
             } @else {
-            <div class="empty-state">
-              <mat-icon>photo_library</mat-icon>
-              <p>Nema fotografija za prikaz</p>
-            </div>
+              <div class="empty-state">
+                <mat-icon>photo_library</mat-icon>
+                <p>Nema fotografija za prikaz</p>
+              </div>
             }
 
             <div class="readings-comparison">
@@ -135,67 +135,68 @@ import { environment } from '@environments/environment';
             <!-- Premium photo grid matching check-in style -->
             <div class="photo-grid">
               @for (slot of photoSlots; track slot.type) {
-              <div
-                class="photo-slot"
-                [class.completed]="isPhotoUploaded(slot.type)"
-                [class.uploading]="
-                  getUploadProgress(slot.type)?.state === 'uploading' ||
-                  getUploadProgress(slot.type)?.state === 'compressing'
-                "
-                (click)="triggerUpload(slot.type)"
-              >
-                @if (getUploadProgress(slot.type); as progress) { @if (progress.state ===
-                'complete') {
-                <img
-                  [src]="progress.previewUrl || getPhotoUrl(progress.result?.url || '')"
-                  [alt]="slot.label"
-                  class="photo-preview"
-                />
-                <div class="success-badge">
-                  <mat-icon>check_circle</mat-icon>
-                </div>
-                <button
-                  mat-mini-fab
-                  color="warn"
-                  class="remove-photo-btn"
-                  (click)="triggerUpload(slot.type); $event.stopPropagation()"
-                  aria-label="Zameni fotografiju"
+                <div
+                  class="photo-slot"
+                  [class.completed]="isPhotoUploaded(slot.type)"
+                  [class.uploading]="
+                    getUploadProgress(slot.type)?.state === 'uploading' ||
+                    getUploadProgress(slot.type)?.state === 'compressing'
+                  "
+                  (click)="triggerUpload(slot.type)"
                 >
-                  <mat-icon>refresh</mat-icon>
-                </button>
-                } @else if (progress.state === 'error') {
-                <div class="error-overlay">
-                  <mat-icon>error</mat-icon>
-                  <span class="error-message">{{ progress.error }}</span>
-                  <button mat-button class="retry-btn">Pokušaj ponovo</button>
-                </div>
-                } @else {
-                <div class="upload-progress">
-                  <mat-progress-bar
-                    mode="determinate"
-                    [value]="progress.progress"
-                  ></mat-progress-bar>
-                  <span>{{ getProgressLabel(progress.state) }}</span>
-                </div>
-                } } @else {
-                <div class="photo-placeholder">
-                  <mat-icon>{{ slot.icon }}</mat-icon>
-                  <span>{{ slot.label }}</span>
-                  @if (slot.required) {
-                  <span class="required-badge">Obavezno</span>
+                  @if (getUploadProgress(slot.type); as progress) {
+                    @if (progress.state === 'complete') {
+                      <img
+                        [src]="progress.previewUrl || getPhotoUrl(progress.result?.url || '')"
+                        [alt]="slot.label"
+                        class="photo-preview"
+                      />
+                      <div class="success-badge">
+                        <mat-icon>check_circle</mat-icon>
+                      </div>
+                      <button
+                        mat-mini-fab
+                        color="warn"
+                        class="remove-photo-btn"
+                        (click)="triggerUpload(slot.type); $event.stopPropagation()"
+                        aria-label="Zameni fotografiju"
+                      >
+                        <mat-icon>refresh</mat-icon>
+                      </button>
+                    } @else if (progress.state === 'error') {
+                      <div class="error-overlay">
+                        <mat-icon>error</mat-icon>
+                        <span class="error-message">{{ progress.error }}</span>
+                        <button mat-button class="retry-btn">Pokušaj ponovo</button>
+                      </div>
+                    } @else {
+                      <div class="upload-progress">
+                        <mat-progress-bar
+                          mode="determinate"
+                          [value]="progress.progress"
+                        ></mat-progress-bar>
+                        <span>{{ getProgressLabel(progress.state) }}</span>
+                      </div>
+                    }
+                  } @else {
+                    <div class="photo-placeholder">
+                      <mat-icon>{{ slot.icon }}</mat-icon>
+                      <span>{{ slot.label }}</span>
+                      @if (slot.required) {
+                        <span class="required-badge">Obavezno</span>
+                      }
+                    </div>
                   }
-                </div>
-                }
 
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  [id]="'upload-' + slot.type"
-                  (change)="onFileSelected($event, slot.type)"
-                  hidden
-                />
-              </div>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    [id]="'upload-' + slot.type"
+                    (change)="onFileSelected($event, slot.type)"
+                    hidden
+                  />
+                </div>
               }
             </div>
 
@@ -247,12 +248,12 @@ import { environment } from '@environments/environment';
                 <span matSuffix>km</span>
                 <mat-hint>Unesite vrednost sa odometra</mat-hint>
                 @if (readingsForm.get('endOdometer')?.errors?.['min']) {
-                <mat-error
-                  >Kilometraža ne može biti manja od početne ({{
-                    status?.startOdometer
-                  }}
-                  km)</mat-error
-                >
+                  <mat-error
+                    >Kilometraža ne može biti manja od početne ({{
+                      status?.startOdometer
+                    }}
+                    km)</mat-error
+                  >
                 }
               </mat-form-field>
 
@@ -301,29 +302,29 @@ import { environment } from '@environments/environment';
 
               <!-- Phase 4D: Late Fee Display -->
               @if (status && status.lateFeeAmount && status.lateFeeAmount > 0) {
-              <div class="summary-item late-fee">
-                <span>
-                  <mat-icon>schedule</mat-icon>
-                  Naknada za kašnjenje (Tier {{ status.lateFeeTier || '?' }}):
-                </span>
-                <strong class="fee-amount">{{ status.lateFeeAmount }} RSD</strong>
-              </div>
+                <div class="summary-item late-fee">
+                  <span>
+                    <mat-icon>schedule</mat-icon>
+                    Naknada za kašnjenje (Tier {{ status.lateFeeTier || '?' }}):
+                  </span>
+                  <strong class="fee-amount">{{ status.lateFeeAmount }} RSD</strong>
+                </div>
               }
 
               <!-- Phase 4F: Improper Return Warning -->
               @if (status && status.improperReturnFlag) {
-              <div class="improper-return-warning">
-                <mat-icon>warning</mat-icon>
-                <div class="warning-content">
-                  <span class="warning-title">Nepravilan povratak detektovan</span>
-                  <span class="warning-code">{{
-                    getImproperReturnLabel(status.improperReturnCode)
-                  }}</span>
-                  @if (status.improperReturnNotes) {
-                  <span class="warning-notes">{{ status.improperReturnNotes }}</span>
-                  }
+                <div class="improper-return-warning">
+                  <mat-icon>warning</mat-icon>
+                  <div class="warning-content">
+                    <span class="warning-title">Nepravilan povratak detektovan</span>
+                    <span class="warning-code">{{
+                      getImproperReturnLabel(status.improperReturnCode)
+                    }}</span>
+                    @if (status.improperReturnNotes) {
+                      <span class="warning-notes">{{ status.improperReturnNotes }}</span>
+                    }
+                  </div>
                 </div>
-              </div>
               }
             </div>
 

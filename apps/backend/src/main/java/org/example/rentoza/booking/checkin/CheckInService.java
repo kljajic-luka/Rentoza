@@ -1244,7 +1244,7 @@ public class CheckInService {
             return storageKey;
         }
         try {
-            String bucketName = (bucket == CheckInPhoto.StorageBucket.CHECKIN_PII) ? "checkin-pii" : "check-in-photos";
+            String bucketName = (bucket == CheckInPhoto.StorageBucket.CHECKIN_PII) ? "check-in-pii" : "check-in-photos";
             return photoUrlService.generateSignedUrl(bucketName, storageKey, photoId);
         } catch (Exception e) {
             log.error("[CheckIn] Failed to generate signed URL for photo {}: key={}", photoId, storageKey, e);

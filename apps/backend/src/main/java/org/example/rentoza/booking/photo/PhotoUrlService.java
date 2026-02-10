@@ -60,13 +60,11 @@ public class PhotoUrlService {
             log.debug("[PhotoURL] Generating signed URL: bucket={}, key={}, photoId={}", 
                 bucket, storageKey, photoId);
             
-            // Generate signed URL using appropriate method based on bucket type
-            String signedUrl;
-            if ("checkin_pii".equalsIgnoreCase(bucket) || bucket.contains("pii")) {
-                signedUrl = supabaseStorageService.getIdPhotoSignedUrl(storageKey);
-            } else {
-                signedUrl = supabaseStorageService.getCheckInPhotoSignedUrl(storageKey, signedUrlExpirySeconds);
-            }
+            // Use the actual bucket name passed in — do NOT hardcode bucket routing.
+            // The bucket name is resolved by the calling service (CheckOutService, CheckInService)
+            // and must be passed through to the Supabase API correctly.
+            String signedUrl = supabaseStorageService.createSignedUrlForBucket(
+                    bucket, storageKey, signedUrlExpirySeconds);
             
             log.debug("[PhotoURL] Generated signed URL (expires in {}s): photoId={}", 
                 signedUrlExpirySeconds, photoId);

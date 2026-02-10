@@ -48,6 +48,7 @@ public class SupabaseStorageService {
     public static final String BUCKET_CAR_DOCUMENTS = "car-documents";
     public static final String BUCKET_CHECK_IN_PHOTOS = "check-in-photos";
     public static final String BUCKET_CHECK_IN_PII = "check-in-pii";  // Service-role only, for ID verification
+    public static final String BUCKET_CHECK_OUT_PHOTOS = "check-out-photos";
     public static final String BUCKET_RENTER_DOCUMENTS = "renter-documents";
     public static final String BUCKET_USER_AVATARS = "user-avatars";
     
@@ -163,6 +164,19 @@ public class SupabaseStorageService {
     
     public String getCheckInPhotoSignedUrl(String storagePath, int expiresInSeconds) {
         return createSignedUrl(BUCKET_CHECK_IN_PHOTOS, storagePath, expiresInSeconds);
+    }
+
+    /**
+     * Generate a signed URL for any bucket. This is the preferred method for
+     * callers that already know the correct bucket name (e.g. PhotoUrlService).
+     * 
+     * @param bucket The Supabase bucket name (e.g. "check-in-photos", "check-out-photos", "check-in-pii")
+     * @param storagePath The file path within the bucket
+     * @param expiresInSeconds URL expiration in seconds
+     * @return Signed URL for the file
+     */
+    public String createSignedUrlForBucket(String bucket, String storagePath, int expiresInSeconds) {
+        return createSignedUrl(bucket, storagePath, expiresInSeconds);
     }
     
     // ============================================================================
@@ -508,27 +522,40 @@ public class SupabaseStorageService {
      * @return Signed URL
      */
     private String createSignedUrl(String bucket, String path, int expiresInSeconds) {
-        String url = String.format("%s/storage/v1/object/sign/%s/%s?expiresIn=%d", 
-                supabaseUrl, bucket, path, expiresInSeconds);
+        // Supabase Storage REST API: POST /storage/v1/object/sign/{bucket}/{path}
+        // Body: {"expiresIn": seconds}  — expiresIn MUST be in the JSON body, not query param
+        String url = String.format("%s/storage/v1/object/sign/%s/%s", 
+                supabaseUrl, bucket, path);
         
         HttpHeaders headers = new HttpHeaders();
         headers.set("Authorization", "Bearer " + serviceRoleKey);
+        headers.setContentType(MediaType.APPLICATION_JSON);
         
-        HttpEntity<Void> request = new HttpEntity<>(headers);
+        // Build JSON body with expiresIn as required by Supabase Storage API
+        String requestBody = String.format("{\"expiresIn\":%d}", expiresInSeconds);
+        HttpEntity<String> request = new HttpEntity<>(requestBody, headers);
         
         try {
             ResponseEntity<SignedUrlResponse> response = restTemplate.exchange(
                     url, HttpMethod.POST, request, SignedUrlResponse.class);
             
             if (response.getBody() != null && response.getBody().signedURL != null) {
-                return supabaseUrl + response.getBody().signedURL;
+                String signedUrl = supabaseUrl + response.getBody().signedURL;
+                log.debug("✅ Signed URL created: bucket={}, path={}", bucket, path);
+                return signedUrl;
             }
+            log.warn("⚠️ Signed URL response had no signedURL field: bucket={}, path={}", bucket, path);
         } catch (HttpClientErrorException e) {
-            log.error("❌ Failed to create signed URL: {}", e.getMessage());
+            log.error("❌ Failed to create signed URL: bucket={}, path={}, status={}, body={}", 
+                    bucket, path, e.getStatusCode(), e.getResponseBodyAsString());
+        } catch (Exception e) {
+            log.error("❌ Unexpected error creating signed URL: bucket={}, path={}", bucket, path, e);
         }
         
-        // Fallback to direct path (may not work for private buckets)
-        return getPublicUrl(bucket, path);
+        // Do NOT fallback to public URL for private buckets — it will always 404
+        // Instead, return empty so frontend shows a placeholder
+        log.error("❌ Could not generate signed URL, returning empty: bucket={}, path={}", bucket, path);
+        return "";
     }
     
     /**

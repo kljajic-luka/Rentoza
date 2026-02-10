@@ -56,7 +56,7 @@ export class PhotoRejectionError extends Error {
     public readonly rejectionReason: string,
     public readonly remediationHint: string,
     public readonly errorCode: string,
-    public readonly photo: CheckInPhotoDTO
+    public readonly photo: CheckInPhotoDTO,
   ) {
     super(rejectionReason);
     this.name = 'PhotoRejectionError';
@@ -422,7 +422,7 @@ export class CheckInService implements OnDestroy {
           return throwError(() => error);
         }),
         finalize(() => this._isLoading.set(false)),
-        takeUntil(this.destroy$)
+        takeUntil(this.destroy$),
       );
   }
 
@@ -458,7 +458,7 @@ export class CheckInService implements OnDestroy {
         photoType,
         'error',
         0,
-        'Nevažeći format slike. Koristite JPEG, PNG ili HEIC.'
+        'Nevažeći format slike. Koristite JPEG, PNG ili HEIC.',
       );
       return;
     }
@@ -482,7 +482,7 @@ export class CheckInService implements OnDestroy {
               bookingId,
               photoType,
               compressed.blob,
-              photoCreationTime
+              photoCreationTime,
             );
             throw new Error('Nema internet konekcije. Fotografija je sačuvana za kasnije.');
           }
@@ -494,14 +494,14 @@ export class CheckInService implements OnDestroy {
             photoType,
             photoCreationTime,
             position?.latitude,
-            position?.longitude
+            position?.longitude,
           );
         }),
         takeUntil(this.destroy$),
         finalize(() => {
           // Clean up from active uploads map
           this._activeUploads.delete(slotId);
-        })
+        }),
       )
       .subscribe({
         next: (result) => {
@@ -522,12 +522,12 @@ export class CheckInService implements OnDestroy {
               rejectionError.rejectionReason,
               rejectionError.remediationHint,
               rejectionError.errorCode,
-              retryCount
+              retryCount,
             );
 
             // Log rejection for debugging
             console.warn(
-              `[CheckIn] Photo REJECTED: ${photoType}, code=${rejectionError.errorCode}, attempt=${retryCount}`
+              `[CheckIn] Photo REJECTED: ${photoType}, code=${rejectionError.errorCode}, attempt=${retryCount}`,
             );
           } else {
             // Network/server error - show red error overlay
@@ -555,7 +555,7 @@ export class CheckInService implements OnDestroy {
     bookingId: number,
     odometerReading: number,
     fuelLevelPercent: number,
-    lockboxCode?: string
+    lockboxCode?: string,
   ): Observable<CheckInStatusDTO> {
     this._isLoading.set(true);
     this._error.set(null);
@@ -613,7 +613,7 @@ export class CheckInService implements OnDestroy {
           return throwError(() => error);
         }),
         finalize(() => this._isLoading.set(false)),
-        takeUntil(this.destroy$)
+        takeUntil(this.destroy$),
       );
   }
 
@@ -624,7 +624,7 @@ export class CheckInService implements OnDestroy {
     bookingId: number,
     conditionAccepted: boolean,
     conditionComment?: string,
-    hotspots?: Array<{ location: string; description: string; photoId?: number }>
+    hotspots?: Array<{ location: string; description: string; photoId?: number }>,
   ): Observable<CheckInStatusDTO> {
     this._isLoading.set(true);
     this._error.set(null);
@@ -676,7 +676,7 @@ export class CheckInService implements OnDestroy {
       .post<CheckInStatusDTO>(
         `${this.baseUrl}/${bookingId}/check-in/guest/condition-ack`,
         payload,
-        { withCredentials: true }
+        { withCredentials: true },
       )
       .pipe(
         tap((status) => {
@@ -695,7 +695,7 @@ export class CheckInService implements OnDestroy {
           return throwError(() => error);
         }),
         finalize(() => this._isLoading.set(false)),
-        takeUntil(this.destroy$)
+        takeUntil(this.destroy$),
       );
   }
 
@@ -712,13 +712,13 @@ export class CheckInService implements OnDestroy {
    */
   uploadGuestPhotos(
     bookingId: number,
-    submission: GuestCheckInPhotoSubmissionDTO
+    submission: GuestCheckInPhotoSubmissionDTO,
   ): Observable<GuestCheckInPhotoResponseDTO> {
     return this.http
       .post<GuestCheckInPhotoResponseDTO>(
         `${this.baseUrl}/${bookingId}/guest-checkin-photos`,
         submission,
-        { withCredentials: true }
+        { withCredentials: true },
       )
       .pipe(takeUntil(this.destroy$));
   }
@@ -728,7 +728,7 @@ export class CheckInService implements OnDestroy {
    */
   confirmHandshake(
     bookingId: number,
-    hostVerifiedPhysicalId?: boolean
+    hostVerifiedPhysicalId?: boolean,
   ): Observable<CheckInStatusDTO> {
     this._isLoading.set(true);
     this._error.set(null);
@@ -780,7 +780,7 @@ export class CheckInService implements OnDestroy {
           return throwError(() => error);
         }),
         finalize(() => this._isLoading.set(false)),
-        takeUntil(this.destroy$)
+        takeUntil(this.destroy$),
       );
   }
 
@@ -839,7 +839,7 @@ export class CheckInService implements OnDestroy {
           latitude: position?.latitude,
           longitude: position?.longitude,
         },
-        { withCredentials: true }
+        { withCredentials: true },
       )
       .pipe(
         tap((status) => {
@@ -855,7 +855,7 @@ export class CheckInService implements OnDestroy {
           return throwError(() => error);
         }),
         finalize(() => this._isLoading.set(false)),
-        takeUntil(this.destroy$)
+        takeUntil(this.destroy$),
       );
   }
 
@@ -900,7 +900,7 @@ export class CheckInService implements OnDestroy {
           item.file,
           slotId,
           item.photoType,
-          item.clientTimestamp
+          item.clientTimestamp,
         );
 
         await this.offlineQueueService.dequeue(item.id);
@@ -971,7 +971,7 @@ export class CheckInService implements OnDestroy {
     photoType: CheckInPhotoType,
     clientTimestamp: string,
     clientLatitude?: number,
-    clientLongitude?: number
+    clientLongitude?: number,
   ): Promise<CheckInPhotoDTO> {
     return new Promise((resolve, reject) => {
       const formData = new FormData();
@@ -994,7 +994,7 @@ export class CheckInService implements OnDestroy {
         {
           reportProgress: true,
           withCredentials: true,
-        }
+        },
       );
 
       this.http
@@ -1031,7 +1031,7 @@ export class CheckInService implements OnDestroy {
     photoType: CheckInPhotoType,
     clientTimestamp: string,
     clientLatitude?: number,
-    clientLongitude?: number
+    clientLongitude?: number,
   ): Observable<CheckInPhotoDTO> {
     const formData = new FormData();
     formData.append('photoType', photoType);
@@ -1055,7 +1055,7 @@ export class CheckInService implements OnDestroy {
       {
         reportProgress: true,
         withCredentials: true,
-      }
+      },
     );
 
     return this.http.request(request).pipe(
@@ -1095,7 +1095,7 @@ export class CheckInService implements OnDestroy {
 
         // Not a rejection - rethrow as generic error for standard error handling
         throw httpError;
-      })
+      }),
     );
   }
 
@@ -1108,7 +1108,7 @@ export class CheckInService implements OnDestroy {
       response.photo.rejectionReason || 'Fotografija nije prihvaćena.',
       response.photo.remediationHint || 'Pokušajte ponovo sa novom fotografijom.',
       response.errorCodes?.[0] || 'UNKNOWN_REJECTION',
-      response.photo
+      response.photo,
     );
   }
 
@@ -1156,7 +1156,7 @@ export class CheckInService implements OnDestroy {
     state: PhotoUploadProgress['state'],
     progress: number,
     error?: string,
-    result?: CheckInPhotoDTO
+    result?: CheckInPhotoDTO,
   ): void {
     const current = new Map(this._uploadProgress());
     const existing = current.get(slotId);
@@ -1182,7 +1182,7 @@ export class CheckInService implements OnDestroy {
     rejectionReason: string,
     remediationHint: string,
     errorCode: string,
-    retryCount: number
+    retryCount: number,
   ): void {
     const current = new Map(this._uploadProgress());
     current.set(slotId, {

@@ -1532,11 +1532,10 @@ export class GuestCheckInComponent implements OnInit, OnDestroy {
 
         this._guestPhotosComplete.set(true);
         this.snackBar.dismiss();
-        this.snackBar.open(
-          `${response.acceptedCount} fotografija uspešno otpremljeno!`,
-          'OK',
-          { duration: 3000, panelClass: 'success-snackbar' }
-        );
+        this.snackBar.open(`${response.acceptedCount} fotografija uspešno otpremljeno!`, 'OK', {
+          duration: 3000,
+          panelClass: 'success-snackbar',
+        });
 
         if (response.rejectedCount > 0) {
           console.warn(`[GuestCheckIn] ${response.rejectedCount} photos rejected by backend`);
@@ -1551,7 +1550,7 @@ export class GuestCheckInComponent implements OnInit, OnDestroy {
         this.snackBar.open(
           'Greška pri otpremanju fotografija. Pokušajte ponovo ili nastavite bez.',
           'OK',
-          { duration: 5000 }
+          { duration: 5000 },
         );
       },
     });

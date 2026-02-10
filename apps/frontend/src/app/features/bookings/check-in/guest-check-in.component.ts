@@ -47,6 +47,7 @@ import {
   CheckInStatusDTO,
   CheckInPhotoDTO,
   CheckInPhotoType,
+  ExifValidationStatus,
 } from '../../../core/models/check-in.model';
 import { GuestCheckInPhotoSubmissionDTO } from '../../../core/models/photo-guidance.model';
 import { GuidedPhotoCaptureComponent } from './guided-photo-capture/guided-photo-capture.component';
@@ -1479,12 +1480,11 @@ export class GuestCheckInComponent implements OnInit, OnDestroy {
    * @param submission The submitted photo data from guided capture
    */
   onGuestPhotosComplete(submission: GuestCheckInPhotoSubmissionDTO): void {
-    // Convert submission to CheckInPhotoDTO array for comparison component
-    // Use full base64 data URL so photos can be displayed in comparison
-    const photos: CheckInPhotoDTO[] = submission.photos.map((p, i) => ({
-      photoId: i + 1, // Temporary IDs until backend confirms
+    // Show immediate feedback with local previews while uploading
+    const localPhotos: CheckInPhotoDTO[] = submission.photos.map((p, i) => ({
+      photoId: -(i + 1), // Negative temporary IDs
       photoType: p.photoType,
-      url: `data:${p.mimeType || 'image/jpeg'};base64,${p.base64Data}`, // Full data URL for display
+      url: `data:${p.mimeType || 'image/jpeg'};base64,${p.base64Data}`,
       uploadedAt: new Date().toISOString(),
       exifValidationStatus: 'PENDING' as const,
       exifValidationMessage: null,
@@ -1498,13 +1498,62 @@ export class GuestCheckInComponent implements OnInit, OnDestroy {
       accepted: true,
     }));
 
-    this._guestCapturedPhotos.set(photos);
-    this._guestPhotosComplete.set(true);
+    // Set local previews immediately for responsive UI
+    this._guestCapturedPhotos.set(localPhotos);
     this._showGuidedCapture.set(false);
 
-    this.snackBar.open(`${submission.photos.length} fotografija uspešno snimljeno!`, 'OK', {
-      duration: 3000,
-      panelClass: 'success-snackbar',
+    this.snackBar.open(`Otpremanje ${submission.photos.length} fotografija...`, '', {
+      duration: 0, // Keep open until upload completes
+    });
+
+    // Upload to backend (stores in Supabase, validates EXIF, creates DB records)
+    this.checkInService.uploadGuestPhotos(this.bookingId, submission).subscribe({
+      next: (response) => {
+        if (response.success && response.processedPhotos?.length > 0) {
+          // Replace local previews with backend-confirmed photos (with signed URLs)
+          const confirmedPhotos: CheckInPhotoDTO[] = response.processedPhotos.map((p) => ({
+            photoId: p.photoId ?? 0,
+            photoType: p.photoType,
+            url: p.photoUrl ?? '',
+            uploadedAt: new Date().toISOString(),
+            exifValidationStatus: (p.exifValidationStatus as ExifValidationStatus) ?? 'VALID',
+            exifValidationMessage: null,
+            width: null,
+            height: null,
+            mimeType: 'image/jpeg',
+            exifTimestamp: null,
+            exifLatitude: null,
+            exifLongitude: null,
+            deviceModel: null,
+            accepted: p.accepted,
+          }));
+          this._guestCapturedPhotos.set(confirmedPhotos);
+        }
+
+        this._guestPhotosComplete.set(true);
+        this.snackBar.dismiss();
+        this.snackBar.open(
+          `${response.acceptedCount} fotografija uspešno otpremljeno!`,
+          'OK',
+          { duration: 3000, panelClass: 'success-snackbar' }
+        );
+
+        if (response.rejectedCount > 0) {
+          console.warn(`[GuestCheckIn] ${response.rejectedCount} photos rejected by backend`);
+        }
+      },
+      error: (err) => {
+        console.error('[GuestCheckIn] Failed to upload photos to backend:', err);
+        // Keep local photos for display but mark as not uploaded
+        // User can still proceed with acknowledgment but photos won't be in Supabase
+        this._guestPhotosComplete.set(true);
+        this.snackBar.dismiss();
+        this.snackBar.open(
+          'Greška pri otpremanju fotografija. Pokušajte ponovo ili nastavite bez.',
+          'OK',
+          { duration: 5000 }
+        );
+      },
     });
   }
 

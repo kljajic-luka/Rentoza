@@ -38,6 +38,10 @@ import {
   DamagePhotoSlot,
   MAX_DAMAGE_PHOTOS,
 } from '@core/models/check-in.model';
+import {
+  GuestCheckInPhotoSubmissionDTO,
+  GuestCheckInPhotoResponseDTO,
+} from '@core/models/photo-guidance.model';
 import { PhotoCompressionService } from './photo-compression.service';
 import { GeolocationService } from './geolocation.service';
 import { OfflineQueueService } from './offline-queue.service';
@@ -693,6 +697,30 @@ export class CheckInService implements OnDestroy {
         finalize(() => this._isLoading.set(false)),
         takeUntil(this.destroy$)
       );
+  }
+
+  /**
+   * Upload guest check-in photos to the backend.
+   *
+   * Sends the full GuestCheckInPhotoSubmissionDTO (base64-encoded photos)
+   * to POST /api/bookings/{bookingId}/guest-checkin-photos.
+   * The backend validates, stores in Supabase, and returns processed results.
+   *
+   * @param bookingId - Booking ID
+   * @param submission - Photo submission DTO from guided capture
+   * @returns Observable of the backend response with per-photo results
+   */
+  uploadGuestPhotos(
+    bookingId: number,
+    submission: GuestCheckInPhotoSubmissionDTO
+  ): Observable<GuestCheckInPhotoResponseDTO> {
+    return this.http
+      .post<GuestCheckInPhotoResponseDTO>(
+        `${this.baseUrl}/${bookingId}/guest-checkin-photos`,
+        submission,
+        { withCredentials: true }
+      )
+      .pipe(takeUntil(this.destroy$));
   }
 
   /**

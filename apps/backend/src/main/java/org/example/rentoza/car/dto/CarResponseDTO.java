@@ -58,6 +58,7 @@ public class CarResponseDTO {
     private Integer minRentalDays;
     private Integer maxRentalDays;
     private List<String> imageUrls;
+    private ApprovalStatus approvalStatus;
 
     public CarResponseDTO(Car car) {
         this(car, false, null); // Default: no exact location access
@@ -135,6 +136,10 @@ public class CarResponseDTO {
         this.minRentalDays = car.getMinRentalDays();
         this.maxRentalDays = car.getMaxRentalDays();
         this.imageUrls = car.getImageUrls() != null ? List.copyOf(car.getImageUrls()) : List.of();
+
+        if (isOwner) {
+            this.approvalStatus = car.getApprovalStatus();
+        }
 
         if (car.getOwner() != null) {
             this.ownerId = car.getOwner().getId();

@@ -222,6 +222,16 @@
     }
   }
 
+  @keyframes pulse-checkout {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.75;
+    }
+  }
+
   &__timer {
     display: flex;
     align-items: center;
@@ -252,6 +262,17 @@
 
       mat-icon {
         color: #1d4ed8;
+      }
+    }
+
+    // Checkout preparation phase (≤ 1h before trip end)
+    &.checkout-prep {
+      background: rgba(245, 124, 0, 0.15);
+      color: #e65100;
+      animation: pulse-checkout 2s ease-in-out infinite;
+
+      mat-icon {
+        color: #e65100;
       }
     }
 

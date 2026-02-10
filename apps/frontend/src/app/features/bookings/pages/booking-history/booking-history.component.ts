@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { Router, RouterModule } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
@@ -41,16 +41,24 @@ interface CategorizedBookings {
   styleUrls: ['./booking-history.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class BookingHistoryComponent {
+export class BookingHistoryComponent implements OnInit {
   private readonly bookingService = inject(BookingService);
   private readonly dialog = inject(MatDialog);
   private readonly router = inject(Router);
+  private readonly destroyRef = inject(DestroyRef);
 
   /** Serbia timezone identifier for consistent time parsing */
   private readonly SERBIA_TIMEZONE = 'Europe/Belgrade';
 
   protected readonly isLoading = signal(true);
   protected readonly bookings = signal<UserBooking[]>([]);
+
+  /**
+   * Live countdown ticker — increments every 60s to trigger
+   * re-evaluation of computed signals that depend on "now".
+   */
+  protected readonly tick = signal(0);
+  private tickIntervalId: ReturnType<typeof setInterval> | null = null;
 
   protected readonly categorizedBookings = computed(() => {
     const now = new Date();
@@ -100,6 +108,14 @@ export class BookingHistoryComponent {
     this.loadBookings();
   }
 
+  ngOnInit(): void {
+    // Start live countdown ticker (every 60s)
+    this.tickIntervalId = setInterval(() => this.tick.update((t) => t + 1), 60_000);
+    this.destroyRef.onDestroy(() => {
+      if (this.tickIntervalId) clearInterval(this.tickIntervalId);
+    });
+  }
+
   private loadBookings(): void {
     this.isLoading.set(true);
     this.bookingService
@@ -138,21 +154,73 @@ export class BookingHistoryComponent {
     return ['DECLINED', 'EXPIRED', 'EXPIRED_SYSTEM'].includes(status);
   }
 
+  /**
+   * Get the live time indicator for a booking card.
+   *
+   * Reads `this.tick()` to re-trigger on each 60s interval tick,
+   * giving the user a live countdown experience.
+   *
+   * - upcoming: "Počinje za 2 sati i 15 minuta"
+   * - ongoing (> 1h left): "Završava se za 3 sati"
+   * - ongoing (≤ 1h left): "Priprema za vraćanje — 45 minuta"
+   * - cancelled: "Otkazano"
+   * - past: "Završeno pre 2 dana"
+   */
   protected getTimeIndicator(booking: UserBooking, category: BookingCategory): string {
+    // Read tick to make this reactive to the live timer
+    void this.tick();
     const now = new Date();
-    // Parse times as Serbia timezone (backend stores LocalDateTime without timezone)
     const startTime = this.parseAsSerbia(booking.startTime);
     const endTime = this.parseAsSerbia(booking.endTime);
 
     if (category === 'upcoming') {
+      const diffMs = startTime.getTime() - now.getTime();
+      if (diffMs <= 0) return 'Počinje uskoro';
       return `Počinje za ${this.getTimeUntil(startTime, now)}`;
     } else if (category === 'ongoing') {
-      return `Preostalo vreme: ${this.getTimeUntil(endTime, now)}`;
+      const diffMs = endTime.getTime() - now.getTime();
+      if (diffMs <= 0) return 'Vraćanje vozila';
+      const minutesLeft = Math.floor(diffMs / 60_000);
+      // Within 1 hour of end → checkout prep messaging (Turo-style)
+      if (minutesLeft <= 60) {
+        return `Priprema za vraćanje — ${this.getTimeUntil(endTime, now)}`;
+      }
+      return `Završava se za ${this.getTimeUntil(endTime, now)}`;
     } else if (category === 'cancelled') {
       return 'Otkazano';
     } else {
       return `Završeno pre ${this.getTimeSince(endTime, now)}`;
     }
+  }
+
+  /**
+   * Get timer icon based on context.
+   * Switches to ⏰ alarm when checkout prep phase starts (≤ 1h to end).
+   */
+  protected getTimerIcon(booking: UserBooking, category: BookingCategory): string {
+    void this.tick();
+    if (category === 'ongoing') {
+      const endTime = this.parseAsSerbia(booking.endTime);
+      const minutesLeft = Math.floor((endTime.getTime() - Date.now()) / 60_000);
+      if (minutesLeft <= 60) return 'alarm';
+      return 'timelapse';
+    }
+    if (category === 'upcoming') return 'schedule';
+    if (category === 'cancelled') return 'cancel';
+    return 'check_circle';
+  }
+
+  /**
+   * Get timer CSS class — adds 'checkout-prep' glow for the last hour.
+   */
+  protected getTimerClass(booking: UserBooking, category: BookingCategory): string {
+    void this.tick();
+    if (category === 'ongoing') {
+      const endTime = this.parseAsSerbia(booking.endTime);
+      const minutesLeft = Math.floor((endTime.getTime() - Date.now()) / 60_000);
+      if (minutesLeft <= 60) return 'ongoing checkout-prep';
+    }
+    return category;
   }
 
   /**

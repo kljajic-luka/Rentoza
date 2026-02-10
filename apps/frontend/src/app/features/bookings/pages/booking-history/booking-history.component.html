@@ -67,7 +67,7 @@
                 </div>
 
                 <div class="booking-card__timer upcoming">
-                  <mat-icon>schedule</mat-icon>
+                  <mat-icon>{{ getTimerIcon(booking, 'upcoming') }}</mat-icon>
                   <span>{{ getTimeIndicator(booking, 'upcoming') }}</span>
                 </div>
 
@@ -276,8 +276,8 @@
                   </mat-chip>
                 </div>
 
-                <div class="booking-card__timer ongoing">
-                  <mat-icon>timelapse</mat-icon>
+                <div class="booking-card__timer" [ngClass]="getTimerClass(booking, 'ongoing')">
+                  <mat-icon>{{ getTimerIcon(booking, 'ongoing') }}</mat-icon>
                   <span>{{ getTimeIndicator(booking, 'ongoing') }}</span>
                 </div>
 
@@ -384,7 +384,7 @@
                 </div>
 
                 <div class="booking-card__timer past">
-                  <mat-icon>check_circle</mat-icon>
+                  <mat-icon>{{ getTimerIcon(booking, 'past') }}</mat-icon>
                   <span>{{ getTimeIndicator(booking, 'past') }}</span>
                 </div>
 

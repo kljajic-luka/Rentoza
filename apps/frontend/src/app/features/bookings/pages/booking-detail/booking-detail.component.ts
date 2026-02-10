@@ -10,6 +10,7 @@ import {
   signal,
   computed,
   ChangeDetectionStrategy,
+  DestroyRef,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
@@ -74,6 +75,14 @@ import { ReadOnlyPickupLocationComponent } from '../../components/readonly-picku
           {{ getStatusLabel(booking()?.status) }}
         </mat-chip>
       </mat-chip-set>
+
+      <!-- Live countdown banner -->
+      @if (countdownText()) {
+      <div class="countdown-banner" [class.checkout-prep]="isCheckoutPrep()">
+        <mat-icon>{{ countdownIcon() }}</mat-icon>
+        <span>{{ countdownText() }}</span>
+      </div>
+      }
 
       <!-- Car info -->
       <mat-card class="car-card">
@@ -207,6 +216,36 @@ import { ReadOnlyPickupLocationComponent } from '../../components/readonly-picku
         margin-bottom: 16px;
       }
 
+      .countdown-banner {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 16px;
+        border-radius: 12px;
+        background: rgba(59, 130, 246, 0.12);
+        color: #1d4ed8;
+        font-weight: 600;
+        font-size: 15px;
+        margin-bottom: 16px;
+      }
+
+      .countdown-banner mat-icon {
+        font-size: 20px;
+        width: 20px;
+        height: 20px;
+      }
+
+      .countdown-banner.checkout-prep {
+        background: rgba(245, 124, 0, 0.14);
+        color: #e65100;
+        animation: pulse-detail 2s ease-in-out infinite;
+      }
+
+      @keyframes pulse-detail {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.78; }
+      }
+
       .status-confirmed {
         background: var(--success-bg, #e8f5e9) !important;
         color: var(--success-color, #4caf50) !important;
@@ -315,10 +354,15 @@ export class BookingDetailComponent implements OnInit {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private bookingService = inject(BookingService);
+  private destroyRef = inject(DestroyRef);
 
   booking = signal<BookingDetails | null>(null);
   isLoading = signal(false);
   error = signal<string | null>(null);
+
+  /** Live ticker — bumps every 60s for countdown reactivity */
+  private tick = signal(0);
+  private tickIntervalId: ReturnType<typeof setInterval> | null = null;
 
   carTitle = computed(() => {
     const b = this.booking();
@@ -358,6 +402,12 @@ export class BookingDetailComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadBooking();
+
+    // Live countdown ticker
+    this.tickIntervalId = setInterval(() => this.tick.update((t) => t + 1), 60_000);
+    this.destroyRef.onDestroy(() => {
+      if (this.tickIntervalId) clearInterval(this.tickIntervalId);
+    });
   }
 
   loadBooking(): void {
@@ -423,5 +473,72 @@ export class BookingDetailComponent implements OnInit {
   canReview(): boolean {
     const booking = this.booking();
     return booking?.status === 'COMPLETED' && !booking?.reviewSubmitted;
+  }
+
+  // ========== LIVE COUNTDOWN COMPUTEDS ==========
+
+  /** Live countdown text for upcoming/ongoing bookings */
+  countdownText = computed((): string | null => {
+    void this.tick(); // reactive dependency
+    const b = this.booking();
+    if (!b) return null;
+    const now = new Date();
+    const start = new Date(b.startTime);
+    const end = new Date(b.endTime);
+    const status = b.status;
+
+    // Upcoming (before trip starts)
+    if (['PENDING_APPROVAL', 'ACTIVE', 'APPROVED', 'CHECK_IN_OPEN', 'CHECK_IN_HOST_COMPLETE', 'CHECK_IN_COMPLETE'].includes(status) && start.getTime() > now.getTime()) {
+      return `Počinje za ${this.formatDuration(start.getTime() - now.getTime())}`;
+    }
+
+    // In-trip / ongoing
+    if (['IN_TRIP', 'CHECKOUT_OPEN'].includes(status)) {
+      const msLeft = end.getTime() - now.getTime();
+      if (msLeft <= 0) return 'Vraćanje vozila';
+      const minutesLeft = Math.floor(msLeft / 60_000);
+      if (minutesLeft <= 60) {
+        return `Priprema za vraćanje — ${this.formatDuration(msLeft)}`;
+      }
+      return `Završava se za ${this.formatDuration(msLeft)}`;
+    }
+
+    return null;
+  });
+
+  /** Icon for countdown banner */
+  countdownIcon = computed((): string => {
+    void this.tick();
+    const b = this.booking();
+    if (!b) return 'schedule';
+    if (['IN_TRIP', 'CHECKOUT_OPEN'].includes(b.status)) {
+      const msLeft = new Date(b.endTime).getTime() - Date.now();
+      if (msLeft > 0 && msLeft <= 3_600_000) return 'alarm';
+      return 'timelapse';
+    }
+    return 'schedule';
+  });
+
+  /** Whether checkout prep phase is active (≤ 1h to end) */
+  isCheckoutPrep = computed((): boolean => {
+    void this.tick();
+    const b = this.booking();
+    if (!b || !['IN_TRIP', 'CHECKOUT_OPEN'].includes(b.status)) return false;
+    const msLeft = new Date(b.endTime).getTime() - Date.now();
+    return msLeft > 0 && msLeft <= 3_600_000;
+  });
+
+  private formatDuration(ms: number): string {
+    const totalMinutes = Math.max(0, Math.floor(ms / 60_000));
+    const days = Math.floor(totalMinutes / 1440);
+    const hours = Math.floor((totalMinutes % 1440) / 60);
+    const minutes = totalMinutes % 60;
+
+    if (days > 0) return `${days} ${days === 1 ? 'dan' : 'dana'}`;
+    if (hours > 0) {
+      const minPart = minutes > 0 ? ` i ${minutes} min` : '';
+      return `${hours} ${hours === 1 ? 'sat' : 'sati'}${minPart}`;
+    }
+    return `${minutes} min`;
   }
 }

@@ -69,6 +69,9 @@ public class RedisCacheConfig implements CachingConfigurer {
     
     /** Extended TTL for static reference data */
     private static final Duration TTL_STATIC = Duration.ofHours(24);
+
+        /** Signed URL cache TTL (refresh 1 minute before 15-min expiry) */
+        private static final Duration TTL_PHOTO_SIGNED = Duration.ofMinutes(14);
     
     /** Default TTL for unlisted caches */
     private static final Duration TTL_DEFAULT = Duration.ofMinutes(5);
@@ -198,9 +201,21 @@ public class RedisCacheConfig implements CachingConfigurer {
         
         // OSRM routing results - distance/duration (1h TTL - traffic patterns change)
         configs.put("osrmRouting", defaultConfig.entryTtl(TTL_LONG));
+
+                // Photo signed URLs (short-lived, refreshed often)
+                configs.put("photoSignedUrls", defaultConfig.entryTtl(TTL_PHOTO_SIGNED));
         
         return configs;
     }
+
+        /**
+         * Named cache manager for photo signed URLs (used by PhotoUrlService).
+         * Provides a Redis-backed cache when Redis is enabled.
+         */
+        @Bean(name = "photoUrlCacheManager")
+        public CacheManager photoUrlCacheManager(RedisConnectionFactory connectionFactory) {
+                return redisCacheManager(connectionFactory);
+        }
 
     /**
      * Create ObjectMapper configured for Redis JSON serialization.

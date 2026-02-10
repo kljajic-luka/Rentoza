@@ -16,6 +16,7 @@ import org.example.rentoza.booking.dispute.DamageClaim;
 import org.example.rentoza.booking.dispute.DamageClaimRepository;
 import org.example.rentoza.booking.dispute.DamageClaimStatus;
 import org.example.rentoza.booking.dispute.DisputeStage;
+import org.example.rentoza.booking.photo.PhotoUrlService;
 import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.notification.NotificationService;
 import org.example.rentoza.notification.NotificationType;
@@ -29,10 +30,12 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.*;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Core orchestrator for the checkout workflow.
@@ -64,10 +67,12 @@ public class CheckOutService {
     private final BookingRepository bookingRepository;
     private final CheckInEventService eventService;
     private final CheckInPhotoRepository photoRepository;
+    private final GuestCheckInPhotoRepository guestPhotoRepository;
     private final NotificationService notificationService;
     private final CheckoutSagaOrchestrator checkoutSagaOrchestrator;
     private final ApplicationEventPublisher eventPublisher;
     private final DamageClaimRepository damageClaimRepository;
+    private final PhotoUrlService photoUrlService;
     
     // Metrics
     private final Counter checkoutInitiatedCounter;
@@ -105,18 +110,22 @@ public class CheckOutService {
             BookingRepository bookingRepository,
             CheckInEventService eventService,
             CheckInPhotoRepository photoRepository,
+            GuestCheckInPhotoRepository guestPhotoRepository,
             NotificationService notificationService,
             CheckoutSagaOrchestrator checkoutSagaOrchestrator,
             DamageClaimRepository damageClaimRepository,
             MeterRegistry meterRegistry,
-            ApplicationEventPublisher eventPublisher) {
+            ApplicationEventPublisher eventPublisher,
+            PhotoUrlService photoUrlService) {
         this.bookingRepository = bookingRepository;
         this.eventService = eventService;
         this.photoRepository = photoRepository;
+        this.guestPhotoRepository = guestPhotoRepository;
         this.notificationService = notificationService;
         this.checkoutSagaOrchestrator = checkoutSagaOrchestrator;
         this.damageClaimRepository = damageClaimRepository;
         this.eventPublisher = eventPublisher;
+        this.photoUrlService = photoUrlService;
         
         this.checkoutInitiatedCounter = Counter.builder("checkout.initiated")
                 .description("Checkout processes initiated")
@@ -784,14 +793,33 @@ public class CheckOutService {
         boolean isHost = isHost(booking, userId);
         boolean isGuest = isGuest(booking, userId);
         
-        // Get check-in photos for comparison
-        List<CheckInPhotoDTO> checkInPhotos = photoRepository.findByBookingId(booking.getId()).stream()
+        // ========== CHECK-IN PHOTOS (host + guest) for comparison ==========
+        // Bug fix: Previously only queried CheckInPhoto table (host photos).
+        // Guest check-in photos live in GuestCheckInPhoto table and were missing.
+        
+        // Host check-in photos from CheckInPhoto table
+        List<CheckInPhotoDTO> hostCheckInPhotos = photoRepository.findByBookingId(booking.getId()).stream()
                 .filter(p -> !p.isDeleted())
                 .filter(p -> p.getPhotoType().isHostPhoto() || p.getPhotoType().isGuestPhoto())
                 .map(this::mapToPhotoDTO)
                 .collect(Collectors.toList());
         
-        // Get checkout photos
+        // Guest check-in photos from GuestCheckInPhoto table
+        List<CheckInPhotoDTO> guestCheckInPhotos = guestPhotoRepository.findByBookingId(booking.getId()).stream()
+                .filter(p -> !p.isDeleted())
+                .map(this::mapGuestPhotoToDTO)
+                .collect(Collectors.toList());
+        
+        // Merge both photo sources into a single check-in photos list
+        List<CheckInPhotoDTO> checkInPhotos = Stream.concat(
+                hostCheckInPhotos.stream(),
+                guestCheckInPhotos.stream()
+        ).collect(Collectors.toList());
+        
+        log.debug("[Checkout] Check-in photos for booking {}: {} host + {} guest = {} total",
+                booking.getId(), hostCheckInPhotos.size(), guestCheckInPhotos.size(), checkInPhotos.size());
+        
+        // Get checkout photos (guest return photos)
         List<CheckInPhotoDTO> checkoutPhotos = photoRepository.findByBookingId(booking.getId()).stream()
                 .filter(p -> !p.isDeleted())
                 .filter(p -> p.getPhotoType().isCheckoutPhoto() && !p.getPhotoType().isHostCheckoutPhoto())
@@ -856,11 +884,25 @@ public class CheckOutService {
                 .build();
     }
 
+    /**
+     * Map a host/checkout CheckInPhoto entity to DTO with a Supabase signed URL.
+     * 
+     * <p>The storage key is the internal Supabase path (e.g. "bookings/42/host/FRONT/abc.jpg").
+     * This must be converted to a time-limited signed URL before being sent to the frontend.
+     * Raw storage keys are NEVER exposed to clients.
+     */
     private CheckInPhotoDTO mapToPhotoDTO(CheckInPhoto photo) {
+        String bucketName = resolveBucketName(photo.getStorageBucket());
+        String signedUrl = resolveSignedUrl(
+                bucketName,
+                photo.getStorageKey(),
+                photo.getId()
+        );
+        
         return CheckInPhotoDTO.builder()
                 .photoId(photo.getId())
                 .photoType(photo.getPhotoType())
-                .url(photo.getStorageKey())
+                .url(signedUrl)
                 .uploadedAt(toLocalDateTime(photo.getUploadedAt()))
                 .exifValidationStatus(photo.getExifValidationStatus())
                 .exifValidationMessage(photo.getExifValidationMessage())
@@ -872,6 +914,96 @@ public class CheckOutService {
                 .exifLongitude(photo.getExifLongitude() != null ? photo.getExifLongitude().doubleValue() : null)
                 .deviceModel(photo.getExifDeviceModel())
                 .build();
+    }
+
+    /**
+     * Map a GuestCheckInPhoto entity to DTO with a Supabase signed URL.
+     */
+    private CheckInPhotoDTO mapGuestPhotoToDTO(GuestCheckInPhoto photo) {
+        String bucketName = resolveGuestBucketName(photo.getStorageBucket());
+        String signedUrl = resolveSignedUrl(
+                bucketName,
+                photo.getStorageKey(),
+                photo.getId()
+        );
+        
+        return CheckInPhotoDTO.builder()
+                .photoId(photo.getId())
+                .photoType(photo.getPhotoType())
+                .url(signedUrl)
+                .uploadedAt(toLocalDateTime(photo.getUploadedAt()))
+                .exifValidationStatus(photo.getExifValidationStatus())
+                .exifValidationMessage(photo.getExifValidationMessage())
+                .width(photo.getImageWidth())
+                .height(photo.getImageHeight())
+                .mimeType(photo.getMimeType())
+                .exifTimestamp(toLocalDateTime(photo.getExifTimestamp()))
+                .exifLatitude(photo.getExifLatitude() != null ? photo.getExifLatitude().doubleValue() : null)
+                .exifLongitude(photo.getExifLongitude() != null ? photo.getExifLongitude().doubleValue() : null)
+                .deviceModel(photo.getExifDeviceModel())
+                .accepted(true)
+                .build();
+    }
+
+    /**
+     * Resolve a Supabase signed URL for a photo storage key.
+     * 
+     * <p>Strategy:
+     * <ol>
+     *   <li>If the storage key is already an absolute URL, return as-is (legacy data)</li>
+     *   <li>Otherwise, generate a time-limited signed URL via PhotoUrlService</li>
+     *   <li>On failure, log the error and return empty string (graceful degradation)</li>
+     * </ol>
+     * 
+     * @param bucketName Supabase bucket name (e.g. "check-in-photos")
+     * @param storageKey Internal storage path (e.g. "bookings/42/host/FRONT/abc.jpg")
+     * @param photoId Database photo ID for audit logging
+     * @return Signed URL suitable for direct browser loading
+     */
+    private String resolveSignedUrl(String bucketName, String storageKey, Long photoId) {
+        if (storageKey == null || storageKey.isEmpty()) {
+            return "";
+        }
+        
+        // If already an absolute URL (legacy data or pre-generated), return as-is
+        if (storageKey.startsWith("http://") || storageKey.startsWith("https://")) {
+            return storageKey;
+        }
+        
+        try {
+            return photoUrlService.generateSignedUrl(bucketName, storageKey, photoId);
+        } catch (Exception e) {
+            log.error("[Checkout] Failed to generate signed URL for photo {}: bucket={}, key={}",
+                    photoId, bucketName, storageKey, e);
+            // Graceful degradation: return empty so frontend shows placeholder with error state
+            return "";
+        }
+    }
+
+    /**
+     * Map CheckInPhoto.StorageBucket enum to actual Supabase bucket name.
+     */
+    private String resolveBucketName(CheckInPhoto.StorageBucket bucket) {
+        if (bucket == null) {
+            return "check-in-photos";
+        }
+        return switch (bucket) {
+            case CHECKIN_PII -> "checkin-pii";
+            case CHECKIN_STANDARD -> "check-in-photos";
+        };
+    }
+
+    /**
+     * Map GuestCheckInPhoto.StorageBucket enum to actual Supabase bucket name.
+     */
+    private String resolveGuestBucketName(GuestCheckInPhoto.StorageBucket bucket) {
+        if (bucket == null) {
+            return "check-in-photos";
+        }
+        return switch (bucket) {
+            case CHECKIN_PII -> "checkin-pii";
+            case CHECKIN_STANDARD -> "check-in-photos";
+        };
     }
 
     private LocalDateTime toLocalDateTime(Instant instant) {

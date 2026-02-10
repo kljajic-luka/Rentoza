@@ -15,6 +15,7 @@ import org.example.rentoza.booking.dispute.DamageClaimRepository;
 import org.example.rentoza.booking.dispute.DamageClaimStatus;
 import org.example.rentoza.booking.dispute.DisputeStage;
 import org.example.rentoza.booking.dispute.DisputeType;
+import org.example.rentoza.booking.photo.PhotoUrlService;
 import org.example.rentoza.car.Car;
 import org.example.rentoza.common.GeoPoint;
 import org.example.rentoza.exception.ResourceNotFoundException;
@@ -82,6 +83,7 @@ public class CheckInService {
     // VAL-004: Dependencies for check-in dispute flow
     private final DamageClaimRepository damageClaimRepository;
     private final UserRepository userRepository;
+    private final PhotoUrlService photoUrlService;
     
     private static final int REQUIRED_GUEST_PHOTO_TYPES = 8;
     
@@ -142,7 +144,8 @@ public class CheckInService {
             CheckInValidationService validationService,
             DamageClaimRepository damageClaimRepository,
             UserRepository userRepository,
-            MeterRegistry meterRegistry) {
+            MeterRegistry meterRegistry,
+            PhotoUrlService photoUrlService) {
         this.bookingRepository = bookingRepository;
         this.eventService = eventService;
         this.photoRepository = photoRepository;
@@ -155,6 +158,7 @@ public class CheckInService {
         this.validationService = validationService;
         this.damageClaimRepository = damageClaimRepository;
         this.userRepository = userRepository;
+        this.photoUrlService = photoUrlService;
         
         this.hostCompletedCounter = Counter.builder("checkin.host.completed")
                 .description("Host check-in completions")
@@ -1209,10 +1213,12 @@ public class CheckInService {
     }
 
     private CheckInPhotoDTO mapToPhotoDTO(CheckInPhoto photo) {
+        String signedUrl = resolveCheckInSignedUrl(photo.getStorageBucket(), photo.getStorageKey(), photo.getId());
+        
         return CheckInPhotoDTO.builder()
                 .photoId(photo.getId())
                 .photoType(photo.getPhotoType())
-                .url(photo.getStorageKey())
+                .url(signedUrl)
                 .uploadedAt(toLocalDateTime(photo.getUploadedAt()))
                 .exifValidationStatus(photo.getExifValidationStatus())
                 .exifValidationMessage(photo.getExifValidationMessage())
@@ -1224,6 +1230,26 @@ public class CheckInService {
                 .exifLongitude(photo.getExifLongitude() != null ? photo.getExifLongitude().doubleValue() : null)
                 .deviceModel(photo.getExifDeviceModel())
                 .build();
+    }
+
+    /**
+     * Resolve a Supabase signed URL for a check-in photo.
+     * Returns the signed URL, or empty string on failure (graceful degradation).
+     */
+    private String resolveCheckInSignedUrl(CheckInPhoto.StorageBucket bucket, String storageKey, Long photoId) {
+        if (storageKey == null || storageKey.isEmpty()) {
+            return "";
+        }
+        if (storageKey.startsWith("http://") || storageKey.startsWith("https://")) {
+            return storageKey;
+        }
+        try {
+            String bucketName = (bucket == CheckInPhoto.StorageBucket.CHECKIN_PII) ? "checkin-pii" : "check-in-photos";
+            return photoUrlService.generateSignedUrl(bucketName, storageKey, photoId);
+        } catch (Exception e) {
+            log.error("[CheckIn] Failed to generate signed URL for photo {}: key={}", photoId, storageKey, e);
+            return "";
+        }
     }
 
     private LocalDateTime toLocalDateTime(Instant instant) {

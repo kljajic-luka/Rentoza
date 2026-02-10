@@ -1027,25 +1027,39 @@ export class GuestCheckoutComponent implements OnInit {
     this._step1Complete.set(true);
   }
 
+  /**
+   * Resolve photo URL for display.
+   *
+   * The backend now returns Supabase signed URLs (https://...) for all photos.
+   * This method handles both:
+   *   - Signed URLs (absolute) — returned as-is
+   *   - Legacy storage key paths — proxied through backend API endpoints
+   */
   getPhotoUrl(url: string): string {
     if (!url) return '';
+
+    // Signed URLs from Supabase (the expected production path)
     if (url.startsWith('http')) return url;
 
+    // Legacy fallback: relative storage key paths (pre-signed-URL migration)
     const baseUrl = environment.baseApiUrl.replace(/\/$/, '');
 
-    // Handle check-in photos
     if (url.startsWith('checkin/')) {
       const pathSegment = url.replace(/^checkin\//, '');
       return `${baseUrl}/checkin/photos/${pathSegment}`;
     }
 
-    // Handle checkout photos
+    if (url.startsWith('guest-checkin/')) {
+      const pathSegment = url.replace(/^guest-checkin\//, '');
+      return `${baseUrl}/guest-checkin/photos/${pathSegment}`;
+    }
+
     if (url.startsWith('checkout/')) {
       const pathSegment = url.replace(/^checkout\//, '');
       return `${baseUrl}/checkout/photos/${pathSegment}`;
     }
 
-    // Fallback
+    // Fallback for any other format
     return `${baseUrl}/${url}`;
   }
 

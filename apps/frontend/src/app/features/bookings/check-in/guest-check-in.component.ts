@@ -1344,21 +1344,30 @@ export class GuestCheckInComponent implements OnInit, OnDestroy {
 
   /**
    * Transform storage URL to proper API URL for serving photos.
-   * Backend stores: "checkin/{sessionId}/{filename}"
-   * API serves: "/api/checkin/photos/{sessionId}/{filename}"
+   *
+   * The backend now returns Supabase signed URLs (https://...) for all photos.
+   * This method handles both:
+   *   - Signed URLs (absolute) — returned as-is
+   *   - Legacy storage key paths — proxied through backend API endpoints
    */
   getPhotoUrl(photo: CheckInPhotoDTO): string {
     const url = photo.url;
 
-    // If URL is already absolute, return as-is
+    // If URL is already absolute (signed URL from Supabase), return as-is
     if (url && url.startsWith('http')) {
       return url;
     }
 
-    // Transform storage path to API URL
+    // Legacy fallback: transform storage path to API URL
     if (url) {
-      const baseUrl = environment.baseApiUrl.replace(/\/$/, ''); // Remove trailing slash
-      // Strip "checkin/" prefix if present (storage key format)
+      const baseUrl = environment.baseApiUrl.replace(/\/$/, '');
+
+      if (url.startsWith('guest-checkin/')) {
+        const pathSegment = url.replace(/^guest-checkin\//, '');
+        return `${baseUrl}/guest-checkin/photos/${pathSegment}`;
+      }
+
+      // Strip "checkin/" prefix if present (host storage key format)
       const pathSegment = url.replace(/^checkin\//, '');
       return `${baseUrl}/checkin/photos/${pathSegment}`;
     }

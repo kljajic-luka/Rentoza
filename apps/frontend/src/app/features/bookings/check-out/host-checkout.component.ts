@@ -106,10 +106,14 @@ import { environment } from '@environments/environment';
                       <div class="photo-item" (click)="photo.url ? openPhoto(photo.url) : null">
                         @if (photo.url) {
                           <img
+                            #photoImg
                             [src]="getPhotoUrl(photo.url)"
                             [alt]="getPhotoLabel(photo.photoType)"
-                            (error)="$event.target.style.display='none'"
+                            (error)="photoImg.hidden = true; photoErrPlaceholder.hidden = false"
                           />
+                          <div class="photo-placeholder" #photoErrPlaceholder hidden>
+                            <mat-icon>broken_image</mat-icon>
+                          </div>
                         } @else {
                           <div class="photo-placeholder">
                             <mat-icon>broken_image</mat-icon>
@@ -138,10 +142,14 @@ import { environment } from '@environments/environment';
                       <div class="photo-item" (click)="photo.url ? openPhoto(photo.url) : null">
                         @if (photo.url) {
                           <img
+                            #photoImg
                             [src]="getPhotoUrl(photo.url)"
                             [alt]="getPhotoLabel(photo.photoType)"
-                            (error)="$event.target.style.display='none'"
+                            (error)="photoImg.hidden = true; photoErrPlaceholder.hidden = false"
                           />
+                          <div class="photo-placeholder" #photoErrPlaceholder hidden>
+                            <mat-icon>broken_image</mat-icon>
+                          </div>
                         } @else {
                           <div class="photo-placeholder">
                             <mat-icon>broken_image</mat-icon>

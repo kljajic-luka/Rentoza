@@ -703,18 +703,13 @@ public class CheckOutService {
     // ========== SCHEDULER SUPPORT ==========
 
     /**
-     * Find bookings that need checkout window opened (trip end reached).
-     * 
+     * Find IN_TRIP bookings that should have checkout window opened.
+     *
      * P0-5 FIX: Uses optimized indexed query instead of loading all bookings.
      */
     @Transactional(readOnly = true)
-    public List<Booking> findBookingsForCheckoutOpening(LocalDate endDate) {
-        // Convert LocalDate to LocalDateTime for the query (end of day)
-        LocalDateTime endDateTime = endDate.atTime(23, 59, 59);
-        return bookingRepository.findBookingsNeedingCheckoutOpening(
-            BookingStatus.IN_TRIP,
-            endDateTime
-        );
+    public List<Booking> findBookingsForCheckoutOpening(LocalDateTime thresholdTime) {
+        return bookingRepository.findBookingsForCheckoutWindowOpening(thresholdTime);
     }
 
     // ========== NOTIFICATION METHODS ==========

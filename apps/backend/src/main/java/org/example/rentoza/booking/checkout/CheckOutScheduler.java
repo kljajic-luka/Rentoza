@@ -13,6 +13,7 @@ import org.example.rentoza.notification.NotificationService;
 import org.example.rentoza.notification.NotificationType;
 import org.example.rentoza.notification.dto.CreateNotificationRequestDTO;
 import org.example.rentoza.scheduler.SchedulerIdempotencyService;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -47,6 +48,9 @@ import java.util.List;
 public class CheckOutScheduler {
 
     private static final ZoneId SERBIA_ZONE = ZoneId.of("Europe/Belgrade");
+
+    @Value("${app.checkout.window-hours-before-trip:1}")
+    private int windowHoursBeforeTrip;
 
     private final CheckOutService checkOutService;
     private final BookingRepository bookingRepository;
@@ -92,31 +96,36 @@ public class CheckOutScheduler {
     }
 
     /**
-     * Open checkout windows for trips ending today.
-     * 
-     * <p>Runs hourly at minute 0. Finds IN_TRIP bookings with end date
-     * <= today and initiates checkout process.
-     * 
-     * <p>Cron: {@code 0 0 * * * *} (every hour at :00)
+     * Open checkout windows for trips approaching return time.
+     *
+     * <p>Finds IN_TRIP bookings with end time before:
+     * {@code now + app.checkout.window-hours-before-trip} and opens checkout.
+     *
+     * <p>Cron default: {@code 0 0 * * * *} (every hour at :00).
+     * In production this is typically overridden to every 15 minutes.
      */
     @Scheduled(cron = "${app.checkout.scheduler.window-cron:0 0 * * * *}", zone = "Europe/Belgrade")
     @Transactional
     public void openCheckoutWindows() {
-        LocalDate today = LocalDate.now(SERBIA_ZONE);
-        String taskId = "checkout-window-" + today;
-        
-        // Idempotency guard - prevent duplicate execution within 55 minutes
-        if (!idempotencyService.tryAcquireLock(taskId, Duration.ofMinutes(55))) {
-            log.debug("[CheckOutScheduler] Skipping duplicate checkout window opening for: {}", today);
+        java.time.LocalDateTime now = java.time.LocalDateTime.now(SERBIA_ZONE);
+        int minuteBucket = (now.getMinute() / 15) * 15;
+        String taskId = String.format("checkout-window-%s-%02d-%02d",
+            now.toLocalDate(), now.getHour(), minuteBucket);
+
+        // Idempotency guard tuned for 15-minute cron compatibility.
+        if (!idempotencyService.tryAcquireLock(taskId, Duration.ofMinutes(14))) {
+            log.debug("[CheckOutScheduler] Skipping duplicate checkout window opening: {}", taskId);
             schedulerSkippedCounter.increment();
             return;
         }
-        
-        log.debug("[CheckOutScheduler] Running checkout window opening for date: {}", today);
-        
+
+        java.time.LocalDateTime thresholdTime = now.plusHours(windowHoursBeforeTrip);
+        log.debug("[CheckOutScheduler] Opening windows up to thresholdTime={} (now={}, hoursBeforeTrip={})",
+            thresholdTime, now, windowHoursBeforeTrip);
+
         try {
-            List<Booking> eligibleBookings = checkOutService.findBookingsForCheckoutOpening(today);
-            
+            List<Booking> eligibleBookings = checkOutService.findBookingsForCheckoutOpening(thresholdTime);
+
             int opened = 0;
             for (Booking booking : eligibleBookings) {
                 try {
@@ -130,7 +139,7 @@ public class CheckOutScheduler {
             }
             
             if (opened > 0) {
-                log.info("[CheckOutScheduler] Opened {} checkout windows for date {}", opened, today);
+                log.info("[CheckOutScheduler] Opened {} checkout windows (thresholdTime={})", opened, thresholdTime);
             }
         } catch (Exception e) {
             log.error("[CheckOutScheduler] Failed to run checkout window opening", e);

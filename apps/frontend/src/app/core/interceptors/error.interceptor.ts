@@ -109,6 +109,18 @@ function extractUserFriendlyMessage(error: HttpErrorResponse): string {
 
   // Handle specific booking conflict types
   if (error.status === 409) {
+    // Check-in timing blocked (photo upload response uses errorCodes array)
+    const errorCodes: string[] | undefined = error.error?.errorCodes;
+    if (errorCodes?.includes('CHECKIN_TOO_EARLY')) {
+      const earliest = error.error?.earliestAllowedTime;
+      const minutes = error.error?.minutesUntilAllowed;
+      if (earliest) {
+        const time = earliest.substring(11, 16); // extract HH:mm from ISO local
+        return `Check-in nije još dozvoljen. Pokušajte ponovo u ${time} (za ${minutes ?? '?'} min).`;
+      }
+      return error.error?.userMessage || 'Check-in još nije dozvoljen.';
+    }
+
     switch (errorCode) {
       case 'USER_OVERLAP':
         return 'Ne možete rezervisati dva vozila u isto vreme. Već imate aktivnu ili čekajuću rezervaciju za ovaj period.';

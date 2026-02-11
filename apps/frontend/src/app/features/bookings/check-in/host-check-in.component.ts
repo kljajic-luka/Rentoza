@@ -77,6 +77,7 @@ import {
   RemoveSlotEvent,
   RetryEvent,
 } from './components/damage-report-step/damage-report-step.component';
+import { CountdownTimerComponent } from '../../../shared/components/countdown-timer/countdown-timer.component';
 
 const PHOTO_SLOTS: PhotoSlot[] = [
   { type: 'HOST_EXTERIOR_FRONT', label: 'Prednja strana', icon: 'directions_car', required: true },
@@ -111,6 +112,7 @@ const PHOTO_SLOTS: PhotoSlot[] = [
     GuidedPhotoCaptureComponent,
     CheckInRecoveryDialogComponent,
     DamageReportStepComponent,
+    CountdownTimerComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -134,10 +136,15 @@ const PHOTO_SLOTS: PhotoSlot[] = [
                 'Check-in moguć najranije 1 sat pre početka rezervacije'
             }}</span>
             @if (status?.minutesUntilCheckInAllowed) {
-              <span class="timing-countdown">
+              <div class="timing-countdown">
                 <mat-icon>hourglass_empty</mat-icon>
-                Preostalo: {{ formatMinutes(status?.minutesUntilCheckInAllowed!) }}
-              </span>
+                Preostalo:
+                <app-countdown-timer
+                  [targetDate]="timingCountdownTarget"
+                  [showSeconds]="false"
+                  [compactMode]="true"
+                />
+              </div>
             }
           </div>
         </div>
@@ -187,7 +194,7 @@ const PHOTO_SLOTS: PhotoSlot[] = [
       </div>
 
       <!-- Guided Capture Mode (shown when active) -->
-      @if (showGuidedCapture() && !readOnly) {
+      @if (showGuidedCapture() && !readOnly && !status?.timingBlocked) {
         <app-guided-photo-capture
           [bookingId]="bookingId"
           [mode]="'host-checkin'"
@@ -199,7 +206,7 @@ const PHOTO_SLOTS: PhotoSlot[] = [
         <!-- Manual Capture Mode (default or after guided capture) -->
 
         <!-- Start guided capture prompt (only when no photos yet) -->
-        @if (!readOnly && photoStats().completed === 0) {
+        @if (!readOnly && !status?.timingBlocked && photoStats().completed === 0) {
           <mat-card class="capture-prompt-card">
             <mat-card-content>
               <div class="capture-prompt">
@@ -228,7 +235,12 @@ const PHOTO_SLOTS: PhotoSlot[] = [
         }
 
         <!-- Continue guided capture button (when partially done) -->
-        @if (!readOnly && photoStats().completed > 0 && !photoStats().allRequiredComplete) {
+        @if (
+          !readOnly &&
+          !status?.timingBlocked &&
+          photoStats().completed > 0 &&
+          !photoStats().allRequiredComplete
+        ) {
           <div class="continue-capture-bar">
             <span>{{ photoStats().completed }}/{{ photoStats().total }} fotografija snimljeno</span>
             <button mat-stroked-button color="primary" (click)="startGuidedCapture()">
@@ -250,7 +262,7 @@ const PHOTO_SLOTS: PhotoSlot[] = [
                 [class.rejected]="vm.isRejected"
                 [class.location-mismatch]="vm.locationMismatch"
                 [class.readonly]="readOnly"
-                (click)="readOnly ? null : triggerFileInput(vm.slot.type)"
+                (click)="readOnly || status?.timingBlocked ? null : triggerFileInput(vm.slot.type)"
               >
                 <!-- Thumbnail or placeholder -->
                 @if (vm.previewUrl) {
@@ -352,7 +364,7 @@ const PHOTO_SLOTS: PhotoSlot[] = [
         [damageSlots]="damagePhotos()"
         [damageSlotViewModels]="damageSlotViewModels()"
         [maxDamagePhotos]="maxDamagePhotos"
-        [readOnly]="readOnly"
+        [readOnly]="readOnly || !!status?.timingBlocked"
         (addDamageSlot)="addDamagePhoto()"
         (removeDamageSlot)="onDamageSlotRemove($event)"
         (triggerCapture)="triggerFileInput($event)"
@@ -1474,6 +1486,13 @@ export class HostCheckInComponent implements OnInit, OnChanges, OnDestroy {
   readonly showGuidedCapture = this._showGuidedCapture.asReadonly();
   readonly showManualGrid = this._showManualGrid.asReadonly();
 
+  // Timing countdown: compute a target Date from the server-provided minutes.
+  // Uses a getter (not computed()) since status is a plain @Input, not a signal.
+  get timingCountdownTarget(): Date {
+    const minutes = this.status?.minutesUntilCheckInAllowed ?? 0;
+    return new Date(Date.now() + minutes * 60_000);
+  }
+
   constructor() {
     // Set up debounced form persistence
     this.formChangeSubject
@@ -1751,7 +1770,7 @@ export class HostCheckInComponent implements OnInit, OnChanges, OnDestroy {
       locationMismatches: stats.locationMismatchCount,
     });
 
-    return stats.allRequiredComplete && formValid && !loading;
+    return stats.allRequiredComplete && formValid && !loading && !this.status?.timingBlocked;
   });
 
   async ngOnInit(): Promise<void> {
@@ -1888,6 +1907,7 @@ export class HostCheckInComponent implements OnInit, OnChanges, OnDestroy {
 
   // Methods
   triggerFileInput(slotId: string): void {
+    if (this.status?.timingBlocked) return;
     const input = document.getElementById(`file-${slotId}`) as HTMLInputElement;
     if (input) {
       input.click();
@@ -1924,6 +1944,7 @@ export class HostCheckInComponent implements OnInit, OnChanges, OnDestroy {
    * Upload starts immediately in background; no await/blocking.
    */
   onFileSelected(event: Event, slotId: string, photoType: CheckInPhotoType): void {
+    if (this.status?.timingBlocked) return;
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
 
@@ -1965,6 +1986,7 @@ export class HostCheckInComponent implements OnInit, OnChanges, OnDestroy {
    * Add a new damage photo slot.
    */
   addDamagePhoto(): void {
+    if (this.status?.timingBlocked) return;
     if (this.damagePhotos().length >= this.maxDamagePhotos) {
       this.snackBar.open(`Maksimalno ${this.maxDamagePhotos} fotografija oštećenja`, '', {
         duration: 3000,
@@ -2083,6 +2105,7 @@ export class HostCheckInComponent implements OnInit, OnChanges, OnDestroy {
    * This provides step-by-step guidance with silhouettes.
    */
   startGuidedCapture(): void {
+    if (this.status?.timingBlocked) return;
     this._showGuidedCapture.set(true);
     this._showManualGrid.set(false);
   }
@@ -2091,6 +2114,7 @@ export class HostCheckInComponent implements OnInit, OnChanges, OnDestroy {
    * Switch to manual capture mode (traditional grid).
    */
   useManualCapture(): void {
+    if (this.status?.timingBlocked) return;
     this._showManualGrid.set(true);
     this._showGuidedCapture.set(false);
   }

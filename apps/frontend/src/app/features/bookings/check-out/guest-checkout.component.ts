@@ -77,8 +77,18 @@ import { environment } from '@environments/environment';
             @if (status?.checkInPhotos?.length) {
               <div class="photo-grid">
                 @for (photo of status!.checkInPhotos; track photo.photoType + '-' + photo.photoId) {
-                  <div class="photo-item" (click)="openPhoto(photo.url)">
-                    <img [src]="getPhotoUrl(photo.url)" [alt]="getPhotoLabel(photo.photoType)" />
+                  <div class="photo-item" (click)="photo.url ? openPhoto(photo.url) : null">
+                    @if (photo.url) {
+                      <img
+                        [src]="getPhotoUrl(photo.url)"
+                        [alt]="getPhotoLabel(photo.photoType)"
+                        (error)="$event.target.style.display='none'"
+                      />
+                    } @else {
+                      <div class="photo-placeholder">
+                        <mat-icon>broken_image</mat-icon>
+                      </div>
+                    }
                     <span class="label">{{ getPhotoLabel(photo.photoType) }}</span>
                   </div>
                 }

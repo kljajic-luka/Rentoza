@@ -103,11 +103,18 @@ import { environment } from '@environments/environment';
                       photo of status!.checkInPhotos;
                       track photo.photoType + '-' + photo.photoId
                     ) {
-                      <div class="photo-item" (click)="openPhoto(photo.url)">
-                        <img
-                          [src]="getPhotoUrl(photo.url)"
-                          [alt]="getPhotoLabel(photo.photoType)"
-                        />
+                      <div class="photo-item" (click)="photo.url ? openPhoto(photo.url) : null">
+                        @if (photo.url) {
+                          <img
+                            [src]="getPhotoUrl(photo.url)"
+                            [alt]="getPhotoLabel(photo.photoType)"
+                            (error)="$event.target.style.display='none'"
+                          />
+                        } @else {
+                          <div class="photo-placeholder">
+                            <mat-icon>broken_image</mat-icon>
+                          </div>
+                        }
                         <span class="label">{{ getPhotoLabel(photo.photoType) }}</span>
                       </div>
                     }
@@ -128,11 +135,18 @@ import { environment } from '@environments/environment';
                       photo of status!.checkoutPhotos;
                       track photo.photoType + '-' + photo.photoId
                     ) {
-                      <div class="photo-item" (click)="openPhoto(photo.url)">
-                        <img
-                          [src]="getPhotoUrl(photo.url)"
-                          [alt]="getPhotoLabel(photo.photoType)"
-                        />
+                      <div class="photo-item" (click)="photo.url ? openPhoto(photo.url) : null">
+                        @if (photo.url) {
+                          <img
+                            [src]="getPhotoUrl(photo.url)"
+                            [alt]="getPhotoLabel(photo.photoType)"
+                            (error)="$event.target.style.display='none'"
+                          />
+                        } @else {
+                          <div class="photo-placeholder">
+                            <mat-icon>broken_image</mat-icon>
+                          </div>
+                        }
                         <span class="label">{{ getPhotoLabel(photo.photoType) }}</span>
                       </div>
                     }
@@ -346,6 +360,22 @@ import { environment } from '@environments/environment';
           width: 100%;
           height: 100%;
           object-fit: cover;
+        }
+
+        .photo-placeholder {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 100%;
+          height: 100%;
+          background: var(--surface-variant, #f5f5f5);
+          color: var(--text-secondary, #999);
+
+          mat-icon {
+            font-size: 32px;
+            width: 32px;
+            height: 32px;
+          }
         }
 
         .label {

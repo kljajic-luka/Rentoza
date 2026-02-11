@@ -83,7 +83,7 @@ public class CheckInValidationService {
         this.eventService = eventService;
         this.renterVerificationService = renterVerificationService;
         this.featureFlags = featureFlags;
-        
+
         // Initialize metrics
         this.earlyCheckInBlockedCounter = Counter.builder("checkin.early_blocked")
                 .description("Count of early check-in attempts blocked")
@@ -91,6 +91,13 @@ public class CheckInValidationService {
         this.licenseVerificationCounter = Counter.builder("checkin.license_verified")
                 .description("Count of license verifications completed")
                 .register(meterRegistry);
+    }
+
+    @jakarta.annotation.PostConstruct
+    void logTimingConfig() {
+        log.info("[Validation-Config] maxEarlyCheckInHours={}, timingValidationEnabled={}, serbiaZone={}, jvmDefaultTz={}",
+                maxEarlyCheckInHours, checkInTimingValidationEnabled, SERBIA_ZONE,
+                java.util.TimeZone.getDefault().getID());
     }
 
     // ========== ACCESS VALIDATION ==========
@@ -260,11 +267,18 @@ public class CheckInValidationService {
         LocalDateTime now = LocalDateTime.now(SERBIA_ZONE);
         LocalDateTime tripStart = booking.getStartTime();
         LocalDateTime earliestAllowed = tripStart.minusHours(maxEarlyCheckInHours);
+
+        log.info("[Validation] Upload timing check: bookingId={}, now(Belgrade)={}, tripStart(DB)={}, " +
+                        "maxEarlyHours={}, earliestAllowed={}, blocked={}",
+                booking.getId(), now, tripStart, maxEarlyCheckInHours, earliestAllowed,
+                now.isBefore(earliestAllowed));
+
         if (now.isBefore(earliestAllowed)) {
             long minutesRemaining = ChronoUnit.MINUTES.between(now, earliestAllowed);
             earlyCheckInBlockedCounter.increment();
-            log.warn("[Validation] Upload timing blocked for booking {}. {}min remaining until {}",
-                    booking.getId(), minutesRemaining, earliestAllowed);
+            log.warn("[Validation] Upload timing BLOCKED for booking {}. now={}, earliestAllowed={}, " +
+                            "tripStart={}, maxEarlyHours={}, minutesRemaining={}",
+                    booking.getId(), now, earliestAllowed, tripStart, maxEarlyCheckInHours, minutesRemaining);
             throw new CheckInTimingBlockedException(minutesRemaining, earliestAllowed);
         }
     }
@@ -280,8 +294,16 @@ public class CheckInValidationService {
         LocalDateTime now = LocalDateTime.now(SERBIA_ZONE);
         LocalDateTime tripStart = booking.getStartTime();
         LocalDateTime earliestAllowed = tripStart.minusHours(maxEarlyCheckInHours);
+
+        log.debug("[Validation] Status timing check: bookingId={}, now(Belgrade)={}, tripStart(DB)={}, " +
+                        "maxEarlyHours={}, earliestAllowed={}, blocked={}",
+                booking.getId(), now, tripStart, maxEarlyCheckInHours, earliestAllowed,
+                now.isBefore(earliestAllowed));
+
         if (now.isBefore(earliestAllowed)) {
-            return ChronoUnit.MINUTES.between(now, earliestAllowed);
+            long minutes = ChronoUnit.MINUTES.between(now, earliestAllowed);
+            log.info("[Validation] Status timing BLOCKED: bookingId={}, minutesRemaining={}", booking.getId(), minutes);
+            return minutes;
         }
         return null;
     }

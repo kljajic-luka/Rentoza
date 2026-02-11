@@ -451,7 +451,8 @@ public class GuestCheckInPhotoService {
 
     /**
      * Resolve a Supabase signed URL for a guest check-in photo.
-     * Returns the signed URL, or the raw storage key on failure (graceful degradation).
+     * Returns the signed URL, or empty string on failure (graceful degradation).
+     * Consistent with CheckInService.resolveCheckInSignedUrl and CheckOutService.resolveSignedUrl.
      */
     private String resolveGuestSignedUrl(String storageKey, Long photoId) {
         if (storageKey == null || storageKey.isEmpty()) {
@@ -464,8 +465,8 @@ public class GuestCheckInPhotoService {
             return photoUrlService.generateSignedUrl("check-in-photos", storageKey, photoId);
         } catch (Exception e) {
             log.error("[GuestCheckIn] Failed to generate signed URL for photo {}: key={}", photoId, storageKey, e);
-            // Graceful degradation: return raw key so frontend can attempt fallback
-            return storageKey;
+            // Return empty so frontend shows placeholder/error state — no unresolvable path
+            return "";
         }
     }
 

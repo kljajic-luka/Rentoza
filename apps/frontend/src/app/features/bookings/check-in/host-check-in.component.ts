@@ -1687,14 +1687,41 @@ export class HostCheckInComponent implements OnInit, OnChanges, OnDestroy {
     // Set all hydrated previews at once
     this.localPreviews.set(newPreviews);
 
-    // Merge reconstructed damage slots with any existing user-added slots
+    // Reconcile damage slots: replace user-created slots (damage-{uuid}) whose
+    // completed upload matches a backend photo, with stable-ID slots from hydration.
+    // This prevents duplicate cards after status refresh / WebSocket updates.
     if (damageSlots.length > 0) {
+      const progress = this.checkInService.uploadProgress();
       const existingSlots = this.damagePhotos();
-      const existingIds = new Set(existingSlots.map((s) => s.id));
-      const newSlots = damageSlots.filter((s) => !existingIds.has(s.id));
-      if (newSlots.length > 0) {
-        this.damagePhotos.update((current) => [...current, ...newSlots]);
-      }
+
+      // Build a set of backend photoIds being hydrated
+      const hydratedPhotoIds = new Set(
+        damageSlots.map((s) => {
+          // stableSlotId format: HOST_DAMAGE_PREEXISTING-{photoId}
+          const parts = s.id.split('-');
+          return parts[parts.length - 1]; // the photoId portion
+        }),
+      );
+
+      // Keep only existing slots that are NOT duplicates of hydrated backend photos
+      const dedupedExisting = existingSlots.filter((slot) => {
+        // If this slot already has a stable ID format from a previous hydration, skip if hydrated again
+        if (damageSlots.some((ds) => ds.id === slot.id)) return false;
+
+        // Check if this user-created slot (damage-{uuid}) has a completed upload
+        // whose photoId matches one of the backend-hydrated photos
+        const slotProgress = progress.get(slot.id);
+        if (slotProgress?.state === 'complete' && slotProgress.result?.photoId) {
+          const uploadedPhotoId = String(slotProgress.result.photoId);
+          if (hydratedPhotoIds.has(uploadedPhotoId)) {
+            // This user slot is a duplicate of a backend-hydrated slot — remove it
+            return false;
+          }
+        }
+        return true;
+      });
+
+      this.damagePhotos.set([...dedupedExisting, ...damageSlots]);
     }
 
     console.log('[HostCheckIn] Hydrated photos from status:', {

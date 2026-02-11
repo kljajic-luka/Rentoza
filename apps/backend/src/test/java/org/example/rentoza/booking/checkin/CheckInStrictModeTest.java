@@ -87,6 +87,9 @@ class CheckInStrictModeTest {
     @Mock
     private org.example.rentoza.user.UserRepository userRepository;
 
+    @Mock
+    private org.example.rentoza.booking.photo.PhotoUrlService photoUrlService;
+
     private MeterRegistry meterRegistry;
     private CheckInService checkInService;
 
@@ -115,7 +118,8 @@ class CheckInStrictModeTest {
             validationService,
             damageClaimRepository,
             userRepository,
-            meterRegistry
+            meterRegistry,
+            photoUrlService
         );
 
         // Setup common test fixtures

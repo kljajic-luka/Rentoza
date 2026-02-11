@@ -57,6 +57,7 @@ class GuestCheckInPhotoServiceTest {
     @Mock private PhotoRejectionService photoRejectionService;
     @Mock private PhotoGuidanceService photoGuidanceService;
     @Mock private SupabaseStorageService supabaseStorageService;
+    @Mock private org.example.rentoza.booking.photo.PhotoUrlService photoUrlService;
 
     private GuestCheckInPhotoService guestPhotoService;
     
@@ -81,7 +82,8 @@ class GuestCheckInPhotoServiceTest {
             exifValidationService,
             photoRejectionService,
             photoGuidanceService,
-            supabaseStorageService
+            supabaseStorageService,
+            photoUrlService
         );
         
         // Inject @Value properties that Spring would normally inject

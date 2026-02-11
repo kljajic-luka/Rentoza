@@ -64,7 +64,7 @@ public class CheckInValidationService {
     @Value("${app.checkin.timing.validation-enabled:true}")
     private boolean checkInTimingValidationEnabled;
 
-    @Value("${app.checkin.timing.max-early-hours:2}")
+    @Value("${app.checkin.max-early-hours:1}")
     private int maxEarlyCheckInHours;
 
     // ========== PHASE 4B: LICENSE VERIFICATION CONFIGURATION ==========
@@ -241,6 +241,49 @@ public class CheckInValidationService {
         log.debug("[Validation-Phase4A] Timing validation passed for booking {}. " +
                 "Check-in at {}, trip starts at {} ({}min away)",
                 booking.getId(), now, tripStart, minutesUntilTrip);
+    }
+
+    // ========== UPLOAD TIMING CHECK (non-throwing, for photo upload gate) ==========
+
+    /**
+     * Checks whether a check-in write operation is allowed based on timing.
+     * Unlike {@link #validateCheckInTiming}, this method does not throw; it returns
+     * empty when timing is OK, or a blocked result with countdown data.
+     *
+     * @param booking the booking to check
+     * @throws CheckInTimingBlockedException if upload is too early
+     */
+    public void validateUploadTiming(Booking booking) {
+        if (!checkInTimingValidationEnabled) {
+            return;
+        }
+        LocalDateTime now = LocalDateTime.now(SERBIA_ZONE);
+        LocalDateTime tripStart = booking.getStartTime();
+        LocalDateTime earliestAllowed = tripStart.minusHours(maxEarlyCheckInHours);
+        if (now.isBefore(earliestAllowed)) {
+            long minutesRemaining = ChronoUnit.MINUTES.between(now, earliestAllowed);
+            earlyCheckInBlockedCounter.increment();
+            log.warn("[Validation] Upload timing blocked for booking {}. {}min remaining until {}",
+                    booking.getId(), minutesRemaining, earliestAllowed);
+            throw new CheckInTimingBlockedException(minutesRemaining, earliestAllowed);
+        }
+    }
+
+    /**
+     * Non-throwing timing check for status DTO population.
+     * Returns minutes remaining until upload is allowed, or {@code null} if timing is OK.
+     */
+    public Long getMinutesUntilAllowed(Booking booking) {
+        if (!checkInTimingValidationEnabled) {
+            return null;
+        }
+        LocalDateTime now = LocalDateTime.now(SERBIA_ZONE);
+        LocalDateTime tripStart = booking.getStartTime();
+        LocalDateTime earliestAllowed = tripStart.minusHours(maxEarlyCheckInHours);
+        if (now.isBefore(earliestAllowed)) {
+            return ChronoUnit.MINUTES.between(now, earliestAllowed);
+        }
+        return null;
     }
 
     // ========== PHASE 4B: LICENSE VERIFICATION VALIDATION ==========

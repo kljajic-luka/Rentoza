@@ -145,7 +145,7 @@ public class CheckInController {
      * <p>Rejected photos return HTTP 400 with rejection details. They are NOT stored
      * to the database or filesystem. Only an audit event is logged.
      * 
-     * @return HTTP 201 for accepted photos, HTTP 400 for rejected photos
+     * @return HTTP 201 for accepted photos, HTTP 400 for rejected photos, HTTP 409 if too early
      */
     @PostMapping(value = "/host/photos", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<PhotoUploadResponse> uploadHostPhoto(
@@ -155,18 +155,18 @@ public class CheckInController {
             @RequestParam(value = "clientTimestamp", required = false) String clientTimestampStr,
             @RequestParam(value = "clientLatitude", required = false) BigDecimal clientLatitude,
             @RequestParam(value = "clientLongitude", required = false) BigDecimal clientLongitude) throws IOException {
-        
+
         Long userId = currentUser.id();
         log.info("[CheckIn] RAW UPLOAD REQUEST: bookingId={}, photoType={}", bookingId, photoType);
         log.info("[CheckIn] RAW PARAM: clientTimestampStr='{}'", clientTimestampStr);
         log.info("[CheckIn] RAW PARAM: clientLatitude={}", clientLatitude);
         log.info("[CheckIn] RAW PARAM: clientLongitude={}", clientLongitude);
-        log.info("[CheckIn] RAW FILE: name={}, size={}, contentType={}", 
+        log.info("[CheckIn] RAW FILE: name={}, size={}, contentType={}",
             file.getOriginalFilename(), file.getSize(), file.getContentType());
-            
-        log.debug("[CheckIn] Photo upload for booking {} by user {}, type: {}, clientGPS: ({}, {})", 
+
+        log.debug("[CheckIn] Photo upload for booking {} by user {}, type: {}, clientGPS: ({}, {})",
             bookingId, userId, photoType, clientLatitude, clientLongitude);
-            
+
         // Manual parsing of timestamp to avoid Spring multipart binding issues
         Instant clientTimestamp = null;
         if (clientTimestampStr != null && !clientTimestampStr.isBlank()) {
@@ -176,17 +176,25 @@ public class CheckInController {
                 log.warn("[CheckIn] Failed to parse clientTimestamp: {}", clientTimestampStr);
             }
         }
-        
-        PhotoUploadResponse response = photoService.uploadPhoto(
-            bookingId, 
-            userId, 
-            file, 
-            photoType, 
-            clientTimestamp,
-            clientLatitude,
-            clientLongitude
-        );
-        
+
+        PhotoUploadResponse response;
+        try {
+            response = photoService.uploadPhoto(
+                bookingId,
+                userId,
+                file,
+                photoType,
+                clientTimestamp,
+                clientLatitude,
+                clientLongitude
+            );
+        } catch (CheckInTimingBlockedException e) {
+            log.info("[CheckIn] Upload blocked by timing gate: booking={}, minutesRemaining={}",
+                bookingId, e.getMinutesRemaining());
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(PhotoUploadResponse.timingBlocked(e.getMinutesRemaining(), e.getEarliestAllowedTime()));
+        }
+
         photoUploadCounter.increment();
         
         // Return appropriate HTTP status based on acceptance

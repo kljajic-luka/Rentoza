@@ -92,21 +92,13 @@ public class CheckInService {
     private final Counter guestCompletedCounter;
     private final Counter handshakeCompletedCounter;
     private final Timer checkInDurationTimer;
-    private final Counter earlyCheckInBlockedCounter;
     private final Counter licenseVerificationCounter;
 
     @Value("${app.checkin.noshow.grace-minutes:30}")
     private int noShowGraceMinutes;
     
     // ========== PHASE 4: SAFETY IMPROVEMENTS CONFIGURATION ==========
-    
-    // Phase 4A: Check-in Timing & Insurance Alignment
-    @Value("${app.checkin.max-early-hours:1}")
-    private int maxEarlyCheckInHours;
-    
-    @Value("${app.checkin.timing.validation-enabled:true}")
-    private boolean checkInTimingValidationEnabled;
-    
+
     // Phase 4B: License Verification
     @Value("${app.checkin.license-verification.required:true}")
     private boolean licenseVerificationRequired;
@@ -176,10 +168,6 @@ public class CheckInService {
                 .description("Time from check-in open to trip start")
                 .register(meterRegistry);
         
-        this.earlyCheckInBlockedCounter = Counter.builder("checkin.early.blocked")
-                .description("Early check-in attempts blocked for insurance compliance")
-                .register(meterRegistry);
-        
         this.licenseVerificationCounter = Counter.builder("checkin.license.verified")
                 .description("In-person license verifications completed")
                 .register(meterRegistry);
@@ -207,8 +195,8 @@ public class CheckInService {
      * Complete host check-in with odometer/fuel readings.
      * 
      * <p><b>Phase 4A Enhancement:</b> Now validates check-in timing to ensure
-     * insurance coverage is active. Check-in cannot be completed more than
-     * {@code maxEarlyCheckInHours} (default: 1 hour) before trip start.
+     * insurance coverage is active. Check-in cannot be completed more than 1 hour
+     * (configurable via {@code app.checkin.max-early-hours}) before trip start.
      * 
      * @param dto Submission data
      * @param userId Current user ID
@@ -1162,7 +1150,12 @@ public class CheckInService {
         String estimatedSource = isEstimated ? "CAR_HOME_LOCATION" : null;
         Integer varianceMeters = booking.getPickupLocationVarianceMeters();
         String varianceStatus = calculateVarianceStatus(varianceMeters);
-        
+
+        // Phase 4A: Compute timing block info for frontend
+        Long timingMinutesRemaining = (booking.getStatus() == BookingStatus.CHECK_IN_OPEN)
+                ? validationService.getMinutesUntilAllowed(booking)
+                : null;
+
         return CheckInStatusDTO.builder()
                 .bookingId(booking.getId())
                 .checkInSessionId(booking.getCheckInSessionId())
@@ -1196,6 +1189,14 @@ public class CheckInService {
                 .varianceStatus(varianceStatus)
                 .isEstimatedLocation(isEstimated)
                 .estimatedLocationSource(estimatedSource)
+                // Phase 4A: Timing info for frontend guardrails
+                .timingBlocked(timingMinutesRemaining != null)
+                .timingBlockedMessage(timingMinutesRemaining != null
+                        ? String.format("Check-in moguć najranije %d sat(a) pre početka putovanja",
+                            validationService.getMaxEarlyCheckInHours())
+                        : null)
+                .minutesUntilCheckInAllowed(timingMinutesRemaining)
+                .maxEarlyCheckInHours(validationService.getMaxEarlyCheckInHours())
                 // Phase 4B: License Verification - required for in-person handoffs (no lockbox)
                 .licenseVerificationRequired(licenseVerificationEnabled && licenseVerificationRequired 
                         && booking.getLockboxCodeEncrypted() == null)
@@ -1288,92 +1289,6 @@ public class CheckInService {
         } else {
             return "BLOCKING";
         }
-    }
-
-    // ========== PHASE 4: SAFETY VALIDATION METHODS ==========
-
-    /**
-     * Phase 4A: Validate check-in timing for insurance compliance.
-     * 
-     * <p>Check-in cannot be completed more than {@code maxEarlyCheckInHours} before trip start.
-     * This ensures insurance coverage is active when the vehicle is handed over.
-     * 
-     * <p>Insurance policies typically begin at the scheduled trip start time. Completing
-     * check-in too early creates a coverage gap where the vehicle is with the guest
-     * but insurance is not yet active.
-     * 
-     * @param booking The booking to validate
-     * @param userId The user attempting to complete check-in
-     * @param actorRole HOST or GUEST
-     * @throws IllegalStateException if check-in is attempted too early
-     */
-    private void validateCheckInTiming(Booking booking, Long userId, CheckInActorRole actorRole) {
-        if (!checkInTimingValidationEnabled) {
-            log.debug("[CheckIn-Phase4A] Timing validation disabled by configuration");
-            return;
-        }
-        
-        LocalDateTime now = LocalDateTime.now(SERBIA_ZONE);
-        LocalDateTime tripStart = booking.getStartTime();
-        LocalDateTime earliestAllowedCheckIn = tripStart.minusHours(maxEarlyCheckInHours);
-        
-        long minutesUntilTrip = ChronoUnit.MINUTES.between(now, tripStart);
-        long maxEarlyMinutes = maxEarlyCheckInHours * 60L;
-        
-        if (now.isBefore(earliestAllowedCheckIn)) {
-            // Log the blocked attempt
-            eventService.recordEvent(
-                booking,
-                booking.getCheckInSessionId(),
-                CheckInEventType.EARLY_CHECK_IN_BLOCKED,
-                userId,
-                actorRole,
-                Map.of(
-                    "tripStartTime", tripStart.toString(),
-                    "attemptTime", now.toString(),
-                    "minutesUntilTrip", minutesUntilTrip,
-                    "maxEarlyMinutes", maxEarlyMinutes,
-                    "earliestAllowedTime", earliestAllowedCheckIn.toString()
-                )
-            );
-            
-            earlyCheckInBlockedCounter.increment();
-            
-            log.warn("[CheckIn-Phase4A] Early check-in blocked for booking {}. " +
-                    "Attempt at {}, trip starts at {}, earliest allowed at {}",
-                    booking.getId(), now, tripStart, earliestAllowedCheckIn);
-            
-            // Format user-friendly message
-            String earliestTimeFormatted = earliestAllowedCheckIn.format(
-                java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
-            
-            throw new IllegalStateException(String.format(
-                "Prijem nije dozvoljen više od %d sat(a) pre početka putovanja. " +
-                "Molimo pokušajte ponovo u %s ili kasnije. " +
-                "Ovo osigurava da je vaše osiguranje aktivno tokom predaje vozila.",
-                maxEarlyCheckInHours,
-                earliestTimeFormatted
-            ));
-        }
-        
-        // Log successful timing validation
-        eventService.recordEvent(
-            booking,
-            booking.getCheckInSessionId(),
-            CheckInEventType.CHECK_IN_TIMING_VALIDATED,
-            userId,
-            actorRole,
-            Map.of(
-                "tripStartTime", tripStart.toString(),
-                "attemptTime", now.toString(),
-                "minutesUntilTrip", minutesUntilTrip,
-                "maxEarlyMinutes", maxEarlyMinutes
-            )
-        );
-        
-        log.debug("[CheckIn-Phase4A] Timing validation passed for booking {}. " +
-                "Check-in at {}, trip starts at {} ({}min away)",
-                booking.getId(), now, tripStart, minutesUntilTrip);
     }
 
     /**

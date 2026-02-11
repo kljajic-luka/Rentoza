@@ -176,9 +176,10 @@ public class CheckInScheduler {
         try {
             // Find bookings starting within configured window (default: 1 hour before trip)
             // Uses exact timestamps for precise timing detection
-            // Buffer of 2 hours ensures we catch bookings even if cron runs slightly late
+            // +15 min catch-up buffer matches cron interval so bookings are never missed
+            // if the scheduler fires slightly late, without opening windows hours early
             LocalDateTime windowStart = now; // Open window now
-            LocalDateTime windowEnd = now.plusHours(windowHoursBeforeTrip + 2); // Configurable + buffer
+            LocalDateTime windowEnd = now.plusHours(windowHoursBeforeTrip).plusMinutes(15); // window + cron catch-up
             
             // DIAGNOSTIC LOGGING: Help trace PostgreSQL timestamp issues
             log.info("[CheckIn] Query parameters: timezone={}, windowStart={}, windowEnd={}, hoursBeforeTrip={}",

@@ -117,7 +117,7 @@ public class PhotoUploadResponse {
     
     /**
      * Create a rejection response with multiple error codes.
-     * 
+     *
      * @param photo the photo DTO with rejection details
      * @param errorCodes list of machine-readable error codes
      * @return PhotoUploadResponse with HTTP 400
@@ -129,6 +129,37 @@ public class PhotoUploadResponse {
             .httpStatus(400)
             .userMessage("Fotografija nije prihvaćena.")
             .errorCodes(errorCodes)
+            .build();
+    }
+
+    /**
+     * Minutes remaining until upload is allowed.
+     * Only populated when errorCodes contains CHECKIN_TOO_EARLY (HTTP 409).
+     */
+    private Long minutesUntilAllowed;
+
+    /**
+     * Earliest allowed upload time (ISO-8601 local time, Europe/Belgrade).
+     * Only populated when errorCodes contains CHECKIN_TOO_EARLY (HTTP 409).
+     */
+    private String earliestAllowedTime;
+
+    /**
+     * Create a timing-blocked response for early upload attempts.
+     *
+     * @param minutesRemaining minutes until the upload window opens
+     * @param earliestAllowed  earliest allowed time (local)
+     * @return PhotoUploadResponse with HTTP 409
+     */
+    public static PhotoUploadResponse timingBlocked(long minutesRemaining, java.time.LocalDateTime earliestAllowed) {
+        return PhotoUploadResponse.builder()
+            .accepted(false)
+            .httpStatus(409)
+            .userMessage("Otpremanje fotografija nije još dozvoljeno. Pokušajte ponovo u " +
+                    earliestAllowed.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")) + ".")
+            .errorCodes(List.of("CHECKIN_TOO_EARLY"))
+            .minutesUntilAllowed(minutesRemaining)
+            .earliestAllowedTime(earliestAllowed.toString())
             .build();
     }
 }

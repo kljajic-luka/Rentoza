@@ -62,6 +62,7 @@ public class CheckInPhotoService {
     private final SupabaseStorageService supabaseStorageService;
     private final PiiPhotoStorageService piiPhotoStorageService;  // P0-2: PII enforcement
     private final ExifStrippingService exifStrippingService;      // VAL-001: EXIF privacy
+    private final CheckInValidationService validationService;     // Upload timing gate
 
     @Value("${app.checkin.photo.max-size-mb:10}")
     private int maxSizeMb;
@@ -170,6 +171,8 @@ public class CheckInPhotoService {
             if (booking.getStatus() != BookingStatus.CHECK_IN_OPEN) {
                 throw new IllegalStateException("Prijem nije otvoren za otpremanje fotografija");
             }
+            // Gate: block uploads before the timing window allows it
+            validationService.validateUploadTiming(booking);
         }
         
         // Get user
@@ -435,7 +438,25 @@ public class CheckInPhotoService {
             log.warn("[Phase4E] LATE PHOTO UPLOAD: booking={}, type={}, weight=SECONDARY, reason={}",
                     booking.getId(), photoType, evidenceResult.reason());
         }
-        
+
+        // ================================================================
+        // SLOT IDEMPOTENCY: For required types, soft-delete previous photo
+        // so retakes replace the prior slot photo instead of appending duplicates.
+        // Damage/custom types are multi-entry by design and skip this.
+        // ================================================================
+        if (photoType.isRequiredForHost() || photoType.isRequiredForCheckout()
+                || photoType.isRequiredForGuestCheckIn() || photoType.isRequiredForHostCheckout()) {
+            java.util.List<CheckInPhoto> existing = photoRepository.findByBookingIdAndPhotoType(booking.getId(), photoType);
+            for (CheckInPhoto old : existing) {
+                if (!old.isDeleted()) {
+                    old.softDelete(user, "REPLACED_BY_RETAKE");
+                    photoRepository.save(old);
+                    log.info("[CheckIn] Replaced existing {} photo for booking {} (old id={})",
+                            photoType, booking.getId(), old.getId());
+                }
+            }
+        }
+
         photo = photoRepository.save(photo);
         
         // Determine event type and actor role based on photo type

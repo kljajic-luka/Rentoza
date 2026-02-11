@@ -101,6 +101,18 @@ public class CheckInStatusDTO {
     private CarSummaryDTO car;
 
     // =========================================================================
+    // Phase 4A: Check-in Timing
+    // =========================================================================
+    /** Whether timing validation is currently blocking check-in (too early) */
+    private Boolean timingBlocked;
+    /** User-facing message when timing is blocked (Serbian) */
+    private String timingBlockedMessage;
+    /** Minutes until check-in is allowed (only set when timingBlocked=true) */
+    private Long minutesUntilCheckInAllowed;
+    /** Maximum hours before trip start that check-in is allowed */
+    private Integer maxEarlyCheckInHours;
+
+    // =========================================================================
     // Phase 4B: License Verification
     // =========================================================================
     /** Whether in-person license verification is required (no lockbox = in-person handoff) */

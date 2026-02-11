@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.example.rentoza.booking.photo.PhotoUrlService;
 import org.example.rentoza.storage.SupabaseStorageService;
 
 import javax.imageio.ImageIO;
@@ -68,6 +69,7 @@ public class GuestCheckInPhotoService {
     private final PhotoRejectionService photoRejectionService;
     private final PhotoGuidanceService photoGuidanceService;
     private final SupabaseStorageService supabaseStorageService;
+    private final PhotoUrlService photoUrlService;
 
     @Value("${app.checkin.photo.max-size-mb:3}")
     private int maxSizeMb;
@@ -424,11 +426,14 @@ public class GuestCheckInPhotoService {
         log.info("[GuestCheckIn] Photo ACCEPTED: booking={}, type={}, photoId={}",
             booking.getId(), photoItem.getPhotoType(), photo.getId());
         
+        // Generate signed URL for immediate frontend display (same pattern as CheckInService)
+        String signedUrl = resolveGuestSignedUrl(storageKey, photo.getId());
+        
         // Build response DTO
         return CheckInPhotoDTO.builder()
             .photoId(photo.getId())
             .photoType(photo.getPhotoType())
-            .url(storageKey)
+            .url(signedUrl)
             .uploadedAt(LocalDateTime.ofInstant(photo.getUploadedAt(), SERBIA_ZONE))
             .exifValidationStatus(photo.getExifValidationStatus())
             .exifValidationMessage(photo.getExifValidationMessage())
@@ -442,6 +447,26 @@ public class GuestCheckInPhotoService {
             .deviceModel(photo.getExifDeviceModel())
             .accepted(true)
             .build();
+    }
+
+    /**
+     * Resolve a Supabase signed URL for a guest check-in photo.
+     * Returns the signed URL, or the raw storage key on failure (graceful degradation).
+     */
+    private String resolveGuestSignedUrl(String storageKey, Long photoId) {
+        if (storageKey == null || storageKey.isEmpty()) {
+            return "";
+        }
+        if (storageKey.startsWith("http://") || storageKey.startsWith("https://")) {
+            return storageKey;
+        }
+        try {
+            return photoUrlService.generateSignedUrl("check-in-photos", storageKey, photoId);
+        } catch (Exception e) {
+            log.error("[GuestCheckIn] Failed to generate signed URL for photo {}: key={}", photoId, storageKey, e);
+            // Graceful degradation: return raw key so frontend can attempt fallback
+            return storageKey;
+        }
     }
 
     /**

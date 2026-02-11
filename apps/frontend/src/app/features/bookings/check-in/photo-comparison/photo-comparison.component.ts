@@ -566,12 +566,14 @@ export class PhotoComparisonComponent {
       return `${baseUrl}/checkout/photos/${url.replace(/^checkout\//, '')}`;
     }
     if (url.startsWith('host-checkout/')) {
-      return `${baseUrl}/checkout/photos/${url.replace(/^host-checkout\//, '')}`;
+      return `${baseUrl}/host-checkout/photos/${url.replace(/^host-checkout\//, '')}`;
     }
     if (url.startsWith('bookings/')) {
       // Storage key format: bookings/{id}/{party}/{type}/{filename}
-      // Generate a signed URL via the backend photo-signing endpoint
-      return `${baseUrl}/photos/signed?key=${encodeURIComponent(url)}`;
+      // Should not reach here since backend now returns signed URLs,
+      // but handle gracefully by stripping prefix and using checkin fallback
+      console.warn('[PhotoComparison] Unexpected bookings/ storage key in URL:', url);
+      return `${baseUrl}/checkin/photos/${url}`;
     }
 
     // Generic fallback

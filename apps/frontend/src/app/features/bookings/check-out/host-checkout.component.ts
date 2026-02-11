@@ -499,12 +499,13 @@ export class HostCheckoutComponent {
 
     if (url.startsWith('host-checkout/')) {
       const pathSegment = url.replace(/^host-checkout\//, '');
-      return `${baseUrl}/checkout/photos/${pathSegment}`;
+      return `${baseUrl}/host-checkout/photos/${pathSegment}`;
     }
 
     if (url.startsWith('bookings/')) {
-      // Storage key format: bookings/{id}/{party}/{type}/{filename}
-      return `${baseUrl}/photos/signed?key=${encodeURIComponent(url)}`;
+      // Unexpected: backend should return signed URLs. Log and use checkin fallback.
+      console.warn('[HostCheckout] Unexpected bookings/ storage key in URL:', url);
+      return `${baseUrl}/checkin/photos/${url}`;
     }
 
     // Fallback for any other format

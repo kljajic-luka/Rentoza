@@ -1632,37 +1632,54 @@ export class HostCheckInComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     // Hydrate photos from status when status changes in read-only mode
-    if ((changes['status'] || changes['readOnly']) && this.readOnly && this.status) {
+    // Hydrate photos from status on every status change (not just read-only)
+    // This ensures damage progress and previews survive page refresh
+    if ((changes['status'] || changes['readOnly']) && this.status) {
       this.hydratePhotosFromStatus();
     }
   }
 
   /**
    * Populate localPreviews with full URLs from status.vehiclePhotos.
-   * This ensures images load correctly in read-only/review mode.
+   * Ensures images load correctly after page refresh or in read-only/review mode.
+   * Also reconstructs damage photo slots from backend data.
    */
   private hydratePhotosFromStatus(): void {
     if (!this.status?.vehiclePhotos) return;
 
     const newPreviews = new Map<string, string>();
+    const damageSlots: DamagePhotoSlot[] = [];
 
     for (const photo of this.status.vehiclePhotos) {
-      // Construct full URL from backend storage key
+      // Resolve photo URL — prefer signed URLs from backend
       let fullUrl = photo.url;
 
-      // If URL is relative, prepend the API base URL
-      // Backend returns storage keys like "checkin/session-id/filename.jpg"
-      // Controller expects: /api/checkin/photos/{sessionId}/{filename}
-      // So we strip the "checkin/" prefix from storage key
       if (fullUrl && !fullUrl.startsWith('http')) {
-        const baseUrl = environment.baseApiUrl.replace(/\/$/, ''); // Remove trailing slash
-        // Strip "checkin/" prefix if present (storage key format)
-        const pathSegment = fullUrl.replace(/^checkin\//, '');
-        fullUrl = `${baseUrl}/checkin/photos/${pathSegment}`;
+        const baseUrl = environment.baseApiUrl.replace(/\/$/, '');
+        if (fullUrl.startsWith('checkin/')) {
+          fullUrl = `${baseUrl}/checkin/photos/${fullUrl.replace(/^checkin\//, '')}`;
+        } else if (fullUrl.startsWith('bookings/')) {
+          fullUrl = `${baseUrl}/checkin/photos/${fullUrl}`;
+        } else {
+          fullUrl = `${baseUrl}/checkin/photos/${fullUrl}`;
+        }
       }
 
-      if (fullUrl) {
-        // Use photoType as the key (matches slot.type for required photos)
+      if (!fullUrl) continue;
+
+      const isDamage = photo.photoType.includes('DAMAGE');
+
+      if (isDamage) {
+        // Reconstruct damage slot with stable ID derived from photoId
+        // This ensures the slot ID matches the progress key from check-in.service.ts
+        const stableSlotId = `${photo.photoType}-${photo.photoId}`;
+        damageSlots.push({
+          id: stableSlotId,
+          photoType: photo.photoType as 'HOST_DAMAGE_PREEXISTING',
+        });
+        newPreviews.set(stableSlotId, fullUrl);
+      } else {
+        // Required photos use photoType as key
         newPreviews.set(photo.photoType, fullUrl);
       }
     }
@@ -1670,9 +1687,20 @@ export class HostCheckInComponent implements OnInit, OnChanges, OnDestroy {
     // Set all hydrated previews at once
     this.localPreviews.set(newPreviews);
 
+    // Merge reconstructed damage slots with any existing user-added slots
+    if (damageSlots.length > 0) {
+      const existingSlots = this.damagePhotos();
+      const existingIds = new Set(existingSlots.map((s) => s.id));
+      const newSlots = damageSlots.filter((s) => !existingIds.has(s.id));
+      if (newSlots.length > 0) {
+        this.damagePhotos.update((current) => [...current, ...newSlots]);
+      }
+    }
+
     console.log('[HostCheckIn] Hydrated photos from status:', {
       photoCount: this.status.vehiclePhotos.length,
       previewsSet: newPreviews.size,
+      damageSlots: damageSlots.length,
     });
   }
 

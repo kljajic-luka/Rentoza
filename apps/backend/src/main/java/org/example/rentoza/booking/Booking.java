@@ -45,7 +45,7 @@ public class Booking {
      * 
      * <p><b>Granularity:</b> 30-minute intervals (e.g., 09:00, 09:30, 10:00)
      */
-    @Column(name = "start_time", nullable = false)
+    @Column(name = "start_time", nullable = false, columnDefinition = "TIMESTAMP WITHOUT TIME ZONE")
     private LocalDateTime startTime;
 
     /**
@@ -55,7 +55,7 @@ public class Booking {
      * <p><b>Constraint:</b> Must be at least 24 hours after startTime.
      * <p><b>Default return time:</b> 10:00 AM on end date.
      */
-    @Column(name = "end_time", nullable = false)
+    @Column(name = "end_time", nullable = false, columnDefinition = "TIMESTAMP WITHOUT TIME ZONE")
     private LocalDateTime endTime;
     
     /**

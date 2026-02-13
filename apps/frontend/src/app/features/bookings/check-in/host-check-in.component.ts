@@ -563,27 +563,6 @@ const PHOTO_SLOTS: PhotoSlot[] = [
         --error-bg: rgba(244, 67, 54, 0.08);
       }
 
-      /* Dark mode via system preference */
-      @media (prefers-color-scheme: dark) {
-        :host {
-          --checkin-text-primary: rgba(226, 232, 240, 0.92);
-          --checkin-text-secondary: rgba(148, 163, 184, 0.78);
-          --checkin-surface: rgba(19, 23, 34, 0.95);
-          --checkin-surface-muted: rgba(26, 33, 50, 0.78);
-          --checkin-border: rgba(94, 117, 168, 0.35);
-          --checkin-primary: #3b82f6;
-          --checkin-success: #4ade80;
-          --checkin-warn: #fbbf24;
-          --checkin-error: #f87171;
-
-          /* Legacy variable aliases - dark mode */
-          --success-color: var(--checkin-success);
-          --warn-color: var(--checkin-warn);
-          --rejection-color: var(--checkin-warn);
-          --error-bg: rgba(248, 113, 113, 0.12);
-        }
-      }
-
       /* Dark mode via class (Angular theme toggle) */
       :host-context(.dark-theme),
       :host-context(.theme-dark) {
@@ -1424,18 +1403,6 @@ const PHOTO_SLOTS: PhotoSlot[] = [
 
       .continue-capture-bar button mat-icon {
         margin-right: 8px;
-      }
-
-      /* Dark mode adjustments for capture prompt */
-      @media (prefers-color-scheme: dark) {
-        .capture-prompt-card {
-          border-color: var(--checkin-border);
-          background: var(--checkin-surface-muted);
-        }
-
-        .capture-prompt mat-icon {
-          color: var(--checkin-primary);
-        }
       }
 
       :host-context(.dark-theme) .capture-prompt-card,

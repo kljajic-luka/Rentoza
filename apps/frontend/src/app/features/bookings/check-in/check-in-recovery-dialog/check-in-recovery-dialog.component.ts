@@ -275,32 +275,6 @@ export type RecoveryDialogResult =
         }
       }
 
-      @media (prefers-color-scheme: dark) {
-        .dialog-header h2 {
-          color: rgba(255, 255, 255, 0.95);
-        }
-
-        .info-row {
-          color: rgba(255, 255, 255, 0.7);
-        }
-
-        .info-row mat-icon {
-          color: rgba(255, 255, 255, 0.5);
-        }
-
-        .info-row.warning {
-          background: rgba(255, 152, 0, 0.15);
-          color: #ffb74d;
-        }
-
-        .progress-bar {
-          background: rgba(255, 255, 255, 0.1);
-        }
-
-        .warning-text {
-          color: rgba(255, 255, 255, 0.5);
-        }
-      }
     `,
   ],
 })

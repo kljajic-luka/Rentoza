@@ -386,83 +386,6 @@ import { CheckOutStatusDTO, DAMAGE_CLAIM_STATUS_LABELS, DamageClaimStatus } from
        DARK MODE SUPPORT
        ============================================ */
     
-    /* Dark mode via system preference */
-    @media (prefers-color-scheme: dark) {
-      .subtitle {
-        color: rgba(255, 255, 255, 0.7);
-      }
-
-      .summary-item {
-        background: rgba(255, 255, 255, 0.05);
-
-        mat-icon {
-          color: #64b5f6;
-        }
-
-        .details .label {
-          color: rgba(255, 255, 255, 0.7);
-        }
-
-        strong {
-          color: rgba(255, 255, 255, 0.92);
-        }
-
-        &.late {
-          background: rgba(255, 152, 0, 0.15);
-
-          mat-icon {
-            color: #ffb74d;
-          }
-
-          strong {
-            color: #ffb74d;
-          }
-        }
-      }
-
-      .trip-summary h3,
-      .next-steps h3 {
-        color: rgba(255, 255, 255, 0.92);
-      }
-
-      .damage-report {
-        background: rgba(255, 152, 0, 0.12);
-
-        .damage-desc {
-          color: rgba(255, 255, 255, 0.7);
-        }
-
-        .damage-details .detail-row {
-          border-bottom-color: rgba(255, 255, 255, 0.1);
-          color: rgba(255, 255, 255, 0.87);
-        }
-
-        .damage-note {
-          color: rgba(255, 255, 255, 0.7);
-        }
-      }
-
-      .late-fee {
-        background: rgba(255, 152, 0, 0.12);
-
-        mat-icon {
-          color: #ffb74d;
-        }
-
-        strong, span {
-          color: rgba(255, 255, 255, 0.92);
-        }
-      }
-
-      .next-steps ul li {
-        color: rgba(255, 255, 255, 0.7);
-      }
-
-      mat-divider {
-        border-top-color: rgba(255, 255, 255, 0.1);
-      }
-    }
-
     /* Dark mode via Angular theme class */
     :host-context(.dark-theme),
     :host-context(.theme-dark) {
@@ -578,4 +501,3 @@ export class CheckoutCompleteComponent {
     this.router.navigate(['/search']);
   }
 }
-

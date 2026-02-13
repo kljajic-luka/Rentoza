@@ -579,13 +579,6 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
         border-left-color: rgba(251, 191, 36, 0.7);
       }
 
-      @media (prefers-color-scheme: dark) {
-        .damage-info {
-          background: rgba(255, 152, 0, 0.12);
-          border-left-color: rgba(251, 191, 36, 0.7);
-        }
-      }
-
       .damage-info mat-icon {
         color: var(--warning-color, #ff9800);
         flex-shrink: 0;
@@ -595,12 +588,6 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
       :host-context(.dark-theme) .damage-info mat-icon,
       :host-context(.theme-dark) .damage-info mat-icon {
         color: #fbbf24;
-      }
-
-      @media (prefers-color-scheme: dark) {
-        .damage-info mat-icon {
-          color: #fbbf24;
-        }
       }
 
       .damage-info p {
@@ -613,12 +600,6 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
       :host-context(.dark-theme) .damage-info p,
       :host-context(.theme-dark) .damage-info p {
         color: rgba(226, 232, 240, 0.9);
-      }
-
-      @media (prefers-color-scheme: dark) {
-        .damage-info p {
-          color: rgba(226, 232, 240, 0.9);
-        }
       }
 
       .full-width {
@@ -772,17 +753,6 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
         border-color: rgba(144, 202, 249, 0.25);
       }
 
-      @media (prefers-color-scheme: dark) {
-        .dual-party-section {
-          background: linear-gradient(
-            135deg,
-            rgba(33, 150, 243, 0.15) 0%,
-            rgba(156, 39, 176, 0.12) 100%
-          );
-          border-color: rgba(144, 202, 249, 0.25);
-        }
-      }
-
       .dual-party-section .section-header {
         display: flex;
         align-items: flex-start;
@@ -802,12 +772,6 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
         color: #b388ff;
       }
 
-      @media (prefers-color-scheme: dark) {
-        .dual-party-section .section-header mat-icon {
-          color: #b388ff;
-        }
-      }
-
       .dual-party-section .section-header h2,
       .dual-party-section .section-header p {
         color: var(--color-text-primary, #212121);
@@ -818,12 +782,6 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
         color: rgba(226, 232, 240, 0.95);
       }
 
-      @media (prefers-color-scheme: dark) {
-        .dual-party-section .section-header h2 {
-          color: rgba(226, 232, 240, 0.95);
-        }
-      }
-
       .dual-party-section .section-header p {
         color: var(--color-text-muted, #757575);
       }
@@ -831,12 +789,6 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
       :host-context(.dark-theme) .dual-party-section .section-header p,
       :host-context(.theme-dark) .dual-party-section .section-header p {
         color: rgba(148, 163, 184, 0.85);
-      }
-
-      @media (prefers-color-scheme: dark) {
-        .dual-party-section .section-header p {
-          color: rgba(148, 163, 184, 0.85);
-        }
       }
 
       .optional-badge {
@@ -854,13 +806,6 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
         color: #b388ff !important;
       }
 
-      @media (prefers-color-scheme: dark) {
-        .optional-badge {
-          background: rgba(124, 77, 255, 0.2) !important;
-          color: #b388ff !important;
-        }
-      }
-
       .capture-prompt-card {
         background: var(--color-surface, #ffffff);
         border-radius: 8px;
@@ -870,13 +815,6 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
       :host-context(.theme-dark) .capture-prompt-card {
         background: rgba(30, 41, 59, 0.8);
         border: 1px solid rgba(94, 117, 168, 0.25);
-      }
-
-      @media (prefers-color-scheme: dark) {
-        .capture-prompt-card {
-          background: rgba(30, 41, 59, 0.8);
-          border: 1px solid rgba(94, 117, 168, 0.25);
-        }
       }
 
       .capture-prompt {
@@ -900,13 +838,6 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
         opacity: 1;
       }
 
-      @media (prefers-color-scheme: dark) {
-        .capture-prompt mat-icon {
-          color: #b388ff;
-          opacity: 1;
-        }
-      }
-
       .capture-prompt .prompt-text h4 {
         margin: 0 0 4px;
         color: var(--color-text-primary, #212121);
@@ -915,12 +846,6 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
       :host-context(.dark-theme) .capture-prompt .prompt-text h4,
       :host-context(.theme-dark) .capture-prompt .prompt-text h4 {
         color: rgba(226, 232, 240, 0.95);
-      }
-
-      @media (prefers-color-scheme: dark) {
-        .capture-prompt .prompt-text h4 {
-          color: rgba(226, 232, 240, 0.95);
-        }
       }
 
       .capture-prompt .prompt-text p {
@@ -933,12 +858,6 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
       :host-context(.dark-theme) .capture-prompt .prompt-text p,
       :host-context(.theme-dark) .capture-prompt .prompt-text p {
         color: rgba(148, 163, 184, 0.85);
-      }
-
-      @media (prefers-color-scheme: dark) {
-        .capture-prompt .prompt-text p {
-          color: rgba(148, 163, 184, 0.85);
-        }
       }
 
       .capture-actions {
@@ -995,13 +914,6 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
         border-color: rgba(94, 117, 168, 0.3);
       }
 
-      @media (prefers-color-scheme: dark) {
-        .comparison-toggle-card {
-          background: rgba(30, 41, 59, 0.6);
-          border-color: rgba(94, 117, 168, 0.3);
-        }
-      }
-
       .comparison-toggle-content {
         display: flex;
         align-items: center;
@@ -1037,15 +949,6 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
       :host-context(.dark-theme) .comparison-toggle-content .toggle-text p,
       :host-context(.theme-dark) .comparison-toggle-content .toggle-text p {
         color: rgba(148, 163, 184, 0.85);
-      }
-
-      @media (prefers-color-scheme: dark) {
-        .comparison-toggle-content .toggle-text h4 {
-          color: rgba(226, 232, 240, 0.95);
-        }
-        .comparison-toggle-content .toggle-text p {
-          color: rgba(148, 163, 184, 0.85);
-        }
       }
 
       .toggle-btn {

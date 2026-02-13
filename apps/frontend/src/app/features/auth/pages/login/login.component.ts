@@ -1,5 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { finalize, tap } from 'rxjs';
@@ -15,6 +16,22 @@ import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+
+type LoginFeedbackKind =
+  | 'invalid_form'
+  | 'invalid_credentials'
+  | 'account_blocked'
+  | 'rate_limited'
+  | 'network'
+  | 'generic';
+
+interface LoginFeedback {
+  kind: LoginFeedbackKind;
+  title: string;
+  message: string;
+  icon: string;
+  tone: 'error' | 'warning';
+}
 
 @Component({
   selector: 'app-login-page',
@@ -48,10 +65,25 @@ export class LoginComponent {
   });
 
   protected readonly isSubmitting = signal(false);
+  protected readonly loginFeedback = signal<LoginFeedback | null>(null);
 
   submit(): void {
-    if (this.form.invalid || this.isSubmitting()) {
+    if (this.isSubmitting()) {
+      return;
+    }
+
+    this.resetLoginFeedback();
+
+    if (this.form.invalid) {
       this.form.markAllAsTouched();
+      this.loginFeedback.set({
+        kind: 'invalid_form',
+        title: 'Proverite unesene podatke',
+        message: 'Unesite ispravnu email adresu i lozinku da biste nastavili.',
+        icon: 'error_outline',
+        tone: 'warning',
+      });
+      this.focusFirstInvalidControl();
       return;
     }
 
@@ -75,25 +107,23 @@ export class LoginComponent {
         finalize(() => this.isSubmitting.set(false)),
       )
       .subscribe({
-        error: (error: any) => {
-          // Handle banned users specifically (403 with ACCOUNT_BANNED)
-          if (error?.status === 403 && error?.error?.error === 'ACCOUNT_BANNED') {
-            const reason = error?.error?.message || 'Vaš nalog je suspendovan.';
-            this.toast.error(`Nalog je blokiran. ${reason}`);
-            return;
+        error: (error: unknown) => {
+          const feedback = this.resolveLoginFeedback(error);
+          this.loginFeedback.set(feedback);
+
+          if (feedback.kind === 'invalid_credentials') {
+            this.applyInvalidCredentialsState();
+            this.form.controls.password.setValue('');
+            this.focusControl('password');
           }
 
-          // Handle wrong credentials (401 or bad password)
-          if (error?.status === 401 || error?.status === 400) {
-            this.toast.error('Pogrešan email ili lozinka. Pokušajte ponovo.');
-            return;
-          }
-
-          // For server errors (500, network issues, etc.) - don't show anything
-          // Users don't need to see technical errors, just silently fail
-          console.error('Login failed with server error:', error?.status);
+          console.error('Login failed:', error);
         },
       });
+  }
+
+  onCredentialInput(): void {
+    this.resetLoginFeedback();
   }
 
   /**
@@ -148,5 +178,149 @@ export class LoginComponent {
     if (/^https?:\/\//i.test(trimmed)) return null;
 
     return trimmed;
+  }
+
+  private resolveLoginFeedback(error: unknown): LoginFeedback {
+    if (error instanceof HttpErrorResponse) {
+      const apiMessage = this.extractApiMessage(error.error);
+      const apiCode = this.extractApiCode(error.error);
+
+      if (error.status === 403 && apiCode === 'ACCOUNT_BANNED') {
+        return {
+          kind: 'account_blocked',
+          title: 'Nalog je blokiran',
+          message: apiMessage || 'Vaš nalog je suspendovan. Obratite se podršci za pomoć.',
+          icon: 'block',
+          tone: 'error',
+        };
+      }
+
+      if (error.status === 400 || error.status === 401) {
+        return {
+          kind: 'invalid_credentials',
+          title: 'Prijava nije uspela',
+          message: 'Email adresa ili lozinka nisu ispravni. Proverite unos i pokušajte ponovo.',
+          icon: 'warning',
+          tone: 'error',
+        };
+      }
+
+      if (error.status === 429) {
+        return {
+          kind: 'rate_limited',
+          title: 'Previše pokušaja prijave',
+          message: 'Sačekajte nekoliko minuta pa pokušajte ponovo.',
+          icon: 'schedule',
+          tone: 'warning',
+        };
+      }
+
+      if (error.status === 0) {
+        return {
+          kind: 'network',
+          title: 'Nema konekcije',
+          message: 'Ne možemo da uspostavimo vezu sa serverom. Proverite internet i pokušajte ponovo.',
+          icon: 'wifi_off',
+          tone: 'error',
+        };
+      }
+    }
+
+    const message = error instanceof Error ? error.message.toLowerCase() : '';
+    if (
+      message.includes('invalid email') ||
+      message.includes('invalid password') ||
+      message.includes('email or password')
+    ) {
+      return {
+        kind: 'invalid_credentials',
+        title: 'Prijava nije uspela',
+        message: 'Email adresa ili lozinka nisu ispravni. Proverite unos i pokušajte ponovo.',
+        icon: 'warning',
+        tone: 'error',
+      };
+    }
+
+    if (message.includes('suspended') || message.includes('blocked') || message.includes('banned')) {
+      return {
+        kind: 'account_blocked',
+        title: 'Nalog je blokiran',
+        message: 'Vaš nalog je suspendovan. Obratite se podršci za pomoć.',
+        icon: 'block',
+        tone: 'error',
+      };
+    }
+
+    return {
+      kind: 'generic',
+      title: 'Prijava trenutno nije dostupna',
+      message: 'Došlo je do greške na serveru. Pokušajte ponovo za nekoliko trenutaka.',
+      icon: 'error',
+      tone: 'error',
+    };
+  }
+
+  private extractApiMessage(payload: unknown): string | null {
+    if (!payload || typeof payload !== 'object') return null;
+    const source = payload as Record<string, unknown>;
+
+    const message = source['message'] ?? source['error_description'] ?? source['detail'];
+    return typeof message === 'string' && message.trim() ? message.trim() : null;
+  }
+
+  private extractApiCode(payload: unknown): string | null {
+    if (!payload || typeof payload !== 'object') return null;
+    const source = payload as Record<string, unknown>;
+
+    const code = source['error'] ?? source['code'];
+    return typeof code === 'string' ? code.toUpperCase() : null;
+  }
+
+  private applyInvalidCredentialsState(): void {
+    this.form.controls.email.setErrors({
+      ...(this.form.controls.email.errors ?? {}),
+      invalidCredentials: true,
+    });
+    this.form.controls.password.setErrors({
+      ...(this.form.controls.password.errors ?? {}),
+      invalidCredentials: true,
+    });
+
+    this.form.controls.email.markAsTouched();
+    this.form.controls.password.markAsTouched();
+  }
+
+  private resetLoginFeedback(): void {
+    this.loginFeedback.set(null);
+    this.clearControlError('email', 'invalidCredentials');
+    this.clearControlError('password', 'invalidCredentials');
+  }
+
+  private clearControlError(controlName: 'email' | 'password', errorKey: string): void {
+    const control = this.form.controls[controlName];
+    if (!control.hasError(errorKey)) return;
+
+    const nextErrors = { ...(control.errors ?? {}) };
+    delete nextErrors[errorKey];
+    control.setErrors(Object.keys(nextErrors).length > 0 ? nextErrors : null);
+  }
+
+  private focusFirstInvalidControl(): void {
+    if (this.form.controls.email.invalid) {
+      this.focusControl('email');
+      return;
+    }
+
+    if (this.form.controls.password.invalid) {
+      this.focusControl('password');
+    }
+  }
+
+  private focusControl(controlName: 'email' | 'password'): void {
+    queueMicrotask(() => {
+      const field = document.querySelector<HTMLInputElement>(`input[formControlName="${controlName}"]`);
+      field?.focus();
+      field?.select();
+    });
   }
 }

@@ -112,8 +112,8 @@ export class OwnerBookingsComponent implements OnInit {
                 }
 
                 // Parse timestamps (exact timestamp architecture)
-                const startTime = new Date(booking.startTime);
-                const endTime = new Date(booking.endTime);
+                const startTime = this.parseAsSerbia(booking.startTime);
+                const endTime = this.parseAsSerbia(booking.endTime);
 
                 // Categorize based on times AND status
                 // 0. Terminal states (cancelled/declined/expired) should never appear as upcoming
@@ -365,7 +365,7 @@ export class OwnerBookingsComponent implements OnInit {
       bookingId: Number(booking.id),
       userRole: 'HOST',
       carInfo: car ? `${car.brand || ''} ${car.model}`.trim() : 'Vozilo',
-      tripDates: `${new Date(booking.startTime).toLocaleDateString('sr-RS')} - ${new Date(
+      tripDates: `${this.parseAsSerbia(booking.startTime).toLocaleDateString('sr-RS')} - ${this.parseAsSerbia(
         booking.endTime,
       ).toLocaleDateString('sr-RS')}`,
     };
@@ -468,26 +468,75 @@ export class OwnerBookingsComponent implements OnInit {
    * Backend sends LocalDateTime (no timezone) which represents Serbia local time.
    */
   private parseAsSerbia(dateStr: string): Date {
-    // If the string already has timezone info, parse directly
-    if (dateStr.includes('Z') || dateStr.includes('+') || dateStr.includes('-', 10)) {
+    if (!dateStr) {
+      return new Date(NaN);
+    }
+
+    // If timezone is explicit (e.g. Z, +01:00), native parsing is correct.
+    if (/(?:[zZ]|[+-]\d{2}:?\d{2})$/.test(dateStr)) {
       return new Date(dateStr);
     }
-    // Parse as local time, then adjust for Serbia offset
-    const utcDate = new Date(dateStr.replace('T', ' ').replace(/-/g, '/'));
-    const serbiaOffset = this.getSerbiaOffsetMinutes(utcDate);
-    // The dateStr represents Serbia local time, so subtract the offset to get UTC
-    return new Date(utcDate.getTime() - serbiaOffset * 60 * 1000);
+
+    // Parse ISO LocalDateTime and interpret it as Europe/Belgrade clock time.
+    const match = dateStr.match(
+      /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/,
+    );
+    if (!match) {
+      return new Date(dateStr);
+    }
+
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const hour = Number(match[4]);
+    const minute = Number(match[5]);
+    const second = Number(match[6] ?? '0');
+    const millisecond = Number((match[7] ?? '0').padEnd(3, '0'));
+
+    const serbiaLocalAsUtcMillis = Date.UTC(year, month - 1, day, hour, minute, second, millisecond);
+
+    // Iterate once to handle DST boundaries (offset depends on resulting instant).
+    let utcMillis = serbiaLocalAsUtcMillis;
+    for (let i = 0; i < 2; i++) {
+      const offsetMinutes = this.getTimeZoneOffsetMinutes(utcMillis, this.SERBIA_TIMEZONE);
+      utcMillis = serbiaLocalAsUtcMillis - offsetMinutes * 60_000;
+    }
+
+    return new Date(utcMillis);
   }
 
   /**
-   * Get Serbia's UTC offset in minutes for a given date (handles DST).
+   * Get timezone offset in minutes for a concrete instant.
    */
-  private getSerbiaOffsetMinutes(date: Date): number {
-    const utcStr = date.toLocaleString('en-US', { timeZone: 'UTC' });
-    const serbiaStr = date.toLocaleString('en-US', { timeZone: this.SERBIA_TIMEZONE });
-    const utcTime = new Date(utcStr).getTime();
-    const serbiaTime = new Date(serbiaStr).getTime();
-    return (serbiaTime - utcTime) / (60 * 1000);
+  private getTimeZoneOffsetMinutes(timestampMs: number, timeZone: string): number {
+    const date = new Date(timestampMs);
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+      hourCycle: 'h23',
+    }).formatToParts(date);
+
+    const get = (type: Intl.DateTimeFormatPartTypes): number => {
+      const value = parts.find((part) => part.type === type)?.value;
+      return value ? Number(value) : 0;
+    };
+
+    const asIfUtc = Date.UTC(
+      get('year'),
+      get('month') - 1,
+      get('day'),
+      get('hour'),
+      get('minute'),
+      get('second'),
+    );
+
+    return Math.round((asIfUtc - timestampMs) / 60_000);
   }
 
   /**

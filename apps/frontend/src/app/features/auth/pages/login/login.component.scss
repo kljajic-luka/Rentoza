@@ -49,6 +49,43 @@
   display: grid;
   gap: 1.5rem;
 
+  .auth-feedback {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.85rem 1rem;
+    border-radius: 14px;
+    border: 1px solid rgba(220, 38, 38, 0.24);
+    background: rgba(254, 242, 242, 0.9);
+    color: #b91c1c;
+
+    &--warning {
+      border-color: rgba(245, 158, 11, 0.3);
+      background: rgba(255, 251, 235, 0.95);
+      color: #b45309;
+    }
+
+    mat-icon {
+      margin-top: 0.125rem;
+      flex-shrink: 0;
+    }
+
+    &__content {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      line-height: 1.35;
+
+      strong {
+        font-size: 0.9rem;
+      }
+
+      span {
+        font-size: 0.825rem;
+      }
+    }
+  }
+
   mat-form-field {
     width: 100%;
 
@@ -214,4 +251,18 @@ mat-card-actions {
       text-decoration: underline;
     }
   }
+}
+
+:host-context(.theme-dark) .auth-form .auth-feedback,
+:host-context(.dark-theme) .auth-form .auth-feedback {
+  border-color: rgba(248, 113, 113, 0.45);
+  background: rgba(127, 29, 29, 0.22);
+  color: rgba(254, 226, 226, 0.92);
+}
+
+:host-context(.theme-dark) .auth-form .auth-feedback.auth-feedback--warning,
+:host-context(.dark-theme) .auth-form .auth-feedback.auth-feedback--warning {
+  border-color: rgba(251, 191, 36, 0.45);
+  background: rgba(146, 64, 14, 0.24);
+  color: rgba(254, 243, 199, 0.95);
 }

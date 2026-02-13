@@ -1,5 +1,6 @@
 package org.example.rentoza.storage;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -539,12 +540,29 @@ public class SupabaseStorageService {
             ResponseEntity<SignedUrlResponse> response = restTemplate.exchange(
                     url, HttpMethod.POST, request, SignedUrlResponse.class);
             
-            if (response.getBody() != null && response.getBody().signedURL != null) {
-                String signedUrl = supabaseUrl + response.getBody().signedURL;
-                log.debug("✅ Signed URL created: bucket={}, path={}", bucket, path);
+            if (response.getBody() != null && response.getBody().signedUrl != null) {
+                String rawSignedUrl = response.getBody().signedUrl;
+                // Supabase returns a relative path like "/object/sign/bucket/path?token=xxx".
+                // The correct serving URL requires the /storage/v1 prefix:
+                //   https://<project>.supabase.co/storage/v1/object/sign/bucket/path?token=xxx
+                String signedUrl;
+                if (rawSignedUrl.startsWith("http://") || rawSignedUrl.startsWith("https://")) {
+                    // Full absolute URL — use as-is
+                    signedUrl = rawSignedUrl;
+                } else if (rawSignedUrl.startsWith("/storage/v1/")) {
+                    // Already contains /storage/v1 prefix — just prepend host
+                    signedUrl = supabaseUrl + rawSignedUrl;
+                } else if (rawSignedUrl.startsWith("/object/")) {
+                    // Missing /storage/v1 prefix — add it
+                    signedUrl = supabaseUrl + "/storage/v1" + rawSignedUrl;
+                } else {
+                    // Any other relative path — prepend base + /storage/v1/
+                    signedUrl = supabaseUrl + "/storage/v1/" + rawSignedUrl;
+                }
+                log.debug("✅ Signed URL created: bucket={}, path={}, url={}", bucket, path, signedUrl);
                 return signedUrl;
             }
-            log.warn("⚠️ Signed URL response had no signedURL field: bucket={}, path={}", bucket, path);
+            log.warn("⚠️ Signed URL response had no signedUrl field: bucket={}, path={}", bucket, path);
         } catch (HttpClientErrorException e) {
             log.error("❌ Failed to create signed URL: bucket={}, path={}, status={}, body={}", 
                     bucket, path, e.getStatusCode(), e.getResponseBodyAsString());
@@ -728,7 +746,9 @@ public class SupabaseStorageService {
     }
     
     // Response DTO for signed URL API
+    // Supabase returns "signedUrl" (camelCase) — @JsonAlias handles both variants.
     private static class SignedUrlResponse {
-        public String signedURL;
+        @JsonAlias({"signedURL", "signedUrl"})
+        public String signedUrl;
     }
 }

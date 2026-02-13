@@ -37,6 +37,7 @@ import { MatChipsModule } from '@angular/material/chips';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 
 import { PhotoGuidanceService } from '../../../../core/services/photo-guidance.service';
+import { ThemeService } from '../../../../core/services/theme.service';
 import { CheckInPhotoType } from '../../../../core/models/check-in.model';
 import {
   PhotoGuidanceDTO,
@@ -939,6 +940,7 @@ export class GuidedPhotoCaptureComponent implements OnInit, OnDestroy, OnChanges
   protected readonly guidanceService = inject(PhotoGuidanceService);
   private readonly snackBar = inject(MatSnackBar);
   private readonly persistenceService = inject(CheckInPersistenceService);
+  private readonly themeService = inject(ThemeService);
 
   // Captured photos storage
   private readonly capturedPhotos = signal<Map<CheckInPhotoType, PhotoCaptureState>>(new Map());
@@ -950,6 +952,11 @@ export class GuidedPhotoCaptureComponent implements OnInit, OnDestroy, OnChanges
 
   // Dark mode detection
   protected readonly isDarkMode = signal(false);
+
+  // Keep guided capture theme in sync with app theme toggle (not OS preference).
+  private readonly darkModeSyncEffect = effect(() => {
+    this.isDarkMode.set(this.themeService.theme() === 'dark');
+  });
 
   // Computed from guidance service
   protected readonly currentGuidance = this.guidanceService.currentGuidance;
@@ -1021,16 +1028,6 @@ export class GuidedPhotoCaptureComponent implements OnInit, OnDestroy, OnChanges
   }
 
   ngOnInit(): void {
-    // Detect dark mode
-    this.detectColorScheme();
-
-    // Listen for color scheme changes
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    mediaQuery.addEventListener('change', (e) => this.isDarkMode.set(e.matches));
-
-    // Also check Material theme
-    this.checkMaterialTheme();
-
     // Check if we have restored state to apply (may already be set via @Input)
     if (
       this.restoredState &&
@@ -1224,27 +1221,6 @@ export class GuidedPhotoCaptureComponent implements OnInit, OnDestroy, OnChanges
     this.persistenceService.releaseLock(this.bookingId);
 
     this.guidanceService.endCapture();
-  }
-
-  // ========== COLOR SCHEME DETECTION ==========
-
-  private detectColorScheme(): void {
-    // Check system preference
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    this.isDarkMode.set(prefersDark);
-  }
-
-  private checkMaterialTheme(): void {
-    // Check if app has dark theme class
-    const body = document.body;
-    const isDark =
-      body.classList.contains('dark-theme') ||
-      body.classList.contains('dark-mode') ||
-      document.documentElement.classList.contains('dark');
-
-    if (isDark) {
-      this.isDarkMode.set(true);
-    }
   }
 
   // ========== CAPTURE FLOW ==========

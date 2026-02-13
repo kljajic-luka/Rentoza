@@ -339,19 +339,6 @@ export class AuthService {
       .pipe(
         tap((response) => this.persistSession(response)),
         map(() => this.currentUserSubject.value!),
-        catchError((error: HttpErrorResponse) => {
-          console.error('Supabase login failed:', error);
-
-          if (error.status === 401) {
-            return throwError(() => new Error('Invalid email or password'));
-          }
-
-          if (error.status === 403) {
-            return throwError(() => new Error('Your account has been suspended'));
-          }
-
-          return throwError(() => new Error('Login failed'));
-        }),
       );
   }
 

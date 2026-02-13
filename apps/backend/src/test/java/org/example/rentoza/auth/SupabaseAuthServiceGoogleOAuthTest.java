@@ -501,6 +501,75 @@ class SupabaseAuthServiceGoogleOAuthTest {
             .hasMessageContaining("Email address must be verified");
         }
 
+                @Test
+                @DisplayName("Should allow Google OAuth when confirmed_at is present")
+                void shouldAllowWhenConfirmedAtPresent() {
+                        SupabaseUser user = new SupabaseUser();
+                        user.setId(TEST_AUTH_UID);
+                        user.setEmail(TEST_EMAIL);
+                        user.setEmailConfirmedAt(null);
+                        user.setConfirmedAt("2026-02-13T10:00:00Z");
+
+                        Map<String, Object> googleIdentity = new HashMap<>();
+                        googleIdentity.put("provider", "google");
+                        googleIdentity.put("provider_id", "google-sub-confirmed-at");
+                        user.setIdentities(List.of(googleIdentity));
+
+                        SupabaseAuthResponse mockResponse = new SupabaseAuthResponse();
+                        mockResponse.setAccessToken(TEST_ACCESS_TOKEN);
+                        mockResponse.setRefreshToken(TEST_REFRESH_TOKEN);
+                        mockResponse.setExpiresIn(3600);
+                        mockResponse.setUser(user);
+
+                        when(supabaseAuthClient.exchangeCodeForToken(anyString())).thenReturn(mockResponse);
+                        when(userRepository.findByAuthUid(any(UUID.class))).thenReturn(Optional.empty());
+                        when(userRepository.findByEmail(TEST_EMAIL)).thenReturn(Optional.empty());
+                        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+                        SupabaseAuthResult result = supabaseAuthService.handleGoogleCallback("auth-code");
+
+                        assertThat(result).isNotNull();
+                        assertThat(result.getUser()).isNotNull();
+                        assertThat(result.getUser().getEmail()).isEqualTo(TEST_EMAIL.toLowerCase());
+                }
+
+                @Test
+                @DisplayName("Should allow Google OAuth when identity_data.email_verified is true")
+                void shouldAllowWhenIdentityDataEmailVerifiedTrue() {
+                        SupabaseUser user = new SupabaseUser();
+                        user.setId(TEST_AUTH_UID);
+                        user.setEmail(TEST_EMAIL);
+                        user.setEmailConfirmedAt(null);
+                        user.setConfirmedAt(null);
+
+                        Map<String, Object> identityData = new HashMap<>();
+                        identityData.put("email_verified", true);
+                        identityData.put("sub", "google-sub-verified-identity-data");
+
+                        Map<String, Object> googleIdentity = new HashMap<>();
+                        googleIdentity.put("provider", "google");
+                        googleIdentity.put("provider_id", "google-sub-verified-identity-data");
+                        googleIdentity.put("identity_data", identityData);
+                        user.setIdentities(List.of(googleIdentity));
+
+                        SupabaseAuthResponse mockResponse = new SupabaseAuthResponse();
+                        mockResponse.setAccessToken(TEST_ACCESS_TOKEN);
+                        mockResponse.setRefreshToken(TEST_REFRESH_TOKEN);
+                        mockResponse.setExpiresIn(3600);
+                        mockResponse.setUser(user);
+
+                        when(supabaseAuthClient.exchangeCodeForToken(anyString())).thenReturn(mockResponse);
+                        when(userRepository.findByAuthUid(any(UUID.class))).thenReturn(Optional.empty());
+                        when(userRepository.findByEmail(TEST_EMAIL)).thenReturn(Optional.empty());
+                        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+                        SupabaseAuthResult result = supabaseAuthService.handleGoogleCallback("auth-code");
+
+                        assertThat(result).isNotNull();
+                        assertThat(result.getUser()).isNotNull();
+                        assertThat(result.getUser().getEmail()).isEqualTo(TEST_EMAIL.toLowerCase());
+                }
+
         @Test
         @DisplayName("Should reject user with no Google identity in Supabase identities")
         void shouldRejectNonGoogleIdentity() {

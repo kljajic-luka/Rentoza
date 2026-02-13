@@ -460,6 +460,7 @@ public class SupabaseAuthClient {
         user.setEmail(node.path("email").asText(null));
         user.setPhone(node.path("phone").asText(null));
         user.setEmailConfirmedAt(node.path("email_confirmed_at").asText(null));
+        user.setConfirmedAt(node.path("confirmed_at").asText(null));
         user.setPhoneConfirmedAt(node.path("phone_confirmed_at").asText(null));
         user.setCreatedAt(node.path("created_at").asText(null));
         user.setUpdatedAt(node.path("updated_at").asText(null));
@@ -590,6 +591,7 @@ public class SupabaseAuthClient {
         private String email;
         private String phone;
         private String emailConfirmedAt;
+        private String confirmedAt;
         private String phoneConfirmedAt;
         private String createdAt;
         private String updatedAt;
@@ -609,6 +611,9 @@ public class SupabaseAuthClient {
         
         public String getEmailConfirmedAt() { return emailConfirmedAt; }
         public void setEmailConfirmedAt(String emailConfirmedAt) { this.emailConfirmedAt = emailConfirmedAt; }
+
+        public String getConfirmedAt() { return confirmedAt; }
+        public void setConfirmedAt(String confirmedAt) { this.confirmedAt = confirmedAt; }
         
         public String getPhoneConfirmedAt() { return phoneConfirmedAt; }
         public void setPhoneConfirmedAt(String phoneConfirmedAt) { this.phoneConfirmedAt = phoneConfirmedAt; }
@@ -629,7 +634,49 @@ public class SupabaseAuthClient {
         public void setIdentities(java.util.List<Map<String, Object>> identities) { this.identities = identities; }
         
         public boolean isEmailVerified() {
-            return emailConfirmedAt != null && !emailConfirmedAt.isEmpty();
+            if (hasText(emailConfirmedAt) || hasText(confirmedAt)) {
+                return true;
+            }
+
+            if (appMetadata != null && isTruthy(appMetadata.get("email_verified"))) {
+                return true;
+            }
+
+            if (identities != null) {
+                for (Map<String, Object> identity : identities) {
+                    Object provider = identity.get("provider");
+                    if (provider == null || !"google".equalsIgnoreCase(provider.toString())) {
+                        continue;
+                    }
+
+                    if (isTruthy(identity.get("email_verified"))) {
+                        return true;
+                    }
+
+                    Object identityData = identity.get("identity_data");
+                    if (identityData instanceof Map<?, ?> dataMap) {
+                        if (isTruthy(dataMap.get("email_verified")) || isTruthy(dataMap.get("emailVerified"))) {
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private static boolean hasText(String value) {
+            return value != null && !value.isBlank();
+        }
+
+        private static boolean isTruthy(Object value) {
+            if (value == null) {
+                return false;
+            }
+            if (value instanceof Boolean b) {
+                return b;
+            }
+            return "true".equalsIgnoreCase(value.toString().trim());
         }
     }
 

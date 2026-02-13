@@ -474,6 +474,40 @@ public class SupabaseAuthClient {
             user.setUserMetadata(metadata);
         }
         
+        // Parse app metadata
+        JsonNode appMetaNode = node.path("app_metadata");
+        if (!appMetaNode.isMissingNode()) {
+            Map<String, Object> appMetadata = new HashMap<>();
+            appMetaNode.fields().forEachRemaining(entry -> 
+                appMetadata.put(entry.getKey(), entry.getValue().asText())
+            );
+            user.setAppMetadata(appMetadata);
+        }
+        
+        // Parse identities array — preserve nested objects (e.g. identity_data)
+        JsonNode identitiesNode = node.path("identities");
+        if (identitiesNode.isArray()) {
+            java.util.List<Map<String, Object>> identities = new java.util.ArrayList<>();
+            for (JsonNode identityNode : identitiesNode) {
+                Map<String, Object> identity = new HashMap<>();
+                identityNode.fields().forEachRemaining(entry -> {
+                    JsonNode val = entry.getValue();
+                    if (val.isObject()) {
+                        // Preserve nested objects as Map (e.g. identity_data)
+                        Map<String, Object> nested = new HashMap<>();
+                        val.fields().forEachRemaining(nestedEntry ->
+                            nested.put(nestedEntry.getKey(), nestedEntry.getValue().asText())
+                        );
+                        identity.put(entry.getKey(), nested);
+                    } else {
+                        identity.put(entry.getKey(), val.asText());
+                    }
+                });
+                identities.add(identity);
+            }
+            user.setIdentities(identities);
+        }
+        
         return user;
     }
 
@@ -560,6 +594,8 @@ public class SupabaseAuthClient {
         private String createdAt;
         private String updatedAt;
         private Map<String, Object> userMetadata;
+        private Map<String, Object> appMetadata;
+        private java.util.List<Map<String, Object>> identities;
 
         // Getters and setters
         public UUID getId() { return id; }
@@ -585,6 +621,12 @@ public class SupabaseAuthClient {
         
         public Map<String, Object> getUserMetadata() { return userMetadata; }
         public void setUserMetadata(Map<String, Object> userMetadata) { this.userMetadata = userMetadata; }
+        
+        public Map<String, Object> getAppMetadata() { return appMetadata; }
+        public void setAppMetadata(Map<String, Object> appMetadata) { this.appMetadata = appMetadata; }
+        
+        public java.util.List<Map<String, Object>> getIdentities() { return identities; }
+        public void setIdentities(java.util.List<Map<String, Object>> identities) { this.identities = identities; }
         
         public boolean isEmailVerified() {
             return emailConfirmedAt != null && !emailConfirmedAt.isEmpty();

@@ -315,7 +315,12 @@ public class EnhancedAuthController {
             }
 
             log.info("OAuth registration completed: email={}, role={}", user.getEmail(), user.getRole());
-            return issueTokensAndRespond(user, request, res, "Profile completed successfully");
+            
+            // SECURITY FIX: Do NOT mint legacy JWT tokens here. 
+            // The user already has a valid Supabase session from Google OAuth.
+            // Just return the updated user profile — existing Supabase cookies are preserved.
+            UserResponseDTO userResponse = userService.toUserResponse(user);
+            return ResponseEntity.ok(AuthResponseDTO.success(userResponse, "Profile completed successfully"));
 
         } catch (ValidationException e) {
             log.warn("OAuth completion validation failed: {}", e.getMessage());

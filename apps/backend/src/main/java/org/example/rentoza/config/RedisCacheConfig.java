@@ -208,15 +208,6 @@ public class RedisCacheConfig implements CachingConfigurer {
         return configs;
     }
 
-        /**
-         * Named cache manager for photo signed URLs (used by PhotoUrlService).
-         * Provides a Redis-backed cache when Redis is enabled.
-         */
-        @Bean(name = "photoUrlCacheManager")
-        public CacheManager photoUrlCacheManager(RedisConnectionFactory connectionFactory) {
-                return redisCacheManager(connectionFactory);
-        }
-
     /**
      * Create ObjectMapper configured for Redis JSON serialization.
      * 

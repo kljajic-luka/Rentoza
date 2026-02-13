@@ -137,9 +137,10 @@ public class SupabaseAuthController {
             
         } catch (SupabaseAuthException e) {
             log.error("Failed to initiate Google OAuth: {}", e.getMessage());
-            return ResponseEntity.internalServerError().body(Map.of(
+            // Return 400 for client errors like invalid redirect URI
+            return ResponseEntity.badRequest().body(Map.of(
                     "error", "OAUTH_INIT_FAILED",
-                    "message", "Failed to initiate Google authentication. Please try again."
+                    "message", e.getMessage()
             ));
         } catch (Exception e) {
             log.error("Unexpected error during Google OAuth initiation", e);
@@ -189,7 +190,7 @@ public class SupabaseAuthController {
     @GetMapping("/google/callback")
     public ResponseEntity<?> handleGoogleCallback(
             @RequestParam("code") String code,
-            @RequestParam(value = "role", defaultValue = "USER") String role,
+            @RequestParam(value = "role", required = false) String ignoredRole,
             HttpServletResponse response
     ) {
         // Input validation
@@ -201,9 +202,13 @@ public class SupabaseAuthController {
             ));
         }
         
+        if (ignoredRole != null && !"USER".equalsIgnoreCase(ignoredRole)) {
+            log.warn("SECURITY: Ignoring client-provided role '{}' in Google callback. Owner upgrade must use profile completion flow.", ignoredRole);
+        }
+        
         try {
-            // Exchange code for tokens and sync user (role is passed instead of state)
-            SupabaseAuthResult result = supabaseAuthService.handleGoogleCallback(code, role);
+            // SECURITY: Always default to USER. Owner role assignment happens only via validated profile completion.
+            SupabaseAuthResult result = supabaseAuthService.handleGoogleCallback(code);
             
             // Set authentication cookies
             setAuthCookies(response, result.getAccessToken(), result.getRefreshToken());
@@ -234,7 +239,8 @@ public class SupabaseAuthController {
                 ));
             }
             
-            if (e.getMessage().contains("already associated") || e.getMessage().contains("duplicate")) {
+            if (e.getMessage().contains("already associated") || e.getMessage().contains("duplicate")
+                    || e.getMessage().contains("already exists")) {
                 return ResponseEntity.status(409).body(Map.of(
                         "error", "ACCOUNT_CONFLICT",
                         "message", e.getMessage()
@@ -270,7 +276,8 @@ public class SupabaseAuthController {
             @Valid @RequestBody GoogleCallbackRequest callbackRequest,
             HttpServletResponse response
     ) {
-        return handleGoogleCallback(callbackRequest.getCode(), callbackRequest.getState(), response);
+        // SECURITY FIX: Previously passed state as role (bug). Now ignores both client fields.
+        return handleGoogleCallback(callbackRequest.getCode(), null, response);
     }
     /**
      * Handle Google OAuth token callback from Supabase's implicit flow.
@@ -311,12 +318,15 @@ public class SupabaseAuthController {
             ));
         }
         
+        if (request.getRole() != null && !"USER".equalsIgnoreCase(request.getRole())) {
+            log.warn("SECURITY: Ignoring client-provided role '{}' in implicit token callback. Owner upgrade must use profile completion flow.", request.getRole());
+        }
+        
         try {
-            // Verify token and sync user with Supabase
+            // SECURITY: Always default to USER. Role from client is untrusted.
             SupabaseAuthResult result = supabaseAuthService.handleImplicitFlowTokens(
                     request.getAccessToken(),
-                    request.getRefreshToken(),
-                    request.getRole()
+                    request.getRefreshToken()
             );
             
             // Set authentication cookies
@@ -347,7 +357,8 @@ public class SupabaseAuthController {
                 ));
             }
             
-            if (e.getMessage().contains("already associated") || e.getMessage().contains("duplicate")) {
+            if (e.getMessage().contains("already associated") || e.getMessage().contains("duplicate")
+                    || e.getMessage().contains("already exists")) {
                 return ResponseEntity.status(409).body(Map.of(
                         "error", "ACCOUNT_CONFLICT",
                         "message", e.getMessage()
@@ -767,8 +778,7 @@ public class SupabaseAuthController {
         @NotBlank(message = "Authorization code is required")
         private String code;
         
-        @NotBlank(message = "State parameter is required")
-        private String state;
+        private String state; // Optional — Supabase handles CSRF internally via PKCE
 
         // Getters and setters
         public String getCode() { return code; }

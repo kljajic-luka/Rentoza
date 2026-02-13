@@ -1,5 +1,6 @@
 package org.example.rentoza.auth;
 
+import org.example.rentoza.security.supabase.SupabaseAuthClient.SupabaseAuthException;
 import org.example.rentoza.security.supabase.SupabaseAuthService;
 import org.example.rentoza.security.supabase.SupabaseAuthService.GoogleAuthInitResult;
 import org.example.rentoza.security.supabase.SupabaseAuthService.SupabaseAuthResult;
@@ -29,6 +30,7 @@ import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doThrow;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -157,12 +159,13 @@ class SupabaseAuthControllerGoogleOAuthTest {
     class CallbackGetEndpointTests {
 
         @Test
-        @DisplayName("Should process valid callback with code and role")
+        @DisplayName("Should process valid callback with code (role ignored)")
         void shouldProcessValidCallback() throws Exception {
             // Arrange
             SupabaseAuthResult mockResult = createMockAuthResult();
             UserResponseDTO userResponse = createMockUserResponse();
-            when(supabaseAuthService.handleGoogleCallback(eq("valid-code"), eq("USER")))
+            // Service now takes single arg — role is always hardcoded to USER server-side
+            when(supabaseAuthService.handleGoogleCallback(eq("valid-code")))
                     .thenReturn(mockResult);
             when(userService.toUserResponse(any(User.class)))
                     .thenReturn(userResponse);
@@ -184,7 +187,7 @@ class SupabaseAuthControllerGoogleOAuthTest {
             // Arrange
             SupabaseAuthResult mockResult = createMockAuthResult();
             UserResponseDTO userResponse = createMockUserResponse();
-            when(supabaseAuthService.handleGoogleCallback(anyString(), anyString()))
+            when(supabaseAuthService.handleGoogleCallback(anyString()))
                     .thenReturn(mockResult);
             when(userService.toUserResponse(any(User.class)))
                     .thenReturn(userResponse);
@@ -214,8 +217,8 @@ class SupabaseAuthControllerGoogleOAuthTest {
             // Arrange
             SupabaseAuthResult mockResult = createMockAuthResult();
             UserResponseDTO userResponse = createMockUserResponse();
-            // Role defaults to USER when not provided
-            when(supabaseAuthService.handleGoogleCallback(eq("valid-code"), eq("USER")))
+            // Role defaults to USER when not provided — service ignores it anyway
+            when(supabaseAuthService.handleGoogleCallback(eq("valid-code")))
                     .thenReturn(mockResult);
             when(userService.toUserResponse(any(User.class)))
                     .thenReturn(userResponse);
@@ -227,18 +230,18 @@ class SupabaseAuthControllerGoogleOAuthTest {
         }
 
         @Test
-        @DisplayName("Should handle invalid role by defaulting to USER")
+        @DisplayName("Should ignore invalid role and process normally")
         void shouldHandleInvalidRole() throws Exception {
             // Arrange
             SupabaseAuthResult mockResult = createMockAuthResult();
             UserResponseDTO userResponse = createMockUserResponse();
-            // Invalid role string is passed directly; service handles it
-            when(supabaseAuthService.handleGoogleCallback(eq("valid-code"), eq("INVALID_ROLE")))
+            // Service ignores role entirely — single arg
+            when(supabaseAuthService.handleGoogleCallback(eq("valid-code")))
                     .thenReturn(mockResult);
             when(userService.toUserResponse(any(User.class)))
                     .thenReturn(userResponse);
 
-            // Act & Assert
+            // Act & Assert — role param is accepted but ignored
             mockMvc.perform(get(CALLBACK_ENDPOINT)
                             .param("code", "valid-code")
                             .param("role", "INVALID_ROLE"))
@@ -255,12 +258,13 @@ class SupabaseAuthControllerGoogleOAuthTest {
     class CallbackPostEndpointTests {
 
         @Test
-        @DisplayName("Should process POST callback with JSON body")
+        @DisplayName("Should process POST callback with JSON body (state no longer used as role)")
         void shouldProcessPostCallback() throws Exception {
             // Arrange
             SupabaseAuthResult mockResult = createMockAuthResult();
             UserResponseDTO userResponse = createMockUserResponse();
-            when(supabaseAuthService.handleGoogleCallback(eq("valid-code"), eq("valid-state")))
+            // POST body sends code+state, but service only uses code
+            when(supabaseAuthService.handleGoogleCallback(eq("valid-code")))
                     .thenReturn(mockResult);
             when(userService.toUserResponse(any(User.class)))
                     .thenReturn(userResponse);
@@ -276,6 +280,134 @@ class SupabaseAuthControllerGoogleOAuthTest {
                                 """))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.user.email").value(TEST_EMAIL));
+        }
+
+        @Test
+        @DisplayName("Should process POST callback without state field")
+        void shouldProcessPostCallbackWithoutState() throws Exception {
+            // Arrange
+            SupabaseAuthResult mockResult = createMockAuthResult();
+            UserResponseDTO userResponse = createMockUserResponse();
+            when(supabaseAuthService.handleGoogleCallback(eq("valid-code")))
+                    .thenReturn(mockResult);
+            when(userService.toUserResponse(any(User.class)))
+                    .thenReturn(userResponse);
+
+            // Act & Assert — state field omitted entirely
+            mockMvc.perform(post(CALLBACK_ENDPOINT)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                {
+                                    "code": "valid-code"
+                                }
+                                """))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.user.email").value(TEST_EMAIL));
+        }
+    }
+
+    // =========================================================================
+    // Error Mapping Tests
+    // =========================================================================
+
+    @Nested
+    @DisplayName("Error mapping tests")
+    class ErrorMappingTests {
+
+        @Test
+        @DisplayName("Should return 409 when LOCAL account conflict")
+        void shouldReturn409ForLocalAccountConflict() throws Exception {
+            // Arrange — service throws with 'already exists' message for LOCAL conflict
+            when(supabaseAuthService.handleGoogleCallback(eq("conflict-code")))
+                    .thenThrow(new SupabaseAuthException(
+                        "An account with this email already exists. Please log in with your email and password."));
+
+            // Act & Assert
+            mockMvc.perform(get(CALLBACK_ENDPOINT)
+                            .param("code", "conflict-code"))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.error").value("ACCOUNT_CONFLICT"))
+                    .andExpect(jsonPath("$.message").value(
+                        org.hamcrest.Matchers.containsString("already exists")));
+        }
+
+        @Test
+        @DisplayName("Should return 400 for invalid redirect URI from authorize")
+        void shouldReturn400ForInvalidRedirectUri() throws Exception {
+            // Arrange — service throws SupabaseAuthException for invalid redirect
+            when(supabaseAuthService.initiateGoogleAuth(eq(Role.USER), eq("https://evil.com/callback")))
+                    .thenThrow(new SupabaseAuthException("Invalid redirect URI"));
+
+            // Act & Assert
+            mockMvc.perform(get(AUTHORIZE_ENDPOINT)
+                            .param("role", "USER")
+                            .param("redirectUri", "https://evil.com/callback")
+                            .accept(MediaType.APPLICATION_JSON))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.error").value("OAUTH_INIT_FAILED"))
+                    .andExpect(jsonPath("$.message").value(
+                        org.hamcrest.Matchers.containsString("Invalid redirect URI")));
+        }
+
+        @Test
+        @DisplayName("Owner-intent callback returns USER role with INCOMPLETE registration")
+        void shouldReturnUserRoleWithIncompleteForOwnerIntent() throws Exception {
+            // Arrange — simulate owner-intent user (role=OWNER in URL, but backend creates USER)
+            User user = new User();
+            user.setId(1L);
+            user.setEmail(TEST_EMAIL);
+            user.setFirstName("Test");
+            user.setLastName("User");
+            user.setRole(Role.USER); // Always USER, never OWNER
+            user.setAuthUid(TEST_AUTH_UID);
+            user.setRegistrationStatus(RegistrationStatus.INCOMPLETE); // Needs profile completion
+
+            SupabaseAuthResult mockResult = SupabaseAuthResult.builder()
+                    .accessToken(TEST_ACCESS_TOKEN)
+                    .refreshToken(TEST_REFRESH_TOKEN)
+                    .expiresIn(3600)
+                    .user(user)
+                    .supabaseUserId(TEST_AUTH_UID)
+                    .build();
+
+            UserResponseDTO userResponse = new UserResponseDTO(
+                    1L, "Test", "User", TEST_EMAIL, null, null, "USER");
+
+            when(supabaseAuthService.handleGoogleCallback(eq("owner-code")))
+                    .thenReturn(mockResult);
+            when(userService.toUserResponse(any(User.class)))
+                    .thenReturn(userResponse);
+
+            // Act & Assert — role param says OWNER but response has USER + INCOMPLETE
+            mockMvc.perform(get(CALLBACK_ENDPOINT)
+                            .param("code", "owner-code")
+                            .param("role", "OWNER"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.user.role").value("USER"))
+                    .andExpect(jsonPath("$.registrationStatus").value("INCOMPLETE"))
+                    .andExpect(jsonPath("$.success").value(true));
+        }
+
+        @Test
+        @DisplayName("Should return 409 for LOCAL account conflict on token-callback")
+        void shouldReturn409ForLocalAccountConflictOnTokenCallback() throws Exception {
+            // Arrange — implicit flow token-callback throws 'already exists' message
+            when(supabaseAuthService.handleImplicitFlowTokens(eq("conflict-token"), isNull()))
+                    .thenThrow(new SupabaseAuthException(
+                        "An account with this email already exists. Please log in with your email and password."));
+
+            // Act & Assert — POST /google/token-callback should map to 409
+            mockMvc.perform(post("/api/auth/supabase/google/token-callback")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                {
+                                    "accessToken": "conflict-token"
+                                }
+                                """))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.error").value("ACCOUNT_CONFLICT"))
+                    .andExpect(jsonPath("$.message").value(
+                        org.hamcrest.Matchers.containsString("already exists")));
         }
     }
 

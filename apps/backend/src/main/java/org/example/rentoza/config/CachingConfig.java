@@ -4,7 +4,6 @@ import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.cache.concurrent.ConcurrentMapCache;
 import org.springframework.cache.support.SimpleCacheManager;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
@@ -71,19 +70,7 @@ public class CachingConfig implements WebMvcConfigurer {
         return cacheManager;
     }
 
-    /**
-     * Dedicated cache manager for photo signed URLs.
-     * Used by PhotoUrlService when Redis is not enabled.
-     */
-    @Bean(name = "photoUrlCacheManager")
-    @ConditionalOnMissingBean(name = "photoUrlCacheManager")
-    public CacheManager photoUrlCacheManager() {
-        SimpleCacheManager cacheManager = new SimpleCacheManager();
-        cacheManager.setCaches(Arrays.asList(
-            new ConcurrentMapCache("photoSignedUrls")
-        ));
-        return cacheManager;
-    }
+
 
     /**
      * Default cache control settings for static resources

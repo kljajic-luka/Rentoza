@@ -53,8 +53,7 @@ public class PhotoUrlService {
      * @param photoId The database ID of the photo (used for audit logging)
      * @return A signed, time-limited URL suitable for direct image serving
      */
-    @Cacheable(value = "photoSignedUrls", key = "#bucket + '::' + #storageKey", 
-               cacheManager = "photoUrlCacheManager")
+    @Cacheable(value = "photoSignedUrls", key = "#bucket + '::' + #storageKey")
     public String generateSignedUrl(String bucket, String storageKey, Long photoId) {
         try {
             log.debug("[PhotoURL] Generating signed URL: bucket={}, key={}, photoId={}", 

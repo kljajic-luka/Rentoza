@@ -21,6 +21,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -75,6 +76,7 @@ class SupabaseAuthServiceGoogleOAuthTest {
         // Set required configuration values via reflection
         ReflectionTestUtils.setField(supabaseAuthService, "supabaseUrl", TEST_SUPABASE_URL);
         ReflectionTestUtils.setField(supabaseAuthService, "oauth2RedirectUri", TEST_REDIRECT_URI);
+        ReflectionTestUtils.setField(supabaseAuthService, "oauth2RedirectAllowedUrisRaw", "");
     }
 
     // =========================================================================
@@ -115,10 +117,11 @@ class SupabaseAuthServiceGoogleOAuthTest {
         }
 
         @Test
-        @DisplayName("Should use custom redirect URI when provided")
+        @DisplayName("Should use custom redirect URI when provided and allowed")
         void shouldUseCustomRedirectUri() {
-            // Arrange
+            // Arrange — add custom URI to the allowlist
             String customRedirect = "https://custom.domain.com/callback";
+            ReflectionTestUtils.setField(supabaseAuthService, "oauth2RedirectAllowedUrisRaw", customRedirect);
 
             // Act
             GoogleAuthInitResult result = supabaseAuthService.initiateGoogleAuth(Role.USER, customRedirect);
@@ -155,7 +158,7 @@ class SupabaseAuthServiceGoogleOAuthTest {
     class HandleGoogleCallbackTests {
 
         @Test
-        @DisplayName("Should handle callback with default role when role is null")
+        @DisplayName("Should handle callback with hardcoded USER role")
         void shouldHandleNullRoleWithDefault() {
             // Arrange
             SupabaseAuthResponse mockResponse = createMockAuthResponse();
@@ -171,8 +174,8 @@ class SupabaseAuthServiceGoogleOAuthTest {
             when(userRepository.save(userCaptor.capture()))
                     .thenAnswer(invocation -> invocation.getArgument(0));
 
-            // Act - null role should default to USER
-            supabaseAuthService.handleGoogleCallback("valid-code", null);
+            // Act — single-arg, role always hardcoded to USER
+            supabaseAuthService.handleGoogleCallback("valid-code");
 
             // Assert
             User savedUser = userCaptor.getValue();
@@ -184,7 +187,7 @@ class SupabaseAuthServiceGoogleOAuthTest {
         void shouldRejectNullCode() {
             // Act & Assert
             assertThatThrownBy(() -> 
-                supabaseAuthService.handleGoogleCallback(null, "USER")
+                supabaseAuthService.handleGoogleCallback(null)
             )
             .isInstanceOf(SupabaseAuthClient.SupabaseAuthException.class);
         }
@@ -206,8 +209,7 @@ class SupabaseAuthServiceGoogleOAuthTest {
 
             // Act
             SupabaseAuthResult result = supabaseAuthService.handleGoogleCallback(
-                    "valid-auth-code",
-                    "USER"
+                    "valid-auth-code"
             );
 
             // Assert
@@ -218,7 +220,7 @@ class SupabaseAuthServiceGoogleOAuthTest {
         }
 
         @Test
-        @DisplayName("Should handle invalid role string gracefully")
+        @DisplayName("Should always assign USER role regardless of any prior role notion")
         void shouldHandleInvalidRoleString() {
             // Arrange
             SupabaseAuthResponse mockResponse = createMockAuthResponse();
@@ -234,8 +236,8 @@ class SupabaseAuthServiceGoogleOAuthTest {
             when(userRepository.save(userCaptor.capture()))
                     .thenAnswer(invocation -> invocation.getArgument(0));
 
-            // Act - invalid role should default to USER
-            supabaseAuthService.handleGoogleCallback("code", "INVALID_ROLE");
+            // Act — role is always USER (hardcoded server-side)
+            supabaseAuthService.handleGoogleCallback("code");
 
             // Assert
             User savedUser = userCaptor.getValue();
@@ -269,7 +271,7 @@ class SupabaseAuthServiceGoogleOAuthTest {
                     .thenAnswer(invocation -> invocation.getArgument(0));
 
             // Act
-            supabaseAuthService.handleGoogleCallback("auth-code", "USER");
+            supabaseAuthService.handleGoogleCallback("auth-code");
 
             // Assert
             User savedUser = userCaptor.getValue();
@@ -282,8 +284,33 @@ class SupabaseAuthServiceGoogleOAuthTest {
         }
 
         @Test
-        @DisplayName("Should link existing email user when auth_uid not found")
-        void shouldLinkExistingEmailUser() {
+        @DisplayName("Should persist google_id from Supabase identities on new user")
+        void shouldPersistGoogleIdOnNewUser() {
+            // Arrange
+            SupabaseAuthResponse mockResponse = createMockAuthResponseWithIdentities();
+
+            when(supabaseAuthClient.exchangeCodeForToken(anyString()))
+                    .thenReturn(mockResponse);
+            when(userRepository.findByAuthUid(any(UUID.class)))
+                    .thenReturn(Optional.empty());
+            when(userRepository.findByEmail(TEST_EMAIL))
+                    .thenReturn(Optional.empty());
+
+            ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+            when(userRepository.save(userCaptor.capture()))
+                    .thenAnswer(invocation -> invocation.getArgument(0));
+
+            // Act
+            supabaseAuthService.handleGoogleCallback("auth-code");
+
+            // Assert
+            User savedUser = userCaptor.getValue();
+            assertThat(savedUser.getGoogleId()).isEqualTo("google-sub-12345");
+        }
+
+        @Test
+        @DisplayName("Should REFUSE linking LOCAL account — throws 409 conflict")
+        void shouldRefuseAutoLinkingLocalAccount() {
             // Arrange
             SupabaseAuthResponse mockResponse = createMockAuthResponse();
 
@@ -301,12 +328,43 @@ class SupabaseAuthServiceGoogleOAuthTest {
             when(userRepository.findByEmail(TEST_EMAIL))
                     .thenReturn(Optional.of(existingUser));
 
+            // Act & Assert — LOCAL accounts should NOT be auto-linked (security fix)
+            assertThatThrownBy(() ->
+                supabaseAuthService.handleGoogleCallback("auth-code")
+            )
+            .isInstanceOf(RuntimeException.class)
+            .hasMessageContaining("An account with this email already exists");
+
+            // Verify no save was attempted
+            verify(userRepository, never()).save(any(User.class));
+        }
+
+        @Test
+        @DisplayName("Should link existing SUPABASE user with null authUid")
+        void shouldLinkExistingSupabaseUserWithNullAuthUid() {
+            // Arrange
+            SupabaseAuthResponse mockResponse = createMockAuthResponse();
+
+            User existingUser = new User();
+            existingUser.setId(42L);
+            existingUser.setEmail(TEST_EMAIL);
+            existingUser.setAuthUid(null); // Not yet linked
+            existingUser.setAuthProvider(AuthProvider.SUPABASE);
+            existingUser.setRole(Role.USER);
+
+            when(supabaseAuthClient.exchangeCodeForToken(anyString()))
+                    .thenReturn(mockResponse);
+            when(userRepository.findByAuthUid(any(UUID.class)))
+                    .thenReturn(Optional.empty());
+            when(userRepository.findByEmail(TEST_EMAIL))
+                    .thenReturn(Optional.of(existingUser));
+
             ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
             when(userRepository.save(userCaptor.capture()))
                     .thenAnswer(invocation -> invocation.getArgument(0));
 
             // Act
-            supabaseAuthService.handleGoogleCallback("auth-code", "USER");
+            supabaseAuthService.handleGoogleCallback("auth-code");
 
             // Assert
             User updatedUser = userCaptor.getValue();
@@ -328,6 +386,7 @@ class SupabaseAuthServiceGoogleOAuthTest {
             existingUser.setAuthProvider(AuthProvider.SUPABASE);
             existingUser.setRole(Role.USER);
             existingUser.setRegistrationStatus(RegistrationStatus.ACTIVE);
+            existingUser.setGoogleId("existing-google-id"); // Already linked — no save needed
 
             when(supabaseAuthClient.exchangeCodeForToken(anyString()))
                     .thenReturn(mockResponse);
@@ -336,8 +395,7 @@ class SupabaseAuthServiceGoogleOAuthTest {
 
             // Act
             SupabaseAuthResult result = supabaseAuthService.handleGoogleCallback(
-                    "auth-code", 
-                    "USER"
+                    "auth-code"
             );
 
             // Assert
@@ -346,7 +404,7 @@ class SupabaseAuthServiceGoogleOAuthTest {
         }
 
         @Test
-        @DisplayName("Should create OWNER user when role is OWNER")
+        @DisplayName("Should always create new user as USER role (OWNER via profile completion only)")
         void shouldCreateOwnerUser() {
             // Arrange
             SupabaseAuthResponse mockResponse = createMockAuthResponse();
@@ -362,12 +420,12 @@ class SupabaseAuthServiceGoogleOAuthTest {
             when(userRepository.save(userCaptor.capture()))
                     .thenAnswer(invocation -> invocation.getArgument(0));
 
-            // Act
-            supabaseAuthService.handleGoogleCallback("auth-code", "OWNER");
+            // Act — even though the test name says "OWNER", the service always creates USER
+            supabaseAuthService.handleGoogleCallback("auth-code");
 
-            // Assert
+            // Assert — role is always USER via Google OAuth; Owner upgrade is separate flow
             User savedUser = userCaptor.getValue();
-            assertThat(savedUser.getRole()).isEqualTo(Role.OWNER);
+            assertThat(savedUser.getRole()).isEqualTo(Role.USER);
         }
     }
 
@@ -388,7 +446,7 @@ class SupabaseAuthServiceGoogleOAuthTest {
 
             // Act & Assert
             assertThatThrownBy(() -> 
-                supabaseAuthService.handleGoogleCallback("auth-code", "USER")
+                supabaseAuthService.handleGoogleCallback("auth-code")
             )
             .isInstanceOf(RuntimeException.class)
             .hasMessageContaining("Supabase API error");
@@ -408,9 +466,154 @@ class SupabaseAuthServiceGoogleOAuthTest {
 
             // Act & Assert
             assertThatThrownBy(() -> 
-                supabaseAuthService.handleGoogleCallback("auth-code", "USER")
+                supabaseAuthService.handleGoogleCallback("auth-code")
             )
             .isInstanceOf(RuntimeException.class);
+        }
+
+        @Test
+        @DisplayName("Should reject unverified email from Supabase")
+        void shouldRejectUnverifiedEmail() {
+            // Arrange — emailConfirmedAt is null (unverified)
+            SupabaseUser user = new SupabaseUser();
+            user.setId(TEST_AUTH_UID);
+            user.setEmail(TEST_EMAIL);
+            user.setEmailConfirmedAt(null); // NOT verified
+
+            Map<String, Object> metadata = new HashMap<>();
+            metadata.put("full_name", "Test User");
+            user.setUserMetadata(metadata);
+
+            SupabaseAuthResponse mockResponse = new SupabaseAuthResponse();
+            mockResponse.setAccessToken(TEST_ACCESS_TOKEN);
+            mockResponse.setRefreshToken(TEST_REFRESH_TOKEN);
+            mockResponse.setExpiresIn(3600);
+            mockResponse.setUser(user);
+
+            when(supabaseAuthClient.exchangeCodeForToken(anyString()))
+                    .thenReturn(mockResponse);
+
+            // Act & Assert
+            assertThatThrownBy(() ->
+                supabaseAuthService.handleGoogleCallback("auth-code")
+            )
+            .isInstanceOf(RuntimeException.class)
+            .hasMessageContaining("Email address must be verified");
+        }
+
+        @Test
+        @DisplayName("Should reject user with no Google identity in Supabase identities")
+        void shouldRejectNonGoogleIdentity() {
+            // Arrange — user has only an email identity, no Google
+            SupabaseUser user = new SupabaseUser();
+            user.setId(TEST_AUTH_UID);
+            user.setEmail(TEST_EMAIL);
+            user.setEmailConfirmedAt("2024-01-01T00:00:00Z");
+
+            Map<String, Object> metadata = new HashMap<>();
+            metadata.put("full_name", "Test User");
+            user.setUserMetadata(metadata);
+
+            // Only email identity, no Google identity
+            Map<String, Object> emailIdentity = new HashMap<>();
+            emailIdentity.put("provider", "email");
+            emailIdentity.put("provider_id", TEST_EMAIL);
+            user.setIdentities(List.of(emailIdentity));
+
+            SupabaseAuthResponse mockResponse = new SupabaseAuthResponse();
+            mockResponse.setAccessToken(TEST_ACCESS_TOKEN);
+            mockResponse.setRefreshToken(TEST_REFRESH_TOKEN);
+            mockResponse.setExpiresIn(3600);
+            mockResponse.setUser(user);
+
+            when(supabaseAuthClient.exchangeCodeForToken(anyString()))
+                    .thenReturn(mockResponse);
+
+            // Act & Assert — must reject since no Google identity evidence
+            assertThatThrownBy(() ->
+                supabaseAuthService.handleGoogleCallback("auth-code")
+            )
+            .isInstanceOf(SupabaseAuthClient.SupabaseAuthException.class)
+            .hasMessageContaining("Google provider identity is required");
+        }
+
+        @Test
+        @DisplayName("Should reject user with empty identities list")
+        void shouldRejectEmptyIdentities() {
+            // Arrange — user has empty identities
+            SupabaseUser user = new SupabaseUser();
+            user.setId(TEST_AUTH_UID);
+            user.setEmail(TEST_EMAIL);
+            user.setEmailConfirmedAt("2024-01-01T00:00:00Z");
+
+            Map<String, Object> metadata = new HashMap<>();
+            metadata.put("full_name", "Test User");
+            user.setUserMetadata(metadata);
+            user.setIdentities(List.of()); // empty
+
+            SupabaseAuthResponse mockResponse = new SupabaseAuthResponse();
+            mockResponse.setAccessToken(TEST_ACCESS_TOKEN);
+            mockResponse.setRefreshToken(TEST_REFRESH_TOKEN);
+            mockResponse.setExpiresIn(3600);
+            mockResponse.setUser(user);
+
+            when(supabaseAuthClient.exchangeCodeForToken(anyString()))
+                    .thenReturn(mockResponse);
+
+            // Act & Assert
+            assertThatThrownBy(() ->
+                supabaseAuthService.handleGoogleCallback("auth-code")
+            )
+            .isInstanceOf(SupabaseAuthClient.SupabaseAuthException.class)
+            .hasMessageContaining("Google provider identity is required");
+        }
+
+        @Test
+        @DisplayName("Should extract googleId from identity_data.sub when provider_id is absent")
+        void shouldExtractGoogleIdFromIdentityDataSub() {
+            // Arrange — provider_id is missing, but identity_data.sub is present
+            SupabaseUser user = new SupabaseUser();
+            user.setId(TEST_AUTH_UID);
+            user.setEmail(TEST_EMAIL);
+            user.setEmailConfirmedAt("2024-01-01T00:00:00Z");
+
+            Map<String, Object> metadata = new HashMap<>();
+            metadata.put("full_name", "Test User");
+            user.setUserMetadata(metadata);
+
+            Map<String, Object> identityData = new HashMap<>();
+            identityData.put("sub", "google-sub-from-data");
+            identityData.put("email", TEST_EMAIL);
+
+            Map<String, Object> googleIdentity = new HashMap<>();
+            googleIdentity.put("provider", "google");
+            // No provider_id field
+            googleIdentity.put("identity_data", identityData);
+            user.setIdentities(List.of(googleIdentity));
+
+            SupabaseAuthResponse mockResponse = new SupabaseAuthResponse();
+            mockResponse.setAccessToken(TEST_ACCESS_TOKEN);
+            mockResponse.setRefreshToken(TEST_REFRESH_TOKEN);
+            mockResponse.setExpiresIn(3600);
+            mockResponse.setUser(user);
+
+            when(supabaseAuthClient.exchangeCodeForToken(anyString()))
+                    .thenReturn(mockResponse);
+            when(userRepository.findByAuthUid(any(UUID.class)))
+                    .thenReturn(Optional.empty());
+            when(userRepository.findByEmail(TEST_EMAIL))
+                    .thenReturn(Optional.empty());
+
+            ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+            when(userRepository.save(userCaptor.capture()))
+                    .thenAnswer(invocation -> invocation.getArgument(0));
+
+            // Act
+            supabaseAuthService.handleGoogleCallback("auth-code");
+
+            // Assert — googleId should come from identity_data.sub
+            User savedUser = userCaptor.getValue();
+            assertThat(savedUser.getGoogleId()).isEqualTo("google-sub-from-data");
         }
     }
 
@@ -428,6 +631,38 @@ class SupabaseAuthServiceGoogleOAuthTest {
         metadata.put("full_name", "Test User");
         metadata.put("avatar_url", "https://example.com/avatar.jpg");
         user.setUserMetadata(metadata);
+
+        // Add Google identity so extractGoogleSubjectId works
+        Map<String, Object> googleIdentity = new HashMap<>();
+        googleIdentity.put("provider", "google");
+        googleIdentity.put("provider_id", "google-sub-default");
+        user.setIdentities(List.of(googleIdentity));
+
+        SupabaseAuthResponse response = new SupabaseAuthResponse();
+        response.setAccessToken(TEST_ACCESS_TOKEN);
+        response.setRefreshToken(TEST_REFRESH_TOKEN);
+        response.setExpiresIn(3600);
+        response.setUser(user);
+
+        return response;
+    }
+
+    private SupabaseAuthResponse createMockAuthResponseWithIdentities() {
+        SupabaseUser user = new SupabaseUser();
+        user.setId(TEST_AUTH_UID);
+        user.setEmail(TEST_EMAIL);
+        user.setEmailConfirmedAt("2024-01-01T00:00:00Z");
+
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put("full_name", "Test User");
+        metadata.put("avatar_url", "https://example.com/avatar.jpg");
+        user.setUserMetadata(metadata);
+
+        // Google identity with specific sub claim via provider_id
+        Map<String, Object> googleIdentity = new HashMap<>();
+        googleIdentity.put("provider", "google");
+        googleIdentity.put("provider_id", "google-sub-12345");
+        user.setIdentities(List.of(googleIdentity));
 
         SupabaseAuthResponse response = new SupabaseAuthResponse();
         response.setAccessToken(TEST_ACCESS_TOKEN);

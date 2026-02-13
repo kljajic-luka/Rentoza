@@ -9,6 +9,7 @@ substitutions:
   _BACKEND_SERVICE: rentoza-backend
   _CHAT_SERVICE: rentoza-chat
   _REPO: rentoza
+  _OAUTH2_REDIRECT_ALLOWED_URIS: https://rentoza.rs/auth/supabase/google/callback,https://www.rentoza.rs/auth/supabase/google/callback
 
 steps:
   # =============================================================================
@@ -97,6 +98,8 @@ steps:
       - '10'
       - '--concurrency'
       - '80'
+      - '--update-env-vars'
+      - '^#^OAUTH2_REDIRECT_ALLOWED_URIS=${_OAUTH2_REDIRECT_ALLOWED_URIS}'
     waitFor: ['push-backend']
 
   # =============================================================================

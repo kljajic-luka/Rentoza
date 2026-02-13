@@ -80,6 +80,9 @@ public class SupabaseAuthService {
     
     @Value("${app.oauth2-redirect-uri:#{null}}")
     private String oauth2RedirectUri;
+    
+    @Value("${app.oauth2-redirect-allowed-uris:#{null}}")
+    private String oauth2RedirectAllowedUrisRaw;
 
     public SupabaseAuthService(
             SupabaseAuthClient supabaseClient,
@@ -174,29 +177,17 @@ public class SupabaseAuthService {
      * @throws SupabaseAuthException if validation fails or user sync fails
      */
     @Transactional
-    public SupabaseAuthResult handleGoogleCallback(String code, String roleString) {
+    public SupabaseAuthResult handleGoogleCallback(String code) {
         // Validate inputs
         if (code == null || code.isBlank()) {
             log.warn("Google OAuth callback with missing authorization code");
             throw new SupabaseAuthException("Authorization code is required");
         }
         
-        // Parse role from string (default to USER if not provided or invalid)
+        // SECURITY: Role is always USER. Owner upgrade happens only through profile completion.
         Role role = Role.USER;
-        if (roleString != null && !roleString.isBlank()) {
-            try {
-                role = Role.valueOf(roleString.toUpperCase().trim());
-                // Only USER and OWNER are valid for OAuth registration
-                if (role != Role.USER && role != Role.OWNER) {
-                    log.warn("Invalid role {} for OAuth, defaulting to USER", role);
-                    role = Role.USER;
-                }
-            } catch (IllegalArgumentException e) {
-                log.warn("Could not parse role '{}', defaulting to USER", roleString);
-            }
-        }
         
-        log.info("Processing Google OAuth callback for role={}", role);
+        log.info("Processing Google OAuth callback (role locked to USER)");
         
         // Exchange authorization code for tokens via Supabase
         SupabaseAuthResponse authResponse;
@@ -262,29 +253,17 @@ public class SupabaseAuthService {
      * @throws SupabaseAuthException if token is invalid or user sync fails
      */
     @Transactional
-    public SupabaseAuthResult handleImplicitFlowTokens(String accessToken, String refreshToken, String roleString) {
+    public SupabaseAuthResult handleImplicitFlowTokens(String accessToken, String refreshToken) {
         // Validate access token
         if (accessToken == null || accessToken.isBlank()) {
             log.warn("Implicit flow callback with missing access token");
             throw new SupabaseAuthException("Access token is required");
         }
         
-        // Parse role from string (default to USER if not provided or invalid)
+        // SECURITY: Role is always USER. Owner upgrade happens only through profile completion.
         Role role = Role.USER;
-        if (roleString != null && !roleString.isBlank()) {
-            try {
-                role = Role.valueOf(roleString.toUpperCase().trim());
-                // Only USER and OWNER are valid for OAuth registration
-                if (role != Role.USER && role != Role.OWNER) {
-                    log.warn("Invalid role {} for OAuth, defaulting to USER", role);
-                    role = Role.USER;
-                }
-            } catch (IllegalArgumentException e) {
-                log.warn("Could not parse role '{}', defaulting to USER", roleString);
-            }
-        }
         
-        log.info("Processing implicit OAuth flow for role={}", role);
+        log.info("Processing implicit OAuth flow (role locked to USER)");
         
         // Verify token with Supabase and get user info
         SupabaseUser supabaseUser;
@@ -352,11 +331,31 @@ public class SupabaseAuthService {
         
         log.debug("Syncing Google user to local database: email={}, authUid={}", email, authUid);
         
+        // SECURITY: Require confirmed email from Supabase
+        if (!supabaseUser.isEmailVerified()) {
+            log.error("SECURITY: Rejecting Google OAuth user with unverified email: {}", email);
+            throw new SupabaseAuthException("Email address must be verified to complete authentication");
+        }
+        
+        // SECURITY: Verify Google provider evidence via identities
+        String googleSubjectId = extractGoogleSubjectId(supabaseUser);
+        if (googleSubjectId == null) {
+            log.error("SECURITY: No Google identity found in Supabase user identities for email={}. Rejecting.", email);
+            throw new SupabaseAuthException("Google provider identity is required for Google OAuth authentication");
+        }
+        
         // Check if user already exists by auth_uid (repeat login)
         Optional<User> existingByAuthUid = userRepository.findByAuthUid(authUid);
         if (existingByAuthUid.isPresent()) {
             User user = existingByAuthUid.get();
             log.info("Existing user found by auth_uid: userId={}, email={}", user.getId(), user.getEmail());
+            
+            // Persist google_id if not already set and we have it
+            if (googleSubjectId != null && user.getGoogleId() == null) {
+                user.setGoogleId(googleSubjectId);
+                user = userRepository.save(user);
+                log.info("Persisted google_id for existing user: userId={}", user.getId());
+            }
             
             // Ensure mapping exists
             ensureUserMapping(authUid, user.getId());
@@ -369,17 +368,33 @@ public class SupabaseAuthService {
         if (existingByEmail.isPresent()) {
             User user = existingByEmail.get();
             
-            // Link auth_uid to existing user (migration from legacy or password auth)
-            if (user.getAuthUid() == null) {
-                user.setAuthUid(authUid);
-                user.setAuthProvider(AuthProvider.SUPABASE);
-                user = userRepository.save(user);
-                log.info("Linked auth_uid to existing user: userId={}, email={}", user.getId(), email);
-            } else if (!user.getAuthUid().equals(authUid)) {
-                // User already linked to different Supabase account - security error
+            // SECURITY: Do NOT auto-link LOCAL password accounts by email.
+            // This prevents account takeover where an attacker creates a Google account
+            // with the same email as a local password user.
+            if (user.getAuthUid() == null && user.getAuthProvider() == AuthProvider.LOCAL) {
+                log.error("SECURITY: Refusing to auto-link LOCAL password account by email. " +
+                          "email={}, existingProvider={}, attemptedAuthUid={}",
+                          email, user.getAuthProvider(), authUid);
+                throw new SupabaseAuthException(
+                    "An account with this email already exists. Please log in with your email and password, " +
+                    "then link your Google account from your profile settings.");
+            }
+            
+            // Safe linking: user already has a Supabase auth_uid but it doesn't match
+            if (user.getAuthUid() != null && !user.getAuthUid().equals(authUid)) {
                 log.error("Email {} is already linked to different Supabase account: existing={}, attempted={}",
                         email, user.getAuthUid(), authUid);
                 throw new SupabaseAuthException("This email is already associated with another account");
+            }
+            
+            // Safe linking: user has SUPABASE provider but null authUid (migration edge case)
+            if (user.getAuthUid() == null && user.getAuthProvider() == AuthProvider.SUPABASE) {
+                user.setAuthUid(authUid);
+                if (googleSubjectId != null && user.getGoogleId() == null) {
+                    user.setGoogleId(googleSubjectId);
+                }
+                user = userRepository.save(user);
+                log.info("Linked auth_uid to existing SUPABASE user: userId={}, email={}", user.getId(), email);
             }
             
             return user;
@@ -397,6 +412,11 @@ public class SupabaseAuthService {
         newUser.setEnabled(true);
         newUser.setLocked(false);
         newUser.setBanned(false);
+        
+        // Persist Google immutable subject ID if available
+        if (googleSubjectId != null) {
+            newUser.setGoogleId(googleSubjectId);
+        }
         
         // Set registration status to INCOMPLETE - user needs to complete profile
         newUser.setRegistrationStatus(RegistrationStatus.INCOMPLETE);
@@ -482,8 +502,12 @@ public class SupabaseAuthService {
      */
     private String resolveRedirectUri(String providedUri) {
         if (providedUri != null && !providedUri.isBlank()) {
-            // Validate provided URI is in allowlist (security measure)
-            log.debug("Using provided redirect URI: {}", providedUri);
+            // SECURITY: Validate provided URI is in allowlist
+            if (!isRedirectUriAllowed(providedUri)) {
+                log.warn("SECURITY: Rejected non-allowlisted redirect URI: {}", providedUri);
+                throw new SupabaseAuthException("Invalid redirect URI");
+            }
+            log.debug("Using provided redirect URI (allowlisted): {}", providedUri);
             return providedUri;
         }
         
@@ -494,6 +518,38 @@ public class SupabaseAuthService {
         // Fallback to supabase default
         log.debug("Using default Supabase redirect");
         return null;
+    }
+    
+    /**
+     * Validates redirect URI against configured allowlist.
+     * Allowlist is configured via app.oauth2-redirect-allowed-uris (comma-separated).
+     * Falls back to the single configured redirect URI if allowlist is not set.
+     */
+    private boolean isRedirectUriAllowed(String uri) {
+        if (uri == null || uri.isBlank()) return false;
+        
+        // Build allowlist from config
+        java.util.Set<String> allowed = new java.util.HashSet<>();
+        
+        // Add explicitly configured allowed URIs
+        if (oauth2RedirectAllowedUrisRaw != null && !oauth2RedirectAllowedUrisRaw.isBlank()) {
+            for (String u : oauth2RedirectAllowedUrisRaw.split(",")) {
+                String trimmed = u.trim();
+                if (!trimmed.isBlank()) allowed.add(trimmed);
+            }
+        }
+        
+        // Always include the primary configured redirect URI
+        if (oauth2RedirectUri != null && !oauth2RedirectUri.isBlank()) {
+            allowed.add(oauth2RedirectUri);
+        }
+        
+        if (allowed.isEmpty()) {
+            log.warn("No redirect URI allowlist configured — rejecting all provided URIs for safety");
+            return false;
+        }
+        
+        return allowed.contains(uri);
     }
 
     /**
@@ -584,6 +640,50 @@ public class SupabaseAuthService {
     private String capitalize(String str) {
         if (str == null || str.isEmpty()) return str;
         return str.substring(0, 1).toUpperCase() + str.substring(1).toLowerCase();
+    }
+
+    /**
+     * Extracts the Google immutable subject ID from Supabase user identities.
+     * 
+     * <p>Supabase returns an array of identity objects, each containing:
+     * <ul>
+     *   <li>provider: "google", "email", etc.</li>
+     *   <li>id: The provider's unique subject identifier (Google's `sub` claim)</li>
+     * </ul>
+     * 
+     * @param supabaseUser The Supabase user object
+     * @return Google subject ID if found, null otherwise
+     */
+    private String extractGoogleSubjectId(SupabaseUser supabaseUser) {
+        var identities = supabaseUser.getIdentities();
+        if (identities == null || identities.isEmpty()) {
+            return null;
+        }
+        
+        for (var identity : identities) {
+            if ("google".equals(identity.get("provider"))) {
+                // Prefer provider_id (Supabase's canonical field for the provider's subject ID)
+                Object providerId = identity.get("provider_id");
+                if (providerId != null && !providerId.toString().isBlank()) {
+                    return providerId.toString();
+                }
+                // Fallback: identity_data.sub (nested object with Google's claims)
+                Object identityData = identity.get("identity_data");
+                if (identityData instanceof Map<?, ?> dataMap) {
+                    Object sub = dataMap.get("sub");
+                    if (sub != null && !sub.toString().isBlank()) {
+                        return sub.toString();
+                    }
+                }
+                // Last resort: id field (may be Supabase identity row UUID — less reliable)
+                Object id = identity.get("id");
+                if (id != null && !id.toString().isBlank()) {
+                    log.warn("Using identity.id as Google subject — may be Supabase row UUID, not Google sub");
+                    return id.toString();
+                }
+            }
+        }
+        return null;
     }
 
     // =====================================================

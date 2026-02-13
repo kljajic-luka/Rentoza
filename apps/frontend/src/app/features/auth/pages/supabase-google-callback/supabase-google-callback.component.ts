@@ -94,6 +94,9 @@ export class SupabaseGoogleCallbackComponent implements OnInit {
   protected readonly isProcessing = signal(true);
   protected readonly errorMessage = signal<string | null>(null);
 
+  /** Tracks whether the user initiated signup as an owner (from URL ?role=OWNER param). */
+  private ownerIntent = false;
+
   ngOnInit(): void {
     // DEBUG: Log the full URL to understand what we're receiving
     console.log('🔍 OAuth Callback - Full URL:', window.location.href);
@@ -104,6 +107,11 @@ export class SupabaseGoogleCallbackComponent implements OnInit {
   }
 
   private handleGoogleCallback(): void {
+    // Preserve owner-intent from URL query params before any URL cleanup.
+    // Backend's redirect_to URL encodes the role, e.g. ?role=OWNER
+    const roleParam = new URLSearchParams(window.location.search).get('role');
+    this.ownerIntent = roleParam?.toUpperCase() === 'OWNER';
+
     // First, check URL fragment for implicit flow tokens (Supabase default)
     // Format: #access_token=...&refresh_token=...&expires_in=...&token_type=...
     const fragment = window.location.hash.substring(1); // Remove leading #
@@ -153,14 +161,14 @@ export class SupabaseGoogleCallbackComponent implements OnInit {
       return;
     }
 
-    if (!state) {
-      console.error('Missing state parameter in callback');
-      this.handleError('Nedostaje sigurnosni parametar. Pokušajte ponovo.');
-      return;
+    // SECURITY NOTE: State parameter is optional. Supabase PKCE flow does not always
+    // include a custom state param. CSRF protection is handled server-side via PKCE code verifier.
+    if (state) {
+      console.log('📋 State parameter present in callback:', state);
     }
 
     // Process the callback
-    this.processGoogleCallback(code, state);
+    this.processGoogleCallback(code, state || undefined);
   }
 
   /**
@@ -203,7 +211,7 @@ export class SupabaseGoogleCallbackComponent implements OnInit {
     });
   }
 
-  private processGoogleCallback(code: string, state: string): void {
+  private processGoogleCallback(code: string, state?: string): void {
     console.log('🔗 Processing Google OAuth callback via Supabase');
 
     this.authService.handleSupabaseGoogleCallback(code, state).subscribe({
@@ -232,8 +240,11 @@ export class SupabaseGoogleCallbackComponent implements OnInit {
     if (enhancedUser.registrationStatus === 'INCOMPLETE') {
       console.log('📝 User has INCOMPLETE registration - redirecting to profile completion');
 
-      const isOwner = user.roles?.includes('OWNER');
-      const queryParams = isOwner ? { role: 'owner' } : {};
+      // Use ownerIntent from URL param — backend always returns USER role,
+      // so user.roles won't contain OWNER at this point. Fallback kept for
+      // edge cases where the user already has OWNER role in the DB.
+      const isOwner = this.ownerIntent || user.roles?.includes('OWNER');
+      const queryParams = isOwner ? { role: 'OWNER' } : {};
 
       this.toast.info('Molimo dovršite registraciju popunjavanjem preostalih podataka.');
       void this.router.navigate(['/auth/complete-profile'], { queryParams });

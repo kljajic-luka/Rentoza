@@ -411,9 +411,9 @@ export class AuthService {
         withCredentials: true,
       })
       .pipe(
-        tap((response) => {
-          // Store state in sessionStorage for CSRF validation during callback
-          sessionStorage.setItem('supabase_google_oauth_state', response.state);
+        tap(() => {
+          // SECURITY NOTE: State/CSRF validation is handled server-side by Supabase PKCE.
+          // No client-side state storage needed — removed to prevent null-equals-null bypass.
           console.log('🔗 Google OAuth initiated via Supabase, redirecting...');
         }),
         catchError((error: HttpErrorResponse) => {
@@ -465,22 +465,19 @@ export class AuthService {
    * SECURITY: State validation is performed client-side for early failure,
    * but the actual CSRF protection happens server-side.
    */
-  handleSupabaseGoogleCallback(code: string, state: string): Observable<UserProfile | null> {
-    // Client-side state validation (server also validates)
-    const storedState = sessionStorage.getItem('supabase_google_oauth_state');
-    if (storedState && storedState !== state) {
-      console.warn('⚠️ OAuth state mismatch - possible CSRF attempt');
-      sessionStorage.removeItem('supabase_google_oauth_state');
-      return throwError(() => new Error('Security validation failed. Please try again.'));
-    }
-
-    // Clear stored state
-    sessionStorage.removeItem('supabase_google_oauth_state');
+  handleSupabaseGoogleCallback(code: string, state?: string): Observable<UserProfile | null> {
+    // SECURITY NOTE: CSRF protection is handled server-side via Supabase PKCE code verifier.
+    // Client-side state validation removed — backend never issued a custom state value,
+    // so the old check was null === null (always passed) and provided no real protection.
 
     const context = new HttpContext().set(SKIP_AUTH, true);
+    const params: Record<string, string> = { code };
+    if (state) {
+      params['state'] = state;
+    }
     return this.http
       .get<SupabaseGoogleCallbackResponse>(`${this.apiUrl}/supabase/google/callback`, {
-        params: { code, state },
+        params,
         context,
         withCredentials: true,
       })

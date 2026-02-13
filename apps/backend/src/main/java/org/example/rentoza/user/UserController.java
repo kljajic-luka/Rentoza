@@ -87,32 +87,24 @@ public class UserController {
         }
     }
 
+    /**
+     * DEPRECATED: This endpoint is locked. Identity fields (firstName, lastName, password)
+     * must not be mutated through this path. Use PATCH /api/users/me for safe profile updates.
+     *
+     * @deprecated Locked since 2026-02-13 security hardening. Returns HTTP 410 GONE.
+     */
+    @Deprecated(since = "2026-02-13", forRemoval = true)
     @PatchMapping("/profile")
     public ResponseEntity<?> updateProfile(
             @org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal,
             @Valid @RequestBody UserProfileDTO dto
     ) {
-        try {
-            User updated = service.updateProfile(principal.getUsername(), dto);
-
-            return ResponseEntity.ok(new UserResponseDTO(
-                    updated.getId(),
-                    updated.getFirstName(),
-                    updated.getLastName(),
-                    updated.getEmail(),
-                    updated.getPhone(),
-                    updated.getAge(),
-                    updated.getRole().name()
-            ));
-
-        } catch (io.jsonwebtoken.JwtException e) {
-            return ResponseEntity.status(401).body(Map.of("error", "Token expired or invalid"));
-        } catch (RuntimeException e) {
-            if ("Missing or invalid token".equals(e.getMessage())) {
-                return ResponseEntity.status(401).body(Map.of("error", e.getMessage()));
-            }
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
-        }
+        String caller = (principal != null) ? principal.getUsername() : "anonymous";
+        log.warn("SECURITY: Blocked legacy PATCH /api/users/profile call from user={}", caller);
+        return ResponseEntity.status(HttpStatus.GONE).body(Map.of(
+                "error", "ENDPOINT_DEPRECATED",
+                "message", "This endpoint has been retired for security reasons. Use PATCH /api/users/me instead."
+        ));
     }
 
     @GetMapping("/profile")

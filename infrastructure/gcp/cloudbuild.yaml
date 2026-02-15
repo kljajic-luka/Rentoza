@@ -79,32 +79,28 @@ steps:
   # =============================================================================
   - id: 'deploy-backend'
     name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: 'gcloud'
+    entrypoint: 'bash'
     args:
-      - 'run'
-      - 'deploy'
-      - '${_BACKEND_SERVICE}'
-      - '--image'
-      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/backend:${SHORT_SHA}'
-      - '--region'
-      - '${_REGION}'
-      - '--platform'
-      - 'managed'
-      - '--allow-unauthenticated'
-      - '--port'
-      - '8080'
-      - '--memory'
-      - '1Gi'
-      - '--cpu'
-      - '1'
-      - '--min-instances'
-      - '1'
-      - '--max-instances'
-      - '10'
-      - '--concurrency'
-      - '80'
-      - '--update-env-vars'
-      - '^#^SPRING_PROFILES_ACTIVE=${_SPRING_PROFILES_ACTIVE}#OAUTH2_REDIRECT_ALLOWED_URIS=${_OAUTH2_REDIRECT_ALLOWED_URIS}#PAYMENT_PROVIDER=${_PAYMENT_PROVIDER}#CHECKIN_NO_SHOW_MINUTES_AFTER_TRIP_START=${_CHECKIN_NO_SHOW_MINUTES_AFTER_TRIP_START}#CHECKIN_SCHEDULER_NOSHOW_CRON=${_CHECKIN_SCHEDULER_NOSHOW_CRON}#CHECKIN_SCHEDULER_NOSHOW_DIAGNOSTICS_ENABLED=${_CHECKIN_SCHEDULER_NOSHOW_DIAGNOSTICS_ENABLED}'
+      - '-c'
+      - |
+        set -euo pipefail
+        CHAT_SERVICE_URL="$(gcloud run services describe ${_CHAT_SERVICE} --region ${_REGION} --platform managed --format='value(status.url)')"
+        if [[ -z "${CHAT_SERVICE_URL}" ]]; then
+          echo "Failed to resolve chat service URL for ${_CHAT_SERVICE}" >&2
+          exit 1
+        fi
+        gcloud run deploy ${_BACKEND_SERVICE} \
+          --image ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/backend:${SHORT_SHA} \
+          --region ${_REGION} \
+          --platform managed \
+          --allow-unauthenticated \
+          --port 8080 \
+          --memory 1Gi \
+          --cpu 1 \
+          --min-instances 1 \
+          --max-instances 10 \
+          --concurrency 80 \
+          --update-env-vars "^#^SPRING_PROFILES_ACTIVE=${_SPRING_PROFILES_ACTIVE}#CHAT_SERVICE_URL=${CHAT_SERVICE_URL}#OAUTH2_REDIRECT_ALLOWED_URIS=${_OAUTH2_REDIRECT_ALLOWED_URIS}#PAYMENT_PROVIDER=${_PAYMENT_PROVIDER}#CHECKIN_NO_SHOW_MINUTES_AFTER_TRIP_START=${_CHECKIN_NO_SHOW_MINUTES_AFTER_TRIP_START}#CHECKIN_SCHEDULER_NOSHOW_CRON=${_CHECKIN_SCHEDULER_NOSHOW_CRON}#CHECKIN_SCHEDULER_NOSHOW_DIAGNOSTICS_ENABLED=${_CHECKIN_SCHEDULER_NOSHOW_DIAGNOSTICS_ENABLED}"
     waitFor: ['push-backend']
 
   # =============================================================================

@@ -8,6 +8,7 @@ import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
+import java.util.Locale;
 
 /**
  * P0-1, P0-2: Validates critical security configuration at application startup.
@@ -39,6 +40,9 @@ public class SecurityConfigValidator {
     @Value("${supabase.jwt-secret:}")
     private String supabaseJwtSecret;
 
+    @Value("${chat.service.url:}")
+    private String chatServiceUrl;
+
     public SecurityConfigValidator(Environment environment, AppProperties appProperties) {
         this.environment = environment;
         this.appProperties = appProperties;
@@ -60,6 +64,9 @@ public class SecurityConfigValidator {
 
         // Validate cookie security
         validateCookieSecurity(isProduction);
+
+        // Validate chat service connectivity config
+        validateChatServiceConfiguration(isProduction);
 
         log.info("=== Security Configuration Validation Complete ===");
     }
@@ -153,6 +160,48 @@ public class SecurityConfigValidator {
                 log.info("ℹ Cookie Secure flag disabled (acceptable for HTTP development)");
             }
             log.info("✓ Cookie security: Secure={}, SameSite={} (development mode)", secureCookies, sameSite);
+        }
+    }
+
+    private void validateChatServiceConfiguration(boolean isProduction) {
+        String configuredUrl = chatServiceUrl != null ? chatServiceUrl.trim() : "";
+        String normalizedUrl = configuredUrl.toLowerCase(Locale.ROOT);
+        boolean pointsToLoopback =
+                normalizedUrl.contains("localhost") ||
+                normalizedUrl.contains("127.0.0.1") ||
+                normalizedUrl.contains("0.0.0.0");
+
+        if (isProduction) {
+            if (configuredUrl.isBlank()) {
+                throw new SecurityConfigurationException(
+                        "CHAT_SERVICE_URL environment variable is not set. " +
+                        "Production deployment requires chat.service.url to reach the chat Cloud Run service.");
+            }
+
+            if (!(configuredUrl.startsWith("http://") || configuredUrl.startsWith("https://"))) {
+                throw new SecurityConfigurationException(
+                        "chat.service.url must be an absolute HTTP(S) URL in production. Current value: '" +
+                                configuredUrl + "'.");
+            }
+
+            if (pointsToLoopback) {
+                throw new SecurityConfigurationException(
+                        "chat.service.url points to localhost/loopback in production ('" + configuredUrl + "'). " +
+                        "Set CHAT_SERVICE_URL to the deployed chat service URL.");
+            }
+
+            log.info("✓ Chat service URL: {} (production-safe)", configuredUrl);
+        } else {
+            if (configuredUrl.isBlank()) {
+                log.warn("⚠ chat.service.url is not set. Development fallback behavior will apply.");
+                return;
+            }
+
+            if (pointsToLoopback) {
+                log.info("ℹ Chat service URL points to localhost (expected for local development): {}", configuredUrl);
+            } else {
+                log.info("✓ Chat service URL: {} (non-local)", configuredUrl);
+            }
         }
     }
 

@@ -85,6 +85,7 @@ public class EmailNotificationChannel implements NotificationChannel {
             case "BOOKING_REQUEST_RECEIVED" -> "Novi zahtev za rezervaciju - Rentoza";
             case "BOOKING_DECLINED" -> "Rezervacija odbijena - Rentoza";
             case "BOOKING_EXPIRED" -> "Rezervacija istekla - Rentoza";
+            case "BOOKING_APPROVAL_REMINDER" -> "⏰ Podsetnik: zahtev uskoro ističe - Rentoza";
             case "BOOKING_CANCELLED" -> "Rezervacija otkazana - Rentoza";
             case "NEW_MESSAGE" -> "Nova poruka - Rentoza";
             case "REVIEW_RECEIVED" -> "Nova recenzija - Rentoza";

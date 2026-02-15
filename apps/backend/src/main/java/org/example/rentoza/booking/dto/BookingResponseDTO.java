@@ -44,6 +44,10 @@ public class BookingResponseDTO {
     private BigDecimal totalPrice;
     private BookingStatus status;
     private String createdAt;
+    private LocalDateTime decisionDeadlineAt;
+    private LocalDateTime approvedAt;
+    private LocalDateTime declinedAt;
+    private String declineReason;
 
     // Review flags
     private Boolean hasOwnerReview;
@@ -128,6 +132,10 @@ public class BookingResponseDTO {
         this.totalPrice = booking.getTotalPrice();
         this.status = booking.getStatus();
         this.createdAt = booking.getCreatedAt() != null ? booking.getCreatedAt().toString() : null;
+        this.decisionDeadlineAt = booking.getDecisionDeadlineAt();
+        this.approvedAt = booking.getApprovedAt();
+        this.declinedAt = booking.getDeclinedAt();
+        this.declineReason = booking.getDeclineReason();
 
         // Map car details
         if (booking.getCar() != null) {

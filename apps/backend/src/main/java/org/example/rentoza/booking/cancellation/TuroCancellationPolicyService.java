@@ -110,6 +110,7 @@ public class TuroCancellationPolicyService implements CancellationPolicyService 
         
         // Calculate penalty and refund based on rules
         CancellationCalculation calc = calculateCancellation(
+            booking.getStatus(),
             cancelledBy, 
             hoursUntilStart, 
             isWithinRemorseWindow, 
@@ -181,6 +182,7 @@ public class TuroCancellationPolicyService implements CancellationPolicyService 
         
         // Calculate financial outcome
         CancellationCalculation calc = calculateCancellation(
+            booking.getStatus(),
             cancelledBy, 
             hoursBeforeTripStart, 
             isWithinRemorseWindow, 
@@ -333,6 +335,7 @@ public class TuroCancellationPolicyService implements CancellationPolicyService 
     }
 
     private CancellationCalculation calculateCancellation(
+            BookingStatus bookingStatus,
             CancelledBy cancelledBy,
             long hoursUntilStart,
             boolean isWithinRemorseWindow,
@@ -350,6 +353,16 @@ public class TuroCancellationPolicyService implements CancellationPolicyService 
                 cancelledBy == CancelledBy.HOST 
                     ? "Host cancelled - full refund to guest, host penalty applies"
                     : "System cancelled - full refund to guest"
+            );
+        }
+
+        // Fairness rule: guest cancellation while still awaiting host approval is always penalty-free.
+        if (bookingStatus == BookingStatus.PENDING_APPROVAL && cancelledBy == CancelledBy.GUEST) {
+            return new CancellationCalculation(
+                BigDecimal.ZERO,
+                originalTotal,
+                BigDecimal.ZERO,
+                "Guest cancelled pending approval - full refund"
             );
         }
         

@@ -65,8 +65,11 @@ public class BookingService {
     @org.springframework.beans.factory.annotation.Value("${app.booking.host-approval.beta-users:}")
     private java.util.List<Long> betaUsers;
 
-    @org.springframework.beans.factory.annotation.Value("${app.booking.host-approval.expiry-hours:48}")
-    private int expiryHours;
+    @org.springframework.beans.factory.annotation.Value("${app.booking.host-approval.approval-sla-hours:${app.booking.host-approval.expiry-hours:48}}")
+    private int approvalSlaHours;
+
+    @org.springframework.beans.factory.annotation.Value("${app.booking.host-approval.min-guest-preparation-hours:12}")
+    private int minGuestPreparationHours;
     
     @org.springframework.beans.factory.annotation.Value("${app.renter-verification.license-required:true}")
     private boolean licenseRequired;
@@ -255,41 +258,49 @@ public class BookingService {
 
         // Determine initial status based on feature flag
         BookingStatus initialStatus;
-        if (approvalEnabled || (betaUsers != null && betaUsers.contains(renter.getId()))) {
+        boolean approvalWorkflowEnabledForUser = approvalEnabled || (betaUsers != null && betaUsers.contains(renter.getId()));
+        boolean instantBookEnabledForCar = carBookingSettings.isInstantBookEnabled();
+
+        // Explicit policy:
+        // - If approval workflow feature is enabled AND car is not instant-book -> PENDING_APPROVAL
+        // - Otherwise -> ACTIVE instant booking
+        // This preserves per-car instant-booking semantics and avoids forcing all requests into pending state.
+        if (approvalWorkflowEnabledForUser && !instantBookEnabledForCar) {
             initialStatus = BookingStatus.PENDING_APPROVAL;
             
             // ========================================================================
             // DYNAMIC DEADLINE CALCULATION (Logic Matrix Implementation)
             // ========================================================================
-            // Formula: MIN(Now + 48h, TripStartTime - 1h)
+                // Formula: MIN(createdAt + approvalSlaHours, tripStartTime - minGuestPreparationHours)
             // 
             // This ensures:
-            // 1. Standard case: Host gets up to 48 hours to respond
+                // 1. Standard case: Host gets up to configured SLA to respond
             // 2. Short notice: Host response window shrinks to ensure guest has at least
-            //    1 hour between approval and trip start
+                //    minGuestPreparationHours between approval deadline and trip start
             // 
             // Examples:
-            // - Trip in 72h: deadline = now + 48h (standard)
-            // - Trip in 36h: deadline = now + 35h (buffer-constrained)
-            // - Trip in 6h:  deadline = now + 5h  (buffer-constrained)
-            java.time.LocalDateTime standardDeadline = java.time.LocalDateTime.now().plusHours(expiryHours);
-            java.time.LocalDateTime bufferDeadline = tripStartDateTime.minusHours(1);
-            
-            java.time.LocalDateTime effectiveDeadline = standardDeadline.isBefore(bufferDeadline) 
-                    ? standardDeadline 
-                    : bufferDeadline;
+                // - Trip in 72h, SLA=48h, prep=12h: deadline = now + 48h
+                // - Trip in 36h, SLA=48h, prep=12h: deadline = start - 12h (= now + 24h)
+                java.time.LocalDateTime effectiveDeadline = calculateDecisionDeadline(nowInSerbia, tripStartDateTime);
+
+                if (!effectiveDeadline.isAfter(nowInSerbia)) {
+                throw new org.example.rentoza.exception.ValidationException(
+                    "Rezervacija zahteva odobrenje, ali rok za odluku je već istekao za izabrani početak. " +
+                    "Izaberite kasniji termin početka ili vozilo sa instant rezervacijom."
+                );
+                }
             
             booking.setDecisionDeadlineAt(effectiveDeadline);
             
             log.debug("Booking created with PENDING_APPROVAL status. " +
-                    "Deadline calculation: standardDeadline={}, bufferDeadline={}, effectiveDeadline={}",
-                    standardDeadline, bufferDeadline, effectiveDeadline);
+                    "Deadline calculation: createdAt={}, approvalSlaHours={}, minGuestPreparationHours={}, effectiveDeadline={}",
+                    nowInSerbia, approvalSlaHours, minGuestPreparationHours, effectiveDeadline);
         } else {
             initialStatus = BookingStatus.ACTIVE;
             // Backfill approval metadata for instant bookings
-            booking.setApprovedAt(java.time.LocalDateTime.now());
+                booking.setApprovedAt(nowInSerbia);
             booking.setPaymentStatus("AUTHORIZED");
-            log.debug("Booking created with ACTIVE status (instant booking - legacy mode)");
+                log.debug("Booking created with ACTIVE status (instant booking mode)");
         }
         booking.setStatus(initialStatus);
 
@@ -459,6 +470,12 @@ public class BookingService {
         }
 
         return savedBooking;
+    }
+
+    LocalDateTime calculateDecisionDeadline(LocalDateTime createdAt, LocalDateTime tripStartDateTime) {
+        LocalDateTime slaDeadline = createdAt.plusHours(approvalSlaHours);
+        LocalDateTime preparationDeadline = tripStartDateTime.minusHours(minGuestPreparationHours);
+        return slaDeadline.isBefore(preparationDeadline) ? slaDeadline : preparationDeadline;
     }
 
     /**
@@ -882,6 +899,10 @@ public class BookingService {
                             booking.getEndTime(),
                             booking.getTotalPrice(),
                             booking.getStatus().name(),
+                            booking.getDecisionDeadlineAt(),
+                            booking.getApprovedAt(),
+                            booking.getDeclinedAt(),
+                            booking.getDeclineReason(),
                             review != null,
                             review != null ? review.getRating() : null,
                             review != null ? review.getComment() : null

@@ -90,6 +90,18 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     java.util.Optional<Booking> findByIdWithRelations(@Param("id") Long id);
 
     /**
+     * Same as findByIdWithRelations but acquires a PESSIMISTIC_WRITE lock.
+     * Used for approval/decline decisions to avoid race conditions with expiry jobs.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.car c " +
+           "JOIN FETCH b.renter r " +
+           "LEFT JOIN FETCH c.owner o " +
+           "WHERE b.id = :id")
+    java.util.Optional<Booking> findByIdWithRelationsForUpdate(@Param("id") Long id);
+
+    /**
      * P0-4 FIX: Find booking by ID with PESSIMISTIC_WRITE lock for race condition prevention.
      * 
      * <p>Used in HostCheckoutPhotoService to prevent guest from changing booking status
@@ -334,6 +346,19 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
            "WHERE b.status = 'PENDING_APPROVAL' " +
            "AND b.decisionDeadlineAt < :threshold")
     List<Booking> findPendingBookingsBefore(@Param("threshold") LocalDateTime threshold);
+
+    /**
+     * Find pending bookings with future decision deadlines.
+     * Used by reminder scheduler.
+     */
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.car c " +
+           "JOIN FETCH c.owner o " +
+           "JOIN FETCH b.renter r " +
+           "WHERE b.status = 'PENDING_APPROVAL' " +
+           "AND b.decisionDeadlineAt IS NOT NULL " +
+           "AND b.decisionDeadlineAt > :threshold")
+    List<Booking> findPendingBookingsAfter(@Param("threshold") LocalDateTime threshold);
 
     /**
      * Check for conflicting bookings during host approval.

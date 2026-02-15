@@ -36,6 +36,11 @@ public enum NotificationType {
     BOOKING_EXPIRED,
 
     /**
+     * Triggered before a pending booking approval deadline to remind host action.
+     */
+    BOOKING_APPROVAL_REMINDER,
+
+    /**
      * Triggered when a booking is cancelled by either party.
      */
     BOOKING_CANCELLED,

@@ -43,6 +43,10 @@ public class UserBookingResponseDTO {
     
     private BigDecimal totalPrice;
     private String status;
+    private LocalDateTime decisionDeadlineAt;
+    private LocalDateTime approvedAt;
+    private LocalDateTime declinedAt;
+    private String declineReason;
 
     // Review information
     private Boolean hasReview;

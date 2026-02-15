@@ -39,6 +39,7 @@ class SchedulerTimezoneVerificationTest {
     @DisplayName("BookingScheduler must have Europe/Belgrade timezone")
     void bookingSchedulerHasCorrectTimezone() {
         verifySchedulerTimezone(BookingScheduler.class, "autoExpirePendingBookings");
+        verifySchedulerTimezone(BookingScheduler.class, "sendPendingApprovalReminders");
     }
 
     @Test

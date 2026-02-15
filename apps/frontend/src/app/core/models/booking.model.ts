@@ -155,6 +155,10 @@ export interface UserBooking {
   endTime: string;
   totalPrice: number;
   status: string;
+  decisionDeadlineAt?: string;
+  approvedAt?: string;
+  declinedAt?: string;
+  declineReason?: string;
   hasReview: boolean;
   reviewRating: number | null;
   reviewComment: string | null;

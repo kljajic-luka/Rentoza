@@ -34,6 +34,7 @@ public class BookingScheduler {
 
     private final BookingApprovalService approvalService;
     private final Counter expiredBookingsCounter;
+    private final Counter approvalRemindersCounter;
 
     public BookingScheduler(BookingApprovalService approvalService, MeterRegistry meterRegistry) {
         this.approvalService = approvalService;
@@ -41,6 +42,9 @@ public class BookingScheduler {
                 .description("Number of booking approval requests that expired due to timeout")
                 .tag("type", "auto_expiry")
                 .register(meterRegistry);
+        this.approvalRemindersCounter = Counter.builder("booking.approval.reminder.count")
+            .description("Number of pre-expiry reminders sent for pending booking approvals")
+            .register(meterRegistry);
     }
 
     /**
@@ -79,6 +83,25 @@ public class BookingScheduler {
 
         } catch (Exception e) {
             log.error("Error during auto-expiry of pending bookings", e);
+        }
+    }
+
+    /**
+     * Send pre-expiry reminders for pending approval requests.
+     * Default cadence is every 30 minutes; reminders are idempotent per threshold.
+     */
+    @Scheduled(cron = "${app.booking.scheduler.reminder-cron:0 0/30 * * * *}", zone = "Europe/Belgrade")
+    public void sendPendingApprovalReminders() {
+        try {
+            int reminderCount = approvalService.sendPendingApprovalReminders();
+            if (reminderCount > 0) {
+                approvalRemindersCounter.increment(reminderCount);
+                log.info("Sent {} pending-approval reminder notifications", reminderCount);
+            } else {
+                log.debug("No pending-approval reminders to send");
+            }
+        } catch (Exception e) {
+            log.error("Error during pending-approval reminder job", e);
         }
     }
 

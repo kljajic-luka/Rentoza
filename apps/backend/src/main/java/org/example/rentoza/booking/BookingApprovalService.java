@@ -8,8 +8,10 @@ import org.example.rentoza.booking.cqrs.BookingDomainEvent;
 import org.example.rentoza.booking.dto.BookingRequestDTO;
 import org.example.rentoza.booking.dto.BookingResponseDTO;
 import org.example.rentoza.chat.ChatServiceClient;
+import org.example.rentoza.exception.ApprovalDecisionDeadlineExceededException;
 import org.example.rentoza.exception.BookingConflictException;
 import org.example.rentoza.exception.ResourceNotFoundException;
+import org.example.rentoza.notification.NotificationRepository;
 import org.example.rentoza.notification.NotificationService;
 import org.example.rentoza.notification.NotificationType;
 import org.example.rentoza.notification.dto.CreateNotificationRequestDTO;
@@ -18,13 +20,17 @@ import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -36,12 +42,20 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class BookingApprovalService {
 
+    private static final ZoneId SERBIA_ZONE = ZoneId.of("Europe/Belgrade");
+    private static final String DEADLINE_EXPIRED_REASON =
+            "Request expired (approval deadline reached before host decision)";
+
     private final BookingRepository bookingRepository;
     private final UserRepository userRepository;
+    private final NotificationRepository notificationRepository;
     private final NotificationService notificationService;
     private final ChatServiceClient chatServiceClient;
     private final InternalServiceJwtUtil internalServiceJwtUtil;
     private final ApplicationEventPublisher eventPublisher;
+
+    @Value("${app.booking.host-approval.approval-sla-hours:48}")
+    private int approvalSlaHours;
 
     /**
      * Approve a pending booking request.
@@ -56,14 +70,14 @@ public class BookingApprovalService {
      * @throws BookingConflictException if dates are no longer available
      * @throws OptimisticLockingFailureException if booking was modified concurrently
      */
-    @Transactional
+    @Transactional(dontRollbackOn = ApprovalDecisionDeadlineExceededException.class)
     public BookingResponseDTO approveBooking(Long bookingId, Long ownerId) {
         log.debug("[ApprovalService] Starting approval for bookingId={}, ownerId={}", bookingId, ownerId);
 
         // Use findByIdWithRelations to fetch car, renter, and owner eagerly
         // This prevents LazyInitializationException when mapping to DTO in controller
-        log.debug("[ApprovalService] Calling bookingRepository.findByIdWithRelations({})", bookingId);
-        Booking booking = bookingRepository.findByIdWithRelations(bookingId)
+        log.debug("[ApprovalService] Calling bookingRepository.findByIdWithRelationsForUpdate({})", bookingId);
+        Booking booking = bookingRepository.findByIdWithRelationsForUpdate(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Booking not found with id: " + bookingId));
 
         // Verify status
@@ -77,6 +91,28 @@ public class BookingApprovalService {
             log.warn("[ApprovalService] User {} attempted to approve booking {} owned by user {}", 
                     ownerId, bookingId, booking.getCar().getOwner().getId());
             throw new AccessDeniedException("User is not the car owner");
+        }
+
+        LocalDateTime now = LocalDateTime.now(SERBIA_ZONE);
+        if (booking.getDecisionDeadlineAt() != null && !booking.getDecisionDeadlineAt().isAfter(now)) {
+            // Hard correctness guarantee: enforce deadline at decision time (scheduler is only fallback).
+            booking.setStatus(BookingStatus.EXPIRED_SYSTEM);
+            booking.setDeclineReason(DEADLINE_EXPIRED_REASON);
+            booking.setDeclinedAt(now);
+            booking.setPaymentStatus("RELEASED");
+            bookingRepository.save(booking);
+
+            publishEvent(new BookingDomainEvent.BookingExpired(
+                booking.getId(),
+                booking.getRenter().getId(),
+                booking.getCar().getOwner().getId(),
+                Instant.now()
+            ));
+            sendExpiryNotification(booking);
+
+                throw new ApprovalDecisionDeadlineExceededException(
+                    "Booking request expired at decision deadline and can no longer be approved."
+                );
         }
 
         // Check time availability (race condition protection)
@@ -229,7 +265,7 @@ public class BookingApprovalService {
     @Transactional
     public int autoExpirePendingBookings() {
         log.debug("[ApprovalService] Running auto-expire job");
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(SERBIA_ZONE);
 
         List<Booking> expiredBookings = bookingRepository.findPendingBookingsBefore(now);
 
@@ -265,6 +301,98 @@ public class BookingApprovalService {
         }
 
         return expiredBookings.size();
+    }
+
+    /**
+     * Send pre-expiry reminders for pending approval requests.
+     * Reminders are idempotent per booking+threshold.
+     */
+    @Transactional
+    public int sendPendingApprovalReminders() {
+        LocalDateTime now = LocalDateTime.now(SERBIA_ZONE);
+        List<Booking> pendingBookings = bookingRepository.findPendingBookingsAfter(now);
+        if (pendingBookings.isEmpty()) {
+            return 0;
+        }
+
+        Set<Integer> thresholds = resolveReminderThresholds();
+        java.util.List<Integer> orderedThresholds = thresholds.stream()
+            .sorted(java.util.Comparator.reverseOrder())
+            .toList();
+        int sent = 0;
+
+        for (Booking booking : pendingBookings) {
+            LocalDateTime deadline = booking.getDecisionDeadlineAt();
+            if (deadline == null) {
+                continue;
+            }
+
+            long minutesToDeadline = java.time.Duration.between(now, deadline).toMinutes();
+            if (minutesToDeadline <= 0) {
+                continue;
+            }
+
+            for (int i = 0; i < orderedThresholds.size(); i++) {
+                Integer thresholdHour = orderedThresholds.get(i);
+                long upperBoundMinutes = thresholdHour * 60L;
+                long lowerBoundMinutes = (i == orderedThresholds.size() - 1)
+                        ? 0L
+                        : orderedThresholds.get(i + 1) * 60L;
+
+                // Send only when within this threshold band, e.g.:
+                // 24h reminder -> (1h, 24h], 1h reminder -> (0h, 1h]
+                if (minutesToDeadline > upperBoundMinutes || minutesToDeadline <= lowerBoundMinutes) {
+                    continue;
+                }
+
+                String relatedEntityId = "booking-" + booking.getId() + "-approval-reminder-" + thresholdHour + "h";
+                boolean reminderAlreadySent = !notificationRepository
+                        .findByTypeAndRelatedEntityId(NotificationType.BOOKING_APPROVAL_REMINDER, relatedEntityId)
+                        .isEmpty();
+
+                if (reminderAlreadySent) {
+                    continue;
+                }
+
+                sendApprovalReminderNotification(booking, thresholdHour, relatedEntityId);
+                sent++;
+            }
+        }
+
+        return sent;
+    }
+
+    private Set<Integer> resolveReminderThresholds() {
+        Set<Integer> thresholds = new LinkedHashSet<>();
+
+        if (approvalSlaHours >= 24) {
+            thresholds.add(24);
+        } else {
+            // Equivalent pre-expiry reminder for shorter SLAs.
+            thresholds.add(Math.max(2, approvalSlaHours / 2));
+        }
+        thresholds.add(1);
+
+        return thresholds;
+    }
+
+    private void sendApprovalReminderNotification(Booking booking, int thresholdHour, String relatedEntityId) {
+        String message = String.format(
+                "Podsetnik: zahtev za rezervaciju %s %s ističe za oko %d h. Molimo odobrite ili odbijte na vreme.",
+                booking.getCar().getBrand(),
+                booking.getCar().getModel(),
+                thresholdHour
+        );
+
+        notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                .recipientId(booking.getCar().getOwner().getId())
+                .type(NotificationType.BOOKING_APPROVAL_REMINDER)
+                .message(message)
+                .relatedEntityId(relatedEntityId)
+                .build());
+
+        log.info("Approval reminder sent: bookingId={}, threshold={}h, ownerId={}",
+                booking.getId(), thresholdHour, booking.getCar().getOwner().getId());
     }
 
     // ========== PRIVATE HELPER METHODS ==========

@@ -187,6 +187,7 @@ public class MailService {
             case BOOKING_REQUEST_RECEIVED -> "emails/booking-request-received";
             case BOOKING_DECLINED -> "emails/booking-declined";
             case BOOKING_EXPIRED -> "emails/booking-expired";
+            case BOOKING_APPROVAL_REMINDER -> "emails/booking-request-received";
             case BOOKING_CANCELLED -> "emails/booking-cancelled";
             case REVIEW_RECEIVED -> "emails/review-received";
             case NEW_MESSAGE -> "emails/new-message";
@@ -222,9 +223,10 @@ public class MailService {
         switch (type) {
             case BOOKING_CONFIRMED, BOOKING_CANCELLED, BOOKING_APPROVED, 
                  BOOKING_REQUEST_SENT, BOOKING_REQUEST_RECEIVED, 
-                 BOOKING_DECLINED, BOOKING_EXPIRED -> {
-                variables.put("bookingId", relatedEntityId);
-                variables.put("bookingUrl", buildBookingUrl(relatedEntityId));
+                  BOOKING_DECLINED, BOOKING_EXPIRED, BOOKING_APPROVAL_REMINDER -> {
+                                String bookingEntityId = extractBookingRelatedEntityId(relatedEntityId);
+                                variables.put("bookingId", bookingEntityId);
+                                variables.put("bookingUrl", buildBookingUrl(bookingEntityId));
             }
             case REVIEW_RECEIVED -> {
                 variables.put("reviewId", relatedEntityId);
@@ -265,6 +267,26 @@ public class MailService {
         }
 
         variables.forEach(context::setVariable);
+    }
+
+    /**
+     * Normalizes relatedEntityId for booking notifications.
+     *
+     * Reminder notifications can include an idempotency suffix (e.g. booking-123-approval-reminder-1h),
+     * while booking URLs should still point to the canonical booking entity (booking-123).
+     */
+    private String extractBookingRelatedEntityId(String relatedEntityId) {
+        if (relatedEntityId == null) {
+            return null;
+        }
+
+        String marker = "-approval-reminder-";
+        int markerIndex = relatedEntityId.indexOf(marker);
+        if (markerIndex > 0) {
+            return relatedEntityId.substring(0, markerIndex);
+        }
+
+        return relatedEntityId;
     }
 
     /**

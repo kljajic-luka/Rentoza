@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Primary;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -49,6 +50,7 @@ import java.util.regex.Pattern;
  * @since Phase 3.1 - Redis Configuration Hardening
  */
 @Service
+@Primary
 @ConditionalOnProperty(name = "app.redis.enabled", havingValue = "true")
 @ConditionalOnBean(StringRedisTemplate.class)
 @Slf4j

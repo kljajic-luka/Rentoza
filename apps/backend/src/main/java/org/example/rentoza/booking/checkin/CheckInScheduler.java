@@ -6,11 +6,14 @@ import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingRepository;
 import org.example.rentoza.booking.BookingStatus;
+import org.example.rentoza.booking.checkin.cqrs.CheckInCommandService;
 import org.example.rentoza.booking.dispute.DamageClaim;
 import org.example.rentoza.booking.dispute.DamageClaimRepository;
 import org.example.rentoza.booking.dispute.DamageClaimStatus;
 import org.example.rentoza.booking.dispute.DisputeStage;
 import org.example.rentoza.notification.NotificationService;
+import org.example.rentoza.notification.NotificationType;
+import org.example.rentoza.notification.dto.CreateNotificationRequestDTO;
 import org.example.rentoza.scheduler.SchedulerIdempotencyService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -23,6 +26,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -84,7 +88,17 @@ public class CheckInScheduler {
     @org.springframework.beans.factory.annotation.Value("${app.checkin.dispute-timeout-hours:24}")
     private int disputeTimeoutHours;
 
+    @org.springframework.beans.factory.annotation.Value("${app.checkin.no-show-minutes-after-trip-start:30}")
+    private int noShowMinutesAfterTripStart;
+
+    @org.springframework.beans.factory.annotation.Value("${app.checkin.handshake-timeout-minutes:45}")
+    private int handshakeTimeoutMinutes;
+
+    @org.springframework.beans.factory.annotation.Value("${app.checkin.scheduler.noshow-diagnostics-enabled:false}")
+    private boolean noShowDiagnosticsEnabled;
+
     private final CheckInService checkInService;
+    private final CheckInCommandService checkInCommandService;
     private final CheckInEventService eventService;
     private final SchedulerIdempotencyService idempotencyService;
     private final BookingRepository bookingRepository;
@@ -96,9 +110,11 @@ public class CheckInScheduler {
     private final Counter schedulerSkippedCounter;
     private final Counter disputeEscalatedCounter;
     private final Counter disputeAutoCancelledCounter;
+    private final Counter handshakeTimeoutCounter;
 
     public CheckInScheduler(
             CheckInService checkInService,
+            CheckInCommandService checkInCommandService,
             CheckInEventService eventService,
             SchedulerIdempotencyService idempotencyService,
             BookingRepository bookingRepository,
@@ -106,6 +122,7 @@ public class CheckInScheduler {
             NotificationService notificationService,
             MeterRegistry meterRegistry) {
         this.checkInService = checkInService;
+        this.checkInCommandService = checkInCommandService;
         this.eventService = eventService;
         this.idempotencyService = idempotencyService;
         this.bookingRepository = bookingRepository;
@@ -139,6 +156,10 @@ public class CheckInScheduler {
         this.disputeAutoCancelledCounter = Counter.builder("checkin.dispute.autocancelled")
                 .description("Check-in disputes auto-cancelled due to timeout")
                 .register(meterRegistry);
+
+        this.handshakeTimeoutCounter = Counter.builder("checkin.handshake.timeout")
+            .description("Check-in sessions auto-cancelled due to stale handshake")
+            .register(meterRegistry);
     }
 
     /**
@@ -351,7 +372,7 @@ public class CheckInScheduler {
         
         try {
             LocalDateTime now = LocalDateTime.now(SERBIA_ZONE);
-            LocalDateTime noShowThreshold = now.minusMinutes(30);
+            LocalDateTime noShowThreshold = now.minusMinutes(noShowMinutesAfterTripStart);
             
             // Detect Host No-Shows
             // CHECK_IN_OPEN bookings where trip start + 30min has passed
@@ -363,7 +384,7 @@ public class CheckInScheduler {
             int hostNoShowCount = 0;
             for (Booking booking : hostNoShows) {
                 try {
-                    checkInService.processNoShow(booking, "HOST");
+                    checkInCommandService.processNoShow(booking, "HOST");
                     hostNoShowCount++;
                     log.warn("[CheckIn] Host no-show detected for booking {}", booking.getId());
                 } catch (Exception e) {
@@ -378,11 +399,15 @@ public class CheckInScheduler {
                 BookingStatus.CHECK_IN_HOST_COMPLETE, 
                 noShowThreshold
             );
+
+            if (noShowDiagnosticsEnabled) {
+                logNoShowDiagnostics(now, noShowThreshold, hostNoShows, guestNoShows);
+            }
             
             int guestNoShowCount = 0;
             for (Booking booking : guestNoShows) {
                 try {
-                    checkInService.processNoShow(booking, "GUEST");
+                    checkInCommandService.processNoShow(booking, "GUEST");
                     guestNoShowCount++;
                     log.warn("[CheckIn] Guest no-show detected for booking {}", booking.getId());
                 } catch (Exception e) {
@@ -405,6 +430,132 @@ public class CheckInScheduler {
             
         } catch (Exception e) {
             log.error("[CheckIn] Error during no-show detection", e);
+        }
+    }
+
+    private void logNoShowDiagnostics(
+            LocalDateTime now,
+            LocalDateTime noShowThreshold,
+            List<Booking> hostNoShows,
+            List<Booking> guestNoShows) {
+        log.info(
+                "[CheckIn] No-show diagnostics | now={} ({}) | threshold={} | graceMinutes={} | hostCandidates={} {} | guestCandidates={} {}",
+                now,
+                SERBIA_ZONE,
+                noShowThreshold,
+                noShowMinutesAfterTripStart,
+                hostNoShows.size(),
+                hostNoShows.isEmpty() ? "" : hostNoShows.stream().map(Booking::getId).toList(),
+                guestNoShows.size(),
+                guestNoShows.isEmpty() ? "" : guestNoShows.stream().map(Booking::getId).toList()
+        );
+
+        if (!hostNoShows.isEmpty() || !guestNoShows.isEmpty()) {
+            return;
+        }
+
+        LocalDateTime nextHostEligibleAt = null;
+        Long nextHostBookingId = null;
+        LocalDateTime nextGuestEligibleAt = null;
+        Long nextGuestBookingId = null;
+
+        for (Booking booking : bookingRepository.findBookingsInCheckInPhase()) {
+            if (booking.getStatus() == BookingStatus.CHECK_IN_OPEN &&
+                    booking.getHostCheckInCompletedAt() == null &&
+                    booking.getStartTime() != null) {
+                LocalDateTime eligibleAt = booking.getStartTime().plusMinutes(noShowMinutesAfterTripStart);
+                if (eligibleAt.isAfter(now) &&
+                        (nextHostEligibleAt == null || eligibleAt.isBefore(nextHostEligibleAt))) {
+                    nextHostEligibleAt = eligibleAt;
+                    nextHostBookingId = booking.getId();
+                }
+            }
+
+            if (booking.getStatus() == BookingStatus.CHECK_IN_HOST_COMPLETE &&
+                    booking.getGuestCheckInCompletedAt() == null &&
+                    booking.getHostCheckInCompletedAt() != null &&
+                    booking.getStartTime() != null) {
+                LocalDateTime hostCompletedLocal = LocalDateTime.ofInstant(
+                        booking.getHostCheckInCompletedAt(),
+                        SERBIA_ZONE
+                );
+                LocalDateTime tripStartEligibleAt = booking.getStartTime().plusMinutes(noShowMinutesAfterTripStart);
+                LocalDateTime hostCompletedEligibleAt = hostCompletedLocal.plusMinutes(noShowMinutesAfterTripStart);
+                LocalDateTime eligibleAt = tripStartEligibleAt.isAfter(hostCompletedEligibleAt)
+                        ? tripStartEligibleAt
+                        : hostCompletedEligibleAt;
+
+                if (eligibleAt.isAfter(now) &&
+                        (nextGuestEligibleAt == null || eligibleAt.isBefore(nextGuestEligibleAt))) {
+                    nextGuestEligibleAt = eligibleAt;
+                    nextGuestBookingId = booking.getId();
+                }
+            }
+        }
+
+        if (nextHostEligibleAt != null) {
+            log.info(
+                    "[CheckIn] Next HOST no-show eligibility: booking={} eligibleAt={} (in {} minutes)",
+                    nextHostBookingId,
+                    nextHostEligibleAt,
+                    ChronoUnit.MINUTES.between(now, nextHostEligibleAt)
+            );
+        } else {
+            log.info("[CheckIn] No upcoming HOST no-show eligibility found");
+        }
+
+        if (nextGuestEligibleAt != null) {
+            log.info(
+                    "[CheckIn] Next GUEST no-show eligibility: booking={} eligibleAt={} (in {} minutes)",
+                    nextGuestBookingId,
+                    nextGuestEligibleAt,
+                    ChronoUnit.MINUTES.between(now, nextGuestEligibleAt)
+            );
+        } else {
+            log.info("[CheckIn] No upcoming GUEST no-show eligibility found");
+        }
+    }
+
+    /**
+     * Detect stale handshakes where both parties completed check-in but no trip start happened.
+     */
+    @Scheduled(cron = "${app.checkin.scheduler.handshake-timeout-cron:0 5/10 * * * *}", zone = "Europe/Belgrade")
+    @Transactional
+    public void detectStaleHandshakes() {
+        int minuteBlock = LocalTime.now(SERBIA_ZONE).getMinute() / 10;
+        String taskId = "checkin-handshake-timeout-" + LocalDate.now(SERBIA_ZONE) + "-" +
+                LocalTime.now(SERBIA_ZONE).getHour() + "-" + minuteBlock;
+
+        if (!idempotencyService.tryAcquireLock(taskId, Duration.ofMinutes(8))) {
+            log.debug("[CheckIn] Skipping duplicate stale handshake detection: {}", taskId);
+            schedulerSkippedCounter.increment();
+            return;
+        }
+
+        try {
+            LocalDateTime threshold = LocalDateTime.now(SERBIA_ZONE).minusMinutes(handshakeTimeoutMinutes);
+            List<Booking> staleHandshakes = bookingRepository.findStaleCheckInHandshakes(
+                    BookingStatus.CHECK_IN_COMPLETE,
+                    threshold
+            );
+
+            int processed = 0;
+            for (Booking booking : staleHandshakes) {
+                try {
+                    cancelStaleHandshakeBooking(booking);
+                    processed++;
+                } catch (Exception ex) {
+                    log.error("[CheckIn] Failed stale handshake cancellation for booking {}: {}",
+                            booking.getId(), ex.getMessage(), ex);
+                }
+            }
+
+            if (processed > 0) {
+                handshakeTimeoutCounter.increment(processed);
+                log.warn("[CheckIn] Processed {} stale handshakes (auto-cancelled)", processed);
+            }
+        } catch (Exception ex) {
+            log.error("[CheckIn] Error during stale handshake detection", ex);
         }
     }
 
@@ -612,5 +763,53 @@ public class CheckInScheduler {
                 claim.getId(), booking.getId(), e.getMessage(), e);
             throw e;
         }
+    }
+
+    private void cancelStaleHandshakeBooking(Booking booking) {
+        booking.setStatus(BookingStatus.CANCELLED);
+        booking.setCancelledAt(LocalDateTime.now(SERBIA_ZONE));
+        bookingRepository.save(booking);
+
+        boolean refundSuccess = checkInService.processHostNoShowRefund(booking);
+
+        eventService.recordSystemEvent(
+            booking,
+            booking.getCheckInSessionId(),
+            refundSuccess ? CheckInEventType.NO_SHOW_REFUND_PROCESSED : CheckInEventType.NO_SHOW_REFUND_FAILED,
+            Map.of(
+                "party", "HANDSHAKE_TIMEOUT",
+                "refundMode", booking.getPaymentVerificationRef() == null ? "MOCK" : "PAYMENT_PROVIDER"
+            )
+        );
+
+        eventService.recordSystemEvent(
+                booking,
+                booking.getCheckInSessionId(),
+                CheckInEventType.HANDSHAKE_TIMEOUT_AUTO_CANCELLED,
+                Map.of(
+                        "timeoutMinutes", handshakeTimeoutMinutes,
+                        "reason", "HANDSHAKE_NOT_CONFIRMED"
+                )
+        );
+
+        if (booking.getRenter() != null) {
+            notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                    .recipientId(booking.getRenter().getId())
+                    .type(NotificationType.BOOKING_CANCELLED)
+                    .message("Rezervacija je automatski otkazana jer primopredaja nije potvrđena na vreme.")
+                    .relatedEntityId(String.valueOf(booking.getId()))
+                    .build());
+        }
+
+        if (booking.getCar() != null && booking.getCar().getOwner() != null) {
+            notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                    .recipientId(booking.getCar().getOwner().getId())
+                    .type(NotificationType.BOOKING_CANCELLED)
+                    .message("Rezervacija je automatski otkazana jer primopredaja nije potvrđena na vreme.")
+                    .relatedEntityId(String.valueOf(booking.getId()))
+                    .build());
+        }
+
+        notificationService.alertAdminNoShow(booking, "HANDSHAKE_TIMEOUT", refundSuccess);
     }
 }

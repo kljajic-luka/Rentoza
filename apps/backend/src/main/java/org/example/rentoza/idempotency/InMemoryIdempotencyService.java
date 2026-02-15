@@ -3,8 +3,6 @@ package org.example.rentoza.idempotency;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.context.annotation.Primary;
 import org.springframework.http.HttpStatus;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -50,8 +48,6 @@ import java.util.regex.Pattern;
  * @since Phase 3.1 - Redis Configuration Hardening
  */
 @Service
-@Primary
-@ConditionalOnProperty(name = "app.redis.enabled", havingValue = "false", matchIfMissing = true)
 @Slf4j
 public class InMemoryIdempotencyService implements IdempotencyStore {
 

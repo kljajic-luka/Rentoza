@@ -538,10 +538,29 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
            "WHERE b.status = :status " +
            "AND b.guestCheckInCompletedAt IS NULL " +
            "AND b.hostCheckInCompletedAt IS NOT NULL " +
+          "AND b.startTime < :tripStartedBefore " +
            "AND b.hostCheckInCompletedAt < :hostCompletedBefore")
     List<Booking> findPotentialGuestNoShows(
             @Param("status") BookingStatus status,
+           @Param("tripStartedBefore") LocalDateTime tripStartedBefore,
             @Param("hostCompletedBefore") java.time.Instant hostCompletedBefore
+    );
+
+    /**
+     * Find stale handshake sessions.
+     * CHECK_IN_COMPLETE bookings where handshake was not completed within timeout after trip start.
+     */
+    @Query("SELECT b FROM Booking b " +
+          "JOIN FETCH b.car c " +
+          "JOIN FETCH b.renter r " +
+          "LEFT JOIN FETCH c.owner " +
+          "WHERE b.status = :status " +
+          "AND b.handshakeCompletedAt IS NULL " +
+           "AND b.guestCheckInCompletedAt IS NOT NULL " +
+          "AND b.startTime < :startedBefore")
+    List<Booking> findStaleCheckInHandshakes(
+           @Param("status") BookingStatus status,
+           @Param("startedBefore") LocalDateTime startedBefore
     );
 
     /**

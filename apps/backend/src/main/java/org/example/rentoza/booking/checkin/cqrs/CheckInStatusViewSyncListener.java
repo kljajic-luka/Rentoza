@@ -8,6 +8,7 @@ import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingRepository;
 import org.example.rentoza.booking.BookingStatus;
 import org.example.rentoza.booking.checkin.websocket.CheckInWebSocketController;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.CacheManager;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Async;
@@ -66,6 +67,9 @@ public class CheckInStatusViewSyncListener {
     private final Counter syncSuccessCounter;
     private final Counter syncFailureCounter;
     private final Timer syncLatencyTimer;
+
+    @Value("${app.checkin.no-show-minutes-after-trip-start:${app.checkin.noshow.grace-minutes:30}}")
+    private int noShowMinutesAfterTripStart;
 
     public CheckInStatusViewSyncListener(
             CheckInStatusViewRepository viewRepository,
@@ -468,7 +472,7 @@ public class CheckInStatusViewSyncListener {
 
         // Calculate no-show deadline
         if (booking.getStartTime() != null) {
-            view.setNoShowDeadline(booking.getStartTime().plusMinutes(30));
+            view.setNoShowDeadline(booking.getStartTime().plusMinutes(noShowMinutesAfterTripStart));
         }
 
         log.info("[View-Sync] Created new view for booking {}", bookingId);

@@ -22,6 +22,8 @@ import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.notification.NotificationService;
 import org.example.rentoza.notification.NotificationType;
 import org.example.rentoza.notification.dto.CreateNotificationRequestDTO;
+import org.example.rentoza.payment.BookingPaymentService;
+import org.example.rentoza.payment.PaymentProvider.PaymentResult;
 import org.example.rentoza.security.LockboxEncryptionService;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
@@ -84,6 +86,7 @@ public class CheckInService {
     private final DamageClaimRepository damageClaimRepository;
     private final UserRepository userRepository;
     private final PhotoUrlService photoUrlService;
+    private final BookingPaymentService bookingPaymentService;
     
     private static final int REQUIRED_GUEST_PHOTO_TYPES = 8;
     
@@ -94,7 +97,7 @@ public class CheckInService {
     private final Timer checkInDurationTimer;
     private final Counter licenseVerificationCounter;
 
-    @Value("${app.checkin.noshow.grace-minutes:30}")
+    @Value("${app.checkin.no-show-minutes-after-trip-start:${app.checkin.noshow.grace-minutes:30}}")
     private int noShowGraceMinutes;
     
     // ========== PHASE 4: SAFETY IMPROVEMENTS CONFIGURATION ==========
@@ -137,7 +140,8 @@ public class CheckInService {
             DamageClaimRepository damageClaimRepository,
             UserRepository userRepository,
             MeterRegistry meterRegistry,
-            PhotoUrlService photoUrlService) {
+            PhotoUrlService photoUrlService,
+            BookingPaymentService bookingPaymentService) {
         this.bookingRepository = bookingRepository;
         this.eventService = eventService;
         this.photoRepository = photoRepository;
@@ -151,6 +155,7 @@ public class CheckInService {
         this.damageClaimRepository = damageClaimRepository;
         this.userRepository = userRepository;
         this.photoUrlService = photoUrlService;
+        this.bookingPaymentService = bookingPaymentService;
         
         this.hostCompletedCounter = Counter.builder("checkin.host.completed")
                 .description("Host check-in completions")
@@ -838,6 +843,25 @@ public class CheckInService {
             
             // Notify guest
             notifyNoShow(booking, "HOST");
+
+            boolean refundProcessed = processHostNoShowRefund(booking);
+            eventService.recordSystemEvent(
+                booking,
+                booking.getCheckInSessionId(),
+                refundProcessed ? CheckInEventType.NO_SHOW_REFUND_PROCESSED : CheckInEventType.NO_SHOW_REFUND_FAILED,
+                Map.of(
+                    "party", "HOST",
+                    "refundMode", booking.getPaymentVerificationRef() == null ? "MOCK" : "PAYMENT_PROVIDER"
+                )
+            );
+
+            notificationService.alertAdminNoShow(booking, "HOST", refundProcessed);
+            eventService.recordSystemEvent(
+                booking,
+                booking.getCheckInSessionId(),
+                CheckInEventType.NO_SHOW_ADMIN_ALERT_SENT,
+                Map.of("party", "HOST")
+            );
             
         } else if ("GUEST".equals(party)) {
             booking.setStatus(BookingStatus.NO_SHOW_GUEST);
@@ -854,6 +878,14 @@ public class CheckInService {
             
             // Notify host
             notifyNoShow(booking, "GUEST");
+
+            notificationService.alertAdminNoShow(booking, "GUEST", false);
+            eventService.recordSystemEvent(
+                booking,
+                booking.getCheckInSessionId(),
+                CheckInEventType.NO_SHOW_ADMIN_ALERT_SENT,
+                Map.of("party", "GUEST")
+            );
         }
         
         bookingRepository.save(booking);
@@ -953,9 +985,7 @@ public class CheckInService {
      */
     @Transactional(readOnly = true)
     public List<Booking> findPotentialHostNoShows(BookingStatus status, LocalDateTime threshold) {
-        // Adjust threshold to include grace period in query
-        LocalDateTime thresholdWithGrace = threshold.minusMinutes(noShowGraceMinutes);
-        return bookingRepository.findPotentialHostNoShows(status, thresholdWithGrace);
+        return bookingRepository.findPotentialHostNoShows(status, threshold);
     }
 
     /**
@@ -967,10 +997,8 @@ public class CheckInService {
      */
     @Transactional(readOnly = true)
     public List<Booking> findPotentialGuestNoShows(BookingStatus status, LocalDateTime threshold) {
-        // Calculate threshold: host must have completed more than grace period ago
-        Instant hostCompletedBefore = threshold.atZone(SERBIA_ZONE).toInstant()
-                .minus(noShowGraceMinutes, ChronoUnit.MINUTES);
-        return bookingRepository.findPotentialGuestNoShows(status, hostCompletedBefore);
+        Instant hostCompletedBefore = threshold.atZone(SERBIA_ZONE).toInstant();
+        return bookingRepository.findPotentialGuestNoShows(status, threshold, hostCompletedBefore);
     }
 
     // ========== NOTIFICATION METHODS ==========
@@ -1067,7 +1095,7 @@ public class CheckInService {
             notificationService.createNotification(CreateNotificationRequestDTO.builder()
                     .recipientId(booking.getRenter().getId())
                     .type(NotificationType.NO_SHOW_HOST)
-                    .message("Domaćin se nije pojavio. Kontaktirajte podršku za povrat sredstava.")
+                    .message("Domaćin se nije pojavio. Povraćaj se obrađuje automatski.")
                     .relatedEntityId(String.valueOf(booking.getId()))
                     .build());
         } else {
@@ -1110,6 +1138,33 @@ public class CheckInService {
         
         Duration missed = Duration.between(startInstant.plus(noShowGraceMinutes, ChronoUnit.MINUTES), now);
         return missed.toMinutes() + " minuta";
+    }
+
+    public boolean processHostNoShowRefund(Booking booking) {
+        try {
+            PaymentResult refundResult = bookingPaymentService.processFullRefund(
+                    booking.getId(),
+                    "Automatski povraćaj zbog no-show domaćina"
+            );
+
+            if (refundResult.isSuccess()) {
+                return true;
+            }
+
+            if (booking.getPaymentVerificationRef() == null) {
+                log.warn("[CheckIn] No payment reference for booking {} - marking host no-show refund as MOCK success",
+                        booking.getId());
+                return true;
+            }
+
+            log.error("[CheckIn] Host no-show refund failed for booking {}: {}",
+                    booking.getId(), refundResult.getErrorMessage());
+            return false;
+        } catch (Exception ex) {
+            log.error("[CheckIn] Error processing host no-show refund for booking {}: {}",
+                    booking.getId(), ex.getMessage(), ex);
+            return false;
+        }
     }
 
     private CheckInStatusDTO mapToStatusDTO(Booking booking, Long userId) {
@@ -1388,24 +1443,16 @@ public class CheckInService {
     }
 
     /**
-     * Phase 4C: Get the appropriate no-show grace minutes based on trip length.
-     * 
-     * <p>Short trips (≤ 24 hours) have a tighter grace period since the impact
-     * of delays is proportionally greater. Long trips get more lenient grace periods.
-     * 
-     * @param booking The booking to calculate grace for
+     * Get the active no-show grace period in minutes.
+     *
+     * <p>Source of truth is {@code app.checkin.no-show-minutes-after-trip-start}
+     * (with backward-compatible fallback to legacy key).
+     *
+     * @param booking The booking (currently unused, kept for API compatibility)
      * @return Grace period in minutes
      */
     public int getNoShowGraceMinutesForTrip(Booking booking) {
-        Duration tripDuration = Duration.between(
-            booking.getStartTime(), 
-            booking.getEndTime()
-        );
-        
-        if (tripDuration.toHours() <= shortTripThresholdHours) {
-            return shortTripGraceMinutes;
-        }
-        return longTripGraceMinutes;
+        return noShowGraceMinutes;
     }
 
     /**

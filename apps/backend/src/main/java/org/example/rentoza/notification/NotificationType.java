@@ -91,6 +91,12 @@ public enum NotificationType {
     NO_SHOW_GUEST,
 
     /**
+     * Triggered when admin attention is needed for no-show processing.
+     * Sent to admin users.
+     */
+    NO_SHOW_ADMIN_ALERT,
+
+    /**
      * Triggered when guest marks a hotspot/pre-existing damage.
      * Sent to host for awareness.
      */

@@ -9,6 +9,7 @@ import org.example.rentoza.notification.dto.CreateNotificationRequestDTO;
 import org.example.rentoza.notification.dto.NotificationEventDTO;
 import org.example.rentoza.notification.dto.NotificationResponseDTO;
 import org.example.rentoza.notification.dto.RegisterDeviceTokenRequestDTO;
+import org.example.rentoza.user.Role;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
 import org.springframework.data.domain.Page;
@@ -336,6 +337,53 @@ public class NotificationService {
                 "Booking ID: {}, Claim ID: {}, Dispute Type: {}, Created: {}. " +
                 "Full refund issued to guest. Please review for process improvement.",
                 booking.getId(), claim.getId(), claim.getDisputeType(), claim.getCreatedAt());
+    }
+
+    /**
+     * Alert admins about no-show outcome (refund/operations visibility).
+     *
+     * @param booking Booking impacted by no-show
+     * @param noShowParty Party that no-showed (HOST or GUEST)
+     * @param refundSuccess Whether refund processing succeeded
+     */
+    @Transactional
+    public void alertAdminNoShow(Booking booking, String noShowParty, boolean refundSuccess) {
+        List<User> admins = userRepository.findByRole(Role.ADMIN);
+        if (admins.isEmpty()) {
+            log.warn("No admin users found for no-show alert. Booking: {}", booking.getId());
+            return;
+        }
+
+        String hostName = booking.getCar() != null && booking.getCar().getOwner() != null
+            ? (booking.getCar().getOwner().getFirstName() + " " + booking.getCar().getOwner().getLastName()).trim()
+            : "N/A";
+        String guestName = booking.getRenter() != null
+            ? (booking.getRenter().getFirstName() + " " + booking.getRenter().getLastName()).trim()
+            : "N/A";
+
+        String refundStatus = "GUEST".equals(noShowParty)
+            ? "N/A"
+            : (refundSuccess ? "SUCCESS" : "FAILED");
+
+        String message = String.format(
+            "No-show alert | Booking #%d | Party: %s | Host: %s | Guest: %s | Refund: %s",
+            booking.getId(),
+            noShowParty,
+            hostName,
+            guestName,
+            refundStatus
+        );
+
+        for (User admin : admins) {
+            createNotification(CreateNotificationRequestDTO.builder()
+                .recipientId(admin.getId())
+                .type(NotificationType.NO_SHOW_ADMIN_ALERT)
+                .message(message)
+                .relatedEntityId(String.valueOf(booking.getId()))
+                .build());
+        }
+
+        log.info("Admin no-show alert sent for booking {} to {} admin(s)", booking.getId(), admins.size());
     }
 
     /**

@@ -63,7 +63,7 @@ public class CheckInQueryService {
     private final GeofenceService geofenceService;
     private final CheckInStatusViewRepository viewRepository;
 
-    @Value("${app.checkin.noshow.grace-minutes:30}")
+    @Value("${app.checkin.no-show-minutes-after-trip-start:${app.checkin.noshow.grace-minutes:30}}")
     private int noShowGraceMinutes;
 
     // ========== PRIMARY QUERIES ==========
@@ -226,8 +226,7 @@ public class CheckInQueryService {
      */
     @Transactional(readOnly = true)
     public List<Booking> findPotentialHostNoShows(BookingStatus status, LocalDateTime threshold) {
-        LocalDateTime thresholdWithGrace = threshold.minusMinutes(noShowGraceMinutes);
-        return bookingRepository.findPotentialHostNoShows(status, thresholdWithGrace);
+        return bookingRepository.findPotentialHostNoShows(status, threshold);
     }
 
     /**
@@ -239,9 +238,8 @@ public class CheckInQueryService {
      */
     @Transactional(readOnly = true)
     public List<Booking> findPotentialGuestNoShows(BookingStatus status, LocalDateTime threshold) {
-        Instant hostCompletedBefore = threshold.atZone(SERBIA_ZONE).toInstant()
-                .minus(noShowGraceMinutes, ChronoUnit.MINUTES);
-        return bookingRepository.findPotentialGuestNoShows(status, hostCompletedBefore);
+        Instant hostCompletedBefore = threshold.atZone(SERBIA_ZONE).toInstant();
+        return bookingRepository.findPotentialGuestNoShows(status, threshold, hostCompletedBefore);
     }
 
     // ========== CACHE INVALIDATION ==========

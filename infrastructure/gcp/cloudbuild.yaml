@@ -10,6 +10,9 @@ substitutions:
   _CHAT_SERVICE: rentoza-chat
   _REPO: rentoza
   _OAUTH2_REDIRECT_ALLOWED_URIS: https://rentoza.rs/auth/supabase/google/callback,https://www.rentoza.rs/auth/supabase/google/callback
+  _CHECKIN_NO_SHOW_MINUTES_AFTER_TRIP_START: '30'
+  _CHECKIN_SCHEDULER_NOSHOW_CRON: '0 0/10 * * * *'
+  _CHECKIN_SCHEDULER_NOSHOW_DIAGNOSTICS_ENABLED: 'false'
 
 steps:
   # =============================================================================
@@ -99,7 +102,7 @@ steps:
       - '--concurrency'
       - '80'
       - '--update-env-vars'
-      - '^#^OAUTH2_REDIRECT_ALLOWED_URIS=${_OAUTH2_REDIRECT_ALLOWED_URIS}'
+      - '^#^OAUTH2_REDIRECT_ALLOWED_URIS=${_OAUTH2_REDIRECT_ALLOWED_URIS}#CHECKIN_NO_SHOW_MINUTES_AFTER_TRIP_START=${_CHECKIN_NO_SHOW_MINUTES_AFTER_TRIP_START}#CHECKIN_SCHEDULER_NOSHOW_CRON=${_CHECKIN_SCHEDULER_NOSHOW_CRON}#CHECKIN_SCHEDULER_NOSHOW_DIAGNOSTICS_ENABLED=${_CHECKIN_SCHEDULER_NOSHOW_DIAGNOSTICS_ENABLED}'
     waitFor: ['push-backend']
 
   # =============================================================================

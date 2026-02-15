@@ -8,6 +8,7 @@ import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingRepository;
 import org.example.rentoza.booking.BookingStatus;
 import org.example.rentoza.booking.checkin.CheckInActorRole;
+import org.example.rentoza.booking.checkin.CheckInService;
 import org.example.rentoza.booking.checkin.CheckInEventService;
 import org.example.rentoza.booking.checkin.CheckInEventType;
 import org.example.rentoza.booking.checkin.CheckInPhoto;
@@ -79,6 +80,7 @@ public class CheckInCommandService {
     private final NotificationService notificationService;
     private final LockboxEncryptionService lockboxEncryptionService;
     private final ApplicationEventPublisher eventPublisher;
+    private final CheckInService checkInService;
 
     // Metrics
     private final Counter hostCompletedCounter;
@@ -86,7 +88,7 @@ public class CheckInCommandService {
     private final Counter handshakeCompletedCounter;
     private final Timer checkInDurationTimer;
 
-    @Value("${app.checkin.noshow.grace-minutes:30}")
+    @Value("${app.checkin.no-show-minutes-after-trip-start:${app.checkin.noshow.grace-minutes:30}}")
     private int noShowGraceMinutes;
 
     public CheckInCommandService(
@@ -97,6 +99,7 @@ public class CheckInCommandService {
             NotificationService notificationService,
             LockboxEncryptionService lockboxEncryptionService,
             ApplicationEventPublisher eventPublisher,
+            CheckInService checkInService,
             MeterRegistry meterRegistry) {
         this.bookingRepository = bookingRepository;
         this.eventService = eventService;
@@ -105,6 +108,7 @@ public class CheckInCommandService {
         this.notificationService = notificationService;
         this.lockboxEncryptionService = lockboxEncryptionService;
         this.eventPublisher = eventPublisher;
+        this.checkInService = checkInService;
 
         this.hostCompletedCounter = Counter.builder("checkin.command.host.completed")
                 .description("Host check-in completions via command service")
@@ -663,38 +667,7 @@ public class CheckInCommandService {
      */
     @Transactional
     public void processNoShow(Booking booking, String party) {
-        if ("HOST".equals(party)) {
-            booking.setStatus(BookingStatus.NO_SHOW_HOST);
-
-            eventService.recordSystemEvent(
-                    booking,
-                    booking.getCheckInSessionId(),
-                    CheckInEventType.NO_SHOW_HOST_TRIGGERED,
-                    Map.of(
-                            "deadlineAt", booking.getStartTime().toString(),
-                            "missedBy", calculateMissedBy(booking)
-                    )
-            );
-
-            notifyNoShow(booking, "HOST");
-
-        } else if ("GUEST".equals(party)) {
-            booking.setStatus(BookingStatus.NO_SHOW_GUEST);
-
-            eventService.recordSystemEvent(
-                    booking,
-                    booking.getCheckInSessionId(),
-                    CheckInEventType.NO_SHOW_GUEST_TRIGGERED,
-                    Map.of(
-                            "hostCompletedAt", booking.getHostCheckInCompletedAt().toString(),
-                            "missedBy", calculateMissedBy(booking)
-                    )
-            );
-
-            notifyNoShow(booking, "GUEST");
-        }
-
-        bookingRepository.save(booking);
+        checkInService.processNoShow(booking, party);
 
         // Publish domain event for read model sync
         eventPublisher.publishEvent(new CheckInDomainEvent.NoShowProcessed(

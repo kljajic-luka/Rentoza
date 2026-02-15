@@ -187,6 +187,30 @@ public enum CheckInEventType {
      * Metadata: {@code {"deadlineAt": "...", "hostCompletedAt": "..."}}
      */
     NO_SHOW_GUEST_TRIGGERED,
+
+    /**
+     * No-show refund was processed successfully.
+     * Metadata: {@code {"party": "HOST", "refundMode": "PAYMENT_PROVIDER|MOCK"}}
+     */
+    NO_SHOW_REFUND_PROCESSED,
+
+    /**
+     * No-show refund failed and requires intervention.
+     * Metadata: {@code {"party": "HOST", "refundMode": "PAYMENT_PROVIDER"}}
+     */
+    NO_SHOW_REFUND_FAILED,
+
+    /**
+     * Admin alert sent for no-show processing outcome.
+     * Metadata: {@code {"party": "HOST|GUEST"}}
+     */
+    NO_SHOW_ADMIN_ALERT_SENT,
+
+    /**
+     * Booking auto-cancelled due to stale handshake timeout.
+     * Metadata: {@code {"timeoutMinutes": 45, "reason": "HANDSHAKE_NOT_CONFIRMED"}}
+     */
+    HANDSHAKE_TIMEOUT_AUTO_CANCELLED,
     
     // ========== REMOTE HANDOFF ==========
     

@@ -22,7 +22,7 @@
           <div class="profile__meta">
             <span class="profile__meta-item" *ngIf="profile.createdAt">
               <mat-icon>calendar_today</mat-icon>
-              <span>Pridružio se {{ profile.createdAt | date : 'd. MMMM y.' }}</span>
+              <span>Pridružio se {{ profile.createdAt | date: 'd. MMMM y.' }}</span>
             </span>
             <span class="profile__meta-item">
               <mat-icon>mail</mat-icon>
@@ -185,12 +185,13 @@
                   <input
                     matInput
                     type="date"
+                    lang="en-GB"
                     formControlName="dateOfBirth"
                     [max]="maxDateOfBirth"
                   />
                   <mat-icon matPrefix>cake</mat-icon>
                   <mat-hint *ngIf="!profile.dobVerified">
-                    Koristite GGGG-MM-DD format (npr. 1990-05-15)
+                    Koristite DD/MM/GGGG format (npr. 15/05/1990)
                   </mat-hint>
                   <mat-hint *ngIf="profile.dobVerified" class="verified-hint">
                     <mat-icon class="verified-icon">verified</mat-icon>
@@ -252,7 +253,6 @@
     </section>
 
     <section class="profile__body">
-
       <div class="profile__reviews">
         <div class="profile__reviews-header">
           <h2>{{ profile.reviewSectionTitle }}</h2>
@@ -269,15 +269,13 @@
                   review.reviewerFirstName
                     ? review.reviewerFirstName[0]
                     : review.reviewerLastName
-                    ? review.reviewerLastName[0]
-                    : 'R'
+                      ? review.reviewerLastName[0]
+                      : 'R'
                 }}
               </div>
               <div class="profile__review-info">
                 <h3>{{ review.reviewerFirstName }} {{ review.reviewerLastName }}</h3>
-                <span class="profile__review-date">{{
-                  review.createdAt | date : 'd. MMM y.'
-                }}</span>
+                <span class="profile__review-date">{{ review.createdAt | date: 'd. MMM y.' }}</span>
               </div>
               <div class="profile__review-rating">
                 <ng-container *ngFor="let star of starRange">

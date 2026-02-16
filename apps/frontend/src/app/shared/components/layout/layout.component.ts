@@ -215,6 +215,12 @@ export class LayoutComponent implements OnInit {
     void this.router.navigate([route]);
   }
 
+  protected toggleMobileMenu(event: MouseEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.sidenav?.toggle();
+  }
+
   @HostListener('window:keydown.escape')
   closeOnEscape(): void {
     if (this.isMobile) {

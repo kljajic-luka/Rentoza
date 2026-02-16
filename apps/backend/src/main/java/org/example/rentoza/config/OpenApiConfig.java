@@ -105,7 +105,7 @@ public class OpenApiConfig {
                     """)
                 .contact(new Contact()
                         .name("Rentoza API Support")
-                        .email("api-support@rentoza.rs")
+                        .email("rentozzza@gmail.com")
                         .url("https://rentoza.rs/support"))
                 .license(new License()
                         .name("Proprietary - All Rights Reserved")

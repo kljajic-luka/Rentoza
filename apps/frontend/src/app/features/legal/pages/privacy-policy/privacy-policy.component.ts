@@ -35,7 +35,7 @@ import { MatDividerModule } from '@angular/material/divider';
 export class PrivacyPolicyComponent {
   readonly lastUpdated = '2. februar 2026.';
   readonly lastUpdatedEn = 'February 2, 2026';
-  readonly contactEmail = 'privacy@rentoza.rs';
+  readonly contactEmail = 'rentozzza@gmail.com';
   readonly dataRetentionMonths = 12;
 
   /** Current language: 'sr' for Serbian (default), 'en' for English */

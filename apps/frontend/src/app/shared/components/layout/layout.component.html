@@ -90,8 +90,9 @@
         <button
           mat-icon-button
           type="button"
+          class="mobile-menu-button"
           *ngIf="isMobile"
-          (click)="sidenav.toggle()"
+          (click)="toggleMobileMenu($event)"
           aria-label="Uključi meni navigacije"
         >
           <mat-icon>menu</mat-icon>

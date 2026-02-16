@@ -57,6 +57,8 @@ public class Conversation {
 
     // Check if conversation allows messaging
     public boolean isMessagingAllowed() {
-        return status == ConversationStatus.PENDING || status == ConversationStatus.ACTIVE;
+        return status == ConversationStatus.PENDING
+                || status == ConversationStatus.ACTIVE
+                || status == ConversationStatus.CLOSED;
     }
 }

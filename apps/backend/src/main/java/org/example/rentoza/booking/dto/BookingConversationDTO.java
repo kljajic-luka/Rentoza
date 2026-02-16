@@ -245,6 +245,7 @@ public record BookingConversationDTO(
      * - CHECK_IN_HOST_COMPLETE: Host completed, guest pending
      * - CHECK_IN_COMPLETE: Both parties completed, awaiting handshake
      * - IN_TRIP: Trip is in progress
+    * - COMPLETED: Trip finished (post-trip communication still allowed)
      * 
      * Messaging disabled for:
      * - PENDING_APPROVAL: Awaiting host approval (no chat until approved)
@@ -252,13 +253,13 @@ public record BookingConversationDTO(
      * - EXPIRED: Request timed out (no need for chat) - legacy status
      * - EXPIRED_SYSTEM: System auto-expired due to host inactivity (no need for chat)
      * - CANCELLED: User/host cancelled (chat closed)
-     * - COMPLETED: Trip finished (chat closed)
      * - NO_SHOW_HOST/NO_SHOW_GUEST: No-show scenarios (dispute channel, not chat)
      * 
      * Rationale:
      * - PENDING_APPROVAL: No chat conversation exists yet (created on approval)
      * - DECLINED/EXPIRED/EXPIRED_SYSTEM: Request rejected, no trip happening
-     * - CANCELLED/COMPLETED: Trip lifecycle ended
+     * - CANCELLED: Trip lifecycle ended by cancellation
+     * - COMPLETED: Keep channel open for post-trip coordination and support
      * - NO_SHOW: Escalated to dispute resolution, not normal chat
      */
     private static boolean computeMessagingAllowed(org.example.rentoza.booking.BookingStatus status) {
@@ -266,8 +267,8 @@ public record BookingConversationDTO(
             return false;
         }
         return switch (status) {
-            case ACTIVE, CHECK_IN_OPEN, CHECK_IN_HOST_COMPLETE, CHECK_IN_COMPLETE, IN_TRIP -> true;
-            case PENDING_APPROVAL, DECLINED, EXPIRED, EXPIRED_SYSTEM, CANCELLED, COMPLETED,
+            case ACTIVE, CHECK_IN_OPEN, CHECK_IN_HOST_COMPLETE, CHECK_IN_COMPLETE, IN_TRIP, COMPLETED -> true;
+            case PENDING_APPROVAL, DECLINED, EXPIRED, EXPIRED_SYSTEM, CANCELLED,
                  NO_SHOW_HOST, NO_SHOW_GUEST -> false;
             default -> false;
         };

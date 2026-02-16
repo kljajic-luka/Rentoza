@@ -582,7 +582,7 @@ public class BookingService {
      * 
      * Computed Fields:
      * - tripStatus: FUTURE (before start), CURRENT (during trip), PAST (after end)
-     * - messagingAllowed: true for PENDING/ACTIVE/CONFIRMED, false for CANCELLED/COMPLETED
+    * - messagingAllowed: true for active lifecycle states and COMPLETED, false for cancelled/declined/expired/no-show
      * 
      * @param bookingId Booking ID
      * @param actAsUserId User ID asserting access (must be renter or owner)

@@ -50,7 +50,7 @@ public class CarController {
     @PostMapping("/add")
     @PreAuthorize("hasRole('OWNER')")
     public ResponseEntity<?> addCar(
-            @RequestBody CarRequestDTO dto,
+            @Valid @RequestBody CarRequestDTO dto,
             @org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal
     ) {
         try {
@@ -461,7 +461,7 @@ public class CarController {
     @PreAuthorize("hasAnyRole('OWNER', 'ADMIN')")
     public ResponseEntity<?> updateCar(
             @PathVariable Long id,
-            @RequestBody CarRequestDTO dto,
+            @Valid @RequestBody CarRequestDTO dto,
             @org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal
     ) {
         try {

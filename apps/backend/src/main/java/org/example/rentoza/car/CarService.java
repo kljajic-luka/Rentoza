@@ -75,20 +75,82 @@ public class CarService {
     }
 
     public Car addCar(CarRequestDTO dto, User owner) {
-        // Validate required fields
+        // ========================================================================
+        // TURO-STANDARD VALIDATION (Feature 3 Hardening)
+        // ========================================================================
+
+        // 1. Required fields
         if (dto.getBrand() == null || dto.getBrand().isBlank()) {
             throw new RuntimeException("Brand is required");
         }
         if (dto.getModel() == null || dto.getModel().isBlank()) {
             throw new RuntimeException("Model is required");
         }
-        // BigDecimal price validation (minimum 10 RSD)
+
+        // 2. Price range: min 10, max 50,000 RSD
         if (dto.getPricePerDay() == null || dto.getPricePerDay().compareTo(BigDecimal.TEN) < 0) {
             throw new RuntimeException("Price per day must be at least 10 RSD");
         }
-        // Geospatial coordinates are REQUIRED (Phase 2.4)
+        if (dto.getPricePerDay().compareTo(new BigDecimal("50000")) > 0) {
+            throw new RuntimeException("Price per day must be at most 50,000 RSD");
+        }
+
+        // 3. Car age max 15 years (Turo standard)
+        if (dto.getYear() != null) {
+            int currentYear = java.time.Year.now().getValue();
+            if (currentYear - dto.getYear() > 15) {
+                throw new RuntimeException("Car too old. Maximum vehicle age is 15 years.");
+            }
+            if (dto.getYear() > currentYear + 1) {
+                throw new RuntimeException("Invalid year. Cannot be more than 1 year in the future.");
+            }
+        }
+
+        // 4. Current mileage max 300,000 km (Turo standard)
+        if (dto.getCurrentMileageKm() != null && dto.getCurrentMileageKm() > 300_000) {
+            throw new RuntimeException("Mileage too high. Maximum 300,000 km.");
+        }
+        if (dto.getCurrentMileageKm() != null && dto.getCurrentMileageKm() < 0) {
+            throw new RuntimeException("Mileage cannot be negative.");
+        }
+
+        // 5. Daily mileage limit validation
+        if (dto.getDailyMileageLimitKm() != null) {
+            if (dto.getDailyMileageLimitKm() < 50) {
+                throw new RuntimeException("Daily mileage limit must be at least 50 km.");
+            }
+            if (dto.getDailyMileageLimitKm() > 1000) {
+                throw new RuntimeException("Daily mileage limit must be at most 1,000 km.");
+            }
+        }
+
+        // 6. Geospatial coordinates are REQUIRED (Phase 2.4)
         if (dto.getLocationLatitude() == null || dto.getLocationLongitude() == null) {
             throw new RuntimeException("Location coordinates (latitude/longitude) are required");
+        }
+
+        // 7. Photo count validation on JSON path (5–10 photos, Turo standard)
+        if (dto.getImageUrls() != null) {
+            if (dto.getImageUrls().size() < 5) {
+                throw new RuntimeException("Minimum 5 photos required.");
+            }
+            if (dto.getImageUrls().size() > 10) {
+                throw new RuntimeException("Maximum 10 photos allowed.");
+            }
+        }
+
+        // 8. Duplicate license plate check
+        if (dto.getLicensePlate() != null && !dto.getLicensePlate().isBlank()) {
+            String plate = dto.getLicensePlate().trim().toUpperCase();
+            boolean duplicatePlate = repo.existsByLicensePlateIgnoreCase(plate);
+            if (duplicatePlate) {
+                throw new RuntimeException("A car with license plate " + plate + " is already registered.");
+            }
+        }
+
+        // 9. Sanitize description (strip HTML to prevent stored XSS)
+        if (dto.getDescription() != null) {
+            dto.setDescription(sanitizeText(dto.getDescription()));
         }
 
         // Create new car entity with default values
@@ -166,6 +228,20 @@ public class CarService {
             car.setImageUrls(new ArrayList<>(dto.getImageUrls()));
         }
 
+        // Map Turo-standard fields: mileage limit, current mileage, instant-book
+        if (dto.getDailyMileageLimitKm() != null) {
+            car.setDailyMileageLimitKm(dto.getDailyMileageLimitKm());
+        }
+        if (dto.getCurrentMileageKm() != null) {
+            car.setCurrentMileageKm(dto.getCurrentMileageKm());
+        }
+        // Map instant-book setting into CarBookingSettings
+        if (dto.getInstantBookEnabled() != null) {
+            CarBookingSettings settings = car.getEffectiveBookingSettings();
+            settings.setInstantBookEnabled(dto.getInstantBookEnabled());
+            car.setBookingSettings(settings);
+        }
+
         Car savedCar = repo.save(car);
 
         // Log successful persistence for debugging
@@ -185,7 +261,7 @@ public class CarService {
         // Public listing - only show available cars to users
         // Privacy: Use fuzzy locations for non-owners
         Long currentUserId = currentUser.idOrNull();
-        return repo.findByAvailableTrue()
+        return repo.findByAvailableTrueAndApprovalStatus(ApprovalStatus.APPROVED)
                 .stream()
                 .map(car -> mapToResponseWithPrivacy(car, currentUserId))
                 .collect(Collectors.toList());
@@ -196,7 +272,7 @@ public class CarService {
         // Public listing - only show available cars to users
         // Privacy: Use fuzzy locations for non-owners
         Long currentUserId = currentUser.idOrNull();
-        return repo.findByLocationIgnoreCaseAndAvailableTrue(location)
+        return repo.findByLocationIgnoreCaseAndAvailableTrueAndApprovalStatus(location, ApprovalStatus.APPROVED)
                 .stream()
                 .map(car -> mapToResponseWithPrivacy(car, currentUserId))
                 .collect(Collectors.toList());
@@ -252,8 +328,19 @@ public class CarService {
 
         log.debug("[CarService] Found car: {} {} (ID={})", car.getBrand(), car.getModel(), car.getId());
 
-        // Privacy check: Is current user the owner or has an active booking?
+        // P0 FIX: Unapproved listings should not be publicly accessible.
+        // Only the car owner and admins can view unapproved listings.
         Long currentUserId = currentUser.idOrNull();
+        boolean isOwner = currentUserId != null && car.getOwner() != null 
+                && car.getOwner().getId().equals(currentUserId);
+        boolean isAdmin = currentUser.isAdmin();
+        
+        if (car.getApprovalStatus() != ApprovalStatus.APPROVED && !isOwner && !isAdmin) {
+            log.warn("[CarService] Blocked access to unapproved car ID={} (status={})", id, car.getApprovalStatus());
+            throw new ResourceNotFoundException("Car not found with ID: " + id);
+        }
+
+        // Privacy check: Is current user the owner or has an active booking?
         boolean hasActiveBooking = false;
         
         if (currentUserId != null) {
@@ -308,6 +395,63 @@ public class CarService {
             throw new RuntimeException("You do not have permission to edit this car");
         }
 
+        // ====== Turo-standard validation for updates ======
+
+        // Price upper bound
+        if (dto.getPricePerDay() != null && dto.getPricePerDay().compareTo(new BigDecimal("50000")) > 0) {
+            throw new RuntimeException("Price per day must be at most 50,000 RSD");
+        }
+
+        // Car age max 15 years + future-year guard
+        if (dto.getYear() != null) {
+            int currentYear = java.time.Year.now().getValue();
+            if (currentYear - dto.getYear() > 15) {
+                throw new RuntimeException("Car too old. Maximum vehicle age is 15 years.");
+            }
+            if (dto.getYear() > currentYear + 1) {
+                throw new RuntimeException("Invalid year. Cannot be more than 1 year in the future.");
+            }
+        }
+
+        // Current mileage max 300,000 km
+        if (dto.getCurrentMileageKm() != null && dto.getCurrentMileageKm() > 300_000) {
+            throw new RuntimeException("Mileage too high. Maximum 300,000 km.");
+        }
+
+        // Daily mileage limit
+        if (dto.getDailyMileageLimitKm() != null) {
+            if (dto.getDailyMileageLimitKm() < 50 || dto.getDailyMileageLimitKm() > 1000) {
+                throw new RuntimeException("Daily mileage limit must be between 50 and 1,000 km.");
+            }
+        }
+
+        // Photo count limit on JSON path (5–10 photos, Turo standard)
+        if (dto.getImageUrls() != null) {
+            if (dto.getImageUrls().size() < 5) {
+                throw new RuntimeException("Minimum 5 photos required.");
+            }
+            if (dto.getImageUrls().size() > 10) {
+                throw new RuntimeException("Maximum 10 photos allowed.");
+            }
+        }
+
+        // Duplicate license plate check (only if changing plate)
+        if (dto.getLicensePlate() != null && !dto.getLicensePlate().isBlank()) {
+            String newPlate = dto.getLicensePlate().trim().toUpperCase();
+            String existingPlate = car.getLicensePlate();
+            if (!newPlate.equalsIgnoreCase(existingPlate)) {
+                boolean duplicatePlate = repo.existsByLicensePlateIgnoreCase(newPlate);
+                if (duplicatePlate) {
+                    throw new RuntimeException("A car with license plate " + newPlate + " is already registered.");
+                }
+            }
+        }
+
+        // Sanitize description
+        if (dto.getDescription() != null) {
+            dto.setDescription(sanitizeText(dto.getDescription()));
+        }
+
         // Update fields
         if (dto.getBrand() != null && !dto.getBrand().isBlank()) {
             car.setBrand(dto.getBrand().trim());
@@ -318,7 +462,7 @@ public class CarService {
         if (dto.getYear() != null) {
             car.setYear(dto.getYear());
         }
-        // BigDecimal price validation (minimum 10 RSD)
+        // BigDecimal price validation (minimum 10 RSD, maximum 50,000 RSD)
         if (dto.getPricePerDay() != null && dto.getPricePerDay().compareTo(BigDecimal.TEN) >= 0) {
             car.setPricePerDay(dto.getPricePerDay());
         }
@@ -326,10 +470,10 @@ public class CarService {
             car.setLocation(dto.getLocation().trim().toLowerCase());
         }
         if (dto.getLicensePlate() != null && !dto.getLicensePlate().isBlank()) {
-            car.setLicensePlate(dto.getLicensePlate().trim());
+            car.setLicensePlate(dto.getLicensePlate().trim().toUpperCase());
         }
         if (dto.getDescription() != null) {
-            car.setDescription(dto.getDescription());
+            car.setDescription(dto.getDescription().trim());
         }
         if (dto.getSeats() != null) {
             car.setSeats(dto.getSeats());
@@ -366,6 +510,19 @@ public class CarService {
         if (dto.getImageUrls() != null) {
             // Use setImageUrls to properly manage CarImage entities
             car.setImageUrls(new ArrayList<>(dto.getImageUrls()));
+        }
+
+        // Map Turo-standard fields on update
+        if (dto.getDailyMileageLimitKm() != null) {
+            car.setDailyMileageLimitKm(dto.getDailyMileageLimitKm());
+        }
+        if (dto.getCurrentMileageKm() != null) {
+            car.setCurrentMileageKm(dto.getCurrentMileageKm());
+        }
+        if (dto.getInstantBookEnabled() != null) {
+            CarBookingSettings settings = car.getEffectiveBookingSettings();
+            settings.setInstantBookEnabled(dto.getInstantBookEnabled());
+            car.setBookingSettings(settings);
         }
 
         Car savedCar = repo.save(car);
@@ -505,5 +662,44 @@ public class CarService {
     @Cacheable(value = "carMakes", key = "'all-makes'", unless = "#result.isEmpty()")
     public List<String> getAllMakes() {
         return repo.findDistinctBrands();
+    }
+
+    // ========== SECURITY HELPERS ==========
+
+    /**
+     * Sanitize text input to prevent stored XSS.
+     * Strips all HTML tags and retains only plain text content.
+     * Defense-in-depth measure — even though frontend also sanitizes.
+     *
+     * @param input Raw text input
+     * @return Sanitized plain text
+     */
+    private String sanitizeText(String input) {
+        if (input == null) return null;
+        // Iteratively strip HTML tags and decode entities until stable.
+        // This prevents encoded payloads like "&lt;script&gt;" from surviving
+        // as real tags after a single decode pass.
+        String result = input;
+        String previous;
+        int maxPasses = 5; // safety limit to prevent infinite loops
+        int pass = 0;
+        do {
+            previous = result;
+            result = result
+                    .replaceAll("<[^>]*>", "")           // Remove HTML tags
+                    .replaceAll("&lt;", "<")              // Decode entities
+                    .replaceAll("&gt;", ">")
+                    .replaceAll("&amp;", "&")
+                    .replaceAll("&quot;", "\"")
+                    .replaceAll("&#39;", "'");
+            pass++;
+        } while (!result.equals(previous) && pass < maxPasses);
+        // Final tag strip after all entities are decoded
+        result = result
+                .replaceAll("<[^>]*>", "")
+                .replaceAll("(?i)javascript:", "")  // Remove javascript: protocol
+                .replaceAll("(?i)on\\w+\\s*=", "")   // Remove event handlers like onerror=
+                .trim();
+        return result;
     }
 }

@@ -461,9 +461,14 @@ public class AvailabilityService {
         log.debug("[AvailabilityService] Fetching unavailable ranges for carId={} between {} and {}",
                 carId, queryStart, queryEnd);
 
-        // Validate car exists and get minRentalDays
+        // Validate car exists, is approved, and get minRentalDays
         Car car = carRepository.findById(carId)
                 .orElseThrow(() -> new ResourceNotFoundException("Car not found with ID: " + carId));
+
+        // Block availability probing for unapproved listings
+        if (car.getApprovalStatus() != ApprovalStatus.APPROVED) {
+            throw new ResourceNotFoundException("Car not found with ID: " + carId);
+        }
 
         int minRentalDays = car.getMinRentalDays() != null ? car.getMinRentalDays() : 1;
         long minHours = minRentalDays * 24L;

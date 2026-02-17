@@ -1107,8 +1107,11 @@ public class CheckOutService {
                 booking.getStartTime().toLocalDate(),
                 booking.getEndTime().toLocalDate()) + 1;
         
-        // TODO: Get daily limit from car or booking configuration
-        int dailyLimit = 200; // Default 200km per day
+        // Use car-specific daily mileage limit (host-configurable), default 200km/day
+        int dailyLimit = 200;
+        if (booking.getCar() != null && booking.getCar().getDailyMileageLimitKm() != null) {
+            dailyLimit = booking.getCar().getDailyMileageLimitKm();
+        }
         
         return (int) (days * dailyLimit);
     }

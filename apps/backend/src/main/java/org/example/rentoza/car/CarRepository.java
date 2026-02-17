@@ -48,17 +48,27 @@ public interface CarRepository extends JpaRepository<Car, Long>, JpaSpecificatio
     @EntityGraph(attributePaths = {"owner"})
     List<Car> findAll();
 
-    // Public listings - only available cars
+    // Public listings - only available AND approved cars
     @EntityGraph(attributePaths = {"owner"})
-    List<Car> findByAvailableTrue();
+    List<Car> findByAvailableTrueAndApprovalStatus(ApprovalStatus approvalStatus);
 
     @EntityGraph(attributePaths = {"owner"})
-    List<Car> findByLocationIgnoreCaseAndAvailableTrue(String location);
+    List<Car> findByLocationIgnoreCaseAndAvailableTrueAndApprovalStatus(String location, ApprovalStatus approvalStatus);
+
+    // Internal use - available regardless of approval (e.g. admin views)
+    @EntityGraph(attributePaths = {"owner"})
+    List<Car> findByAvailableTrue();
 
     @EntityGraph(attributePaths = {"owner"})
     List<Car> findByAvailableFalse();
 
     long countByListingStatus(ListingStatus status);
+
+    /**
+     * Check if a license plate is already registered (case-insensitive).
+     * Used for duplicate listing prevention (Turo standard).
+     */
+    boolean existsByLicensePlateIgnoreCase(String licensePlate);
 
     // ========== DETAIL VIEWS (WITH features/addOns - Full Data) ==========
     // These methods eagerly load collections for single-car views

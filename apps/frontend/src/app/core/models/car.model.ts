@@ -120,6 +120,10 @@ export interface Car {
   maxRentalDays?: number;
   imageUrls?: string[];
 
+  // Turo-standard fields (Feature 3 Hardening)
+  dailyMileageLimitKm?: number; // Host-configurable daily mileage limit (default: 200)
+  currentMileageKm?: number; // Odometer reading at listing time
+
   // Booking settings (Phase 2 - Time Window Logic)
   minTripHours?: number; // Minimum trip duration in hours (default: 24)
   maxTripDays?: number; // Maximum trip duration in days (default: 30)

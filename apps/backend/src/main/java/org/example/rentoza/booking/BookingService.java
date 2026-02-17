@@ -107,6 +107,19 @@ public class BookingService {
                 .orElseThrow(() -> new RuntimeException("Car not found"));
 
         // ========================================================================
+        // P0 FIX: APPROVAL & AVAILABILITY GATE
+        // ========================================================================
+        // Prevent booking of unapproved or unavailable cars.
+        // Unapproved listings must not be bookable even if accessed by direct ID.
+        // ========================================================================
+        if (car.getApprovalStatus() != org.example.rentoza.car.ApprovalStatus.APPROVED) {
+            throw new RuntimeException("This car listing is not yet approved and cannot be booked.");
+        }
+        if (!car.isAvailable()) {
+            throw new RuntimeException("This car is currently unavailable for booking.");
+        }
+
+        // ========================================================================
         // CONCURRENCY HARDENING: Pessimistic Lock Before Booking Creation
         // ========================================================================
         // CRITICAL: This MUST happen BEFORE creating the Booking entity.

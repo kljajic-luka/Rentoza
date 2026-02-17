@@ -71,7 +71,7 @@
               maxlength="13"
             />
             <mat-icon matPrefix>badge</mat-icon>
-            <mat-hint>Format: BG-123-AB ili BG-1234-AB (tradicionalni) ili BG-123ABC (custom)</mat-hint>
+            <mat-hint>Format: BG-123-AB ili BG-1234-AB</mat-hint>
             <!-- Only show error on form submission attempt, not while typing -->
             <ng-container
               *ngIf="
@@ -89,7 +89,7 @@
                   basicInfoForm.controls.licensePlate.touched)
               "
             >
-              <mat-error>Unesite validnu registarsku oznaku (npr. BG-123AB)</mat-error>
+              <mat-error>Unesite validnu registarsku oznaku (npr. BG-123-AB)</mat-error>
             </ng-container>
           </mat-form-field>
 
@@ -114,6 +114,15 @@
               "
             >
               <mat-error>Minimalna cena je 10 RSD</mat-error>
+            </ng-container>
+            <ng-container
+              *ngIf="
+                basicInfoForm.controls.pricePerDay.hasError('max') &&
+                (basicInfoForm.controls.pricePerDay.dirty ||
+                  basicInfoForm.controls.pricePerDay.touched)
+              "
+            >
+              <mat-error>Maksimalna cena je 50.000 RSD</mat-error>
             </ng-container>
           </mat-form-field>
         </div>
@@ -368,6 +377,48 @@
             <input matInput type="number" formControlName="maxRentalDays" min="1" required />
             <mat-icon matPrefix>event</mat-icon>
           </mat-form-field>
+
+          <mat-form-field appearance="outline" class="form-field">
+            <mat-label>Dnevni limit kilometraže (km)</mat-label>
+            <input
+              matInput
+              type="number"
+              formControlName="dailyMileageLimitKm"
+              min="50"
+              max="1000"
+              required
+            />
+            <mat-icon matPrefix>speed</mat-icon>
+            <mat-hint>50-1000 km/dan (podrazumevano: 200)</mat-hint>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="form-field">
+            <mat-label>Trenutna kilometraža (km)</mat-label>
+            <input matInput type="number" formControlName="currentMileageKm" min="0" max="300000" />
+            <mat-icon matPrefix>straighten</mat-icon>
+            <mat-hint>Opciono. Maksimalno 300.000 km</mat-hint>
+          </mat-form-field>
+        </div>
+
+        <!-- Instant Book Toggle -->
+        <div class="instant-book-section">
+          <mat-checkbox formControlName="instantBookEnabled" color="primary">
+            <div class="instant-book-label">
+              <strong>Instant Book</strong>
+              <span> — Gosti mogu odmah rezervisati bez vašeg odobrenja</span>
+            </div>
+          </mat-checkbox>
+          <p class="instant-book-hint" *ngIf="!policiesForm.value.instantBookEnabled">
+            <mat-icon>info</mat-icon>
+            Kada je isključeno, svaka rezervacija zahteva vaše odobrenje pre potvrde.
+          </p>
+          <p
+            class="instant-book-hint instant-book-enabled"
+            *ngIf="policiesForm.value.instantBookEnabled"
+          >
+            <mat-icon>flash_on</mat-icon>
+            Gosti mogu odmah rezervisati. Dobićete obaveštenje o novoj rezervaciji.
+          </p>
         </div>
 
         <div class="rules-section">
@@ -393,7 +444,7 @@
     <mat-step label="Slike">
       <div class="step-form">
         <h2 class="step-title">Slike vozila</h2>
-        <p class="step-description">Dodajte do 10 slika (max 5MB po slici)</p>
+        <p class="step-description">Dodajte 5–10 slika (max 5MB po slici). Minimum 5 obavezno.</p>
 
         <div class="photo-upload">
           <input
@@ -440,7 +491,7 @@
             mat-raised-button
             color="primary"
             matStepperNext
-            [disabled]="imageUrls().length === 0"
+            [disabled]="imageUrls().length < 5"
           >
             Dalje <mat-icon>arrow_forward</mat-icon>
           </button>
@@ -508,17 +559,17 @@
               <h4>Lokacija</h4>
               <p>{{ locationData()?.address || 'Nije uneta' }}</p>
               @if (locationData()) {
-              <p class="coordinates-hint">
-                ({{ locationData()!.latitude | number : '1.4-4' }},
-                {{ locationData()!.longitude | number : '1.4-4' }})
-              </p>
+                <p class="coordinates-hint">
+                  ({{ locationData()!.latitude | number: '1.4-4' }},
+                  {{ locationData()!.longitude | number: '1.4-4' }})
+                </p>
               }
             </div>
 
             <div class="summary-section">
               <h4>Cena</h4>
               <p class="price">
-                {{ basicInfoForm.value.pricePerDay | currency : 'RSD' : 'symbol' : '1.0-0' }} / dan
+                {{ basicInfoForm.value.pricePerDay | currency: 'RSD' : 'symbol' : '1.0-0' }} / dan
               </p>
             </div>
 
@@ -545,6 +596,22 @@
               <h4>Dužina iznajmljivanja</h4>
               <p>
                 {{ policiesForm.value.minRentalDays }}-{{ policiesForm.value.maxRentalDays }} dana
+              </p>
+            </div>
+
+            <div class="summary-section">
+              <h4>Limit kilometraže</h4>
+              <p>{{ policiesForm.value.dailyMileageLimitKm }} km/dan</p>
+            </div>
+
+            <div class="summary-section">
+              <h4>Instant Book</h4>
+              <p>
+                {{
+                  policiesForm.value.instantBookEnabled
+                    ? 'Uključeno'
+                    : 'Isključeno (zahteva odobrenje)'
+                }}
               </p>
             </div>
 

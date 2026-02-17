@@ -24,6 +24,7 @@ public class CarImageStorageService {
 
     private static final Logger log = LoggerFactory.getLogger(CarImageStorageService.class);
 
+    private static final int MIN_IMAGES = 5;
     private static final int MAX_IMAGES = 10;
     private static final long MAX_FILE_SIZE_BYTES = 10L * 1024L * 1024L; // 10MB
 
@@ -54,6 +55,9 @@ public class CarImageStorageService {
     public List<String> storeCarImages(long carId, List<MultipartFile> images) {
         if (images == null || images.isEmpty()) {
             throw new IllegalArgumentException("Bar jedna fotografija auta je obavezna");
+        }
+        if (images.size() < MIN_IMAGES) {
+            throw new IllegalArgumentException("Minimum " + MIN_IMAGES + " slika je obavezno (Turo standard). Dodato: " + images.size());
         }
         if (images.size() > MAX_IMAGES) {
             throw new IllegalArgumentException("Maksimalno " + MAX_IMAGES + " slika je dozvoljeno");

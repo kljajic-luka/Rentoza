@@ -742,13 +742,16 @@ public class CheckoutSagaOrchestrator {
     }
 
     private int calculateAllowedKm(Booking booking) {
-        // Calculate allowed km based on rental duration and daily limit
+        // Calculate allowed km based on rental duration and car-specific daily limit
         long days = ChronoUnit.DAYS.between(
                 booking.getStartTime().toLocalDate(),
                 booking.getEndTime().toLocalDate()) + 1;
 
-        int dailyLimit = 200;  // Default 200km per day
-        // TODO: Load from car or booking config
+        // Use car-specific daily mileage limit (host-configurable), default 200km/day
+        int dailyLimit = 200;
+        if (booking.getCar() != null && booking.getCar().getDailyMileageLimitKm() != null) {
+            dailyLimit = booking.getCar().getDailyMileageLimitKm();
+        }
         
         return (int) (days * dailyLimit);
     }

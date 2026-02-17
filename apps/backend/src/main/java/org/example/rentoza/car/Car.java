@@ -238,6 +238,24 @@ public class Car {
     @Column(name = "license_plate", length = 20)
     private String licensePlate;
 
+    /**
+     * Host-configurable daily mileage limit in km.
+     * Default: 200 km/day. Used for checkout overage calculation.
+     */
+    @Column(name = "daily_mileage_limit_km")
+    @Min(50)
+    @Max(1000)
+    private Integer dailyMileageLimitKm = 200;
+
+    /**
+     * Current vehicle mileage (odometer reading) in km.
+     * Turo standard: max 300,000 km.
+     */
+    @Column(name = "current_mileage_km")
+    @Min(0)
+    @Max(300000)
+    private Integer currentMileageKm;
+
     @Column(length = 1000)
     private String description;
 

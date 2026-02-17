@@ -173,7 +173,7 @@ export class AddCarWizardComponent implements OnInit {
     // Auto-uppercase and auto-dash insertion while typing
     licensePlate: ['', [Validators.required, this.licensePlateValidator.bind(this)]],
     // Price field initialized as empty string (not 0) to avoid user having to delete zero
-    pricePerDay: ['', [Validators.required, Validators.min(10)]],
+    pricePerDay: ['', [Validators.required, Validators.min(10), Validators.max(50000)]],
     description: ['', [Validators.maxLength(1000)]],
   });
 
@@ -189,6 +189,9 @@ export class AddCarWizardComponent implements OnInit {
   protected readonly policiesForm = this.fb.nonNullable.group({
     minRentalDays: [1, [Validators.required, Validators.min(1)]],
     maxRentalDays: [30, [Validators.required, Validators.min(1)]],
+    dailyMileageLimitKm: [200, [Validators.required, Validators.min(50), Validators.max(1000)]],
+    currentMileageKm: [null as number | null, [Validators.min(0), Validators.max(300000)]],
+    instantBookEnabled: [false],
   });
 
   ngOnInit(): void {
@@ -205,69 +208,59 @@ export class AddCarWizardComponent implements OnInit {
   }
 
   /**
-   * Auto-format license plate input (Serbian format):
-   * - Supports traditional: XX-NNN-XX or XX-NNNN-XX (2 dashes)
-   * - Supports custom: XX-XXXXXXXX (1 dash)
+   * Auto-format license plate input (Serbian traditional format):
+   * - Format: XX-NNN-XX or XX-NNNN-XX (city code - digits - letters)
    * - Converts to uppercase
    * - Auto-inserts dashes at correct positions
-   * - Removes invalid characters
+   * - Strips non-matching characters
+   * Must match backend regex: ^[A-Z]{2}-\d{3,4}-[A-Z]{2}$
    */
   private formatLicensePlate(value: string): string {
     if (!value) return '';
 
-    // Remove spaces and convert to uppercase
-    const formatted = value.toUpperCase().replace(/\s+/g, '');
+    // Remove spaces/dashes and convert to uppercase
+    const raw = value.toUpperCase().replace(/[\s-]/g, '');
 
-    // Extract first 2 letters (city code)
-    const letters = formatted.substring(0, 2);
-    if (!/^[A-Z]{2}$/.test(letters)) {
-      // Keep only the letters part if not 2 uppercase letters yet
-      return formatted.substring(0, 2);
+    // Extract city code (first 2 letters)
+    let pos = 0;
+    let cityCode = '';
+    while (pos < raw.length && cityCode.length < 2) {
+      if (/[A-Z]/.test(raw[pos])) {
+        cityCode += raw[pos];
+      }
+      pos++;
+    }
+    if (cityCode.length < 2) return cityCode;
+
+    // Extract digits (3 or 4)
+    let digits = '';
+    while (pos < raw.length && digits.length < 4) {
+      if (/\d/.test(raw[pos])) {
+        digits += raw[pos];
+      }
+      pos++;
+    }
+    if (digits.length === 0) return cityCode + '-';
+
+    // Extract suffix letters (max 2)
+    let suffix = '';
+    while (pos < raw.length && suffix.length < 2) {
+      if (/[A-Z]/.test(raw[pos])) {
+        suffix += raw[pos];
+      }
+      pos++;
     }
 
-    // Get everything after first 2 letters
-    let rest = formatted.substring(2);
-
-    // Remove all dashes first (we'll re-add them in correct position)
-    rest = rest.replace(/-/g, '');
-
-    // Keep only alphanumeric characters
-    rest = rest.replace(/[^A-Z0-9]/g, '');
-
-    // Determine formatting based on length
-    // Traditional Serbian format: XX-NNN-XX (3-4 middle chars + 2 end chars)
-    // Maximum: 10 chars without dashes (2 + 4 + 4 for edge cases)
-    rest = rest.substring(0, 8);
-
-    if (rest.length === 0) {
-      return letters;
+    if (suffix.length === 0) {
+      return cityCode + '-' + digits;
     }
-
-    // Auto-format logic:
-    // If we have 3+ characters in rest, format as XX-XXX-XX or XX-XXXX-XX
-    // Check if this looks like traditional format (should end with 2+ chars)
-    if (rest.length >= 5) {
-      // Has enough for traditional format: XX-NNN-XX or XX-NNNN-XX
-      // Take first 3-4 chars for middle, rest for end
-      const middleLength = rest.length >= 6 ? 4 : 3; // 4 if 6+ total chars, else 3
-      const middle = rest.substring(0, middleLength);
-      const end = rest.substring(middleLength, middleLength + 2);
-      return letters + '-' + middle + '-' + end;
-    } else if (rest.length <= 4) {
-      // Not enough for traditional format, use simple format XX-XXXX
-      return letters + '-' + rest;
-    } else {
-      // rest.length === 5: ambiguous, use XX-XXX-XX
-      return letters + '-' + rest.substring(0, 3) + '-' + rest.substring(3, 5);
-    }
+    return cityCode + '-' + digits + '-' + suffix;
   }
 
   /**
    * License plate custom validator (Serbian format)
-   * Supports both traditional and custom formats
-   * Traditional: XX-NNN-XX or XX-NNNN-XX (2 dashes)
-   * Custom: XX-XXXXXXXX (1 dash)
-   * Validation happens only on form submission
+   * Only the traditional format is accepted: XX-NNN-XX or XX-NNNN-XX
+   * Must match backend regex: ^[A-Z]{2}-\d{3,4}-[A-Z]{2}$
    */
   private licensePlateValidator(control: AbstractControl): ValidationErrors | null {
     const value = control.value;
@@ -276,9 +269,8 @@ export class AddCarWizardComponent implements OnInit {
       return { required: true };
     }
 
-    // Support traditional Serbian format: XX-NNN-XX or XX-NNNN-XX
-    // Also support custom format: XX-XXXXXXXX
-    const pattern = /^[A-Z]{2}-([A-Z0-9]{3,4}-[A-Z0-9]{2}|[A-Z0-9]{4,8})$/;
+    // Strict Serbian format: XX-NNN-XX or XX-NNNN-XX (matches backend CarRequestDTO)
+    const pattern = /^[A-Z]{2}-\d{3,4}-[A-Z]{2}$/;
 
     if (!pattern.test(value)) {
       return { invalidPlate: true };
@@ -460,9 +452,11 @@ export class AddCarWizardComponent implements OnInit {
       return;
     }
 
-    // Validate at least one image
-    if (this.imageUrls().length === 0 || this.selectedImageFiles().length === 0) {
-      this.snackBar.open('Molimo dodajte bar jednu sliku vozila', 'Zatvori', { duration: 3000 });
+    // Validate at least 5 images (Turo standard: minimum 5 photos)
+    if (this.imageUrls().length < 5 || this.selectedImageFiles().length < 5) {
+      this.snackBar.open('Molimo dodajte minimum 5 slika vozila (Turo standard)', 'Zatvori', {
+        duration: 3000,
+      });
       return;
     }
 
@@ -506,6 +500,9 @@ export class AddCarWizardComponent implements OnInit {
 
         minRentalDays: this.policiesForm.value.minRentalDays!,
         maxRentalDays: this.policiesForm.value.maxRentalDays!,
+        dailyMileageLimitKm: this.policiesForm.value.dailyMileageLimitKm!,
+        currentMileageKm: this.policiesForm.value.currentMileageKm ?? undefined,
+        instantBookEnabled: this.policiesForm.value.instantBookEnabled!,
 
         available: false,
         approvalStatus: ApprovalStatus.PENDING,
@@ -537,7 +534,7 @@ export class AddCarWizardComponent implements OnInit {
           Number(createdCar.id),
           file,
           type as any,
-          expiryDates.get(type) || undefined
+          expiryDates.get(type) || undefined,
         );
         await upload$.toPromise();
       }
@@ -547,7 +544,7 @@ export class AddCarWizardComponent implements OnInit {
       this.snackBar.open(
         'Vozilo i dokumenti uspešno otpremljeni! Na čekanju je odobrenja administratora.',
         'Zatvori',
-        { duration: 5000, panelClass: ['snackbar-success'] }
+        { duration: 5000, panelClass: ['snackbar-success'] },
       );
       this.router.navigate(['/owner/cars']);
     } catch (error: any) {
@@ -555,7 +552,7 @@ export class AddCarWizardComponent implements OnInit {
       this.snackBar.open(
         error.message || 'Greška pri kreiranju vozila. Proverite podatke.',
         'Zatvori',
-        { duration: 5000 }
+        { duration: 5000 },
       );
     } finally {
       this.isSubmitting.set(false);

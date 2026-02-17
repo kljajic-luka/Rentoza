@@ -57,6 +57,9 @@ public class CarResponseDTO {
     private CancellationPolicy cancellationPolicy;
     private Integer minRentalDays;
     private Integer maxRentalDays;
+    private Integer dailyMileageLimitKm;
+    private Integer currentMileageKm;
+    private boolean instantBookEnabled;
     private List<String> imageUrls;
     private ApprovalStatus approvalStatus;
 
@@ -135,6 +138,9 @@ public class CarResponseDTO {
         this.cancellationPolicy = car.getCancellationPolicy();
         this.minRentalDays = car.getMinRentalDays();
         this.maxRentalDays = car.getMaxRentalDays();
+        this.dailyMileageLimitKm = car.getDailyMileageLimitKm();
+        this.currentMileageKm = car.getCurrentMileageKm();
+        this.instantBookEnabled = car.getBookingSettings() != null && car.getBookingSettings().isInstantBookEnabled();
         this.imageUrls = car.getImageUrls() != null ? List.copyOf(car.getImageUrls()) : List.of();
 
         if (isOwner) {

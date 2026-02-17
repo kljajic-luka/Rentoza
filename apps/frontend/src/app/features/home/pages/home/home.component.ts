@@ -712,7 +712,7 @@ export class HomeComponent implements OnInit, OnDestroy {
       longitude: this.searchCenter.longitude,
       radiusKm: this.searchRadius,
       page: 0,
-      size: 50,
+      size: 20,
     };
 
     this.carService.searchAvailableCars(params).subscribe({

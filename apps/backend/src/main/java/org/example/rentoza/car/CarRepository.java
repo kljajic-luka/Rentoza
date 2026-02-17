@@ -158,15 +158,24 @@ public interface CarRepository extends JpaRepository<Car, Long>, JpaSpecificatio
     @EntityGraph(attributePaths = {"owner"})
     List<Car> findByOwnerIdAndAvailableTrue(Long ownerId);
 
+    /**
+     * Find public APPROVED cars for a specific owner.
+     * P1 FIX: Prevents exposing unapproved available cars on public owner profile.
+     * Used for Owner Public Profile.
+     */
+    @EntityGraph(attributePaths = {"owner"})
+    List<Car> findByOwnerIdAndAvailableTrueAndApprovalStatus(Long ownerId, ApprovalStatus approvalStatus);
+
     // ========== GEOSPATIAL QUERIES (PostGIS) ==========
     // These methods use PostGIS for efficient proximity searches
 
     /**
      * Find available cars within a radius of a given location.
-     * Uses Haversine-based distance calculation (compatible with PostgreSQL).
+     * P1 FIX: Uses PostGIS ST_DWithin with GIST index on location_point for O(log n) performance.
      * 
      * PERFORMANCE:
-     * - Uses indexes on location columns
+     * - Uses GIST spatial index (idx_cars_location_point_gist)
+     * - ST_DWithin on geography type uses meters, so radiusKm * 1000
      * - Returns only cars with valid geospatial coordinates
      * - Ordered by distance ascending (closest first)
      * 
@@ -179,10 +188,16 @@ public interface CarRepository extends JpaRepository<Car, Long>, JpaSpecificatio
         SELECT c.* 
         FROM cars c
         WHERE c.available = true
-          AND c.location_latitude IS NOT NULL
-          AND c.location_longitude IS NOT NULL
-          AND sqrt(pow(:latitude - c.location_latitude, 2) + pow(:longitude - c.location_longitude, 2)) * 111.32 <= :radiusKm
-        ORDER BY sqrt(pow(:latitude - c.location_latitude, 2) + pow(:longitude - c.location_longitude, 2)) ASC
+          AND c.location_point IS NOT NULL
+          AND tiger.ST_DWithin(
+              c.location_point,
+              tiger.ST_SetSRID(tiger.ST_MakePoint(:longitude, :latitude), 4326)::tiger.geography,
+              :radiusKm * 1000
+          )
+        ORDER BY tiger.ST_Distance(
+              c.location_point,
+              tiger.ST_SetSRID(tiger.ST_MakePoint(:longitude, :latitude), 4326)::tiger.geography
+        ) ASC
         """, nativeQuery = true)
     List<Car> findNearby(
             @Param("latitude") Double latitude,
@@ -203,18 +218,27 @@ public interface CarRepository extends JpaRepository<Car, Long>, JpaSpecificatio
         SELECT c.*
         FROM cars c
         WHERE c.available = true
-          AND c.location_latitude IS NOT NULL
-          AND c.location_longitude IS NOT NULL
-          AND sqrt(pow(:latitude - c.location_latitude, 2) + pow(:longitude - c.location_longitude, 2)) * 111.32 <= :radiusKm
-        ORDER BY sqrt(pow(:latitude - c.location_latitude, 2) + pow(:longitude - c.location_longitude, 2)) ASC
+          AND c.location_point IS NOT NULL
+          AND tiger.ST_DWithin(
+              c.location_point,
+              tiger.ST_SetSRID(tiger.ST_MakePoint(:longitude, :latitude), 4326)::tiger.geography,
+              :radiusKm * 1000
+          )
+        ORDER BY tiger.ST_Distance(
+              c.location_point,
+              tiger.ST_SetSRID(tiger.ST_MakePoint(:longitude, :latitude), 4326)::tiger.geography
+        ) ASC
         """,
             countQuery = """
         SELECT COUNT(*)
         FROM cars c
         WHERE c.available = true
-          AND c.location_latitude IS NOT NULL
-          AND c.location_longitude IS NOT NULL
-          AND sqrt(pow(:latitude - c.location_latitude, 2) + pow(:longitude - c.location_longitude, 2)) * 111.32 <= :radiusKm
+          AND c.location_point IS NOT NULL
+          AND tiger.ST_DWithin(
+              c.location_point,
+              tiger.ST_SetSRID(tiger.ST_MakePoint(:longitude, :latitude), 4326)::tiger.geography,
+              :radiusKm * 1000
+          )
         """,
             nativeQuery = true)
     Page<Car> findNearbyPaginated(
@@ -239,9 +263,12 @@ public interface CarRepository extends JpaRepository<Car, Long>, JpaSpecificatio
           AND c.available = true
           AND c.delivery_radius_km IS NOT NULL
           AND c.delivery_radius_km > 0
-          AND c.location_latitude IS NOT NULL
-          AND c.location_longitude IS NOT NULL
-          AND sqrt(pow(:latitude - c.location_latitude, 2) + pow(:longitude - c.location_longitude, 2)) * 111.32 <= c.delivery_radius_km
+          AND c.location_point IS NOT NULL
+          AND tiger.ST_DWithin(
+              c.location_point,
+              tiger.ST_SetSRID(tiger.ST_MakePoint(:longitude, :latitude), 4326)::tiger.geography,
+              c.delivery_radius_km * 1000
+          )
         """, nativeQuery = true)
     Optional<Car> findIfWithinDeliveryRange(
             @Param("carId") Long carId,
@@ -262,10 +289,16 @@ public interface CarRepository extends JpaRepository<Car, Long>, JpaSpecificatio
         WHERE c.available = true
           AND c.delivery_radius_km IS NOT NULL
           AND c.delivery_radius_km > 0
-          AND c.location_latitude IS NOT NULL
-          AND c.location_longitude IS NOT NULL
-          AND sqrt(pow(:latitude - c.location_latitude, 2) + pow(:longitude - c.location_longitude, 2)) * 111.32 <= c.delivery_radius_km
-        ORDER BY sqrt(pow(:latitude - c.location_latitude, 2) + pow(:longitude - c.location_longitude, 2)) ASC
+          AND c.location_point IS NOT NULL
+          AND tiger.ST_DWithin(
+              c.location_point,
+              tiger.ST_SetSRID(tiger.ST_MakePoint(:longitude, :latitude), 4326)::tiger.geography,
+              c.delivery_radius_km * 1000
+          )
+        ORDER BY tiger.ST_Distance(
+              c.location_point,
+              tiger.ST_SetSRID(tiger.ST_MakePoint(:longitude, :latitude), 4326)::tiger.geography
+        ) ASC
         """, nativeQuery = true)
     List<Car> findCarsOfferingDeliveryTo(
             @Param("latitude") Double latitude,

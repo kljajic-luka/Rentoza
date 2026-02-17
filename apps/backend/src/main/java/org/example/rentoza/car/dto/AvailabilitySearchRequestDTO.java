@@ -144,6 +144,19 @@ public class AvailabilitySearchRequestDTO {
     private TransmissionType transmission;
 
     /**
+     * Vehicle type filter (P2 FIX: sedan, SUV, van, etc.).
+     * Matched against brand/model/description text since Car entity has no vehicleType field.
+     * Example: "SUV", "sedan", "van"
+     */
+    private String vehicleType;
+
+    /**
+     * Fuel type filter (P3 FIX: accepts from frontend).
+     * Values: BENZIN, DIESEL, ELECTRIC, HYBRID, LPG
+     */
+    private String fuelType;
+
+    /**
      * Required features filter.
      * Comma-separated string parsed into list.
      * Example: "BLUETOOTH,USB,NAVIGATION"
@@ -218,6 +231,8 @@ public class AvailabilitySearchRequestDTO {
                maxYear != null ||
                minSeats != null ||
                transmission != null ||
+               (vehicleType != null && !vehicleType.isBlank()) ||
+               (fuelType != null && !fuelType.isBlank()) ||
                (features != null && !features.isEmpty());
     }
 

@@ -46,11 +46,16 @@ public class OwnerProfileService {
                 .orElseThrow(() -> new ResourceNotFoundException("Owner not found with id: " + ownerId));
 
         // Fetch active cars (filtered by availability if dates provided)
+        // P1 FIX: Only show APPROVED cars on public owner profile (was leaking unapproved available cars)
         List<Car> cars;
         if (start != null && end != null) {
-            cars = availabilityService.getAvailableCarsForOwner(ownerId, start, end);
+            cars = availabilityService.getAvailableCarsForOwner(ownerId, start, end)
+                    .stream()
+                    .filter(c -> c.getApprovalStatus() == org.example.rentoza.car.ApprovalStatus.APPROVED)
+                    .collect(java.util.stream.Collectors.toList());
         } else {
-            cars = carRepository.findByOwnerIdAndAvailableTrue(ownerId);
+            cars = carRepository.findByOwnerIdAndAvailableTrueAndApprovalStatus(
+                    ownerId, org.example.rentoza.car.ApprovalStatus.APPROVED);
         }
 
         // If user has no cars and is not explicitly an owner role (optional check), maybe 404?

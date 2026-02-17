@@ -50,6 +50,23 @@ public interface ReviewRepository extends JpaRepository<Review, Long> {
             @Param("direction") ReviewDirection direction
     );
 
+    /**
+     * Batch query: average rating per reviewee for a given direction.
+     * Returns a list of Object[]{Long userId, Double avgRating}.
+     * Used to avoid N+1 queries when sorting search results by owner rating.
+     */
+    @Query("""
+            SELECT r.reviewee.id, AVG(r.rating)
+            FROM Review r
+            WHERE r.reviewee.id IN :userIds
+              AND r.direction = :direction
+            GROUP BY r.reviewee.id
+            """)
+    List<Object[]> findAverageRatingsForReviewees(
+            @Param("userIds") java.util.Collection<Long> userIds,
+            @Param("direction") ReviewDirection direction
+    );
+
     @Query("""
             SELECT AVG(r.rating)
             FROM Review r

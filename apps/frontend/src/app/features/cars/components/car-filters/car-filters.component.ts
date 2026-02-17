@@ -179,6 +179,8 @@ export class CarFiltersComponent implements OnInit, OnDestroy {
     { value: CarSortOption.PRICE_DESC, label: 'Cena: Opadajuće' },
     { value: CarSortOption.YEAR_DESC, label: 'Godina: Najnovije' },
     { value: CarSortOption.YEAR_ASC, label: 'Godina: Najstarije' },
+    { value: CarSortOption.RATING_DESC, label: 'Ocena: Najviša' },
+    { value: CarSortOption.RATING_ASC, label: 'Ocena: Najniža' },
   ];
 
   // Price range limits

@@ -184,4 +184,6 @@ export enum CarSortOption {
   PRICE_DESC = 'pricePerDay,desc',
   YEAR_DESC = 'year,desc',
   YEAR_ASC = 'year,asc',
+  RATING_DESC = 'rating,desc',
+  RATING_ASC = 'rating,asc',
 }

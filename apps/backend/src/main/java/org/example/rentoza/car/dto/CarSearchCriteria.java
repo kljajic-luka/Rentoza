@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.example.rentoza.car.Feature;
+import org.example.rentoza.car.FuelType;
 import org.example.rentoza.car.TransmissionType;
 
 import java.util.List;
@@ -40,6 +41,9 @@ public class CarSearchCriteria {
 
     // Transmission filtering
     private TransmissionType transmission;
+
+    // Fuel type filtering
+    private FuelType fuelType;
 
     // Features filtering (comma-separated or list)
     private List<Feature> features;

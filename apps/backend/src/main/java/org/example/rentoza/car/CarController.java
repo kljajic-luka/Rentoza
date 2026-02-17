@@ -116,6 +116,7 @@ public class CarController {
             @RequestParam(required = false) Double minPrice,
             @RequestParam(required = false) Double maxPrice,
             @RequestParam(required = false) String vehicleType,
+            @RequestParam(required = false) String fuelType,
             @RequestParam(required = false) String make,
             @RequestParam(required = false) String model,
             @RequestParam(required = false) Integer minYear,
@@ -153,6 +154,7 @@ public class CarController {
                     .minPrice(minPrice)
                     .maxPrice(maxPrice)
                     .vehicleType(vehicleType)
+                    .fuelType(FuelType.fromAlias(fuelType))
                     .make(make)
                     .model(model)
                     .minYear(minYear)
@@ -258,6 +260,8 @@ public class CarController {
             @RequestParam(required = false) Integer maxYear,
             @RequestParam(required = false) Integer minSeats,
             @RequestParam(required = false) TransmissionType transmission,
+            @RequestParam(required = false) String vehicleType,     // P2: sedan, SUV, van etc.
+            @RequestParam(required = false) String fuelType,        // P3: BENZIN, DIESEL, etc.
             @RequestParam(required = false) String features,  // Comma-separated: "BLUETOOTH,USB,GPS"
             // Pagination params
             @RequestParam(required = false, defaultValue = "0") Integer page,
@@ -308,6 +312,8 @@ public class CarController {
                 .maxYear(maxYear)
                 .minSeats(minSeats)
                 .transmission(transmission)
+                .vehicleType(vehicleType)
+                .fuelType(fuelType)
                 .features(featureList)
                 // Pagination
                 .page(page)

@@ -192,9 +192,8 @@ export class CarListComponent implements OnInit, OnDestroy {
         return this.carService.searchAvailableCars(availParams);
       } else {
         // Standard search mode (server-side filtering)
-        return this.carService
-          .searchCars(criteria)
-          .pipe(map((results) => this.applyFilters(results, criteria, false)));
+        // All filtering is applied server-side — no client-side re-filtering
+        return this.carService.searchCars(criteria);
       }
     }),
     tap((results) => {

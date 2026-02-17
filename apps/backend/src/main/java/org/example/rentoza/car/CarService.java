@@ -8,6 +8,7 @@ import org.example.rentoza.car.dto.CarSearchCriteria;
 import org.example.rentoza.car.storage.CarImageStorageService;
 import org.example.rentoza.common.GeoPoint;
 import org.example.rentoza.exception.ResourceNotFoundException;
+import org.example.rentoza.review.Review;
 import org.example.rentoza.review.ReviewDirection;
 import org.example.rentoza.review.ReviewRepository;
 import org.example.rentoza.user.User;
@@ -282,7 +283,7 @@ public class CarService {
      * Get cars by owner email with ownership verification.
      * RLS-ENFORCED: Returns cars only if requester is the owner or admin.
      * Prevents Owner A from viewing Owner B's private inventory.
-     * 
+     *
      * @param email Owner's email
      * @return List of cars owned by the user
      * @throws org.springframework.security.access.AccessDeniedException if requester is not the owner or admin
@@ -296,7 +297,7 @@ public class CarService {
                     "Unauthorized to access cars for owner: " + email
             );
         }
-        
+
         Long currentUserId = currentUser.idOrNull();
         return repo.findByOwnerEmailIgnoreCase(email)
                 .stream()
@@ -307,18 +308,18 @@ public class CarService {
     /**
      * Get car by ID with full details (features, addOns, images).
      * Uses @EntityGraph to load all collections in a single query.
-     * 
+     *
      * PERFORMANCE:
      * - Single query with LEFT JOIN FETCH for all collections
      * - No N+1 queries when accessing features/addOns
      * - Optimized for detail page views
-     * 
+     *
      * @throws ResourceNotFoundException if car not found
      */
     @Transactional(readOnly = true)
     public CarResponseDTO getCarById(Long id) {
         log.debug("[CarService] Fetching car with ID: {}", id);
-        
+
         // Use the detail-loading method to prevent LazyInitializationException
         Car car = repo.findWithDetailsById(id)
                 .orElseThrow(() -> {
@@ -331,10 +332,10 @@ public class CarService {
         // P0 FIX: Unapproved listings should not be publicly accessible.
         // Only the car owner and admins can view unapproved listings.
         Long currentUserId = currentUser.idOrNull();
-        boolean isOwner = currentUserId != null && car.getOwner() != null 
+        boolean isOwner = currentUserId != null && car.getOwner() != null
                 && car.getOwner().getId().equals(currentUserId);
         boolean isAdmin = currentUser.isAdmin();
-        
+
         if (car.getApprovalStatus() != ApprovalStatus.APPROVED && !isOwner && !isAdmin) {
             log.warn("[CarService] Blocked access to unapproved car ID={} (status={})", id, car.getApprovalStatus());
             throw new ResourceNotFoundException("Car not found with ID: " + id);
@@ -342,18 +343,18 @@ public class CarService {
 
         // Privacy check: Is current user the owner or has an active booking?
         boolean hasActiveBooking = false;
-        
+
         if (currentUserId != null) {
             // Check for approved/active booking (user should see exact location if booking is approved)
-            // Includes: APPROVED, ACTIVE, CHECK_IN_OPEN, CHECK_IN_HOST_COMPLETE, 
-            //           CHECK_IN_COMPLETE, IN_TRIP, CHECKOUT_OPEN, CHECKOUT_GUEST_COMPLETE, 
+            // Includes: APPROVED, ACTIVE, CHECK_IN_OPEN, CHECK_IN_HOST_COMPLETE,
+            //           CHECK_IN_COMPLETE, IN_TRIP, CHECKOUT_OPEN, CHECKOUT_GUEST_COMPLETE,
             //           CHECKOUT_HOST_COMPLETE
             hasActiveBooking = bookingRepo.findByCarIdAndRenterEmailIgnoreCaseAndStatusIn(
                 car.getId(),
                 currentUser.email(),
                 List.of(
                     BookingStatus.APPROVED,
-                    BookingStatus.ACTIVE, 
+                    BookingStatus.ACTIVE,
                     BookingStatus.CHECK_IN_OPEN,
                     BookingStatus.CHECK_IN_HOST_COMPLETE,
                     BookingStatus.CHECK_IN_COMPLETE,
@@ -364,24 +365,24 @@ public class CarService {
                 )
             ).stream().findAny().isPresent();
         }
-        
+
         CarResponseDTO dto = new CarResponseDTO(car, hasActiveBooking, currentUserId);
-        
+
         // Populate owner stats for detailed view
         if (car.getOwner() != null) {
             Long ownerId = car.getOwner().getId();
-            
+
             // Fetch average rating
             Double rating = reviewRepo.findAverageRatingForRevieweeAndDirection(
                     ownerId, ReviewDirection.FROM_USER
             );
             dto.setOwnerRating(rating != null ? rating : 0.0);
-            
+
             // Fetch trip count
             long trips = bookingRepo.countByOwnerIdAndStatus(ownerId, BookingStatus.COMPLETED);
             dto.setOwnerTripCount((int) trips);
         }
-        
+
         return dto;
     }
 
@@ -565,7 +566,14 @@ public class CarService {
     }
 
     /**
-     * Search cars with dynamic filtering, sorting, and pagination
+     * Search cars with dynamic filtering, sorting, and pagination.
+     *
+     * P0 FIX: Now applies ALL criteria server-side using JPA Specification
+     * instead of calling findApprovedAvailableCars() which ignored filters.
+     *
+     * P2 FIX: Supports 'rating' sort via post-query sort using review data,
+     * since average rating is a computed field not stored on the Car entity.
+     *
      * @param criteria Search criteria with optional filters
      * @return Page of car response DTOs
      */
@@ -574,17 +582,212 @@ public class CarService {
         // Normalize and validate criteria
         criteria.normalize();
 
-        // Build pageable with sorting
-        Pageable pageable = buildPageable(criteria);
-        
-        // CRITICAL: Only show APPROVED cars in public search
-        // Use native query to work around PostgreSQL ENUM operator issue
-        // Native SQL: approval_status::text = 'APPROVED' handles the ENUM properly
-        Page<Car> carPage = repo.findApprovedAvailableCars(pageable);
+        // Check if rating sort is requested (needs special handling)
+        boolean isRatingSort = criteria.getSort() != null
+                && criteria.getSort().startsWith("rating");
+
+        // Build dynamic specification from criteria
+        Specification<Car> spec = buildSearchSpecification(criteria);
+
+        Pageable pageable;
+        if (isRatingSort) {
+            // Rating sort: push ORDER BY into the database via a correlated subquery
+            // so pagination is fully accurate — no in-memory cap needed.
+            boolean ascending = criteria.getSort().contains("asc");
+            spec = spec.and(ratingOrderSpec(ascending));
+            int page = criteria.getPage() != null ? criteria.getPage() : 0;
+            int size = criteria.getSize() != null ? criteria.getSize() : 20;
+            pageable = PageRequest.of(page, size); // unsorted — ORDER BY is set by spec
+        } else {
+            pageable = buildPageable(criteria);
+        }
+
+        // Execute search with all filters applied server-side
+        Page<Car> carPage = repo.findAll(spec, pageable);
 
         // Map to DTOs with privacy-aware location
         Long currentUserId = currentUser.idOrNull();
+
+        if (isRatingSort) {
+            // Populate ownerRating on the page-sized DTO list (single batch query)
+            List<Car> pageCars = carPage.getContent();
+            java.util.Set<Long> ownerIds = pageCars.stream()
+                    .map(Car::getOwner)
+                    .filter(java.util.Objects::nonNull)
+                    .map(User::getId)
+                    .collect(Collectors.toSet());
+
+            java.util.Map<Long, Double> ratingMap = new java.util.HashMap<>();
+            if (!ownerIds.isEmpty()) {
+                reviewRepo.findAverageRatingsForReviewees(ownerIds, ReviewDirection.FROM_USER)
+                        .forEach(row -> ratingMap.put((Long) row[0], (Double) row[1]));
+            }
+
+            List<CarResponseDTO> dtos = pageCars.stream()
+                    .map(car -> {
+                        CarResponseDTO dto = mapToResponseWithPrivacy(car, currentUserId);
+                        double rating = (car.getOwner() != null)
+                                ? ratingMap.getOrDefault(car.getOwner().getId(), 0.0)
+                                : 0.0;
+                        dto.setOwnerRating(rating);
+                        return dto;
+                    })
+                    .collect(Collectors.toList());
+
+            return new org.springframework.data.domain.PageImpl<>(
+                    dtos, carPage.getPageable(), carPage.getTotalElements());
+        }
+
         return carPage.map(car -> mapToResponseWithPrivacy(car, currentUserId));
+    }
+
+    /**
+     * Specification that adds a database-level ORDER BY on owner average rating
+     * via a correlated subquery.  This lets the DB handle sorting + LIMIT/OFFSET
+     * so pagination totals are always accurate and there is no row-count cap.
+     *
+     * Only adds ORDER BY to the data query (skips count queries).
+     */
+    private Specification<Car> ratingOrderSpec(boolean ascending) {
+        return (root, query, cb) -> {
+            // Skip ORDER BY for count queries (result type Long)
+            if (Long.class.equals(query.getResultType()) || long.class.equals(query.getResultType())) {
+                return cb.conjunction();
+            }
+
+            // Correlated subquery: AVG(r.rating) for the car's owner
+            jakarta.persistence.criteria.Subquery<Double> ratingSubquery = query.subquery(Double.class);
+            jakarta.persistence.criteria.Root<Review> reviewRoot = ratingSubquery.from(Review.class);
+            ratingSubquery.select(cb.coalesce(cb.avg(reviewRoot.get("rating")), cb.literal(0.0)))
+                    .where(
+                            cb.equal(reviewRoot.get("reviewee"), root.get("owner")),
+                            cb.equal(reviewRoot.get("direction"), ReviewDirection.FROM_USER)
+                    );
+
+            query.orderBy(
+                    ascending ? cb.asc(ratingSubquery) : cb.desc(ratingSubquery),
+                    cb.desc(root.get("id"))  // deterministic tie-breaker for stable pagination
+            );
+            return cb.conjunction(); // no additional WHERE — only ORDER BY contribution
+        };
+    }
+
+    /**
+     * Build JPA Specification from search criteria for server-side filtering.
+     *
+     * Base conditions (always applied):
+     * - available = true
+     * - approvalStatus = APPROVED
+     *
+     * Optional filters applied when present:
+     * - minPrice / maxPrice
+     * - make (brand, case-insensitive contains)
+     * - model (case-insensitive contains)
+     * - minYear / maxYear
+     * - location (case-insensitive contains)
+     * - minSeats
+     * - transmission
+     * - features (car must have ALL requested features)
+     * - vehicleType (comma-separated list matched against brand+model, e.g. "SUV")
+     */
+    private Specification<Car> buildSearchSpecification(CarSearchCriteria criteria) {
+        Specification<Car> spec = Specification.where(null);
+
+        // CRITICAL: Only show APPROVED and available cars in public search
+        spec = spec.and((root, query, cb) ->
+                cb.equal(root.get("available"), true));
+        spec = spec.and((root, query, cb) ->
+                cb.equal(root.get("approvalStatus"), ApprovalStatus.APPROVED));
+
+        // Price range
+        if (criteria.getMinPrice() != null) {
+            spec = spec.and((root, query, cb) ->
+                    cb.greaterThanOrEqualTo(root.get("pricePerDay"), java.math.BigDecimal.valueOf(criteria.getMinPrice())));
+        }
+        if (criteria.getMaxPrice() != null) {
+            spec = spec.and((root, query, cb) ->
+                    cb.lessThanOrEqualTo(root.get("pricePerDay"), java.math.BigDecimal.valueOf(criteria.getMaxPrice())));
+        }
+
+        // Brand (make) filter - case-insensitive contains
+        if (criteria.getMake() != null && !criteria.getMake().isBlank()) {
+            spec = spec.and((root, query, cb) ->
+                    cb.like(cb.lower(root.get("brand")), "%" + criteria.getMake().toLowerCase().trim() + "%"));
+        }
+
+        // Model filter - case-insensitive contains
+        if (criteria.getModel() != null && !criteria.getModel().isBlank()) {
+            spec = spec.and((root, query, cb) ->
+                    cb.like(cb.lower(root.get("model")), "%" + criteria.getModel().toLowerCase().trim() + "%"));
+        }
+
+        // Year range
+        if (criteria.getMinYear() != null) {
+            spec = spec.and((root, query, cb) ->
+                    cb.greaterThanOrEqualTo(root.get("year"), criteria.getMinYear()));
+        }
+        if (criteria.getMaxYear() != null) {
+            spec = spec.and((root, query, cb) ->
+                    cb.lessThanOrEqualTo(root.get("year"), criteria.getMaxYear()));
+        }
+
+        // Location filter - case-insensitive contains on city or legacy location field
+        if (criteria.getLocation() != null && !criteria.getLocation().isBlank()) {
+            String loc = criteria.getLocation().toLowerCase().trim();
+            spec = spec.and((root, query, cb) ->
+                    cb.or(
+                            cb.like(cb.lower(root.get("location")), "%" + loc + "%"),
+                            cb.like(cb.lower(root.get("locationGeoPoint").get("city")), "%" + loc + "%")
+                    ));
+        }
+
+        // Minimum seats
+        if (criteria.getMinSeats() != null) {
+            spec = spec.and((root, query, cb) ->
+                    cb.greaterThanOrEqualTo(root.get("seats"), criteria.getMinSeats()));
+        }
+
+        // Transmission type
+        if (criteria.getTransmission() != null) {
+            spec = spec.and((root, query, cb) ->
+                    cb.equal(root.get("transmissionType"), criteria.getTransmission()));
+        }
+
+        // Features filter: car must have ALL requested features
+        if (criteria.getFeatures() != null && !criteria.getFeatures().isEmpty()) {
+            for (Feature feature : criteria.getFeatures()) {
+                spec = spec.and((root, query, cb) ->
+                        cb.isMember(feature, root.get("features")));
+            }
+        }
+
+        // Vehicle type filter: match against brand+model+description
+        // Supports comma-separated multi-select from frontend (e.g. "SUV,Sedan")
+        if (criteria.getVehicleType() != null && !criteria.getVehicleType().isBlank()) {
+            String[] tokens = criteria.getVehicleType().split(",");
+            // Build OR predicate: car matches ANY of the supplied vehicle types
+            spec = spec.and((root, query, cb) -> {
+                jakarta.persistence.criteria.Predicate[] alternatives = java.util.Arrays.stream(tokens)
+                        .map(String::trim)
+                        .filter(t -> !t.isEmpty())
+                        .map(String::toLowerCase)
+                        .map(vt -> cb.or(
+                                cb.like(cb.lower(root.get("brand")), "%" + vt + "%"),
+                                cb.like(cb.lower(root.get("model")), "%" + vt + "%"),
+                                cb.like(cb.lower(root.get("description")), "%" + vt + "%")
+                        ))
+                        .toArray(jakarta.persistence.criteria.Predicate[]::new);
+                return cb.or(alternatives);
+            });
+        }
+
+        // Fuel type filter: exact match on Car.fuelType enum
+        if (criteria.getFuelType() != null) {
+            spec = spec.and((root, query, cb) ->
+                    cb.equal(root.get("fuelType"), criteria.getFuelType()));
+        }
+
+        return spec;
     }
 
     /**
@@ -619,7 +822,9 @@ public class CarService {
     }
 
     /**
-     * Validate sort field to prevent arbitrary field sorting
+     * Validate sort field to prevent arbitrary field sorting.
+     * P2 FIX: Added 'rating' to whitelist for sort-by-rating feature.
+     * Note: 'rating' sort is handled as post-query sort since it's a computed field.
      */
     private boolean isValidSortField(String field) {
         return field.equals("pricePerDay") ||
@@ -627,17 +832,18 @@ public class CarService {
                 field.equals("brand") ||
                 field.equals("model") ||
                 field.equals("seats") ||
+                field.equals("rating") ||
                 field.equals("id");
     }
 
     /**
      * Map Car to CarResponseDTO with privacy-aware location handling.
-     * 
+     *
      * Privacy Logic:
      * - Owner sees exact location (isOwner check in DTO constructor)
      * - Active booker sees exact location (passed via hasActiveBooking parameter)
      * - Others see fuzzy coordinates (±500m) and city-only address
-     * 
+     *
      * @param car The car entity
      * @param currentUserId The current user's ID (null if anonymous)
      * @return CarResponseDTO with appropriate location privacy
@@ -655,7 +861,7 @@ public class CarService {
     /**
      * Get all distinct car makes from the database.
      * Used for filter dropdowns.
-     * 
+     *
      * P0-5 FIX: Uses optimized DISTINCT query instead of loading all cars.
      * PERFORMANCE: Results cached for 24h (carMakes cache in RedisCacheConfig).
      */

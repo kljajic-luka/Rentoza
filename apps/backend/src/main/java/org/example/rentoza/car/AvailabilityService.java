@@ -18,13 +18,19 @@ import org.springframework.data.support.PageableExecutionUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.example.rentoza.review.ReviewDirection;
+import org.example.rentoza.review.ReviewRepository;
+
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -62,6 +68,7 @@ public class AvailabilityService {
     private final BookingRepository bookingRepository;
     private final BlockedDateRepository blockedDateRepository;
     private final BookingTimeUtil bookingTimeUtil;
+    private final ReviewRepository reviewRepository;
 
     /**
      * Search for cars available in a specific location and time range.
@@ -97,7 +104,7 @@ public class AvailabilityService {
             Hibernate.initialize(car.getAddOns());
             Hibernate.initialize(car.getImages());
         });
-        
+
         // CRITICAL: Filter out non-approved cars (e.g. legacy data or pending approval)
         candidateCars = candidateCars.stream()
             .filter(car -> car.getApprovalStatus() == org.example.rentoza.car.ApprovalStatus.APPROVED)
@@ -124,7 +131,10 @@ public class AvailabilityService {
             log.debug("[AvailabilityService] After additional filters: {} cars", availableCars.size());
         }
 
-        // Step 4: Apply pagination
+        // Step 4: Apply sorting (P1 FIX: sort was accepted but never applied)
+        availableCars = applySorting(availableCars, request.getSort());
+
+        // Step 5: Apply pagination
         Pageable pageable = PageRequest.of(request.getPage(), request.getSize());
 
         // Calculate pagination indices
@@ -192,11 +202,11 @@ public class AvailabilityService {
 
     /**
      * Filter cars by rental duration constraints (min/max days).
-     * 
+     *
      * This is always applied regardless of other filters because:
      * - Owners set these limits for business/insurance reasons
      * - A 12-day search should never show a car with maxRentalDays=10
-     * 
+     *
      * @param cars List of candidate cars
      * @param requestedStart Search start datetime
      * @param requestedEnd Search end datetime
@@ -244,7 +254,7 @@ public class AvailabilityService {
 
     /**
      * Apply in-memory filters to candidate cars.
-     * 
+     *
      * This is efficient for typical availability search result sizes (< 100 cars).
      * Filters are applied after geospatial/location and time-based filtering
      * have already reduced the candidate set.
@@ -260,6 +270,93 @@ public class AvailabilityService {
     }
 
     /**
+     * Apply in-memory sorting to filtered car results.
+     *
+     * P1 FIX: Sort was accepted in AvailabilitySearchRequestDTO but never applied.
+     * Supported sort fields: pricePerDay, year, brand, model, seats, id, rating
+     * Format: "field,direction" (e.g., "pricePerDay,asc")
+     * Default: id DESC (newest first) when no sort specified.
+     *
+     * Rating sort performs a single batch query to ReviewRepository
+     * to avoid N+1 per-car lookups.
+     *
+     * @param cars List of cars to sort
+     * @param sort Sort string (e.g., "pricePerDay,asc")
+     * @return Sorted list of cars (new list, original unchanged)
+     */
+    private List<Car> applySorting(List<Car> cars, String sort) {
+        if (cars == null || cars.isEmpty()) {
+            return cars;
+        }
+
+        Comparator<Car> comparator = null;
+
+        if (sort != null && !sort.isBlank()) {
+            String[] parts = sort.split(",");
+            if (parts.length == 2) {
+                String field = parts[0].trim();
+                boolean ascending = parts[1].trim().equalsIgnoreCase("asc");
+
+                comparator = switch (field) {
+                    case "pricePerDay" -> Comparator.comparing(
+                            Car::getPricePerDay, Comparator.nullsLast(Comparator.naturalOrder()));
+                    case "year" -> Comparator.comparing(
+                            Car::getYear, Comparator.nullsLast(Comparator.naturalOrder()));
+                    case "brand" -> Comparator.comparing(
+                            (Car c) -> c.getBrand() != null ? c.getBrand().toLowerCase() : "",
+                            Comparator.naturalOrder());
+                    case "model" -> Comparator.comparing(
+                            (Car c) -> c.getModel() != null ? c.getModel().toLowerCase() : "",
+                            Comparator.naturalOrder());
+                    case "seats" -> Comparator.comparing(
+                            Car::getSeats, Comparator.nullsLast(Comparator.naturalOrder()));
+                    case "id" -> Comparator.comparing(
+                            Car::getId, Comparator.nullsLast(Comparator.naturalOrder()));
+                    case "rating" -> {
+                        // Batch-fetch owner ratings in a single query
+                        Map<Long, Double> ratingMap = buildOwnerRatingMap(cars);
+                        yield Comparator.comparingDouble(
+                                (Car c) -> c.getOwner() != null
+                                        ? ratingMap.getOrDefault(c.getOwner().getId(), 0.0)
+                                        : 0.0);
+                    }
+                    default -> null;
+                };
+
+                if (comparator != null && !ascending) {
+                    comparator = comparator.reversed();
+                }
+            }
+        }
+
+        // Default sort: newest first (id DESC)
+        if (comparator == null) {
+            comparator = Comparator.comparing(
+                    Car::getId, Comparator.nullsLast(Comparator.reverseOrder()));
+        }
+
+        return cars.stream().sorted(comparator).toList();
+    }
+
+    /**
+     * Build a map of ownerId → average rating using a single batch query.
+     */
+    private Map<Long, Double> buildOwnerRatingMap(List<Car> cars) {
+        Set<Long> ownerIds = cars.stream()
+                .map(Car::getOwner)
+                .filter(Objects::nonNull)
+                .map(org.example.rentoza.user.User::getId)
+                .collect(Collectors.toSet());
+
+        Map<Long, Double> ratingMap = new HashMap<>();
+        if (!ownerIds.isEmpty()) {
+            reviewRepository.findAverageRatingsForReviewees(ownerIds, ReviewDirection.FROM_USER)
+                    .forEach(row -> ratingMap.put((Long) row[0], (Double) row[1]));
+        }
+        return ratingMap;
+    }
+
+    /**
      * Check if a car matches all active filter criteria.
      *
      * @param car Car to check
@@ -267,16 +364,16 @@ public class AvailabilityService {
      * @return true if car matches all filters (or no filters are active)
      */
     private boolean matchesFilters(Car car, AvailabilitySearchRequestDTO request) {
-        // NOTE: Rental duration constraints (min/max days) are checked by 
+        // NOTE: Rental duration constraints (min/max days) are checked by
         // filterByRentalDuration() which runs BEFORE this method.
         // Do NOT duplicate that logic here.
 
         // ========== PRICE FILTERS ==========
-        if (request.getMinPrice() != null && 
+        if (request.getMinPrice() != null &&
             car.getPricePerDay().compareTo(BigDecimal.valueOf(request.getMinPrice())) < 0) {
             return false;
         }
-        if (request.getMaxPrice() != null && 
+        if (request.getMaxPrice() != null &&
             car.getPricePerDay().compareTo(BigDecimal.valueOf(request.getMaxPrice())) > 0) {
             return false;
         }
@@ -332,6 +429,38 @@ public class AvailabilityService {
                 if (!carFeatures.contains(requiredFeature)) {
                     return false;
                 }
+            }
+        }
+
+        // P2 FIX: Vehicle type filter (sedan, SUV, van, etc.)
+        // Supports comma-separated multi-select from frontend (e.g. "SUV,Sedan")
+        if (request.getVehicleType() != null && !request.getVehicleType().isBlank()) {
+            String carBrand = car.getBrand() != null ? car.getBrand().toLowerCase() : "";
+            String carModel = car.getModel() != null ? car.getModel().toLowerCase() : "";
+            String carDesc = car.getDescription() != null ? car.getDescription().toLowerCase() : "";
+            String[] tokens = request.getVehicleType().split(",");
+            boolean anyMatch = false;
+            for (String token : tokens) {
+                String vt = token.trim().toLowerCase();
+                if (!vt.isEmpty() && (carBrand.contains(vt) || carModel.contains(vt) || carDesc.contains(vt))) {
+                    anyMatch = true;
+                    break;
+                }
+            }
+            if (!anyMatch) {
+                return false;
+            }
+        }
+
+        // P3 FIX: Fuel type filter (accepts fuelType sent by frontend)
+        // Uses FuelType.fromAlias() to accept both English (PETROL) and Serbian (BENZIN) names
+        if (request.getFuelType() != null && !request.getFuelType().isBlank()) {
+            FuelType requestedFuelType = FuelType.fromAlias(request.getFuelType());
+            if (requestedFuelType != null && car.getFuelType() != requestedFuelType) {
+                return false;
+            }
+            if (requestedFuelType == null) {
+                log.warn("[AvailabilityService] Unrecognised fuelType filter value: {}", request.getFuelType());
             }
         }
 
@@ -440,13 +569,13 @@ public class AvailabilityService {
      * - Active/pending bookings
      * - Owner-blocked dates
      * - Unusable gaps (periods too short for minimum rental duration)
-     * 
+     *
      * Gap Detection Logic:
      * If the gap between two consecutive unavailable ranges is less than
      * `car.minRentalDays * 24 hours`, the gap is marked as unavailable by
      * extending the earlier range to cover it. This prevents "hugging" issues
      * where unusable voids are created in the schedule.
-     * 
+     *
      * @param carId Car ID to check
      * @param queryStart Start of query window (inclusive)
      * @param queryEnd End of query window (inclusive)
@@ -499,7 +628,7 @@ public class AvailabilityService {
         for (BlockedDate blocked : blockedDates) {
             LocalDateTime blockStart = blocked.getStartDate().atStartOfDay();
             LocalDateTime blockEnd = blocked.getEndDate().atTime(LocalTime.MAX);
-            
+
             // Only include if overlaps with query window
             if (blockStart.isBefore(queryEnd) && blockEnd.isAfter(queryStart)) {
                 allRanges.add(new UnavailableRangeDTO(
@@ -517,15 +646,15 @@ public class AvailabilityService {
         List<UnavailableRangeDTO> mergedRanges = new ArrayList<>();
         for (int i = 0; i < allRanges.size(); i++) {
             UnavailableRangeDTO current = allRanges.get(i);
-            
+
             // Try to merge with next ranges if gap is too small
             LocalDateTime currentEnd = current.end();
             int j = i + 1;
-            
+
             while (j < allRanges.size()) {
                 UnavailableRangeDTO next = allRanges.get(j);
                 long gapHours = ChronoUnit.HOURS.between(currentEnd, next.start());
-                
+
                 if (gapHours > 0 && gapHours < minHours) {
                     // Gap is too small - extend current range to cover it
                     currentEnd = next.end();
@@ -534,7 +663,7 @@ public class AvailabilityService {
                     break;
                 }
             }
-            
+
             // Add merged range (or original if no merge)
             if (!currentEnd.equals(current.end())) {
                 mergedRanges.add(new UnavailableRangeDTO(
@@ -545,7 +674,7 @@ public class AvailabilityService {
             } else {
                 mergedRanges.add(current);
             }
-            
+
             i = j - 1; // Skip merged ranges
         }
 

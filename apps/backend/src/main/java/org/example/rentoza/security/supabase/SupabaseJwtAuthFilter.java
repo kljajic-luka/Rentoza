@@ -7,6 +7,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.example.rentoza.security.CookieConstants;
 import org.example.rentoza.security.JwtUserPrincipal;
+import org.example.rentoza.security.token.TokenDenylistService;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
 import org.slf4j.Logger;
@@ -52,6 +53,7 @@ public class SupabaseJwtAuthFilter extends OncePerRequestFilter {
     private final SupabaseJwtUtil supabaseJwtUtil;
     private final UserRepository userRepository;
     private final SupabaseUserMappingRepository mappingRepository;
+    private final TokenDenylistService tokenDenylistService;
 
     // Endpoints that bypass JWT authentication
     private static final List<String> PUBLIC_ENDPOINT_PREFIXES = List.of(
@@ -76,11 +78,13 @@ public class SupabaseJwtAuthFilter extends OncePerRequestFilter {
     public SupabaseJwtAuthFilter(
             SupabaseJwtUtil supabaseJwtUtil,
             UserRepository userRepository,
-            SupabaseUserMappingRepository mappingRepository
+            SupabaseUserMappingRepository mappingRepository,
+            TokenDenylistService tokenDenylistService
     ) {
         this.supabaseJwtUtil = supabaseJwtUtil;
         this.userRepository = userRepository;
         this.mappingRepository = mappingRepository;
+        this.tokenDenylistService = tokenDenylistService;
     }
 
     @Override
@@ -123,6 +127,13 @@ public class SupabaseJwtAuthFilter extends OncePerRequestFilter {
                 // Validate token signature and expiration
                 if (!supabaseJwtUtil.validateToken(token)) {
                     log.debug("Supabase JWT validation failed for: {}", requestUri);
+                    filterChain.doFilter(request, response);
+                    return;
+                }
+
+                // P0: Check JWT denylist (tokens invalidated on logout)
+                if (tokenDenylistService.isTokenDenied(token)) {
+                    log.warn("Denied (logged-out) JWT used for: {}", requestUri);
                     filterChain.doFilter(request, response);
                     return;
                 }

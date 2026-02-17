@@ -40,6 +40,25 @@ export const routes: Routes = [
             (m) => m.RegisterComponent,
           ),
       },
+      // ═══════════════════════════════════════════════════════════════════════════
+      // PHASE 3: PASSWORD RECOVERY (Turo Standard P0)
+      // ═══════════════════════════════════════════════════════════════════════════
+      {
+        path: 'forgot-password',
+        canActivate: [guestGuard],
+        loadComponent: () =>
+          import('@features/auth/pages/forgot-password/forgot-password.component').then(
+            (m) => m.ForgotPasswordComponent,
+          ),
+      },
+      {
+        path: 'reset-password',
+        canActivate: [guestGuard],
+        loadComponent: () =>
+          import('@features/auth/pages/reset-password/reset-password.component').then(
+            (m) => m.ResetPasswordComponent,
+          ),
+      },
       {
         path: 'callback',
         loadComponent: () =>

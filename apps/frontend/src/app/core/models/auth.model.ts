@@ -198,3 +198,24 @@ export interface SupabaseGoogleCallbackResponse {
   /** Registration status - INCOMPLETE means user needs to complete profile */
   registrationStatus: RegistrationStatus;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE 3: PASSWORD RECOVERY DTOs (Turo Standard)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Request to initiate password reset (forgot password) */
+export interface ForgotPasswordRequest {
+  email: string;
+}
+
+/** Request to reset password using a one-time token */
+export interface ResetPasswordRequest {
+  token: string;
+  newPassword: string;
+}
+
+/** Generic success response from password operations */
+export interface PasswordActionResponse {
+  success: boolean;
+  message: string;
+}

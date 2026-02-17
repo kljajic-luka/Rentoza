@@ -377,6 +377,42 @@ export class AuthService {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // PASSWORD RECOVERY (Turo Standard P0)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Request a password reset email.
+   *
+   * SECURITY: Backend always returns 200 OK (email enumeration protection).
+   * Frontend always shows success regardless of response.
+   *
+   * @param email User's email address
+   * @returns Observable of the response
+   */
+  forgotPassword(email: string): Observable<any> {
+    return this.http.post(
+      `${this.apiUrl}/supabase/forgot-password`,
+      { email },
+      { withCredentials: true },
+    );
+  }
+
+  /**
+   * Reset password using a one-time token from the reset email.
+   *
+   * @param token Reset token from the email link
+   * @param newPassword New password that meets strength requirements
+   * @returns Observable of the response
+   */
+  resetPassword(token: string, newPassword: string): Observable<any> {
+    return this.http.post(
+      `${this.apiUrl}/supabase/reset-password`,
+      { token, newPassword },
+      { withCredentials: true },
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // GOOGLE OAUTH VIA SUPABASE
   // ═══════════════════════════════════════════════════════════════════════════
 

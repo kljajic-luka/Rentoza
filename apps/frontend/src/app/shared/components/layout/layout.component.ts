@@ -110,7 +110,7 @@ export class LayoutComponent implements OnInit {
 
   protected readonly currentUser$ = this.authService.currentUser$;
   protected readonly isAuthenticated$ = this.authService.currentUser$.pipe(
-    map((user) => user !== null)
+    map((user) => user !== null),
   );
 
   protected isAdminRoute = false;
@@ -119,16 +119,14 @@ export class LayoutComponent implements OnInit {
     // Initial check
     this.checkAdminRoute();
 
-    this.router.events
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => {
-        this.checkAdminRoute();
-        
-        // Mobile sidenav logic (only if not admin route, theoretically)
-        if (this.isMobile && this.sidenav?.opened) {
-           this.sidenav.close();
-        }
-      });
+    this.router.events.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+      this.checkAdminRoute();
+
+      // Mobile sidenav logic (only if not admin route, theoretically)
+      if (this.isMobile && this.sidenav?.opened) {
+        this.sidenav.close();
+      }
+    });
 
     this.breakpointObserver
       .observe([Breakpoints.Handset])

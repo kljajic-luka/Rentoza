@@ -407,7 +407,67 @@ public class SupabaseAuthClient {
     }
 
     // =====================================================
-    // 🔧 HELPER METHODS
+    // � PASSWORD MANAGEMENT
+    // =====================================================
+
+    /**
+     * Update a user's password via Supabase Admin API (requires service role key).
+     *
+     * @param userId Supabase Auth user UUID
+     * @param newPassword New plain-text password (Supabase hashes it)
+     * @throws SupabaseAuthException if update fails
+     */
+    public void updateUserPassword(UUID userId, String newPassword) {
+        String url = supabaseUrl + "/auth/v1/admin/users/" + userId;
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("password", newPassword);
+
+        HttpHeaders headers = createHeaders(serviceRoleKey);
+        HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
+
+        try {
+            restTemplate.exchange(url, HttpMethod.PUT, request, Void.class);
+            log.info("Password updated in Supabase for user: {}", userId);
+        } catch (HttpClientErrorException e) {
+            log.error("Failed to update password in Supabase: {}", e.getResponseBodyAsString());
+            throw new SupabaseAuthException("Failed to update password", e);
+        }
+    }
+
+    /**
+     * Send password reset email via Supabase Auth.
+     *
+     * <p>Uses Supabase's built-in password recovery email with a custom redirect URL.
+     * The redirect URL points to our frontend reset-password page.
+     *
+     * @param email User's email address
+     * @param redirectTo Custom redirect URL (our frontend reset page with token)
+     * @throws SupabaseAuthException if email sending fails
+     */
+    public void sendPasswordResetEmail(String email, String redirectTo) {
+        String url = supabaseUrl + "/auth/v1/recover";
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("email", email);
+        if (redirectTo != null) {
+            body.put("gotrue_meta_security", Map.of("captcha_token", ""));
+        }
+
+        HttpHeaders headers = createHeaders(anonKey);
+        HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
+
+        try {
+            restTemplate.postForEntity(url, request, String.class);
+            log.info("Password reset email sent via Supabase for: {}", email);
+        } catch (HttpClientErrorException e) {
+            log.error("Failed to send password reset email: {}", e.getResponseBodyAsString());
+            throw new SupabaseAuthException("Failed to send reset email", e);
+        }
+    }
+
+    // =====================================================
+    // �🔧 HELPER METHODS
     // =====================================================
 
     private HttpHeaders createHeaders(String apiKey) {

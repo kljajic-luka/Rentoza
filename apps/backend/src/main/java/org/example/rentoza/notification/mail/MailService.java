@@ -336,4 +336,59 @@ public class MailService {
     private String buildChatUrl() {
         return "https://rentoza.com/chat";
     }
+
+    // =====================================================
+    // 🔧 GENERIC HTML EMAIL (for non-notification flows)
+    // =====================================================
+
+    /**
+     * Send an HTML email rendered from a Thymeleaf template.
+     *
+     * <p>Used for transactional emails outside the notification system
+     * (e.g. password reset, email verification).
+     *
+     * @param to        Recipient email address
+     * @param subject   Email subject line
+     * @param template  Thymeleaf template path (e.g. "emails/password-reset")
+     * @param variables Template variables
+     */
+    @Async
+    public CompletableFuture<Void> sendTemplatedEmail(
+            String to, String subject, String template, Map<String, Object> variables) {
+
+        if (!credentialsConfigured) {
+            log.warn("❌ EMAIL DISABLED — cannot send '{}' to {}", subject, to);
+            return CompletableFuture.completedFuture(null);
+        }
+
+        try {
+            Context context = new Context();
+            variables.forEach(context::setVariable);
+            String htmlContent = templateEngine.process(template, context);
+
+            // Apply test redirection
+            String finalRecipient = to;
+            String finalSubject = subject;
+            if (testModeEnabled && testRecipient != null && !testRecipient.isBlank()) {
+                finalRecipient = testRecipient;
+                finalSubject = "[TEST] " + subject;
+                log.info("🧪 [TEST-MODE] Redirecting '{}' email {} → {}", subject, to, testRecipient);
+            }
+
+            MimeMessage mimeMessage = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
+            helper.setFrom(fromEmail);
+            helper.setTo(finalRecipient);
+            helper.setSubject(finalSubject);
+            helper.setText(htmlContent, true);
+
+            mailSender.send(mimeMessage);
+            log.info("✅ Templated email sent | To: {} | Subject: {}", finalRecipient, finalSubject);
+            return CompletableFuture.completedFuture(null);
+
+        } catch (MessagingException e) {
+            log.error("❌ Templated email failed | To: {} | Subject: {} | Error: {}", to, subject, e.getMessage(), e);
+            return CompletableFuture.failedFuture(e);
+        }
+    }
 }

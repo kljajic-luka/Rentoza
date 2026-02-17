@@ -12,6 +12,7 @@ import org.example.rentoza.security.ratelimit.RateLimitingFilter;
 import org.example.rentoza.security.supabase.SupabaseJwtAuthFilter;
 import org.example.rentoza.security.supabase.SupabaseJwtUtil;
 import org.example.rentoza.security.supabase.SupabaseUserMappingRepository;
+import org.example.rentoza.security.token.TokenDenylistService;
 import org.example.rentoza.deprecated.jwt.JwtAuthenticationEntryPoint;
 import org.example.rentoza.deprecated.jwt.JwtAuthFilter;
 import org.example.rentoza.deprecated.jwt.JwtUtil;
@@ -137,8 +138,9 @@ public class SecurityConfig {
     public SupabaseJwtAuthFilter supabaseJwtAuthFilter(
             SupabaseJwtUtil supabaseJwtUtil,
             UserRepository userRepository,
-            SupabaseUserMappingRepository mappingRepository) {
-        return new SupabaseJwtAuthFilter(supabaseJwtUtil, userRepository, mappingRepository);
+            SupabaseUserMappingRepository mappingRepository,
+            TokenDenylistService tokenDenylistService) {
+        return new SupabaseJwtAuthFilter(supabaseJwtUtil, userRepository, mappingRepository, tokenDenylistService);
     }
 
     @Bean
@@ -158,6 +160,8 @@ public class SecurityConfig {
                     .sessionAuthenticationStrategy(new NullAuthenticatedSessionStrategy())
                     .ignoringRequestMatchers(
                         "/api/auth/logout",  // Idempotent - safe without CSRF
+                        "/api/auth/supabase/forgot-password", // Anonymous password recovery (rate-limited)
+                        "/api/auth/supabase/reset-password",  // One-time token flow; CSRF adds no security value
                         "/api/auth/supabase/google/callback",  // OAuth callback from Supabase (PKCE)
                         "/api/auth/supabase/google/token-callback",  // OAuth token callback (implicit flow)
                         "/uploads/**"         // Static files - no state change
@@ -192,6 +196,8 @@ public class SecurityConfig {
                                 "/api/auth/supabase/refresh",
                                 "/api/auth/supabase/logout",
                                 "/api/auth/supabase/confirm-email",  // Email verification callback
+                                "/api/auth/supabase/forgot-password", // P0: Password recovery
+                                "/api/auth/supabase/reset-password",  // P0: Password reset
                                 "/api/auth/supabase/google/**"       // Google OAuth via Supabase
                         ).permitAll()
                         // Debug endpoints (for development - consider disabling in production)

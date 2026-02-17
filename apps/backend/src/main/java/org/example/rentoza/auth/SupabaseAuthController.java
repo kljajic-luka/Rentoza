@@ -1,5 +1,6 @@
 package org.example.rentoza.auth;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
@@ -8,10 +9,20 @@ import jakarta.validation.constraints.Size;
 import org.example.rentoza.config.AppProperties;
 import org.example.rentoza.security.CookieConstants;
 import org.example.rentoza.security.JwtUserPrincipal;
+import org.example.rentoza.security.password.PasswordPolicyService;
+import org.example.rentoza.security.password.PasswordResetService;
+import org.example.rentoza.security.password.PasswordResetService.PasswordResetException;
 import org.example.rentoza.security.supabase.SupabaseAuthClient.SupabaseAuthException;
 import org.example.rentoza.security.supabase.SupabaseAuthService;
 import org.example.rentoza.security.supabase.SupabaseAuthService.SupabaseAuthResult;
+import org.example.rentoza.security.supabase.SupabaseJwtUtil;
+import org.example.rentoza.security.token.TokenDenylistService;
+import org.example.rentoza.security.validation.InputSanitizer;
 import org.example.rentoza.user.Role;
+import org.example.rentoza.user.User;
+import org.example.rentoza.user.UserRepository;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.example.rentoza.user.dto.AuthResponseDTO;
 import org.example.rentoza.user.dto.UserResponseDTO;
 import org.example.rentoza.user.UserService;
@@ -23,7 +34,11 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Duration;
+import java.time.Instant;
+import java.util.Date;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Supabase Authentication Controller.
@@ -49,20 +64,37 @@ public class SupabaseAuthController {
 
     private final SupabaseAuthService supabaseAuthService;
     private final UserService userService;
+    private final UserRepository userRepository;
     private final AppProperties appProperties;
+    private final PasswordResetService passwordResetService;
+    private final PasswordPolicyService passwordPolicyService;
+    private final TokenDenylistService tokenDenylistService;
+    private final SupabaseJwtUtil supabaseJwtUtil;
 
     // Token expiration (1 hour for access, 7 days for refresh)
     private static final long ACCESS_TOKEN_EXPIRY_MS = 3600000L;
     private static final long REFRESH_TOKEN_EXPIRY_DAYS = 7L;
 
+    private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
+
     public SupabaseAuthController(
             SupabaseAuthService supabaseAuthService,
             UserService userService,
-            AppProperties appProperties
+            UserRepository userRepository,
+            AppProperties appProperties,
+            PasswordResetService passwordResetService,
+            PasswordPolicyService passwordPolicyService,
+            TokenDenylistService tokenDenylistService,
+            SupabaseJwtUtil supabaseJwtUtil
     ) {
         this.supabaseAuthService = supabaseAuthService;
         this.userService = userService;
+        this.userRepository = userRepository;
         this.appProperties = appProperties;
+        this.passwordResetService = passwordResetService;
+        this.passwordPolicyService = passwordPolicyService;
+        this.tokenDenylistService = tokenDenylistService;
+        this.supabaseJwtUtil = supabaseJwtUtil;
     }
 
     // =====================================================
@@ -396,30 +428,63 @@ public class SupabaseAuthController {
             HttpServletResponse response
     ) {
         try {
+            // P1: Password strength validation (Turo standard)
+            List<String> passwordViolations = passwordPolicyService.validatePasswordStrength(dto.getPassword());
+            if (!passwordViolations.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "error", "WEAK_PASSWORD",
+                        "message", String.join(". ", passwordViolations),
+                        "violations", passwordViolations
+                ));
+            }
+
+            // P1: Input sanitization for name fields (XSS defense-in-depth)
+            String sanitizedFirstName;
+            String sanitizedLastName;
+            try {
+                sanitizedFirstName = InputSanitizer.sanitizeName(dto.getFirstName());
+                sanitizedLastName = InputSanitizer.sanitizeName(dto.getLastName());
+            } catch (IllegalArgumentException e) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "error", "INVALID_INPUT",
+                        "message", e.getMessage()
+                ));
+            }
+
             Role role = dto.getRole() != null ? dto.getRole() : Role.USER;
 
             SupabaseAuthResult result = supabaseAuthService.register(
                     dto.getEmail(),
                     dto.getPassword(),
-                    dto.getFirstName(),
-                    dto.getLastName(),
+                    sanitizedFirstName,
+                    sanitizedLastName,
                     role
             );
 
             // Build response
             UserResponseDTO userResponse = userService.toUserResponse(result.getUser());
-            
+
+            // P1: Seed password history on registration so reuse checks work from day one
+            try {
+                String hashedPassword = passwordEncoder.encode(dto.getPassword());
+                passwordPolicyService.recordPassword(result.getUser().getId(), hashedPassword);
+            } catch (Exception ex) {
+                log.warn("Failed to seed password history on register for userId={}: {}",
+                        result.getUser().getId(), ex.getMessage());
+            }
+
             // CRITICAL: Handle email confirmation pending case
             if (result.isEmailConfirmationPending()) {
                 log.info("User registered via Supabase (email confirmation pending): email={}", dto.getEmail());
                 
                 // DO NOT set cookies - tokens are null when email confirmation is pending
                 // Return special response so frontend knows to show email confirmation message
+                // NOTE: "user" key deliberately omitted — identical shape to duplicate-email path
+                // to prevent email-enumeration via response payload diffing.
                 return ResponseEntity.ok(Map.of(
                         "success", true,
                         "emailConfirmationPending", true,
-                        "message", "Please check your email to confirm your account.",
-                        "user", userResponse
+                        "message", "Please check your email to confirm your account."
                 ));
             }
             
@@ -432,9 +497,19 @@ public class SupabaseAuthController {
 
         } catch (SupabaseAuthException e) {
             log.warn("Supabase registration failed: {}", e.getMessage());
+            // P1: Email enumeration fix — duplicate email returns 200 with same structure
+            // so attackers cannot distinguish "email taken" from "success" via HTTP status
+            String message = e.getMessage();
+            if (message != null && (message.contains("already registered") || message.contains("already exists"))) {
+                return ResponseEntity.ok(Map.of(
+                        "success", true,
+                        "emailConfirmationPending", true,
+                        "message", "Please check your email to confirm your account."
+                ));
+            }
             return ResponseEntity.badRequest().body(Map.of(
                     "error", "REGISTRATION_FAILED",
-                    "message", e.getMessage()
+                    "message", message != null ? message : "Registration failed. Please try again."
             ));
         } catch (Exception e) {
             log.error("Unexpected error during Supabase registration", e);
@@ -451,14 +526,39 @@ public class SupabaseAuthController {
 
     /**
      * Login user with Supabase Auth.
+     *
+     * <p>P0 Security: Includes brute-force protection via account lockout.
+     * After 5 failed attempts, account is locked for 15 minutes.
      */
     @PostMapping("/login")
     public ResponseEntity<?> login(
             @Valid @RequestBody SupabaseLoginRequest dto,
+            HttpServletRequest request,
             HttpServletResponse response
     ) {
         try {
+            String clientIp = request.getRemoteAddr();
+
+            // P0: Brute-force protection — check if account is locked
+            Optional<User> existingUser = userRepository.findByEmail(dto.getEmail());
+            if (existingUser.isPresent() && existingUser.get().isAccountLocked()) {
+                log.warn("Login attempt on locked account: email={}, ip={}", dto.getEmail(), clientIp);
+                return ResponseEntity.status(429).body(Map.of(
+                        "error", "ACCOUNT_LOCKED",
+                        "message", "Too many failed login attempts. Please try again later."
+                ));
+            }
+
             SupabaseAuthResult result = supabaseAuthService.login(dto.getEmail(), dto.getPassword());
+
+            // P0: Reset failed attempts on successful login
+            if (existingUser.isPresent()) {
+                User user = existingUser.get();
+                if (user.getFailedLoginAttempts() > 0) {
+                    user.resetFailedLoginAttempts();
+                    userRepository.save(user);
+                }
+            }
 
             // Set cookies
             setAuthCookies(response, result.getAccessToken(), result.getRefreshToken());
@@ -471,6 +571,15 @@ public class SupabaseAuthController {
             return ResponseEntity.ok(AuthResponseDTO.success(userResponse));
 
         } catch (SupabaseAuthException e) {
+            // P0: Increment failed login attempts
+            Optional<User> failedUser = userRepository.findByEmail(dto.getEmail());
+            if (failedUser.isPresent()) {
+                User user = failedUser.get();
+                user.incrementFailedLoginAttempts(request.getRemoteAddr());
+                userRepository.save(user);
+                log.warn("Failed login for email={}, attempts={}", dto.getEmail(), user.getFailedLoginAttempts());
+            }
+
             log.warn("Supabase login failed for {}: {}", dto.getEmail(), e.getMessage());
             return ResponseEntity.status(401).body(Map.of(
                     "error", "INVALID_CREDENTIALS",
@@ -591,16 +700,41 @@ public class SupabaseAuthController {
 
     /**
      * Logout user and revoke Supabase tokens.
+     *
+     * <p>P0: Also adds the access token to the JWT denylist so it cannot
+     * be replayed before natural expiry (Turo standard: logout invalidates JWT).
      */
     @PostMapping("/logout")
     public ResponseEntity<?> logout(
             @AuthenticationPrincipal JwtUserPrincipal principal,
             @CookieValue(value = CookieConstants.ACCESS_TOKEN, required = false) String accessToken,
+            HttpServletRequest request,
             HttpServletResponse response
     ) {
-        // Revoke token in Supabase
-        if (accessToken != null && !accessToken.isBlank()) {
-            supabaseAuthService.logout(accessToken);
+        // P1: Also check Authorization bearer header as fallback
+        String tokenToRevoke = accessToken;
+        if ((tokenToRevoke == null || tokenToRevoke.isBlank())) {
+            String authHeader = request.getHeader("Authorization");
+            if (authHeader != null && authHeader.startsWith("Bearer ")) {
+                tokenToRevoke = authHeader.substring(7);
+            }
+        }
+
+        // P0: Deny the access token so it can't be replayed
+        if (tokenToRevoke != null && !tokenToRevoke.isBlank()) {
+            try {
+                // Extract token expiry for denylist TTL
+                Date expDate = supabaseJwtUtil.getExpirationDateFromToken(tokenToRevoke);
+                Instant expiresAt = (expDate != null) ? expDate.toInstant() : Instant.now().plusSeconds(3600);
+                String email = principal != null ? principal.getUsername() : "anonymous";
+                tokenDenylistService.denyToken(tokenToRevoke, expiresAt, email);
+            } catch (Exception e) {
+                log.warn("Failed to denylist token on logout: {}", e.getMessage());
+                // Continue with logout even if denylist fails
+            }
+
+            // Revoke token in Supabase
+            supabaseAuthService.logout(tokenToRevoke);
         }
 
         // Clear cookies
@@ -615,6 +749,78 @@ public class SupabaseAuthController {
     // =====================================================
     // 🔧 HELPER METHODS
     // =====================================================
+
+    // =====================================================
+    // 🔒 PASSWORD RECOVERY (Turo Standard P0)
+    // =====================================================
+
+    /**
+     * Request a password reset email.
+     *
+     * <p>SECURITY: Always returns 200 OK regardless of whether the email exists.
+     * This prevents email enumeration attacks (Turo standard).
+     *
+     * <p>Rate limited to 3 requests per 5 minutes per IP.
+     */
+    @PostMapping("/forgot-password")
+    public ResponseEntity<?> forgotPassword(
+            @Valid @RequestBody ForgotPasswordRequest dto,
+            HttpServletRequest request
+    ) {
+        try {
+            String clientIp = request.getRemoteAddr();
+            passwordResetService.requestPasswordReset(dto.getEmail(), clientIp);
+
+            // SECURITY: Always return success (email enumeration protection)
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "If an account exists with this email, a password reset link has been sent."
+            ));
+        } catch (Exception e) {
+            log.error("Unexpected error during password reset request", e);
+            // Still return generic success to prevent enumeration
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "If an account exists with this email, a password reset link has been sent."
+            ));
+        }
+    }
+
+    /**
+     * Reset password using a one-time token from the reset email.
+     *
+     * <p>Validates:
+     * <ul>
+     *   <li>Token validity and expiration (1 hour)</li>
+     *   <li>Password strength (Turo standard: 8+ chars, upper, lower, digit, special)</li>
+     *   <li>Password reuse (cannot reuse last 3 passwords)</li>
+     * </ul>
+     */
+    @PostMapping("/reset-password")
+    public ResponseEntity<?> resetPassword(
+            @Valid @RequestBody ResetPasswordRequest dto
+    ) {
+        try {
+            passwordResetService.resetPassword(dto.getToken(), dto.getNewPassword());
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Password has been reset successfully. You can now log in with your new password."
+            ));
+        } catch (PasswordResetException e) {
+            log.warn("Password reset failed: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "RESET_FAILED",
+                    "message", e.getMessage()
+            ));
+        } catch (Exception e) {
+            log.error("Unexpected error during password reset", e);
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "error", "SERVER_ERROR",
+                    "message", "Password reset failed. Please try again."
+            ));
+        }
+    }
 
     /**
      * Set authentication cookies (access token + refresh token).
@@ -812,5 +1018,35 @@ public class SupabaseAuthController {
 
         public String getRole() { return role; }
         public void setRole(String role) { this.role = role; }
+    }
+
+    /**
+     * Forgot password request DTO.
+     */
+    public static class ForgotPasswordRequest {
+        @NotBlank(message = "Email is required")
+        @Email(message = "Invalid email format")
+        private String email;
+
+        public String getEmail() { return email; }
+        public void setEmail(String email) { this.email = email; }
+    }
+
+    /**
+     * Reset password request DTO.
+     */
+    public static class ResetPasswordRequest {
+        @NotBlank(message = "Token is required")
+        private String token;
+
+        @NotBlank(message = "New password is required")
+        @Size(min = 8, message = "Password must be at least 8 characters")
+        private String newPassword;
+
+        public String getToken() { return token; }
+        public void setToken(String token) { this.token = token; }
+
+        public String getNewPassword() { return newPassword; }
+        public void setNewPassword(String newPassword) { this.newPassword = newPassword; }
     }
 }

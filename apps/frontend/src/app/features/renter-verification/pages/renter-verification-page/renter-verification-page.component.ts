@@ -218,7 +218,7 @@ export class RenterVerificationPageComponent implements OnInit, OnDestroy {
 
   /** Blocked reason for display */
   readonly blockedReason = computed(
-    () => this.status()?.bookingBlockedReason ?? this.status()?.rejectionReason ?? null
+    () => this.status()?.bookingBlockedReason ?? this.status()?.rejectionReason ?? null,
   );
 
   /** Next step hint */

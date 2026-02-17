@@ -12,335 +12,346 @@
 
   <!-- Loading State -->
   @if (loading()) {
-  <div class="loading-container">
-    <mat-spinner diameter="48"></mat-spinner>
-    <p>Učitavanje statusa verifikacije...</p>
-  </div>
+    <div class="loading-container">
+      <mat-spinner diameter="48"></mat-spinner>
+      <p>Učitavanje statusa verifikacije...</p>
+    </div>
   }
 
   <!-- Error State -->
   @if (serviceError() && !loading()) {
-  <div class="error-container">
-    <mat-icon>error_outline</mat-icon>
-    <p>{{ serviceError() }}</p>
-    <button mat-stroked-button (click)="onRefreshStatus()">
-      <mat-icon>refresh</mat-icon>
-      Pokušaj ponovo
-    </button>
-  </div>
+    <div class="error-container">
+      <mat-icon>error_outline</mat-icon>
+      <p>{{ serviceError() }}</p>
+      <button mat-stroked-button (click)="onRefreshStatus()">
+        <mat-icon>refresh</mat-icon>
+        Pokušaj ponovo
+      </button>
+    </div>
   }
 
   <!-- Main Content -->
   @if (status() && !loading()) {
-  <!-- Status Card -->
-  <mat-card class="status-card" [ngClass]="statusClass()">
-    <mat-card-content>
-      <div class="status-header">
-        <mat-icon class="status-icon">{{ statusIcon() }}</mat-icon>
-        <div class="status-info">
-          <span class="status-label">{{ statusLabel() }}</span>
-          @if (status()?.licenseExpiryDate) {
-          <span class="expiry-info">
-            Ističe: {{ status()?.licenseExpiryDate | date : 'dd.MM.yyyy.' }}
-          </span>
+    <!-- Status Card -->
+    <mat-card class="status-card" [ngClass]="statusClass()">
+      <mat-card-content>
+        <div class="status-header">
+          <mat-icon class="status-icon">{{ statusIcon() }}</mat-icon>
+          <div class="status-info">
+            <span class="status-label">{{ statusLabel() }}</span>
+            @if (status()?.licenseExpiryDate) {
+              <span class="expiry-info">
+                Ističe: {{ status()?.licenseExpiryDate | date: 'dd.MM.yyyy.' }}
+              </span>
+            }
+          </div>
+        </div>
+
+        <!-- Status-specific content -->
+        @switch (licenseStatus()) {
+          <!-- APPROVED -->
+          @case ('APPROVED') {
+            <div class="status-message success">
+              <p>Vaša vozačka dozvola je verifikovana! Sada možete iznajmljivati vozila.</p>
+              @if (status()?.maskedLicenseNumber) {
+                <p class="masked-license">Broj dozvole: {{ status()?.maskedLicenseNumber }}</p>
+              }
+              <button mat-flat-button color="primary" (click)="onBrowseCars()">
+                <mat-icon>directions_car</mat-icon>
+                Pregledaj vozila
+              </button>
+            </div>
           }
-        </div>
-      </div>
 
-      <!-- Status-specific content -->
-      @switch (licenseStatus()) {
-      <!-- APPROVED -->
-      @case ('APPROVED') {
-      <div class="status-message success">
-        <p>Vaša vozačka dozvola je verifikovana! Sada možete iznajmljivati vozila.</p>
-        @if (status()?.maskedLicenseNumber) {
-        <p class="masked-license">Broj dozvole: {{ status()?.maskedLicenseNumber }}</p>
+          <!-- PENDING_REVIEW -->
+          @case ('PENDING_REVIEW') {
+            @if (isPendingComplete()) {
+              <!-- Complete documents - waiting for admin -->
+              <div class="status-message pending complete">
+                <div class="pending-animation">
+                  <mat-icon class="success-check">check_circle</mat-icon>
+                </div>
+                <h3>Dokumenti uspešno primljeni!</h3>
+                <p>
+                  Vaša vozačka dozvola je na pregledu kod našeg tima. Obično traje
+                  {{ estimatedWait() }}.
+                </p>
+                <div class="pending-details">
+                  <div class="detail-item">
+                    <mat-icon>description</mat-icon>
+                    <span>Svi potrebni dokumenti su otpremljeni</span>
+                  </div>
+                  <div class="detail-item">
+                    <mat-icon>schedule</mat-icon>
+                    <span>Procenjeno vreme čekanja: {{ estimatedWait() }}</span>
+                  </div>
+                  <div class="detail-item">
+                    <mat-icon>notifications_active</mat-icon>
+                    <span>Obavestićemo vas čim završimo pregled</span>
+                  </div>
+                </div>
+                <button mat-stroked-button (click)="onRefreshStatus()">
+                  <mat-icon>refresh</mat-icon>
+                  Osveži status
+                </button>
+              </div>
+            } @else {
+              <!-- Incomplete documents - need more uploads -->
+              <div class="status-message pending incomplete">
+                <div class="pending-animation">
+                  <mat-spinner diameter="32"></mat-spinner>
+                </div>
+                <p>Vaša vozačka dozvola je primljena, ali nedostaju neki dokumenti.</p>
+                <p class="hint">Molimo otpremite preostale dokumente ispod.</p>
+              </div>
+            }
+          }
+
+          <!-- REJECTED -->
+          @case ('REJECTED') {
+            <div class="status-message error">
+              <p>Vaša verifikacija je odbijena.</p>
+              @if (blockedReason()) {
+                <div class="rejection-reason"><strong>Razlog:</strong> {{ blockedReason() }}</div>
+              }
+              <p class="hint">Možete ponovo otpremiti vozačku dozvolu sa ispravnim podacima.</p>
+            </div>
+          }
+
+          <!-- EXPIRED -->
+          @case ('EXPIRED') {
+            <div class="status-message error">
+              <p>Vaša verifikovana vozačka dozvola je istekla.</p>
+              <p class="hint">Molimo otpremite novu, važeću vozačku dozvolu.</p>
+            </div>
+          }
+
+          <!-- SUSPENDED -->
+          @case ('SUSPENDED') {
+            <div class="status-message blocked">
+              <mat-icon class="block-icon">block</mat-icon>
+              <p>Vaš nalog je suspendovan za iznajmljivanje vozila.</p>
+              @if (blockedReason()) {
+                <p class="blocked-reason">{{ blockedReason() }}</p>
+              }
+              <p class="hint">Za dodatne informacije kontaktirajte podršku.</p>
+              <a mat-stroked-button href="mailto:podrska@rentoza.rs">
+                <mat-icon>mail</mat-icon>
+                Kontaktiraj podršku
+              </a>
+            </div>
+          }
+
+          <!-- NOT_STARTED -->
+          @case ('NOT_STARTED') {
+            <div class="status-message empty">
+              <p>
+                {{ nextStep() || 'Otpremite vozačku dozvolu da biste mogli iznajmljivati vozila.' }}
+              </p>
+            </div>
+          }
         }
-        <button mat-flat-button color="primary" (click)="onBrowseCars()">
-          <mat-icon>directions_car</mat-icon>
-          Pregledaj vozila
-        </button>
-      </div>
-      }
+      </mat-card-content>
+    </mat-card>
 
-      <!-- PENDING_REVIEW -->
-      @case ('PENDING_REVIEW') { @if (isPendingComplete()) {
-      <!-- Complete documents - waiting for admin -->
-      <div class="status-message pending complete">
-        <div class="pending-animation">
-          <mat-icon class="success-check">check_circle</mat-icon>
-        </div>
-        <h3>Dokumenti uspešno primljeni!</h3>
-        <p>
-          Vaša vozačka dozvola je na pregledu kod našeg tima. Obično traje {{ estimatedWait() }}.
-        </p>
-        <div class="pending-details">
-          <div class="detail-item">
-            <mat-icon>description</mat-icon>
-            <span>Svi potrebni dokumenti su otpremljeni</span>
+    <!-- Upload Form (shown when upload is possible) -->
+    @if (showUploadForm()) {
+      <mat-card class="upload-card">
+        <mat-card-header>
+          <mat-card-title>
+            @if (licenseStatus() === 'NOT_STARTED') {
+              Otpremite vozačku dozvolu
+            } @else {
+              Ponovo otpremite vozačku dozvolu
+            }
+          </mat-card-title>
+          <mat-card-subtitle> Potrebne su fotografije prednje i zadnje strane </mat-card-subtitle>
+        </mat-card-header>
+
+        <mat-card-content>
+          <!-- Upload progress bar -->
+          @if (isUploading()) {
+            <div class="upload-progress">
+              <mat-progress-bar mode="determinate" [value]="uploadProgress()"></mat-progress-bar>
+              <span>Otpremanje... {{ uploadProgress() }}%</span>
+            </div>
+          }
+
+          <!-- Front side upload -->
+          <div class="upload-section">
+            <app-license-photo-upload
+              #frontUpload
+              side="front"
+              label="Prednja strana vozačke dozvole"
+              [required]="true"
+              (fileSelected)="onFrontFileSelected($event)"
+              (removed)="onFrontRemoved()"
+            >
+            </app-license-photo-upload>
           </div>
-          <div class="detail-item">
-            <mat-icon>schedule</mat-icon>
-            <span>Procenjeno vreme čekanja: {{ estimatedWait() }}</span>
+
+          <!-- Back side upload -->
+          <div class="upload-section">
+            <app-license-photo-upload
+              #backUpload
+              side="back"
+              label="Zadnja strana vozačke dozvole"
+              [required]="true"
+              (fileSelected)="onBackFileSelected($event)"
+              (removed)="onBackRemoved()"
+            >
+            </app-license-photo-upload>
           </div>
-          <div class="detail-item">
-            <mat-icon>notifications_active</mat-icon>
-            <span>Obavestićemo vas čim završimo pregled</span>
+
+          <!-- Selfie capture (required for identity verification) -->
+          <div class="upload-section selfie-section">
+            <div class="selfie-header">
+              <h3>
+                <mat-icon>face</mat-icon>
+                Selfie fotografija
+                <span class="required-badge">(Obavezno)</span>
+              </h3>
+              <p class="selfie-hint">
+                Selfie fotografija je obavezna za verifikaciju identiteta. Upoređujemo je sa
+                fotografijom na vozačkoj dozvoli.
+              </p>
+            </div>
+
+            <app-selfie-capture
+              label="Selfie za verifikaciju"
+              [requireConsent]="true"
+              [required]="true"
+              (captured)="onSelfieCaptured($event)"
+              (removed)="onSelfieRemoved()"
+              (consentChanged)="onSelfieConsentChanged($event)"
+              (error)="onSelfieError($event)"
+            >
+            </app-selfie-capture>
+
+            @if (hasSelfie()) {
+              <div class="selfie-status success">
+                <mat-icon>check_circle</mat-icon>
+                <span>Selfie je snimljen i biće otpremljen zajedno sa vozačkom dozvolom</span>
+              </div>
+            }
           </div>
-        </div>
-        <button mat-stroked-button (click)="onRefreshStatus()">
-          <mat-icon>refresh</mat-icon>
-          Osveži status
-        </button>
-      </div>
-      } @else {
-      <!-- Incomplete documents - need more uploads -->
-      <div class="status-message pending incomplete">
-        <div class="pending-animation">
-          <mat-spinner diameter="32"></mat-spinner>
-        </div>
-        <p>Vaša vozačka dozvola je primljena, ali nedostaju neki dokumenti.</p>
-        <p class="hint">Molimo otpremite preostale dokumente ispod.</p>
-      </div>
-      } }
 
-      <!-- REJECTED -->
-      @case ('REJECTED') {
-      <div class="status-message error">
-        <p>Vaša verifikacija je odbijena.</p>
-        @if (blockedReason()) {
-        <div class="rejection-reason"><strong>Razlog:</strong> {{ blockedReason() }}</div>
-        }
-        <p class="hint">Možete ponovo otpremiti vozačku dozvolu sa ispravnim podacima.</p>
-      </div>
-      }
+          <!-- Optional expiry date -->
+          <div class="expiry-section">
+            <mat-form-field appearance="outline" class="expiry-field">
+              <mat-label>Datum isteka (opciono)</mat-label>
+              <mat-icon matIconPrefix class="calendar-prefix">event</mat-icon>
+              <input
+                matInput
+                [matDatepicker]="picker"
+                [formControl]="expiryDateControl"
+                [min]="minExpiryDate"
+                readonly
+                (click)="picker.open()"
+                placeholder="Kliknite da izaberete datum"
+              />
+              <mat-datepicker-toggle matIconSuffix [for]="picker"></mat-datepicker-toggle>
+              <mat-datepicker #picker></mat-datepicker>
+              <mat-hint>Automatski se očitava iz slike. Unesite samo ako je nejasna.</mat-hint>
+            </mat-form-field>
+          </div>
 
-      <!-- EXPIRED -->
-      @case ('EXPIRED') {
-      <div class="status-message error">
-        <p>Vaša verifikovana vozačka dozvola je istekla.</p>
-        <p class="hint">Molimo otpremite novu, važeću vozačku dozvolu.</p>
-      </div>
-      }
+          <!-- Submit error -->
+          @if (submitError()) {
+            <div class="submit-error">
+              <mat-icon>error_outline</mat-icon>
+              <span>{{ submitError() }}</span>
+            </div>
+          }
 
-      <!-- SUSPENDED -->
-      @case ('SUSPENDED') {
-      <div class="status-message blocked">
-        <mat-icon class="block-icon">block</mat-icon>
-        <p>Vaš nalog je suspendovan za iznajmljivanje vozila.</p>
-        @if (blockedReason()) {
-        <p class="blocked-reason">{{ blockedReason() }}</p>
-        }
-        <p class="hint">Za dodatne informacije kontaktirajte podršku.</p>
-        <a mat-stroked-button href="mailto:podrska@rentoza.rs">
-          <mat-icon>mail</mat-icon>
-          Kontaktiraj podršku
-        </a>
-      </div>
-      }
+          <!-- Submit success -->
+          @if (submitSuccess()) {
+            <div class="submit-success">
+              <mat-icon>check_circle</mat-icon>
+              <span>Vozačka dozvola je uspešno otpremljena! Pregled je u toku.</span>
+            </div>
+          }
 
-      <!-- NOT_STARTED -->
-      @case ('NOT_STARTED') {
-      <div class="status-message empty">
-        <p>{{ nextStep() || 'Otpremite vozačku dozvolu da biste mogli iznajmljivati vozila.' }}</p>
-      </div>
-      } }
-    </mat-card-content>
-  </mat-card>
+          <!-- Privacy notice -->
+          <div class="privacy-notice">
+            <mat-icon>lock</mat-icon>
+            <p>
+              Vaši podaci su zaštićeni. Fotografije vozačke dozvole se koriste isključivo za
+              verifikaciju identiteta i čuvaju se u skladu sa zakonom o zaštiti podataka.
+            </p>
+          </div>
+        </mat-card-content>
 
-  <!-- Upload Form (shown when upload is possible) -->
-  @if (showUploadForm()) {
-  <mat-card class="upload-card">
-    <mat-card-header>
-      <mat-card-title>
-        @if (licenseStatus() === 'NOT_STARTED') { Otpremite vozačku dozvolu } @else { Ponovo
-        otpremite vozačku dozvolu }
-      </mat-card-title>
-      <mat-card-subtitle> Potrebne su fotografije prednje i zadnje strane </mat-card-subtitle>
-    </mat-card-header>
+        <mat-card-actions align="end">
+          <button mat-flat-button color="primary" [disabled]="!canSubmit()" (click)="onSubmit()">
+            @if (isSubmitting() || isUploading()) {
+              <mat-spinner diameter="20"></mat-spinner>
+              <span>Otpremanje...</span>
+            } @else {
+              <ng-container>
+                <mat-icon>cloud_upload</mat-icon>
+                <span>Otpremi za verifikaciju</span>
+              </ng-container>
+            }
+          </button>
+        </mat-card-actions>
+      </mat-card>
+    }
 
-    <mat-card-content>
-      <!-- Upload progress bar -->
-      @if (isUploading()) {
-      <div class="upload-progress">
-        <mat-progress-bar mode="determinate" [value]="uploadProgress()"></mat-progress-bar>
-        <span>Otpremanje... {{ uploadProgress() }}%</span>
-      </div>
-      }
+    <!-- FAQ Section -->
+    <section class="faq-section">
+      <h2>Često postavljana pitanja</h2>
 
-      <!-- Front side upload -->
-      <div class="upload-section">
-        <app-license-photo-upload
-          #frontUpload
-          side="front"
-          label="Prednja strana vozačke dozvole"
-          [required]="true"
-          (fileSelected)="onFrontFileSelected($event)"
-          (removed)="onFrontRemoved()"
-        >
-        </app-license-photo-upload>
-      </div>
-
-      <!-- Back side upload -->
-      <div class="upload-section">
-        <app-license-photo-upload
-          #backUpload
-          side="back"
-          label="Zadnja strana vozačke dozvole"
-          [required]="true"
-          (fileSelected)="onBackFileSelected($event)"
-          (removed)="onBackRemoved()"
-        >
-        </app-license-photo-upload>
-      </div>
-
-      <!-- Selfie capture (required for identity verification) -->
-      <div class="upload-section selfie-section">
-        <div class="selfie-header">
-          <h3>
-            <mat-icon>face</mat-icon>
-            Selfie fotografija
-            <span class="required-badge">(Obavezno)</span>
-          </h3>
-          <p class="selfie-hint">
-            Selfie fotografija je obavezna za verifikaciju identiteta. Upoređujemo je sa fotografijom na vozačkoj dozvoli.
+      <details class="faq-item">
+        <summary>Zašto je potrebna verifikacija vozačke dozvole?</summary>
+        <div class="faq-answer">
+          <p>
+            Verifikacija vozačke dozvole je obavezna za sigurnost svih korisnika platforme. Ona
+            potvrđuje vaš identitet i osigurava da imate važeću dozvolu za upravljanje vozilom.
           </p>
         </div>
+      </details>
 
-        <app-selfie-capture
-          label="Selfie za verifikaciju"
-          [requireConsent]="true"
-          [required]="true"
-          (captured)="onSelfieCaptured($event)"
-          (removed)="onSelfieRemoved()"
-          (consentChanged)="onSelfieConsentChanged($event)"
-          (error)="onSelfieError($event)"
-        >
-        </app-selfie-capture>
-
-        @if (hasSelfie()) {
-        <div class="selfie-status success">
-          <mat-icon>check_circle</mat-icon>
-          <span>Selfie je snimljen i biće otpremljen zajedno sa vozačkom dozvolom</span>
+      <details class="faq-item">
+        <summary>Koliko traje proces verifikacije?</summary>
+        <div class="faq-answer">
+          <p>
+            Većina verifikacija se završava automatski u roku od 5-30 minuta. U nekim slučajevima,
+            ručni pregled može trajati do 24 sata.
+          </p>
         </div>
-        }
-      </div>
+      </details>
 
-      <!-- Optional expiry date -->
-      <div class="expiry-section">
-        <mat-form-field appearance="outline" class="expiry-field">
-          <mat-label>Datum isteka (opciono)</mat-label>
-          <mat-icon matIconPrefix class="calendar-prefix">event</mat-icon>
-          <input
-            matInput
-            [matDatepicker]="picker"
-            [formControl]="expiryDateControl"
-            [min]="minExpiryDate"
-            readonly
-            (click)="picker.open()"
-            placeholder="Kliknite da izaberete datum"
-          />
-          <mat-datepicker-toggle matIconSuffix [for]="picker"></mat-datepicker-toggle>
-          <mat-datepicker #picker></mat-datepicker>
-          <mat-hint>Automatski se očitava iz slike. Unesite samo ako je nejasna.</mat-hint>
-        </mat-form-field>
-      </div>
+      <details class="faq-item">
+        <summary>Koje formate fotografija prihvatate?</summary>
+        <div class="faq-answer">
+          <p>
+            Prihvatamo JPEG i PNG formate. Preporučujemo fotografije minimalne rezolucije 640x480
+            piksela za najbolji kvalitet OCR prepoznavanja.
+          </p>
+        </div>
+      </details>
 
-      <!-- Submit error -->
-      @if (submitError()) {
-      <div class="submit-error">
-        <mat-icon>error_outline</mat-icon>
-        <span>{{ submitError() }}</span>
-      </div>
-      }
+      <details class="faq-item">
+        <summary>Šta ako mi je vozačka dozvola odbijena?</summary>
+        <div class="faq-answer">
+          <p>
+            Ako je vaša verifikacija odbijena, dobićete razlog odbijanja. Možete ponovo otpremiti
+            jasnije fotografije ili kontaktirati podršku za pomoć.
+          </p>
+        </div>
+      </details>
 
-      <!-- Submit success -->
-      @if (submitSuccess()) {
-      <div class="submit-success">
-        <mat-icon>check_circle</mat-icon>
-        <span>Vozačka dozvola je uspešno otpremljena! Pregled je u toku.</span>
-      </div>
-      }
-
-      <!-- Privacy notice -->
-      <div class="privacy-notice">
-        <mat-icon>lock</mat-icon>
-        <p>
-          Vaši podaci su zaštićeni. Fotografije vozačke dozvole se koriste isključivo za
-          verifikaciju identiteta i čuvaju se u skladu sa zakonom o zaštiti podataka.
-        </p>
-      </div>
-    </mat-card-content>
-
-    <mat-card-actions align="end">
-      <button mat-flat-button color="primary" [disabled]="!canSubmit()" (click)="onSubmit()">
-        @if (isSubmitting() || isUploading()) {
-        <mat-spinner diameter="20"></mat-spinner>
-        <span>Otpremanje...</span>
-        } @else {
-        <ng-container>
-          <mat-icon>cloud_upload</mat-icon>
-          <span>Otpremi za verifikaciju</span>
-        </ng-container>
-        }
-      </button>
-    </mat-card-actions>
-  </mat-card>
-  }
-
-  <!-- FAQ Section -->
-  <section class="faq-section">
-    <h2>Često postavljana pitanja</h2>
-
-    <details class="faq-item">
-      <summary>Zašto je potrebna verifikacija vozačke dozvole?</summary>
-      <div class="faq-answer">
-        <p>
-          Verifikacija vozačke dozvole je obavezna za sigurnost svih korisnika platforme. Ona
-          potvrđuje vaš identitet i osigurava da imate važeću dozvolu za upravljanje vozilom.
-        </p>
-      </div>
-    </details>
-
-    <details class="faq-item">
-      <summary>Koliko traje proces verifikacije?</summary>
-      <div class="faq-answer">
-        <p>
-          Većina verifikacija se završava automatski u roku od 5-30 minuta. U nekim slučajevima,
-          ručni pregled može trajati do 24 sata.
-        </p>
-      </div>
-    </details>
-
-    <details class="faq-item">
-      <summary>Koje formate fotografija prihvatate?</summary>
-      <div class="faq-answer">
-        <p>
-          Prihvatamo JPEG i PNG formate. Preporučujemo fotografije minimalne rezolucije 640x480
-          piksela za najbolji kvalitet OCR prepoznavanja.
-        </p>
-      </div>
-    </details>
-
-    <details class="faq-item">
-      <summary>Šta ako mi je vozačka dozvola odbijena?</summary>
-      <div class="faq-answer">
-        <p>
-          Ako je vaša verifikacija odbijena, dobićete razlog odbijanja. Možete ponovo otpremiti
-          jasnije fotografije ili kontaktirati podršku za pomoć.
-        </p>
-      </div>
-    </details>
-
-    <details class="faq-item">
-      <summary>Kako se čuvaju moji podaci?</summary>
-      <div class="faq-answer">
-        <p>
-          Vaši podaci su šifrovani i čuvaju se u skladu sa GDPR regulativom. Fotografije se koriste
-          isključivo za verifikaciju i automatski se brišu nakon isteka zakonskog roka čuvanja.
-        </p>
-      </div>
-    </details>
-  </section>
+      <details class="faq-item">
+        <summary>Kako se čuvaju moji podaci?</summary>
+        <div class="faq-answer">
+          <p>
+            Vaši podaci su šifrovani i čuvaju se u skladu sa GDPR regulativom. Fotografije se
+            koriste isključivo za verifikaciju i automatski se brišu nakon isteka zakonskog roka
+            čuvanja.
+          </p>
+        </div>
+      </details>
+    </section>
   }
 </div>

@@ -1,6 +1,12 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
-import { ReactiveFormsModule, FormBuilder, Validators, AbstractControl, ValidationErrors } from '@angular/forms';
+import {
+  ReactiveFormsModule,
+  FormBuilder,
+  Validators,
+  AbstractControl,
+  ValidationErrors,
+} from '@angular/forms';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 
 import { AuthService } from '@core/auth/auth.service';
@@ -45,10 +51,13 @@ export class ResetPasswordComponent implements OnInit {
 
   readonly form = this.fb.nonNullable.group(
     {
-      newPassword: ['', [Validators.required, Validators.minLength(8), this.passwordStrengthValidator]],
+      newPassword: [
+        '',
+        [Validators.required, Validators.minLength(8), this.passwordStrengthValidator],
+      ],
       confirmPassword: ['', [Validators.required]],
     },
-    { validators: this.passwordMatchValidator }
+    { validators: this.passwordMatchValidator },
   );
 
   /** Password strength: 1 uppercase, 1 lowercase, 1 digit, 1 special char */
@@ -98,8 +107,7 @@ export class ResetPasswordComponent implements OnInit {
         this.isSubmitting.set(false);
       },
       error: (err) => {
-        const message =
-          err?.error?.message || 'Resetovanje lozinke nije uspelo. Pokušajte ponovo.';
+        const message = err?.error?.message || 'Resetovanje lozinke nije uspelo. Pokušajte ponovo.';
         this.errorMessage.set(message);
         this.isSubmitting.set(false);
       },

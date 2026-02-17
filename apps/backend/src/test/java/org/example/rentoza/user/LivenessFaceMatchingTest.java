@@ -4,7 +4,7 @@ import org.example.rentoza.booking.checkin.verification.IdVerificationProvider;
 import org.example.rentoza.booking.checkin.verification.IdVerificationProvider.FaceMatchResult;
 import org.example.rentoza.booking.checkin.verification.IdVerificationProvider.LivenessResult;
 import org.example.rentoza.booking.checkin.verification.SerbianNameNormalizer;
-import org.example.rentoza.car.storage.DocumentStorageStrategy;
+import org.example.rentoza.storage.SupabaseStorageService;
 import org.example.rentoza.user.document.*;
 import org.example.rentoza.util.HashUtil;
 import org.junit.jupiter.api.BeforeEach;
@@ -55,7 +55,7 @@ class LivenessFaceMatchingTest {
     @Mock private UserRepository userRepository;
     @Mock private RenterDocumentRepository documentRepository;
     @Mock private RenterVerificationAuditRepository auditRepository;
-    @Mock private DocumentStorageStrategy storageStrategy;
+    @Mock private SupabaseStorageService storageService;
     @Mock private IdVerificationProvider verificationProvider;
     @Mock private SerbianNameNormalizer nameNormalizer;
     @Mock private HashUtil hashUtil;
@@ -78,7 +78,7 @@ class LivenessFaceMatchingTest {
             userRepository,
             documentRepository,
             auditRepository,
-            storageStrategy,
+            storageService,
             verificationProvider,
             nameNormalizer,
             hashUtil,
@@ -88,7 +88,8 @@ class LivenessFaceMatchingTest {
         
         // Set threshold values
         ReflectionTestUtils.setField(service, "nameMatchThreshold", 0.80);
-        ReflectionTestUtils.setField(service, "faceMatchThreshold", 0.85);
+        ReflectionTestUtils.setField(service, "faceMatchThreshold", 0.95);
+        ReflectionTestUtils.setField(service, "selfieRequired", true);
         ReflectionTestUtils.setField(service, "licenseRequired", true);
         ReflectionTestUtils.setField(service, "newAccountThresholdDays", 30);
     }
@@ -523,12 +524,12 @@ class LivenessFaceMatchingTest {
         void newAccount_RequiresSelfie() {
             // Arrange - Account created 5 days ago
             User newUser = createTestUser(1L, DriverLicenseStatus.NOT_STARTED);
-            newUser.setCreatedAt(Instant.from(LocalDateTime.now().minusDays(5)));
+            newUser.setCreatedAt(Instant.now().minus(5, java.time.temporal.ChronoUnit.DAYS));
             
             // Assert - New accounts are HIGH risk and need selfie
             int newAccountThreshold = 30;
             long accountAgeInDays = java.time.temporal.ChronoUnit.DAYS.between(
-                newUser.getCreatedAt(), LocalDateTime.now());
+                newUser.getCreatedAt(), Instant.now());
             
             assertThat(accountAgeInDays < newAccountThreshold).isTrue();
             // In production, this would enforce selfie requirement
@@ -539,12 +540,12 @@ class LivenessFaceMatchingTest {
         void establishedAccount_RelaxedSelfie() {
             // Arrange - Account created 90 days ago
             User establishedUser = createTestUser(1L, DriverLicenseStatus.APPROVED);
-            establishedUser.setCreatedAt(Instant.from(LocalDateTime.now().minusDays(90)));
+            establishedUser.setCreatedAt(Instant.now().minus(90, java.time.temporal.ChronoUnit.DAYS));
             
             // Assert - Established accounts are lower risk
             int newAccountThreshold = 30;
             long accountAgeInDays = java.time.temporal.ChronoUnit.DAYS.between(
-                establishedUser.getCreatedAt(), LocalDateTime.now());
+                establishedUser.getCreatedAt(), Instant.now());
             
             assertThat(accountAgeInDays >= newAccountThreshold).isTrue();
             // In production, selfie might be optional for established users
@@ -681,7 +682,7 @@ class LivenessFaceMatchingTest {
         user.setLastName("User");
         user.setEmail("test@example.com");
         user.setDriverLicenseStatus(status);
-        user.setCreatedAt(Instant.from(LocalDateTime.now().minusDays(60)));  // Default: established user
+        user.setCreatedAt(Instant.now().minus(60, java.time.temporal.ChronoUnit.DAYS));  // Default: established user
         return user;
     }
     

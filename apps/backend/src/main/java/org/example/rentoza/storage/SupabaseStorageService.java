@@ -349,6 +349,18 @@ public class SupabaseStorageService {
         return createSignedUrl(BUCKET_RENTER_DOCUMENTS, storagePath, expiresInSeconds);
     }
     
+    /**
+     * Download a renter verification document's raw bytes from Supabase Storage.
+     * Used for OCR processing and face matching.
+     *
+     * @param storagePath Path returned from uploadRenterDocument
+     * @return File bytes
+     * @throws IOException if download fails
+     */
+    public byte[] downloadRenterDocument(String storagePath) throws IOException {
+        return downloadFromSupabase(BUCKET_RENTER_DOCUMENTS, storagePath);
+    }
+    
     // ============================================================================
     // USER AVATARS (Public bucket - profile pictures)
     // ============================================================================

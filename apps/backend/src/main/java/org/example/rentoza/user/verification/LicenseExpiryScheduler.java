@@ -9,6 +9,7 @@ import org.example.rentoza.notification.dto.CreateNotificationRequestDTO;
 import org.example.rentoza.scheduler.SchedulerIdempotencyService;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
+import org.example.rentoza.user.DriverLicenseStatus;
 import org.example.rentoza.user.verification.event.LicenseExpiringEvent;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -73,7 +74,7 @@ public class LicenseExpiryScheduler {
      * </ul>
      */
     @Scheduled(cron = "${app.license-expiry.scheduler.cron:0 0 8 * * *}", zone = "Europe/Belgrade")
-    @Transactional(readOnly = true)
+    @Transactional
     public void checkLicenseExpiry() {
         LocalDate today = SerbiaTimeZone.today();
         String taskId = "license-expiry-check-" + today;
@@ -158,9 +159,14 @@ public class LicenseExpiryScheduler {
                 LocalDate expiryDate = user.getDriverLicenseExpiryDate();
                 int daysSinceExpiry = (int) ChronoUnit.DAYS.between(expiryDate, today);
                 
-                // Only notify once when expired (not every day)
-                // Check if we've already notified this user in the past
-                // For now, send notification - deduplication handled by notification service
+                // CRITICAL FIX: Transition status to EXPIRED so booking eligibility is enforced
+                // Previously only notified without status change
+                if (user.getDriverLicenseStatus() == DriverLicenseStatus.APPROVED) {
+                    user.setDriverLicenseStatus(DriverLicenseStatus.EXPIRED);
+                    userRepository.save(user);
+                    log.info("[LicenseExpiry] Status transitioned to EXPIRED: userId={}, expiryDate={}",
+                        user.getId(), expiryDate);
+                }
                 
                 notificationService.createNotification(CreateNotificationRequestDTO.builder()
                     .recipientId(user.getId())

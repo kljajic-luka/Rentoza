@@ -110,6 +110,13 @@ public interface IdVerificationProvider {
          * Used to calculate license tenure for risk scoring.
          */
         private LocalDate issueDate;
+        
+        /**
+         * OCR extraction confidence score (0.0 - 1.0).
+         * Below 0.80 indicates low quality / blurry image requiring re-upload.
+         * Null means the provider doesn't return confidence.
+         */
+        private BigDecimal confidence;
     }
 
     @Data

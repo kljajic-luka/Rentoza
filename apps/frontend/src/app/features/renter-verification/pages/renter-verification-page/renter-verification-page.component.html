@@ -194,23 +194,23 @@
         </app-license-photo-upload>
       </div>
 
-      <!-- Selfie capture (optional but recommended) -->
+      <!-- Selfie capture (required for identity verification) -->
       <div class="upload-section selfie-section">
         <div class="selfie-header">
           <h3>
             <mat-icon>face</mat-icon>
             Selfie fotografija
-            <span class="optional-badge">(Preporučeno)</span>
+            <span class="required-badge">(Obavezno)</span>
           </h3>
           <p class="selfie-hint">
-            Selfie fotografija poboljšava sigurnost verifikacije i može ubrzati odobrenje.
+            Selfie fotografija je obavezna za verifikaciju identiteta. Upoređujemo je sa fotografijom na vozačkoj dozvoli.
           </p>
         </div>
 
         <app-selfie-capture
           label="Selfie za verifikaciju"
           [requireConsent]="true"
-          [required]="false"
+          [required]="true"
           (captured)="onSelfieCaptured($event)"
           (removed)="onSelfieRemoved()"
           (consentChanged)="onSelfieConsentChanged($event)"

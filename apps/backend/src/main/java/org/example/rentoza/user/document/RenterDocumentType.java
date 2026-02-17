@@ -7,11 +7,11 @@ package org.example.rentoza.user.document;
  * <ul>
  *   <li>Driver's license front - photo and name</li>
  *   <li>Driver's license back - categories and expiry</li>
+ *   <li>Selfie - for liveness check and face matching</li>
  * </ul>
  * 
- * <p>Optional documents (Phase 2 / enhanced verification):
+ * <p>Optional documents (enhanced verification):
  * <ul>
- *   <li>Selfie - for liveness check and face matching</li>
  *   <li>National ID card - for additional verification</li>
  *   <li>Passport - for international renters</li>
  * </ul>
@@ -32,10 +32,9 @@ public enum RenterDocumentType {
     
     /**
      * Selfie for liveness detection and face matching.
-     * OPTIONAL - Phase 2 feature for enhanced identity confirmation.
-     * When selfie upload UI is implemented, change required to true.
+     * REQUIRED - selfie upload UI is now implemented; needed for face matching.
      */
-    SELFIE("Selfie fotografija", false),
+    SELFIE("Selfie fotografija", true),
     
     /**
      * Front of national ID card.

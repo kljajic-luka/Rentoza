@@ -173,6 +173,25 @@ public class RenterDocument {
     @Column(name = "name_match_score", precision = 3, scale = 2)
     private BigDecimal nameMatchScore;
     
+    /**
+     * Whether face match between selfie and license met threshold (0.95).
+     */
+    @Column(name = "face_match_passed")
+    private Boolean faceMatchPassed;
+    
+    /**
+     * Quality flag for documents flagged during processing.
+     * Values: LOW_CONFIDENCE, BLURRY, EDITED, etc.
+     */
+    @Column(name = "quality_flag", length = 50)
+    private String qualityFlag;
+    
+    /**
+     * Human-readable explanation for quality flag.
+     */
+    @Column(name = "quality_flag_reason", length = 500)
+    private String qualityFlagReason;
+    
     // ================= PROCESSING STATUS =================
     
     /**

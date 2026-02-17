@@ -16,10 +16,13 @@ import java.time.LocalDate;
  * 
  * <p><b>IMPORTANT:</b> Never use in production! Enable with:
  * {@code app.id-verification.provider=MOCK}
+ * 
+ * <p><b>SECURITY:</b> matchIfMissing is FALSE - this provider will NOT activate
+ * unless explicitly configured. Production must set a real provider.
  */
 @Component
 @Slf4j
-@ConditionalOnProperty(name = "app.id-verification.provider", havingValue = "MOCK", matchIfMissing = true)
+@ConditionalOnProperty(name = "app.id-verification.provider", havingValue = "MOCK", matchIfMissing = false)
 public class MockIdVerificationProvider implements IdVerificationProvider {
 
     @Override
@@ -63,6 +66,8 @@ public class MockIdVerificationProvider implements IdVerificationProvider {
                 .licenseCategories("B")
                 // License issued 6 years ago
                 .issueDate(LocalDate.now().minusYears(6))
+                // High confidence for mock (production providers return actual score)
+                .confidence(new BigDecimal("0.95"))
                 .build();
     }
 

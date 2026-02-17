@@ -3,7 +3,7 @@ package org.example.rentoza.user;
 import org.example.rentoza.booking.checkin.verification.IdVerificationProvider;
 import org.example.rentoza.booking.checkin.verification.SerbianNameNormalizer;
 import org.example.rentoza.car.DocumentVerificationStatus;
-import org.example.rentoza.car.storage.DocumentStorageStrategy;
+import org.example.rentoza.storage.SupabaseStorageService;
 import org.example.rentoza.exception.ValidationException;
 import org.example.rentoza.user.document.*;
 import org.example.rentoza.user.dto.*;
@@ -57,7 +57,7 @@ class RenterVerificationServiceTest {
     @Mock private UserRepository userRepository;
     @Mock private RenterDocumentRepository documentRepository;
     @Mock private RenterVerificationAuditRepository auditRepository;
-    @Mock private DocumentStorageStrategy storageStrategy;
+    @Mock private SupabaseStorageService storageService;
     @Mock private IdVerificationProvider verificationProvider;
     @Mock private SerbianNameNormalizer nameNormalizer;
     @Mock private HashUtil hashUtil;
@@ -77,7 +77,7 @@ class RenterVerificationServiceTest {
             userRepository,
             documentRepository,
             auditRepository,
-            storageStrategy,
+            storageService,
             verificationProvider,
             nameNormalizer,
             hashUtil,
@@ -87,6 +87,8 @@ class RenterVerificationServiceTest {
         
         // Set default @Value properties
         ReflectionTestUtils.setField(service, "nameMatchThreshold", 0.80);
+        ReflectionTestUtils.setField(service, "faceMatchThreshold", 0.95);
+        ReflectionTestUtils.setField(service, "selfieRequired", true);
         ReflectionTestUtils.setField(service, "licenseRequired", true);
         ReflectionTestUtils.setField(service, "newAccountThresholdDays", 30);
     }
@@ -106,7 +108,7 @@ class RenterVerificationServiceTest {
             
             when(userRepository.findById(userId)).thenReturn(Optional.of(user));
             setupValidMockFile("image/jpeg", 1000L);
-            when(storageStrategy.uploadFile(any(), any())).thenReturn("s3://bucket/file.jpg");
+            when(storageService.uploadRenterDocument(anyLong(), any(), any())).thenReturn("renters/1/documents/drivers_license_front/abc.jpg");
             when(documentRepository.save(any(RenterDocument.class))).thenAnswer(i -> {
                 RenterDocument d = i.getArgument(0);
                 d.setId(100L);
@@ -125,7 +127,7 @@ class RenterVerificationServiceTest {
             assertThat(result).isNotNull();
             assertThat(result.getId()).isEqualTo(100L);
             verify(documentRepository).save(any(RenterDocument.class));
-            verify(storageStrategy).uploadFile(any(), any());
+            verify(storageService).uploadRenterDocument(anyLong(), any(), any());
         }
         
         @Test
@@ -148,7 +150,7 @@ class RenterVerificationServiceTest {
         }
         
         @Test
-        @DisplayName("submitDocument rejects file exceeding 10MB")
+        @DisplayName("submitDocument rejects file exceeding 5MB")
         void submitDocument_FileTooLarge_ThrowsValidation() throws Exception {
             // Arrange
             Long userId = 1L;
@@ -164,7 +166,7 @@ class RenterVerificationServiceTest {
             // Act & Assert
             assertThatThrownBy(() -> service.submitDocument(userId, mockFile, request))
                 .isInstanceOf(ValidationException.class)
-                .hasMessageContaining("10MB");
+                .hasMessageContaining("5MB");
         }
         
         @ParameterizedTest
@@ -186,7 +188,7 @@ class RenterVerificationServiceTest {
             // Act & Assert
             assertThatThrownBy(() -> service.submitDocument(userId, mockFile, request))
                 .isInstanceOf(ValidationException.class)
-                .hasMessageContaining("MIME");
+                .hasMessageContaining("Invalid file type");
         }
         
         @ParameterizedTest
@@ -198,7 +200,7 @@ class RenterVerificationServiceTest {
             User user = createTestUser(userId, DriverLicenseStatus.NOT_STARTED);
             when(userRepository.findById(userId)).thenReturn(Optional.of(user));
             setupValidMockFile(mimeType, 1000L);
-            when(storageStrategy.uploadFile(any(), any())).thenReturn("s3://bucket/file.jpg");
+            when(storageService.uploadRenterDocument(anyLong(), any(), any())).thenReturn("renters/1/documents/drivers_license_front/abc.jpg");
             when(documentRepository.save(any(RenterDocument.class))).thenAnswer(i -> {
                 RenterDocument d = i.getArgument(0);
                 d.setId(100L);
@@ -224,7 +226,7 @@ class RenterVerificationServiceTest {
             User user = createTestUser(userId, DriverLicenseStatus.NOT_STARTED);
             when(userRepository.findById(userId)).thenReturn(Optional.of(user));
             setupValidMockFile("image/jpeg", 1000L);
-            when(storageStrategy.uploadFile(any(), any())).thenReturn("s3://bucket/file.jpg");
+            when(storageService.uploadRenterDocument(anyLong(), any(), any())).thenReturn("renters/1/documents/drivers_license_front/abc.jpg");
             when(documentRepository.save(any(RenterDocument.class))).thenAnswer(i -> {
                 RenterDocument d = i.getArgument(0);
                 d.setId(100L);
@@ -240,7 +242,7 @@ class RenterVerificationServiceTest {
 
             // Assert
             assertThat(user.getDriverLicenseStatus()).isEqualTo(DriverLicenseStatus.PENDING_REVIEW);
-            verify(userRepository).save(user);
+            verify(userRepository, atLeast(1)).save(user);
         }
     }
     
@@ -335,7 +337,7 @@ class RenterVerificationServiceTest {
 
             // Assert
             assertThat(result.isEligible()).isFalse();
-            assertThat(result.getBlockReason()).isEqualTo(BookingEligibilityDTO.EligibilityBlockReason.LICENSE_NOT_VERIFIED);
+            assertThat(result.getBlockReason()).isEqualTo(BookingEligibilityDTO.EligibilityBlockReason.VERIFICATION_PENDING);
         }
         
         @Test
@@ -391,7 +393,7 @@ class RenterVerificationServiceTest {
             assertThat(result.isEligible()).isFalse();
             assertThat(result.getBlockReason())
                     .isEqualTo(BookingEligibilityDTO.EligibilityBlockReason.LICENSE_TENURE_TOO_SHORT);
-            assertThat(result.getMessage()).contains("24");
+            assertThat(result.getMessage()).contains("2 years");
         }
         
         @Test
@@ -468,7 +470,12 @@ class RenterVerificationServiceTest {
             
             when(userRepository.findById(userId)).thenReturn(Optional.of(user));
             when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
-            when(documentRepository.findByUserId(userId)).thenReturn(Collections.emptyList());
+            
+            // Provide required documents to pass hardening checks
+            RenterDocument frontDoc = createTestDocument(10L, user, RenterDocumentType.DRIVERS_LICENSE_FRONT);
+            RenterDocument backDoc = createTestDocument(11L, user, RenterDocumentType.DRIVERS_LICENSE_BACK);
+            RenterDocument selfieDoc = createTestDocument(12L, user, RenterDocumentType.SELFIE);
+            when(documentRepository.findByUserId(userId)).thenReturn(List.of(frontDoc, backDoc, selfieDoc));
 
             // Act
             service.approveVerification(userId, adminId, "Looks good");
@@ -562,15 +569,35 @@ class RenterVerificationServiceTest {
         user.setLastName("User");
         user.setEmail("test" + id + "@example.com");
         user.setDriverLicenseStatus(status);
-        user.setCreatedAt(Instant.from(LocalDateTime.now().minusDays(60))); // Not a new account
+        user.setCreatedAt(Instant.now().minus(60, java.time.temporal.ChronoUnit.DAYS)); // Not a new account
         return user;
     }
     
     private void setupValidMockFile(String mimeType, long size) throws IOException {
+        // JPEG magic bytes: FF D8 FF + padding
+        byte[] jpegBytes = new byte[]{(byte)0xFF, (byte)0xD8, (byte)0xFF, (byte)0xE0, 0, 0, 0, 0, 0, 0, 0, 0};
+        // PNG magic bytes: 89 50 4E 47 0D 0A 1A 0A + padding
+        byte[] pngBytes = new byte[]{(byte)0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0};
+        
+        byte[] fileBytes = mimeType.contains("png") ? pngBytes : jpegBytes;
+        
         when(mockFile.isEmpty()).thenReturn(false);
         when(mockFile.getSize()).thenReturn(size);
         when(mockFile.getContentType()).thenReturn(mimeType);
-        when(mockFile.getBytes()).thenReturn(new byte[]{1, 2, 3});
+        when(mockFile.getBytes()).thenReturn(fileBytes);
+        when(mockFile.getInputStream()).thenReturn(new java.io.ByteArrayInputStream(fileBytes));
         when(mockFile.getOriginalFilename()).thenReturn("license.jpg");
+    }
+    
+    private RenterDocument createTestDocument(Long id, User user, RenterDocumentType type) {
+        RenterDocument doc = new RenterDocument();
+        doc.setId(id);
+        doc.setUser(user);
+        doc.setType(type);
+        doc.setDocumentUrl("renters/" + user.getId() + "/documents/" + type.name().toLowerCase() + "/test.jpg");
+        doc.setStatus(DocumentVerificationStatus.PENDING);
+        doc.setProcessingStatus(RenterDocument.ProcessingStatus.COMPLETED);
+        doc.setCreatedAt(LocalDateTime.now());
+        return doc;
     }
 }

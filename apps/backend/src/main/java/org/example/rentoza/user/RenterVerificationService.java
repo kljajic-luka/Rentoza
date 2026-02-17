@@ -7,7 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.booking.checkin.verification.IdVerificationProvider;
 import org.example.rentoza.booking.checkin.verification.SerbianNameNormalizer;
 import org.example.rentoza.car.DocumentVerificationStatus;
-import org.example.rentoza.car.storage.DocumentStorageStrategy;
+import org.example.rentoza.storage.SupabaseStorageService;
 import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.exception.ValidationException;
 import org.example.rentoza.user.document.*;
@@ -48,7 +48,7 @@ import java.util.stream.Collectors;
  * <ul>
  *   <li>{@link IdVerificationProvider} - OCR extraction and liveness</li>
  *   <li>{@link SerbianNameNormalizer} - Name matching</li>
- *   <li>{@link DocumentStorageStrategy} - File storage</li>
+ *   <li>{@link SupabaseStorageService} - File storage (renter-documents bucket)</li>
  *   <li>{@link HashUtil} - Document hashing</li>
  * </ul>
  */
@@ -62,7 +62,7 @@ public class RenterVerificationService {
     private final UserRepository userRepository;
     private final RenterDocumentRepository documentRepository;
     private final RenterVerificationAuditRepository auditRepository;
-    private final DocumentStorageStrategy storageStrategy;
+    private final SupabaseStorageService storageService;
     private final IdVerificationProvider verificationProvider;
     private final SerbianNameNormalizer nameNormalizer;
     private final HashUtil hashUtil;
@@ -71,19 +71,28 @@ public class RenterVerificationService {
     
     // ==================== CONFIGURATION ====================
     
-    private static final long MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+    private static final long MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB (Turo standard)
     private static final Set<String> ALLOWED_MIME_TYPES = Set.of(
         "image/jpeg", "image/jpg", "image/png"
     );
+    private static final double MIN_OCR_CONFIDENCE_THRESHOLD = 0.80; // Below this => re-upload
+    
+    // JPEG magic bytes: FF D8 FF
+    private static final byte[] JPEG_MAGIC = {(byte)0xFF, (byte)0xD8, (byte)0xFF};
+    // PNG magic bytes: 89 50 4E 47 0D 0A 1A 0A
+    private static final byte[] PNG_MAGIC = {(byte)0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
     
     @Value("${app.renter-verification.name-match-threshold:0.80}")
     private double nameMatchThreshold;
     
-    @Value("${app.renter-verification.face-match-threshold:0.85}")
+    @Value("${app.renter-verification.face-match-threshold:0.95}")
     private double faceMatchThreshold;
     
     @Value("${app.renter-verification.license-required:true}")
     private boolean licenseRequired;
+    
+    @Value("${app.renter-verification.selfie-required:true}")
+    private boolean selfieRequired;
     
     @Value("${app.renter-verification.new-account-threshold-days:30}")
     private int newAccountThresholdDays;
@@ -146,13 +155,10 @@ public class RenterVerificationService {
                 documentRepository.delete(existing);
             });
         
-        // Generate storage path
-        String storagePath = String.format("users/%d/verification/%s_%d.%s",
-            userId, docType.name().toLowerCase(), System.currentTimeMillis(),
-            getFileExtension(file.getOriginalFilename()));
-        
-        // Upload to storage
-        String documentUrl = storageStrategy.uploadFile(file, storagePath);
+        // Generate storage path - uses renter-documents bucket (not car-documents)
+        // UUID-based filename prevents path traversal attacks
+        String documentUrl = storageService.uploadRenterDocument(
+            userId, docType.name().toLowerCase(), file);
         
         // Create document entity
         RenterDocument document = RenterDocument.builder()
@@ -245,7 +251,7 @@ public class RenterVerificationService {
             documentRepository.save(document);
             
             // Get file bytes
-            byte[] fileBytes = storageStrategy.getFile(document.getDocumentUrl());
+            byte[] fileBytes = storageService.downloadRenterDocument(document.getDocumentUrl());
             String mimeType = document.getMimeType();
             
             if (document.getType().requiresOcr()) {
@@ -256,7 +262,29 @@ public class RenterVerificationService {
                 if (ocrResult.isSuccess()) {
                     // Store OCR results
                     document.setOcrExtractedData(serializeOcrResult(ocrResult));
-                    document.setOcrConfidence(BigDecimal.valueOf(0.90)); // Default if provider doesn't return
+                    
+                    // Use provider's confidence if available, otherwise default to 0.90
+                    double ocrConfidenceValue = ocrResult.getConfidence() != null 
+                        ? ocrResult.getConfidence().doubleValue() : 0.90;
+                    document.setOcrConfidence(BigDecimal.valueOf(ocrConfidenceValue));
+                    
+                    // SECURITY: Flag low-confidence OCR results (likely blurry/poor quality)
+                    // Below 80% confidence => flag for re-upload (Turo standard)
+                    if (ocrConfidenceValue < MIN_OCR_CONFIDENCE_THRESHOLD) {
+                        log.warn("Low OCR confidence: docId={}, confidence={}, threshold={}", 
+                            documentId, ocrConfidenceValue, MIN_OCR_CONFIDENCE_THRESHOLD);
+                        document.setProcessingError(String.format(
+                            "Low image quality (confidence: %.0f%%). " +
+                            "Please upload a clearer, well-lit photo of your license.", 
+                            ocrConfidenceValue * 100));
+                        // Populate quality flag columns for DB-level tracking
+                        document.setQualityFlag("LOW_CONFIDENCE");
+                        document.setQualityFlagReason(String.format(
+                            "OCR confidence %.2f below minimum threshold %.2f",
+                            ocrConfidenceValue, MIN_OCR_CONFIDENCE_THRESHOLD));
+                        // Don't block processing entirely - admin can still review
+                        // But auto-approval will be blocked by the threshold check
+                    }
                     
                     User user = document.getUser();
                     
@@ -364,7 +392,7 @@ public class RenterVerificationService {
         
         // Check if all required documents are processed
         // Required: DRIVERS_LICENSE_FRONT, DRIVERS_LICENSE_BACK
-        // Optional: SELFIE (Phase 2 feature - when implemented, liveness check enhances security)
+        // Required (when selfie-required=true): SELFIE for face matching (Turo standard)
         List<RenterDocument> documents = documentRepository.findByUserId(userId);
         boolean hasLicenseFront = documents.stream()
             .anyMatch(d -> d.getType() == RenterDocumentType.DRIVERS_LICENSE_FRONT 
@@ -372,11 +400,18 @@ public class RenterVerificationService {
         boolean hasLicenseBack = documents.stream()
             .anyMatch(d -> d.getType() == RenterDocumentType.DRIVERS_LICENSE_BACK 
                 && d.getProcessingStatus() == RenterDocument.ProcessingStatus.COMPLETED);
+        boolean hasSelfie = documents.stream()
+            .anyMatch(d -> d.getType() == RenterDocumentType.SELFIE 
+                && d.getProcessingStatus() == RenterDocument.ProcessingStatus.COMPLETED);
         
-        // Require only license front + back for verification
+        // Require license front + back, and selfie if configured
         if (!hasLicenseFront || !hasLicenseBack) {
             log.debug("Not all required documents processed: userId={}, front={}, back={}", 
                 userId, hasLicenseFront, hasLicenseBack);
+            return;
+        }
+        if (selfieRequired && !hasSelfie) {
+            log.debug("Selfie required but not submitted: userId={}", userId);
             return;
         }
         
@@ -413,21 +448,47 @@ public class RenterVerificationService {
         double nameMatch = licenseDoc.getNameMatchScore() != null 
             ? licenseDoc.getNameMatchScore().doubleValue() : 0.0;
         
-        // Check selfie liveness (optional - Phase 2 feature)
-        // If selfie not submitted, liveness is assumed passed
-        // When selfie upload is implemented, this provides additional fraud protection
+        // Check selfie liveness and face match (required when selfie-required=true)
+        // Face match threshold: 0.95 (Turo standard)
         Optional<RenterDocument> selfie = documents.stream()
             .filter(d -> d.getType() == RenterDocumentType.SELFIE)
             .findFirst();
         boolean livenessPassed = selfie
             .map(d -> Boolean.TRUE.equals(d.getLivenessPassed()))
-            .orElse(true); // No selfie = assume passed (Phase 2 will require this)
+            .orElse(!selfieRequired); // No selfie = fail if required, pass if optional
+        
+        // SECURITY: Face match must pass threshold when selfie is submitted
+        boolean faceMatchPassed = true;
+        if (selfie.isPresent()) {
+            double faceScore = selfie.get().getFaceMatchScore() != null 
+                ? selfie.get().getFaceMatchScore().doubleValue() : 0.0;
+            faceMatchPassed = faceScore >= faceMatchThreshold;
+            if (!faceMatchPassed) {
+                log.warn("Face match below threshold: userId={}, score={}, threshold={}", 
+                    userId, faceScore, faceMatchThreshold);
+            }
+        } else if (selfieRequired) {
+            faceMatchPassed = false;
+        }
         
         // Auto-approve decision
         boolean meetsOcrThreshold = riskLevel.meetsAutoApproveThreshold(ocrConfidence);
         boolean meetsNameThreshold = nameMatch >= nameMatchThreshold;
         
-        if (meetsOcrThreshold && meetsNameThreshold && livenessPassed) {
+        // SECURITY: Check license expiry date before auto-approval
+        // Turo standard: never auto-approve an expired or missing-expiry license
+        LocalDate expiryDate = user.getDriverLicenseExpiryDate();
+        if (expiryDate == null) {
+            // Try from document
+            expiryDate = documents.stream()
+                .filter(d -> d.getExpiryDate() != null)
+                .map(RenterDocument::getExpiryDate)
+                .findFirst()
+                .orElse(null);
+        }
+        boolean expiryValid = expiryDate != null && !expiryDate.isBefore(LocalDate.now());
+        
+        if (meetsOcrThreshold && meetsNameThreshold && livenessPassed && faceMatchPassed && expiryValid) {
             // AUTO-APPROVE
             log.info("Auto-approving: userId={}, ocr={}, nameMatch={}", 
                 userId, ocrConfidence, nameMatch);
@@ -447,8 +508,8 @@ public class RenterVerificationService {
             }
             
             String reason = String.format(
-                "Auto-approved: OCR=%.2f, NameMatch=%.2f, Liveness=%s, RiskLevel=%s",
-                ocrConfidence, nameMatch, livenessPassed, riskLevel);
+                "Auto-approved: OCR=%.2f, NameMatch=%.2f, Liveness=%s, FaceMatch=%s, Expiry=%s, RiskLevel=%s",
+                ocrConfidence, nameMatch, livenessPassed, faceMatchPassed, expiryDate, riskLevel);
             
             createAudit(user, licenseDoc, null,
                 RenterVerificationAudit.AuditAction.AUTO_APPROVED,
@@ -461,13 +522,13 @@ public class RenterVerificationService {
             
         } else {
             // Escalate to manual review
-            log.info("Escalating to review: userId={}, ocr={}, nameMatch={}, liveness={}",
-                userId, ocrConfidence, nameMatch, livenessPassed);
+            log.info("Escalating to review: userId={}, ocr={}, nameMatch={}, liveness={}, faceMatch={}, expiryValid={}",
+                userId, ocrConfidence, nameMatch, livenessPassed, faceMatchPassed, expiryValid);
             
             String reason = String.format(
-                "Below threshold: OCR=%.2f (need %.2f), NameMatch=%.2f (need %.2f), Liveness=%s",
+                "Below threshold: OCR=%.2f (need %.2f), NameMatch=%.2f (need %.2f), Liveness=%s, FaceMatch=%s (threshold=%.2f), ExpiryValid=%s (date=%s)",
                 ocrConfidence, riskLevel.getAutoApproveThreshold(), 
-                nameMatch, nameMatchThreshold, livenessPassed);
+                nameMatch, nameMatchThreshold, livenessPassed, faceMatchPassed, faceMatchThreshold, expiryValid, expiryDate);
             
             createAudit(user, licenseDoc, null,
                 RenterVerificationAudit.AuditAction.ESCALATED_TO_REVIEW,
@@ -509,7 +570,7 @@ public class RenterVerificationService {
         
         try {
             // Get license front bytes from storage
-            byte[] licenseBytes = storageStrategy.getFile(licenseFront.getDocumentUrl());
+            byte[] licenseBytes = storageService.downloadRenterDocument(licenseFront.getDocumentUrl());
             
             // Perform face matching
             IdVerificationProvider.FaceMatchResult matchResult = 
@@ -520,6 +581,9 @@ public class RenterVerificationService {
             
             boolean faceMatchPassed = matchResult.isMatched() && 
                 matchResult.getConfidence().doubleValue() >= faceMatchThreshold;
+            
+            // Populate face_match_passed DB column
+            selfieDocument.setFaceMatchPassed(faceMatchPassed);
             
             if (faceMatchPassed) {
                 log.info("Face match PASSED: userId={}, confidence={}", 
@@ -636,6 +700,53 @@ public class RenterVerificationService {
             throw new ValidationException("User is not pending review");
         }
         
+        // SECURITY: Enforce that required documents exist before admin can approve
+        List<RenterDocument> documents = documentRepository.findByUserId(userId);
+        boolean hasLicenseFront = documents.stream()
+            .anyMatch(d -> d.getType() == RenterDocumentType.DRIVERS_LICENSE_FRONT);
+        boolean hasLicenseBack = documents.stream()
+            .anyMatch(d -> d.getType() == RenterDocumentType.DRIVERS_LICENSE_BACK);
+        
+        if (!hasLicenseFront || !hasLicenseBack) {
+            throw new ValidationException(
+                "Cannot approve: required documents missing. Need both license front and back.");
+        }
+        
+        // SECURITY: Enforce selfie if face matching is required
+        if (selfieRequired) {
+            boolean hasSelfie = documents.stream()
+                .anyMatch(d -> d.getType() == RenterDocumentType.SELFIE);
+            if (!hasSelfie) {
+                throw new ValidationException(
+                    "Cannot approve: selfie is required for face matching verification.");
+            }
+        }
+        
+        // SECURITY: Enforce valid (non-expired) license expiry date before approval
+        LocalDate expiryDate = user.getDriverLicenseExpiryDate();
+        if (expiryDate == null) {
+            // Try to get expiry from document OCR data
+            expiryDate = documents.stream()
+                .filter(d -> d.getExpiryDate() != null)
+                .map(RenterDocument::getExpiryDate)
+                .findFirst()
+                .orElse(null);
+        }
+        if (expiryDate == null) {
+            throw new ValidationException(
+                "Cannot approve: license expiry date is required. Set via OCR or manual entry.");
+        }
+        if (expiryDate.isBefore(LocalDate.now())) {
+            throw new ValidationException(
+                "Cannot approve: driver's license has expired on " + expiryDate + 
+                ". User must submit a valid, non-expired license.");
+        }
+        
+        // If expiry was found in documents but not on user, update it
+        if (user.getDriverLicenseExpiryDate() == null) {
+            user.setDriverLicenseExpiryDate(expiryDate);
+        }
+        
         DriverLicenseStatus previousStatus = user.getDriverLicenseStatus();
         
         // Update user status
@@ -644,8 +755,7 @@ public class RenterVerificationService {
         user.setDriverLicenseVerifiedBy(admin);
         userRepository.save(user);
         
-        // Update document statuses
-        List<RenterDocument> documents = documentRepository.findByUserId(userId);
+        // Update document statuses (reuse documents fetched during validation above)
         for (RenterDocument doc : documents) {
             if (doc.getStatus() == DocumentVerificationStatus.PENDING) {
                 doc.setStatus(DocumentVerificationStatus.VERIFIED);
@@ -923,12 +1033,77 @@ public class RenterVerificationService {
             throw new ValidationException("File is empty");
         }
         if (file.getSize() > MAX_FILE_SIZE) {
-            throw new ValidationException("File too large. Maximum 10MB allowed.");
+            throw new ValidationException("File too large. Maximum 5MB allowed.");
         }
         String mimeType = file.getContentType();
         if (mimeType == null || !ALLOWED_MIME_TYPES.contains(mimeType.toLowerCase())) {
             throw new ValidationException("Invalid file type. Allowed: JPEG, PNG");
         }
+        // SECURITY: Validate magic bytes to prevent fake file uploads
+        // Don't trust MIME type alone - validate actual file signature
+        try {
+            validateMagicBytes(file);
+        } catch (IOException e) {
+            throw new ValidationException("Unable to validate file integrity");
+        }
+        // SECURITY: Sanitize filename - use UUID to prevent path traversal
+        // Original filename is stored for display but never used for storage paths
+        String originalFilename = file.getOriginalFilename();
+        if (originalFilename != null && (originalFilename.contains("..") || originalFilename.contains("/") || originalFilename.contains("\\"))) {
+            log.warn("Suspicious filename detected: {}", originalFilename);
+            throw new ValidationException("Invalid filename");
+        }
+    }
+    
+    /**
+     * Validate file magic bytes match declared MIME type.
+     * Prevents fake file uploads (e.g., SVG with XML entities, executables renamed to .jpg).
+     * Also cross-validates that declared MIME matches detected signature.
+     */
+    private void validateMagicBytes(MultipartFile file) throws IOException {
+        byte[] header = new byte[12];
+        int bytesRead;
+        try (var in = file.getInputStream()) {
+            bytesRead = in.read(header);
+        }
+        if (bytesRead < 3) {
+            throw new ValidationException("Invalid image file (too short)");
+        }
+        boolean isJpeg = header[0] == (byte)0xFF && header[1] == (byte)0xD8 && header[2] == (byte)0xFF;
+        boolean isPng = bytesRead >= 8 
+            && header[0] == (byte)0x89 && header[1] == 0x50 && header[2] == 0x4E && header[3] == 0x47
+            && header[4] == 0x0D && header[5] == 0x0A && header[6] == 0x1A && header[7] == 0x0A;
+        
+        if (!isJpeg && !isPng) {
+            log.warn("Magic bytes validation failed: declared={}, actual bytes={}",
+                file.getContentType(), bytesToHex(header, Math.min(bytesRead, 8)));
+            throw new ValidationException("Invalid image file. File content does not match declared type. Only genuine JPEG/PNG files are accepted.");
+        }
+        
+        // SECURITY: Cross-validate declared MIME type matches detected file signature
+        // Prevents e.g. a PNG file claiming to be image/jpeg or vice versa
+        String declaredMime = file.getContentType();
+        if (declaredMime != null) {
+            boolean mimeClaimsJpeg = declaredMime.contains("jpeg") || declaredMime.contains("jpg");
+            boolean mimeClaimsPng = declaredMime.contains("png");
+            
+            if (mimeClaimsJpeg && !isJpeg) {
+                log.warn("MIME/magic-bytes mismatch: declared={}, detected=PNG", declaredMime);
+                throw new ValidationException("File content mismatch: file claims to be JPEG but contains PNG data.");
+            }
+            if (mimeClaimsPng && !isPng) {
+                log.warn("MIME/magic-bytes mismatch: declared={}, detected=JPEG", declaredMime);
+                throw new ValidationException("File content mismatch: file claims to be PNG but contains JPEG data.");
+            }
+        }
+    }
+    
+    private String bytesToHex(byte[] bytes, int length) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < length; i++) {
+            sb.append(String.format("%02X ", bytes[i]));
+        }
+        return sb.toString().trim();
     }
     
     private String getFileExtension(String filename) {

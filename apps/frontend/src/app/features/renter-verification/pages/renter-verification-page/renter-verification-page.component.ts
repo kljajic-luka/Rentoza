@@ -193,11 +193,12 @@ export class RenterVerificationPageComponent implements OnInit, OnDestroy {
   /** Is blocked (suspended) */
   readonly isSuspended = computed(() => isBlocked(this.licenseStatus()));
 
-  /** Can submit (both files selected) */
+  /** Can submit (front + back + selfie required) */
   readonly canSubmit = computed(() => {
     return (
       this.frontFile() !== null &&
       this.backFile() !== null &&
+      this.selfieFile() !== null &&
       !this.isSubmitting() &&
       !this.isUploading()
     );
@@ -322,8 +323,9 @@ export class RenterVerificationPageComponent implements OnInit, OnDestroy {
    * Handle selfie capture error.
    */
   onSelfieError(error: string): void {
-    // Log but don't block - selfie is optional
+    // Log selfie capture error
     console.warn('Selfie capture error:', error);
+    this.submitError.set('Greška pri snimanju selfija: ' + error);
   }
 
   /**
@@ -336,6 +338,11 @@ export class RenterVerificationPageComponent implements OnInit, OnDestroy {
 
     if (!front || !back) {
       this.submitError.set('Potrebne su obe strane vozačke dozvole');
+      return;
+    }
+
+    if (!selfie) {
+      this.submitError.set('Selfie fotografija je obavezna za verifikaciju identiteta');
       return;
     }
 

@@ -101,9 +101,9 @@ public class RenterVerificationController {
     @PostMapping(value = "/license/submit", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<RenterVerificationProfileDTO> submitLicense(
-            @Parameter(description = "Front side of driver's license (JPEG/PNG, max 10MB)") 
+            @Parameter(description = "Front side of driver's license (JPEG/PNG, max 5MB)") 
             @RequestParam("licenseFront") MultipartFile licenseFront,
-            @Parameter(description = "Back side of driver's license (JPEG/PNG, max 10MB)") 
+            @Parameter(description = "Back side of driver's license (JPEG/PNG, max 5MB)") 
             @RequestParam("licenseBack") MultipartFile licenseBack,
             @Parameter(description = "License expiry date (ISO format: YYYY-MM-DD)") 
             @RequestParam(value = "expiryDate", required = false) 
@@ -166,9 +166,9 @@ public class RenterVerificationController {
     @PostMapping(value = "/document/submit", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<RenterDocumentDTO> submitDocument(
-            @Parameter(description = "Document image file (JPEG/PNG, max 10MB)") 
+            @Parameter(description = "Document image file (JPEG/PNG, max 5MB)") 
             @RequestParam("file") MultipartFile file,
-            @Parameter(description = "Document type") 
+            @Parameter(description = "Document type (DRIVERS_LICENSE_FRONT, DRIVERS_LICENSE_BACK, or SELFIE only)") 
             @RequestParam("documentType") RenterDocumentType documentType,
             @Parameter(description = "Document expiry date (required for license)") 
             @RequestParam(value = "expiryDate", required = false) 
@@ -182,6 +182,14 @@ public class RenterVerificationController {
     ) throws IOException {
         
         Long userId = currentUser.id();
+        
+        // SECURITY: Only allow driver's license and selfie via this endpoint
+        // Passport/ID card should not bypass the license requirement
+        if (!documentType.isDriversLicense() && documentType != RenterDocumentType.SELFIE) {
+            throw new org.example.rentoza.exception.ValidationException(
+                "Only driver's license (front/back) and selfie documents are accepted. " +
+                "Document type '" + documentType + "' is not allowed.");
+        }
         
         DriverLicenseSubmissionRequest request = DriverLicenseSubmissionRequest.builder()
             .documentType(documentType)

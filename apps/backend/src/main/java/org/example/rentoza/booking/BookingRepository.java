@@ -879,6 +879,83 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
 
     // ========== P0-5 FIX: OPTIMIZED QUERIES TO REPLACE findAll() ==========
 
+    // ========== PAYMENT LIFECYCLE SCHEDULER QUERIES ==========
+    
+    /**
+     * Find bookings needing payment capture (T-24h before trip start).
+     * 
+     * <p>Targets ACTIVE/APPROVED bookings with AUTHORIZED payment status
+     * where the trip starts within the next 24 hours.
+     * 
+     * @param statuses Booking statuses to check (ACTIVE, APPROVED)
+     * @param captureWindow Time threshold (now + 24h)
+     * @return Bookings ready for payment capture
+     */
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.car c " +
+           "JOIN FETCH c.owner " +
+           "JOIN FETCH b.renter r " +
+           "WHERE b.status IN :statuses " +
+           "AND b.paymentStatus IN ('AUTHORIZED', 'DEPOSIT_AUTHORIZED') " +
+           "AND b.startTime <= :captureWindow " +
+           "AND b.bookingAuthorizationId IS NOT NULL " +
+           "ORDER BY b.startTime ASC")
+    List<Booking> findBookingsNeedingPaymentCapture(
+        @Param("statuses") List<BookingStatus> statuses,
+        @Param("captureWindow") LocalDateTime captureWindow
+    );
+    
+    /**
+     * Find COMPLETED bookings eligible for deposit release (T+48h after trip end).
+     * 
+     * <p>Targets COMPLETED bookings where:
+     * <ul>
+     *   <li>Deposit is still held (not released/captured)</li>
+     *   <li>Trip ended more than 48 hours ago</li>
+     *   <li>No pending damage claims blocking release</li>
+     * </ul>
+     * 
+     * @param status BookingStatus.COMPLETED
+     * @param releaseAfter Instant representing 48 hours ago
+     * @return Bookings eligible for deposit auto-release
+     */
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.car c " +
+           "JOIN FETCH c.owner " +
+           "JOIN FETCH b.renter r " +
+           "WHERE b.status = :status " +
+           "AND b.depositAuthorizationId IS NOT NULL " +
+           "AND (b.securityDepositReleased IS NULL OR b.securityDepositReleased = false) " +
+           "AND b.tripEndedAt IS NOT NULL " +
+           "AND b.tripEndedAt < :releaseAfter " +
+           "ORDER BY b.tripEndedAt ASC")
+    List<Booking> findBookingsEligibleForDepositRelease(
+        @Param("status") BookingStatus status,
+        @Param("releaseAfter") java.time.Instant releaseAfter
+    );
+    
+    /**
+     * Find bookings with deposits held past the auto-release deadline (7 days max).
+     * Safety net: deposits should never be held indefinitely.
+     * 
+     * @param maxHoldDeadline Instant representing 7 days ago
+     * @return Bookings with overdue deposit holds
+     */
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.car c " +
+           "JOIN FETCH c.owner " +
+           "JOIN FETCH b.renter r " +
+           "WHERE b.depositAuthorizationId IS NOT NULL " +
+           "AND (b.securityDepositReleased IS NULL OR b.securityDepositReleased = false) " +
+           "AND b.tripEndedAt IS NOT NULL " +
+           "AND b.tripEndedAt < :maxHoldDeadline " +
+           "AND b.status IN :terminalStatuses " +
+           "ORDER BY b.tripEndedAt ASC")
+    List<Booking> findBookingsWithOverdueDepositHold(
+        @Param("maxHoldDeadline") java.time.Instant maxHoldDeadline,
+        @Param("terminalStatuses") List<BookingStatus> terminalStatuses
+    );
+
     /**
      * Find bookings needing checkout window opened.
      * 

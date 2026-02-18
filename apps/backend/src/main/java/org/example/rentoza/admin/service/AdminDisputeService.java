@@ -646,10 +646,15 @@ public class AdminDisputeService {
             java.math.BigDecimal depositAmount = booking.getSecurityDeposit() != null 
                 ? booking.getSecurityDeposit() : java.math.BigDecimal.ZERO;
             java.math.BigDecimal captureAmount = amount.min(depositAmount);
-            // Use damage charge API with the claim
+            // Use damage charge API with the claim and deposit authorization
             DamageClaim claim = booking.getCheckoutDamageClaim();
             if (claim != null) {
-                paymentService.chargeDamage(claim.getId(), null);
+                String depositAuthId = booking.getDepositAuthorizationId();
+                if (depositAuthId == null || depositAuthId.isBlank()) {
+                    log.warn("[VAL-010] No deposit authorization ID for booking {} - cannot capture", booking.getId());
+                    return java.math.BigDecimal.ZERO;
+                }
+                paymentService.chargeDamage(claim.getId(), depositAuthId);
             }
             log.info("[VAL-010] Captured {} RSD from deposit for booking {}", captureAmount, booking.getId());
             return captureAmount;
@@ -662,13 +667,18 @@ public class AdminDisputeService {
     
     /**
      * Process deposit release back to guest.
+     * Uses releaseDeposit (release authorization hold) NOT processFullRefund (which refunds the booking payment).
      */
     private java.math.BigDecimal processDepositRelease(Booking booking) {
         try {
             java.math.BigDecimal releaseAmount = booking.getSecurityDeposit() != null 
                 ? booking.getSecurityDeposit() : java.math.BigDecimal.ZERO;
-            // Use full refund API
-            paymentService.processFullRefund(booking.getId(), "Deposit release - damage claim rejected");
+            String depositAuthId = booking.getDepositAuthorizationId();
+            if (depositAuthId == null || depositAuthId.isBlank()) {
+                log.warn("[VAL-010] No deposit authorization ID for booking {} - cannot release", booking.getId());
+                return java.math.BigDecimal.ZERO;
+            }
+            paymentService.releaseDeposit(booking.getId(), depositAuthId);
             log.info("[VAL-010] Released {} RSD deposit for booking {}", releaseAmount, booking.getId());
             return releaseAmount;
         } catch (Exception e) {

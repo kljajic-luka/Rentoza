@@ -16,6 +16,9 @@ import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.notification.NotificationService;
 import org.example.rentoza.notification.NotificationType;
 import org.example.rentoza.notification.dto.CreateNotificationRequestDTO;
+import org.example.rentoza.payment.BookingPaymentService;
+import org.example.rentoza.payment.PaymentProvider;
+import org.example.rentoza.payment.PaymentProvider.PaymentResult;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -71,6 +74,8 @@ public class CheckoutSagaOrchestrator {
     private final NotificationService notificationService;
     private final CheckInEventService eventService;
     private final ApplicationEventPublisher eventPublisher;
+    private final BookingPaymentService bookingPaymentService;
+    private final PaymentProvider paymentProvider;
 
     // Metrics
     private final Counter sagaStartedCounter;
@@ -104,9 +109,9 @@ public class CheckoutSagaOrchestrator {
     @Value("${app.checkout.vehicle-not-returned-threshold-hours:24}")
     private int vehicleNotReturnedThresholdHours;
     
-    // Legacy configuration for backward compatibility
-    private static final BigDecimal MILEAGE_RATE_PER_KM = new BigDecimal("0.25");  // EUR per km
-    private static final BigDecimal FUEL_RATE_PER_PERCENT = new BigDecimal("0.50"); // EUR per %
+    // Overage rates in RSD (configurable via properties in the future)
+    private static final BigDecimal MILEAGE_RATE_PER_KM = new BigDecimal("25");   // RSD per km
+    private static final BigDecimal FUEL_RATE_PER_PERCENT = new BigDecimal("50"); // RSD per %
     private static final int LATE_GRACE_MINUTES = 15;  // Grace period before fees apply
     private static final int MAX_LATE_HOURS = 24;  // Maximum billable hours
 
@@ -116,12 +121,16 @@ public class CheckoutSagaOrchestrator {
             NotificationService notificationService,
             CheckInEventService eventService,
             ApplicationEventPublisher eventPublisher,
+            BookingPaymentService bookingPaymentService,
+            PaymentProvider paymentProvider,
             MeterRegistry meterRegistry) {
         this.sagaRepository = sagaRepository;
         this.bookingRepository = bookingRepository;
         this.notificationService = notificationService;
         this.eventService = eventService;
         this.eventPublisher = eventPublisher;
+        this.bookingPaymentService = bookingPaymentService;
+        this.paymentProvider = paymentProvider;
 
         this.sagaStartedCounter = Counter.builder("checkout.saga.started")
                 .description("Checkout sagas started")
@@ -583,7 +592,6 @@ public class CheckoutSagaOrchestrator {
 
         Booking booking = loadBooking(saga.getBookingId());
 
-        // TODO: Integrate with payment gateway to capture from held deposit
         // Treat null securityDeposit as ZERO - allows checkout to proceed without deposit feature
         BigDecimal depositAmount = booking.getSecurityDeposit() != null 
                 ? booking.getSecurityDeposit() 
@@ -594,14 +602,78 @@ public class CheckoutSagaOrchestrator {
             saga.setCapturedAmount(BigDecimal.ZERO);
             return;
         }
+
+        String depositAuthId = booking.getDepositAuthorizationId();
+        if (depositAuthId == null || depositAuthId.isBlank()) {
+            log.warn("[Saga] No deposit authorization ID for booking {} - skipping capture", saga.getBookingId());
+            saga.setCapturedAmount(BigDecimal.ZERO);
+            return;
+        }
         
         BigDecimal captureAmount = saga.getTotalCharges().min(depositAmount);
 
-        saga.setCapturedAmount(captureAmount);
-        saga.setCaptureTransactionId("TXN-" + UUID.randomUUID().toString().substring(0, 8));
+        // Capture from the held deposit via payment gateway
+        PaymentResult captureResult = paymentProvider.capture(depositAuthId, captureAmount);
 
-        log.info("[Saga] Captured {} from deposit for booking {} (txn: {})",
+        if (!captureResult.isSuccess()) {
+            log.error("[Saga] Deposit capture FAILED for booking {}: {} - {}",
+                    saga.getBookingId(), captureResult.getErrorCode(), captureResult.getErrorMessage());
+            throw new IllegalStateException(
+                    "Neuspešno naplata depozita: " + captureResult.getErrorMessage());
+        }
+
+        saga.setCapturedAmount(captureAmount);
+        saga.setCaptureTransactionId(captureResult.getTransactionId());
+
+        log.info("[Saga] Captured {} RSD from deposit for booking {} (txn: {})",
                 captureAmount, saga.getBookingId(), saga.getCaptureTransactionId());
+
+        // P1 FIX: Direct-charge the remainder when total charges exceed the deposit
+        BigDecimal remainderAmount = saga.getTotalCharges().subtract(depositAmount);
+        if (remainderAmount.compareTo(BigDecimal.ZERO) > 0) {
+            log.info("[Saga] Charges ({} RSD) exceed deposit ({} RSD) for booking {} — direct-charging remainder {} RSD",
+                    saga.getTotalCharges(), depositAmount, saga.getBookingId(), remainderAmount);
+
+            Booking bookingForCharge = loadBooking(saga.getBookingId());
+            PaymentProvider.PaymentRequest remainderRequest = PaymentProvider.PaymentRequest.builder()
+                    .bookingId(saga.getBookingId())
+                    .userId(bookingForCharge.getRenter().getId())
+                    .amount(remainderAmount)
+                    .currency("RSD")
+                    .description(String.format("Dodatni troškovi iznad depozita - Rezervacija #%d", saga.getBookingId()))
+                    .type(PaymentProvider.PaymentType.LATE_FEE)
+                    .paymentMethodId(bookingForCharge.getBookingAuthorizationId())
+                    .build();
+
+            PaymentResult remainderResult = paymentProvider.charge(remainderRequest);
+
+            if (remainderResult.isSuccess()) {
+                saga.setRemainderAmount(remainderAmount);
+                saga.setRemainderTransactionId(remainderResult.getTransactionId());
+                log.info("[Saga] Remainder {} RSD charged for booking {} (txn: {})",
+                        remainderAmount, saga.getBookingId(), remainderResult.getTransactionId());
+            } else {
+                // Log but do not fail the saga — deposit was captured, remainder becomes
+                // an outstanding invoice the admin can follow up on
+                saga.setRemainderAmount(remainderAmount);
+                saga.setRemainderTransactionId("FAILED:" + remainderResult.getErrorCode());
+                log.error("[Saga] REMAINDER CHARGE FAILED for booking {} ({} RSD): {} — outstanding invoice created",
+                        saga.getBookingId(), remainderAmount, remainderResult.getErrorMessage());
+
+                // Notify admin about outstanding balance
+                notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                        .recipientId(bookingForCharge.getCar().getOwner().getId())
+                        .type(NotificationType.PAYMENT_FAILED)
+                        .message(String.format(
+                                "Dodatni troškovi od %s RSD za rezervaciju #%d nisu naplaćeni. " +
+                                "Depozit je zadržan, ali preostali iznos zahteva ručno rešavanje.",
+                                remainderAmount, saga.getBookingId()))
+                        .relatedEntityId(String.valueOf(saga.getBookingId()))
+                        .build());
+            }
+        } else {
+            saga.setRemainderAmount(BigDecimal.ZERO);
+        }
     }
 
     private void executeReleaseDeposit(CheckoutSagaState saga) {
@@ -622,15 +694,49 @@ public class CheckoutSagaOrchestrator {
         BigDecimal releaseAmount = depositAmount.subtract(capturedAmount);
 
         if (releaseAmount.compareTo(BigDecimal.ZERO) > 0) {
-            // TODO: Integrate with payment gateway to release remaining deposit
-            saga.setReleasedAmount(releaseAmount);
-            saga.setReleaseTransactionId("REL-" + UUID.randomUUID().toString().substring(0, 8));
+            String depositAuthId = booking.getDepositAuthorizationId();
+            if (depositAuthId == null || depositAuthId.isBlank()) {
+                log.warn("[Saga] No deposit authorization ID to release for booking {}", saga.getBookingId());
+                saga.setReleasedAmount(BigDecimal.ZERO);
+                return;
+            }
 
-            log.info("[Saga] Released {} deposit for booking {} (txn: {})",
+            // If entire deposit was NOT captured, release the remaining authorization
+            if (capturedAmount.compareTo(BigDecimal.ZERO) == 0) {
+                // Nothing captured — release the full authorization hold
+                PaymentResult releaseResult = bookingPaymentService.releaseDeposit(
+                        saga.getBookingId(), depositAuthId);
+
+                if (!releaseResult.isSuccess()) {
+                    log.error("[Saga] Deposit release FAILED for booking {}: {}",
+                            saga.getBookingId(), releaseResult.getErrorMessage());
+                    throw new IllegalStateException(
+                            "Neuspešno vraćanje depozita: " + releaseResult.getErrorMessage());
+                }
+
+                saga.setReleasedAmount(releaseAmount);
+                saga.setReleaseTransactionId(releaseResult.getTransactionId());
+            } else {
+                // Partial capture — auth was consumed by capture, remaining is auto-released
+                // by the payment gateway. Record for audit.
+                saga.setReleasedAmount(releaseAmount);
+                saga.setReleaseTransactionId("AUTO-" + saga.getCaptureTransactionId());
+            }
+
+            // Mark deposit as released on the booking
+            booking.setSecurityDepositReleased(true);
+            booking.setSecurityDepositResolvedAt(Instant.now());
+            bookingRepository.save(booking);
+
+            log.info("[Saga] Released {} RSD deposit for booking {} (txn: {})",
                     releaseAmount, saga.getBookingId(), saga.getReleaseTransactionId());
         } else {
+            // Full deposit was captured — nothing to release
+            booking.setSecurityDepositReleased(true);
+            booking.setSecurityDepositResolvedAt(Instant.now());
+            bookingRepository.save(booking);
             saga.setReleasedAmount(BigDecimal.ZERO);
-            log.debug("[Saga] No deposit to release for booking {}", saga.getBookingId());
+            log.debug("[Saga] Full deposit captured for booking {} — nothing to release", saga.getBookingId());
         }
     }
 
@@ -720,9 +826,25 @@ public class CheckoutSagaOrchestrator {
     private void compensateCaptureDeposit(CheckoutSagaState saga) {
         if (saga.getCaptureTransactionId() != null && saga.getCapturedAmount() != null
                 && saga.getCapturedAmount().compareTo(BigDecimal.ZERO) > 0) {
-            // TODO: Integrate with payment gateway to refund captured amount
-            log.info("[Saga] Refunding captured amount {} for booking {} (original txn: {})",
-                    saga.getCapturedAmount(), saga.getBookingId(), saga.getCaptureTransactionId());
+            try {
+                PaymentResult refundResult = paymentProvider.refund(
+                        saga.getCaptureTransactionId(),
+                        saga.getCapturedAmount(),
+                        "Saga compensation — reverting deposit capture for booking " + saga.getBookingId());
+
+                if (refundResult.isSuccess()) {
+                    log.info("[Saga] Refunded captured amount {} RSD for booking {} (original txn: {}, refund txn: {})",
+                            saga.getCapturedAmount(), saga.getBookingId(),
+                            saga.getCaptureTransactionId(), refundResult.getTransactionId());
+                } else {
+                    log.error("[Saga] CRITICAL: Failed to refund deposit capture for booking {}. " +
+                            "Manual intervention required. Error: {}",
+                            saga.getBookingId(), refundResult.getErrorMessage());
+                }
+            } catch (Exception e) {
+                log.error("[Saga] CRITICAL: Exception during deposit capture compensation for booking {}: {}",
+                        saga.getBookingId(), e.getMessage(), e);
+            }
         }
     }
 
@@ -764,7 +886,7 @@ public class CheckoutSagaOrchestrator {
             notificationService.createNotification(CreateNotificationRequestDTO.builder()
                     .recipientId(booking.getCar().getOwner().getId())
                     .type(NotificationType.CHECKOUT_COMPLETE)
-                    .message("Vraćanje vozila je završeno. Ukupni troškovi: " + saga.getTotalCharges() + " EUR")
+                    .message("Vraćanje vozila je završeno. Ukupni troškovi: " + saga.getTotalCharges() + " RSD")
                     .relatedEntityId(String.valueOf(booking.getId()))
                     .build());
 
@@ -772,7 +894,7 @@ public class CheckoutSagaOrchestrator {
             notificationService.createNotification(CreateNotificationRequestDTO.builder()
                     .recipientId(booking.getRenter().getId())
                     .type(NotificationType.CHECKOUT_COMPLETE)
-                    .message("Vaša rezervacija je završena. Depozit od " + saga.getReleasedAmount() + " EUR će biti vraćen.")
+                    .message("Vaša rezervacija je završena. Depozit od " + saga.getReleasedAmount() + " RSD će biti vraćen.")
                     .relatedEntityId(String.valueOf(booking.getId()))
                     .build());
 

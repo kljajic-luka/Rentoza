@@ -15,6 +15,7 @@ import org.example.rentoza.notification.NotificationRepository;
 import org.example.rentoza.notification.NotificationService;
 import org.example.rentoza.notification.NotificationType;
 import org.example.rentoza.notification.dto.CreateNotificationRequestDTO;
+import org.example.rentoza.payment.PaymentProvider;
 import org.example.rentoza.security.InternalServiceJwtUtil;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
@@ -102,8 +103,8 @@ public class BookingApprovalService {
             booking.setDeclineReason(DEADLINE_EXPIRED_REASON);
             booking.setDeclinedAt(now);
             // P0 FIX: Release payment holds via gateway
-            releasePaymentHolds(booking);
-            booking.setPaymentStatus("RELEASED");
+            boolean releasedOk = releasePaymentHolds(booking);
+            booking.setPaymentStatus(releasedOk ? "RELEASED" : "RELEASE_FAILED");
             bookingRepository.save(booking);
 
             publishEvent(new BookingDomainEvent.BookingExpired(
@@ -221,8 +222,8 @@ public class BookingApprovalService {
         booking.setDeclineReason(reason != null && !reason.isBlank() ? reason : "No reason provided");
 
         // P0 FIX: Release payment holds via gateway (not just status update)
-        releasePaymentHolds(booking);
-        booking.setPaymentStatus("RELEASED");
+        boolean released = releasePaymentHolds(booking);
+        booking.setPaymentStatus(released ? "RELEASED" : "RELEASE_FAILED");
 
         try {
             Booking savedBooking = bookingRepository.save(booking);
@@ -287,8 +288,8 @@ public class BookingApprovalService {
             booking.setDeclineReason("Request expired (no response from host within deadline)");
 
             // P0 FIX: Release payment holds via gateway (not just status update)
-            releasePaymentHolds(booking);
-            booking.setPaymentStatus("RELEASED");
+            boolean released = releasePaymentHolds(booking);
+            booking.setPaymentStatus(released ? "RELEASED" : "RELEASE_FAILED");
 
             bookingRepository.save(booking);
 
@@ -525,26 +526,42 @@ public class BookingApprovalService {
      * <p>Non-critical: failures are logged but don't block the decline/expiry workflow.
      * The payment gateway will auto-expire uncaptured authorizations after 7 days.
      */
-    private void releasePaymentHolds(Booking booking) {
+    private boolean releasePaymentHolds(Booking booking) {
+        boolean allSucceeded = true;
         try {
             // Release booking payment hold
-            bookingPaymentService.releaseBookingPayment(booking.getId());
-            log.info("[ApprovalService] Released booking payment hold for booking {}", booking.getId());
+            PaymentProvider.PaymentResult bookingResult = bookingPaymentService.releaseBookingPayment(booking.getId());
+            if (bookingResult.isSuccess()) {
+                log.info("[ApprovalService] Released booking payment hold for booking {}", booking.getId());
+            } else {
+                log.error("[ApprovalService] Booking payment release returned failure for booking {}: {}",
+                        booking.getId(), bookingResult.getErrorMessage());
+                allSucceeded = false;
+            }
         } catch (Exception e) {
             log.error("[ApprovalService] Failed to release booking payment hold for booking {}: {}", 
                     booking.getId(), e.getMessage());
+            allSucceeded = false;
         }
 
         try {
             // Release deposit hold
             String depositAuthId = booking.getDepositAuthorizationId();
             if (depositAuthId != null && !depositAuthId.isBlank()) {
-                bookingPaymentService.releaseDeposit(booking.getId(), depositAuthId);
-                log.info("[ApprovalService] Released deposit hold for booking {}", booking.getId());
+                PaymentProvider.PaymentResult depositResult = bookingPaymentService.releaseDeposit(booking.getId(), depositAuthId);
+                if (depositResult.isSuccess()) {
+                    log.info("[ApprovalService] Released deposit hold for booking {}", booking.getId());
+                } else {
+                    log.error("[ApprovalService] Deposit release returned failure for booking {}: {}",
+                            booking.getId(), depositResult.getErrorMessage());
+                    allSucceeded = false;
+                }
             }
         } catch (Exception e) {
             log.error("[ApprovalService] Failed to release deposit hold for booking {}: {}", 
                     booking.getId(), e.getMessage());
+            allSucceeded = false;
         }
+        return allSucceeded;
     }
 }

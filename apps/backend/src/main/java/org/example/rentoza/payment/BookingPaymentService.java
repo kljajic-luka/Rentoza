@@ -407,12 +407,28 @@ public class BookingPaymentService {
 
     /**
      * Process refund for cancellation or other reasons.
+     * 
+     * <p><b>P0 FIX: Refund safety validation.</b>
+     * <ul>
+     *   <li>Refund amount must not exceed the captured/charged amount</li>
+     *   <li>Only refund against captured transactions (not authorizations)</li>
+     *   <li>If payment is still AUTHORIZED (not captured), releases the auth hold instead</li>
+     * </ul>
      */
     @Transactional
     public PaymentResult processRefund(Long bookingId, BigDecimal amount, String reason) {
         Booking booking = getBooking(bookingId);
 
-        if (booking.getPaymentVerificationRef() == null) {
+        String paymentStatus = booking.getPaymentStatus();
+        String paymentRef = booking.getPaymentVerificationRef();
+
+        // P0 FIX: If payment is only AUTHORIZED (not captured), release the hold instead of refunding
+        if ("AUTHORIZED".equals(paymentStatus) || "DEPOSIT_AUTHORIZED".equals(paymentStatus)) {
+            log.info("[Payment] Booking {} is only authorized (not captured) - releasing authorization instead of refunding", bookingId);
+            return releaseBookingPayment(bookingId);
+        }
+
+        if (paymentRef == null) {
             return PaymentResult.builder()
                     .success(false)
                     .errorMessage("Nema uplate za povraćaj")
@@ -420,13 +436,29 @@ public class BookingPaymentService {
                     .build();
         }
 
+        // P0 FIX: Validate refund amount does not exceed captured amount
+        BigDecimal maxRefundable = booking.getTotalPrice();
+        if (amount.compareTo(maxRefundable) > 0) {
+            log.warn("[Payment] REJECTED: Refund {} exceeds captured amount {} for booking {}", 
+                amount, maxRefundable, bookingId);
+            return PaymentResult.builder()
+                    .success(false)
+                    .errorCode("REFUND_EXCEEDS_CAPTURED")
+                    .errorMessage(String.format(
+                        "Iznos povraćaja (%s RSD) premašuje naplaćeni iznos (%s RSD)", amount, maxRefundable))
+                    .status(PaymentStatus.FAILED)
+                    .build();
+        }
+
         PaymentResult result = paymentProvider.refund(
-                booking.getPaymentVerificationRef(),
+                paymentRef,
                 amount,
                 reason
         );
 
         if (result.isSuccess()) {
+            booking.setPaymentStatus("REFUNDED");
+            bookingRepository.save(booking);
             paymentSuccessCounter.increment();
             log.info("[Payment] Refund processed for booking {}: {} RSD", bookingId, amount);
         } else {
@@ -440,11 +472,80 @@ public class BookingPaymentService {
     /**
      * VAL-004: Process full refund for booking (total price).
      * Used when canceling booking due to check-in disputes.
+     * 
+     * <p><b>P0 FIX:</b> Intelligently handles both authorized and captured states:
+     * <ul>
+     *   <li>AUTHORIZED → releases the authorization hold</li>
+     *   <li>CAPTURED → processes a refund of the total amount</li>
+     * </ul>
      */
     @Transactional
     public PaymentResult processFullRefund(Long bookingId, String reason) {
         Booking booking = getBooking(bookingId);
         return processRefund(bookingId, booking.getTotalPrice(), reason);
+    }
+    
+    /**
+     * Process cancellation settlement: release authorization or refund captured payment.
+     * 
+     * <p><b>P0 FIX:</b> Called by the cancellation settlement worker.
+     * Determines the correct action based on payment state:
+     * <ul>
+     *   <li>AUTHORIZED → release hold (no money was charged)</li>
+     *   <li>CAPTURED → partial or full refund based on cancellation policy</li>
+     *   <li>RELEASED/REFUNDED → no-op (already settled)</li>
+     * </ul>
+     * 
+     * @param bookingId Booking to settle
+     * @param refundAmount Amount to refund (from cancellation policy calculation)
+     * @param reason Settlement reason
+     * @return Payment result
+     */
+    @Transactional
+    public PaymentResult processCancellationSettlement(Long bookingId, BigDecimal refundAmount, String reason) {
+        Booking booking = getBooking(bookingId);
+        String status = booking.getPaymentStatus();
+        
+        if ("RELEASED".equals(status) || "REFUNDED".equals(status)) {
+            log.info("[Payment] Booking {} already settled (status: {}), skipping", bookingId, status);
+            return PaymentResult.builder()
+                    .success(true)
+                    .status(PaymentStatus.SUCCESS)
+                    .build();
+        }
+        
+        if ("AUTHORIZED".equals(status) || "DEPOSIT_AUTHORIZED".equals(status)) {
+            // Release the authorization hold - no money was charged
+            log.info("[Payment] Booking {} releasing auth hold for cancellation", bookingId);
+            PaymentResult releaseResult = releaseBookingPayment(bookingId);
+            
+            // Also release deposit if present
+            String depositAuthId = booking.getDepositAuthorizationId();
+            if (depositAuthId != null && !depositAuthId.isBlank()) {
+                try {
+                    releaseDeposit(bookingId, depositAuthId);
+                } catch (Exception e) {
+                    log.warn("[Payment] Failed to release deposit for cancelled booking {}: {}", bookingId, e.getMessage());
+                }
+            }
+            return releaseResult;
+        }
+        
+        if ("CAPTURED".equals(status)) {
+            if (refundAmount.compareTo(BigDecimal.ZERO) > 0) {
+                return processRefund(bookingId, refundAmount, reason);
+            } else {
+                log.info("[Payment] No refund for booking {} (refund amount is zero per cancellation policy)", bookingId);
+                return PaymentResult.builder()
+                        .success(true)
+                        .amount(BigDecimal.ZERO)
+                        .status(PaymentStatus.SUCCESS)
+                        .build();
+            }
+        }
+        
+        log.warn("[Payment] Unknown payment status '{}' for booking {} cancellation settlement", status, bookingId);
+        return processRefund(bookingId, refundAmount, reason);
     }
     
     // ========== HOST PAYOUT (Admin-triggered) ==========

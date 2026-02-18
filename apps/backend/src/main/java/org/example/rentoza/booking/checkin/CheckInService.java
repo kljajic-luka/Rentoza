@@ -1148,6 +1148,21 @@ public class CheckInService {
             );
 
             if (refundResult.isSuccess()) {
+                // P1 FIX: Also release deposit authorization hold if present
+                String depositAuthId = booking.getDepositAuthorizationId();
+                if (depositAuthId != null && !depositAuthId.isBlank()) {
+                    try {
+                        PaymentResult depositResult = bookingPaymentService.releaseDeposit(
+                                booking.getId(), depositAuthId);
+                        if (!depositResult.isSuccess()) {
+                            log.warn("[CheckIn] Deposit release failed for host no-show booking {}: {}",
+                                    booking.getId(), depositResult.getErrorMessage());
+                        }
+                    } catch (Exception depEx) {
+                        log.warn("[CheckIn] Deposit release exception for host no-show booking {}: {}",
+                                booking.getId(), depEx.getMessage());
+                    }
+                }
                 return true;
             }
 

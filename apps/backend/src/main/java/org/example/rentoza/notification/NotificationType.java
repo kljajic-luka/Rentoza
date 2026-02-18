@@ -218,5 +218,33 @@ public enum NotificationType {
      * Triggered when guest starts the checkout process.
      * Sent to host to let them know the guest is preparing to return the vehicle.
      */
-    CHECKOUT_GUEST_BEGUN
+    CHECKOUT_GUEST_BEGUN,
+
+    // ==========================================================================
+    // PAYMENT LIFECYCLE NOTIFICATIONS
+    // ==========================================================================
+
+    /**
+     * Triggered when booking payment is captured (T-24h before trip start).
+     * Sent to guest confirming the charge.
+     */
+    PAYMENT_CAPTURED,
+
+    /**
+     * Triggered when security deposit is released after trip (no damage claims).
+     * Sent to guest confirming return of held funds.
+     */
+    DEPOSIT_RELEASED,
+
+    /**
+     * Triggered when a cancellation refund is processed.
+     * Sent to guest confirming the refund amount.
+     */
+    REFUND_PROCESSED,
+
+    /**
+     * Triggered when a payment charge fails (e.g., remainder charge exceeding deposit).
+     * Sent to host/admin for manual follow-up on outstanding balance.
+     */
+    PAYMENT_FAILED
 }

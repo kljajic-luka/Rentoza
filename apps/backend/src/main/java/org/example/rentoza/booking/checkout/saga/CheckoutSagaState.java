@@ -146,6 +146,12 @@ public class CheckoutSagaState {
     @Column(name = "released_amount", precision = 10, scale = 2)
     private BigDecimal releasedAmount;
 
+    /**
+     * Remainder amount that exceeded deposit and was direct-charged to guest.
+     */
+    @Column(name = "remainder_amount", precision = 10, scale = 2)
+    private BigDecimal remainderAmount;
+
     // ========== PAYMENT REFERENCES ==========
 
     /**
@@ -159,6 +165,12 @@ public class CheckoutSagaState {
      */
     @Column(name = "release_transaction_id", length = 100)
     private String releaseTransactionId;
+
+    /**
+     * Transaction ID for remainder direct-charge (when fees exceed deposit).
+     */
+    @Column(name = "remainder_transaction_id", length = 100)
+    private String remainderTransactionId;
 
     // ========== TIMESTAMPS ==========
 

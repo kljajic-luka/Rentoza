@@ -139,7 +139,7 @@ public class AdminFinancialService {
             .frozenFunds(frozenFunds)
             .activeBookingsCount((long) activeBookings.size())
             .pendingPayoutsCount((long) pendingPayouts.size())
-            .currency("ZAR")
+            .currency("RSD")
             .build();
     }
     
@@ -290,7 +290,7 @@ public class AdminFinancialService {
             .hostName(host.getFirstName() + " " + host.getLastName())
             .hostEmail(host.getEmail())
             .amountCents(booking.getTotalAmount().multiply(BigDecimal.valueOf(100)))
-            .currency("ZAR")
+            .currency("RSD")
             .bookingCompletedAt(booking.getUpdatedAt())
             .payoutScheduledFor(booking.getUpdatedAt().plus(PAYOUT_DELAY_DAYS, ChronoUnit.DAYS))
             .status("PENDING")

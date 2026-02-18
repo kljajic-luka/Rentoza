@@ -14,6 +14,7 @@ import org.example.rentoza.booking.dispute.DisputeStage;
 import org.example.rentoza.notification.NotificationService;
 import org.example.rentoza.notification.NotificationType;
 import org.example.rentoza.notification.dto.CreateNotificationRequestDTO;
+import org.example.rentoza.payment.BookingPaymentService;
 import org.example.rentoza.scheduler.SchedulerIdempotencyService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -104,6 +105,7 @@ public class CheckInScheduler {
     private final BookingRepository bookingRepository;
     private final DamageClaimRepository damageClaimRepository;
     private final NotificationService notificationService;
+    private final BookingPaymentService bookingPaymentService;
     private final Counter windowsOpenedCounter;
     private final Counter noShowHostCounter;
     private final Counter noShowGuestCounter;
@@ -120,6 +122,7 @@ public class CheckInScheduler {
             BookingRepository bookingRepository,
             DamageClaimRepository damageClaimRepository,
             NotificationService notificationService,
+            BookingPaymentService bookingPaymentService,
             MeterRegistry meterRegistry) {
         this.checkInService = checkInService;
         this.checkInCommandService = checkInCommandService;
@@ -128,6 +131,7 @@ public class CheckInScheduler {
         this.bookingRepository = bookingRepository;
         this.damageClaimRepository = damageClaimRepository;
         this.notificationService = notificationService;
+        this.bookingPaymentService = bookingPaymentService;
         
         this.windowsOpenedCounter = Counter.builder("checkin.window.opened")
                 .description("Number of check-in windows opened")
@@ -693,10 +697,27 @@ public class CheckInScheduler {
                 disputeTimeoutHours + "h and trip start imminent or passed.");
             damageClaimRepository.save(claim);
             
-            // TODO: Process full refund when payment integration is implemented
-            // For now, the cancellation reason indicates a refund is owed
-            log.info("[CheckIn] REFUND PENDING: Full refund required for booking {} - payment integration not yet implemented", 
-                booking.getId());
+            // Process full refund and release deposit
+            try {
+                bookingPaymentService.processFullRefund(booking.getId(), 
+                        "Auto-cancelled: check-in dispute not resolved within " + disputeTimeoutHours + "h");
+                log.info("[CheckIn] Full refund processed for booking {}", booking.getId());
+            } catch (Exception refundEx) {
+                log.error("[CheckIn] Failed to process refund for booking {}: {} - manual intervention required",
+                        booking.getId(), refundEx.getMessage());
+            }
+            
+            // Release deposit hold if exists
+            try {
+                String depositAuthId = booking.getDepositAuthorizationId();
+                if (depositAuthId != null && !depositAuthId.isBlank()) {
+                    bookingPaymentService.releaseDeposit(booking.getId(), depositAuthId);
+                    log.info("[CheckIn] Deposit released for booking {}", booking.getId());
+                }
+            } catch (Exception depositEx) {
+                log.error("[CheckIn] Failed to release deposit for booking {}: {} - manual intervention required",
+                        booking.getId(), depositEx.getMessage());
+            }
             
             // Update booking status (cancellation reason tracked in claim.resolutionNotes)
             booking.setStatus(BookingStatus.CANCELLED);

@@ -404,6 +404,14 @@ export interface GuestConditionAcknowledgmentDTO {
   guestLatitude: number;
   guestLongitude: number;
   conditionComment?: string;
+  /** VAL-004: Set to true when guest is disputing pre-existing damage */
+  disputePreExistingDamage?: boolean;
+  /** Required description when disputing damage */
+  damageDisputeDescription?: string;
+  /** Photo IDs from check-in that show the disputed damage */
+  disputedPhotoIds?: number[];
+  /** Type of dispute (defaults to PRE_EXISTING_DAMAGE) */
+  disputeType?: string;
 }
 
 export interface HotspotMarkingDTO {
@@ -418,6 +426,10 @@ export interface HandshakeConfirmationDTO {
   hostVerifiedPhysicalId?: boolean;
   latitude?: number;
   longitude?: number;
+  // P0: Anti-spoofing fields
+  isMockLocation?: boolean;
+  horizontalAccuracy?: number;
+  platform?: 'ANDROID' | 'IOS' | 'WEB';
   deviceFingerprint?: string;
 }
 

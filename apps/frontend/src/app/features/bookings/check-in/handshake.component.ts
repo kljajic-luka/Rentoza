@@ -633,8 +633,8 @@ export class HandshakeComponent implements OnInit, OnDestroy {
   checkInService = inject(CheckInService);
   private geolocationService = inject(GeolocationService);
 
-  // Geofence threshold in meters (100m = close, >100m = far)
-  private readonly GEOFENCE_THRESHOLD_METERS = 100;
+  // Geofence threshold in meters (50m = Turo standard)
+  private readonly GEOFENCE_THRESHOLD_METERS = 50;
 
   // State
   verifyPhysicalId = false;
@@ -782,7 +782,7 @@ export class HandshakeComponent implements OnInit, OnDestroy {
 
   /**
    * Check if user is within geofence threshold (close to vehicle).
-   * Green if < 100m, Red if >= 100m.
+   * Green if < 50m, Red if >= 50m.
    */
   isWithinGeofence(): boolean {
     const distance = this.status?.geofenceDistanceMeters;

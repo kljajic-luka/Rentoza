@@ -64,7 +64,7 @@ public class CheckInValidationService {
     @Value("${app.checkin.timing.validation-enabled:true}")
     private boolean checkInTimingValidationEnabled;
 
-    @Value("${app.checkin.max-early-hours:1}")
+    @Value("${app.checkin.max-early-hours:2}")
     private int maxEarlyCheckInHours;
 
     // ========== PHASE 4B: LICENSE VERIFICATION CONFIGURATION ==========

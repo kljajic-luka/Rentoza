@@ -400,7 +400,11 @@ public class CheckInController {
      * Confirm handshake to start the trip.
      * 
      * <p>Both host and guest must confirm. For remote handoff (lockbox),
-     * guest must pass geofence validation (within 100m of car).
+     * guest must pass geofence validation (within 50m of car).
+     * GPS coordinates are MANDATORY for remote handoff.
+     * 
+     * <p><b>P0 Security:</b> Anti-spoofing enforcement (mock location detection,
+     * GPS accuracy validation) runs before geofence check.
      * 
      * <h3>Idempotency (Critical)</h3>
      * <p>Supports {@code X-Idempotency-Key} header. This is the most critical
@@ -462,25 +466,22 @@ public class CheckInController {
      *   <li>Host must have completed check-in first</li>
      * </ul>
      * 
-     * <p><b>Prerequisites for guest to reveal code:</b>
-     * <ul>
-     *   <li>Host has completed check-in with lockbox code</li>
-     *   <li>Guest has acknowledged condition</li>
-     *   <li>Guest is within geofence radius (if strict mode enabled)</li>
-     * </ul>
+     * <p><b>P0 SECURITY FIX:</b> GPS coordinates are now REQUIRED for lockbox reveal.
+     * Guest must be within 50m of the car to access the lockbox code.
      * 
      * @param bookingId the booking ID
-     * @param latitude optional GPS latitude for geofence validation
-     * @param longitude optional GPS longitude for geofence validation
+     * @param latitude GPS latitude (REQUIRED for geofence enforcement)
+     * @param longitude GPS longitude (REQUIRED for geofence enforcement)
      * @return lockbox code and reveal timestamp
      * @throws AccessDeniedException if user is not the guest for this booking
      * @throws IllegalStateException if booking is not in correct state
+     * @throws IllegalArgumentException if GPS coordinates are missing
      */
     @GetMapping("/lockbox-code")
     public ResponseEntity<Map<String, Object>> revealLockboxCode(
             @PathVariable Long bookingId,
-            @RequestParam(value = "latitude", required = false) Double latitude,
-            @RequestParam(value = "longitude", required = false) Double longitude) {
+            @RequestParam(value = "latitude", required = true) Double latitude,
+            @RequestParam(value = "longitude", required = true) Double longitude) {
         
         Long userId = currentUser.id();
         log.debug("[CheckIn] Lockbox code request for booking {} by user {}", 

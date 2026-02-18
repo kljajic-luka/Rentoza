@@ -103,11 +103,11 @@ public class GuestCheckInPhotoService {
             throw new AccessDeniedException("Samo gost može otpremiti fotografije za prijem");
         }
         
-        // Validate booking status - guest can only upload after host completes
+        // Validate booking status - guest can only upload after host completes their check-in
         if (booking.getStatus() != BookingStatus.CHECK_IN_HOST_COMPLETE &&
-            booking.getStatus() != BookingStatus.CHECK_IN_OPEN) {
+            booking.getStatus() != BookingStatus.CHECK_IN_COMPLETE) {
             throw new IllegalStateException(
-                "Prijem nije spreman za otpremanje fotografija od strane gosta. " +
+                "Domaćin još nije završio prijem. Sačekajte da domaćin otpremi fotografije. " +
                 "Trenutni status: " + booking.getStatus());
         }
         

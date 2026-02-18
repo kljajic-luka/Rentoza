@@ -13,6 +13,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -164,9 +165,11 @@ public class RateLimitingFilter extends OncePerRequestFilter {
      * 
      * Priority:
      * 1. Exact endpoint match (e.g., /api/auth/login)
-     * 2. Default configuration
+     * 2. Glob-pattern match for path-variable endpoints (wildcard matches one path segment)
+     * 3. Default configuration
      */
     private RateLimitConfig getRateLimitConfig(String requestPath) {
+        // 1. Exact match (most specific)
         AppProperties.RateLimit.EndpointLimit endpointLimit = 
                 appProperties.getRateLimit().getEndpoints().get(requestPath);
 
@@ -174,7 +177,20 @@ public class RateLimitingFilter extends OncePerRequestFilter {
             return new RateLimitConfig(endpointLimit.getLimit(), endpointLimit.getWindowSeconds());
         }
 
-        // Use default configuration
+        // 2. Prefix match for path-variable endpoints
+        // Handles patterns like /api/bookings/{id}/check-in/host/photos
+        for (Map.Entry<String, AppProperties.RateLimit.EndpointLimit> entry : appProperties.getRateLimit().getEndpoints().entrySet()) {
+            String pattern = entry.getKey();
+            if (pattern.contains("*")) {
+                // Convert glob pattern to regex: * matches one path segment
+                String regex = pattern.replace("*", "[^/]+");
+                if (requestPath.matches(regex)) {
+                    return new RateLimitConfig(entry.getValue().getLimit(), entry.getValue().getWindowSeconds());
+                }
+            }
+        }
+
+        // 3. Use default configuration
         return new RateLimitConfig(
                 appProperties.getRateLimit().getDefaultLimit(),
                 appProperties.getRateLimit().getDefaultWindowSeconds()

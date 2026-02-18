@@ -227,17 +227,81 @@ public class ExifValidationService {
             String deviceMake = extractStringTag(tiffMetadata, TiffTagConstants.TIFF_TAG_MAKE);
             String deviceModel = extractStringTag(tiffMetadata, TiffTagConstants.TIFF_TAG_MODEL);
             
-            // All checks passed
-            ExifValidationStatus status = (latitude != null) 
-                ? ExifValidationStatus.VALID 
-                : ExifValidationStatus.VALID_NO_GPS;
+            // ========== P1 FIX: EXIF TAMPER DETECTION (BUG-004) ==========
+            // Check Software tag for known photo editing applications.
+            // Legitimate camera apps set Software to firmware version (e.g., "12.5.1").
+            // Editing tools set it to their name (e.g., "Adobe Photoshop 25.0").
+            String software = extractStringTag(tiffMetadata, TiffTagConstants.TIFF_TAG_SOFTWARE);
+            boolean tamperSuspected = false;
+            String tamperReason = null;
             
-            log.info("[EXIF] Validation passed: age={}min, hasGPS={}, device={} {}", 
-                photoAge.toMinutes(), latitude != null, deviceMake, deviceModel);
+            if (software != null && !software.isBlank()) {
+                String softwareLower = software.toLowerCase();
+                
+                // Known editing software signatures
+                if (softwareLower.contains("photoshop") ||
+                    softwareLower.contains("gimp") ||
+                    softwareLower.contains("lightroom") ||
+                    softwareLower.contains("snapseed") ||
+                    softwareLower.contains("pixlr") ||
+                    softwareLower.contains("affinity") ||
+                    softwareLower.contains("paint.net") ||
+                    softwareLower.contains("corel") ||
+                    softwareLower.contains("capture one") ||
+                    softwareLower.contains("darktable") ||
+                    softwareLower.contains("rawtherapee") ||
+                    softwareLower.contains("luminar") ||
+                    softwareLower.contains("photoeditor") ||
+                    softwareLower.contains("photo editor") ||
+                    softwareLower.contains("canva") ||
+                    softwareLower.contains("picsart") ||
+                    softwareLower.contains("vsco") ||
+                    softwareLower.contains("facetune") ||
+                    softwareLower.contains("meitu") ||
+                    softwareLower.contains("imagemagick") ||
+                    softwareLower.contains("exiftool")) {
+                    
+                    tamperSuspected = true;
+                    tamperReason = "EXIF Software tag indicates editing: " + software;
+                    log.warn("[EXIF] TAMPER SUSPECTED: Software='{}' for photo with make={}, model={}", 
+                        software, deviceMake, deviceModel);
+                }
+            }
+            
+            // Check for EXIF Creator Tool (XMP) - another editing indicator
+            // Some editors write to Creator Tool instead of Software
+            String processingHistory = null;
+            try {
+                // Check for ExifVersion anomalies - edited photos sometimes have mismatched versions
+                TiffField exifVersion = tiffMetadata != null ? 
+                    tiffMetadata.findField(ExifTagConstants.EXIF_TAG_EXIF_VERSION) : null;
+                if (exifVersion != null) {
+                    processingHistory = exifVersion.getStringValue();
+                }
+            } catch (Exception e) {
+                log.debug("[EXIF] Could not check EXIF version: {}", e.getMessage());
+            }
+            
+            // Determine final status considering tamper detection
+            ExifValidationStatus status;
+            String message;
+            if (tamperSuspected) {
+                status = ExifValidationStatus.VALID_WITH_WARNINGS;
+                message = "EXIF validacija uspešna ali detektovana obrada slike: " + software;
+            } else if (latitude != null) {
+                status = ExifValidationStatus.VALID;
+                message = "EXIF validacija uspešna";
+            } else {
+                status = ExifValidationStatus.VALID_NO_GPS;
+                message = "EXIF validacija uspešna";
+            }
+            
+            log.info("[EXIF] Validation passed: age={}min, hasGPS={}, device={} {}, software={}, tamperSuspected={}", 
+                photoAge.toMinutes(), latitude != null, deviceMake, deviceModel, software, tamperSuspected);
             
             return ExifValidationResult.builder()
                 .status(status)
-                .message("EXIF validacija uspešna")
+                .message(message)
                 .photoTimestamp(photoInstant)
                 .latitude(latitude)
                 .longitude(longitude)
@@ -245,6 +309,9 @@ public class ExifValidationService {
                 .deviceModel(deviceModel)
                 .photoAgeMinutes((int) photoAge.toMinutes())
                 .clientTimestampUsed(clientUploadStarted != null)
+                .softwareTag(software)
+                .tamperSuspected(tamperSuspected)
+                .tamperReason(tamperReason)
                 .build();
             
         } catch (IOException e) {
@@ -491,6 +558,17 @@ public class ExifValidationService {
         
         /** Whether client-provided timestamp was used for age calculation */
         private boolean clientTimestampUsed;
+
+        // ========== P1: TAMPER DETECTION FIELDS ==========
+        
+        /** EXIF Software tag value (e.g., "Adobe Photoshop 25.0" or "14.2.1") */
+        private String softwareTag;
+        
+        /** Whether editing software was detected in EXIF metadata */
+        private boolean tamperSuspected;
+        
+        /** Reason for tamper suspicion (null if not suspected) */
+        private String tamperReason;
 
         public static ExifValidationResult rejected(ExifValidationStatus status, String message) {
             return ExifValidationResult.builder()

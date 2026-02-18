@@ -48,6 +48,14 @@ public interface CheckInPhotoRepository extends JpaRepository<CheckInPhoto, Long
             @Param("photoType") CheckInPhotoType photoType);
 
     /**
+     * Count ALL photos for a booking (regardless of type or validation status).
+     * P1 FIX: Used for per-booking photo cap enforcement to prevent DoS.
+     */
+    @Query("SELECT COUNT(p) FROM CheckInPhoto p " +
+           "WHERE p.booking.id = :bookingId AND p.deletedAt IS NULL")
+    long countByBookingId(@Param("bookingId") Long bookingId);
+
+    /**
      * Count all valid photos for a booking (EXIF validation passed).
      * Includes VALID_WITH_WARNINGS for HEIC/modern formats validated via sidecar.
      */

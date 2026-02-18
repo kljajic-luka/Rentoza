@@ -702,16 +702,91 @@ public class CheckInService {
                 }
             }
 
-            // Geofence validation for remote handoff
-            if (booking.getLockboxCodeEncrypted() != null && dto.getLatitude() != null) {
+            // ========== P0: ANTI-SPOOFING ENFORCEMENT ==========
+            // Must run BEFORE geofence validation since spoofed coordinates would pass geofence
+
+            // 1. Check for mock location (Android flag)
+            if (Boolean.TRUE.equals(dto.getIsMockLocation())) {
+                log.error("[CheckIn] FRAUD: Mock location detected for booking {} by user {}",
+                    dto.getBookingId(), userId);
+                
+                eventService.recordEvent(
+                    booking,
+                    booking.getCheckInSessionId(),
+                    CheckInEventType.GPS_SPOOFING_DETECTED,
+                    userId,
+                    CheckInActorRole.GUEST,
+                    Map.of(
+                        "fraudType", "MOCK_LOCATION",
+                        "platform", dto.getPlatform() != null ? dto.getPlatform() : "UNKNOWN",
+                        "deviceFingerprint", dto.getDeviceFingerprint() != null ? dto.getDeviceFingerprint() : "N/A",
+                        "latitude", dto.getLatitude() != null ? dto.getLatitude() : "N/A",
+                        "longitude", dto.getLongitude() != null ? dto.getLongitude() : "N/A"
+                    )
+                );
+                
+                throw new GeofenceViolationException(
+                    "Lažna lokacija detektovana. Onemogućite aplikacije za lažiranje GPS-a.");
+            }
+
+            // 2. Check GPS accuracy (low accuracy = potential VPN/proxy/indoor)
+            if (dto.getHorizontalAccuracy() != null && dto.getHorizontalAccuracy() > 100) {
+                log.warn("[CheckIn] Low GPS accuracy: {}m for booking {} user {} - flagged for review",
+                    dto.getHorizontalAccuracy(), dto.getBookingId(), userId);
+                
+                eventService.recordEvent(
+                    booking,
+                    booking.getCheckInSessionId(),
+                    CheckInEventType.GPS_LOW_ACCURACY_WARNING,
+                    userId,
+                    CheckInActorRole.GUEST,
+                    Map.of(
+                        "horizontalAccuracy", dto.getHorizontalAccuracy(),
+                        "platform", dto.getPlatform() != null ? dto.getPlatform() : "UNKNOWN",
+                        "latitude", dto.getLatitude() != null ? dto.getLatitude() : "N/A",
+                        "longitude", dto.getLongitude() != null ? dto.getLongitude() : "N/A"
+                    )
+                );
+                // Flag for review but don't block - could be legitimate indoor scenario
+            }
+
+            // ========== GEOFENCE VALIDATION FOR REMOTE HANDOFF ==========
+            // P0 FIX: For remote handoff (lockbox), GPS coordinates are MANDATORY
+            if (booking.getLockboxCodeEncrypted() != null) {
+                if (dto.getLatitude() == null || dto.getLongitude() == null) {
+                    log.warn("[CheckIn] Handshake blocked - remote handoff requires GPS: bookingId={}", 
+                        booking.getId());
+                    throw new GeofenceViolationException(
+                        "GPS lokacija je obavezna za daljinsku primopredaju. Omogućite lokaciju na uređaju.");
+                }
+                
+                // Determine reference location: car EXIF GPS → pickup → car home → block
+                BigDecimal refLat = booking.getCarLatitude();
+                BigDecimal refLon = booking.getCarLongitude();
+                
+                if (refLat == null || refLon == null) {
+                    GeoPoint pickupLoc = getPickupLocationWithFallback(booking, booking.getCar());
+                    if (pickupLoc != null && pickupLoc.hasCoordinates()) {
+                        refLat = pickupLoc.getLatitude();
+                        refLon = pickupLoc.getLongitude();
+                        log.info("[CheckIn] Handshake geofence using fallback location for booking {}", 
+                            booking.getId());
+                    } else {
+                        log.warn("[CheckIn] Handshake blocked - no reference location for geofence: bookingId={}", 
+                            booking.getId());
+                        throw new GeofenceViolationException(
+                            "Lokacija vozila nije dostupna za proveru blizine. Kontaktirajte podršku.");
+                    }
+                }
+                
                 // Infer location density for dynamic radius adjustment
                 // Urban areas (Belgrade high-rises) get larger radius due to GPS multipath
                 GeofenceService.LocationDensity density = geofenceService.inferLocationDensity(
-                    booking.getCarLatitude(), booking.getCarLongitude()
+                    refLat, refLon
                 );
                 
                 GeofenceResult geoResult = geofenceService.validateProximity(
-                    booking.getCarLatitude(), booking.getCarLongitude(),
+                    refLat, refLon,
                     BigDecimal.valueOf(dto.getLatitude()), BigDecimal.valueOf(dto.getLongitude()),
                     density
                 );
@@ -749,6 +824,10 @@ public class CheckInService {
                     );
                 }
                 
+                booking.setGuestCheckInLatitude(BigDecimal.valueOf(dto.getLatitude()));
+                booking.setGuestCheckInLongitude(BigDecimal.valueOf(dto.getLongitude()));
+            } else if (dto.getLatitude() != null && dto.getLongitude() != null) {
+                // In-person handoff with optional GPS - record but don't enforce
                 booking.setGuestCheckInLatitude(BigDecimal.valueOf(dto.getLatitude()));
                 booking.setGuestCheckInLongitude(BigDecimal.valueOf(dto.getLongitude()));
             }
@@ -1102,7 +1181,7 @@ public class CheckInService {
             notificationService.createNotification(CreateNotificationRequestDTO.builder()
                     .recipientId(booking.getCar().getOwner().getId())
                     .type(NotificationType.NO_SHOW_GUEST)
-                    .message("Gost se nije pojavio u roku od 30 minuta.")
+                    .message("Gost se nije pojavio u predviđenom roku.")
                     .relatedEntityId(String.valueOf(booking.getId()))
                     .build());
         }
@@ -1241,8 +1320,14 @@ public class CheckInService {
                 .odometerReading(booking.getStartOdometer())
                 .fuelLevelPercent(booking.getStartFuelLevel())
                 .lockboxAvailable(booking.getLockboxCodeEncrypted() != null)
-                .geofenceValid(booking.getGeofenceDistanceMeters() != null && 
-                              booking.getGeofenceDistanceMeters() <= geofenceService.getDefaultRadiusMeters())
+                .geofenceValid(
+                    // No lockbox = no geofence needed (in-person handoff)
+                    booking.getLockboxCodeEncrypted() == null ||
+                    // Distance not yet computed = allow reveal attempt (server validates)
+                    booking.getGeofenceDistanceMeters() == null ||
+                    // Distance computed and within threshold
+                    booking.getGeofenceDistanceMeters() <= geofenceService.getDefaultRadiusMeters()
+                )
                 .geofenceDistanceMeters(booking.getGeofenceDistanceMeters())
                 .tripStartScheduled(booking.getStartTime())
                 .noShowDeadline(noShowDeadline)

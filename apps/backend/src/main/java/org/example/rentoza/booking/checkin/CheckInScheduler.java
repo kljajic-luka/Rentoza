@@ -78,8 +78,9 @@ public class CheckInScheduler {
      * Hours before trip start when check-in window opens.
      * CRITICAL: Must align with app.checkin.max-early-hours for consistent UX.
      * If window opens before submission is allowed, users can start but not finish.
+     * TURO STANDARD: 2 hours before trip start.
      */
-    @org.springframework.beans.factory.annotation.Value("${app.checkin.window-hours-before-trip:1}")
+    @org.springframework.beans.factory.annotation.Value("${app.checkin.window-hours-before-trip:2}")
     private int windowHoursBeforeTrip;
     
     /**
@@ -89,7 +90,7 @@ public class CheckInScheduler {
     @org.springframework.beans.factory.annotation.Value("${app.checkin.dispute-timeout-hours:24}")
     private int disputeTimeoutHours;
 
-    @org.springframework.beans.factory.annotation.Value("${app.checkin.no-show-minutes-after-trip-start:30}")
+    @org.springframework.beans.factory.annotation.Value("${app.checkin.no-show-minutes-after-trip-start:120}")
     private int noShowMinutesAfterTripStart;
 
     @org.springframework.beans.factory.annotation.Value("${app.checkin.handshake-timeout-minutes:45}")

@@ -798,7 +798,7 @@ public class CheckInCommandService {
             notificationService.createNotification(CreateNotificationRequestDTO.builder()
                     .recipientId(booking.getCar().getOwner().getId())
                     .type(NotificationType.NO_SHOW_GUEST)
-                    .message("Gost se nije pojavio u roku od 30 minuta.")
+                    .message("Gost se nije pojavio u predviđenom roku.")
                     .relatedEntityId(String.valueOf(booking.getId()))
                     .build());
         }

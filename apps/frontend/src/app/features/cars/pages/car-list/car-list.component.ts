@@ -235,7 +235,7 @@ export class CarListComponent implements OnInit, OnDestroy {
         hasNext: false,
         hasPrevious: false,
       } as PagedResponse<Car>);
-    })
+    }),
   );
 
   // Active filter chips
@@ -464,7 +464,7 @@ export class CarListComponent implements OnInit, OnDestroy {
           displayStartDate,
           searchStartTime,
           displayEndDate,
-          searchEndTime
+          searchEndTime,
         );
 
         // Update active filter chips from the unified params
@@ -536,7 +536,7 @@ export class CarListComponent implements OnInit, OnDestroy {
             carId: car.id,
             imageUrl: car.imageUrl,
             imageUrls: car.imageUrls,
-          }
+          },
         );
       }
     }
@@ -567,10 +567,10 @@ export class CarListComponent implements OnInit, OnDestroy {
             catchError((err) => {
               console.error('Geocoding error:', err);
               return of([]);
-            })
+            }),
           );
         }),
-        takeUntil(this.destroy$)
+        takeUntil(this.destroy$),
       )
       .subscribe((suggestions) => {
         this.geocodeSuggestions = suggestions;
@@ -677,7 +677,7 @@ export class CarListComponent implements OnInit, OnDestroy {
         this.snackBar.open(errorMessage, 'Zatvori', { duration: 5000 });
         this.cdr.markForCheck();
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
     );
   }
 
@@ -793,7 +793,7 @@ export class CarListComponent implements OnInit, OnDestroy {
     const minDurationResult = validateMinimumDuration(
       startDateTime,
       endDateTime,
-      DEFAULT_MIN_TRIP_HOURS
+      DEFAULT_MIN_TRIP_HOURS,
     );
     if (!minDurationResult.valid) {
       this.dateRangeError = minDurationResult.errorMessage || 'Prekratko trajanje';
@@ -839,7 +839,7 @@ export class CarListComponent implements OnInit, OnDestroy {
       startDate,
       this.searchStartTime,
       endDate,
-      this.searchEndTime
+      this.searchEndTime,
     );
 
     // Clear filter chips (new search starts with no filters)
@@ -863,7 +863,7 @@ export class CarListComponent implements OnInit, OnDestroy {
       // AVAILABILITY MODE: Merge filters into unified availabilityParams$
       const mergedParams = mergeFiltersIntoAvailabilityParams(
         this.availabilityParams$.value,
-        criteria
+        criteria,
       );
       this.availabilityParams$.next(mergedParams);
 
@@ -1211,7 +1211,7 @@ export class CarListComponent implements OnInit, OnDestroy {
   private applyFilters(
     results: PagedResponse<Car>,
     criteria: CarSearchCriteria,
-    isAvailability: boolean
+    isAvailability: boolean,
   ): PagedResponse<Car> {
     const hasFilters =
       (criteria.minPrice ?? null) !== null ||
@@ -1231,11 +1231,11 @@ export class CarListComponent implements OnInit, OnDestroy {
     const filtered = results.content.filter((car) => this.matchesFilters(car, criteria));
 
     const pageSize = isAvailability
-      ? this.availabilityParams$.value?.size ?? results.pageSize ?? 20
-      : this.searchCriteria$.value.size ?? results.pageSize ?? 20;
+      ? (this.availabilityParams$.value?.size ?? results.pageSize ?? 20)
+      : (this.searchCriteria$.value.size ?? results.pageSize ?? 20);
     const requestedPage = isAvailability
-      ? this.availabilityParams$.value?.page ?? 0
-      : this.searchCriteria$.value.page ?? results.currentPage ?? 0;
+      ? (this.availabilityParams$.value?.page ?? 0)
+      : (this.searchCriteria$.value.page ?? results.currentPage ?? 0);
 
     const totalPages = Math.ceil(filtered.length / pageSize) || 0;
     const boundedPageIndex = Math.min(requestedPage, Math.max(totalPages - 1, 0));
@@ -1277,14 +1277,14 @@ export class CarListComponent implements OnInit, OnDestroy {
 
     if (criteria.make) {
       const matchMake = makeCandidates.some((candidate) =>
-        this.matchesAllTokens(candidate ?? '', criteria.make)
+        this.matchesAllTokens(candidate ?? '', criteria.make),
       );
       if (!matchMake) return false;
     }
 
     if (criteria.model) {
       const matchModel = modelCandidates.some((candidate) =>
-        this.matchesAllTokens(candidate ?? '', criteria.model)
+        this.matchesAllTokens(candidate ?? '', criteria.model),
       );
       if (!matchModel) return false;
     }
@@ -1318,7 +1318,7 @@ export class CarListComponent implements OnInit, OnDestroy {
     startDate: string,
     startTime: string,
     endDate: string,
-    endTime: string
+    endTime: string,
   ): void {
     // Format dates to dd.MM.yyyy HH:mm
     const formattedStart = this.formatDateTime(startDate, startTime);

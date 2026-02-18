@@ -51,6 +51,7 @@ class BookingServiceApprovalDeadlinePolicyTest {
     @Mock private CancellationPolicyService cancellationPolicyService;
     @Mock private DeliveryFeeCalculator deliveryFeeCalculator;
     @Mock private RenterVerificationService renterVerificationService;
+    @Mock private org.example.rentoza.payment.BookingPaymentService bookingPaymentService;
 
     private BookingService bookingService;
 
@@ -66,7 +67,8 @@ class BookingServiceApprovalDeadlinePolicyTest {
                 currentUser,
                 cancellationPolicyService,
                 deliveryFeeCalculator,
-                renterVerificationService
+                renterVerificationService,
+                bookingPaymentService
         );
 
         ReflectionTestUtils.setField(bookingService, "approvalSlaHours", 48);
@@ -118,6 +120,8 @@ class BookingServiceApprovalDeadlinePolicyTest {
         car.setOwner(owner);
         car.setPricePerDay(new BigDecimal("5000.00"));
         car.setBookingSettings(settings);
+        car.setApprovalStatus(org.example.rentoza.car.ApprovalStatus.APPROVED);
+        car.setAvailable(true);
 
         LocalDateTime now = LocalDateTime.now(SERBIA_ZONE);
         BookingRequestDTO request = new BookingRequestDTO();

@@ -44,10 +44,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <ul>
  *   <li>POST /api/bookings - Create booking</li>
  *   <li>GET /api/bookings/{id} - Get booking by ID</li>
- *   <li>GET /api/bookings/user - Get user's bookings</li>
+ *   <li>GET /api/bookings/me - Get user's bookings</li>
  *   <li>POST /api/bookings/{id}/cancel - Cancel booking</li>
- *   <li>POST /api/bookings/{id}/approve - Host approves booking</li>
- *   <li>POST /api/bookings/{id}/decline - Host declines booking</li>
+ *   <li>PUT /api/bookings/{id}/approve - Host approves booking</li>
+ *   <li>PUT /api/bookings/{id}/decline - Host declines booking</li>
  * </ul>
  */
 @SpringBootTest
@@ -142,7 +142,7 @@ class BookingControllerTest {
                     .content(objectMapper.writeValueAsString(request)));
 
             // Then
-            result.andExpect(status().isCreated())
+            result.andExpect(status().isOk())
                     .andExpect(jsonPath("$.carId").value(testCar.getId()))
                     .andExpect(jsonPath("$.status").value("ACTIVE"));
         }
@@ -291,7 +291,7 @@ class BookingControllerTest {
     // ========================================================================
 
     @Nested
-    @DisplayName("GET /api/bookings/user - List User Bookings")
+    @DisplayName("GET /api/bookings/me - List User Bookings")
     class ListUserBookingsTests {
 
         @Test
@@ -304,7 +304,7 @@ class BookingControllerTest {
             createTestBooking();
 
             // When
-            ResultActions result = mockMvc.perform(get("/api/bookings/user")
+            ResultActions result = mockMvc.perform(get("/api/bookings/me")
                     .accept(MediaType.APPLICATION_JSON));
 
             // Then
@@ -317,7 +317,7 @@ class BookingControllerTest {
         @DisplayName("Should return empty list when no bookings")
         void shouldReturnEmptyListWhenNoBookings() throws Exception {
             // When
-            ResultActions result = mockMvc.perform(get("/api/bookings/user")
+            ResultActions result = mockMvc.perform(get("/api/bookings/me")
                     .accept(MediaType.APPLICATION_JSON));
 
             // Then
@@ -375,7 +375,7 @@ class BookingControllerTest {
     // ========================================================================
 
     @Nested
-    @DisplayName("POST /api/bookings/{id}/approve - Host Approval")
+    @DisplayName("PUT /api/bookings/{id}/approve - Host Approval")
     class HostApprovalTests {
 
         @Test
@@ -388,7 +388,7 @@ class BookingControllerTest {
             bookingRepository.save(booking);
 
             // When
-            ResultActions result = mockMvc.perform(post("/api/bookings/" + booking.getId() + "/approve")
+            ResultActions result = mockMvc.perform(put("/api/bookings/" + booking.getId() + "/approve")
                     .with(csrf()));
 
             // Then
@@ -405,11 +405,10 @@ class BookingControllerTest {
             booking.setStatus(BookingStatus.PENDING_APPROVAL);
             bookingRepository.save(booking);
 
-            // When
-            ResultActions result = mockMvc.perform(post("/api/bookings/" + booking.getId() + "/decline")
+            // When: Decline uses PUT with reason as query param
+            ResultActions result = mockMvc.perform(put("/api/bookings/" + booking.getId() + "/decline")
                     .with(csrf())
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("{\"reason\": \"Car unavailable\"}"));
+                    .param("reason", "Car unavailable"));
 
             // Then
             result.andExpect(status().isOk())
@@ -426,7 +425,7 @@ class BookingControllerTest {
             bookingRepository.save(booking);
 
             // When: Renter (not host) tries to approve
-            ResultActions result = mockMvc.perform(post("/api/bookings/" + booking.getId() + "/approve")
+            ResultActions result = mockMvc.perform(put("/api/bookings/" + booking.getId() + "/approve")
                     .with(csrf()));
 
             // Then

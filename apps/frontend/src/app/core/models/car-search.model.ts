@@ -103,7 +103,7 @@ export interface AvailabilitySearchParams {
  */
 export function mergeFiltersIntoAvailabilityParams(
   base: AvailabilitySearchParams,
-  filters: CarSearchCriteria
+  filters: CarSearchCriteria,
 ): AvailabilitySearchParams {
   return {
     // Preserve core availability params
@@ -139,7 +139,7 @@ export function mergeFiltersIntoAvailabilityParams(
  * Used when filters component needs current filter state.
  */
 export function extractFiltersFromAvailabilityParams(
-  params: AvailabilitySearchParams
+  params: AvailabilitySearchParams,
 ): CarSearchCriteria {
   const criteria: CarSearchCriteria = {
     page: params.page,

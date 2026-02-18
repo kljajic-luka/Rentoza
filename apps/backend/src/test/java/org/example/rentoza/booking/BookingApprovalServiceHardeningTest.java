@@ -46,6 +46,7 @@ class BookingApprovalServiceHardeningTest {
     @Mock private ChatServiceClient chatServiceClient;
     @Mock private InternalServiceJwtUtil internalServiceJwtUtil;
     @Mock private ApplicationEventPublisher eventPublisher;
+    @Mock private org.example.rentoza.payment.BookingPaymentService bookingPaymentService;
 
     private BookingApprovalService approvalService;
 
@@ -58,7 +59,8 @@ class BookingApprovalServiceHardeningTest {
                 notificationService,
                 chatServiceClient,
                 internalServiceJwtUtil,
-                eventPublisher
+                eventPublisher,
+                bookingPaymentService
         );
         ReflectionTestUtils.setField(approvalService, "approvalSlaHours", 48);
     }

@@ -58,6 +58,7 @@ public class BookingService {
     private final CancellationPolicyService cancellationPolicyService;
     private final DeliveryFeeCalculator deliveryFeeCalculator;
     private final RenterVerificationService renterVerificationService;
+    private final org.example.rentoza.payment.BookingPaymentService bookingPaymentService;
 
     @org.springframework.beans.factory.annotation.Value("${app.booking.host-approval.enabled:false}")
     private boolean approvalEnabled;
@@ -65,7 +66,7 @@ public class BookingService {
     @org.springframework.beans.factory.annotation.Value("${app.booking.host-approval.beta-users:}")
     private java.util.List<Long> betaUsers;
 
-    @org.springframework.beans.factory.annotation.Value("${app.booking.host-approval.approval-sla-hours:${app.booking.host-approval.expiry-hours:48}}")
+    @org.springframework.beans.factory.annotation.Value("${app.booking.host-approval.approval-sla-hours:${app.booking.host-approval.expiry-hours:24}}")
     private int approvalSlaHours;
 
     @org.springframework.beans.factory.annotation.Value("${app.booking.host-approval.min-guest-preparation-hours:12}")
@@ -74,12 +75,19 @@ public class BookingService {
     @org.springframework.beans.factory.annotation.Value("${app.renter-verification.license-required:true}")
     private boolean licenseRequired;
 
+    @org.springframework.beans.factory.annotation.Value("${app.payment.deposit.amount-rsd:30000}")
+    private int defaultDepositAmountRsd;
+
+    @org.springframework.beans.factory.annotation.Value("${app.payment.service-fee-rate:0.15}")
+    private double serviceFeeRate;
+
     public BookingService(BookingRepository repo, CarRepository carRepo, UserRepository userRepo,
                           ReviewRepository reviewRepo, ChatServiceClient chatServiceClient,
                           NotificationService notificationService, org.example.rentoza.security.CurrentUser currentUser,
                           CancellationPolicyService cancellationPolicyService,
                           DeliveryFeeCalculator deliveryFeeCalculator,
-                          RenterVerificationService renterVerificationService) {
+                          RenterVerificationService renterVerificationService,
+                          org.example.rentoza.payment.BookingPaymentService bookingPaymentService) {
         this.repo = repo;
         this.carRepo = carRepo;
         this.userRepo = userRepo;
@@ -90,21 +98,37 @@ public class BookingService {
         this.cancellationPolicyService = cancellationPolicyService;
         this.deliveryFeeCalculator = deliveryFeeCalculator;
         this.renterVerificationService = renterVerificationService;
+        this.bookingPaymentService = bookingPaymentService;
     }
 
     @Transactional
     public Booking createBooking(BookingRequestDTO dto, String renterEmail) {
 
+        // ========================================================================
+        // P1 FIX: IDEMPOTENCY CHECK
+        // ========================================================================
+        // If client provides an idempotency key, check for existing booking first.
+        // This prevents duplicate bookings (and duplicate payment holds) on retry.
+        // ========================================================================
+        if (dto.getIdempotencyKey() != null && !dto.getIdempotencyKey().isBlank()) {
+            java.util.Optional<Booking> existing = repo.findByIdempotencyKey(dto.getIdempotencyKey());
+            if (existing.isPresent()) {
+                log.info("Idempotent booking creation: returning existing booking {} for key {}", 
+                        existing.get().getId(), dto.getIdempotencyKey());
+                return existing.get();
+            }
+        }
+
         User renter = userRepo.findByEmail(renterEmail)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         // Validate age requirement
         if (renter.getAge() == null || renter.getAge() < 21) {
-            throw new RuntimeException("Drivers must be at least 21 years old to rent a car.");
+            throw new org.example.rentoza.exception.ValidationException("Drivers must be at least 21 years old to rent a car.");
         }
 
         Car car = carRepo.findById(dto.getCarId())
-                .orElseThrow(() -> new RuntimeException("Car not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Car not found"));
 
         // ========================================================================
         // P0 FIX: APPROVAL & AVAILABILITY GATE
@@ -113,10 +137,10 @@ public class BookingService {
         // Unapproved listings must not be bookable even if accessed by direct ID.
         // ========================================================================
         if (car.getApprovalStatus() != org.example.rentoza.car.ApprovalStatus.APPROVED) {
-            throw new RuntimeException("This car listing is not yet approved and cannot be booked.");
+            throw new org.example.rentoza.exception.ValidationException("This car listing is not yet approved and cannot be booked.");
         }
         if (!car.isAvailable()) {
-            throw new RuntimeException("This car is currently unavailable for booking.");
+            throw new org.example.rentoza.exception.ValidationException("This car is currently unavailable for booking.");
         }
 
         // ========================================================================
@@ -268,6 +292,11 @@ public class BookingService {
         booking.setRenter(renter);
         booking.setStartTime(dto.getStartTime());
         booking.setEndTime(dto.getEndTime());
+        
+        // P1 FIX: Set idempotency key for duplicate detection
+        if (dto.getIdempotencyKey() != null && !dto.getIdempotencyKey().isBlank()) {
+            booking.setIdempotencyKey(dto.getIdempotencyKey());
+        }
 
         // Determine initial status based on feature flag
         BookingStatus initialStatus;
@@ -408,7 +437,7 @@ public class BookingService {
         booking.setDeliveryFeeCalculated(deliveryFee);
 
         // ========================================================================
-        // PRICE CALCULATION WITH BigDecimal (Financial Precision)
+        // PRICE CALCULATION WITH BigDecimal (Turo-Standard Breakdown)
         // ========================================================================
         // Uses BigDecimal.multiply() and .add() instead of * and + operators.
         // RoundingMode.HALF_UP ensures consistent banker's rounding.
@@ -428,6 +457,16 @@ public class BookingService {
             default -> BigDecimal.ONE; // 1.00 for BASIC
         };
 
+        // Insurance cost (additional cost above base, not the multiplier itself)
+        BigDecimal insuranceCost = basePrice.multiply(insuranceMultiplier)
+                .subtract(basePrice)
+                .setScale(2, RoundingMode.HALF_UP);
+
+        // Service fee (Turo standard: configurable rate, default 15%)
+        BigDecimal serviceFee = basePrice
+                .multiply(new BigDecimal(String.valueOf(serviceFeeRate)))
+                .setScale(2, RoundingMode.HALF_UP);
+
         // Calculate refuel cost if applicable
         BigDecimal refuelCost = BigDecimal.ZERO;
         if (booking.isPrepaidRefuel() && car.getFuelConsumption() != null) {
@@ -439,17 +478,29 @@ public class BookingService {
                     .setScale(2, RoundingMode.HALF_UP);
         }
 
-        // Final calculation with proper rounding (includes delivery fee)
+        // Security deposit amount (held, not charged)
+        BigDecimal depositAmount = BigDecimal.valueOf(defaultDepositAmountRsd);
+
+        // Final calculation with proper rounding (includes all components)
+        // Total = basePrice + insuranceCost + serviceFee + refuelCost + deliveryFee
         BigDecimal totalPrice = basePrice
-                .multiply(insuranceMultiplier)
+                .add(insuranceCost)
+                .add(serviceFee)
                 .add(refuelCost)
                 .add(deliveryFee)
                 .setScale(2, RoundingMode.HALF_UP);
         
         booking.setTotalPrice(totalPrice);
+        booking.setSecurityDeposit(depositAmount);
         
-        log.debug("Price calculated: hours={}, periods={}, basePrice={}, multiplier={}, refuel={}, delivery={}, total={}",
-                hours, periods, basePrice, insuranceMultiplier, refuelCost, deliveryFee, totalPrice);
+        // P2 FIX: Persist fee breakdown at creation time to prevent price drift.
+        // Previously these were recalculated from current rates in BookingResponseDTO,
+        // which could drift if fee rates or insurance multipliers change after booking.
+        booking.setServiceFeeSnapshot(serviceFee);
+        booking.setInsuranceCostSnapshot(insuranceCost);
+        
+        log.debug("Price breakdown: hours={}, periods={}, base={}, insurance={}, serviceFee={}, refuel={}, delivery={}, deposit={}, total={}",
+                hours, periods, basePrice, insuranceCost, serviceFee, refuelCost, deliveryFee, depositAmount, totalPrice);
 
         // ========================================================================
         // CANCELLATION POLICY: Snapshot Daily Rate at Booking Time
@@ -463,6 +514,64 @@ public class BookingService {
         booking.setSnapshotDailyRate(car.getPricePerDay());
 
         Booking savedBooking = repo.save(booking);
+
+        // ========================================================================
+        // PAYMENT AUTHORIZATION (P0 Fix - Must happen before booking is finalized)
+        // ========================================================================
+        // Authorize payment for the total amount. Authorization places a hold on
+        // the guest's card but does not capture the funds.
+        //
+        // For instant bookings: Payment is authorized immediately.
+        // For request-to-book: Payment is authorized at creation (hold on card),
+        //   and captured when host approves. If host declines, hold is released.
+        //
+        // If authorization fails (insufficient funds, card declined), the booking
+        // is rolled back via @Transactional and a PaymentAuthorizationException is thrown.
+        // ========================================================================
+        String paymentMethodId = dto.getPaymentMethodId();
+        
+        // 1. Authorize booking payment (hold total amount)
+        org.example.rentoza.payment.PaymentProvider.PaymentResult bookingPaymentResult = 
+                bookingPaymentService.processBookingPayment(savedBooking.getId(), paymentMethodId);
+        
+        if (!bookingPaymentResult.isSuccess()) {
+            log.warn("Payment authorization failed for booking {}: {}", 
+                    savedBooking.getId(), bookingPaymentResult.getErrorMessage());
+            throw new org.example.rentoza.exception.PaymentAuthorizationException(
+                    "Autorizacija plaćanja nije uspela: " + bookingPaymentResult.getErrorMessage(),
+                    bookingPaymentResult.getErrorCode() != null ? bookingPaymentResult.getErrorCode() : "PAYMENT_FAILED"
+            );
+        }
+        
+        // 2. Authorize security deposit (hold deposit amount)
+        org.example.rentoza.payment.PaymentProvider.PaymentResult depositResult = 
+                bookingPaymentService.authorizeDeposit(savedBooking.getId(), paymentMethodId);
+        
+        if (!depositResult.isSuccess()) {
+            log.warn("Deposit authorization failed for booking {}: {}. Releasing booking payment hold.", 
+                    savedBooking.getId(), depositResult.getErrorMessage());
+            // Release the booking authorization hold since deposit auth failed
+            if (bookingPaymentResult.getAuthorizationId() != null) {
+                try {
+                    bookingPaymentService.releaseBookingPayment(savedBooking.getId());
+                } catch (Exception e) {
+                    log.error("Failed to release booking payment hold for booking {}: {}",
+                            savedBooking.getId(), e.getMessage());
+                }
+            }
+            throw new org.example.rentoza.exception.PaymentAuthorizationException(
+                    "Autorizacija depozita nije uspela: " + depositResult.getErrorMessage() +
+                    ". Potrebno je " + depositAmount + " RSD za sigurnosni depozit.",
+                    depositResult.getErrorCode() != null ? depositResult.getErrorCode() : "INSUFFICIENT_FUNDS"
+            );
+        }
+        
+        // Note: BookingPaymentService.processBookingPayment() and authorizeDeposit()
+        // already persist paymentVerificationRef, bookingAuthorizationId, depositAuthorizationId,
+        // and paymentStatus on the booking entity. No redundant set needed here.
+        
+        log.info("Payment authorized for booking {}: bookingAuth={}, depositAuth={}", 
+                savedBooking.getId(), bookingPaymentResult.getAuthorizationId(), depositResult.getAuthorizationId());
 
         // Initialize car and owner to avoid lazy loading issues
         Hibernate.initialize(savedBooking.getCar());

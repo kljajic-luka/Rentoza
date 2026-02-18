@@ -123,6 +123,58 @@ public class Booking {
     @Column(name = "payment_status", length = 20)
     private String paymentStatus = "PENDING"; // PENDING, AUTHORIZED, RELEASED
 
+    /**
+     * Authorization ID for the booking payment hold.
+     * Used to capture or release the hold after host decision.
+     * 
+     * <p><b>Set By:</b> BookingPaymentService.processBookingPayment() at creation time.
+     * <p><b>Captured By:</b> BookingPaymentService.captureBookingPayment() after trip completion.
+     * <p><b>Released By:</b> BookingPaymentService.releaseBookingPayment() on decline/expiry.
+     */
+    @Column(name = "booking_authorization_id", length = 100)
+    private String bookingAuthorizationId;
+
+    /**
+     * Authorization ID for the security deposit hold.
+     * Used to release the deposit after checkout (no damage) or capture for damage claims.
+     * 
+     * <p><b>Set By:</b> BookingPaymentService.authorizeDeposit() at creation time.
+     * <p><b>Released By:</b> BookingPaymentService.releaseDeposit() at checkout.
+     * <p><b>Captured By:</b> BookingPaymentService.chargeDamage() if damage reported.
+     */
+    @Column(name = "deposit_authorization_id", length = 100)
+    private String depositAuthorizationId;
+
+    /**
+     * Service fee snapshot at booking creation time.
+     * Prevents price drift when fee rates change after booking.
+     * 
+     * <p><b>Set By:</b> BookingService.createBooking() at booking creation time.
+     * <p><b>Immutable:</b> Should never be updated after initial set.
+     */
+    @Column(name = "service_fee_snapshot", precision = 19, scale = 2)
+    private BigDecimal serviceFeeSnapshot;
+
+    /**
+     * Insurance cost snapshot at booking creation time.
+     * Prevents price drift when insurance rates change after booking.
+     * 
+     * <p><b>Set By:</b> BookingService.createBooking() at booking creation time.
+     * <p><b>Immutable:</b> Should never be updated after initial set.
+     */
+    @Column(name = "insurance_cost_snapshot", precision = 19, scale = 2)
+    private BigDecimal insuranceCostSnapshot;
+
+    /**
+     * Idempotency key for booking creation.
+     * Prevents duplicate bookings on client retry.
+     * 
+     * <p><b>Set By:</b> BookingService.createBooking() from client-provided key.
+     * <p><b>Unique constraint:</b> Prevents duplicate creation requests.
+     */
+    @Column(name = "idempotency_key", length = 64, unique = true)
+    private String idempotencyKey;
+
     // ==================== CANCELLATION SUPPORT (Phase 1: Turo-Style Migration) ====================
 
     /**

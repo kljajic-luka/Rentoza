@@ -80,7 +80,17 @@ public class BookingPaymentService {
     // ========== BOOKING PAYMENT ==========
 
     /**
-     * Process initial booking payment.
+     * Authorize initial booking payment (hold, not capture).
+     * Funds are held on the guest's card and captured later when host approves
+     * and trip completes via {@link #captureBookingPayment(Long)}.
+     * 
+     * <p><b>P0 Fix:</b> Changed from charge() to authorize() — Turo standard requires
+     * holding funds, not capturing immediately. This ensures:
+     * <ul>
+     *   <li>Guest sees a pending hold, not an actual charge</li>
+     *   <li>Funds are released automatically if host declines</li>
+     *   <li>Capture only happens after trip completion</li>
+     * </ul>
      */
     @Transactional
     public PaymentResult processBookingPayment(Long bookingId, String paymentMethodId) {
@@ -96,17 +106,88 @@ public class BookingPaymentService {
                 .paymentMethodId(paymentMethodId)
                 .build();
 
-        PaymentResult result = paymentProvider.charge(request);
+        // P0 FIX: authorize() not charge() — hold funds without capturing
+        PaymentResult result = paymentProvider.authorize(request);
 
         if (result.isSuccess()) {
-            booking.setPaymentStatus("PAID");
+            booking.setPaymentStatus("AUTHORIZED");
+            booking.setPaymentVerificationRef(result.getAuthorizationId());
+            booking.setBookingAuthorizationId(result.getAuthorizationId());
+            bookingRepository.save(booking);
+            paymentSuccessCounter.increment();
+            log.info("[Payment] Booking {} authorized successfully: {}", bookingId, result.getAuthorizationId());
+        } else {
+            paymentFailedCounter.increment();
+            log.warn("[Payment] Booking {} authorization failed: {}", bookingId, result.getErrorMessage());
+        }
+
+        return result;
+    }
+
+    /**
+     * Capture a previously authorized booking payment.
+     * Called after trip completion when funds should actually be transferred.
+     * 
+     * @param bookingId Booking whose authorized payment should be captured
+     * @return Payment result
+     */
+    @Transactional
+    public PaymentResult captureBookingPayment(Long bookingId) {
+        Booking booking = getBooking(bookingId);
+
+        String authorizationId = booking.getBookingAuthorizationId();
+        if (authorizationId == null || authorizationId.isBlank()) {
+            return PaymentResult.builder()
+                    .success(false)
+                    .errorMessage("No booking authorization to capture")
+                    .status(PaymentStatus.FAILED)
+                    .build();
+        }
+
+        PaymentResult result = paymentProvider.capture(authorizationId, booking.getTotalPrice());
+
+        if (result.isSuccess()) {
+            booking.setPaymentStatus("CAPTURED");
             booking.setPaymentVerificationRef(result.getTransactionId());
             bookingRepository.save(booking);
             paymentSuccessCounter.increment();
-            log.info("[Payment] Booking {} paid successfully: {}", bookingId, result.getTransactionId());
+            log.info("[Payment] Booking {} payment captured: {}", bookingId, result.getTransactionId());
         } else {
             paymentFailedCounter.increment();
-            log.warn("[Payment] Booking {} payment failed: {}", bookingId, result.getErrorMessage());
+            log.warn("[Payment] Booking {} capture failed: {}", bookingId, result.getErrorMessage());
+        }
+
+        return result;
+    }
+
+    /**
+     * Release a previously authorized booking payment hold.
+     * Called when host declines or booking expires.
+     * 
+     * @param bookingId Booking whose payment hold should be released
+     * @return Payment result
+     */
+    @Transactional
+    public PaymentResult releaseBookingPayment(Long bookingId) {
+        Booking booking = getBooking(bookingId);
+
+        String authorizationId = booking.getBookingAuthorizationId();
+        if (authorizationId == null || authorizationId.isBlank()) {
+            log.warn("[Payment] No booking authorization to release for booking {}", bookingId);
+            return PaymentResult.builder()
+                    .success(true)
+                    .status(PaymentStatus.CANCELLED)
+                    .build();
+        }
+
+        PaymentResult result = paymentProvider.releaseAuthorization(authorizationId);
+
+        if (result.isSuccess()) {
+            booking.setPaymentStatus("RELEASED");
+            bookingRepository.save(booking);
+            log.info("[Payment] Booking {} payment hold released: {}", bookingId, authorizationId);
+        } else {
+            log.warn("[Payment] Failed to release booking {} payment hold: {}", bookingId, result.getErrorMessage());
         }
 
         return result;
@@ -137,9 +218,9 @@ public class BookingPaymentService {
         PaymentResult result = paymentProvider.authorize(request);
 
         if (result.isSuccess()) {
-            // Store authorization ID in booking for later capture/release
-            // Note: In production, create a separate payment_transactions table
+            // P0 FIX: Persist depositAuthorizationId for later release/capture
             booking.setPaymentStatus("DEPOSIT_AUTHORIZED");
+            booking.setDepositAuthorizationId(result.getAuthorizationId());
             bookingRepository.save(booking);
             depositAuthorizedCounter.increment();
             log.info("[Payment] Deposit authorized for booking {}: {}", bookingId, result.getAuthorizationId());

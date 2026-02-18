@@ -135,6 +135,8 @@ export class BookingDialogComponent implements OnInit {
   protected readonly basePrice = signal(0);
   protected readonly insuranceCost = signal(0);
   protected readonly refuelCost = signal(0);
+  protected readonly serviceFeeAmount = signal(0);
+  protected readonly depositAmount = signal(30000); // Default deposit in RSD
   protected readonly rentalDays = signal(0);
   protected readonly rentalHours = signal(0);
 
@@ -393,6 +395,10 @@ export class BookingDialogComponent implements OnInit {
     const base = periods * this.data.car.pricePerDay;
     this.basePrice.set(base);
 
+    // Service fee (15% of base price - Turo standard)
+    const serviceFee = Math.round(base * 0.15);
+    this.serviceFeeAmount.set(serviceFee);
+
     // Insurance cost
     const insuranceMultiplier = this.getInsuranceMultiplier(insuranceType);
     const insurance = base * (insuranceMultiplier - 1);
@@ -405,9 +411,9 @@ export class BookingDialogComponent implements OnInit {
     }
     this.refuelCost.set(refuel);
 
-    // Total (includes delivery fee if applicable)
+    // Total (includes service fee, insurance, refuel, and delivery fee)
     const deliveryCost = this.deliveryFeeCost();
-    const total = base * insuranceMultiplier + refuel + deliveryCost;
+    const total = base + serviceFee + insurance + refuel + deliveryCost;
     this.totalPrice.set(total);
   }
 
@@ -456,6 +462,7 @@ export class BookingDialogComponent implements OnInit {
     this.basePrice.set(0);
     this.insuranceCost.set(0);
     this.refuelCost.set(0);
+    this.serviceFeeAmount.set(0);
     this.totalPrice.set(0);
   }
 
@@ -559,6 +566,13 @@ export class BookingDialogComponent implements OnInit {
       driverPhone: formValues.driverPhone,
       insuranceType: formValues.insuranceType || 'BASIC',
       prepaidRefuel: formValues.prepaidRefuel || false,
+      // P1 FIX: Payment method is now required by backend @NotBlank validation.
+      // Uses "mock_default" for development; real payment integration will supply
+      // the tokenized payment method ID from Stripe/Mori payment form.
+      paymentMethodId: 'mock_default',
+      // P1 FIX: Idempotency key prevents duplicate bookings on network retry.
+      // Generated once per submission attempt; re-used if the request is retried.
+      idempotencyKey: crypto.randomUUID(),
       // Pickup location fields (Phase 2.4) - matching backend BookingRequestDTO
       pickupLatitude: pickup?.latitude,
       pickupLongitude: pickup?.longitude,
@@ -681,6 +695,22 @@ export class BookingDialogComponent implements OnInit {
               // Generic 403 error - check both error.message and error.error
               errorMessage =
                 error.error?.message || error.error?.error || 'Nemate dozvolu za ovu akciju.';
+          }
+        } else if (error.status === 402) {
+          // Payment authorization failed
+          switch (errorCode) {
+            case 'INSUFFICIENT_FUNDS':
+              errorMessage =
+                'Nedovoljno sredstava na kartici za rezervaciju i depozit. ' +
+                'Molimo koristite drugu karticu.';
+              break;
+            case 'CARD_DECLINED':
+              errorMessage =
+                'Kartica je odbijena. Molimo proverite podatke ili koristite drugu karticu.';
+              break;
+            default:
+              errorMessage =
+                error.error?.message || 'Plaćanje nije uspelo. Molimo pokušajte ponovo.';
           }
         } else if (error.status === 409) {
           switch (errorCode) {

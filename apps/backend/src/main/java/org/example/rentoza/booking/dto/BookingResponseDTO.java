@@ -49,6 +49,43 @@ public class BookingResponseDTO {
     private LocalDateTime declinedAt;
     private String declineReason;
 
+    // ========== PRICE BREAKDOWN (Turo Standard) ==========
+    
+    /**
+     * Base rental price (days × daily rate) before any fees.
+     */
+    private BigDecimal basePrice;
+    
+    /**
+     * Service/platform fee (percentage of base price).
+     */
+    private BigDecimal serviceFee;
+    
+    /**
+     * Insurance cost (additional cost based on selected tier).
+     */
+    private BigDecimal insuranceCost;
+    
+    /**
+     * Insurance type selected (BASIC, STANDARD, PREMIUM).
+     */
+    private String insuranceType;
+    
+    /**
+     * Security deposit amount (held, not charged; released after trip).
+     */
+    private BigDecimal securityDeposit;
+    
+    /**
+     * Prepaid refuel cost (if selected).
+     */
+    private BigDecimal refuelCost;
+    
+    /**
+     * Payment status (PENDING, AUTHORIZED, PAID, RELEASED, etc.)
+     */
+    private String paymentStatus;
+
     // Review flags
     private Boolean hasOwnerReview;
 
@@ -136,6 +173,58 @@ public class BookingResponseDTO {
         this.approvedAt = booking.getApprovedAt();
         this.declinedAt = booking.getDeclinedAt();
         this.declineReason = booking.getDeclineReason();
+        
+        // Payment & deposit info
+        this.paymentStatus = booking.getPaymentStatus();
+        this.securityDeposit = booking.getSecurityDeposit();
+        this.insuranceType = booking.getInsuranceType();
+
+        // Reconstruct price breakdown from booking data
+        // P2 FIX: Use persisted snapshots where available to prevent price drift.
+        // Falls back to recalculation only for legacy bookings created before V58.
+        if (booking.getCar() != null && booking.getStartTime() != null && booking.getEndTime() != null) {
+            long hours = java.time.temporal.ChronoUnit.HOURS.between(booking.getStartTime(), booking.getEndTime());
+            int periods = Math.max(1, (int) Math.ceil(hours / 24.0));
+            java.math.BigDecimal dailyRate = booking.getSnapshotDailyRate() != null 
+                    ? booking.getSnapshotDailyRate() 
+                    : booking.getCar().getPricePerDay();
+            this.basePrice = dailyRate.multiply(java.math.BigDecimal.valueOf(periods));
+            
+            // Insurance cost — use persisted snapshot if available
+            if (booking.getInsuranceCostSnapshot() != null) {
+                this.insuranceCost = booking.getInsuranceCostSnapshot();
+            } else {
+                // Legacy fallback: recalculate from current rates
+                java.math.BigDecimal insuranceMultiplier = switch (booking.getInsuranceType() != null ? booking.getInsuranceType().toUpperCase() : "BASIC") {
+                    case "STANDARD" -> new java.math.BigDecimal("1.10");
+                    case "PREMIUM" -> new java.math.BigDecimal("1.20");
+                    default -> java.math.BigDecimal.ONE;
+                };
+                this.insuranceCost = this.basePrice.multiply(insuranceMultiplier)
+                        .subtract(this.basePrice)
+                        .setScale(2, java.math.RoundingMode.HALF_UP);
+            }
+            
+            // Service fee — use persisted snapshot if available
+            if (booking.getServiceFeeSnapshot() != null) {
+                this.serviceFee = booking.getServiceFeeSnapshot();
+            } else {
+                // Legacy fallback: recalculate with 15% default
+                this.serviceFee = this.basePrice
+                        .multiply(new java.math.BigDecimal("0.15"))
+                        .setScale(2, java.math.RoundingMode.HALF_UP);
+            }
+            
+            // Refuel cost (reconstruct from car data)
+            if (booking.isPrepaidRefuel() && booking.getCar().getFuelConsumption() != null) {
+                this.refuelCost = new java.math.BigDecimal(booking.getCar().getFuelConsumption().toString())
+                        .multiply(new java.math.BigDecimal("6.5"))
+                        .multiply(java.math.BigDecimal.TEN)
+                        .setScale(2, java.math.RoundingMode.HALF_UP);
+            } else {
+                this.refuelCost = java.math.BigDecimal.ZERO;
+            }
+        }
 
         // Map car details
         if (booking.getCar() != null) {

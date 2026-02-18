@@ -53,8 +53,10 @@ public class BookingApprovalService {
     private final ChatServiceClient chatServiceClient;
     private final InternalServiceJwtUtil internalServiceJwtUtil;
     private final ApplicationEventPublisher eventPublisher;
+    private final org.example.rentoza.payment.BookingPaymentService bookingPaymentService;
 
-    @Value("${app.booking.host-approval.approval-sla-hours:48}")
+    // P2 FIX: Default 24h to match dev/prod properties (was 48h, inconsistent)
+    @Value("${app.booking.host-approval.approval-sla-hours:24}")
     private int approvalSlaHours;
 
     /**
@@ -99,6 +101,8 @@ public class BookingApprovalService {
             booking.setStatus(BookingStatus.EXPIRED_SYSTEM);
             booking.setDeclineReason(DEADLINE_EXPIRED_REASON);
             booking.setDeclinedAt(now);
+            // P0 FIX: Release payment holds via gateway
+            releasePaymentHolds(booking);
             booking.setPaymentStatus("RELEASED");
             bookingRepository.save(booking);
 
@@ -135,10 +139,9 @@ public class BookingApprovalService {
         booking.setStatus(BookingStatus.ACTIVE);
         booking.setApprovedBy(owner);
         booking.setApprovedAt(LocalDateTime.now());
-        booking.setPaymentStatus("AUTHORIZED"); // Simulated payment authorization
-
-        // Generate simulated payment reference
-        booking.setPaymentVerificationRef("PAY-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
+        // Payment was already authorized at booking creation time (P0 fix).
+        // Status remains "AUTHORIZED" (set during createBooking flow).
+        // Payment capture happens at trip completion.
 
         try {
             Booking savedBooking = bookingRepository.save(booking);
@@ -153,9 +156,8 @@ public class BookingApprovalService {
                     Instant.now()
             ));
 
-            // Simulate payment authorization (placeholder)
-            log.debug("💳 [SIMULATED] Payment authorized for booking {} with ref {}", 
-                    bookingId, booking.getPaymentVerificationRef());
+            log.info("💳 Payment was pre-authorized at booking creation. Ref: {}", 
+                    booking.getPaymentVerificationRef());
 
             // Send notification to guest (renter)
             sendApprovalNotification(savedBooking);
@@ -217,7 +219,10 @@ public class BookingApprovalService {
         booking.setDeclinedBy(owner);
         booking.setDeclinedAt(LocalDateTime.now());
         booking.setDeclineReason(reason != null && !reason.isBlank() ? reason : "No reason provided");
-        booking.setPaymentStatus("RELEASED"); // Release simulated payment hold
+
+        // P0 FIX: Release payment holds via gateway (not just status update)
+        releasePaymentHolds(booking);
+        booking.setPaymentStatus("RELEASED");
 
         try {
             Booking savedBooking = bookingRepository.save(booking);
@@ -280,6 +285,9 @@ public class BookingApprovalService {
             // Use EXPIRED_SYSTEM for auto-expiry (distinguishable from user-initiated expiry)
             booking.setStatus(BookingStatus.EXPIRED_SYSTEM);
             booking.setDeclineReason("Request expired (no response from host within deadline)");
+
+            // P0 FIX: Release payment holds via gateway (not just status update)
+            releasePaymentHolds(booking);
             booking.setPaymentStatus("RELEASED");
 
             bookingRepository.save(booking);
@@ -502,6 +510,41 @@ public class BookingApprovalService {
         } catch (Exception e) {
             log.error("[ApprovalService] Failed to publish event {}: {}", 
                     event.getClass().getSimpleName(), e.getMessage());
+        }
+    }
+
+    // ========== PAYMENT HOLD RELEASE ==========
+
+    /**
+     * Release all payment holds (booking + deposit) via the payment gateway.
+     * 
+     * <p><b>P0 Fix:</b> Previously, decline/expiry only updated the paymentStatus string
+     * without actually calling the payment gateway to release the authorization holds.
+     * This left money frozen on the guest's card indefinitely.
+     * 
+     * <p>Non-critical: failures are logged but don't block the decline/expiry workflow.
+     * The payment gateway will auto-expire uncaptured authorizations after 7 days.
+     */
+    private void releasePaymentHolds(Booking booking) {
+        try {
+            // Release booking payment hold
+            bookingPaymentService.releaseBookingPayment(booking.getId());
+            log.info("[ApprovalService] Released booking payment hold for booking {}", booking.getId());
+        } catch (Exception e) {
+            log.error("[ApprovalService] Failed to release booking payment hold for booking {}: {}", 
+                    booking.getId(), e.getMessage());
+        }
+
+        try {
+            // Release deposit hold
+            String depositAuthId = booking.getDepositAuthorizationId();
+            if (depositAuthId != null && !depositAuthId.isBlank()) {
+                bookingPaymentService.releaseDeposit(booking.getId(), depositAuthId);
+                log.info("[ApprovalService] Released deposit hold for booking {}", booking.getId());
+            }
+        } catch (Exception e) {
+            log.error("[ApprovalService] Failed to release deposit hold for booking {}: {}", 
+                    booking.getId(), e.getMessage());
         }
     }
 }

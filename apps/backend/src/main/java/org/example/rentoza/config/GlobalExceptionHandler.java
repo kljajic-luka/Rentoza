@@ -3,6 +3,7 @@ package org.example.rentoza.config;
 import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.exception.UserOverlapException;
 import org.example.rentoza.exception.BookingConflictException;
+import org.example.rentoza.exception.PaymentAuthorizationException;
 import org.example.rentoza.exception.ValidationException;
 import org.example.rentoza.security.ratelimit.RateLimitExceededException;
 import org.slf4j.Logger;
@@ -173,6 +174,71 @@ public class GlobalExceptionHandler {
      * 
      * <p>Returns generic message with correlation ID for support.
      */
+    @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
+    public ResponseEntity<Map<String, Object>> handleDataIntegrityViolation(
+            org.springframework.dao.DataIntegrityViolationException ex) {
+        String message = ex.getMostSpecificCause().getMessage();
+
+        // P0 FIX: PostgreSQL trigger RAISE EXCEPTION with 'USER_OVERLAP' or 'CAR_UNAVAILABLE'
+        // wraps in DataIntegrityViolationException. Map these to 409 instead of generic 500.
+        if (message != null && message.contains("USER_OVERLAP")) {
+            log.warn("DB trigger caught user overlap: {}", message);
+            Map<String, Object> body = new HashMap<>();
+            body.put("timestamp", Instant.now().toString());
+            body.put("error", "Booking Overlap");
+            body.put("code", "USER_OVERLAP");
+            body.put("message", "Ne možete rezervisati dva vozila u isto vreme.");
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+        }
+
+        if (message != null && message.contains("CAR_UNAVAILABLE")) {
+            log.warn("DB trigger caught car double-booking: {}", message);
+            Map<String, Object> body = new HashMap<>();
+            body.put("timestamp", Instant.now().toString());
+            body.put("error", "Booking Conflict");
+            body.put("code", "CAR_UNAVAILABLE");
+            body.put("message", "Ovaj automobil je već rezervisan za izabrane datume.");
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+        }
+
+        // Idempotency key duplicate
+        if (message != null && message.contains("idempotency_key")) {
+            log.warn("Duplicate booking creation attempt (idempotency key): {}", message);
+            Map<String, Object> body = new HashMap<>();
+            body.put("timestamp", Instant.now().toString());
+            body.put("error", "Duplicate Request");
+            body.put("code", "DUPLICATE_BOOKING");
+            body.put("message", "Zahtev za rezervaciju je već obrađen.");
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+        }
+
+        // Fall through to generic DB error handling
+        String correlationId = "DB-" + UUID.randomUUID().toString().substring(0, 8);
+        log.error("[{}] Data integrity violation: type={}, message={}",
+                correlationId, ex.getClass().getSimpleName(), message, ex);
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", Instant.now().toString());
+        body.put("error", "Database Error");
+        body.put("message", "Došlo je do greške sa bazom podataka. Molimo pokušajte ponovo.");
+        body.put("correlationId", correlationId);
+        body.put("support", "Za pomoć, navedite ID greške: " + correlationId);
+
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(body);
+    }
+
+    /**
+     * Handle database access exceptions with sanitized response.
+     * 
+     * <p><b>SECURITY:</b> Database errors often contain sensitive information:
+     * <ul>
+     *   <li>Table/column names</li>
+     *   <li>SQL syntax details</li>
+     *   <li>Connection strings</li>
+     * </ul>
+     * 
+     * <p>Returns generic message with correlation ID for support.
+     */
     @ExceptionHandler(DataAccessException.class)
     public ResponseEntity<Map<String, Object>> handleDatabaseError(DataAccessException ex) {
         String correlationId = "DB-" + UUID.randomUUID().toString().substring(0, 8);
@@ -275,6 +341,36 @@ public class GlobalExceptionHandler {
         body.put("message", ex.getMessage());
 
         return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+    }
+
+    /**
+     * Handle payment authorization failures.
+     * 
+     * Returns HTTP 402 (Payment Required) with structured JSON response:
+     * {
+     *   "timestamp": "2026-02-18T12:00:00Z",
+     *   "error": "Payment Failed",
+     *   "code": "PAYMENT_FAILED",
+     *   "message": "Payment authorization failed: Card declined"
+     * }
+     * 
+     * Frontend Handling:
+     * - Check for error.code to determine specific failure type
+     * - PAYMENT_FAILED: Generic payment failure
+     * - INSUFFICIENT_FUNDS: Suggest different payment method
+     * - CARD_DECLINED: Suggest updating card details
+     */
+    @ExceptionHandler(PaymentAuthorizationException.class)
+    public ResponseEntity<Map<String, Object>> handlePaymentAuthorizationException(PaymentAuthorizationException ex) {
+        log.warn("Payment authorization failed: {}", ex.getMessage());
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", Instant.now().toString());
+        body.put("error", "Payment Failed");
+        body.put("code", ex.getErrorCode());
+        body.put("message", ex.getMessage());
+
+        return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED).body(body);
     }
 
     @ExceptionHandler(io.jsonwebtoken.JwtException.class)

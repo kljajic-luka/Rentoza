@@ -14,6 +14,12 @@ import java.util.List;
 
 public interface BookingRepository extends JpaRepository<Booking, Long> {
 
+    /**
+     * Find an existing booking by idempotency key.
+     * Used to detect duplicate creation requests on client retry.
+     */
+    java.util.Optional<Booking> findByIdempotencyKey(String idempotencyKey);
+
     @Query("SELECT b FROM Booking b JOIN FETCH b.renter JOIN FETCH b.car WHERE b.car.id = :carId")
     List<Booking> findByCarId(@Param("carId") Long carId);
     List<Booking> findByRenterEmailIgnoreCase(String email);
@@ -189,29 +195,59 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
      * - Timeout: 5 seconds (prevents permanent deadlocks)
      * - Scope: Only locks relevant rows using idx_booking_time_overlap index
      * 
+     * IMPORTANT: Returns actual entities (not boolean count) so that JPA properly
+     * acquires row-level locks via SELECT ... FOR UPDATE. A COUNT query may not
+     * lock rows on all databases (e.g., PostgreSQL aggregate functions).
+     * 
      * Usage Pattern:
-     * 1. Call this method BEFORE creating a new Booking entity
-     * 2. If returns true, throw BookingConflictException
-     * 3. If returns false, safe to proceed with booking creation
-     * 4. Lock is released when transaction commits/rolls back
+     * 1. Call acquireCarAdvisoryLock() FIRST to serialize access
+     * 2. Call this method BEFORE creating a new Booking entity
+     * 3. If returns non-empty list, throw BookingConflictException
+     * 4. If returns empty list, safe to proceed with booking creation
+     * 5. Lock is released when transaction commits/rolls back
      * 
      * @param carId Car ID to check
      * @param startTime Booking start timestamp
      * @param endTime Booking end timestamp
-     * @return true if conflicting bookings exist (booking should be rejected)
+     * @return list of conflicting bookings (empty if no conflicts)
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @QueryHints({
         @QueryHint(name = "jakarta.persistence.lock.timeout", value = "5000") // 5 second timeout
     })
-    @Query("SELECT COUNT(b) > 0 FROM Booking b WHERE b.car.id = :carId " +
+    @Query("SELECT b FROM Booking b WHERE b.car.id = :carId " +
            "AND b.status IN ('PENDING_APPROVAL', 'ACTIVE', 'CHECK_IN_OPEN', 'CHECK_IN_HOST_COMPLETE', 'CHECK_IN_COMPLETE', 'IN_TRIP') " +
            "AND b.startTime < :endTime AND b.endTime > :startTime")
-    boolean existsOverlappingBookingsWithLock(
+    List<Booking> findOverlappingBookingsWithLock(
             @Param("carId") Long carId,
             @Param("startTime") LocalDateTime startTime,
             @Param("endTime") LocalDateTime endTime
     );
+
+    /**
+     * Acquire a PostgreSQL advisory lock for a car.
+     * 
+     * <p><b>P0 Fix:</b> FOR UPDATE only locks existing rows. When the slot is empty
+     * (no overlapping bookings yet), no rows are locked and two concurrent transactions
+     * can both proceed. This advisory lock serializes ALL booking attempts for a given car,
+     * preventing the empty-slot race condition.
+     * 
+     * <p>Uses pg_advisory_xact_lock which auto-releases when the transaction ends.
+     * The lock key is the car_id itself (unique per car).
+     * 
+     * @param carId Car ID to acquire lock for
+     */
+    @Query(value = "SELECT 1 FROM (SELECT pg_advisory_xact_lock(CAST(:carId AS BIGINT))) AS lock_acquired", nativeQuery = true)
+    Integer acquireCarAdvisoryLock(@Param("carId") Long carId);
+
+    /**
+     * Convenience method: Check if overlapping bookings exist with pessimistic locking.
+     * Delegates to {@link #findOverlappingBookingsWithLock} and checks if result is non-empty.
+     */
+    default boolean existsOverlappingBookingsWithLock(Long carId, LocalDateTime startTime, LocalDateTime endTime) {
+        acquireCarAdvisoryLock(carId);
+        return !findOverlappingBookingsWithLock(carId, startTime, endTime).isEmpty();
+    }
 
     /**
      * Find all bookings that are overdue (end time in the past) but not yet marked as COMPLETED.

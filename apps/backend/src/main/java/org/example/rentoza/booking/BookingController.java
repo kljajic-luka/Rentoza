@@ -116,12 +116,15 @@ public class BookingController {
             )
             @jakarta.validation.Valid @RequestBody BookingRequestDTO dto,
             @org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal) {
-        try {
-            Booking booking = service.createBooking(dto, principal.getUsername());
-            return ResponseEntity.ok(new BookingResponseDTO(booking));
-        } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
-        }
+        // P0 FIX: Let domain exceptions (BookingConflictException, UserOverlapException,
+        // ValidationException) propagate to GlobalExceptionHandler for proper HTTP status codes.
+        // BookingConflictException → 409 with code=CAR_UNAVAILABLE
+        // UserOverlapException → 409 with code=USER_OVERLAP
+        // ValidationException → 400 with structured error
+        // ResourceNotFoundException → 404
+        // PaymentAuthorizationException → 402 with code=PAYMENT_FAILED
+        Booking booking = service.createBooking(dto, principal.getUsername());
+        return ResponseEntity.ok(new BookingResponseDTO(booking));
     }
 
     /**

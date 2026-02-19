@@ -278,6 +278,54 @@ public class BookingPaymentService {
         return result;
     }
 
+    // ========== SECURITY DEPOSIT CAPTURE ==========
+
+    /**
+     * Capture the security deposit (convert authorization hold to actual charge).
+     * Used for ghost trips and penalty scenarios where the full deposit is forfeited.
+     *
+     * <p>Unlike {@link #captureBookingPayment(Long)} which captures the booking price,
+     * this captures the deposit authorization held at check-in.</p>
+     *
+     * @param bookingId Booking whose deposit should be captured
+     * @return Payment result
+     */
+    @Transactional
+    public PaymentResult captureSecurityDeposit(Long bookingId) {
+        Booking booking = getBooking(bookingId);
+
+        String depositAuthId = booking.getDepositAuthorizationId();
+        if (depositAuthId == null || depositAuthId.isBlank()) {
+            return PaymentResult.builder()
+                    .success(false)
+                    .errorMessage("No deposit authorization to capture")
+                    .status(PaymentStatus.FAILED)
+                    .build();
+        }
+
+        BigDecimal depositAmount = booking.getSecurityDeposit() != null
+                ? booking.getSecurityDeposit()
+                : BigDecimal.valueOf(defaultDepositAmountRsd);
+
+        PaymentResult result = paymentProvider.capture(depositAuthId, depositAmount);
+
+        if (result.isSuccess()) {
+            booking.setPaymentStatus("DEPOSIT_CAPTURED");
+            booking.setSecurityDepositReleased(false);
+            booking.setSecurityDepositResolvedAt(java.time.Instant.now());
+            bookingRepository.save(booking);
+            paymentSuccessCounter.increment();
+            log.info("[Payment] Security deposit {} RSD captured for booking {}: {}",
+                    depositAmount, bookingId, result.getTransactionId());
+        } else {
+            paymentFailedCounter.increment();
+            log.warn("[Payment] Security deposit capture failed for booking {}: {}",
+                    bookingId, result.getErrorMessage());
+        }
+
+        return result;
+    }
+
     // ========== DAMAGE CHARGES ==========
 
     /**

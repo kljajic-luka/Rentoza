@@ -10,6 +10,7 @@ import org.example.rentoza.booking.BookingStatus;
 import org.example.rentoza.booking.checkin.CheckInActorRole;
 import org.example.rentoza.booking.checkin.CheckInEventService;
 import org.example.rentoza.booking.checkin.CheckInEventType;
+import org.example.rentoza.booking.dispute.DamageClaim;
 import org.example.rentoza.booking.checkout.cqrs.CheckoutDomainEvent;
 import org.example.rentoza.booking.checkout.saga.CheckoutSagaState.SagaStatus;
 import org.example.rentoza.exception.ResourceNotFoundException;
@@ -284,15 +285,23 @@ public class CheckoutSagaOrchestrator {
             log.error("[Saga] Error in saga {} at step {}: {}",
                     saga.getSagaId(), saga.getCurrentStep(), e.getMessage(), e);
 
-            saga.setStatus(SagaStatus.FAILED);
-            saga.setFailedAtStep(saga.getCurrentStep());
-            saga.setErrorMessage(e.getMessage());
+            // P1 FIX: Don't overwrite SUSPENDED status with FAILED.
+            // If executeValidateReturn() suspended the saga due to a damage claim,
+            // keeping SUSPENDED allows resumeSuspendedSaga() to find and resume it.
+            if (saga.getStatus() != SagaStatus.SUSPENDED) {
+                saga.setStatus(SagaStatus.FAILED);
+                saga.setFailedAtStep(saga.getCurrentStep());
+                saga.setErrorMessage(e.getMessage());
 
-            sagaFailedCounter.increment();
+                sagaFailedCounter.increment();
 
-            // Start compensation if there are compensable steps
-            if (saga.getLastCompletedStep() != null && saga.getLastCompletedStep().hasCompensation()) {
-                startCompensation(saga);
+                // Start compensation if there are compensable steps
+                if (saga.getLastCompletedStep() != null && saga.getLastCompletedStep().hasCompensation()) {
+                    startCompensation(saga);
+                }
+            } else {
+                log.info("[Saga] Saga {} is SUSPENDED (not marking as FAILED) - awaiting dispute resolution",
+                        saga.getSagaId());
             }
         }
 
@@ -412,7 +421,15 @@ public class CheckoutSagaOrchestrator {
             Instant graceEnd = scheduledReturn.plus(LATE_GRACE_MINUTES, ChronoUnit.MINUTES);
             
             if (actualReturn.isAfter(graceEnd)) {
-                long lateMinutes = ChronoUnit.MINUTES.between(scheduledReturn, actualReturn);
+                // P0 FIX: Measure billable minutes from GRACE END, not scheduled return.
+                // The grace period is free; billing starts only after grace expires.
+                // Use actualReturnTime (set at guest checkout step) as the billing source,
+                // not tripEndedAt which may be set later during completion.
+                Instant billingSource = booking.getActualReturnTime() != null 
+                        ? booking.getActualReturnTime() 
+                        : actualReturn;
+                long lateMinutes = ChronoUnit.MINUTES.between(graceEnd, billingSource);
+                lateMinutes = Math.max(0, lateMinutes); // Safety: never negative
                 long lateHours = Math.min((lateMinutes + 59) / 60, MAX_LATE_HOURS);
                 
                 // Calculate tiered late fee
@@ -448,11 +465,26 @@ public class CheckoutSagaOrchestrator {
             }
         }
 
+        // ================================================================
+        // P0 FIX: INCLUDE DAMAGE CLAIM AMOUNT IN TOTAL CHARGES
+        // ================================================================
+        // If host reported damage and guest accepted (or admin approved),
+        // the approved damage amount must be included in total charges.
+        DamageClaim checkoutClaim = booking.getCheckoutDamageClaim();
+        if (checkoutClaim != null && checkoutClaim.getApprovedAmount() != null
+                && checkoutClaim.getStatus() != null
+                && checkoutClaim.getStatus().isApproved()) {
+            saga.setDamageClaimCharge(checkoutClaim.getApprovedAmount());
+            log.info("[Saga] Including damage claim charge {} RSD for booking {}",
+                    checkoutClaim.getApprovedAmount(), saga.getBookingId());
+        }
+
         // Calculate total
         BigDecimal total = BigDecimal.ZERO;
         if (saga.getExtraMileageCharge() != null) total = total.add(saga.getExtraMileageCharge());
         if (saga.getFuelCharge() != null) total = total.add(saga.getFuelCharge());
         if (saga.getLateFee() != null) total = total.add(saga.getLateFee());
+        if (saga.getDamageClaimCharge() != null) total = total.add(saga.getDamageClaimCharge());
 
         saga.setTotalCharges(total);
 
@@ -592,6 +624,15 @@ public class CheckoutSagaOrchestrator {
 
         Booking booking = loadBooking(saga.getBookingId());
 
+        // Idempotency: If deposit was already resolved (e.g. admin dispute resolution
+        // handled capture/release before saga started), skip to avoid double-capture.
+        if (booking.getSecurityDepositResolvedAt() != null) {
+            log.info("[Saga] Deposit already resolved for booking {} (admin dispute flow) — skipping capture",
+                    saga.getBookingId());
+            saga.setCapturedAmount(BigDecimal.ZERO);
+            return;
+        }
+
         // Treat null securityDeposit as ZERO - allows checkout to proceed without deposit feature
         BigDecimal depositAmount = booking.getSecurityDeposit() != null 
                 ? booking.getSecurityDeposit() 
@@ -679,6 +720,15 @@ public class CheckoutSagaOrchestrator {
     private void executeReleaseDeposit(CheckoutSagaState saga) {
         Booking booking = loadBooking(saga.getBookingId());
 
+        // Idempotency: If deposit was already resolved (e.g. admin dispute resolution
+        // handled capture/release before saga started), skip to avoid double-release.
+        if (booking.getSecurityDepositResolvedAt() != null) {
+            log.info("[Saga] Deposit already resolved for booking {} (admin dispute flow) — skipping release",
+                    saga.getBookingId());
+            saga.setReleasedAmount(BigDecimal.ZERO);
+            return;
+        }
+
         // Treat null securityDeposit as ZERO - allows checkout to proceed without deposit feature
         BigDecimal depositAmount = booking.getSecurityDeposit() != null 
                 ? booking.getSecurityDeposit() 
@@ -694,42 +744,30 @@ public class CheckoutSagaOrchestrator {
         BigDecimal releaseAmount = depositAmount.subtract(capturedAmount);
 
         if (releaseAmount.compareTo(BigDecimal.ZERO) > 0) {
-            String depositAuthId = booking.getDepositAuthorizationId();
-            if (depositAuthId == null || depositAuthId.isBlank()) {
-                log.warn("[Saga] No deposit authorization ID to release for booking {}", saga.getBookingId());
-                saga.setReleasedAmount(BigDecimal.ZERO);
-                return;
-            }
-
-            // If entire deposit was NOT captured, release the remaining authorization
-            if (capturedAmount.compareTo(BigDecimal.ZERO) == 0) {
-                // Nothing captured — release the full authorization hold
-                PaymentResult releaseResult = bookingPaymentService.releaseDeposit(
-                        saga.getBookingId(), depositAuthId);
-
-                if (!releaseResult.isSuccess()) {
-                    log.error("[Saga] Deposit release FAILED for booking {}: {}",
-                            saga.getBookingId(), releaseResult.getErrorMessage());
-                    throw new IllegalStateException(
-                            "Neuspešno vraćanje depozita: " + releaseResult.getErrorMessage());
-                }
-
-                saga.setReleasedAmount(releaseAmount);
-                saga.setReleaseTransactionId(releaseResult.getTransactionId());
-            } else {
-                // Partial capture — auth was consumed by capture, remaining is auto-released
-                // by the payment gateway. Record for audit.
-                saga.setReleasedAmount(releaseAmount);
-                saga.setReleaseTransactionId("AUTO-" + saga.getCaptureTransactionId());
-            }
-
-            // Mark deposit as released on the booking
-            booking.setSecurityDepositReleased(true);
-            booking.setSecurityDepositResolvedAt(Instant.now());
+            // ================================================================
+            // P0 FIX: DEFER DEPOSIT RELEASE TO 48H SCHEDULER
+            // ================================================================
+            // Do NOT release the deposit immediately. Instead, schedule it for
+            // release 48 hours after checkout completion. This prevents BUG-007
+            // regression where a claim is filed after the deposit is released.
+            //
+            // The PaymentLifecycleScheduler.releaseDepositsAfterTrip() job runs
+            // every 30 minutes and releases deposits T+48h after trip end,
+            // with defense-in-depth damage claim checks.
+            // ================================================================
+            
+            Instant releaseScheduledAt = Instant.now().plus(48, ChronoUnit.HOURS);
+            booking.setSecurityDepositReleased(false); // NOT released yet
+            booking.setSecurityDepositHoldUntil(releaseScheduledAt);
+            booking.setSecurityDepositHoldReason("48h post-checkout hold period (standard policy)");
             bookingRepository.save(booking);
-
-            log.info("[Saga] Released {} RSD deposit for booking {} (txn: {})",
-                    releaseAmount, saga.getBookingId(), saga.getReleaseTransactionId());
+            
+            saga.setReleasedAmount(BigDecimal.ZERO); // Nothing released in saga
+            saga.setReleaseTransactionId("DEFERRED-48H-" + releaseScheduledAt);
+            
+            log.info("[Saga] Deposit release DEFERRED for booking {} — {} RSD held until {} (48h policy). " +
+                    "PaymentLifecycleScheduler will release if no claims are filed.",
+                    saga.getBookingId(), releaseAmount, releaseScheduledAt);
         } else {
             // Full deposit was captured — nothing to release
             booking.setSecurityDepositReleased(true);
@@ -761,11 +799,35 @@ public class CheckoutSagaOrchestrator {
         // 3. Multiple saga instances due to race condition
         if (booking.getStatus() != BookingStatus.COMPLETED) {
             booking.setStatus(BookingStatus.COMPLETED);
+            booking.setCheckoutCompletedAt(Instant.now());
             bookingRepository.save(booking);
             log.info("[Saga] Booking {} transitioned to COMPLETED", saga.getBookingId());
         } else {
             log.debug("[Saga] Booking {} already COMPLETED - skipping status update (idempotent retry)", 
                 saga.getBookingId());
+        }
+
+        // P1 FIX: Mock-auto host payout moved OUTSIDE the status guard.
+        // CheckOutService sets COMPLETED before saga runs, so payout was
+        // previously unreachable inside the if-block.
+        // The saga step itself provides idempotency (only executed once per flow).
+        try {
+            String batchRef = "SAGA_AUTO_" + saga.getSagaId().toString().substring(0, 8) + "_" + 
+                              System.currentTimeMillis();
+            PaymentResult payoutResult = bookingPaymentService.processHostPayout(booking, batchRef);
+            
+            if (payoutResult.isSuccess()) {
+                log.info("[Saga] Auto host payout queued: {} RSD for booking {} (ref: {})",
+                        payoutResult.getAmount(), booking.getId(), batchRef);
+            } else {
+                // Payout failure is non-critical — admin can trigger manually
+                log.warn("[Saga] Auto host payout failed for booking {} — admin can retry. Error: {}",
+                        booking.getId(), payoutResult.getErrorMessage());
+            }
+        } catch (Exception e) {
+            // Don't fail the saga for payout issues — admin batch will catch missed payouts
+            log.warn("[Saga] Auto host payout exception for booking {} — will be included in admin batch: {}",
+                    booking.getId(), e.getMessage());
         }
     }
 

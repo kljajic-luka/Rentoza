@@ -13,6 +13,7 @@ import org.example.rentoza.admin.repository.DisputeResolutionRepository;
 import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingRepository;
 import org.example.rentoza.booking.BookingStatus;
+import org.example.rentoza.booking.checkout.saga.CheckoutSagaOrchestrator;
 import org.example.rentoza.booking.dispute.DamageClaim;
 import org.example.rentoza.booking.dispute.DamageClaimRepository;
 import org.example.rentoza.booking.dispute.DamageClaimStatus;
@@ -48,6 +49,7 @@ public class AdminDisputeService {
     private final NotificationService notificationService;
     private final BookingPaymentService paymentService;
     private final BookingRepository bookingRepository;
+    private final CheckoutSagaOrchestrator checkoutSagaOrchestrator;
 
     // ==================== DISPUTE LISTING ====================
 
@@ -690,13 +692,40 @@ public class AdminDisputeService {
     
     /**
      * Resume checkout saga after dispute resolution.
+     * P0 FIX: Actually invoke the saga orchestrator instead of just logging.
+     * 
+     * <p><b>Gap fix:</b> When the damage dispute path is taken
+     * (CHECKOUT_DAMAGE_DISPUTE set before completeCheckout()), no saga exists.
+     * In that case, prepare the booking and start a fresh saga instead of resuming.</p>
      */
     private boolean resumeCheckoutSaga(Long bookingId) {
         try {
-            // Saga orchestrator is in another package - we need to use application event
-            // For now, log and return success (saga will detect status change on next poll)
-            log.info("[VAL-010] Checkout saga should resume for booking {} on next cycle", bookingId);
+            checkoutSagaOrchestrator.resumeSuspendedSaga(bookingId);
+            log.info("[VAL-010] Checkout saga resumed for booking {}", bookingId);
             return true;
+        } catch (ResourceNotFoundException e) {
+            // No saga exists — dispute branched before completeCheckout() was called.
+            // Prepare the booking and start a fresh saga.
+            log.info("[VAL-010] No existing saga for booking {} — starting fresh saga after admin dispute resolution", bookingId);
+            try {
+                Booking booking = bookingRepository.findById(bookingId)
+                        .orElseThrow(() -> new ResourceNotFoundException("Booking not found: " + bookingId));
+                // Set checkout timestamps if completeCheckout() was never called
+                if (booking.getCheckoutCompletedAt() == null) {
+                    booking.setCheckoutCompletedAt(Instant.now());
+                }
+                if (booking.getTripEndedAt() == null) {
+                    booking.setTripEndedAt(Instant.now());
+                }
+                bookingRepository.save(booking);
+                
+                checkoutSagaOrchestrator.startSaga(bookingId);
+                log.info("[VAL-010] Fresh saga started for booking {} after admin dispute resolution", bookingId);
+                return true;
+            } catch (Exception startEx) {
+                log.error("[VAL-010] Failed to start fresh saga for booking {}: {}", bookingId, startEx.getMessage(), startEx);
+                return false;
+            }
         } catch (Exception e) {
             log.error("[VAL-010] Failed to resume saga for booking {}: {}", bookingId, e.getMessage());
             return false;

@@ -26,7 +26,8 @@ export type BookingStatus =
   // Checkout workflow statuses
   | 'CHECKOUT_OPEN'
   | 'CHECKOUT_GUEST_COMPLETE'
-  | 'CHECKOUT_HOST_COMPLETE';
+  | 'CHECKOUT_HOST_COMPLETE'
+  | 'CHECKOUT_DAMAGE_DISPUTE';
 
 export type CheckInStatus =
   | 'NOT_STARTED'

@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.List;
 
 /**
  * Controller for serving check-in photo files.
@@ -205,14 +206,15 @@ public class CheckInPhotoController {
     /**
      * Extract booking ID from session ID.
      * Session ID is created per check-in session and should be linked to booking.
-     * In current implementation, you may need to add a query to CheckInPhotoRepository
-     * to find booking by session ID.
+     * Queries the photo repository to find which booking owns photos for this session.
      */
     private Long extractBookingIdFromSessionId(String sessionId) {
-        // This requires: photoRepository.findByCheckInSessionId(sessionId)
-        // Then extract booking ID from the first photo found
-        // For now, return null and let authorization fail safely
-        return null;  // TODO: Implement after adding repository method
+        List<Long> bookingIds = photoRepository.findBookingIdsBySessionId(sessionId);
+        if (bookingIds != null && !bookingIds.isEmpty()) {
+            return bookingIds.get(0);
+        }
+        log.warn("[CheckIn-P0-1] No booking found for session ID: {}", sessionId);
+        return null;
     }
 
     /**

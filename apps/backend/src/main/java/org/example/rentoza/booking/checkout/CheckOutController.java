@@ -245,6 +245,76 @@ public class CheckOutController {
 
     // ========== EXCEPTION HANDLERS ==========
 
+    // ========== DAMAGE DISPUTE ENDPOINTS (VAL-010) ==========
+
+    /**
+     * Guest accepts the checkout damage claim.
+     * 
+     * <p>Allows deposit capture for damage charges and completes checkout.
+     * Only callable when booking is in CHECKOUT_DAMAGE_DISPUTE status.
+     */
+    @PostMapping("/damage/accept")
+    public ResponseEntity<Map<String, Object>> acceptDamageClaim(
+            @PathVariable Long bookingId) {
+        
+        Long userId = currentUser.id();
+        log.info("[CheckOut] Guest {} accepting damage claim for booking {}", userId, bookingId);
+        
+        checkOutService.acceptDamageClaim(bookingId, userId);
+        
+        return ResponseEntity.ok(Map.of(
+            "status", "ACCEPTED",
+            "message", "Prijava oštećenja prihvaćena. Depozit će biti zadržan za pokriće troškova.",
+            "bookingId", bookingId
+        ));
+    }
+
+    /**
+     * Guest disputes the checkout damage claim.
+     * 
+     * <p>Escalates to admin for resolution. Deposit remains held.
+     * Only callable when booking is in CHECKOUT_DAMAGE_DISPUTE status.
+     */
+    @PostMapping("/damage/dispute")
+    public ResponseEntity<Map<String, Object>> disputeDamageClaim(
+            @PathVariable Long bookingId,
+            @RequestBody Map<String, String> body) {
+        
+        Long userId = currentUser.id();
+        String reason = body.getOrDefault("reason", "");
+        log.info("[CheckOut] Guest {} disputing damage claim for booking {}: {}", userId, bookingId, reason);
+        
+        checkOutService.disputeDamageClaim(bookingId, userId, reason);
+        
+        return ResponseEntity.ok(Map.of(
+            "status", "DISPUTED",
+            "message", "Prijava oštećenja osporena. Eskaliramo admin timu na pregled.",
+            "bookingId", bookingId
+        ));
+    }
+
+    /**
+     * Get the damage claim details for a booking in dispute.
+     */
+    @GetMapping("/damage/status")
+    public ResponseEntity<Map<String, Object>> getDamageClaimStatus(
+            @PathVariable Long bookingId) {
+        
+        Long userId = currentUser.id();
+        log.debug("[CheckOut] Damage claim status request for booking {} by user {}", bookingId, userId);
+        
+        CheckOutStatusDTO status = checkOutService.getCheckOutStatus(bookingId, userId);
+        
+        return ResponseEntity.ok(Map.of(
+            "bookingId", bookingId,
+            "bookingStatus", status.getStatus(),
+            "damageReported", status.isNewDamageReported(),
+            "damageDescription", status.getDamageDescription() != null ? status.getDamageDescription() : "",
+            "damageClaimAmount", status.getDamageClaimAmount() != null ? status.getDamageClaimAmount() : 0,
+            "damageClaimStatus", status.getDamageClaimStatus() != null ? status.getDamageClaimStatus() : "NONE"
+        ));
+    }
+
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<Map<String, Object>> handleIllegalState(IllegalStateException ex) {
         log.warn("[CheckOut] Illegal state: {}", ex.getMessage());

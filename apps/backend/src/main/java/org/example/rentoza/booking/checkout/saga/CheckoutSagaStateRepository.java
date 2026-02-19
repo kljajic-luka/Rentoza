@@ -23,11 +23,12 @@ public interface CheckoutSagaStateRepository extends JpaRepository<CheckoutSagaS
 
     /**
      * Find active saga for a booking.
+     * P1 FIX: Include SUSPENDED status so resumeSuspendedSaga() can find suspended sagas.
      */
     @Query("""
         SELECT s FROM CheckoutSagaState s
         WHERE s.bookingId = :bookingId
-        AND s.status IN ('PENDING', 'RUNNING', 'COMPENSATING')
+        AND s.status IN ('PENDING', 'RUNNING', 'COMPENSATING', 'SUSPENDED')
         ORDER BY s.createdAt DESC
         """)
     Optional<CheckoutSagaState> findActiveSagaForBooking(@Param("bookingId") Long bookingId);

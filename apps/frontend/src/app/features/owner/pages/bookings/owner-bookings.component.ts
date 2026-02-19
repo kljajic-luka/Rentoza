@@ -126,7 +126,7 @@ export class OwnerBookingsComponent implements OnInit {
                 // BUT: Exclude checkout statuses (they need action even if endTime passed)
                 else if (
                   (endTime < now || booking.status === 'COMPLETED') &&
-                  !['CHECKOUT_OPEN', 'CHECKOUT_GUEST_COMPLETE', 'CHECKOUT_HOST_COMPLETE'].includes(
+                  !['CHECKOUT_OPEN', 'CHECKOUT_GUEST_COMPLETE', 'CHECKOUT_HOST_COMPLETE', 'CHECKOUT_DAMAGE_DISPUTE'].includes(
                     booking.status,
                   ) &&
                   booking.status !== 'CANCELLED' &&
@@ -143,7 +143,7 @@ export class OwnerBookingsComponent implements OnInit {
                   !['CHECK_IN_OPEN', 'CHECK_IN_HOST_COMPLETE', 'CHECK_IN_COMPLETE'].includes(
                     booking.status,
                   ) &&
-                  !['CHECKOUT_OPEN', 'CHECKOUT_GUEST_COMPLETE', 'CHECKOUT_HOST_COMPLETE'].includes(
+                  !['CHECKOUT_OPEN', 'CHECKOUT_GUEST_COMPLETE', 'CHECKOUT_HOST_COMPLETE', 'CHECKOUT_DAMAGE_DISPUTE'].includes(
                     booking.status,
                   )
                 ) {
@@ -155,7 +155,7 @@ export class OwnerBookingsComponent implements OnInit {
                   ['CHECK_IN_OPEN', 'CHECK_IN_HOST_COMPLETE', 'CHECK_IN_COMPLETE'].includes(
                     booking.status,
                   ) ||
-                  ['CHECKOUT_OPEN', 'CHECKOUT_GUEST_COMPLETE', 'CHECKOUT_HOST_COMPLETE'].includes(
+                  ['CHECKOUT_OPEN', 'CHECKOUT_GUEST_COMPLETE', 'CHECKOUT_HOST_COMPLETE', 'CHECKOUT_DAMAGE_DISPUTE'].includes(
                     booking.status,
                   )
                 ) {
@@ -199,6 +199,8 @@ export class OwnerBookingsComponent implements OnInit {
       case 'CHECKOUT_GUEST_COMPLETE':
       case 'CHECKOUT_HOST_COMPLETE':
         return 'status-checkout';
+      case 'CHECKOUT_DAMAGE_DISPUTE':
+        return 'status-dispute';
       case 'COMPLETED':
         return 'status-completed';
       case 'NO_SHOW_HOST':
@@ -234,6 +236,8 @@ export class OwnerBookingsComponent implements OnInit {
         return 'Potvrdi checkout';
       case 'CHECKOUT_HOST_COMPLETE':
         return 'Checkout završen';
+      case 'CHECKOUT_DAMAGE_DISPUTE':
+        return 'Spor o oštećenju';
       case 'NO_SHOW_HOST':
         return 'Host nije se pojavio';
       case 'NO_SHOW_GUEST':
@@ -317,7 +321,9 @@ export class OwnerBookingsComponent implements OnInit {
    */
   protected canCheckout(booking: Booking): boolean {
     return (
-      booking.status === 'CHECKOUT_GUEST_COMPLETE' || booking.status === 'CHECKOUT_OPEN' // For viewing status
+      booking.status === 'CHECKOUT_GUEST_COMPLETE' ||
+      booking.status === 'CHECKOUT_OPEN' ||
+      booking.status === 'CHECKOUT_DAMAGE_DISPUTE'
     );
   }
 
@@ -330,6 +336,8 @@ export class OwnerBookingsComponent implements OnInit {
         return 'Čeka se gost';
       case 'CHECKOUT_GUEST_COMPLETE':
         return 'Potvrdi Checkout';
+      case 'CHECKOUT_DAMAGE_DISPUTE':
+        return 'Spor o oštećenju';
       default:
         return 'Checkout';
     }
@@ -344,6 +352,8 @@ export class OwnerBookingsComponent implements OnInit {
         return 'hourglass_empty';
       case 'CHECKOUT_GUEST_COMPLETE':
         return 'check_circle';
+      case 'CHECKOUT_DAMAGE_DISPUTE':
+        return 'gavel';
       default:
         return 'logout';
     }

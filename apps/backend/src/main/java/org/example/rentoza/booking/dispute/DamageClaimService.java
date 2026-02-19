@@ -250,6 +250,7 @@ public class DamageClaimService {
 
     /**
      * Guest accepts the damage claim.
+     * P1 FIX: Routes CHECKOUT_PENDING claims through checkout-specific transitions.
      */
     @Transactional
     public DamageClaimDTO acceptClaim(Long claimId, String response, Long guestUserId) {
@@ -259,7 +260,12 @@ public class DamageClaimService {
             throw new IllegalStateException("Rok za odgovor je istekao ili prijava nije na čekanju");
         }
 
-        claim.acceptByGuest(response);
+        // Route through checkout-specific or legacy transition
+        if (claim.getStatus() == DamageClaimStatus.CHECKOUT_PENDING) {
+            claim.acceptByGuestCheckout(response);
+        } else {
+            claim.acceptByGuest(response);
+        }
         claim = claimRepository.save(claim);
 
         claimResolvedCounter.increment();
@@ -278,6 +284,7 @@ public class DamageClaimService {
 
     /**
      * Guest disputes the damage claim.
+     * P1 FIX: Routes CHECKOUT_PENDING claims through checkout-specific transitions.
      */
     @Transactional
     public DamageClaimDTO disputeClaim(Long claimId, String response, Long guestUserId) {
@@ -287,7 +294,12 @@ public class DamageClaimService {
             throw new IllegalStateException("Rok za odgovor je istekao ili prijava nije na čekanju");
         }
 
-        claim.disputeByGuest(response);
+        // Route through checkout-specific or legacy transition
+        if (claim.getStatus() == DamageClaimStatus.CHECKOUT_PENDING) {
+            claim.disputeByGuestCheckout(response);
+        } else {
+            claim.disputeByGuest(response);
+        }
         claim = claimRepository.save(claim);
 
         claimDisputedCounter.increment();

@@ -304,6 +304,152 @@ class CheckoutSagaIntegrationTest {
         verify(bookingRepository).save(any(Booking.class));
     }
 
+    // ========== acceptDamageClaim → saga progression ==========
+
+    @Test
+    @DisplayName("Guest accept damage claim clears hold flags and saga proceeds (not suspended)")
+    void testAcceptDamageClaimAllowsSagaProgression() {
+        // Given: Booking in CHECKOUT_DAMAGE_DISPUTE with deposit hold set by host-confirm flow
+        Booking booking = createTestBooking(0);
+        booking.setId(5000L);
+        booking.setStatus(BookingStatus.CHECKOUT_DAMAGE_DISPUTE);
+        booking.setSecurityDeposit(java.math.BigDecimal.valueOf(30000));
+        booking.setDepositAuthorizationId("dep_auth_123");
+        booking.setSecurityDepositReleased(false);
+        booking.setSecurityDepositHoldReason("DAMAGE_CLAIM");
+        booking.setSecurityDepositHoldUntil(Instant.now().plus(7, ChronoUnit.DAYS));
+        booking.setDamageClaimAmount(java.math.BigDecimal.valueOf(15000));
+        booking.setCheckoutSessionId("sess-123");
+
+        // Set up damage claim linked to booking
+        org.example.rentoza.booking.dispute.DamageClaim claim = 
+                org.example.rentoza.booking.dispute.DamageClaim.builder()
+                .id(10L)
+                .booking(booking)
+                .host(booking.getCar().getOwner())
+                .guest(booking.getRenter())
+                .description("Scratch on door")
+                .claimedAmount(java.math.BigDecimal.valueOf(15000))
+                .status(org.example.rentoza.booking.dispute.DamageClaimStatus.CHECKOUT_PENDING)
+                .build();
+        booking.setCheckoutDamageClaim(claim);
+
+        Long guestId = booking.getRenter().getId();
+        when(bookingRepository.findByIdWithRelations(5000L)).thenReturn(Optional.of(booking));
+        when(bookingRepository.save(any(Booking.class))).thenReturn(booking);
+        when(damageClaimRepository.save(any(org.example.rentoza.booking.dispute.DamageClaim.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        // When: Guest accepts damage claim
+        checkOutService.acceptDamageClaim(5000L, guestId);
+
+        // Then: Claim status updated with approved amount
+        assertThat(claim.getStatus())
+                .isEqualTo(org.example.rentoza.booking.dispute.DamageClaimStatus.CHECKOUT_GUEST_ACCEPTED);
+        assertThat(claim.getApprovedAmount())
+                .isEqualByComparingTo(java.math.BigDecimal.valueOf(15000));
+
+        // And: Deposit hold flags cleared (so saga validation won't suspend)
+        ArgumentCaptor<Booking> bookingCaptor = ArgumentCaptor.forClass(Booking.class);
+        verify(bookingRepository, atLeastOnce()).save(bookingCaptor.capture());
+        Booking saved = bookingCaptor.getAllValues().stream()
+                .filter(b -> b.getId() != null && b.getId().equals(5000L))
+                .reduce((first, second) -> second).orElse(bookingCaptor.getValue());
+        assertThat(saved.getSecurityDepositHoldReason())
+                .describedAs("Hold reason must be cleared so saga validation passes")
+                .isNull();
+        assertThat(saved.getSecurityDepositHoldUntil())
+                .describedAs("Hold-until must be cleared so saga validation passes")
+                .isNull();
+        assertThat(saved.getSecurityDepositResolvedAt())
+                .describedAs("Must NOT be pre-set — saga capture/release steps need to run")
+                .isNull();
+
+        // And: completeCheckout() was called, which invokes saga
+        verify(checkoutSagaOrchestrator).startSaga(eq(5000L));
+    }
+
+    @Test
+    @DisplayName("Guest accept damage claim transitions booking to COMPLETED before saga")
+    void testAcceptDamageClaimCompletesBooking() {
+        // Given: Booking in CHECKOUT_DAMAGE_DISPUTE
+        Booking booking = createTestBooking(0);
+        booking.setId(6000L);
+        booking.setStatus(BookingStatus.CHECKOUT_DAMAGE_DISPUTE);
+        booking.setSecurityDepositReleased(false);
+        booking.setSecurityDepositHoldReason("DAMAGE_CLAIM");
+        booking.setSecurityDepositHoldUntil(Instant.now().plus(7, ChronoUnit.DAYS));
+        booking.setCheckoutSessionId("sess-456");
+
+        org.example.rentoza.booking.dispute.DamageClaim claim = 
+                org.example.rentoza.booking.dispute.DamageClaim.builder()
+                .id(11L)
+                .booking(booking)
+                .host(booking.getCar().getOwner())
+                .guest(booking.getRenter())
+                .description("Dent")
+                .claimedAmount(java.math.BigDecimal.valueOf(10000))
+                .status(org.example.rentoza.booking.dispute.DamageClaimStatus.CHECKOUT_PENDING)
+                .build();
+        booking.setCheckoutDamageClaim(claim);
+
+        Long guestId = booking.getRenter().getId();
+        when(bookingRepository.findByIdWithRelations(6000L)).thenReturn(Optional.of(booking));
+        when(bookingRepository.save(any(Booking.class))).thenReturn(booking);
+        when(damageClaimRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        // When
+        checkOutService.acceptDamageClaim(6000L, guestId);
+
+        // Then: Booking status should be COMPLETED (set by completeCheckout())
+        assertThat(booking.getStatus()).isEqualTo(BookingStatus.COMPLETED);
+        assertThat(booking.getCheckoutCompletedAt()).isNotNull();
+        assertThat(booking.getTripEndedAt()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("Guest accept damage claim is resilient to saga invocation failure")
+    void testAcceptDamageClaimResilientToSagaFailure() {
+        // Given: Booking in CHECKOUT_DAMAGE_DISPUTE
+        Booking booking = createTestBooking(0);
+        booking.setId(7000L);
+        booking.setStatus(BookingStatus.CHECKOUT_DAMAGE_DISPUTE);
+        booking.setSecurityDepositReleased(false);
+        booking.setSecurityDepositHoldReason("DAMAGE_CLAIM");
+        booking.setCheckoutSessionId("sess-789");
+
+        org.example.rentoza.booking.dispute.DamageClaim claim = 
+                org.example.rentoza.booking.dispute.DamageClaim.builder()
+                .id(12L)
+                .booking(booking)
+                .host(booking.getCar().getOwner())
+                .guest(booking.getRenter())
+                .description("Scratch")
+                .claimedAmount(java.math.BigDecimal.valueOf(5000))
+                .status(org.example.rentoza.booking.dispute.DamageClaimStatus.CHECKOUT_PENDING)
+                .build();
+        booking.setCheckoutDamageClaim(claim);
+
+        Long guestId = booking.getRenter().getId();
+        when(bookingRepository.findByIdWithRelations(7000L)).thenReturn(Optional.of(booking));
+        when(bookingRepository.save(any(Booking.class))).thenReturn(booking);
+        when(damageClaimRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        // And: Saga invocation will fail
+        doThrow(new RuntimeException("Database timeout"))
+                .when(checkoutSagaOrchestrator).startSaga(7000L);
+
+        // When: Should NOT throw (resilient design — recovery scheduler will retry)
+        checkOutService.acceptDamageClaim(7000L, guestId);
+
+        // Then: Booking is still COMPLETED and claim is still accepted
+        assertThat(booking.getStatus()).isEqualTo(BookingStatus.COMPLETED);
+        assertThat(claim.getStatus())
+                .isEqualTo(org.example.rentoza.booking.dispute.DamageClaimStatus.CHECKOUT_GUEST_ACCEPTED);
+        assertThat(claim.getApprovedAmount())
+                .isEqualByComparingTo(java.math.BigDecimal.valueOf(5000));
+    }
+
     // ========== Test Data Helpers ==========
 
     private Booking createTestBooking(int lateMinutes) {

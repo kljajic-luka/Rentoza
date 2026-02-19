@@ -214,7 +214,7 @@ public enum CheckInPhotoType {
     
     /**
      * Check if this photo type is required for guest checkout.
-     * @return true if this is one of the 6 required checkout photos
+     * @return true if this is one of the 8 required checkout photos
      */
     public boolean isRequiredForCheckout() {
         return switch (this) {
@@ -222,6 +222,8 @@ public enum CheckInPhotoType {
                  CHECKOUT_EXTERIOR_REAR,
                  CHECKOUT_EXTERIOR_LEFT,
                  CHECKOUT_EXTERIOR_RIGHT,
+                 CHECKOUT_INTERIOR_DASHBOARD,
+                 CHECKOUT_INTERIOR_REAR,
                  CHECKOUT_ODOMETER,
                  CHECKOUT_FUEL_GAUGE -> true;
             default -> false;

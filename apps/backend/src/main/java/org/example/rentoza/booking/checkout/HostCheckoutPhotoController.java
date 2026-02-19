@@ -10,9 +10,11 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.example.rentoza.booking.checkin.CheckInPhotoRepository;
 import org.example.rentoza.booking.checkin.dto.CheckInPhotoDTO;
 import org.example.rentoza.booking.checkout.dto.HostCheckoutPhotoResponseDTO;
 import org.example.rentoza.booking.checkout.dto.HostCheckoutPhotoSubmissionDTO;
+import org.example.rentoza.booking.photo.PhotoAccessService;
 import org.example.rentoza.security.CurrentUser;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.FileSystemResource;
@@ -51,6 +53,8 @@ public class HostCheckoutPhotoController {
 
     private final HostCheckoutPhotoService hostCheckoutPhotoService;
     private final CurrentUser currentUser;
+    private final CheckInPhotoRepository photoRepository;
+    private final PhotoAccessService photoAccessService;
 
     @Value("${app.checkout.photo.upload-dir:uploads/checkout}")
     private String uploadDir;
@@ -134,6 +138,9 @@ public class HostCheckoutPhotoController {
 
     /**
      * Serve a host checkout photo file.
+     * 
+     * <p>Verifies the requesting user is a participant in the booking
+     * before serving the photo.
      */
     @GetMapping("/api/host-checkout/photos/{sessionId}/{filename}")
     @PreAuthorize("isAuthenticated()")
@@ -142,14 +149,26 @@ public class HostCheckoutPhotoController {
             @PathVariable String sessionId,
             @PathVariable String filename) {
         
+        Long userId = currentUser.id();
+        
         // Sanitize inputs to prevent directory traversal
         if (containsPathTraversal(sessionId) || containsPathTraversal(filename)) {
-            log.warn("[HostCheckout] Rejected directory traversal attempt: session={}, file={}", 
-                sessionId, filename);
+            log.warn("[HostCheckout] Rejected directory traversal attempt: session={}, file={}, user={}", 
+                sessionId, filename, userId);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
         }
         
         try {
+            // Verify participant access
+            java.util.List<Long> bookingIds = photoRepository.findBookingIdsBySessionId(sessionId);
+            Long bookingId = (bookingIds != null && !bookingIds.isEmpty()) ? bookingIds.get(0) : null;
+            
+            if (bookingId != null && !photoAccessService.canUserAccessBooking(bookingId, userId)) {
+                log.warn("[HostCheckout] Unauthorized photo access: user={}, booking={}, session={}",
+                        userId, bookingId, sessionId);
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+            
             // Construct the file path
             String hostCheckoutUploadDir = uploadDir.replace("checkout", "host-checkout");
             Path filePath = Paths.get(hostCheckoutUploadDir, sessionId, filename).normalize();
@@ -178,7 +197,7 @@ public class HostCheckoutPhotoController {
                 contentType = "image/jpeg";
             }
             
-            log.debug("[HostCheckout] Serving photo: {}, type: {}", filePath, contentType);
+            log.debug("[HostCheckout] Serving photo: {}, user: {}, type: {}", filePath, userId, contentType);
             
             return ResponseEntity.ok()
                     .contentType(MediaType.parseMediaType(contentType))

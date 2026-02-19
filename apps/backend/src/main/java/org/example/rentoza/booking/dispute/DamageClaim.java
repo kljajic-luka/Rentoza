@@ -258,11 +258,11 @@ public class DamageClaim {
 
     /**
      * Check if guest can still respond.
+     * Supports both standard PENDING claims and VAL-010 CHECKOUT_PENDING claims.
      */
     public boolean canGuestRespond() {
-        return status == DamageClaimStatus.PENDING
-            && responseDeadline != null
-            && Instant.now().isBefore(responseDeadline);
+        return (status == DamageClaimStatus.PENDING || status == DamageClaimStatus.CHECKOUT_PENDING)
+            && (responseDeadline == null || Instant.now().isBefore(responseDeadline));
     }
 
     /**
@@ -336,10 +336,31 @@ public class DamageClaim {
     }
 
     /**
+     * Mark checkout claim as accepted by guest (VAL-010).
+     * Uses checkout-specific status for proper saga integration.
+     */
+    public void acceptByGuestCheckout(String response) {
+        this.status = DamageClaimStatus.CHECKOUT_GUEST_ACCEPTED;
+        this.guestResponse = response;
+        this.guestRespondedAt = Instant.now();
+        this.approvedAmount = this.claimedAmount;
+    }
+
+    /**
      * Mark claim as disputed by guest.
      */
     public void disputeByGuest(String response) {
         this.status = DamageClaimStatus.DISPUTED;
+        this.guestResponse = response;
+        this.guestRespondedAt = Instant.now();
+    }
+
+    /**
+     * Mark checkout claim as disputed by guest (VAL-010).
+     * Uses checkout-specific status for proper saga integration.
+     */
+    public void disputeByGuestCheckout(String response) {
+        this.status = DamageClaimStatus.CHECKOUT_GUEST_DISPUTED;
         this.guestResponse = response;
         this.guestRespondedAt = Instant.now();
     }

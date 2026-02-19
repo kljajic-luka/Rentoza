@@ -31,6 +31,8 @@ type CheckoutRenderDecision =
   | 'GUEST_WAITING' // Guest waiting for host confirmation
   | 'HOST_WAITING' // Host waiting for guest submission
   | 'HOST_CONFIRM' // Host can confirm checkout
+  | 'DAMAGE_DISPUTE_GUEST' // Guest must accept/dispute damage claim
+  | 'DAMAGE_DISPUTE_HOST' // Host waiting for guest response to damage claim
   | 'COMPLETE' // Checkout done
   | 'NOT_READY'; // Status unknown or error
 
@@ -115,6 +117,18 @@ export class CheckoutService {
     if (bookingStatus === 'CHECKOUT_HOST_COMPLETE' || bookingStatus === 'COMPLETED') {
       console.log('[CheckoutService] renderDecision -> COMPLETE');
       return 'COMPLETE';
+    }
+
+    // P1 FIX: Handle CHECKOUT_DAMAGE_DISPUTE status
+    if (bookingStatus === 'CHECKOUT_DAMAGE_DISPUTE') {
+      if (isGuest) {
+        console.log('[CheckoutService] renderDecision -> DAMAGE_DISPUTE_GUEST');
+        return 'DAMAGE_DISPUTE_GUEST';
+      }
+      if (isHost) {
+        console.log('[CheckoutService] renderDecision -> DAMAGE_DISPUTE_HOST');
+        return 'DAMAGE_DISPUTE_HOST';
+      }
     }
 
     console.log('[CheckoutService] renderDecision -> NOT_READY (no matching condition)');
@@ -476,6 +490,50 @@ export class CheckoutService {
         tap((status) => {
           this._currentStatus.set(status);
           this._isLoading.set(false);
+        }),
+        catchError((err) => {
+          this._isLoading.set(false);
+          this._error.set(this.extractErrorMessage(err));
+          return throwError(() => err);
+        }),
+      );
+  }
+
+  /**
+   * Guest accepts a checkout damage claim.
+   * Deposit will be captured for damage charges and checkout completes.
+   */
+  acceptDamageClaim(bookingId: number): Observable<any> {
+    this._isLoading.set(true);
+    return this.http
+      .post<any>(`${this.apiUrl}/${bookingId}/checkout/damage/accept`, {})
+      .pipe(
+        tap(() => {
+          this._isLoading.set(false);
+          // Reload status after acceptance
+          this.loadStatus(bookingId).subscribe();
+        }),
+        catchError((err) => {
+          this._isLoading.set(false);
+          this._error.set(this.extractErrorMessage(err));
+          return throwError(() => err);
+        }),
+      );
+  }
+
+  /**
+   * Guest disputes a checkout damage claim.
+   * Escalates to admin for resolution. Deposit remains held.
+   */
+  disputeDamageClaim(bookingId: number, reason: string): Observable<any> {
+    this._isLoading.set(true);
+    return this.http
+      .post<any>(`${this.apiUrl}/${bookingId}/checkout/damage/dispute`, { reason })
+      .pipe(
+        tap(() => {
+          this._isLoading.set(false);
+          // Reload status after dispute
+          this.loadStatus(bookingId).subscribe();
         }),
         catchError((err) => {
           this._isLoading.set(false);

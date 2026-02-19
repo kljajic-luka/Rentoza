@@ -12,6 +12,8 @@ import org.example.rentoza.booking.dispute.DamageClaimStatus;
 import org.example.rentoza.notification.NotificationService;
 import org.example.rentoza.notification.NotificationType;
 import org.example.rentoza.notification.dto.CreateNotificationRequestDTO;
+import org.example.rentoza.payment.BookingPaymentService;
+import org.example.rentoza.payment.PaymentProvider.PaymentResult;
 import org.example.rentoza.scheduler.SchedulerIdempotencyService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -57,6 +59,7 @@ public class CheckOutScheduler {
     private final DamageClaimRepository damageClaimRepository;
     private final NotificationService notificationService;
     private final SchedulerIdempotencyService idempotencyService;
+    private final BookingPaymentService bookingPaymentService;
     
     // Metrics
     private final Counter checkoutWindowOpenedCounter;
@@ -70,12 +73,14 @@ public class CheckOutScheduler {
             DamageClaimRepository damageClaimRepository,
             NotificationService notificationService,
             SchedulerIdempotencyService idempotencyService,
+            BookingPaymentService bookingPaymentService,
             MeterRegistry meterRegistry) {
         this.checkOutService = checkOutService;
         this.bookingRepository = bookingRepository;
         this.damageClaimRepository = damageClaimRepository;
         this.notificationService = notificationService;
         this.idempotencyService = idempotencyService;
+        this.bookingPaymentService = bookingPaymentService;
         
         this.checkoutWindowOpenedCounter = Counter.builder("checkout.window.opened")
                 .description("Checkout windows opened by scheduler")
@@ -277,6 +282,153 @@ public class CheckOutScheduler {
         } catch (Exception e) {
             log.error("[CheckOutScheduler] Failed to escalate overdue returns", e);
         }
+    }
+    
+    // ==================== GHOST TRIP: AUTO NO-SHOW AFTER 48H ====================
+    
+    /**
+     * Handle ghost trips where guest never completes checkout.
+     * 
+     * <p>Runs every 6 hours. Finds bookings in CHECKOUT_OPEN status where:
+     * <ul>
+     *   <li>Checkout window has been open for 48+ hours</li>
+     *   <li>Guest has NOT completed checkout</li>
+     * </ul>
+     * 
+     * <p>When triggered:
+     * <ul>
+     *   <li>Booking flagged as NO_SHOW_GUEST (ghost trip)</li>
+     *   <li>Full security deposit charged</li>
+     *   <li>Notifications sent to host and admin</li>
+     * </ul>
+     * 
+     * <p>Cron: {@code 0 15 1,7,13,19 * * *} (every 6 hours at :15)
+     */
+    @Scheduled(cron = "${app.checkout.scheduler.ghost-trip-cron:0 15 1,7,13,19 * * *}", zone = "Europe/Belgrade")
+    @Transactional
+    public void handleGhostTrips() {
+        String taskId = "ghost-trip-check-" + LocalDate.now(SERBIA_ZONE) + "-" + 
+                        (java.time.LocalTime.now(SERBIA_ZONE).getHour() / 6);
+        
+        if (!idempotencyService.tryAcquireLock(taskId, Duration.ofMinutes(350))) {
+            log.debug("[CheckOutScheduler] Skipping duplicate ghost trip check: {}", taskId);
+            schedulerSkippedCounter.increment();
+            return;
+        }
+        
+        log.info("[CheckOutScheduler] Running ghost trip (no-checkout) check");
+        
+        try {
+            // Find bookings with checkout open for 48+ hours
+            java.time.LocalDateTime threshold48h = java.time.LocalDateTime.now(SERBIA_ZONE).minusHours(48);
+            List<Booking> ghostTrips = bookingRepository.findOverdueCheckouts(threshold48h);
+            
+            int processed = 0;
+            for (Booking booking : ghostTrips) {
+                if (booking.getStatus() == BookingStatus.CHECKOUT_OPEN && 
+                    booking.getCheckoutOpenedAt() != null) {
+                    
+                    long hoursOverdue = Duration.between(
+                        booking.getCheckoutOpenedAt(), Instant.now()
+                    ).toHours();
+                    
+                    if (hoursOverdue >= 48) {
+                        try {
+                            handleSingleGhostTrip(booking, hoursOverdue);
+                            processed++;
+                        } catch (Exception e) {
+                            log.error("[CheckOutScheduler] Failed to process ghost trip for booking {}: {}",
+                                    booking.getId(), e.getMessage());
+                        }
+                    }
+                }
+            }
+            
+            if (processed > 0) {
+                log.warn("[CheckOutScheduler] Processed {} ghost trips (48h+ no checkout)", processed);
+            }
+        } catch (Exception e) {
+            log.error("[CheckOutScheduler] Failed to run ghost trip check", e);
+        }
+    }
+    
+    /**
+     * Process a single ghost trip: flag as no-show, capture deposit, notify parties.
+     */
+    private void handleSingleGhostTrip(Booking booking, long hoursOverdue) {
+        log.warn("[CheckOutScheduler] GHOST TRIP: Booking {} open for {} hours with no guest checkout — " +
+                 "flagging as NO_SHOW, capturing full deposit", booking.getId(), hoursOverdue);
+        
+        // 1. Flag booking
+        booking.setStatus(BookingStatus.NO_SHOW_GUEST);
+        booking.setTripEndedAt(Instant.now());
+        booking.setCheckoutCompletedAt(Instant.now());
+        
+        // 2. P1 FIX: Capture the SECURITY DEPOSIT (not the booking payment).
+        // Ghost trip (48h+ no return) is a serious violation — capture deposit as penalty.
+        // captureSecurityDeposit() captures depositAuthorizationId for securityDeposit amount,
+        // NOT bookingAuthorizationId for totalPrice.
+        // Admin can refund later if circumstances warrant it.
+        String depositAuthId = booking.getDepositAuthorizationId();
+        if (depositAuthId != null && !depositAuthId.isBlank()) {
+            try {
+                java.math.BigDecimal depositAmount = booking.getSecurityDeposit() != null 
+                    ? booking.getSecurityDeposit() : java.math.BigDecimal.ZERO;
+                PaymentResult captureResult = bookingPaymentService.captureSecurityDeposit(booking.getId());
+                if (captureResult.isSuccess()) {
+                    booking.setSecurityDepositReleased(false);
+                    booking.setSecurityDepositHoldReason("Ghost trip: deposit captured after " + hoursOverdue + " hours no-show");
+                    log.info("[CheckOutScheduler] Captured security deposit {} RSD for ghost trip booking {}",
+                            depositAmount, booking.getId());
+                } else {
+                    booking.setSecurityDepositHoldReason("Ghost trip: deposit capture failed — pending admin review after " + hoursOverdue + " hours");
+                    booking.setSecurityDepositReleased(false);
+                    log.warn("[CheckOutScheduler] Security deposit capture failed for ghost trip booking {}: {}",
+                            booking.getId(), captureResult.getErrorMessage());
+                }
+            } catch (Exception e) {
+                booking.setSecurityDepositHoldReason("Ghost trip: deposit capture error — pending admin review after " + hoursOverdue + " hours");
+                booking.setSecurityDepositReleased(false);
+                log.error("[CheckOutScheduler] Security deposit capture exception for ghost trip booking {}: {}",
+                        booking.getId(), e.getMessage());
+            }
+        } else {
+            booking.setSecurityDepositHoldReason("Ghost trip: no deposit authorization — admin review needed after " + hoursOverdue + " hours");
+            booking.setSecurityDepositReleased(false);
+            log.warn("[CheckOutScheduler] No deposit auth ID for ghost trip booking {} — cannot capture", booking.getId());
+        }
+        
+        bookingRepository.save(booking);
+        
+        // 3. Notify host
+        try {
+            notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                    .recipientId(booking.getCar().getOwner().getId())
+                    .type(NotificationType.LATE_RETURN_DETECTED)
+                    .message(String.format("⚠️ Gost nije završio checkout za rezervaciju #%d nakon %d sati. " +
+                            "Rezervacija je označena kao nepojavljanje. Depozit je zadržan. " +
+                            "Kontaktirajte podršku za rešavanje.", booking.getId(), hoursOverdue))
+                    .relatedEntityId(String.valueOf(booking.getId()))
+                    .build());
+        } catch (Exception e) {
+            log.error("[CheckOutScheduler] Failed to notify host about ghost trip: {}", e.getMessage());
+        }
+        
+        // 4. Notify guest
+        try {
+            notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                    .recipientId(booking.getRenter().getId())
+                    .type(NotificationType.LATE_RETURN_DETECTED)
+                    .message(String.format("⚠️ Niste završili checkout za rezervaciju #%d. " +
+                            "Vaš depozit je zadržan. Molimo kontaktirajte podršku hitno.", booking.getId()))
+                    .relatedEntityId(String.valueOf(booking.getId()))
+                    .build());
+        } catch (Exception e) {
+            log.error("[CheckOutScheduler] Failed to notify guest about ghost trip: {}", e.getMessage());
+        }
+        
+        log.warn("[CheckOutScheduler] Ghost trip processed for booking {} — status: NO_SHOW_GUEST, deposit held",
+                booking.getId());
     }
     
     // ==================== VAL-010: DAMAGE DISPUTE TIMEOUT HANDLING ====================

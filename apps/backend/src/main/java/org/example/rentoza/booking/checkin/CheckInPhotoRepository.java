@@ -29,6 +29,14 @@ public interface CheckInPhotoRepository extends JpaRepository<CheckInPhoto, Long
     List<CheckInPhoto> findByCheckInSessionId(@Param("sessionId") String sessionId);
 
     /**
+     * Resolve booking ID from a session ID (check-in or checkout).
+     * Returns the booking ID of the first photo found for this session.
+     * Used by photo-serving controllers to authorize participant access.
+     */
+    @Query("SELECT p.booking.id FROM CheckInPhoto p WHERE p.checkInSessionId = :sessionId AND p.deletedAt IS NULL ORDER BY p.id ASC")
+    List<Long> findBookingIdsBySessionId(@Param("sessionId") String sessionId);
+
+    /**
      * Find photos by type for a booking.
      * Used to check if required photos have been uploaded.
      */
@@ -133,6 +141,7 @@ public interface CheckInPhotoRepository extends JpaRepository<CheckInPhoto, Long
     /**
      * Count required guest checkout photo types for completion check.
      * Includes VALID_WITH_WARNINGS for HEIC/modern formats validated via sidecar.
+     * P0 FIX: Now counts all 8 required types (was 6, missing interior photos).
      */
     @Query("SELECT COUNT(DISTINCT p.photoType) FROM CheckInPhoto p " +
            "WHERE p.booking.id = :bookingId " +
@@ -140,6 +149,7 @@ public interface CheckInPhotoRepository extends JpaRepository<CheckInPhoto, Long
            "AND p.exifValidationStatus IN ('VALID', 'VALID_NO_GPS', 'VALID_WITH_WARNINGS') " +
            "AND p.photoType IN (" +
            "  'CHECKOUT_EXTERIOR_FRONT', 'CHECKOUT_EXTERIOR_REAR', 'CHECKOUT_EXTERIOR_LEFT', 'CHECKOUT_EXTERIOR_RIGHT', " +
+           "  'CHECKOUT_INTERIOR_DASHBOARD', 'CHECKOUT_INTERIOR_REAR', " +
            "  'CHECKOUT_ODOMETER', 'CHECKOUT_FUEL_GAUGE'" +
            ")")
     long countCheckoutPhotoTypes(@Param("bookingId") Long bookingId);

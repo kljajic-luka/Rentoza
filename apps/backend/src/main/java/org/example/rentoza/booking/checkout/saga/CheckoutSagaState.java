@@ -129,6 +129,12 @@ public class CheckoutSagaState {
     private BigDecimal lateFee;
 
     /**
+     * Damage claim charge amount (approved damage from checkout dispute).
+     */
+    @Column(name = "damage_claim_charge", precision = 10, scale = 2)
+    private BigDecimal damageClaimCharge;
+
+    /**
      * Total charges to deduct from deposit.
      */
     @Column(name = "total_charges", precision = 10, scale = 2)

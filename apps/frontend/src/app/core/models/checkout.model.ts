@@ -216,11 +216,27 @@ export const OPTIONAL_CHECKOUT_PHOTO_SLOTS: CheckoutPhotoSlot[] = [
 // DAMAGE CLAIM STATUS
 // ============================================================================
 
-export type DamageClaimStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'PAID';
+export type DamageClaimStatus =
+  | 'PENDING'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'PAID'
+  | 'CHECKOUT_PENDING'
+  | 'CHECKOUT_GUEST_ACCEPTED'
+  | 'CHECKOUT_GUEST_DISPUTED'
+  | 'CHECKOUT_ADMIN_APPROVED'
+  | 'CHECKOUT_ADMIN_REJECTED'
+  | 'CHECKOUT_TIMEOUT_ESCALATED';
 
 export const DAMAGE_CLAIM_STATUS_LABELS: Record<DamageClaimStatus, string> = {
   PENDING: 'Na čekanju',
   APPROVED: 'Odobreno',
   REJECTED: 'Odbijeno',
   PAID: 'Plaćeno',
+  CHECKOUT_PENDING: 'Čeka odgovor gosta',
+  CHECKOUT_GUEST_ACCEPTED: 'Gost prihvatio',
+  CHECKOUT_GUEST_DISPUTED: 'Gost osporio',
+  CHECKOUT_ADMIN_APPROVED: 'Admin odobrio',
+  CHECKOUT_ADMIN_REJECTED: 'Admin odbio',
+  CHECKOUT_TIMEOUT_ESCALATED: 'Eskalirano (timeout)',
 };

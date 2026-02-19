@@ -25,6 +25,7 @@ import { GuestCheckoutComponent } from './guest-checkout.component';
 import { HostCheckoutComponent } from './host-checkout.component';
 import { CheckoutWaitingComponent } from './checkout-waiting.component';
 import { CheckoutCompleteComponent } from './checkout-complete.component';
+import { CheckoutDamageDisputeComponent } from './checkout-damage-dispute.component';
 
 @Component({
   selector: 'app-checkout-wizard',
@@ -40,6 +41,7 @@ import { CheckoutCompleteComponent } from './checkout-complete.component';
     HostCheckoutComponent,
     CheckoutWaitingComponent,
     CheckoutCompleteComponent,
+    CheckoutDamageDisputeComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -139,6 +141,24 @@ import { CheckoutCompleteComponent } from './checkout-complete.component';
             [bookingId]="bookingId"
             [status]="checkoutService.currentStatus()">
           </app-checkout-complete>
+        }
+
+        @case ('DAMAGE_DISPUTE_GUEST') {
+          <app-checkout-damage-dispute
+            [bookingId]="bookingId"
+            [status]="checkoutService.currentStatus()"
+            role="GUEST"
+            (resolved)="loadStatus()">
+          </app-checkout-damage-dispute>
+        }
+
+        @case ('DAMAGE_DISPUTE_HOST') {
+          <app-checkout-damage-dispute
+            [bookingId]="bookingId"
+            [status]="checkoutService.currentStatus()"
+            role="HOST"
+            (resolved)="loadStatus()">
+          </app-checkout-damage-dispute>
         }
 
         @case ('NOT_READY') {

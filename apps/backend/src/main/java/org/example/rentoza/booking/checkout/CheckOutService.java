@@ -62,7 +62,7 @@ import java.util.stream.Stream;
 public class CheckOutService {
 
     private static final ZoneId SERBIA_ZONE = ZoneId.of("Europe/Belgrade");
-    private static final int REQUIRED_CHECKOUT_PHOTO_TYPES = 6;
+    private static final int REQUIRED_CHECKOUT_PHOTO_TYPES = 8;
 
     private final BookingRepository bookingRepository;
     private final CheckInEventService eventService;
@@ -1187,12 +1187,21 @@ public class CheckOutService {
         DamageClaim claim = booking.getCheckoutDamageClaim();
         if (claim != null) {
             claim.setStatus(DamageClaimStatus.CHECKOUT_GUEST_ACCEPTED);
+            claim.setApprovedAmount(claim.getClaimedAmount()); // P0 FIX: Set approved amount for saga charge calculation
             claim.setResolvedAt(Instant.now());
             damageClaimRepository.save(claim);
         }
         
         booking.setDamageClaimStatus("ACCEPTED");
-        booking.setSecurityDepositResolvedAt(Instant.now());
+        
+        // P0 FIX: Clear deposit hold state so the saga validation doesn't suspend.
+        // The saga's CAPTURE_DEPOSIT / RELEASE_DEPOSIT steps will handle deposit
+        // resolution properly — do NOT pre-set securityDepositResolvedAt here,
+        // because the saga short-circuits capture/release when it's already set.
+        booking.setSecurityDepositHoldReason(null);
+        booking.setSecurityDepositHoldUntil(null);
+        // Leave securityDepositReleased as-is (false) — saga will manage it.
+        // Do NOT set securityDepositResolvedAt — saga deposit steps need to run.
         
         eventService.recordEvent(
             booking,

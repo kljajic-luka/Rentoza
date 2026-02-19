@@ -3,7 +3,7 @@
  *
  * These utilities ensure frontend and backend consistency for determining
  * booking completion status and review eligibility.
- * 
+ *
  * Updated for Exact Timestamp Architecture - uses endTime instead of endDate.
  */
 
@@ -50,7 +50,9 @@ export function isReviewWindowOpen(booking: { endTime: string | Date }): boolean
     return true; // No end time = allow (server will enforce)
   }
   const endTime = new Date(booking.endTime);
-  const deadline = new Date(endTime.getTime() + REVIEW_SUBMISSION_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+  const deadline = new Date(
+    endTime.getTime() + REVIEW_SUBMISSION_WINDOW_DAYS * 24 * 60 * 60 * 1000,
+  );
   return new Date() <= deadline;
 }
 
@@ -65,7 +67,11 @@ export function isReviewWindowOpen(booking: { endTime: string | Date }): boolean
  * @param booking - Booking object with status, endTime, and hasReview fields
  * @returns true if the booking can be reviewed
  */
-export function canReviewBooking(booking: { status: string; endTime: string | Date; hasReview: boolean }): boolean {
+export function canReviewBooking(booking: {
+  status: string;
+  endTime: string | Date;
+  hasReview: boolean;
+}): boolean {
   return isBookingCompleted(booking) && !booking.hasReview && isReviewWindowOpen(booking);
 }
 
@@ -80,13 +86,17 @@ export function canReviewBooking(booking: { status: string; endTime: string | Da
  * @param booking - Booking object with status, endTime, and hasOwnerReview fields
  * @returns true if the owner can review the renter
  */
-export function canOwnerReviewRenter(booking: { status: string; endTime: string | Date; hasOwnerReview?: boolean }): boolean {
+export function canOwnerReviewRenter(booking: {
+  status: string;
+  endTime: string | Date;
+  hasOwnerReview?: boolean;
+}): boolean {
   return isBookingCompleted(booking) && !booking.hasOwnerReview && isReviewWindowOpen(booking);
 }
 
 /**
  * Format a datetime string for display.
- * 
+ *
  * @param dateTimeStr - ISO-8601 datetime string
  * @returns Formatted date and time string (e.g., "10.10.2025 09:00")
  */
@@ -103,7 +113,7 @@ export function formatDateTime(dateTimeStr: string): string {
 
 /**
  * Format a datetime string for short display (date only).
- * 
+ *
  * @param dateTimeStr - ISO-8601 datetime string
  * @returns Formatted date string (e.g., "10.10.2025")
  */
@@ -118,7 +128,7 @@ export function formatDate(dateTimeStr: string): string {
 
 /**
  * Format a datetime string for time only.
- * 
+ *
  * @param dateTimeStr - ISO-8601 datetime string
  * @returns Formatted time string (e.g., "09:00")
  */

@@ -1,9 +1,4 @@
-import {
-  Component,
-  input,
-  computed,
-  ChangeDetectionStrategy,
-} from '@angular/core';
+import { Component, input, computed, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -35,8 +30,18 @@ import { TimeFormatPipe } from '../../shared/pipes/time-format.pipe';
     >
       <!-- Avatar (only for other's messages, first in group) -->
       <div class="avatar-space" *ngIf="!isOwn()">
-        <div class="avatar" *ngIf="isFirstInGroup()" [style.background]="senderProfilePicUrl() ? 'transparent' : avatarColor()">
-          <img *ngIf="senderProfilePicUrl()" [src]="senderProfilePicUrl()" class="avatar-img" alt="Profile" (error)="onImageError($event)" />
+        <div
+          class="avatar"
+          *ngIf="isFirstInGroup()"
+          [style.background]="senderProfilePicUrl() ? 'transparent' : avatarColor()"
+        >
+          <img
+            *ngIf="senderProfilePicUrl()"
+            [src]="senderProfilePicUrl()"
+            class="avatar-img"
+            alt="Profile"
+            (error)="onImageError($event)"
+          />
           <span *ngIf="!senderProfilePicUrl()">{{ avatarInitials() }}</span>
         </div>
       </div>
@@ -84,7 +89,7 @@ import { TimeFormatPipe } from '../../shared/pipes/time-format.pipe';
 
         <!-- Meta info -->
         <div class="meta">
-          <time class="timestamp">{{ message().timestamp | timeFormat:'short' }}</time>
+          <time class="timestamp">{{ message().timestamp | timeFormat: 'short' }}</time>
 
           <!-- Status icon (own messages only) -->
           <mat-icon
@@ -99,248 +104,251 @@ import { TimeFormatPipe } from '../../shared/pipes/time-format.pipe';
       </div>
     </div>
   `,
-  styles: [`
-    :host {
-      display: block;
-    }
-
-    .message-wrapper {
-      display: flex;
-      gap: 10px;
-      margin-bottom: 2px;
-      animation: fadeIn 0.2s ease-out;
-
-      &.first-in-group {
-        margin-top: 8px;
-      }
-
-      &.own {
-        flex-direction: row-reverse;
-      }
-
-      &.other {
-        flex-direction: row;
-      }
-    }
-
-    .avatar-space {
-      width: 32px;
-      flex-shrink: 0;
-    }
-
-    .avatar {
-      width: 32px;
-      height: 32px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      overflow: hidden;
-
-      .avatar-img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        border-radius: 50%;
-      }
-
-      span {
-        font-size: 12px;
-        font-weight: 600;
-        color: #ffffff;
-        text-transform: uppercase;
-      }
-    }
-
-    .bubble {
-      max-width: 70%;
-      padding: 10px 14px;
-      border-radius: 18px;
-      position: relative;
-      word-wrap: break-word;
-      overflow-wrap: break-word;
-    }
-
-    .own .bubble {
-      background: linear-gradient(135deg, #2196f3 0%, #1976d2 100%);
-      color: #ffffff;
-      border-bottom-right-radius: 4px;
-      box-shadow: 0 1px 3px rgba(33, 150, 243, 0.2);
-    }
-
-    .other .bubble {
-      background-color: #f1f3f5;
-      color: #1a1a1a;
-      border-bottom-left-radius: 4px;
-    }
-
-    // Grouping - smooth corners for consecutive messages
-    .own:not(.last-in-group) .bubble {
-      border-bottom-right-radius: 4px;
-      border-top-right-radius: 4px;
-    }
-
-    .own:not(.first-in-group) .bubble {
-      border-top-right-radius: 4px;
-    }
-
-    .other:not(.last-in-group) .bubble {
-      border-bottom-left-radius: 4px;
-      border-top-left-radius: 4px;
-    }
-
-    .other:not(.first-in-group) .bubble {
-      border-top-left-radius: 4px;
-    }
-
-    .sender-name {
-      display: block;
-      font-size: 12px;
-      font-weight: 600;
-      color: #666;
-      margin-bottom: 4px;
-    }
-
-    .content {
-      margin: 0;
-      font-size: 15px;
-      line-height: 1.45;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-
-    .attachment {
-      margin-top: 8px;
-      border-radius: 8px;
-      overflow: hidden;
-
-      .image-attachment {
+  styles: [
+    `
+      :host {
         display: block;
-        cursor: pointer;
+      }
 
-        .attachment-image {
-          max-width: 100%;
-          max-height: 240px;
-          border-radius: 8px;
-          object-fit: cover;
+      .message-wrapper {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 2px;
+        animation: fadeIn 0.2s ease-out;
+
+        &.first-in-group {
+          margin-top: 8px;
+        }
+
+        &.own {
+          flex-direction: row-reverse;
+        }
+
+        &.other {
+          flex-direction: row;
         }
       }
 
-      .file-attachment {
+      .avatar-space {
+        width: 32px;
+        flex-shrink: 0;
+      }
+
+      .avatar {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
         display: flex;
         align-items: center;
-        gap: 8px;
-        padding: 8px 12px;
-        background-color: rgba(0, 0, 0, 0.06);
-        border-radius: 8px;
-        text-decoration: none;
-        color: inherit;
-        font-size: 13px;
+        justify-content: center;
+        overflow: hidden;
 
-        mat-icon {
-          font-size: 20px;
-          width: 20px;
-          height: 20px;
-          color: #d32f2f;
+        .avatar-img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          border-radius: 50%;
         }
 
-        &:hover {
-          background-color: rgba(0, 0, 0, 0.1);
+        span {
+          font-size: 12px;
+          font-weight: 600;
+          color: #ffffff;
+          text-transform: uppercase;
         }
       }
-    }
 
-    .meta {
-      display: flex;
-      align-items: center;
-      justify-content: flex-end;
-      gap: 4px;
-      margin-top: 4px;
-    }
-
-    .timestamp {
-      font-size: 11px;
-      opacity: 0.8;
-    }
-
-    .own .timestamp {
-      color: rgba(255, 255, 255, 0.8);
-    }
-
-    .other .timestamp {
-      color: #888;
-    }
-
-    .status-icon {
-      font-size: 14px;
-      width: 14px;
-      height: 14px;
-
-      &.sending {
-        color: rgba(255, 255, 255, 0.6);
-        animation: pulse 1.5s ease-in-out infinite;
+      .bubble {
+        max-width: 70%;
+        padding: 10px 14px;
+        border-radius: 18px;
+        position: relative;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
       }
 
-      &.sent {
-        color: rgba(255, 255, 255, 0.8);
-      }
-
-      &.delivered {
-        color: rgba(255, 255, 255, 0.9);
-      }
-
-      &.read {
-        color: #81d4fa;
-      }
-    }
-
-    @keyframes fadeIn {
-      from {
-        opacity: 0;
-        transform: translateY(4px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-
-    @keyframes pulse {
-      0%, 100% {
-        opacity: 0.4;
-      }
-      50% {
-        opacity: 0.8;
-      }
-    }
-
-    // Dark theme
-    :host-context(.dark-theme) {
       .own .bubble {
-        background: linear-gradient(135deg, #1976d2 0%, #1565c0 100%);
+        background: linear-gradient(135deg, #2196f3 0%, #1976d2 100%);
+        color: #ffffff;
+        border-bottom-right-radius: 4px;
+        box-shadow: 0 1px 3px rgba(33, 150, 243, 0.2);
       }
 
       .other .bubble {
-        background-color: #2d2d2d;
-        color: #e0e0e0;
+        background-color: #f1f3f5;
+        color: #1a1a1a;
+        border-bottom-left-radius: 4px;
+      }
+
+      // Grouping - smooth corners for consecutive messages
+      .own:not(.last-in-group) .bubble {
+        border-bottom-right-radius: 4px;
+        border-top-right-radius: 4px;
+      }
+
+      .own:not(.first-in-group) .bubble {
+        border-top-right-radius: 4px;
+      }
+
+      .other:not(.last-in-group) .bubble {
+        border-bottom-left-radius: 4px;
+        border-top-left-radius: 4px;
+      }
+
+      .other:not(.first-in-group) .bubble {
+        border-top-left-radius: 4px;
       }
 
       .sender-name {
-        color: #b0b0b0;
+        display: block;
+        font-size: 12px;
+        font-weight: 600;
+        color: #666;
+        margin-bottom: 4px;
+      }
+
+      .content {
+        margin: 0;
+        font-size: 15px;
+        line-height: 1.45;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .attachment {
+        margin-top: 8px;
+        border-radius: 8px;
+        overflow: hidden;
+
+        .image-attachment {
+          display: block;
+          cursor: pointer;
+
+          .attachment-image {
+            max-width: 100%;
+            max-height: 240px;
+            border-radius: 8px;
+            object-fit: cover;
+          }
+        }
+
+        .file-attachment {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 12px;
+          background-color: rgba(0, 0, 0, 0.06);
+          border-radius: 8px;
+          text-decoration: none;
+          color: inherit;
+          font-size: 13px;
+
+          mat-icon {
+            font-size: 20px;
+            width: 20px;
+            height: 20px;
+            color: #d32f2f;
+          }
+
+          &:hover {
+            background-color: rgba(0, 0, 0, 0.1);
+          }
+        }
+      }
+
+      .meta {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 4px;
+        margin-top: 4px;
+      }
+
+      .timestamp {
+        font-size: 11px;
+        opacity: 0.8;
+      }
+
+      .own .timestamp {
+        color: rgba(255, 255, 255, 0.8);
       }
 
       .other .timestamp {
         color: #888;
       }
-    }
 
-    // Responsive
-    @media (max-width: 768px) {
-      .bubble {
-        max-width: 85%;
+      .status-icon {
+        font-size: 14px;
+        width: 14px;
+        height: 14px;
+
+        &.sending {
+          color: rgba(255, 255, 255, 0.6);
+          animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        &.sent {
+          color: rgba(255, 255, 255, 0.8);
+        }
+
+        &.delivered {
+          color: rgba(255, 255, 255, 0.9);
+        }
+
+        &.read {
+          color: #81d4fa;
+        }
       }
-    }
-  `],
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(4px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 0.4;
+        }
+        50% {
+          opacity: 0.8;
+        }
+      }
+
+      // Dark theme
+      :host-context(.dark-theme) {
+        .own .bubble {
+          background: linear-gradient(135deg, #1976d2 0%, #1565c0 100%);
+        }
+
+        .other .bubble {
+          background-color: #2d2d2d;
+          color: #e0e0e0;
+        }
+
+        .sender-name {
+          color: #b0b0b0;
+        }
+
+        .other .timestamp {
+          color: #888;
+        }
+      }
+
+      // Responsive
+      @media (max-width: 768px) {
+        .bubble {
+          max-width: 85%;
+        }
+      }
+    `,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MessageBubbleComponent {
@@ -370,8 +378,16 @@ export class MessageBubbleComponent {
 
   avatarColor = computed(() => {
     const colors = [
-      '#1abc9c', '#2ecc71', '#3498db', '#9b59b6', '#34495e',
-      '#16a085', '#27ae60', '#2980b9', '#8e44ad', '#2c3e50',
+      '#1abc9c',
+      '#2ecc71',
+      '#3498db',
+      '#9b59b6',
+      '#34495e',
+      '#16a085',
+      '#27ae60',
+      '#2980b9',
+      '#8e44ad',
+      '#2c3e50',
     ];
     const name = this.senderName() || 'X';
     const index = name.charCodeAt(0) % colors.length;
@@ -430,8 +446,13 @@ export class MessageBubbleComponent {
     const url = this.message()?.mediaUrl;
     if (!url) return false;
     const lower = url.toLowerCase();
-    return lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.png') ||
-           lower.endsWith('.gif') || lower.endsWith('.webp');
+    return (
+      lower.endsWith('.jpg') ||
+      lower.endsWith('.jpeg') ||
+      lower.endsWith('.png') ||
+      lower.endsWith('.gif') ||
+      lower.endsWith('.webp')
+    );
   }
 
   // Handle attachment load error

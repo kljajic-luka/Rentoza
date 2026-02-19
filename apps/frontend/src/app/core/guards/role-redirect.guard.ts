@@ -39,7 +39,7 @@ export class RoleRedirectGuard implements CanActivate {
 
   canActivate(
     route: ActivatedRouteSnapshot,
-    state: RouterStateSnapshot
+    state: RouterStateSnapshot,
   ): Observable<boolean | UrlTree> {
     return this.authService.currentUser$.pipe(
       map((user) => {
@@ -75,7 +75,7 @@ export class RoleRedirectGuard implements CanActivate {
         if (isAdmin) {
           // Admin accessing allowed routes (admin panel, auth for logout)
           const isAdminAllowedRoute = this.adminAllowedPrefixes.some(
-            prefix => currentPath === prefix || currentPath.startsWith(prefix + '/')
+            (prefix) => currentPath === prefix || currentPath.startsWith(prefix + '/'),
           );
 
           if (isAdminAllowedRoute) {
@@ -84,7 +84,9 @@ export class RoleRedirectGuard implements CanActivate {
           }
 
           // Admin trying to access ANY non-admin route - redirect to admin dashboard
-          console.log(`🚫 RoleRedirectGuard: ADMIN accessing non-admin route "${currentPath}" - forcing to /admin/dashboard`);
+          console.log(
+            `🚫 RoleRedirectGuard: ADMIN accessing non-admin route "${currentPath}" - forcing to /admin/dashboard`,
+          );
           return this.router.createUrlTree(['/admin/dashboard']);
         }
 
@@ -92,7 +94,9 @@ export class RoleRedirectGuard implements CanActivate {
         // NON-ADMIN users cannot access /admin routes
         // ============================================================
         if (!isAdmin && currentPath.startsWith('/admin')) {
-          console.log('🚫 RoleRedirectGuard: Non-admin user accessing /admin - redirecting to /pocetna');
+          console.log(
+            '🚫 RoleRedirectGuard: Non-admin user accessing /admin - redirecting to /pocetna',
+          );
           return this.router.createUrlTree(['/pocetna']);
         }
 
@@ -105,7 +109,7 @@ export class RoleRedirectGuard implements CanActivate {
         // Owner trying to access renter-only routes - redirect to owner dashboard
         if (isOwner && this.isRenterOnlyRoute(currentPath)) {
           console.log(
-            '🚫 RoleRedirectGuard: OWNER accessing renter route - redirecting to /owner/dashboard'
+            '🚫 RoleRedirectGuard: OWNER accessing renter route - redirecting to /owner/dashboard',
           );
           return this.router.createUrlTree(['/owner/dashboard']);
         }
@@ -118,7 +122,7 @@ export class RoleRedirectGuard implements CanActivate {
 
         // Allow access
         return true;
-      })
+      }),
     );
   }
 
@@ -142,7 +146,7 @@ export class RoleRedirectGuard implements CanActivate {
 
     // Check other renter-only paths
     return this.renterOnlyPaths.some(
-      (renterPath) => path === renterPath || path.startsWith(renterPath + '/')
+      (renterPath) => path === renterPath || path.startsWith(renterPath + '/'),
     );
   }
 }

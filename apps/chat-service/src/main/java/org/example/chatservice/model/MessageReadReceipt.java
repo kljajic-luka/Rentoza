@@ -71,9 +71,12 @@ public class MessageReadReceipt {
      * Allows accessing message details if needed.
      * Uses insertable=false, updatable=false because messageId is part of composite
      * key.
+     * ON DELETE CASCADE matches the Flyway-managed production schema.
      */
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "message_id", insertable = false, updatable = false)
+    @JoinColumn(name = "message_id", insertable = false, updatable = false,
+            foreignKey = @ForeignKey(
+                    foreignKeyDefinition = "FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE"))
     private Message message;
 
     /**

@@ -564,10 +564,10 @@ export class ChatService implements OnDestroy {
     const formData = new FormData();
     formData.append('file', file, file.name);
     return this.http
-      .post<{ url: string; filename: string }>(
-        `${this.chatApiUrl}/conversations/${bookingId}/attachments`,
-        formData,
-      )
+      .post<{
+        url: string;
+        filename: string;
+      }>(`${this.chatApiUrl}/conversations/${bookingId}/attachments`, formData)
       .pipe(
         catchError((error) => {
           const msg = error?.error?.error || 'Neuspešno otpremanje fajla.';
@@ -636,14 +636,14 @@ export class ChatService implements OnDestroy {
       }),
       catchError((error) => {
         this.markOptimisticMessageFailed(optimisticMsg.optimisticId!);
-        
+
         // Only queue for network errors, NOT for 4xx client errors (moderation, validation)
         const status = error?.status || error?.error?.status;
         const isClientError = status >= 400 && status < 500;
         if (!isClientError) {
           this.queueOfflineMessage(bookingId, content);
         }
-        
+
         return throwError(() => error);
       }),
     );

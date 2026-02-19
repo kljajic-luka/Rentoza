@@ -30,13 +30,7 @@ import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
 @Component({
   selector: 'app-message-input',
   standalone: true,
-  imports: [
-    CommonModule,
-    FormsModule,
-    MatIconModule,
-    MatButtonModule,
-    MatProgressSpinnerModule,
-  ],
+  imports: [CommonModule, FormsModule, MatIconModule, MatButtonModule, MatProgressSpinnerModule],
   template: `
     <div class="input-container" [class.disabled]="disabled()">
       <!-- Attachment preview -->
@@ -46,7 +40,12 @@ import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
           <span class="attachment-name">{{ selectedFile()!.name }}</span>
           <span class="attachment-size">{{ formatFileSize(selectedFile()!.size) }}</span>
         </div>
-        <button type="button" class="remove-attachment" (click)="removeAttachment()" aria-label="Ukloni prilog">
+        <button
+          type="button"
+          class="remove-attachment"
+          (click)="removeAttachment()"
+          aria-label="Ukloni prilog"
+        >
           <mat-icon>close</mat-icon>
         </button>
       </div>
@@ -112,236 +111,244 @@ import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
       </div>
     </div>
   `,
-  styles: [`
-    :host {
-      display: block;
-    }
-
-    .input-container {
-      padding: 16px 20px;
-      background-color: #ffffff;
-      border-top: 1px solid #e8e8e8;
-
-      &.disabled {
-        opacity: 0.6;
-        pointer-events: none;
+  styles: [
+    `
+      :host {
+        display: block;
       }
-    }
 
-    .attachment-preview {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 8px 12px;
-      margin-bottom: 8px;
-      background-color: #e3f2fd;
-      border-radius: 8px;
-      font-size: 13px;
+      .input-container {
+        padding: 16px 20px;
+        background-color: #ffffff;
+        border-top: 1px solid #e8e8e8;
 
-      .attachment-info {
+        &.disabled {
+          opacity: 0.6;
+          pointer-events: none;
+        }
+      }
+
+      .attachment-preview {
         display: flex;
         align-items: center;
-        gap: 8px;
-        overflow: hidden;
+        justify-content: space-between;
+        padding: 8px 12px;
+        margin-bottom: 8px;
+        background-color: #e3f2fd;
+        border-radius: 8px;
+        font-size: 13px;
 
-        mat-icon {
-          font-size: 18px;
-          width: 18px;
-          height: 18px;
-          color: #1976d2;
-        }
-
-        .attachment-name {
-          white-space: nowrap;
+        .attachment-info {
+          display: flex;
+          align-items: center;
+          gap: 8px;
           overflow: hidden;
-          text-overflow: ellipsis;
-          max-width: 200px;
-          color: #333;
+
+          mat-icon {
+            font-size: 18px;
+            width: 18px;
+            height: 18px;
+            color: #1976d2;
+          }
+
+          .attachment-name {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 200px;
+            color: #333;
+          }
+
+          .attachment-size {
+            color: #888;
+            white-space: nowrap;
+          }
         }
 
-        .attachment-size {
-          color: #888;
-          white-space: nowrap;
+        .remove-attachment {
+          background: none;
+          border: none;
+          cursor: pointer;
+          padding: 2px;
+          color: #666;
+
+          mat-icon {
+            font-size: 18px;
+            width: 18px;
+            height: 18px;
+          }
+
+          &:hover {
+            color: #d32f2f;
+          }
         }
-      }
-
-      .remove-attachment {
-        background: none;
-        border: none;
-        cursor: pointer;
-        padding: 2px;
-        color: #666;
-
-        mat-icon {
-          font-size: 18px;
-          width: 18px;
-          height: 18px;
-        }
-
-        &:hover {
-          color: #d32f2f;
-        }
-      }
-    }
-
-    .input-wrapper {
-      display: flex;
-      align-items: flex-end;
-      gap: 12px;
-      background-color: #f5f5f5;
-      border-radius: 24px;
-      padding: 8px 8px 8px 18px;
-      transition: background-color 0.15s ease, box-shadow 0.15s ease;
-
-      &:focus-within {
-        background-color: #ffffff;
-        box-shadow: 0 0 0 2px #e3f2fd;
-      }
-    }
-
-    .attach-button {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 36px;
-      height: 36px;
-      border: none;
-      border-radius: 50%;
-      background: transparent;
-      color: #666;
-      cursor: pointer;
-      flex-shrink: 0;
-      transition: color 0.15s ease, background-color 0.15s ease;
-
-      &:hover:not(:disabled) {
-        color: #1976d2;
-        background-color: rgba(25, 118, 210, 0.08);
-      }
-
-      &:disabled {
-        color: #ccc;
-        cursor: not-allowed;
-      }
-
-      mat-icon {
-        font-size: 22px;
-        width: 22px;
-        height: 22px;
-      }
-    }
-
-    .message-textarea {
-      flex: 1;
-      min-height: 24px;
-      max-height: 120px;
-      padding: 6px 0;
-      border: none;
-      background: transparent;
-      font-size: 15px;
-      font-family: inherit;
-      line-height: 1.5;
-      resize: none;
-      outline: none;
-      color: #1a1a1a;
-
-      &::placeholder {
-        color: #888;
-      }
-
-      &:disabled {
-        color: #999;
-      }
-    }
-
-    .char-counter {
-      font-size: 12px;
-      color: #888;
-      white-space: nowrap;
-      padding-bottom: 8px;
-
-      &.warning {
-        color: #f57c00;
-      }
-
-      &.danger {
-        color: #d32f2f;
-        font-weight: 600;
-      }
-    }
-
-    .send-button {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 40px;
-      height: 40px;
-      border: none;
-      border-radius: 50%;
-      background: linear-gradient(135deg, #2196f3 0%, #1976d2 100%);
-      color: #ffffff;
-      cursor: pointer;
-      transition: transform 0.15s ease, box-shadow 0.15s ease;
-      flex-shrink: 0;
-
-      &:hover:not(:disabled) {
-        transform: scale(1.05);
-        box-shadow: 0 2px 8px rgba(33, 150, 243, 0.3);
-      }
-
-      &:active:not(:disabled) {
-        transform: scale(0.95);
-      }
-
-      &:disabled {
-        background: #e0e0e0;
-        color: #999;
-        cursor: not-allowed;
-      }
-
-      mat-icon {
-        font-size: 20px;
-        width: 20px;
-        height: 20px;
-      }
-    }
-
-    // Dark theme
-    :host-context(.dark-theme) {
-      .input-container {
-        background-color: #1e1e1e;
-        border-top-color: #333;
       }
 
       .input-wrapper {
-        background-color: #2d2d2d;
+        display: flex;
+        align-items: flex-end;
+        gap: 12px;
+        background-color: #f5f5f5;
+        border-radius: 24px;
+        padding: 8px 8px 8px 18px;
+        transition:
+          background-color 0.15s ease,
+          box-shadow 0.15s ease;
 
         &:focus-within {
-          background-color: #333;
-          box-shadow: 0 0 0 2px #0d47a1;
+          background-color: #ffffff;
+          box-shadow: 0 0 0 2px #e3f2fd;
+        }
+      }
+
+      .attach-button {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 36px;
+        height: 36px;
+        border: none;
+        border-radius: 50%;
+        background: transparent;
+        color: #666;
+        cursor: pointer;
+        flex-shrink: 0;
+        transition:
+          color 0.15s ease,
+          background-color 0.15s ease;
+
+        &:hover:not(:disabled) {
+          color: #1976d2;
+          background-color: rgba(25, 118, 210, 0.08);
+        }
+
+        &:disabled {
+          color: #ccc;
+          cursor: not-allowed;
+        }
+
+        mat-icon {
+          font-size: 22px;
+          width: 22px;
+          height: 22px;
         }
       }
 
       .message-textarea {
-        color: #e0e0e0;
+        flex: 1;
+        min-height: 24px;
+        max-height: 120px;
+        padding: 6px 0;
+        border: none;
+        background: transparent;
+        font-size: 15px;
+        font-family: inherit;
+        line-height: 1.5;
+        resize: none;
+        outline: none;
+        color: #1a1a1a;
 
         &::placeholder {
+          color: #888;
+        }
+
+        &:disabled {
+          color: #999;
+        }
+      }
+
+      .char-counter {
+        font-size: 12px;
+        color: #888;
+        white-space: nowrap;
+        padding-bottom: 8px;
+
+        &.warning {
+          color: #f57c00;
+        }
+
+        &.danger {
+          color: #d32f2f;
+          font-weight: 600;
+        }
+      }
+
+      .send-button {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+        border: none;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #2196f3 0%, #1976d2 100%);
+        color: #ffffff;
+        cursor: pointer;
+        transition:
+          transform 0.15s ease,
+          box-shadow 0.15s ease;
+        flex-shrink: 0;
+
+        &:hover:not(:disabled) {
+          transform: scale(1.05);
+          box-shadow: 0 2px 8px rgba(33, 150, 243, 0.3);
+        }
+
+        &:active:not(:disabled) {
+          transform: scale(0.95);
+        }
+
+        &:disabled {
+          background: #e0e0e0;
+          color: #999;
+          cursor: not-allowed;
+        }
+
+        mat-icon {
+          font-size: 20px;
+          width: 20px;
+          height: 20px;
+        }
+      }
+
+      // Dark theme
+      :host-context(.dark-theme) {
+        .input-container {
+          background-color: #1e1e1e;
+          border-top-color: #333;
+        }
+
+        .input-wrapper {
+          background-color: #2d2d2d;
+
+          &:focus-within {
+            background-color: #333;
+            box-shadow: 0 0 0 2px #0d47a1;
+          }
+        }
+
+        .message-textarea {
+          color: #e0e0e0;
+
+          &::placeholder {
+            color: #666;
+          }
+        }
+
+        .send-button:disabled {
+          background: #444;
           color: #666;
         }
       }
 
-      .send-button:disabled {
-        background: #444;
-        color: #666;
+      // Responsive
+      @media (max-width: 768px) {
+        .input-container {
+          padding: 12px 16px;
+        }
       }
-    }
-
-    // Responsive
-    @media (max-width: 768px) {
-      .input-container {
-        padding: 12px 16px;
-      }
-    }
-  `],
+    `,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MessageInputComponent implements AfterViewInit, OnDestroy {
@@ -364,7 +371,13 @@ export class MessageInputComponent implements AfterViewInit, OnDestroy {
   selectedFile = signal<File | null>(null);
   maxLength = 1000;
   private readonly MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-  protected readonly ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
+  protected readonly ALLOWED_TYPES = [
+    'image/jpeg',
+    'image/png',
+    'image/gif',
+    'image/webp',
+    'application/pdf',
+  ];
   private isTypingActive = false;
   private typingSubject = new Subject<string>();
   private destroy$ = new Subject<void>();
@@ -379,7 +392,9 @@ export class MessageInputComponent implements AfterViewInit, OnDestroy {
   });
 
   isNearLimit = () => {
-    return this.inputValue().length > this.maxLength * 0.9 && this.inputValue().length < this.maxLength;
+    return (
+      this.inputValue().length > this.maxLength * 0.9 && this.inputValue().length < this.maxLength
+    );
   };
 
   isAtLimit = () => {
@@ -389,11 +404,7 @@ export class MessageInputComponent implements AfterViewInit, OnDestroy {
   constructor() {
     // Debounced typing indicator
     this.typingSubject
-      .pipe(
-        debounceTime(300),
-        distinctUntilChanged(),
-        takeUntil(this.destroy$)
-      )
+      .pipe(debounceTime(300), distinctUntilChanged(), takeUntil(this.destroy$))
       .subscribe((value) => {
         if (value.length > 0 && !this.isTypingActive) {
           this.isTypingActive = true;

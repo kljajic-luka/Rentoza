@@ -104,7 +104,13 @@
         <!-- Message Input Component -->
         <app-message-input
           [disabled]="isAdminMode() || !isMessagingAllowed() || isSendingMessage()"
-          [placeholder]="isAdminMode() ? 'Samo pregled (admin)' : isMessagingAllowed() ? 'Napišite poruku...' : 'Poruke nisu dozvoljene'"
+          [placeholder]="
+            isAdminMode()
+              ? 'Samo pregled (admin)'
+              : isMessagingAllowed()
+                ? 'Napišite poruku...'
+                : 'Poruke nisu dozvoljene'
+          "
           (messageSent)="onSendMessage($event)"
           (attachmentSelected)="onAttachmentSelected($event)"
           (attachmentRemoved)="onAttachmentRemoved()"

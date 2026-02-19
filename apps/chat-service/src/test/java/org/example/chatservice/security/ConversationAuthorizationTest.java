@@ -12,10 +12,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Objects;
-import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.when;
 
 /**
  * Security tests for chat service authorization.
@@ -47,7 +45,6 @@ class ConversationAuthorizationTest {
         @DisplayName("Should return true when user is renter")
         void shouldReturnTrueForRenter() {
             Conversation conversation = createTestConversation();
-            when(conversationRepository.findByBookingId(BOOKING_ID)).thenReturn(Optional.of(conversation));
 
             assertThat(conversation.isParticipant(RENTER_ID)).isTrue();
         }
@@ -56,7 +53,6 @@ class ConversationAuthorizationTest {
         @DisplayName("Should return true when user is owner")
         void shouldReturnTrueForOwner() {
             Conversation conversation = createTestConversation();
-            when(conversationRepository.findByBookingId(BOOKING_ID)).thenReturn(Optional.of(conversation));
 
             assertThat(conversation.isParticipant(OWNER_ID)).isTrue();
         }
@@ -65,7 +61,6 @@ class ConversationAuthorizationTest {
         @DisplayName("Should return false for non-participant")
         void shouldReturnFalseForNonParticipant() {
             Conversation conversation = createTestConversation();
-            when(conversationRepository.findByBookingId(BOOKING_ID)).thenReturn(Optional.of(conversation));
 
             assertThat(conversation.isParticipant(ATTACKER_ID)).isFalse();
         }

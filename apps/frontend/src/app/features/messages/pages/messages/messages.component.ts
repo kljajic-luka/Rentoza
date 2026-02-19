@@ -142,13 +142,11 @@ export class MessagesComponent implements OnInit, OnDestroy {
 
   async ngOnInit(): Promise<void> {
     // Get current user and detect admin mode
-    this.authService.currentUser$
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((user) => {
-        if (user?.id) {
-          this.currentUserId.set(user.id);
-        }
-      });
+    this.authService.currentUser$.pipe(takeUntil(this.destroy$)).subscribe((user) => {
+      if (user?.id) {
+        this.currentUserId.set(user.id);
+      }
+    });
 
     // Detect admin mode (admin viewing messages for dispute resolution)
     this.isAdminMode.set(this.authService.hasAnyRole('ADMIN' as any));
@@ -177,7 +175,7 @@ export class MessagesComponent implements OnInit, OnDestroy {
     this.route.queryParams
       .pipe(
         filter((params) => params['bookingId']),
-        takeUntil(this.destroy$)
+        takeUntil(this.destroy$),
       )
       .subscribe((params) => {
         this.selectConversationByBookingId(params['bookingId']);
@@ -204,7 +202,7 @@ export class MessagesComponent implements OnInit, OnDestroy {
         this.router.navigate(['/auth/login']);
         return;
       }
-      
+
       // Handle other errors - show message
       console.error('WebSocket initialization failed:', error);
       this.wsConnected.set(false);
@@ -226,31 +224,27 @@ export class MessagesComponent implements OnInit, OnDestroy {
     this.chatService.conversations$
       .pipe(
         skip(1), // Skip the initial BehaviorSubject value - API call provides initial data
-        takeUntil(this.destroy$)
+        takeUntil(this.destroy$),
       )
       .subscribe((convs) => {
         this.conversations.set(convs);
       });
 
     // Active conversation updates
-    this.chatService.activeConversation$
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((conv) => {
-        if (conv) {
-          this.selectedConversationId.set(conv.id);
-          this.messages.set(conv.messages || []);
-        }
-      });
+    this.chatService.activeConversation$.pipe(takeUntil(this.destroy$)).subscribe((conv) => {
+      if (conv) {
+        this.selectedConversationId.set(conv.id);
+        this.messages.set(conv.messages || []);
+      }
+    });
 
     // Subscribe to typing indicators
-    this.chatService.typingIndicators$
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((typing) => {
-        if (typing.conversationId === this.selectedConversationId()) {
-          this.isTyping.set(typing.isTyping);
-          this.typingUserName.set(typing.userName);
-        }
-      });
+    this.chatService.typingIndicators$.pipe(takeUntil(this.destroy$)).subscribe((typing) => {
+      if (typing.conversationId === this.selectedConversationId()) {
+        this.isTyping.set(typing.isTyping);
+        this.typingUserName.set(typing.userName);
+      }
+    });
   }
 
   // ============================================================================
@@ -414,25 +408,28 @@ export class MessagesComponent implements OnInit, OnDestroy {
     this.pendingAttachmentUrl = null; // Clear after consuming
 
     // Use optimistic update with offline queue fallback
-    this.chatService.sendMessageOptimistic(conv.bookingId, content.trim(), conv.id, mediaUrl).subscribe({
-      next: () => {
-        this.isSendingMessage.set(false);
-      },
-      error: (err) => {
-        console.error('Failed to send message:', err);
-        this.isSendingMessage.set(false);
-        
-        // Handle content moderation errors with user-friendly messages
-        if (err?.error?.errorCode === 'CONTENT_MODERATION') {
-          const userMessage = err.error.userMessage || err.error.message || 'Poruka nije dozvoljena.';
-          this.toast.warning(userMessage);
-        } else if (err?.message === 'Offline - message queued') {
-          this.toast.info('Niste povezani. Poruka će biti poslata kada budete online.');
-        } else {
-          this.toast.error('Poruka nije poslata. Pokušajte ponovo.');
-        }
-      },
-    });
+    this.chatService
+      .sendMessageOptimistic(conv.bookingId, content.trim(), conv.id, mediaUrl)
+      .subscribe({
+        next: () => {
+          this.isSendingMessage.set(false);
+        },
+        error: (err) => {
+          console.error('Failed to send message:', err);
+          this.isSendingMessage.set(false);
+
+          // Handle content moderation errors with user-friendly messages
+          if (err?.error?.errorCode === 'CONTENT_MODERATION') {
+            const userMessage =
+              err.error.userMessage || err.error.message || 'Poruka nije dozvoljena.';
+            this.toast.warning(userMessage);
+          } else if (err?.message === 'Offline - message queued') {
+            this.toast.info('Niste povezani. Poruka će biti poslata kada budete online.');
+          } else {
+            this.toast.error('Poruka nije poslata. Pokušajte ponovo.');
+          }
+        },
+      });
   }
 
   // ============================================================================
@@ -486,9 +483,7 @@ export class MessagesComponent implements OnInit, OnDestroy {
           ...c,
           lastMessageAt: message.timestamp,
           unreadCount:
-            message.senderId !== this.currentUserId()
-              ? (c.unreadCount || 0) + 1
-              : c.unreadCount,
+            message.senderId !== this.currentUserId() ? (c.unreadCount || 0) + 1 : c.unreadCount,
         };
       }
       return c;
@@ -515,7 +510,7 @@ export class MessagesComponent implements OnInit, OnDestroy {
         next: () => {
           // Update local unread count
           this.conversations.update((convs) =>
-            convs.map((c) => (c.id === conv.id ? { ...c, unreadCount: 0 } : c))
+            convs.map((c) => (c.id === conv.id ? { ...c, unreadCount: 0 } : c)),
           );
         },
         error: (err) => console.error('Failed to mark messages as read:', err),

@@ -67,12 +67,64 @@ public interface ReviewRepository extends JpaRepository<Review, Long> {
             @Param("direction") ReviewDirection direction
     );
 
+    /**
+     * P0-2 FIX: Batch visibility-aware average rating per reviewee.
+     * Enforces double-blind: only reviews that cleared visibility check are counted.
+     * Returns a list of Object[]{Long userId, Double avgRating}.
+     */
+    @Query("""
+            SELECT r.reviewee.id, AVG(r.rating)
+            FROM Review r
+            WHERE r.reviewee.id IN :userIds
+              AND r.direction = :direction
+              AND (
+                  r.createdAt < :visibilityTimeout
+                  OR EXISTS (
+                      SELECT 1 FROM Review otherReview
+                      WHERE otherReview.booking.id = r.booking.id
+                        AND otherReview.direction <> r.direction
+                  )
+              )
+            GROUP BY r.reviewee.id
+            """)
+    List<Object[]> findVisibleAverageRatingsForReviewees(
+            @Param("userIds") java.util.Collection<Long> userIds,
+            @Param("direction") ReviewDirection direction,
+            @Param("visibilityTimeout") java.time.Instant visibilityTimeout
+    );
+
     @Query("""
             SELECT AVG(r.rating)
             FROM Review r
             WHERE r.direction = :direction
             """)
     Double findAverageRatingByDirection(@Param("direction") ReviewDirection direction);
+
+    /**
+     * P2 FIX: Visibility-aware global average rating for public home stats.
+     * Only counts reviews that cleared the double-blind check (both parties submitted OR timeout passed).
+     *
+     * @param direction Review direction
+     * @param visibilityTimeout Reviews older than this are always counted
+     * @return Visibility-filtered global average rating
+     */
+    @Query("""
+            SELECT AVG(r.rating)
+            FROM Review r
+            WHERE r.direction = :direction
+              AND (
+                  r.createdAt < :visibilityTimeout
+                  OR EXISTS (
+                      SELECT 1 FROM Review otherReview
+                      WHERE otherReview.booking.id = r.booking.id
+                        AND otherReview.direction <> r.direction
+                  )
+              )
+            """)
+    Double findVisibleAverageRatingByDirection(
+            @Param("direction") ReviewDirection direction,
+            @Param("visibilityTimeout") java.time.Instant visibilityTimeout
+    );
 
     @Query("""
             SELECT DISTINCT r
@@ -302,5 +354,66 @@ public interface ReviewRepository extends JpaRepository<Review, Long> {
             @Param("direction") ReviewDirection direction,
             @Param("visibilityTimeout") java.time.Instant visibilityTimeout
     );
-}
 
+    // ========== P0-2 FIX: VISIBILITY-AWARE QUERIES FOR DOUBLE-BLIND ==========
+
+    /**
+     * P0-2 FIX: Find visible reviews for an owner's public profile.
+     * Enforces double-blind: review only shown if both parties submitted OR timeout passed.
+     *
+     * @param revieweeId The owner's user ID
+     * @param direction Review direction (FROM_USER)
+     * @param visibilityTimeout Reviews older than this are always visible
+     * @return List of visible reviews for the profile
+     */
+    @Query("""
+            SELECT DISTINCT r
+            FROM Review r
+            JOIN FETCH r.reviewer
+            WHERE r.reviewee.id = :revieweeId
+              AND r.direction = :direction
+              AND (
+                  r.createdAt < :visibilityTimeout
+                  OR EXISTS (
+                      SELECT 1 FROM Review otherReview
+                      WHERE otherReview.booking.id = r.booking.id
+                        AND otherReview.direction <> r.direction
+                  )
+              )
+            ORDER BY r.createdAt DESC
+            """)
+    List<Review> findVisibleByRevieweeIdAndDirection(
+            @Param("revieweeId") Long revieweeId,
+            @Param("direction") ReviewDirection direction,
+            @Param("visibilityTimeout") java.time.Instant visibilityTimeout
+    );
+
+    /**
+     * P0-2 FIX: Calculate average rating only from visible reviews.
+     * Enforces double-blind: only reviews that cleared visibility check are counted.
+     *
+     * @param revieweeId The owner's user ID
+     * @param direction Review direction (FROM_USER)
+     * @param visibilityTimeout Reviews older than this are always visible
+     * @return Average rating from visible reviews only
+     */
+    @Query("""
+            SELECT AVG(r.rating)
+            FROM Review r
+            WHERE r.reviewee.id = :revieweeId
+              AND r.direction = :direction
+              AND (
+                  r.createdAt < :visibilityTimeout
+                  OR EXISTS (
+                      SELECT 1 FROM Review otherReview
+                      WHERE otherReview.booking.id = r.booking.id
+                        AND otherReview.direction <> r.direction
+                  )
+              )
+            """)
+    Double findVisibleAverageRatingForReviewee(
+            @Param("revieweeId") Long revieweeId,
+            @Param("direction") ReviewDirection direction,
+            @Param("visibilityTimeout") java.time.Instant visibilityTimeout
+    );
+}

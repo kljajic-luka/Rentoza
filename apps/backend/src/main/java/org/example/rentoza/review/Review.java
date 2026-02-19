@@ -72,9 +72,10 @@ public class Review {
     @JsonIgnore
     private Car car;
 
-    // P0-4 FIX: Review MUST have a reviewer
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "reviewer_id", nullable = false)
+    // Reviewer is non-null on creation (enforced by application layer).
+    // Nullable for GDPR anonymization (AdminUserService user deletion).
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "reviewer_id")
     @JsonIgnore
     private User reviewer;
 

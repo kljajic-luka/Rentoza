@@ -15,6 +15,7 @@ import org.example.rentoza.review.dto.ReviewRequestDTO;
 import org.example.rentoza.review.dto.ReviewResponseDTO;
 import org.example.rentoza.review.dto.RenterReviewRequestDTO;
 import org.example.rentoza.review.dto.OwnerReviewRequestDTO;
+import org.example.rentoza.security.validation.InputSanitizer;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
 import org.springframework.data.domain.PageRequest;
@@ -22,6 +23,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 
@@ -33,8 +35,16 @@ public class ReviewService {
      * Mutual Review Visibility Timeout.
      * Reviews are hidden until both parties submit, OR this timeout passes.
      * This prevents one party from waiting indefinitely to see the other's review.
+     * Set to 14 days per edge-case standard (if one side never submits).
      */
-    private static final int REVIEW_VISIBILITY_TIMEOUT_DAYS = 7;
+    public static final int REVIEW_VISIBILITY_TIMEOUT_DAYS = 14;
+
+    /**
+     * P0-1 FIX: Review Submission Window.
+     * Reviews must be submitted within this many days after the booking end date.
+     * Prevents stale/revenge reviews long after a trip.
+     */
+    private static final int REVIEW_SUBMISSION_WINDOW_DAYS = 14;
     
     /**
      * Issue 3.2 - Fake Review Detection: Velocity Limits
@@ -94,6 +104,68 @@ public class ReviewService {
                     reviewerId, reviewsLastDay);
             throw new RuntimeException("Dostigli ste dnevni limit za recenzije. Molimo pokušajte sutra.");
         }
+    }
+
+    /**
+     * P0-1 FIX: Enforce 14-day review submission window.
+     * Reviews can only be submitted within REVIEW_SUBMISSION_WINDOW_DAYS after booking end date.
+     *
+     * @param booking The booking being reviewed
+     * @throws RuntimeException if the submission window has passed
+     */
+    private void enforceSubmissionWindow(Booking booking) {
+        LocalDateTime endTime = booking.getEndTime();
+        if (endTime == null) {
+            log.warn("[ReviewSubmissionWindow] Booking {} has no end time, allowing review", booking.getId());
+            return;
+        }
+        LocalDateTime deadline = endTime.plusDays(REVIEW_SUBMISSION_WINDOW_DAYS);
+        if (LocalDateTime.now().isAfter(deadline)) {
+            log.info("[ReviewSubmissionWindow] Review submission window expired for booking {}. " +
+                    "End time: {}, Deadline: {}", booking.getId(), endTime, deadline);
+            throw new RuntimeException(
+                    "Rok za ostavljanje recenzije je istekao. Recenzije se mogu ostaviti u roku od " +
+                    REVIEW_SUBMISSION_WINDOW_DAYS + " dana nakon završetka rezervacije.");
+        }
+    }
+
+    /**
+     * P0-5 FIX: Sanitize review comment text to prevent XSS.
+     * Uses InputSanitizer.sanitizeText() to strip HTML/script tags.
+     *
+     * @param comment The raw comment text
+     * @return Sanitized comment, or null if input was null
+     */
+    private String sanitizeComment(String comment) {
+        if (comment == null || comment.isBlank()) {
+            return comment;
+        }
+        return InputSanitizer.sanitizeText(comment);
+    }
+
+    /**
+     * P0-2 FIX: Check if a review should be visible under double-blind rules.
+     * A review is visible if:
+     * 1. Both parties have submitted reviews for the same booking, OR
+     * 2. The visibility timeout has passed since review creation.
+     *
+     * @param review The review to check
+     * @return true if the review should be shown
+     */
+    private boolean isReviewVisible(Review review) {
+        // Reviews older than the visibility timeout are always visible
+        Instant visibilityTimeout = Instant.now().minus(REVIEW_VISIBILITY_TIMEOUT_DAYS, ChronoUnit.DAYS);
+        if (review.getCreatedAt().isBefore(visibilityTimeout)) {
+            return true;
+        }
+        // Check if both directions have reviews for this booking
+        if (review.getBooking() != null) {
+            ReviewDirection otherDirection = review.getDirection() == ReviewDirection.FROM_USER
+                    ? ReviewDirection.FROM_OWNER
+                    : ReviewDirection.FROM_USER;
+            return repo.existsOtherReview(review.getBooking().getId(), otherDirection);
+        }
+        return true;
     }
 
     @Transactional
@@ -209,7 +281,8 @@ public class ReviewService {
         review.setBooking(booking);
         review.setDirection(direction);
         review.setRating(dto.getRating());
-        review.setComment(dto.getComment());
+        // P0-5 FIX: Sanitize comment text before persistence
+        review.setComment(sanitizeComment(dto.getComment()));
         review.setCreatedAt(Instant.now());
         return review;
     }
@@ -242,15 +315,20 @@ public class ReviewService {
     }
 
     public double getAverageRatingForCar(Long carId) {
-        var reviews = repo.findByCarIdAndDirection(carId, ReviewDirection.FROM_USER);
+        // P0-2 FIX: Only include visible reviews in average calculation (double-blind)
+        Instant visibilityTimeout = Instant.now().minus(REVIEW_VISIBILITY_TIMEOUT_DAYS, ChronoUnit.DAYS);
+        var reviews = repo.findVisibleByCarIdAndDirection(carId, ReviewDirection.FROM_USER, visibilityTimeout);
         return reviews.isEmpty()
                 ? 0.0
                 : reviews.stream().mapToInt(Review::getRating).average().orElse(0.0);
     }
 
     public List<ReviewResponseDTO> getRecentReviews() {
-        var reviews = repo.findRecentReviews(ReviewDirection.FROM_USER, PageRequest.of(0, 10));
+        // P0-2 FIX: Apply double-blind visibility filter to recent reviews
+        var reviews = repo.findRecentReviews(ReviewDirection.FROM_USER, PageRequest.of(0, 20));
         return reviews.stream()
+                .filter(this::isReviewVisible)
+                .limit(10)
                 .map(this::toResponse)
                 .toList();
     }
@@ -314,6 +392,9 @@ public class ReviewService {
             throw new RuntimeException("Možete recenzirati samo završene rezervacije");
         }
 
+        // P0-1 FIX: Enforce 14-day submission window
+        enforceSubmissionWindow(booking);
+
         // 5. Duplicate check: Has user already reviewed this booking?
         if (repo.existsByBookingAndDirection(booking, ReviewDirection.FROM_USER)) {
             throw new RuntimeException("You have already reviewed this booking");
@@ -327,6 +408,9 @@ public class ReviewService {
                 dto.getAccuracyRating();
         int averageRating = Math.round((float) totalRating / 5);
 
+        // P0-5 FIX: Sanitize comment text before persistence
+        String sanitizedComment = sanitizeComment(dto.getComment());
+
         // 8. Build and save review
         Review review = new Review();
         review.setReviewer(renter);
@@ -335,7 +419,7 @@ public class ReviewService {
         review.setBooking(booking);
         review.setDirection(ReviewDirection.FROM_USER);
         review.setRating(averageRating);
-        review.setComment(dto.getComment());
+        review.setComment(sanitizedComment);
         review.setCleanlinessRating(dto.getCleanlinessRating());
         review.setMaintenanceRating(dto.getMaintenanceRating());
         review.setCommunicationRating(dto.getCommunicationRating());
@@ -345,17 +429,16 @@ public class ReviewService {
 
         Review savedReview = repo.save(review);
 
-        // Send notification to owner
+        // P0-2 FIX: Send notification WITHOUT revealing star rating (double-blind)
         try {
             User owner = booking.getCar().getOwner();
             String carInfo = booking.getCar().getBrand() + " " + booking.getCar().getModel();
-            String stars = "⭐".repeat(averageRating);
 
             notificationService.createNotification(CreateNotificationRequestDTO.builder()
                     .recipientId(owner.getId())
                     .type(NotificationType.REVIEW_RECEIVED)
                     .message(renter.getFirstName() + " " + renter.getLastName() +
-                            " je ostavio/la recenziju za " + carInfo + " " + stars)
+                            " je ostavio/la recenziju za " + carInfo)
                     .relatedEntityId("review-" + savedReview.getId())
                     .build());
 
@@ -401,6 +484,9 @@ public class ReviewService {
             throw new RuntimeException("Recenziju možete ostaviti samo za završene rezervacije koje nisu već ocenjene");
         }
 
+        // P0-1 FIX: Enforce 14-day submission window
+        enforceSubmissionWindow(booking);
+
         // 5. Duplicate check: Has owner already reviewed this booking?
         if (repo.existsByBookingAndDirection(booking, ReviewDirection.FROM_OWNER)) {
             throw new RuntimeException("You have already reviewed this renter for this booking");
@@ -413,6 +499,9 @@ public class ReviewService {
                 dto.getRespectForRulesRating();
         int averageRating = Math.round((float) totalRating / 4);
 
+        // P0-5 FIX: Sanitize comment text before persistence
+        String sanitizedComment = sanitizeComment(dto.getComment());
+
         // 8. Build and save review
         Review review = new Review();
         review.setReviewer(owner);
@@ -421,7 +510,7 @@ public class ReviewService {
         review.setBooking(booking);
         review.setDirection(ReviewDirection.FROM_OWNER);
         review.setRating(averageRating);
-        review.setComment(dto.getComment());
+        review.setComment(sanitizedComment);
         review.setCommunicationRating(dto.getCommunicationRating());
         review.setCleanlinessRating(dto.getCleanlinessRating());
         review.setTimelinessRating(dto.getTimelinessRating());
@@ -430,16 +519,15 @@ public class ReviewService {
 
         Review savedReview = repo.save(review);
 
-        // Send notification to renter
+        // P0-2 FIX: Send notification WITHOUT revealing star rating (double-blind)
         try {
             User renter = booking.getRenter();
-            String stars = "⭐".repeat(averageRating);
 
             notificationService.createNotification(CreateNotificationRequestDTO.builder()
                     .recipientId(renter.getId())
                     .type(NotificationType.REVIEW_RECEIVED)
                     .message(owner.getFirstName() + " " + owner.getLastName() +
-                            " je ostavio/la recenziju " + stars)
+                            " je ostavio/la recenziju za vašu rezervaciju")
                     .relatedEntityId("review-" + savedReview.getId())
                     .build());
 
@@ -473,7 +561,9 @@ public class ReviewService {
                 .map(repo::findByReviewee)
                 .orElseGet(List::of);
 
+        // P0-2 FIX: Apply double-blind visibility filter
         return reviews.stream()
+                .filter(this::isReviewVisible)
                 .map(this::toResponse)
                 .toList();
     }
@@ -500,7 +590,9 @@ public class ReviewService {
                 .map(owner -> repo.findByReviewerAndDirection(owner, ReviewDirection.FROM_OWNER))
                 .orElseGet(List::of);
 
+        // P0-2 FIX: Apply double-blind visibility filter
         return reviews.stream()
+                .filter(this::isReviewVisible)
                 .map(this::toResponse)
                 .toList();
     }

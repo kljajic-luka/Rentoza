@@ -64,16 +64,12 @@ public class OwnerService {
                 .map(Booking::getTotalPrice)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        // 4. Calculate average rating from reviews received by owner
-        List<Review> receivedReviews = reviewRepo.findByReviewee(owner);
-        double averageRating = 0.0;
-        if (!receivedReviews.isEmpty()) {
-            double totalRating = receivedReviews.stream()
-                    .mapToInt(Review::getRating)
-                    .average()
-                    .orElse(0.0);
-            averageRating = Math.round(totalRating * 10.0) / 10.0; // Round to 1 decimal
-        }
+        // 4. Calculate average rating from visible reviews received by owner
+        // P0-2 FIX: Visibility-filtered rating (double-blind enforcement)
+        java.time.Instant visibilityTimeout = java.time.Instant.now().minus(14, java.time.temporal.ChronoUnit.DAYS);
+        Double rawRating = reviewRepo.findVisibleAverageRatingForReviewee(
+                owner.getId(), ReviewDirection.FROM_USER, visibilityTimeout);
+        double averageRating = rawRating != null ? Math.round(rawRating * 10.0) / 10.0 : 0.0;
 
         return new OwnerStatsDTO(totalCars, totalBookings, monthlyEarnings, averageRating);
     }

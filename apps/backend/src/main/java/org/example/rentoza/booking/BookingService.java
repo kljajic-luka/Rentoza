@@ -38,6 +38,7 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -1251,9 +1252,12 @@ public class BookingService {
 
         // 3. Fetch Host Stats
         User host = booking.getCar().getOwner();
-        Double hostRating = reviewRepo.findAverageRatingForRevieweeAndDirection(
+        // P0-2 FIX: Visibility-filtered host rating (double-blind enforcement)
+        Instant visibilityTimeout = Instant.now().minus(14, ChronoUnit.DAYS);
+        Double hostRating = reviewRepo.findVisibleAverageRatingForReviewee(
                 host.getId(), 
-                ReviewDirection.FROM_USER // Renter reviewing Owner
+                ReviewDirection.FROM_USER, // Renter reviewing Owner
+                visibilityTimeout
         );
         long hostTotalTrips = repo.countByOwnerIdAndStatus(host.getId(), BookingStatus.COMPLETED);
 
@@ -1391,9 +1395,12 @@ public class BookingService {
 
         // 3. Fetch guest stats
         User renter = booking.getRenter();
-        Double averageRating = reviewRepo.findAverageRatingForRevieweeAndDirection(
+        // P0-2 FIX: Visibility-filtered guest rating (double-blind enforcement)
+        Instant guestVisTimeout = Instant.now().minus(14, ChronoUnit.DAYS);
+        Double averageRating = reviewRepo.findVisibleAverageRatingForReviewee(
                 renter.getId(), 
-                ReviewDirection.FROM_OWNER
+                ReviewDirection.FROM_OWNER,
+                guestVisTimeout
         );
         
         // Count completed trips as renter
@@ -1402,10 +1409,12 @@ public class BookingService {
         // Count guest-initiated cancellations for reliability assessment
         long cancelledCount = repo.countByRenterIdAndStatus(renter.getId(), BookingStatus.CANCELLED);
 
-        // 4. Fetch recent reviews from hosts (limit 5 for preview)
-        List<Review> reviews = reviewRepo.findByRevieweeIdAndDirectionOrderByCreatedAtDesc(
+        // 4. Fetch recent visible reviews from hosts (limit 5 for preview)
+        // P0-2 FIX: Visibility-filtered guest reviews (double-blind enforcement)
+        List<Review> reviews = reviewRepo.findVisibleByRevieweeIdAndDirection(
                 renter.getId(), 
-                ReviewDirection.FROM_OWNER
+                ReviewDirection.FROM_OWNER,
+                guestVisTimeout
         ).stream().limit(5).collect(Collectors.toList());
 
         // 5. Map to DTO with all enterprise-grade fields

@@ -22,18 +22,25 @@ public class ReviewController {
         this.service = service;
     }
 
+    /**
+     * P0-3 FIX: Legacy review endpoint DISABLED.
+     * All review submissions must use the secure typed endpoints:
+     * - POST /api/reviews/from-renter (for renter reviews)
+     * - POST /api/reviews/from-owner (for owner reviews)
+     *
+     * This endpoint is kept to return a clear deprecation error instead of silently failing.
+     */
+    @Deprecated
     @PostMapping
     public ResponseEntity<?> addReview(
             @RequestBody @Valid ReviewRequestDTO dto,
             @org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal
     ) {
-        try {
-            Review saved = service.addReview(dto, principal.getUsername());
-            return ResponseEntity.ok(saved);
-
-        } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
-        }
+        return ResponseEntity.status(410).body(Map.of(
+                "error", "This endpoint is deprecated. Use POST /api/reviews/from-renter or POST /api/reviews/from-owner instead.",
+                "fromRenter", "/api/reviews/from-renter",
+                "fromOwner", "/api/reviews/from-owner"
+        ));
     }
     @GetMapping("/car/{carId}")
     public ResponseEntity<List<ReviewResponseDTO>> getReviewsForCar(@PathVariable Long carId) {

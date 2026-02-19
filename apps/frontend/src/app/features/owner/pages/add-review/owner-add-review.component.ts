@@ -88,13 +88,33 @@ export class OwnerAddReviewComponent implements OnInit {
           return;
         }
 
-        if (booking.status !== 'COMPLETED') {
+        // P1-7 FIX: Align with backend completion logic
+        // A booking is considered completed if status is COMPLETED OR end date is in the past.
+        // This matches BookingService.isBookingCompleted() on the backend.
+        const isCompleted = booking.status === 'COMPLETED' ||
+          (booking.endTime && new Date(booking.endTime) < new Date());
+
+        if (!isCompleted) {
           this.snackBar.open('Možete recenzirati samo završene rezervacije.', 'Zatvori', {
             duration: 5000,
             panelClass: ['snackbar-error']
           });
           this.router.navigate(['/owner/bookings']);
           return;
+        }
+
+        // P0-1 FIX: Enforce 14-day submission window on frontend
+        if (booking.endTime) {
+          const endDate = new Date(booking.endTime);
+          const deadline = new Date(endDate.getTime() + 14 * 24 * 60 * 60 * 1000);
+          if (new Date() > deadline) {
+            this.snackBar.open('Rok za ostavljanje recenzije je istekao (14 dana nakon završetka).', 'Zatvori', {
+              duration: 5000,
+              panelClass: ['snackbar-error']
+            });
+            this.router.navigate(['/owner/bookings']);
+            return;
+          }
         }
 
         this.booking.set(booking);

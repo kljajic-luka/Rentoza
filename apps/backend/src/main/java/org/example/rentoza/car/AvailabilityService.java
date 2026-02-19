@@ -340,6 +340,7 @@ public class AvailabilityService {
 
     /**
      * Build a map of ownerId → average rating using a single batch query.
+     * P0-2 FIX: Uses visibility-filtered query to enforce double-blind.
      */
     private Map<Long, Double> buildOwnerRatingMap(List<Car> cars) {
         Set<Long> ownerIds = cars.stream()
@@ -350,7 +351,8 @@ public class AvailabilityService {
 
         Map<Long, Double> ratingMap = new HashMap<>();
         if (!ownerIds.isEmpty()) {
-            reviewRepository.findAverageRatingsForReviewees(ownerIds, ReviewDirection.FROM_USER)
+            java.time.Instant visibilityTimeout = java.time.Instant.now().minus(14, ChronoUnit.DAYS);
+            reviewRepository.findVisibleAverageRatingsForReviewees(ownerIds, ReviewDirection.FROM_USER, visibilityTimeout)
                     .forEach(row -> ratingMap.put((Long) row[0], (Double) row[1]));
         }
         return ratingMap;

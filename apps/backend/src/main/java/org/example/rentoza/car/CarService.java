@@ -23,6 +23,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -372,9 +374,10 @@ public class CarService {
         if (car.getOwner() != null) {
             Long ownerId = car.getOwner().getId();
 
-            // Fetch average rating
-            Double rating = reviewRepo.findAverageRatingForRevieweeAndDirection(
-                    ownerId, ReviewDirection.FROM_USER
+            // P0-2 FIX: Visibility-filtered average rating (double-blind enforcement)
+            Instant visibilityTimeout = Instant.now().minus(14, ChronoUnit.DAYS);
+            Double rating = reviewRepo.findVisibleAverageRatingForReviewee(
+                    ownerId, ReviewDirection.FROM_USER, visibilityTimeout
             );
             dto.setOwnerRating(rating != null ? rating : 0.0);
 
@@ -619,7 +622,9 @@ public class CarService {
 
             java.util.Map<Long, Double> ratingMap = new java.util.HashMap<>();
             if (!ownerIds.isEmpty()) {
-                reviewRepo.findAverageRatingsForReviewees(ownerIds, ReviewDirection.FROM_USER)
+                // P0-2 FIX: Visibility-filtered batch ratings (double-blind enforcement)
+                Instant visibilityTimeout = Instant.now().minus(14, ChronoUnit.DAYS);
+                reviewRepo.findVisibleAverageRatingsForReviewees(ownerIds, ReviewDirection.FROM_USER, visibilityTimeout)
                         .forEach(row -> ratingMap.put((Long) row[0], (Double) row[1]));
             }
 
@@ -655,13 +660,30 @@ public class CarService {
                 return cb.conjunction();
             }
 
-            // Correlated subquery: AVG(r.rating) for the car's owner
+            // P0-2 FIX: Visibility-filtered rating sort (double-blind enforcement)
+            Instant visibilityTimeout = Instant.now().minus(14, ChronoUnit.DAYS);
+
+            // Correlated subquery: AVG(r.rating) for the car's owner (visibility-filtered)
             jakarta.persistence.criteria.Subquery<Double> ratingSubquery = query.subquery(Double.class);
             jakarta.persistence.criteria.Root<Review> reviewRoot = ratingSubquery.from(Review.class);
+
+            // Reciprocal review exists subquery (double-blind visibility check)
+            jakarta.persistence.criteria.Subquery<Long> reciprocalSub = query.subquery(Long.class);
+            jakarta.persistence.criteria.Root<Review> recipRoot = reciprocalSub.from(Review.class);
+            reciprocalSub.select(cb.literal(1L))
+                    .where(
+                            cb.equal(recipRoot.get("booking"), reviewRoot.get("booking")),
+                            cb.notEqual(recipRoot.get("direction"), reviewRoot.get("direction"))
+                    );
+
             ratingSubquery.select(cb.coalesce(cb.avg(reviewRoot.get("rating")), cb.literal(0.0)))
                     .where(
                             cb.equal(reviewRoot.get("reviewee"), root.get("owner")),
-                            cb.equal(reviewRoot.get("direction"), ReviewDirection.FROM_USER)
+                            cb.equal(reviewRoot.get("direction"), ReviewDirection.FROM_USER),
+                            cb.or(
+                                    cb.lessThan(reviewRoot.get("createdAt"), visibilityTimeout),
+                                    cb.exists(reciprocalSub)
+                            )
                     );
 
             query.orderBy(

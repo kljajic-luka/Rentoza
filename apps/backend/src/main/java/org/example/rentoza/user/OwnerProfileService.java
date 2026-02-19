@@ -17,7 +17,9 @@ import org.example.rentoza.review.ReviewRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Locale;
 import java.util.stream.Collectors;
@@ -34,6 +36,13 @@ public class OwnerProfileService {
     private final AvailabilityService availabilityService;
 
     private static final DateTimeFormatter JOIN_DATE_FORMATTER = DateTimeFormatter.ofPattern("MMM yyyy", Locale.ENGLISH);
+
+    /**
+     * P0-2 FIX: Must match ReviewService.REVIEW_VISIBILITY_TIMEOUT_DAYS.
+     * Reviews are hidden until both parties submit, OR this timeout passes.
+     * Set to 14 days per edge-case standard.
+     */
+    private static final int REVIEW_VISIBILITY_TIMEOUT_DAYS = 14;
 
     @Transactional(readOnly = true)
     public OwnerPublicProfileDTO getOwnerPublicProfile(Long ownerId) {
@@ -61,15 +70,19 @@ public class OwnerProfileService {
         // If user has no cars and is not explicitly an owner role (optional check), maybe 404?
         // For now, we allow profiles even with 0 active cars (maybe they are all booked or disabled).
 
-        // Fetch Stats
-        Double averageRating = reviewRepository.findAverageRatingForRevieweeAndDirection(
-                ownerId, ReviewDirection.FROM_USER
+        // P0-2 FIX: Calculate visibility timeout for double-blind enforcement
+        Instant visibilityTimeout = Instant.now().minus(REVIEW_VISIBILITY_TIMEOUT_DAYS, ChronoUnit.DAYS);
+
+        // Fetch Stats - P0-2 FIX: Use visibility-aware average rating
+        // Only count reviews that are visible (both parties submitted OR timeout passed)
+        Double averageRating = reviewRepository.findVisibleAverageRatingForReviewee(
+                ownerId, ReviewDirection.FROM_USER, visibilityTimeout
         );
         long totalTrips = bookingRepository.countByOwnerIdAndStatus(ownerId, BookingStatus.COMPLETED);
 
-        // Fetch Reviews (Limit 5)
-        List<Review> reviews = reviewRepository.findByRevieweeIdAndDirectionOrderByCreatedAtDesc(
-                ownerId, ReviewDirection.FROM_USER
+        // Fetch Reviews (Limit 5) - P0-2 FIX: Apply double-blind visibility filter
+        List<Review> reviews = reviewRepository.findVisibleByRevieweeIdAndDirection(
+                ownerId, ReviewDirection.FROM_USER, visibilityTimeout
         ).stream().limit(5).collect(Collectors.toList());
 
         // Calculate Superhost (Placeholder logic)

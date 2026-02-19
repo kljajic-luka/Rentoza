@@ -10,6 +10,8 @@ import org.example.rentoza.user.dto.ProfileStatsDTO;
 import org.example.rentoza.user.dto.UserProfileSummaryDTO;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 @Service
@@ -62,12 +64,15 @@ public class ProfileService {
         long completedTrips = bookingRepository.countByRenterIdAndStatus(userId, BookingStatus.COMPLETED);
         long hostedTrips = bookingRepository.countByOwnerIdAndStatus(userId, BookingStatus.COMPLETED);
 
-        var rawAverage = reviewRepository.findAverageRatingForRevieweeAndDirection(userId, incomingDirection);
+        // P0-2 FIX: Visibility-filtered rating and reviews (double-blind enforcement)
+        Instant visibilityTimeout = Instant.now().minus(14, ChronoUnit.DAYS);
+        var rawAverage = reviewRepository.findVisibleAverageRatingForReviewee(userId, incomingDirection, visibilityTimeout);
         double averageRating = rawAverage != null ? Math.round(rawAverage * 10.0) / 10.0 : 0.0;
 
-        var reviews = reviewRepository.findByRevieweeIdAndDirectionOrderByCreatedAtDesc(
+        var reviews = reviewRepository.findVisibleByRevieweeIdAndDirection(
                 userId,
-                incomingDirection
+                incomingDirection,
+                visibilityTimeout
         );
 
         var reviewDtos = reviews.stream()

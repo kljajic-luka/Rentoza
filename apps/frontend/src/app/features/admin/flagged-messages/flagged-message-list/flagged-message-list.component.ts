@@ -8,10 +8,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import {
-  AdminApiService,
-  FlaggedMessageDto,
-} from '../../../../core/services/admin-api.service';
+import { AdminApiService, FlaggedMessageDto } from '../../../../core/services/admin-api.service';
 import { AdminNotificationService } from '../../../../core/services/admin-notification.service';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
@@ -37,17 +34,31 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
         <mat-spinner diameter="48"></mat-spinner>
       </div>
 
-      <div *ngIf="error()" class="error-banner" style="padding: 16px; margin-bottom: 16px; background: #fdecea; border-radius: 8px; color: #b71c1c;">
+      <div
+        *ngIf="error()"
+        class="error-banner"
+        style="padding: 16px; margin-bottom: 16px; background: #fdecea; border-radius: 8px; color: #b71c1c;"
+      >
         {{ error() }}
       </div>
 
       <div *ngIf="!loading()" class="table-container">
-        <div *ngIf="messages().length === 0 && !loading()" style="text-align: center; padding: 48px; color: rgba(0,0,0,.54);">
-          <mat-icon style="font-size: 48px; width: 48px; height: 48px; margin-bottom: 12px;">check_circle</mat-icon>
+        <div
+          *ngIf="messages().length === 0 && !loading()"
+          style="text-align: center; padding: 48px; color: rgba(0,0,0,.54);"
+        >
+          <mat-icon style="font-size: 48px; width: 48px; height: 48px; margin-bottom: 12px;"
+            >check_circle</mat-icon
+          >
           <p>No flagged messages to review.</p>
         </div>
 
-        <table mat-table [dataSource]="messages()" *ngIf="messages().length > 0" style="width: 100%;">
+        <table
+          mat-table
+          [dataSource]="messages()"
+          *ngIf="messages().length > 0"
+          style="width: 100%;"
+        >
           <ng-container matColumnDef="id">
             <th mat-header-cell *matHeaderCellDef>ID</th>
             <td mat-cell *matCellDef="let m">{{ m.id }}</td>
@@ -65,8 +76,12 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
           <ng-container matColumnDef="content">
             <th mat-header-cell *matHeaderCellDef>Message Content</th>
-            <td mat-cell *matCellDef="let m" style="max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"
-                [matTooltip]="m.content">
+            <td
+              mat-cell
+              *matCellDef="let m"
+              style="max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"
+              [matTooltip]="m.content"
+            >
               {{ m.content }}
             </td>
           </ng-container>
@@ -80,22 +95,25 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
           <ng-container matColumnDef="timestamp">
             <th mat-header-cell *matHeaderCellDef>Date</th>
-            <td mat-cell *matCellDef="let m">{{ m.timestamp | date:'short' }}</td>
+            <td mat-cell *matCellDef="let m">{{ m.timestamp | date: 'short' }}</td>
           </ng-container>
 
           <ng-container matColumnDef="actions">
             <th mat-header-cell *matHeaderCellDef>Actions</th>
             <td mat-cell *matCellDef="let m">
-              <button mat-icon-button color="primary"
-                      (click)="dismissFlags(m)"
-                      matTooltip="Dismiss flags (mark OK)">
+              <button
+                mat-icon-button
+                color="primary"
+                (click)="dismissFlags(m)"
+                matTooltip="Dismiss flags (mark OK)"
+              >
                 <mat-icon>check</mat-icon>
               </button>
             </td>
           </ng-container>
 
           <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
-          <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
+          <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
         </table>
 
         <mat-paginator
@@ -104,7 +122,8 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
           [pageIndex]="currentPage()"
           [pageSizeOptions]="[10, 20, 50]"
           (page)="onPage($event)"
-          showFirstLastButtons>
+          showFirstLastButtons
+        >
         </mat-paginator>
       </div>
     </div>
@@ -131,7 +150,8 @@ export class FlaggedMessageListComponent implements OnInit {
   loadMessages() {
     this.loading.set(true);
     this.error.set(null);
-    this.adminApi.getFlaggedMessages(this.currentPage(), this.pageSize)
+    this.adminApi
+      .getFlaggedMessages(this.currentPage(), this.pageSize)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (res) => {
@@ -153,7 +173,8 @@ export class FlaggedMessageListComponent implements OnInit {
   }
 
   dismissFlags(msg: FlaggedMessageDto) {
-    this.adminApi.dismissMessageFlags(msg.id)
+    this.adminApi
+      .dismissMessageFlags(msg.id)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: () => {

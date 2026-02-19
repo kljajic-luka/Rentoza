@@ -37,7 +37,11 @@ import { AdminNotificationService } from '../../../../core/services/admin-notifi
         <mat-spinner diameter="48"></mat-spinner>
       </div>
 
-      <div *ngIf="error()" class="error-banner" style="padding: 16px; margin-bottom: 16px; background: #fdecea; border-radius: 8px; color: #b71c1c;">
+      <div
+        *ngIf="error()"
+        class="error-banner"
+        style="padding: 16px; margin-bottom: 16px; background: #fdecea; border-radius: 8px; color: #b71c1c;"
+      >
         {{ error() }}
       </div>
 
@@ -48,13 +52,35 @@ import { AdminNotificationService } from '../../../../core/services/admin-notifi
           </mat-card-header>
           <mat-card-content>
             <div class="detail-grid">
-              <div class="detail-row"><span class="label">Status</span><span class="value"><mat-chip [ngClass]="getStatusClass(b.status)">{{ b.status }}</mat-chip></span></div>
-              <div class="detail-row"><span class="label">Payment</span><span class="value">{{ b.paymentStatus }}</span></div>
-              <div class="detail-row"><span class="label">Total Price</span><span class="value">{{ b.totalPrice | currency:'RSD':'symbol-narrow' }}</span></div>
-              <div class="detail-row"><span class="label">Insurance</span><span class="value">{{ b.insuranceType || 'None' }}</span></div>
-              <div class="detail-row"><span class="label">Trip Start</span><span class="value">{{ b.startTime | date:'medium' }}</span></div>
-              <div class="detail-row"><span class="label">Trip End</span><span class="value">{{ b.endTime | date:'medium' }}</span></div>
-              <div class="detail-row"><span class="label">Created</span><span class="value">{{ b.createdAt | date:'medium' }}</span></div>
+              <div class="detail-row">
+                <span class="label">Status</span
+                ><span class="value"
+                  ><mat-chip [ngClass]="getStatusClass(b.status)">{{ b.status }}</mat-chip></span
+                >
+              </div>
+              <div class="detail-row">
+                <span class="label">Payment</span><span class="value">{{ b.paymentStatus }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="label">Total Price</span
+                ><span class="value">{{ b.totalPrice | currency: 'RSD' : 'symbol-narrow' }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="label">Insurance</span
+                ><span class="value">{{ b.insuranceType || 'None' }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="label">Trip Start</span
+                ><span class="value">{{ b.startTime | date: 'medium' }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="label">Trip End</span
+                ><span class="value">{{ b.endTime | date: 'medium' }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="label">Created</span
+                ><span class="value">{{ b.createdAt | date: 'medium' }}</span>
+              </div>
             </div>
           </mat-card-content>
         </mat-card>
@@ -66,24 +92,36 @@ import { AdminNotificationService } from '../../../../core/services/admin-notifi
           <mat-card-content>
             <h3 style="margin: 16px 0 8px;">Car</h3>
             <div class="detail-grid">
-              <div class="detail-row"><span class="label">Car</span><span class="value">{{ b.carTitle }}</span></div>
-              <div class="detail-row"><span class="label">Car ID</span><span class="value">#{{ b.carId }}</span></div>
+              <div class="detail-row">
+                <span class="label">Car</span><span class="value">{{ b.carTitle }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="label">Car ID</span><span class="value">#{{ b.carId }}</span>
+              </div>
             </div>
 
             <mat-divider style="margin: 16px 0;"></mat-divider>
 
             <h3 style="margin: 0 0 8px;">Renter</h3>
             <div class="detail-grid">
-              <div class="detail-row"><span class="label">Name</span><span class="value">{{ b.renterName }}</span></div>
-              <div class="detail-row"><span class="label">Email</span><span class="value">{{ b.renterEmail }}</span></div>
+              <div class="detail-row">
+                <span class="label">Name</span><span class="value">{{ b.renterName }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="label">Email</span><span class="value">{{ b.renterEmail }}</span>
+              </div>
             </div>
 
             <mat-divider style="margin: 16px 0;"></mat-divider>
 
             <h3 style="margin: 0 0 8px;">Owner</h3>
             <div class="detail-grid">
-              <div class="detail-row"><span class="label">Name</span><span class="value">{{ b.ownerName }}</span></div>
-              <div class="detail-row"><span class="label">Email</span><span class="value">{{ b.ownerEmail }}</span></div>
+              <div class="detail-row">
+                <span class="label">Name</span><span class="value">{{ b.ownerName }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="label">Email</span><span class="value">{{ b.ownerEmail }}</span>
+              </div>
             </div>
           </mat-card-content>
         </mat-card>
@@ -102,12 +140,28 @@ import { AdminNotificationService } from '../../../../core/services/admin-notifi
       </div>
     </div>
   `,
-  styles: [`
-    .detail-grid { display: flex; flex-direction: column; gap: 8px; padding: 8px 0; }
-    .detail-row { display: flex; justify-content: space-between; align-items: center; }
-    .label { color: rgba(0,0,0,.54); font-size: 14px; }
-    .value { font-weight: 500; }
-  `],
+  styles: [
+    `
+      .detail-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 8px 0;
+      }
+      .detail-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .label {
+        color: rgba(0, 0, 0, 0.54);
+        font-size: 14px;
+      }
+      .value {
+        font-weight: 500;
+      }
+    `,
+  ],
 })
 export class BookingDetailComponent implements OnInit {
   private route = inject(ActivatedRoute);
@@ -162,7 +216,15 @@ export class BookingDetailComponent implements OnInit {
   }
 
   isTerminal(status: string): boolean {
-    return ['COMPLETED', 'CANCELLED', 'DECLINED', 'EXPIRED', 'EXPIRED_SYSTEM', 'NO_SHOW_HOST', 'NO_SHOW_GUEST'].includes(status);
+    return [
+      'COMPLETED',
+      'CANCELLED',
+      'DECLINED',
+      'EXPIRED',
+      'EXPIRED_SYSTEM',
+      'NO_SHOW_HOST',
+      'NO_SHOW_GUEST',
+    ].includes(status);
   }
 
   getStatusClass(status: string): string {

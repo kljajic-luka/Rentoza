@@ -41,10 +41,18 @@ import { Subject, debounceTime, distinctUntilChanged } from 'rxjs';
     <div class="admin-page">
       <h1 class="page-title">Booking Management</h1>
 
-      <div class="filters-row" style="display: flex; gap: 16px; margin-bottom: 16px; flex-wrap: wrap;">
+      <div
+        class="filters-row"
+        style="display: flex; gap: 16px; margin-bottom: 16px; flex-wrap: wrap;"
+      >
         <mat-form-field appearance="outline" style="flex: 1; min-width: 200px;">
           <mat-label>Search renter name or email</mat-label>
-          <input matInput [(ngModel)]="searchTerm" (ngModelChange)="onSearchChange($event)" placeholder="Search...">
+          <input
+            matInput
+            [(ngModel)]="searchTerm"
+            (ngModelChange)="onSearchChange($event)"
+            placeholder="Search..."
+          />
           <mat-icon matPrefix>search</mat-icon>
         </mat-form-field>
 
@@ -92,33 +100,43 @@ import { Subject, debounceTime, distinctUntilChanged } from 'rxjs';
 
           <ng-container matColumnDef="totalPrice">
             <th mat-header-cell *matHeaderCellDef>Price</th>
-            <td mat-cell *matCellDef="let b">{{ b.totalPrice | currency:'RSD':'symbol-narrow' }}</td>
+            <td mat-cell *matCellDef="let b">
+              {{ b.totalPrice | currency: 'RSD' : 'symbol-narrow' }}
+            </td>
           </ng-container>
 
           <ng-container matColumnDef="dates">
             <th mat-header-cell *matHeaderCellDef>Trip Dates</th>
             <td mat-cell *matCellDef="let b">
-              {{ b.startTime | date:'shortDate' }} - {{ b.endTime | date:'shortDate' }}
+              {{ b.startTime | date: 'shortDate' }} - {{ b.endTime | date: 'shortDate' }}
             </td>
           </ng-container>
 
           <ng-container matColumnDef="actions">
             <th mat-header-cell *matHeaderCellDef>Actions</th>
             <td mat-cell *matCellDef="let b">
-              <button mat-icon-button color="primary" (click)="viewBooking(b.id)" matTooltip="View Details">
+              <button
+                mat-icon-button
+                color="primary"
+                (click)="viewBooking(b.id)"
+                matTooltip="View Details"
+              >
                 <mat-icon>visibility</mat-icon>
               </button>
-              <button mat-icon-button color="warn"
-                      *ngIf="!isTerminal(b.status)"
-                      (click)="forceComplete(b)"
-                      matTooltip="Force Complete">
+              <button
+                mat-icon-button
+                color="warn"
+                *ngIf="!isTerminal(b.status)"
+                (click)="forceComplete(b)"
+                matTooltip="Force Complete"
+              >
                 <mat-icon>check_circle</mat-icon>
               </button>
             </td>
           </ng-container>
 
           <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
-          <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
+          <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
         </table>
 
         <mat-paginator
@@ -127,7 +145,8 @@ import { Subject, debounceTime, distinctUntilChanged } from 'rxjs';
           [pageIndex]="currentPage()"
           [pageSizeOptions]="[10, 20, 50]"
           (page)="onPage($event)"
-          showFirstLastButtons>
+          showFirstLastButtons
+        >
         </mat-paginator>
       </div>
     </div>
@@ -148,21 +167,41 @@ export class BookingListComponent implements OnInit {
   searchTerm = '';
   statusFilter: string | null = null;
 
-  displayedColumns = ['id', 'status', 'carTitle', 'renterName', 'ownerName', 'totalPrice', 'dates', 'actions'];
+  displayedColumns = [
+    'id',
+    'status',
+    'carTitle',
+    'renterName',
+    'ownerName',
+    'totalPrice',
+    'dates',
+    'actions',
+  ];
 
   statuses = [
-    'PENDING_APPROVAL', 'ACTIVE', 'APPROVED', 'CHECK_IN_OPEN', 'CHECK_IN_HOST_COMPLETE',
-    'CHECK_IN_COMPLETE', 'IN_TRIP', 'CHECKOUT_OPEN', 'CHECKOUT_GUEST_COMPLETE',
-    'CHECKOUT_HOST_COMPLETE', 'COMPLETED', 'CANCELLED', 'DECLINED', 'EXPIRED', 'NO_SHOW_HOST', 'NO_SHOW_GUEST',
+    'PENDING_APPROVAL',
+    'ACTIVE',
+    'APPROVED',
+    'CHECK_IN_OPEN',
+    'CHECK_IN_HOST_COMPLETE',
+    'CHECK_IN_COMPLETE',
+    'IN_TRIP',
+    'CHECKOUT_OPEN',
+    'CHECKOUT_GUEST_COMPLETE',
+    'CHECKOUT_HOST_COMPLETE',
+    'COMPLETED',
+    'CANCELLED',
+    'DECLINED',
+    'EXPIRED',
+    'NO_SHOW_HOST',
+    'NO_SHOW_GUEST',
   ];
 
   ngOnInit() {
     this.loadBookings();
-    this.searchSubject.pipe(
-      debounceTime(400),
-      distinctUntilChanged(),
-      takeUntilDestroyed(this.destroyRef),
-    ).subscribe(() => this.loadBookings());
+    this.searchSubject
+      .pipe(debounceTime(400), distinctUntilChanged(), takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => this.loadBookings());
   }
 
   onSearchChange(value: string) {
@@ -171,22 +210,25 @@ export class BookingListComponent implements OnInit {
 
   loadBookings() {
     this.loading.set(true);
-    this.adminApi.getBookings({
-      status: this.statusFilter ?? undefined,
-      search: this.searchTerm || undefined,
-      page: this.currentPage(),
-      size: this.pageSize,
-    }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: (res) => {
-        this.bookings.set(res.content);
-        this.totalElements.set(res.totalElements);
-        this.loading.set(false);
-      },
-      error: () => {
-        this.notification.showError('Failed to load bookings');
-        this.loading.set(false);
-      },
-    });
+    this.adminApi
+      .getBookings({
+        status: this.statusFilter ?? undefined,
+        search: this.searchTerm || undefined,
+        page: this.currentPage(),
+        size: this.pageSize,
+      })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (res) => {
+          this.bookings.set(res.content);
+          this.totalElements.set(res.totalElements);
+          this.loading.set(false);
+        },
+        error: () => {
+          this.notification.showError('Failed to load bookings');
+          this.loading.set(false);
+        },
+      });
   }
 
   onPage(event: PageEvent) {
@@ -205,7 +247,8 @@ export class BookingListComponent implements OnInit {
       this.notification.showError('Reason must be at least 10 characters');
       return;
     }
-    this.adminApi.forceCompleteBooking(booking.id, reason)
+    this.adminApi
+      .forceCompleteBooking(booking.id, reason)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: () => {
@@ -220,7 +263,15 @@ export class BookingListComponent implements OnInit {
   }
 
   isTerminal(status: string): boolean {
-    return ['COMPLETED', 'CANCELLED', 'DECLINED', 'EXPIRED', 'EXPIRED_SYSTEM', 'NO_SHOW_HOST', 'NO_SHOW_GUEST'].includes(status);
+    return [
+      'COMPLETED',
+      'CANCELLED',
+      'DECLINED',
+      'EXPIRED',
+      'EXPIRED_SYSTEM',
+      'NO_SHOW_HOST',
+      'NO_SHOW_GUEST',
+    ].includes(status);
   }
 
   getStatusClass(status: string): string {

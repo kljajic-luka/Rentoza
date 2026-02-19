@@ -28,7 +28,7 @@ export const ADMIN_ROUTES: Routes = [
             path: ':id',
             loadComponent: () =>
               import('./users/user-detail/user-detail.component').then(
-                (m) => m.UserDetailComponent
+                (m) => m.UserDetailComponent,
               ),
           },
         ],
@@ -60,14 +60,14 @@ export const ADMIN_ROUTES: Routes = [
             path: '',
             loadComponent: () =>
               import('./bookings/booking-list/booking-list.component').then(
-                (m) => m.BookingListComponent
+                (m) => m.BookingListComponent,
               ),
           },
           {
             path: ':id',
             loadComponent: () =>
               import('./bookings/booking-detail/booking-detail.component').then(
-                (m) => m.BookingDetailComponent
+                (m) => m.BookingDetailComponent,
               ),
           },
         ],
@@ -76,7 +76,7 @@ export const ADMIN_ROUTES: Routes = [
         path: 'flagged-messages',
         loadComponent: () =>
           import('./flagged-messages/flagged-message-list/flagged-message-list.component').then(
-            (m) => m.FlaggedMessageListComponent
+            (m) => m.FlaggedMessageListComponent,
           ),
       },
       {
@@ -86,14 +86,14 @@ export const ADMIN_ROUTES: Routes = [
             path: '',
             loadComponent: () =>
               import('./disputes/dispute-list/dispute-list.component').then(
-                (m) => m.DisputeListComponent
+                (m) => m.DisputeListComponent,
               ),
           },
           {
             path: ':id',
             loadComponent: () =>
               import('./disputes/dispute-detail/dispute-detail.component').then(
-                (m) => m.DisputeDetailComponent
+                (m) => m.DisputeDetailComponent,
               ),
           },
         ],
@@ -104,16 +104,16 @@ export const ADMIN_ROUTES: Routes = [
           {
             path: '',
             loadComponent: () =>
-              import(
-                './renter-verifications/renter-verification-list/renter-verification-list.component'
-              ).then((m) => m.RenterVerificationListComponent),
+              import('./renter-verifications/renter-verification-list/renter-verification-list.component').then(
+                (m) => m.RenterVerificationListComponent,
+              ),
           },
           {
             path: ':userId',
             loadComponent: () =>
-              import(
-                './renter-verifications/renter-verification-detail/renter-verification-detail.component'
-              ).then((m) => m.RenterVerificationDetailComponent),
+              import('./renter-verifications/renter-verification-detail/renter-verification-detail.component').then(
+                (m) => m.RenterVerificationDetailComponent,
+              ),
           },
         ],
       },
@@ -121,7 +121,7 @@ export const ADMIN_ROUTES: Routes = [
         path: 'financial',
         loadComponent: () =>
           import('./financial/financial-dashboard/financial-dashboard.component').then(
-            (m) => m.FinancialDashboardComponent
+            (m) => m.FinancialDashboardComponent,
           ),
       },
       {

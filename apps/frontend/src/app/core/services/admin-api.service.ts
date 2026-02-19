@@ -941,15 +941,20 @@ export class AdminApiService {
   /**
    * List bookings with filters and pagination.
    */
-  getBookings(params?: { status?: string; search?: string; page?: number; size?: number }): Observable<PaginatedResponse<AdminBookingDto>> {
+  getBookings(params?: {
+    status?: string;
+    search?: string;
+    page?: number;
+    size?: number;
+  }): Observable<PaginatedResponse<AdminBookingDto>> {
     let httpParams = new HttpParams();
     if (params?.status) httpParams = httpParams.set('status', params.status);
     if (params?.search) httpParams = httpParams.set('search', params.search);
     if (params?.page !== undefined) httpParams = httpParams.set('page', params.page.toString());
     if (params?.size !== undefined) httpParams = httpParams.set('size', params.size.toString());
-    return this.http.get<any>(`${this.apiUrl}/bookings`, { params: httpParams }).pipe(
-      map(response => this.normalizePage<AdminBookingDto>(response))
-    );
+    return this.http
+      .get<any>(`${this.apiUrl}/bookings`, { params: httpParams })
+      .pipe(map((response) => this.normalizePage<AdminBookingDto>(response)));
   }
 
   /**
@@ -963,7 +968,9 @@ export class AdminApiService {
    * Force-complete a booking.
    */
   forceCompleteBooking(id: number, reason: string): Observable<AdminBookingDto> {
-    return this.http.post<AdminBookingDto>(`${this.apiUrl}/bookings/${id}/force-complete`, { reason } as ForceCompleteBookingRequest);
+    return this.http.post<AdminBookingDto>(`${this.apiUrl}/bookings/${id}/force-complete`, {
+      reason,
+    } as ForceCompleteBookingRequest);
   }
 
   // ==================== FLAGGED MESSAGE MODERATION ====================

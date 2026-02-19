@@ -35,9 +35,9 @@ import { AdminApiService, AdminSettings } from '../../../core/services/admin-api
           <h1 class="page-title">Admin Settings</h1>
           <p class="page-subtitle">Manage your admin preferences and notifications</p>
         </div>
-        <button 
-          mat-raised-button 
-          color="primary" 
+        <button
+          mat-raised-button
+          color="primary"
           (click)="saveSettings()"
           [disabled]="saving() || settingsForm.invalid || !settingsForm.dirty"
         >
@@ -57,30 +57,23 @@ import { AdminApiService, AdminSettings } from '../../../core/services/admin-api
           <mat-card-content>
             <form [formGroup]="settingsForm" class="settings-form">
               <div class="form-section">
-                <mat-slide-toggle 
-                  formControlName="emailNotifications"
-                  color="primary"
-                >
+                <mat-slide-toggle formControlName="emailNotifications" color="primary">
                   <div class="toggle-label">
                     <strong>Email Notifications</strong>
-                    <span class="toggle-description">Receive email alerts for important updates</span>
+                    <span class="toggle-description"
+                      >Receive email alerts for important updates</span
+                    >
                   </div>
                 </mat-slide-toggle>
 
-                <mat-slide-toggle 
-                  formControlName="pushNotifications"
-                  color="primary"
-                >
+                <mat-slide-toggle formControlName="pushNotifications" color="primary">
                   <div class="toggle-label">
                     <strong>Push Notifications</strong>
                     <span class="toggle-description">Get instant browser notifications</span>
                   </div>
                 </mat-slide-toggle>
 
-                <mat-slide-toggle 
-                  formControlName="smsNotifications"
-                  color="primary"
-                >
+                <mat-slide-toggle formControlName="smsNotifications" color="primary">
                   <div class="toggle-label">
                     <strong>SMS Notifications</strong>
                     <span class="toggle-description">Receive SMS for critical alerts</span>
@@ -101,20 +94,14 @@ import { AdminApiService, AdminSettings } from '../../../core/services/admin-api
           <mat-card-content>
             <form [formGroup]="settingsForm" class="settings-form">
               <div class="form-section">
-                <mat-slide-toggle 
-                  formControlName="weeklyReport"
-                  color="primary"
-                >
+                <mat-slide-toggle formControlName="weeklyReport" color="primary">
                   <div class="toggle-label">
                     <strong>Weekly Summary Report</strong>
                     <span class="toggle-description">Receive weekly performance summaries</span>
                   </div>
                 </mat-slide-toggle>
 
-                <mat-slide-toggle 
-                  formControlName="monthlyReport"
-                  color="primary"
-                >
+                <mat-slide-toggle formControlName="monthlyReport" color="primary">
                   <div class="toggle-label">
                     <strong>Monthly Analytics Report</strong>
                     <span class="toggle-description">Get detailed monthly analytics</span>
@@ -185,20 +172,16 @@ import { AdminApiService, AdminSettings } from '../../../core/services/admin-api
           <mat-card-content>
             <form [formGroup]="settingsForm" class="settings-form">
               <div class="form-section">
-                <mat-slide-toggle 
-                  formControlName="twoFactorEnabled"
-                  color="primary"
-                >
+                <mat-slide-toggle formControlName="twoFactorEnabled" color="primary">
                   <div class="toggle-label">
                     <strong>Two-Factor Authentication</strong>
-                    <span class="toggle-description">Add an extra layer of security to your account</span>
+                    <span class="toggle-description"
+                      >Add an extra layer of security to your account</span
+                    >
                   </div>
                 </mat-slide-toggle>
 
-                <mat-slide-toggle 
-                  formControlName="loginAlerts"
-                  color="primary"
-                >
+                <mat-slide-toggle formControlName="loginAlerts" color="primary">
                   <div class="toggle-label">
                     <strong>Login Alerts</strong>
                     <span class="toggle-description">Get notified of new login attempts</span>
@@ -252,23 +235,23 @@ export class AdminSettingsComponent implements OnInit {
 
   constructor(
     private fb: FormBuilder,
-    private adminApi: AdminApiService
+    private adminApi: AdminApiService,
   ) {
     this.settingsForm = this.fb.group({
       // Notifications
       emailNotifications: [true],
       pushNotifications: [false],
       smsNotifications: [false],
-      
+
       // Reports
       weeklyReport: [true],
       monthlyReport: [false],
       reportFormat: ['pdf', Validators.required],
-      
+
       // Regional
       timezone: ['Europe/Belgrade', Validators.required],
       currencyFormat: ['RSD', Validators.required],
-      
+
       // Security
       twoFactorEnabled: [false],
       loginAlerts: [true],
@@ -314,7 +297,7 @@ export class AdminSettingsComponent implements OnInit {
         this.successMessage.set('Settings saved successfully!');
         this.settingsForm.markAsPristine();
         this.saving.set(false);
-        
+
         // Clear success message after 3 seconds
         setTimeout(() => this.successMessage.set(''), 3000);
       },

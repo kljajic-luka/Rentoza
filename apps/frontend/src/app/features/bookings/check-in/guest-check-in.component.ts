@@ -1317,6 +1317,17 @@ export class GuestCheckInComponent implements OnInit, OnDestroy {
     const accepted = this.conditionForm.get('conditionAccepted')?.value || false;
     const comment = this.conditionForm.get('conditionComment')?.value || undefined;
 
+    // VAL-004: When guest has NOT accepted condition but provided a comment,
+    // this is a damage dispute — send the dispute fields so the backend
+    // routes to handleCheckInDispute() instead of throwing an error.
+    const isDispute = !accepted && !!comment?.trim();
+    const disputeFields = isDispute
+      ? {
+          disputePreExistingDamage: true,
+          damageDisputeDescription: comment!.trim(),
+        }
+      : undefined;
+
     // With dual-party photos, hotspots are no longer used - photos serve as documentation
     this.checkInService
       .acknowledgeCondition(
@@ -1324,6 +1335,7 @@ export class GuestCheckInComponent implements OnInit, OnDestroy {
         accepted,
         comment,
         [], // No hotspots - dual-party photos now serve as documentation
+        disputeFields,
       )
       .subscribe({
         next: () => {

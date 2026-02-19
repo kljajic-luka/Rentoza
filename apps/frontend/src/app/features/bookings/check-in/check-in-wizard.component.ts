@@ -278,7 +278,7 @@ import { environment } from '@environments/environment';
         <div class="waiting-container">
           <mat-icon>schedule</mat-icon>
           <h2>Check-in još nije dostupan</h2>
-          <p>Check-in postaje dostupan 30 minuta pre početka rezervacije.</p>
+          <p>Check-in postaje dostupan 2 sata pre početka rezervacije.</p>
           @if (checkInService.currentStatus()?.bookingStartTime) {
           <p class="start-time">
             Početak:

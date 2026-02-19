@@ -142,8 +142,8 @@ public enum CheckInEventType {
     // ========== GEOFENCE ==========
     
     /**
-     * Guest passed geofence proximity check (within 100m of car).
-     * Metadata: {@code {"distanceMeters": 45, "thresholdMeters": 100}}
+     * Guest passed geofence proximity check (within 50m of car).
+     * Metadata: {@code {"distanceMeters": 45, "thresholdMeters": 50}}
      */
     GEOFENCE_CHECK_PASSED,
     
@@ -153,6 +153,22 @@ public enum CheckInEventType {
      * Metadata: {@code {"distanceMeters": 350, "thresholdMeters": 100, "action": "WARN|BLOCK"}}
      */
     GEOFENCE_CHECK_FAILED,
+
+    // ========== P0: ANTI-SPOOFING EVENTS ==========
+
+    /**
+     * GPS spoofing/mock location detected during handshake.
+     * FRAUD ALERT: This blocks the handshake and should trigger admin review.
+     * Metadata: {@code {"fraudType": "MOCK_LOCATION", "platform": "ANDROID", "deviceFingerprint": "..."}}
+     */
+    GPS_SPOOFING_DETECTED,
+
+    /**
+     * Low GPS accuracy warning (>100m horizontal accuracy).
+     * May indicate VPN, proxy, or indoor use. Flagged for review but not blocked.
+     * Metadata: {@code {"horizontalAccuracy": 250.0, "platform": "ANDROID"}}
+     */
+    GPS_LOW_ACCURACY_WARNING,
     
     // ========== LOCATION VARIANCE (Phase 2.4 - Geospatial Migration) ==========
     
@@ -175,14 +191,14 @@ public enum CheckInEventType {
     // ========== NO-SHOW FLOW ==========
     
     /**
-     * Host triggered no-show (failed to complete check-in by T+30m).
+     * Host triggered no-show (failed to complete check-in by T+2h).
      * Triggers transition to NO_SHOW_HOST status.
-     * Metadata: {@code {"deadlineAt": "...", "missedBy": "45 minutes"}}
+     * Metadata: {@code {"deadlineAt": "...", "missedBy": "2 hours 15 minutes"}}
      */
     NO_SHOW_HOST_TRIGGERED,
     
     /**
-     * Guest triggered no-show (failed to complete check-in by T+30m after host).
+     * Guest triggered no-show (failed to complete check-in by T+2h after host).
      * Triggers transition to NO_SHOW_GUEST status.
      * Metadata: {@code {"deadlineAt": "...", "hostCompletedAt": "..."}}
      */

@@ -21,8 +21,8 @@ import java.math.BigDecimal;
  * 50m+ GPS drift due to multipath interference. We dynamically adjust the
  * geofence radius based on location type:
  * <ul>
- *   <li><b>Urban (dense):</b> 150m radius - high-rise areas with GPS multipath</li>
- *   <li><b>Suburban:</b> 100m radius - residential areas</li>
+ *   <li><b>Urban (dense):</b> 75m radius - high-rise areas with GPS multipath</li>
+ *   <li><b>Suburban:</b> 50m radius - residential areas (Turo standard)</li>
  *   <li><b>Rural:</b> 50m radius - open areas with better GPS accuracy</li>
  * </ul>
  * 
@@ -41,13 +41,13 @@ public class GeofenceService {
 
     private static final double EARTH_RADIUS_METERS = 6371000.0;
 
-    @Value("${app.checkin.geofence.threshold-meters:100}")
+    @Value("${app.checkin.geofence.threshold-meters:50}")
     private int defaultRadiusMeters;
 
-    @Value("${app.checkin.geofence.radius-urban-meters:150}")
+    @Value("${app.checkin.geofence.radius-urban-meters:75}")
     private int urbanRadiusMeters;
 
-    @Value("${app.checkin.geofence.radius-suburban-meters:100}")
+    @Value("${app.checkin.geofence.radius-suburban-meters:50}")
     private int suburbanRadiusMeters;
 
     @Value("${app.checkin.geofence.radius-rural-meters:50}")
@@ -56,7 +56,7 @@ public class GeofenceService {
     @Value("${app.checkin.geofence.dynamic-radius-enabled:true}")
     private boolean dynamicRadiusEnabled;
 
-    @Value("${app.checkin.geofence.strict:false}")
+    @Value("${app.checkin.geofence.strict:true}")
     private boolean strictMode;
 
     /**
@@ -104,13 +104,24 @@ public class GeofenceService {
         int effectiveRadius = calculateEffectiveRadius(density);
         
         if (carLat == null || carLon == null) {
-            log.debug("[Geofence] Car location not set, skipping validation");
+            log.warn("[Geofence] Car/reference location not set — blocking in strict mode, skipping otherwise");
+            if (strictMode) {
+                return GeofenceResult.builder()
+                    .withinRadius(false)
+                    .distanceMeters(-1)
+                    .requiredRadiusMeters(effectiveRadius)
+                    .skipped(false)
+                    .reason("Lokacija vozila nije dostupna — geofence ne može biti proveren")
+                    .locationDensity(density)
+                    .dynamicRadiusApplied(false)
+                    .build();
+            }
             return GeofenceResult.builder()
                 .withinRadius(true)
                 .distanceMeters(0)
                 .requiredRadiusMeters(effectiveRadius)
                 .skipped(true)
-                .reason("Car location not set")
+                .reason("Car location not set (non-strict mode)")
                 .locationDensity(density)
                 .dynamicRadiusApplied(false)
                 .build();

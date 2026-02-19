@@ -14,10 +14,10 @@ package org.example.rentoza.booking;
  *                       └─[Cancel]────────────► CANCELLED
  *
  * CHECK_IN_OPEN ───┬─[Host Completes Photos]─► CHECK_IN_HOST_COMPLETE
- *                  └─[T+30m No Host Action]──► NO_SHOW_HOST
+ *                  └─[T+2h No Host Action]───► NO_SHOW_HOST
  *
  * CHECK_IN_HOST_COMPLETE ─┬─[Guest Completes]► CHECK_IN_COMPLETE
- *                         └─[T+30m No Guest]─► NO_SHOW_GUEST
+ *                         └─[T+2h No Guest]──► NO_SHOW_GUEST
  *
  * CHECK_IN_COMPLETE ──────[Both Confirm]─────► IN_TRIP
  *
@@ -54,7 +54,7 @@ public enum BookingStatus {
     /** Booking cancelled (by renter or owner, with cancellation policy applied) */
     CANCELLED,
     
-    // ========== CHECK-IN PHASE (T-24h to T+30m) ==========
+    // ========== CHECK-IN PHASE (T-24h to T+2h) ==========
     
     /** 
      * Check-in window is open (T-24h before trip start).
@@ -141,14 +141,14 @@ public enum BookingStatus {
     // ========== NO-SHOW / FAILURE STATES ==========
     
     /**
-     * Host failed to complete check-in by T+30m.
+     * Host failed to complete check-in by T+2h.
      * Guest is eligible for full refund.
      * Triggers NO_SHOW_HOST_TRIGGERED event.
      */
     NO_SHOW_HOST,
     
     /**
-     * Guest failed to complete check-in by T+30m after host completed.
+     * Guest failed to complete check-in by T+2h after host completed.
      * Host may receive compensation per policy.
      * Triggers NO_SHOW_GUEST_TRIGGERED event.
      */

@@ -647,6 +647,11 @@ export class CheckInService implements OnDestroy {
     conditionAccepted: boolean,
     conditionComment?: string,
     hotspots?: Array<{ location: string; description: string; photoId?: number }>,
+    disputeFields?: {
+      disputePreExistingDamage?: boolean;
+      damageDisputeDescription?: string;
+      disputedPhotoIds?: number[];
+    },
   ): Observable<CheckInStatusDTO> {
     this._isLoading.set(true);
     this._error.set(null);
@@ -692,6 +697,12 @@ export class CheckInService implements OnDestroy {
       guestLongitude: position?.longitude ?? 20.4633,
       conditionComment,
       hotspots: hotspots as any,
+      // VAL-004: Include dispute fields when guest is reporting damage
+      ...(disputeFields?.disputePreExistingDamage ? {
+        disputePreExistingDamage: true,
+        damageDisputeDescription: disputeFields.damageDisputeDescription,
+        disputedPhotoIds: disputeFields.disputedPhotoIds,
+      } : {}),
     };
 
     return this.http
@@ -778,6 +789,10 @@ export class CheckInService implements OnDestroy {
       hostVerifiedPhysicalId,
       latitude: position?.latitude,
       longitude: position?.longitude,
+      // P0: Anti-spoofing - send accuracy and platform info
+      horizontalAccuracy: position?.accuracy,
+      isMockLocation: false, // Web browsers don't expose mock location flag; handled server-side for native apps
+      platform: 'WEB',
       deviceFingerprint: this.generateDeviceFingerprint(),
     };
 

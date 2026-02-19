@@ -50,6 +50,18 @@ import java.util.UUID;
 public class CheckInPhotoService {
 
     private static final ZoneId SERBIA_ZONE = ZoneId.of("Europe/Belgrade");
+    
+    /**
+     * P0 FIX: Hard geofence limit for lockbox reveal (meters).
+     * Turo standard requires 50m. No dynamic adjustment - this is a security boundary.
+     */
+    private static final int LOCKBOX_REVEAL_MAX_DISTANCE_METERS = 50;
+    
+    /**
+     * P1 FIX: Maximum photos allowed per booking (host + guest combined).
+     * Prevents DoS via mass photo upload. 8 required + up to 12 optional/damage = 20 max.
+     */
+    private static final int MAX_PHOTOS_PER_BOOKING = 20;
 
     private final BookingRepository bookingRepository;
     private final UserRepository userRepository;
@@ -57,6 +69,7 @@ public class CheckInPhotoService {
     private final CheckInEventService eventService;
     private final ExifValidationService exifValidationService;
     private final LockboxEncryptionService lockboxEncryptionService;
+    private final GeofenceService geofenceService;
     private final PhotoRejectionService photoRejectionService;
     private final ApplicationEventPublisher eventPublisher;
     private final SupabaseStorageService supabaseStorageService;
@@ -173,6 +186,16 @@ public class CheckInPhotoService {
             }
             // Gate: block uploads before the timing window allows it
             validationService.validateUploadTiming(booking);
+        }
+        
+        // P1 FIX: Server-side per-booking photo cap (prevents DoS via mass upload)
+        long existingPhotoCount = photoRepository.countByBookingId(bookingId);
+        if (existingPhotoCount >= MAX_PHOTOS_PER_BOOKING) {
+            log.warn("[CheckIn] Photo upload blocked - cap exceeded: bookingId={}, count={}, max={}",
+                bookingId, existingPhotoCount, MAX_PHOTOS_PER_BOOKING);
+            throw new IllegalStateException(
+                String.format("Maksimalan broj fotografija dostignut (%d). Obrišite postojeće pre dodavanja novih.",
+                    MAX_PHOTOS_PER_BOOKING));
         }
         
         // Get user
@@ -602,6 +625,10 @@ public class CheckInPhotoService {
 
     /**
      * Reveal lockbox code to guest.
+     * 
+     * <p><b>P0 SECURITY FIX:</b> Geofence enforcement is now MANDATORY for lockbox reveal.
+     * Guest MUST provide GPS coordinates and be within 50m of the car.
+     * This prevents remote lockbox code extraction without physical presence.
      */
     @Transactional
     public String revealLockboxCode(
@@ -623,10 +650,102 @@ public class CheckInPhotoService {
             throw new IllegalStateException("Ova rezervacija ne koristi lokot za ključeve");
         }
         
-        // Validate status (must have acknowledged condition)
-        if (booking.getStatus().ordinal() < BookingStatus.CHECK_IN_HOST_COMPLETE.ordinal()) {
-            throw new IllegalStateException("Domaćin još nije završio prijem");
+        // Validate status — lockbox reveal only allowed during active check-in/trip states
+        // Explicitly list allowed statuses instead of fragile ordinal() comparison
+        java.util.Set<BookingStatus> allowedForLockbox = java.util.EnumSet.of(
+            BookingStatus.CHECK_IN_HOST_COMPLETE,
+            BookingStatus.CHECK_IN_COMPLETE,
+            BookingStatus.IN_TRIP
+        );
+        if (!allowedForLockbox.contains(booking.getStatus())) {
+            throw new IllegalStateException(
+                "Lockbox kod nije dostupan u trenutnom statusu rezervacije: " + booking.getStatus());
         }
+        
+        // P0 FIX: Mandatory GPS coordinates for lockbox reveal
+        if (latitude == null || longitude == null) {
+            log.warn("[CheckIn] Lockbox reveal blocked - no GPS coordinates: bookingId={}, userId={}",
+                bookingId, userId);
+            throw new IllegalArgumentException(
+                "GPS lokacija je obavezna za otkrivanje šifre lokota. Omogućite lokaciju na uređaju.");
+        }
+        
+        // P0 FIX: Hard 50m geofence enforcement for lockbox reveal
+        // Determine reference location: car EXIF GPS → pickup location → block
+        BigDecimal refLat = booking.getCarLatitude();
+        BigDecimal refLon = booking.getCarLongitude();
+        String locationSource = "CAR_EXIF_GPS";
+        
+        if (refLat == null || refLon == null) {
+            // Fallback to pickup location (or car home location)
+            if (booking.getPickupLocation() != null && booking.getPickupLocation().hasCoordinates()) {
+                refLat = booking.getPickupLocation().getLatitude();
+                refLon = booking.getPickupLocation().getLongitude();
+                locationSource = "PICKUP_LOCATION";
+                log.info("[CheckIn] Lockbox reveal using pickup location as geofence reference: bookingId={}", bookingId);
+            } else if (booking.getCar() != null && booking.getCar().getLocationGeoPoint() != null 
+                       && booking.getCar().getLocationGeoPoint().hasCoordinates()) {
+                refLat = booking.getCar().getLocationGeoPoint().getLatitude();
+                refLon = booking.getCar().getLocationGeoPoint().getLongitude();
+                locationSource = "CAR_HOME_LOCATION";
+                log.info("[CheckIn] Lockbox reveal using car home location as geofence reference: bookingId={}", bookingId);
+            } else {
+                log.warn("[CheckIn] Lockbox reveal blocked - no reference location available: bookingId={}", bookingId);
+                eventService.recordEvent(
+                    booking,
+                    booking.getCheckInSessionId(),
+                    CheckInEventType.GEOFENCE_CHECK_FAILED,
+                    userId,
+                    CheckInActorRole.GUEST,
+                    Map.of(
+                        "context", "LOCKBOX_REVEAL",
+                        "reason", "NO_REFERENCE_LOCATION",
+                        "guestLatitude", latitude.toString(),
+                        "guestLongitude", longitude.toString()
+                    )
+                );
+                throw new IllegalStateException(
+                    "Lokacija vozila nije dostupna. Kontaktirajte domaćina ili podršku.");
+            }
+        }
+        
+        double distance = geofenceService.haversineDistance(
+            refLat.doubleValue(), refLon.doubleValue(),
+            latitude.doubleValue(), longitude.doubleValue()
+        );
+        
+        int distanceRounded = (int) Math.round(distance);
+        
+        // Persist distance for frontend geofenceValid computation
+        booking.setGeofenceDistanceMeters(distanceRounded);
+        
+        if (distanceRounded > LOCKBOX_REVEAL_MAX_DISTANCE_METERS) {
+            log.warn("[CheckIn] Lockbox reveal blocked - geofence violation: bookingId={}, distance={}m, threshold={}m, locationSource={}",
+                bookingId, distanceRounded, LOCKBOX_REVEAL_MAX_DISTANCE_METERS, locationSource);
+            
+            eventService.recordEvent(
+                booking,
+                booking.getCheckInSessionId(),
+                CheckInEventType.GEOFENCE_CHECK_FAILED,
+                userId,
+                CheckInActorRole.GUEST,
+                Map.of(
+                    "context", "LOCKBOX_REVEAL",
+                    "distanceMeters", distanceRounded,
+                    "thresholdMeters", LOCKBOX_REVEAL_MAX_DISTANCE_METERS,
+                    "locationSource", locationSource,
+                    "guestLatitude", latitude.toString(),
+                    "guestLongitude", longitude.toString()
+                )
+            );
+            
+            throw new IllegalStateException(
+                String.format("Morate biti unutar %dm od vozila za pristup šifri lokota. Trenutna udaljenost: %dm",
+                    LOCKBOX_REVEAL_MAX_DISTANCE_METERS, distanceRounded));
+        }
+        
+        log.info("[CheckIn] Lockbox reveal geofence passed: bookingId={}, distance={}m, locationSource={}",
+            bookingId, distanceRounded, locationSource);
         
         // Record reveal event
         booking.setLockboxCodeRevealedAt(Instant.now());
@@ -639,8 +758,9 @@ public class CheckInPhotoService {
             CheckInActorRole.GUEST,
             Map.of(
                 "revealedAt", Instant.now().toString(),
-                "guestLatitude", latitude != null ? latitude.toString() : "N/A",
-                "guestLongitude", longitude != null ? longitude.toString() : "N/A"
+                "guestLatitude", latitude.toString(),
+                "guestLongitude", longitude.toString(),
+                "geofenceEnforced", true
             )
         );
         

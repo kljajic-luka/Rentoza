@@ -87,7 +87,7 @@ export class DisputeDetailComponent implements OnInit {
   // Computed
   canResolve = computed(() => {
     const d = this.dispute();
-    return d && ['DISPUTED', 'ESCALATED'].includes(d.status);
+    return d && ['DISPUTED', 'ESCALATED', 'CHECKOUT_GUEST_DISPUTED', 'CHECKOUT_TIMEOUT_ESCALATED', 'CHECKOUT_PENDING'].includes(d.status);
   });
 
   hasEvidence = computed(() => {
@@ -154,6 +154,13 @@ export class DisputeDetailComponent implements OnInit {
     this.showResolutionForm.set(false);
   }
 
+  /** Check if this is a checkout-stage dispute (uses different resolution endpoint). */
+  isCheckoutDispute = computed(() => {
+    const d = this.dispute();
+    return d && ['CHECKOUT_PENDING', 'CHECKOUT_GUEST_DISPUTED', 'CHECKOUT_TIMEOUT_ESCALATED',
+      'CHECKOUT_GUEST_ACCEPTED', 'CHECKOUT_ADMIN_APPROVED', 'CHECKOUT_ADMIN_REJECTED'].includes(d.status);
+  });
+
   submitResolution(): void {
     if (this.resolutionForm.invalid) {
       this.resolutionForm.markAllAsTouched();
@@ -161,22 +168,53 @@ export class DisputeDetailComponent implements OnInit {
     }
 
     this.submitting.set(true);
-    const request: DisputeResolutionRequest = this.resolutionForm.value;
 
-    this.adminApi.resolveDispute(this.disputeId(), request).subscribe({
-      next: () => {
-        this.snackBar.open('Dispute resolved successfully', 'Close', { duration: 3000 });
-        this.submitting.set(false);
-        this.router.navigate(['/admin/disputes']);
-      },
-      error: (error) => {
-        console.error('Failed to resolve dispute:', error);
-        this.snackBar.open('Failed to resolve dispute: ' + error.message, 'Close', {
-          duration: 5000,
-        });
-        this.submitting.set(false);
-      },
-    });
+    // Route to correct endpoint based on dispute type
+    if (this.isCheckoutDispute()) {
+      const formVal = this.resolutionForm.value;
+      const checkoutDecisionMap: Record<string, string> = {
+        APPROVED: 'APPROVE',
+        REJECTED: 'REJECT',
+        PARTIAL: 'PARTIAL',
+        MEDIATED: 'PARTIAL',
+      };
+      const checkoutRequest = {
+        decision: checkoutDecisionMap[formVal.decision] || 'APPROVE',
+        approvedAmountRsd: formVal.approvedAmount,
+        resolutionNotes: formVal.notes,
+        notifyParties: true,
+      };
+      this.adminApi.resolveCheckoutDispute(this.disputeId(), checkoutRequest as any).subscribe({
+        next: () => {
+          this.snackBar.open('Checkout dispute resolved successfully', 'Close', { duration: 3000 });
+          this.submitting.set(false);
+          this.router.navigate(['/admin/disputes']);
+        },
+        error: (error: any) => {
+          console.error('Failed to resolve checkout dispute:', error);
+          this.snackBar.open('Failed to resolve dispute: ' + (error?.error?.message || error.message), 'Close', {
+            duration: 5000,
+          });
+          this.submitting.set(false);
+        },
+      });
+    } else {
+      const request: DisputeResolutionRequest = this.resolutionForm.value;
+      this.adminApi.resolveDispute(this.disputeId(), request).subscribe({
+        next: () => {
+          this.snackBar.open('Dispute resolved successfully', 'Close', { duration: 3000 });
+          this.submitting.set(false);
+          this.router.navigate(['/admin/disputes']);
+        },
+        error: (error) => {
+          console.error('Failed to resolve dispute:', error);
+          this.snackBar.open('Failed to resolve dispute: ' + error.message, 'Close', {
+            duration: 5000,
+          });
+          this.submitting.set(false);
+        },
+      });
+    }
   }
 
   submitEscalation(): void {

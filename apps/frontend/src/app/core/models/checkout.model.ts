@@ -128,6 +128,8 @@ export interface HostCheckOutConfirmationDTO {
   hostLatitude?: number;
   hostLongitude?: number;
   notes?: string;
+  /** URL of uploaded repair quote document (mechanic estimate). */
+  repairQuoteDocumentUrl?: string;
 }
 
 // ============================================================================

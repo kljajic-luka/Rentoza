@@ -62,13 +62,16 @@ public class AdminDisputeService {
              if (filters.getStatus() != null) {
                  predicates.add(cb.equal(root.get("status").as(String.class), filters.getStatus().name()));
              } else {
-                 // Default: PENDING or ESCALATED
-                 // Note: DamageClaimStatus.DISPUTED is the user-facing status for "Disputed by guest"
-                 // The plan mentioned DisputeStatus.PENDING/ESCALATED. 
-                 // We map DamageClaimStatus here.
+                 // Default: show ALL active disputes (legacy + checkout) that need attention
                  predicates.add(cb.or(
+                     cb.equal(root.get("status").as(String.class), DamageClaimStatus.PENDING.name()),
                      cb.equal(root.get("status").as(String.class), DamageClaimStatus.DISPUTED.name()),
-                     cb.equal(root.get("status").as(String.class), DamageClaimStatus.ESCALATED.name())
+                     cb.equal(root.get("status").as(String.class), DamageClaimStatus.ESCALATED.name()),
+                     cb.equal(root.get("status").as(String.class), DamageClaimStatus.CHECKOUT_PENDING.name()),
+                     cb.equal(root.get("status").as(String.class), DamageClaimStatus.CHECKOUT_GUEST_ACCEPTED.name()),
+                     cb.equal(root.get("status").as(String.class), DamageClaimStatus.CHECKOUT_GUEST_DISPUTED.name()),
+                     cb.equal(root.get("status").as(String.class), DamageClaimStatus.CHECKOUT_TIMEOUT_ESCALATED.name()),
+                     cb.equal(root.get("status").as(String.class), DamageClaimStatus.CHECK_IN_DISPUTE_PENDING.name())
                  ));
              }
 
@@ -104,38 +107,54 @@ public class AdminDisputeService {
         DamageClaim claim = damageClaimRepo.findById(disputeId)
                 .orElseThrow(() -> new ResourceNotFoundException("Dispute not found"));
 
+        String guestName = claim.getGuest().getFirstName() + " " + claim.getGuest().getLastName();
+        String hostName = claim.getHost().getFirstName() + " " + claim.getHost().getLastName();
+        String reviewedByName = claim.getReviewedBy() != null 
+                ? claim.getReviewedBy().getFirstName() + " " + claim.getReviewedBy().getLastName()
+                : null;
+
         AdminDisputeDetailDto.AdminDisputeDetailDtoBuilder builder = AdminDisputeDetailDto.builder()
                 .id(claim.getId())
                 .status(claim.getStatus())
                 .description(claim.getDescription())
-                // Entity uses BigDecimal claimedAmount, DTO uses Long estimatedCostCents (Plan).
-                // I will use claimedAmount.longValue() * 100 ? Or update DTO.
-                // I'll update DTO mapping to use claimedAmount * 100 for cents
                 .estimatedCostCents(claim.getClaimedAmount().multiply(java.math.BigDecimal.valueOf(100)).longValue())
+                // Party info with names (frontend expects guestName/hostName)
                 .guestId(claim.getGuest().getId())
+                .guestName(guestName)
                 .guestEmail(claim.getGuest().getEmail())
-                .guestPhone(claim.getGuest().getPhone()) // Check User entity for getPhone vs getPhoneNumber
+                .guestPhone(claim.getGuest().getPhone())
                 .hostId(claim.getHost().getId())
+                .hostName(hostName)
                 .hostEmail(claim.getHost().getEmail())
                 .hostPhone(claim.getHost().getPhone())
+                // Booking & vehicle
                 .bookingId(claim.getBooking().getId())
                 .carId(claim.getBooking().getCar().getId())
-                // Entity stores JSON string IDs? Or URLs? 
-                // Plan says "getPhotoUrls()". DamageClaim entity has checkinPhotoIds (String).
-                // I will return raw JSON string for now or parse if needed. 
-                // Plan DTO has List<String>. I need to parse or just mock url list.
-                // For MVP, I'll pass null or implement helper to fetch URLs from IDs.
-                // Let's assume photoUrls field exists or I construct it.
-                .photoUrls(claim.getEvidencePhotoIds()) 
+                // Amounts in RSD (frontend uses these directly)
+                .claimedAmount(claim.getClaimedAmount())
+                .approvedAmount(claim.getApprovedAmount())
+                // Evidence photos (all three sets)
+                .photoUrls(claim.getEvidencePhotoIds())
+                .checkinPhotoIds(claim.getCheckinPhotoIds())
+                .checkoutPhotoIds(claim.getCheckoutPhotoIds())
+                .evidencePhotoIds(claim.getEvidencePhotoIds())
+                // Guest response
+                .guestResponse(claim.getGuestResponse())
+                .guestRespondedAt(claim.getGuestRespondedAt())
+                // Admin review
+                .reviewedBy(reviewedByName)
+                .reviewedAt(claim.getReviewedAt())
+                .adminNotes(claim.getAdminNotes())
+                // Dispute metadata
+                .disputeStage(claim.getDisputeStage() != null ? claim.getDisputeStage().name() : null)
+                .disputeType(claim.getDisputeType() != null ? claim.getDisputeType().name() : null)
+                .initiator(claim.getInitiator() != null ? claim.getInitiator().name() : null)
+                .adminReviewRequired(claim.getAdminReviewRequired())
+                .repairQuoteDocumentUrl(claim.getRepairQuoteDocumentUrl())
                 .createdAt(claim.getCreatedAt());
 
         Optional<DisputeResolution> resolution = resolutionRepo.findByDamageClaimId(disputeId);
         resolution.ifPresent(res -> builder.resolution(DisputeResolutionDto.fromEntity(res)));
-
-        // History
-        // Assuming auditService has getResourceHistory
-        // List<AdminAuditLogDto> history = auditService.getResourceHistory("DISPUTE", disputeId);
-        // builder.history(history);
 
         return builder.build();
     }
@@ -598,10 +617,13 @@ public class AdminDisputeService {
         damageClaimRepo.save(claim);
         
         // Clear deposit hold and transition booking
+        // CRITICAL: Only mark deposit resolved if payment gateway operations succeeded.
+        // If processDepositCapture/Release threw an exception above, we never reach here.
         booking.setSecurityDepositReleased(true);
         booking.setSecurityDepositResolvedAt(Instant.now());
         booking.setSecurityDepositHoldReason(null);
         booking.setSecurityDepositHoldUntil(null);
+        booking.setDamageClaimStatus(claim.getStatus().name());
         booking.setStatus(BookingStatus.CHECKOUT_HOST_COMPLETE);
         bookingRepository.save(booking);
         
@@ -643,28 +665,25 @@ public class AdminDisputeService {
      * Process deposit capture for damage payment.
      */
     private java.math.BigDecimal processDepositCapture(Booking booking, java.math.BigDecimal amount) {
-        try {
-            // Cap at deposit amount
-            java.math.BigDecimal depositAmount = booking.getSecurityDeposit() != null 
-                ? booking.getSecurityDeposit() : java.math.BigDecimal.ZERO;
-            java.math.BigDecimal captureAmount = amount.min(depositAmount);
-            // Use damage charge API with the claim and deposit authorization
-            DamageClaim claim = booking.getCheckoutDamageClaim();
-            if (claim != null) {
-                String depositAuthId = booking.getDepositAuthorizationId();
-                if (depositAuthId == null || depositAuthId.isBlank()) {
-                    log.warn("[VAL-010] No deposit authorization ID for booking {} - cannot capture", booking.getId());
-                    return java.math.BigDecimal.ZERO;
-                }
-                paymentService.chargeDamage(claim.getId(), depositAuthId);
+        // Cap at deposit amount
+        java.math.BigDecimal depositAmount = booking.getSecurityDeposit() != null 
+            ? booking.getSecurityDeposit() : java.math.BigDecimal.ZERO;
+        java.math.BigDecimal captureAmount = amount.min(depositAmount);
+        // Use damage charge API with the claim and deposit authorization
+        DamageClaim claim = booking.getCheckoutDamageClaim();
+        if (claim != null) {
+            String depositAuthId = booking.getDepositAuthorizationId();
+            if (depositAuthId == null || depositAuthId.isBlank()) {
+                log.error("[VAL-010] CRITICAL: No deposit authorization ID for booking {} - cannot capture. " +
+                        "Manual intervention required.", booking.getId());
+                throw new IllegalStateException(
+                        "Deposit capture failed: No authorization ID for booking " + booking.getId() +
+                        ". Manual deposit capture required.");
             }
-            log.info("[VAL-010] Captured {} RSD from deposit for booking {}", captureAmount, booking.getId());
-            return captureAmount;
-        } catch (Exception e) {
-            log.error("[VAL-010] Failed to capture deposit for booking {}: {}", booking.getId(), e.getMessage());
-            // Continue - manual capture will be needed
-            return java.math.BigDecimal.ZERO;
+            paymentService.chargeDamage(claim.getId(), depositAuthId);
         }
+        log.info("[VAL-010] Captured {} RSD from deposit for booking {}", captureAmount, booking.getId());
+        return captureAmount;
     }
     
     /**
@@ -672,22 +691,19 @@ public class AdminDisputeService {
      * Uses releaseDeposit (release authorization hold) NOT processFullRefund (which refunds the booking payment).
      */
     private java.math.BigDecimal processDepositRelease(Booking booking) {
-        try {
-            java.math.BigDecimal releaseAmount = booking.getSecurityDeposit() != null 
-                ? booking.getSecurityDeposit() : java.math.BigDecimal.ZERO;
-            String depositAuthId = booking.getDepositAuthorizationId();
-            if (depositAuthId == null || depositAuthId.isBlank()) {
-                log.warn("[VAL-010] No deposit authorization ID for booking {} - cannot release", booking.getId());
-                return java.math.BigDecimal.ZERO;
-            }
-            paymentService.releaseDeposit(booking.getId(), depositAuthId);
-            log.info("[VAL-010] Released {} RSD deposit for booking {}", releaseAmount, booking.getId());
-            return releaseAmount;
-        } catch (Exception e) {
-            log.error("[VAL-010] Failed to release deposit for booking {}: {}", booking.getId(), e.getMessage());
-            // Continue - manual release will be needed
-            return java.math.BigDecimal.ZERO;
+        java.math.BigDecimal releaseAmount = booking.getSecurityDeposit() != null 
+            ? booking.getSecurityDeposit() : java.math.BigDecimal.ZERO;
+        String depositAuthId = booking.getDepositAuthorizationId();
+        if (depositAuthId == null || depositAuthId.isBlank()) {
+            log.error("[VAL-010] CRITICAL: No deposit authorization ID for booking {} - cannot release. " +
+                    "Manual intervention required.", booking.getId());
+            throw new IllegalStateException(
+                    "Deposit release failed: No authorization ID for booking " + booking.getId() +
+                    ". Manual deposit release required.");
         }
+        paymentService.releaseDeposit(booking.getId(), depositAuthId);
+        log.info("[VAL-010] Released {} RSD deposit for booking {}", releaseAmount, booking.getId());
+        return releaseAmount;
     }
     
     /**

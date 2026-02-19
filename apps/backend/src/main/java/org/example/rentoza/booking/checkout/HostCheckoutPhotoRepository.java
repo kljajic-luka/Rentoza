@@ -125,6 +125,39 @@ public interface HostCheckoutPhotoRepository extends JpaRepository<HostCheckoutP
     Optional<HostCheckoutPhoto> findByStorageKey(String storageKey);
 
     /**
+     * Find photos with the same image hash across different bookings.
+     * Used for fraud detection — detects reuse of identical damage photos.
+     * 
+     * @param imageHash SHA-256 hash of the photo content
+     * @param excludeBookingId Booking to exclude (same-booking duplicates are ok)
+     * @return List of photos with matching hash from other bookings
+     * @since V61 - Image hash fraud detection
+     */
+    @Query("SELECT p FROM HostCheckoutPhoto p " +
+           "WHERE p.imageHash = :imageHash " +
+           "AND p.booking.id != :excludeBookingId " +
+           "AND p.deletedAt IS NULL")
+    List<HostCheckoutPhoto> findByImageHashExcludingBooking(
+            @Param("imageHash") String imageHash,
+            @Param("excludeBookingId") Long excludeBookingId);
+
+    /**
+     * Check if a photo with this hash exists on a different booking (fraud indicator).
+     * 
+     * @param imageHash SHA-256 hash
+     * @param excludeBookingId Current booking ID to exclude
+     * @return true if duplicate found on another booking
+     * @since V61 - Image hash fraud detection
+     */
+    @Query("SELECT CASE WHEN COUNT(p) > 0 THEN true ELSE false END FROM HostCheckoutPhoto p " +
+           "WHERE p.imageHash = :imageHash " +
+           "AND p.booking.id != :excludeBookingId " +
+           "AND p.deletedAt IS NULL")
+    boolean existsByImageHashOnOtherBooking(
+            @Param("imageHash") String imageHash,
+            @Param("excludeBookingId") Long excludeBookingId);
+
+    /**
      * Find host checkout photos uploaded within a time range (for analytics).
      */
     @Query("SELECT p FROM HostCheckoutPhoto p " +

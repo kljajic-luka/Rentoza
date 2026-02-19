@@ -69,6 +69,13 @@ public class HostCheckOutConfirmationDTO {
      * Any additional notes from host.
      */
     private String notes;
+    
+    /**
+     * URL of uploaded repair quote document (mechanic estimate).
+     * Optional for initial claim filing, recommended for claims >50,000 RSD.
+     * @since V61 - Pre-production hardening
+     */
+    private String repairQuoteDocumentUrl;
 }
 
 

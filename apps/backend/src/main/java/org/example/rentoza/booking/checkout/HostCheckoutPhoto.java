@@ -122,6 +122,14 @@ public class HostCheckoutPhoto {
     private Integer fileSizeBytes;
 
     /**
+     * SHA-256 hash of the image content for fraud detection (duplicate photo reuse).
+     * Computed at upload time and used to detect identical images across bookings.
+     * @since V61 - Pre-production hardening
+     */
+    @Column(name = "image_hash", length = 64)
+    private String imageHash;
+
+    /**
      * Image width in pixels.
      */
     @Column(name = "image_width")

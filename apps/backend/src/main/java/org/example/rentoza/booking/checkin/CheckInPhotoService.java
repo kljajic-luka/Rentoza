@@ -174,8 +174,13 @@ public class CheckInPhotoService {
                     throw new IllegalStateException("Checkout nije spreman za otpremanje fotografija od strane domaćina");
                 }
             } else {
-                // Guest checkout: must be in CHECKOUT_OPEN
-                if (booking.getStatus() != BookingStatus.CHECKOUT_OPEN) {
+                // Guest checkout photos
+                if (booking.getStatus() == BookingStatus.CHECKOUT_DAMAGE_DISPUTE
+                        && (photoType == CheckInPhotoType.CHECKOUT_DAMAGE_NEW
+                            || photoType == CheckInPhotoType.CHECKOUT_CUSTOM)) {
+                    // Allow evidence uploads while guest is disputing a damage claim
+                    log.debug("[CheckIn] Allowing dispute-evidence upload: booking={}, type={}", bookingId, photoType);
+                } else if (booking.getStatus() != BookingStatus.CHECKOUT_OPEN) {
                     throw new IllegalStateException("Checkout nije otvoren za otpremanje fotografija");
                 }
             }

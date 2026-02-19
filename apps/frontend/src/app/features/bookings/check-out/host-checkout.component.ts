@@ -269,6 +269,16 @@ import { environment } from '@environments/environment';
                   </div>
 
                   <mat-form-field appearance="outline" class="full-width">
+                    <mat-label>Link ka proceni mehaničara (opciono)</mat-label>
+                    <input
+                      matInput
+                      formControlName="repairQuoteUrl"
+                      placeholder="https://... link ka dokumentu procene popravke"
+                    />
+                    <mat-hint>Preporučeno za štete preko 50.000 RSD</mat-hint>
+                  </mat-form-field>
+
+                  <mat-form-field appearance="outline" class="full-width">
                     <mat-label>Dodatne napomene</mat-label>
                     <textarea matInput formControlName="notes" rows="2"></textarea>
                   </mat-form-field>
@@ -497,6 +507,7 @@ export class HostCheckoutComponent {
   damageForm: FormGroup = this.fb.group({
     description: ['', Validators.required],
     estimatedCost: [null, [Validators.required, Validators.min(0)]],
+    repairQuoteUrl: [''],
     notes: [''],
   });
 
@@ -624,7 +635,7 @@ export class HostCheckoutComponent {
     if (!this.damageForm.valid) return;
 
     this._isSubmitting.set(true);
-    const { description, estimatedCost, notes } = this.damageForm.value;
+    const { description, estimatedCost, repairQuoteUrl, notes } = this.damageForm.value;
 
     // Collect uploaded damage photo IDs
     const photoIds: number[] = [];
@@ -643,6 +654,7 @@ export class HostCheckoutComponent {
           description,
           estimatedCostRsd: estimatedCost,
           photoIds,
+          repairQuoteDocumentUrl: repairQuoteUrl || undefined,
         },
         notes,
       )

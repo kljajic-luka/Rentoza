@@ -126,9 +126,12 @@ export class OwnerBookingsComponent implements OnInit {
                 // BUT: Exclude checkout statuses (they need action even if endTime passed)
                 else if (
                   (endTime < now || booking.status === 'COMPLETED') &&
-                  !['CHECKOUT_OPEN', 'CHECKOUT_GUEST_COMPLETE', 'CHECKOUT_HOST_COMPLETE', 'CHECKOUT_DAMAGE_DISPUTE'].includes(
-                    booking.status,
-                  ) &&
+                  ![
+                    'CHECKOUT_OPEN',
+                    'CHECKOUT_GUEST_COMPLETE',
+                    'CHECKOUT_HOST_COMPLETE',
+                    'CHECKOUT_DAMAGE_DISPUTE',
+                  ].includes(booking.status) &&
                   booking.status !== 'CANCELLED' &&
                   booking.status !== 'DECLINED' &&
                   booking.status !== 'EXPIRED' &&
@@ -143,9 +146,12 @@ export class OwnerBookingsComponent implements OnInit {
                   !['CHECK_IN_OPEN', 'CHECK_IN_HOST_COMPLETE', 'CHECK_IN_COMPLETE'].includes(
                     booking.status,
                   ) &&
-                  !['CHECKOUT_OPEN', 'CHECKOUT_GUEST_COMPLETE', 'CHECKOUT_HOST_COMPLETE', 'CHECKOUT_DAMAGE_DISPUTE'].includes(
-                    booking.status,
-                  )
+                  ![
+                    'CHECKOUT_OPEN',
+                    'CHECKOUT_GUEST_COMPLETE',
+                    'CHECKOUT_HOST_COMPLETE',
+                    'CHECKOUT_DAMAGE_DISPUTE',
+                  ].includes(booking.status)
                 ) {
                   upcoming.push(booking);
                 }
@@ -155,9 +161,12 @@ export class OwnerBookingsComponent implements OnInit {
                   ['CHECK_IN_OPEN', 'CHECK_IN_HOST_COMPLETE', 'CHECK_IN_COMPLETE'].includes(
                     booking.status,
                   ) ||
-                  ['CHECKOUT_OPEN', 'CHECKOUT_GUEST_COMPLETE', 'CHECKOUT_HOST_COMPLETE', 'CHECKOUT_DAMAGE_DISPUTE'].includes(
-                    booking.status,
-                  )
+                  [
+                    'CHECKOUT_OPEN',
+                    'CHECKOUT_GUEST_COMPLETE',
+                    'CHECKOUT_HOST_COMPLETE',
+                    'CHECKOUT_DAMAGE_DISPUTE',
+                  ].includes(booking.status)
                 ) {
                   active.push(booking);
                 }
@@ -503,7 +512,15 @@ export class OwnerBookingsComponent implements OnInit {
     const second = Number(match[6] ?? '0');
     const millisecond = Number((match[7] ?? '0').padEnd(3, '0'));
 
-    const serbiaLocalAsUtcMillis = Date.UTC(year, month - 1, day, hour, minute, second, millisecond);
+    const serbiaLocalAsUtcMillis = Date.UTC(
+      year,
+      month - 1,
+      day,
+      hour,
+      minute,
+      second,
+      millisecond,
+    );
 
     // Iterate once to handle DST boundaries (offset depends on resulting instant).
     let utcMillis = serbiaLocalAsUtcMillis;

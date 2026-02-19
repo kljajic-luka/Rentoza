@@ -227,6 +227,24 @@ public class DamageClaim {
      */
     @Column(name = "dispute_reason", columnDefinition = "TEXT")
     private String disputeReason;
+    
+    // ========== PRE-PRODUCTION HARDENING ==========
+    
+    /**
+     * URL to uploaded repair quote document (mechanic estimate).
+     * Required for claims where host provides professional repair estimate.
+     * @since V61 - Pre-production hardening
+     */
+    @Column(name = "repair_quote_document_url", columnDefinition = "TEXT")
+    private String repairQuoteDocumentUrl;
+    
+    /**
+     * Whether this claim requires mandatory admin review (flagged for high value >50,000 RSD / ~€500).
+     * @since V61 - Pre-production hardening
+     */
+    @Column(name = "admin_review_required")
+    @Builder.Default
+    private Boolean adminReviewRequired = false;
 
     // ========== PAYMENT ==========
 

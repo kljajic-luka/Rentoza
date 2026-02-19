@@ -78,6 +78,11 @@ export class DisputeListComponent implements OnInit {
     { value: 'ADMIN_APPROVED', label: 'Approved' },
     { value: 'ADMIN_REJECTED', label: 'Rejected' },
     { value: 'REQUIRES_MANUAL_REVIEW', label: 'Manual Review' },
+    { value: 'CHECKOUT_PENDING', label: 'Checkout - Pending' },
+    { value: 'CHECKOUT_GUEST_DISPUTED', label: 'Checkout - Guest Disputed' },
+    { value: 'CHECKOUT_TIMEOUT_ESCALATED', label: 'Checkout - Timeout Escalated' },
+    { value: 'CHECKOUT_ADMIN_APPROVED', label: 'Checkout - Approved' },
+    { value: 'CHECKOUT_ADMIN_REJECTED', label: 'Checkout - Rejected' },
   ];
 
   // Computed
@@ -128,6 +133,12 @@ export class DisputeListComponent implements OnInit {
       ADMIN_REJECTED: '',
       REQUIRES_MANUAL_REVIEW: 'warn',
       PAID: 'primary',
+      CHECKOUT_PENDING: 'accent',
+      CHECKOUT_GUEST_ACCEPTED: 'primary',
+      CHECKOUT_GUEST_DISPUTED: 'warn',
+      CHECKOUT_ADMIN_APPROVED: 'primary',
+      CHECKOUT_ADMIN_REJECTED: '',
+      CHECKOUT_TIMEOUT_ESCALATED: 'warn',
     };
     return colorMap[status] || '';
   }
@@ -140,6 +151,12 @@ export class DisputeListComponent implements OnInit {
       ADMIN_REJECTED: 'Rejected',
       REQUIRES_MANUAL_REVIEW: 'Manual Review',
       PAID: 'Paid',
+      CHECKOUT_PENDING: 'Checkout Pending',
+      CHECKOUT_GUEST_ACCEPTED: 'Guest Accepted',
+      CHECKOUT_GUEST_DISPUTED: 'Guest Disputed',
+      CHECKOUT_ADMIN_APPROVED: 'Checkout Approved',
+      CHECKOUT_ADMIN_REJECTED: 'Checkout Rejected',
+      CHECKOUT_TIMEOUT_ESCALATED: 'Timeout Escalated',
     };
     return labelMap[status] || status;
   }

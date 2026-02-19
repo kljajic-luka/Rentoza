@@ -377,6 +377,7 @@ public class HostCheckoutPhotoService {
             .originalFilename(photoItem.getOriginalFilename())
             .mimeType(photoItem.getMimeType() != null ? photoItem.getMimeType() : "image/jpeg")
             .fileSizeBytes(photoBytes.length)
+            .imageHash(computeSha256(photoBytes))
             .exifTimestamp(exifResult.getPhotoTimestamp())
             .exifLatitude(exifResult.getLatitude())
             .exifLongitude(exifResult.getLongitude())
@@ -390,6 +391,14 @@ public class HostCheckoutPhotoService {
             .build();
         
         photo = hostCheckoutPhotoRepository.save(photo);
+        
+        // [P2] Fraud detection: check if this exact image was used on another booking
+        if (photo.getImageHash() != null
+                && hostCheckoutPhotoRepository.existsByImageHashOnOtherBooking(photo.getImageHash(), booking.getId())) {
+            log.warn("[HostCheckout] FRAUD ALERT: Duplicate image hash detected! " +
+                    "booking={}, photoId={}, hash={} — same image exists on another booking",
+                    booking.getId(), photo.getId(), photo.getImageHash());
+        }
         
         // Record event
         eventService.recordEvent(
@@ -619,5 +628,24 @@ public class HostCheckoutPhotoService {
             .deviceModel(photo.getExifDeviceModel())
             .accepted(true)
             .build();
+    }
+
+    /**
+     * Compute SHA-256 hash of image bytes for duplicate detection.
+     * Returns lowercase hex string, or null on failure.
+     */
+    private String computeSha256(byte[] data) {
+        try {
+            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(data);
+            StringBuilder sb = new StringBuilder(64);
+            for (byte b : hash) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (java.security.NoSuchAlgorithmException e) {
+            log.error("[HostCheckout] SHA-256 not available for image hash", e);
+            return null;
+        }
     }
 }

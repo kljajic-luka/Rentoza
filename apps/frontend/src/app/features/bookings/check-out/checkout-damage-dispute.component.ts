@@ -25,6 +25,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatProgressBarModule } from '@angular/material/progress-bar';
 
 import { CheckOutStatusDTO } from '@core/models/checkout.model';
 import { CheckoutService } from '@core/services/checkout.service';
@@ -43,6 +44,7 @@ import { CheckoutService } from '@core/services/checkout.service';
     MatInputModule,
     MatDividerModule,
     MatSnackBarModule,
+    MatProgressBarModule,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -70,11 +72,18 @@ import { CheckoutService } from '@core/services/checkout.service';
             </div>
             <div class="detail-row">
               <span class="label">Procenjena šteta:</span>
-              <span class="value amount">{{ status.damageClaimAmount ? (status.damageClaimAmount | number:'1.0-0') + ' RSD' : 'Nije procenjeno' }}</span>
+              <span class="value amount">{{
+                status.damageClaimAmount
+                  ? (status.damageClaimAmount | number: '1.0-0') + ' RSD'
+                  : 'Nije procenjeno'
+              }}</span>
             </div>
             <div class="detail-row">
               <span class="label">Status:</span>
-              <span class="value status-badge" [class]="'status-' + (status.damageClaimStatus || 'unknown')">
+              <span
+                class="value status-badge"
+                [class]="'status-' + (status.damageClaimStatus || 'unknown')"
+              >
                 {{ getClaimStatusLabel(status.damageClaimStatus) }}
               </span>
             </div>
@@ -93,9 +102,12 @@ import { CheckoutService } from '@core/services/checkout.service';
               </mat-card-header>
               <mat-card-content>
                 <div class="action-buttons">
-                  <button mat-raised-button color="primary"
-                          (click)="acceptClaim()"
-                          [disabled]="isProcessing()">
+                  <button
+                    mat-raised-button
+                    color="primary"
+                    (click)="acceptClaim()"
+                    [disabled]="isProcessing()"
+                  >
                     @if (isProcessing()) {
                       <mat-spinner diameter="20"></mat-spinner>
                     } @else {
@@ -103,9 +115,12 @@ import { CheckoutService } from '@core/services/checkout.service';
                     }
                     Prihvatam prijavu
                   </button>
-                  <button mat-raised-button color="warn"
-                          (click)="showDisputeForm.set(true)"
-                          [disabled]="isProcessing()">
+                  <button
+                    mat-raised-button
+                    color="warn"
+                    (click)="showDisputeForm.set(true)"
+                    [disabled]="isProcessing()"
+                  >
                     <mat-icon>gavel</mat-icon>
                     Ospori prijavu
                   </button>
@@ -130,22 +145,60 @@ import { CheckoutService } from '@core/services/checkout.service';
             <mat-card-content>
               <mat-form-field appearance="outline" class="full-width">
                 <mat-label>Razlog osporavanja</mat-label>
-                <textarea matInput
-                          [(ngModel)]="disputeReason"
-                          rows="4"
-                          placeholder="Opišite detaljno zašto smatrate da prijava nije opravdana..."
-                          required></textarea>
+                <textarea
+                  matInput
+                  [(ngModel)]="disputeReason"
+                  rows="4"
+                  placeholder="Opišite detaljno zašto smatrate da prijava nije opravdana..."
+                  required
+                ></textarea>
                 <mat-hint>Minimum 20 karaktera</mat-hint>
               </mat-form-field>
+
+              <!-- Evidence Photo Upload -->
+              <div class="evidence-photos">
+                <p><mat-icon>photo_camera</mat-icon> Dokazi (fotografije) - opciono</p>
+                <div class="photo-upload-row">
+                  @for (i of [0, 1, 2]; track i) {
+                    <div class="evidence-upload-slot">
+                      @if (getEvidenceProgress(i); as progress) {
+                        @if (progress.state === 'complete') {
+                          <div class="uploaded-preview">
+                            <mat-icon color="primary">check_circle</mat-icon>
+                          </div>
+                        } @else {
+                          <mat-progress-bar
+                            mode="determinate"
+                            [value]="progress.progress"
+                          ></mat-progress-bar>
+                        }
+                      } @else {
+                        <button mat-icon-button (click)="triggerEvidenceUpload(i)">
+                          <mat-icon>add_a_photo</mat-icon>
+                        </button>
+                      }
+                      <input
+                        type="file"
+                        accept="image/*"
+                        [id]="'evidence-upload-' + i"
+                        (change)="onEvidenceFileSelected($event, i)"
+                        hidden
+                      />
+                    </div>
+                  }
+                </div>
+              </div>
             </mat-card-content>
             <mat-card-actions align="end">
-              <button mat-button (click)="showDisputeForm.set(false)"
-                      [disabled]="isProcessing()">
+              <button mat-button (click)="showDisputeForm.set(false)" [disabled]="isProcessing()">
                 Otkaži
               </button>
-              <button mat-raised-button color="warn"
-                      (click)="submitDispute()"
-                      [disabled]="isProcessing() || disputeReason.length < 20">
+              <button
+                mat-raised-button
+                color="warn"
+                (click)="submitDispute()"
+                [disabled]="isProcessing() || disputeReason.length < 20"
+              >
                 @if (isProcessing()) {
                   <mat-spinner diameter="20"></mat-spinner>
                 } @else {
@@ -176,110 +229,192 @@ import { CheckoutService } from '@core/services/checkout.service';
       }
     </div>
   `,
-  styles: [`
-    .damage-dispute-container {
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }
-
-    .alert-banner {
-      display: flex;
-      gap: 16px;
-      padding: 16px 20px;
-      background: #fff3e0;
-      border-left: 4px solid #ff9800;
-      border-radius: 8px;
-      align-items: flex-start;
-
-      mat-icon {
-        color: #ff9800;
-        font-size: 32px;
-        width: 32px;
-        height: 32px;
-        flex-shrink: 0;
+  styles: [
+    `
+      .damage-dispute-container {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
       }
 
-      h3 { margin: 0 0 4px; font-size: 1.1rem; }
-      p { margin: 0; color: #666; font-size: 0.9rem; }
-    }
+      .alert-banner {
+        display: flex;
+        gap: 16px;
+        padding: 16px 20px;
+        background: #fff3e0;
+        border-left: 4px solid #ff9800;
+        border-radius: 8px;
+        align-items: flex-start;
 
-    .damage-icon {
-      background: #ffebee;
-      color: #d32f2f !important;
-    }
+        mat-icon {
+          color: #ff9800;
+          font-size: 32px;
+          width: 32px;
+          height: 32px;
+          flex-shrink: 0;
+        }
 
-    .detail-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 8px 0;
-      border-bottom: 1px solid #eee;
-    }
+        h3 {
+          margin: 0 0 4px;
+          font-size: 1.1rem;
+        }
+        p {
+          margin: 0;
+          color: #666;
+          font-size: 0.9rem;
+        }
+      }
 
-    .label { color: #666; font-weight: 500; }
-    .value { font-weight: 500; }
-    .value.amount { color: #d32f2f; font-size: 1.1rem; }
+      .damage-icon {
+        background: #ffebee;
+        color: #d32f2f !important;
+      }
 
-    .status-badge {
-      padding: 4px 12px;
-      border-radius: 16px;
-      font-size: 0.85rem;
-    }
+      .detail-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 0;
+        border-bottom: 1px solid #eee;
+      }
 
-    .status-CHECKOUT_PENDING { background: #fff3e0; color: #e65100; }
-    .status-CHECKOUT_GUEST_ACCEPTED { background: #e8f5e9; color: #2e7d32; }
-    .status-CHECKOUT_GUEST_DISPUTED { background: #fce4ec; color: #c62828; }
-    .status-CHECKOUT_ADMIN_APPROVED { background: #e3f2fd; color: #1565c0; }
-    .status-CHECKOUT_ADMIN_REJECTED { background: #fafafa; color: #616161; }
+      .label {
+        color: #666;
+        font-weight: 500;
+      }
+      .value {
+        font-weight: 500;
+      }
+      .value.amount {
+        color: #d32f2f;
+        font-size: 1.1rem;
+      }
 
-    .action-buttons {
-      display: flex;
-      gap: 16px;
-      margin: 16px 0;
-    }
+      .status-badge {
+        padding: 4px 12px;
+        border-radius: 16px;
+        font-size: 0.85rem;
+      }
 
-    .action-note {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      color: #666;
-      font-size: 0.85rem;
-      mat-icon { font-size: 18px; width: 18px; height: 18px; }
-    }
+      .status-CHECKOUT_PENDING {
+        background: #fff3e0;
+        color: #e65100;
+      }
+      .status-CHECKOUT_GUEST_ACCEPTED {
+        background: #e8f5e9;
+        color: #2e7d32;
+      }
+      .status-CHECKOUT_GUEST_DISPUTED {
+        background: #fce4ec;
+        color: #c62828;
+      }
+      .status-CHECKOUT_ADMIN_APPROVED {
+        background: #e3f2fd;
+        color: #1565c0;
+      }
+      .status-CHECKOUT_ADMIN_REJECTED {
+        background: #fafafa;
+        color: #616161;
+      }
 
-    .full-width { width: 100%; }
+      .action-buttons {
+        display: flex;
+        gap: 16px;
+        margin: 16px 0;
+      }
 
-    .waiting-status {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      text-align: center;
-      padding: 24px;
-      gap: 8px;
-    }
+      .action-note {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #666;
+        font-size: 0.85rem;
+        mat-icon {
+          font-size: 18px;
+          width: 18px;
+          height: 18px;
+        }
+      }
 
-    .waiting-icon {
-      font-size: 48px;
-      width: 48px;
-      height: 48px;
-      color: #ff9800;
-    }
+      .full-width {
+        width: 100%;
+      }
 
-    .deposit-note {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      color: #d32f2f;
-      font-weight: 500;
-      mat-icon { font-size: 18px; width: 18px; height: 18px; }
-    }
+      .evidence-photos {
+        margin: 12px 0;
+        p {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          color: #666;
+          font-size: 0.9rem;
+          margin-bottom: 8px;
+          mat-icon { font-size: 18px; width: 18px; height: 18px; }
+        }
+      }
 
-    :host-context(.dark-theme) {
-      .alert-banner { background: #3e2723; }
-      .detail-row { border-bottom-color: #333; }
-    }
-  `],
+      .photo-upload-row {
+        display: flex;
+        gap: 12px;
+      }
+
+      .evidence-upload-slot {
+        width: 64px;
+        height: 64px;
+        border: 2px dashed #ccc;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .uploaded-preview {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 100%;
+      }
+
+      .waiting-status {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        padding: 24px;
+        gap: 8px;
+      }
+
+      .waiting-icon {
+        font-size: 48px;
+        width: 48px;
+        height: 48px;
+        color: #ff9800;
+      }
+
+      .deposit-note {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: #d32f2f;
+        font-weight: 500;
+        mat-icon {
+          font-size: 18px;
+          width: 18px;
+          height: 18px;
+        }
+      }
+
+      :host-context(.dark-theme) {
+        .alert-banner {
+          background: #3e2723;
+        }
+        .detail-row {
+          border-bottom-color: #333;
+        }
+      }
+    `,
+  ],
 })
 export class CheckoutDamageDisputeComponent {
   @Input() bookingId!: number;
@@ -294,14 +429,51 @@ export class CheckoutDamageDisputeComponent {
   isProcessing = signal(false);
   disputeReason = '';
 
+  // Evidence photo upload support
+  triggerEvidenceUpload(index: number): void {
+    const input = document.getElementById(`evidence-upload-${index}`) as HTMLInputElement;
+    input?.click();
+  }
+
+  onEvidenceFileSelected(event: Event, index: number): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    const slotId = `evidence-${index}`;
+    // Use guest checkout photo upload for evidence (CHECKOUT_DAMAGE_NEW type)
+    this.checkoutService.uploadPhoto(
+      this.bookingId,
+      file,
+      slotId,
+      'CHECKOUT_DAMAGE_NEW',
+    );
+    input.value = '';
+  }
+
+  getEvidenceProgress(index: number) {
+    return this.checkoutService.uploadProgress().get(`evidence-${index}`);
+  }
+
+  private collectEvidencePhotoIds(): number[] {
+    const ids: number[] = [];
+    for (let i = 0; i < 3; i++) {
+      const progress = this.checkoutService.uploadProgress().get(`evidence-${i}`);
+      if (progress?.state === 'complete' && progress.result?.photoId) {
+        ids.push(progress.result.photoId);
+      }
+    }
+    return ids;
+  }
+
   getClaimStatusLabel(status: string | null): string {
     const labels: Record<string, string> = {
-      'CHECKOUT_PENDING': 'Čeka odgovor gosta',
-      'CHECKOUT_GUEST_ACCEPTED': 'Gost prihvatio',
-      'CHECKOUT_GUEST_DISPUTED': 'Gost osporio - čeka admin',
-      'CHECKOUT_ADMIN_APPROVED': 'Admin odobrio',
-      'CHECKOUT_ADMIN_REJECTED': 'Admin odbio',
-      'CHECKOUT_TIMEOUT_ESCALATED': 'Eskalirano (timeout)',
+      CHECKOUT_PENDING: 'Čeka odgovor gosta',
+      CHECKOUT_GUEST_ACCEPTED: 'Gost prihvatio',
+      CHECKOUT_GUEST_DISPUTED: 'Gost osporio - čeka admin',
+      CHECKOUT_ADMIN_APPROVED: 'Admin odobrio',
+      CHECKOUT_ADMIN_REJECTED: 'Admin odbio',
+      CHECKOUT_TIMEOUT_ESCALATED: 'Eskalirano (timeout)',
     };
     return labels[status || ''] || status || 'Nepoznato';
   }
@@ -311,7 +483,9 @@ export class CheckoutDamageDisputeComponent {
     this.checkoutService.acceptDamageClaim(this.bookingId).subscribe({
       next: () => {
         this.isProcessing.set(false);
-        this.snackBar.open('Prijava prihvaćena. Checkout se završava.', 'Zatvori', { duration: 4000 });
+        this.snackBar.open('Prijava prihvaćena. Checkout se završava.', 'Zatvori', {
+          duration: 4000,
+        });
         this.resolved.emit();
       },
       error: () => {
@@ -325,10 +499,13 @@ export class CheckoutDamageDisputeComponent {
     if (this.disputeReason.length < 20) return;
 
     this.isProcessing.set(true);
-    this.checkoutService.disputeDamageClaim(this.bookingId, this.disputeReason).subscribe({
+    const evidencePhotoIds = this.collectEvidencePhotoIds();
+    this.checkoutService.disputeDamageClaim(this.bookingId, this.disputeReason, evidencePhotoIds.length > 0 ? evidencePhotoIds : undefined).subscribe({
       next: () => {
         this.isProcessing.set(false);
-        this.snackBar.open('Osporavanje poslato admin timu na pregled.', 'Zatvori', { duration: 4000 });
+        this.snackBar.open('Osporavanje poslato admin timu na pregled.', 'Zatvori', {
+          duration: 4000,
+        });
         this.resolved.emit();
       },
       error: () => {

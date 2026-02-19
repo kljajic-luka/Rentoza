@@ -511,6 +511,12 @@ public class CheckOutScheduler {
         claim.setResolutionNotes("Auto-escalated due to 7-day timeout without guest response");
         damageClaimRepository.save(claim);
         
+        // CRITICAL: Extend deposit hold for admin review period (additional 7 days)
+        // Without this, the hold expires and deposit could be auto-released while admin reviews.
+        booking.setSecurityDepositHoldUntil(Instant.now().plus(java.time.Duration.ofDays(7)));
+        booking.setDamageClaimStatus("CHECKOUT_TIMEOUT_ESCALATED");
+        bookingRepository.save(booking);
+        
         // Notify admin team
         log.warn("[VAL-010] ATTENTION REQUIRED: Damage dispute for booking {} escalated due to timeout. " +
                  "Claimed amount: {} RSD. Guest did not respond within 7 days.",

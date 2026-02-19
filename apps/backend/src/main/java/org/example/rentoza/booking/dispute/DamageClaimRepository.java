@@ -14,14 +14,47 @@ import java.util.Optional;
 public interface DamageClaimRepository extends JpaRepository<DamageClaim, Long>, org.springframework.data.jpa.repository.JpaSpecificationExecutor<DamageClaim> {
 
     /**
-     * Find claim by booking ID.
+     * Find claim by booking ID (legacy single-claim lookup).
+     * @deprecated Use {@link #findAllByBookingId(Long)} for multi-claim support.
+     *             Kept for backward compatibility; returns the most recent claim.
      */
+    @Deprecated
     Optional<DamageClaim> findByBookingId(Long bookingId);
+
+    /**
+     * Find all claims for a booking, ordered newest first.
+     * Supports the multi-claim model where a booking can have
+     * multiple claims (host claim + guest counter-claim, etc.).
+     * 
+     * @since V61 - Multi-claim support
+     */
+    @Query("SELECT c FROM DamageClaim c WHERE c.booking.id = :bookingId ORDER BY c.createdAt DESC")
+    List<DamageClaim> findAllByBookingId(@Param("bookingId") Long bookingId);
 
     /**
      * Check if a claim exists for a booking.
      */
     boolean existsByBookingId(Long bookingId);
+    
+    /**
+     * Check if an active claim exists for a booking + dispute stage + initiator combination.
+     * Used to prevent duplicate claims in the multi-claim model.
+     * Only considers non-resolved statuses.
+     * 
+     * @since V61 - Duplicate claim prevention
+     */
+    @Query("SELECT CASE WHEN COUNT(c) > 0 THEN true ELSE false END FROM DamageClaim c " +
+           "WHERE c.booking.id = :bookingId " +
+           "AND c.disputeStage = :disputeStage " +
+           "AND c.initiator = :initiator " +
+           "AND c.status IN ('PENDING', 'DISPUTED', 'ESCALATED', 'ACCEPTED_BY_GUEST', 'AUTO_APPROVED', " +
+           "'CHECKOUT_PENDING', 'CHECKOUT_GUEST_ACCEPTED', 'CHECKOUT_GUEST_DISPUTED', " +
+           "'CHECKOUT_TIMEOUT_ESCALATED', 'CHECK_IN_DISPUTE_PENDING')")
+    boolean hasActiveClaim(
+        @Param("bookingId") Long bookingId,
+        @Param("disputeStage") DisputeStage disputeStage,
+        @Param("initiator") ClaimInitiator initiator
+    );
 
     /**
      * Find claims pending guest response.
@@ -116,16 +149,23 @@ public interface DamageClaimRepository extends JpaRepository<DamageClaim, Long>,
      *   <li>AUTO_APPROVED - Auto-approved but payment pending</li>
      *   <li>ADMIN_APPROVED - Admin approved but payment pending</li>
      *   <li>ESCALATED - Under senior review</li>
+     *   <li>CHECKOUT_PENDING - Checkout damage awaiting guest response</li>
+     *   <li>CHECKOUT_GUEST_DISPUTED - Guest disputed checkout damage</li>
+     *   <li>CHECKOUT_TIMEOUT_ESCALATED - Timeout-escalated checkout dispute</li>
+     *   <li>CHECK_IN_DISPUTE_PENDING - Check-in dispute awaiting resolution</li>
      * </ul>
      * 
-     * <p>Only PAID and ADMIN_REJECTED claims allow deposit release.
+     * <p>Only PAID, ADMIN_REJECTED, CHECKOUT_ADMIN_REJECTED, CANCELLED, and resolved check-in 
+     * statuses allow deposit release.
      * 
      * @param bookingId The booking ID
      * @return true if there are claims blocking deposit release
      */
     @Query("SELECT CASE WHEN COUNT(c) > 0 THEN true ELSE false END FROM DamageClaim c " +
            "WHERE c.booking.id = :bookingId " +
-           "AND c.status IN ('PENDING', 'DISPUTED', 'ACCEPTED_BY_GUEST', 'AUTO_APPROVED', 'ADMIN_APPROVED', 'ESCALATED')")
+           "AND c.status IN ('PENDING', 'DISPUTED', 'ACCEPTED_BY_GUEST', 'AUTO_APPROVED', 'ADMIN_APPROVED', 'ESCALATED', " +
+           "'CHECKOUT_PENDING', 'CHECKOUT_GUEST_ACCEPTED', 'CHECKOUT_GUEST_DISPUTED', 'CHECKOUT_TIMEOUT_ESCALATED', " +
+           "'CHECK_IN_DISPUTE_PENDING')")
     boolean hasClaimsBlockingDepositRelease(@Param("bookingId") Long bookingId);
 
     /**
@@ -136,7 +176,9 @@ public interface DamageClaimRepository extends JpaRepository<DamageClaim, Long>,
      * @return List of active damage claims
      */
     @Query("SELECT c FROM DamageClaim c WHERE c.booking.id = :bookingId " +
-           "AND c.status IN ('PENDING', 'DISPUTED', 'ACCEPTED_BY_GUEST', 'AUTO_APPROVED', 'ADMIN_APPROVED', 'ESCALATED') " +
+           "AND c.status IN ('PENDING', 'DISPUTED', 'ACCEPTED_BY_GUEST', 'AUTO_APPROVED', 'ADMIN_APPROVED', 'ESCALATED', " +
+           "'CHECKOUT_PENDING', 'CHECKOUT_GUEST_ACCEPTED', 'CHECKOUT_GUEST_DISPUTED', 'CHECKOUT_TIMEOUT_ESCALATED', " +
+           "'CHECK_IN_DISPUTE_PENDING') " +
            "ORDER BY c.createdAt DESC")
     List<DamageClaim> findActiveClaimsByBookingId(@Param("bookingId") Long bookingId);
 }

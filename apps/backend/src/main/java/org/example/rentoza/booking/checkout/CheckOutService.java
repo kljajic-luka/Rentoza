@@ -469,10 +469,27 @@ public class CheckOutService {
         
         // Handle damage report
         if (dto.getNewDamageReported() != null && dto.getNewDamageReported()) {
+            // ================================================================
+            // H4 FIX: Enforce 48-hour damage claim filing window
+            // ================================================================
+            Instant tripEndTime = booking.getCheckoutCompletedAt() != null
+                    ? booking.getCheckoutCompletedAt()
+                    : (booking.getEndTime() != null
+                            ? booking.getEndTime().atZone(SERBIA_ZONE).toInstant()
+                            : null);
+            if (tripEndTime != null) {
+                long hoursSinceTripEnd = java.time.temporal.ChronoUnit.HOURS.between(tripEndTime, Instant.now());
+                if (hoursSinceTripEnd > 48) {
+                    throw new IllegalStateException(String.format(
+                            "Rok za prijavu štete je istekao. Prijava mora biti u roku od 48 sati od završetka najma. " +
+                            "Prošlo je %d sati.", hoursSinceTripEnd));
+                }
+            }
+            
             booking.setNewDamageReported(true);
             booking.setDamageAssessmentNotes(dto.getDamageDescription());
             booking.setDamageClaimAmount(dto.getEstimatedDamageCostRsd());
-            booking.setDamageClaimStatus("PENDING");
+            booking.setDamageClaimStatus("CHECKOUT_PENDING");
             
             // ================================================================
             // VAL-010: Block deposit release when damage is reported
@@ -1145,18 +1162,42 @@ public class CheckOutService {
      * @return Created DamageClaim entity (persisted)
      */
     private DamageClaim createCheckoutDamageClaim(Booking booking, HostCheckOutConfirmationDTO dto, Long userId) {
+        // Serialize damage photo IDs for persistence on the claim
+        String checkoutPhotoIdsJson = null;
+        if (dto.getDamagePhotoIds() != null && !dto.getDamagePhotoIds().isEmpty()) {
+            try {
+                checkoutPhotoIdsJson = new com.fasterxml.jackson.databind.ObjectMapper()
+                        .writeValueAsString(dto.getDamagePhotoIds());
+            } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+                log.warn("[CheckOut] Failed to serialize damage photo IDs: {}", e.getMessage());
+                checkoutPhotoIdsJson = "[]";
+            }
+        }
+        
+        // Flag high-value claims (>50,000 RSD ~= €500) for mandatory admin review
+        boolean adminReviewRequired = dto.getEstimatedDamageCostRsd() != null 
+                && dto.getEstimatedDamageCostRsd().compareTo(new java.math.BigDecimal("50000")) > 0;
+        
         DamageClaim claim = DamageClaim.builder()
                 .booking(booking)
                 .status(DamageClaimStatus.CHECKOUT_PENDING)
                 .disputeStage(DisputeStage.CHECKOUT)
                 .description(dto.getDamageDescription())
                 .claimedAmount(dto.getEstimatedDamageCostRsd())
+                .checkoutPhotoIds(checkoutPhotoIdsJson)
                 .host(booking.getCar().getOwner())
                 .guest(booking.getRenter())
+                .adminReviewRequired(adminReviewRequired)
+                .repairQuoteDocumentUrl(dto.getRepairQuoteDocumentUrl())
                 .createdAt(Instant.now())
                 .build();
         
         claim = damageClaimRepository.save(claim);
+        
+        if (adminReviewRequired) {
+            log.warn("[CheckOut] HIGH-VALUE CLAIM: Booking {} claim {} flagged for mandatory admin review ({}  RSD > 50,000 RSD threshold)",
+                    booking.getId(), claim.getId(), dto.getEstimatedDamageCostRsd());
+        }
         
         checkoutDamageDisputeCounter.increment();
         log.info("[CheckOut] Created checkout damage claim {} for booking {}: {} RSD",
@@ -1186,13 +1227,24 @@ public class CheckOutService {
         
         DamageClaim claim = booking.getCheckoutDamageClaim();
         if (claim != null) {
+            // Validate claim is still in acceptable state (not already escalated/resolved)
+            if (claim.getStatus() != DamageClaimStatus.CHECKOUT_PENDING) {
+                throw new IllegalStateException(
+                        "Prijava štete nije u stanju za prihvatanje. Trenutni status: " + claim.getStatus());
+            }
+            // [P1] Block guest self-acceptance on high-value claims that require admin review
+            if (Boolean.TRUE.equals(claim.getAdminReviewRequired())) {
+                throw new IllegalStateException(
+                        "Prijava štete preko 50.000 RSD zahteva pregled administratora. " +
+                        "Gost ne može direktno prihvatiti ovu prijavu.");
+            }
             claim.setStatus(DamageClaimStatus.CHECKOUT_GUEST_ACCEPTED);
             claim.setApprovedAmount(claim.getClaimedAmount()); // P0 FIX: Set approved amount for saga charge calculation
             claim.setResolvedAt(Instant.now());
             damageClaimRepository.save(claim);
         }
         
-        booking.setDamageClaimStatus("ACCEPTED");
+        booking.setDamageClaimStatus("CHECKOUT_GUEST_ACCEPTED");
         
         // P0 FIX: Clear deposit hold state so the saga validation doesn't suspend.
         // The saga's CAPTURE_DEPOSIT / RELEASE_DEPOSIT steps will handle deposit
@@ -1227,9 +1279,10 @@ public class CheckOutService {
      * @param bookingId Booking ID
      * @param userId Guest's user ID
      * @param disputeReason Guest's dispute reason
+     * @param evidencePhotoIds Optional list of evidence photo IDs uploaded by guest
      */
     @Transactional
-    public void disputeDamageClaim(Long bookingId, Long userId, String disputeReason) {
+    public void disputeDamageClaim(Long bookingId, Long userId, String disputeReason, List<Long> evidencePhotoIds) {
         Booking booking = bookingRepository.findByIdWithRelations(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Booking not found: " + bookingId));
         
@@ -1243,14 +1296,27 @@ public class CheckOutService {
         
         DamageClaim claim = booking.getCheckoutDamageClaim();
         if (claim != null) {
+            // Validate claim is still in disputable state (not already escalated/resolved)
+            if (claim.getStatus() != DamageClaimStatus.CHECKOUT_PENDING) {
+                throw new IllegalStateException(
+                        "Prijava štete nije u stanju za osporavanje. Trenutni status: " + claim.getStatus());
+            }
             claim.setStatus(DamageClaimStatus.CHECKOUT_GUEST_DISPUTED);
             claim.setDisputeReason(disputeReason);
             claim.setEscalated(true);
             claim.setEscalatedAt(Instant.now());
+            // [P2] Persist guest evidence photo IDs if provided
+            if (evidencePhotoIds != null && !evidencePhotoIds.isEmpty()) {
+                try {
+                    claim.setEvidencePhotoIds(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(evidencePhotoIds));
+                } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+                    log.warn("[CheckOut] Failed to serialize evidence photo IDs for booking {}", bookingId, e);
+                }
+            }
             damageClaimRepository.save(claim);
         }
         
-        booking.setDamageClaimStatus("ESCALATED");
+        booking.setDamageClaimStatus("CHECKOUT_GUEST_DISPUTED");
         
         eventService.recordEvent(
             booking,

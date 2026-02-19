@@ -463,6 +463,7 @@ export class CheckoutService {
       description: string;
       estimatedCostRsd: number;
       photoIds?: number[];
+      repairQuoteDocumentUrl?: string;
     },
     notes?: string,
   ): Observable<CheckOutStatusDTO> {
@@ -475,6 +476,7 @@ export class CheckoutService {
       damageDescription: damageReport?.description,
       estimatedDamageCostRsd: damageReport?.estimatedCostRsd,
       damagePhotoIds: damageReport?.photoIds,
+      repairQuoteDocumentUrl: damageReport?.repairQuoteDocumentUrl,
       notes,
     };
 
@@ -505,30 +507,28 @@ export class CheckoutService {
    */
   acceptDamageClaim(bookingId: number): Observable<any> {
     this._isLoading.set(true);
-    return this.http
-      .post<any>(`${this.apiUrl}/${bookingId}/checkout/damage/accept`, {})
-      .pipe(
-        tap(() => {
-          this._isLoading.set(false);
-          // Reload status after acceptance
-          this.loadStatus(bookingId).subscribe();
-        }),
-        catchError((err) => {
-          this._isLoading.set(false);
-          this._error.set(this.extractErrorMessage(err));
-          return throwError(() => err);
-        }),
-      );
+    return this.http.post<any>(`${this.apiUrl}/${bookingId}/checkout/damage/accept`, {}).pipe(
+      tap(() => {
+        this._isLoading.set(false);
+        // Reload status after acceptance
+        this.loadStatus(bookingId).subscribe();
+      }),
+      catchError((err) => {
+        this._isLoading.set(false);
+        this._error.set(this.extractErrorMessage(err));
+        return throwError(() => err);
+      }),
+    );
   }
 
   /**
    * Guest disputes a checkout damage claim.
    * Escalates to admin for resolution. Deposit remains held.
    */
-  disputeDamageClaim(bookingId: number, reason: string): Observable<any> {
+  disputeDamageClaim(bookingId: number, reason: string, evidencePhotoIds?: number[]): Observable<any> {
     this._isLoading.set(true);
     return this.http
-      .post<any>(`${this.apiUrl}/${bookingId}/checkout/damage/dispute`, { reason })
+      .post<any>(`${this.apiUrl}/${bookingId}/checkout/damage/dispute`, { reason, evidencePhotoIds })
       .pipe(
         tap(() => {
           this._isLoading.set(false);

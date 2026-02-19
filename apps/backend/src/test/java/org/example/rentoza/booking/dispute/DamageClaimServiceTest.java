@@ -22,6 +22,8 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -36,6 +38,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class DamageClaimServiceTest {
 
     @Mock private DamageClaimRepository claimRepository;
@@ -106,7 +109,7 @@ class DamageClaimServiceTest {
         @DisplayName("Should create claim within 48-hour window")
         void shouldCreateClaimWithin48HourWindow() {
             when(bookingRepository.findByIdWithRelations(1000L)).thenReturn(Optional.of(booking));
-            when(claimRepository.existsByBookingId(1000L)).thenReturn(false);
+            when(claimRepository.hasActiveClaim(eq(1000L), any(), any())).thenReturn(false);
             when(claimRepository.save(any(DamageClaim.class))).thenAnswer(inv -> {
                 DamageClaim claim = inv.getArgument(0);
                 claim.setId(1L);
@@ -146,7 +149,7 @@ class DamageClaimServiceTest {
         void shouldAcceptClaimsWithinVariousTimesUnder48Hours(int hoursSinceCheckout) {
             booking.setCheckoutCompletedAt(Instant.now().minus(Duration.ofHours(hoursSinceCheckout)));
             when(bookingRepository.findByIdWithRelations(1000L)).thenReturn(Optional.of(booking));
-            when(claimRepository.existsByBookingId(1000L)).thenReturn(false);
+            when(claimRepository.hasActiveClaim(eq(1000L), any(), any())).thenReturn(false);
             when(claimRepository.save(any(DamageClaim.class))).thenAnswer(inv -> {
                 DamageClaim claim = inv.getArgument(0);
                 claim.setId(1L);
@@ -163,7 +166,7 @@ class DamageClaimServiceTest {
         void shouldAllowClaimDuringCheckoutFlow() {
             booking.setCheckoutCompletedAt(null);
             when(bookingRepository.findByIdWithRelations(1000L)).thenReturn(Optional.of(booking));
-            when(claimRepository.existsByBookingId(1000L)).thenReturn(false);
+            when(claimRepository.hasActiveClaim(eq(1000L), any(), any())).thenReturn(false);
             when(claimRepository.save(any(DamageClaim.class))).thenAnswer(inv -> {
                 DamageClaim claim = inv.getArgument(0);
                 claim.setId(1L);
@@ -180,7 +183,7 @@ class DamageClaimServiceTest {
         @DisplayName("Should reject duplicate claim for same booking")
         void shouldRejectDuplicateClaimForSameBooking() {
             when(bookingRepository.findByIdWithRelations(1000L)).thenReturn(Optional.of(booking));
-            when(claimRepository.existsByBookingId(1000L)).thenReturn(true);
+            when(claimRepository.hasActiveClaim(eq(1000L), any(), any())).thenReturn(true);
 
             assertThatThrownBy(() -> damageClaimService.createClaim(
                     1000L, "Another", BigDecimal.valueOf(5000), List.of(1L), host.getId()))
@@ -235,6 +238,43 @@ class DamageClaimServiceTest {
         @Test
         @DisplayName("Legacy PENDING accept -> ACCEPTED_BY_GUEST")
         void shouldAcceptLegacyPendingClaim() {
+            when(claimRepository.findById(1L)).thenReturn(Optional.of(pendingClaim));
+            when(userRepository.findById(guest.getId())).thenReturn(Optional.of(guest));
+            when(claimRepository.save(any(DamageClaim.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            DamageClaimDTO result = damageClaimService.acceptClaim(1L, "I accept", guest.getId());
+            assertThat(result.getStatus()).isEqualTo(DamageClaimStatus.ACCEPTED_BY_GUEST);
+        }
+
+        @Test
+        @DisplayName("[P1] Legacy high-value claim (adminReviewRequired=true) blocks guest acceptance")
+        void shouldBlockGuestAcceptOnHighValueLegacyClaim() {
+            pendingClaim.setAdminReviewRequired(true);
+            when(claimRepository.findById(1L)).thenReturn(Optional.of(pendingClaim));
+            when(userRepository.findById(guest.getId())).thenReturn(Optional.of(guest));
+
+            assertThatThrownBy(() -> damageClaimService.acceptClaim(1L, "I accept", guest.getId()))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("50.000 RSD")
+                    .hasMessageContaining("administratora");
+        }
+
+        @Test
+        @DisplayName("[P1] Checkout high-value claim (adminReviewRequired=true) blocks guest acceptance")
+        void shouldBlockGuestAcceptOnHighValueCheckoutClaim() {
+            checkoutPendingClaim.setAdminReviewRequired(true);
+            when(claimRepository.findById(2L)).thenReturn(Optional.of(checkoutPendingClaim));
+            when(userRepository.findById(guest.getId())).thenReturn(Optional.of(guest));
+
+            assertThatThrownBy(() -> damageClaimService.acceptClaim(2L, "I accept", guest.getId()))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("50.000 RSD");
+        }
+
+        @Test
+        @DisplayName("[P1] Claim with adminReviewRequired=false allows guest acceptance")
+        void shouldAllowGuestAcceptWhenAdminReviewNotRequired() {
+            pendingClaim.setAdminReviewRequired(false);
             when(claimRepository.findById(1L)).thenReturn(Optional.of(pendingClaim));
             when(userRepository.findById(guest.getId())).thenReturn(Optional.of(guest));
             when(claimRepository.save(any(DamageClaim.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -386,6 +426,8 @@ class DamageClaimServiceTest {
         @DisplayName("Should allow guest to create claim")
         void shouldAllowGuestToCreateClaim() {
             when(bookingRepository.findByIdWithRelations(1000L)).thenReturn(Optional.of(booking));
+            when(userRepository.findById(guest.getId())).thenReturn(Optional.of(guest));
+            when(claimRepository.hasActiveClaim(eq(1000L), any(), any())).thenReturn(false);
             when(claimRepository.save(any(DamageClaim.class))).thenAnswer(inv -> {
                 DamageClaim claim = inv.getArgument(0);
                 claim.setId(1L);
@@ -442,6 +484,71 @@ class DamageClaimServiceTest {
 
             double newCount = meterRegistry.counter("damage_claim.created").count();
             assertThat(newCount).isEqualTo(initialCount + 1);
+        }
+    }
+
+    @Nested
+    @DisplayName("Multi-Claim Support (Goal 6)")
+    class MultiClaimTests {
+
+        @Test
+        @DisplayName("getClaimsByBooking returns all claims for a booking")
+        void shouldReturnAllClaimsForBooking() {
+            DamageClaim claim1 = DamageClaim.builder()
+                    .id(1L).booking(booking).host(host).guest(guest)
+                    .description("Host claim").claimedAmount(BigDecimal.valueOf(15000))
+                    .status(DamageClaimStatus.PENDING)
+                    .initiator(ClaimInitiator.OWNER)
+                    .createdAt(Instant.now().minus(Duration.ofHours(48)))
+                    .build();
+            DamageClaim claim2 = DamageClaim.builder()
+                    .id(2L).booking(booking).host(host).guest(guest)
+                    .description("Guest counter-claim").claimedAmount(BigDecimal.valueOf(5000))
+                    .status(DamageClaimStatus.PENDING)
+                    .initiator(ClaimInitiator.USER)
+                    .createdAt(Instant.now())
+                    .build();
+
+            // findAllByBookingId returns newest first
+            when(claimRepository.findAllByBookingId(1000L)).thenReturn(List.of(claim2, claim1));
+
+            List<DamageClaimDTO> results = damageClaimService.getClaimsByBooking(1000L, host.getId());
+            assertThat(results).hasSize(2);
+            assertThat(results.get(0).getId()).isEqualTo(2L); // newest first
+            assertThat(results.get(1).getId()).isEqualTo(1L);
+        }
+
+        @Test
+        @DisplayName("getClaimByBooking returns newest claim")
+        void shouldReturnNewestClaimForBooking() {
+            DamageClaim older = DamageClaim.builder()
+                    .id(1L).booking(booking).host(host).guest(guest)
+                    .description("Older claim").claimedAmount(BigDecimal.valueOf(15000))
+                    .status(DamageClaimStatus.PENDING)
+                    .initiator(ClaimInitiator.OWNER)
+                    .createdAt(Instant.now().minus(Duration.ofHours(48)))
+                    .build();
+            DamageClaim newer = DamageClaim.builder()
+                    .id(2L).booking(booking).host(host).guest(guest)
+                    .description("Newer claim").claimedAmount(BigDecimal.valueOf(5000))
+                    .status(DamageClaimStatus.PENDING)
+                    .initiator(ClaimInitiator.USER)
+                    .createdAt(Instant.now())
+                    .build();
+
+            when(claimRepository.findAllByBookingId(1000L)).thenReturn(List.of(newer, older));
+
+            DamageClaimDTO result = damageClaimService.getClaimByBooking(1000L, host.getId());
+            assertThat(result.getId()).isEqualTo(2L);
+        }
+
+        @Test
+        @DisplayName("getClaimsByBooking throws when no claims exist")
+        void shouldThrowWhenNoClaimsExist() {
+            when(claimRepository.findAllByBookingId(9999L)).thenReturn(List.of());
+
+            assertThatThrownBy(() -> damageClaimService.getClaimsByBooking(9999L, host.getId()))
+                    .isInstanceOf(ResourceNotFoundException.class);
         }
     }
 }

@@ -4,13 +4,7 @@
  * Main orchestrator for the checkout flow. Routes to appropriate sub-components
  * based on render decision signal (role-aware state machine).
  */
-import {
-  Component,
-  inject,
-  OnInit,
-  OnDestroy,
-  ChangeDetectionStrategy,
-} from '@angular/core';
+import { Component, inject, OnInit, OnDestroy, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 
@@ -94,7 +88,8 @@ import { CheckoutDamageDisputeComponent } from './checkout-damage-dispute.compon
           <app-guest-checkout
             [bookingId]="bookingId"
             [status]="checkoutService.currentStatus()"
-            (completed)="onGuestCompleted()">
+            (completed)="onGuestCompleted()"
+          >
           </app-guest-checkout>
         }
 
@@ -107,9 +102,10 @@ import { CheckoutDamageDisputeComponent } from './checkout-damage-dispute.compon
             [nextSteps]="[
               'Domaćin će pregledati fotografije i podatke',
               'Proverićemo da li ima novih oštećenja',
-              'Dobićete obaveštenje kada checkout bude završen'
+              'Dobićete obaveštenje kada checkout bude završen',
             ]"
-            (refresh)="loadStatus()">
+            (refresh)="loadStatus()"
+          >
           </app-checkout-waiting>
         }
 
@@ -122,9 +118,10 @@ import { CheckoutDamageDisputeComponent } from './checkout-damage-dispute.compon
             [nextSteps]="[
               'Gost treba da uploaduje fotografije povratka vozila',
               'Gost treba da unese završnu kilometražu i nivo goriva',
-              'Dobićete obaveštenje kada gost završi'
+              'Dobićete obaveštenje kada gost završi',
             ]"
-            (refresh)="loadStatus()">
+            (refresh)="loadStatus()"
+          >
           </app-checkout-waiting>
         }
 
@@ -132,14 +129,13 @@ import { CheckoutDamageDisputeComponent } from './checkout-damage-dispute.compon
           <app-host-checkout
             [bookingId]="bookingId"
             [status]="checkoutService.currentStatus()"
-            (confirmed)="onHostConfirmed()">
+            (confirmed)="onHostConfirmed()"
+          >
           </app-host-checkout>
         }
 
         @case ('COMPLETE') {
-          <app-checkout-complete
-            [bookingId]="bookingId"
-            [status]="checkoutService.currentStatus()">
+          <app-checkout-complete [bookingId]="bookingId" [status]="checkoutService.currentStatus()">
           </app-checkout-complete>
         }
 
@@ -148,7 +144,8 @@ import { CheckoutDamageDisputeComponent } from './checkout-damage-dispute.compon
             [bookingId]="bookingId"
             [status]="checkoutService.currentStatus()"
             role="GUEST"
-            (resolved)="loadStatus()">
+            (resolved)="loadStatus()"
+          >
           </app-checkout-damage-dispute>
         }
 
@@ -157,7 +154,8 @@ import { CheckoutDamageDisputeComponent } from './checkout-damage-dispute.compon
             [bookingId]="bookingId"
             [status]="checkoutService.currentStatus()"
             role="HOST"
-            (resolved)="loadStatus()">
+            (resolved)="loadStatus()"
+          >
           </app-checkout-damage-dispute>
         }
 
@@ -175,98 +173,100 @@ import { CheckoutDamageDisputeComponent } from './checkout-damage-dispute.compon
       }
     </div>
   `,
-  styles: [`
-    .checkout-wizard {
-      max-width: 800px;
-      margin: 0 auto;
-      padding: 16px;
-    }
-
-    .wizard-header {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 24px;
-
-      h1 {
-        margin: 0;
-        font-size: 1.5rem;
-        font-weight: 500;
+  styles: [
+    `
+      .checkout-wizard {
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 16px;
       }
-    }
 
-    .back-button {
-      margin-left: -8px;
-    }
+      .wizard-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 24px;
 
-    .loading-container {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 48px;
-      gap: 16px;
-
-      p {
-        color: var(--text-secondary);
+        h1 {
+          margin: 0;
+          font-size: 1.5rem;
+          font-weight: 500;
+        }
       }
-    }
 
-    .error-card {
-      mat-card-content {
+      .back-button {
+        margin-left: -8px;
+      }
+
+      .loading-container {
         display: flex;
         flex-direction: column;
         align-items: center;
+        justify-content: center;
+        padding: 48px;
         gap: 16px;
-        padding: 24px;
+
+        p {
+          color: var(--text-secondary);
+        }
+      }
+
+      .error-card {
+        mat-card-content {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 16px;
+          padding: 24px;
+          text-align: center;
+
+          mat-icon {
+            font-size: 48px;
+            width: 48px;
+            height: 48px;
+          }
+
+          p {
+            margin: 0;
+            color: var(--warn-color);
+          }
+        }
+      }
+
+      .info-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
         text-align: center;
+        padding: 48px 24px;
+        background: var(--surface-color, #f5f5f5);
+        border-radius: 12px;
+        gap: 16px;
 
         mat-icon {
-          font-size: 48px;
-          width: 48px;
-          height: 48px;
+          font-size: 64px;
+          width: 64px;
+          height: 64px;
+          color: var(--primary-color);
+        }
+
+        h3 {
+          margin: 0;
+          font-size: 1.25rem;
         }
 
         p {
           margin: 0;
+          color: var(--text-secondary);
+          max-width: 400px;
+        }
+
+        &.warning mat-icon {
           color: var(--warn-color);
         }
       }
-    }
-
-    .info-card {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      text-align: center;
-      padding: 48px 24px;
-      background: var(--surface-color, #f5f5f5);
-      border-radius: 12px;
-      gap: 16px;
-
-      mat-icon {
-        font-size: 64px;
-        width: 64px;
-        height: 64px;
-        color: var(--primary-color);
-      }
-
-      h3 {
-        margin: 0;
-        font-size: 1.25rem;
-      }
-
-      p {
-        margin: 0;
-        color: var(--text-secondary);
-        max-width: 400px;
-      }
-
-      &.warning mat-icon {
-        color: var(--warn-color);
-      }
-    }
-  `],
+    `,
+  ],
 })
 export class CheckoutWizardComponent implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);
@@ -330,4 +330,3 @@ export class CheckoutWizardComponent implements OnInit, OnDestroy {
     this.router.navigate(['/bookings', this.bookingId]);
   }
 }
-

@@ -129,9 +129,9 @@ public class DamageClaimService {
         }
         // Note: If checkout is not completed yet, claim is filed during checkout flow (allowed)
         
-        // Check if claim already exists
-        if (claimRepository.existsByBookingId(bookingId)) {
-            throw new IllegalStateException("Za ovu rezervaciju već postoji prijava štete");
+        // Check if active claim already exists for this booking + stage + initiator
+        if (claimRepository.hasActiveClaim(bookingId, DisputeStage.CHECKOUT, ClaimInitiator.OWNER)) {
+            throw new IllegalStateException("Za ovu rezervaciju već postoji aktivna prijava štete od strane vlasnika");
         }
 
         DamageClaim claim = DamageClaim.builder()
@@ -144,6 +144,7 @@ public class DamageClaimService {
                 .status(DamageClaimStatus.PENDING)
                 .responseDeadline(Instant.now().plus(Duration.ofHours(responseHours)))
                 .initiator(ClaimInitiator.OWNER)
+                .disputeStage(DisputeStage.CHECKOUT)
                 .reportedBy(booking.getCar().getOwner())
                 .build();
 
@@ -207,7 +208,10 @@ public class DamageClaimService {
                 .orElseThrow(() -> new ResourceNotFoundException("Korisnik nije pronađen"));
         
         // Note: Guests CAN file claims even if host already filed one (counter-claim scenario)
-        // Admin will review both claims and make a decision
+        // But prevent duplicate active guest claims for same booking + stage
+        if (claimRepository.hasActiveClaim(bookingId, DisputeStage.CHECKOUT, ClaimInitiator.USER)) {
+            throw new IllegalStateException("Već postoji aktivna reklamacija gosta za ovu rezervaciju");
+        }
         
         DamageClaim claim = DamageClaim.builder()
                 .booking(booking)
@@ -258,6 +262,13 @@ public class DamageClaimService {
 
         if (!claim.canGuestRespond()) {
             throw new IllegalStateException("Rok za odgovor je istekao ili prijava nije na čekanju");
+        }
+
+        // [P1] Block guest self-acceptance on high-value claims requiring admin review
+        if (Boolean.TRUE.equals(claim.getAdminReviewRequired())) {
+            throw new IllegalStateException(
+                    "Prijava štete preko 50.000 RSD zahteva pregled administratora. " +
+                    "Gost ne može direktno prihvatiti ovu prijavu.");
         }
 
         // Route through checkout-specific or legacy transition
@@ -429,8 +440,12 @@ public class DamageClaimService {
 
     @Transactional(readOnly = true)
     public DamageClaimDTO getClaimByBooking(Long bookingId, Long userId) {
-        DamageClaim claim = claimRepository.findByBookingId(bookingId)
-                .orElseThrow(() -> new ResourceNotFoundException("Prijava štete nije pronađena"));
+        // Use multi-claim-aware query, return most recent claim
+        List<DamageClaim> claims = claimRepository.findAllByBookingId(bookingId);
+        if (claims.isEmpty()) {
+            throw new ResourceNotFoundException("Prijava štete nije pronađena");
+        }
+        DamageClaim claim = claims.get(0); // newest first
 
         // Validate access
         if (!claim.getHost().getId().equals(userId) && !claim.getGuest().getId().equals(userId)) {
@@ -438,6 +453,26 @@ public class DamageClaimService {
         }
 
         return mapToDTO(claim);
+    }
+
+    /**
+     * Get all claims for a booking (multi-claim support).
+     * Returns all claims (host-initiated and guest-initiated) for the given booking.
+     * 
+     * @since V61 - Multi-claim support
+     */
+    @Transactional(readOnly = true)
+    public List<DamageClaimDTO> getClaimsByBooking(Long bookingId, Long userId) {
+        List<DamageClaim> claims = claimRepository.findAllByBookingId(bookingId);
+        if (claims.isEmpty()) {
+            throw new ResourceNotFoundException("Prijave štete nisu pronađene za ovu rezervaciju");
+        }
+        // Validate access (check against first claim's parties)
+        DamageClaim first = claims.get(0);
+        if (!first.getHost().getId().equals(userId) && !first.getGuest().getId().equals(userId)) {
+            throw new AccessDeniedException("Nemate pristup ovim prijavama");
+        }
+        return claims.stream().map(this::mapToDTO).toList();
     }
 
     @Transactional(readOnly = true)

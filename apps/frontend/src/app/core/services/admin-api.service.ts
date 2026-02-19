@@ -211,6 +211,19 @@ export interface AdminDisputeDetailDto extends AdminDisputeListDto {
   adminNotes?: string;
   reviewedBy?: string;
   reviewedAt?: string;
+  // V61 additions
+  disputeStage?: string;
+  disputeType?: string;
+  initiator?: string;
+  adminReviewRequired?: boolean;
+  repairQuoteDocumentUrl?: string;
+  guestId?: number;
+  guestEmail?: string;
+  guestPhone?: string;
+  hostId?: number;
+  hostEmail?: string;
+  hostPhone?: string;
+  carId?: number;
 }
 
 export interface DisputeResolutionRequest {
@@ -699,6 +712,16 @@ export class AdminApiService {
 
   resolveDispute(disputeId: number, request: DisputeResolutionRequest): Observable<void> {
     return this.http.post<void>(`${this.apiUrl}/disputes/${disputeId}/resolve`, request);
+  }
+
+  /** Resolve a checkout-specific damage dispute (uses checkout resolution endpoint). */
+  resolveCheckoutDispute(damageClaimId: number, request: {
+    decision: 'APPROVE' | 'REJECT' | 'PARTIAL';
+    approvedAmountRsd?: number;
+    resolutionNotes: string;
+    notifyParties?: boolean;
+  }): Observable<unknown> {
+    return this.http.post(`${this.apiUrl}/disputes/checkout/${damageClaimId}/resolve`, request);
   }
 
   escalateDispute(disputeId: number, request: EscalateDisputeRequest): Observable<void> {

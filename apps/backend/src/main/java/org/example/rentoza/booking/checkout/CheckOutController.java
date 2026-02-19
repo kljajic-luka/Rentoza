@@ -20,6 +20,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -278,13 +279,23 @@ public class CheckOutController {
     @PostMapping("/damage/dispute")
     public ResponseEntity<Map<String, Object>> disputeDamageClaim(
             @PathVariable Long bookingId,
-            @RequestBody Map<String, String> body) {
+            @RequestBody Map<String, Object> body) {
         
         Long userId = currentUser.id();
-        String reason = body.getOrDefault("reason", "");
-        log.info("[CheckOut] Guest {} disputing damage claim for booking {}: {}", userId, bookingId, reason);
+        String reason = body.containsKey("reason") ? String.valueOf(body.get("reason")) : "";
         
-        checkOutService.disputeDamageClaim(bookingId, userId, reason);
+        // [P2] Accept optional evidence photo IDs from guest
+        List<Long> evidencePhotoIds = null;
+        if (body.containsKey("evidencePhotoIds") && body.get("evidencePhotoIds") instanceof List<?> rawList) {
+            evidencePhotoIds = rawList.stream()
+                    .map(item -> Long.valueOf(String.valueOf(item)))
+                    .toList();
+        }
+        
+        log.info("[CheckOut] Guest {} disputing damage claim for booking {}: {} (evidencePhotos: {})",
+                userId, bookingId, reason, evidencePhotoIds != null ? evidencePhotoIds.size() : 0);
+        
+        checkOutService.disputeDamageClaim(bookingId, userId, reason, evidencePhotoIds);
         
         return ResponseEntity.ok(Map.of(
             "status", "DISPUTED",

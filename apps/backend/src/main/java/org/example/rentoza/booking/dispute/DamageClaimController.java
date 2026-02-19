@@ -66,6 +66,20 @@ public class DamageClaimController {
         return ResponseEntity.ok(claim);
     }
 
+    /**
+     * Get all claims for a booking (multi-claim support).
+     * Returns host claims, guest counter-claims, etc.
+     * 
+     * @since V61 - Multi-claim support
+     */
+    @GetMapping("/api/damage-claims/booking/{bookingId}/all")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<List<DamageClaimDTO>> getAllClaimsByBooking(@PathVariable Long bookingId) {
+        Long userId = currentUser.id();
+        List<DamageClaimDTO> claims = claimService.getClaimsByBooking(bookingId, userId);
+        return ResponseEntity.ok(claims);
+    }
+
     @PostMapping("/api/damage-claims/{id}/accept")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<DamageClaimDTO> acceptClaim(

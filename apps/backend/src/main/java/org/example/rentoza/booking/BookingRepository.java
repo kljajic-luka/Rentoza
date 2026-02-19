@@ -3,7 +3,10 @@ package org.example.rentoza.booking;
 import jakarta.persistence.LockModeType;
 import jakarta.persistence.QueryHint;
 import org.example.rentoza.car.Car;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.jpa.repository.QueryHints;
@@ -12,7 +15,7 @@ import org.springframework.data.repository.query.Param;
 import java.time.LocalDateTime;
 import java.util.List;
 
-public interface BookingRepository extends JpaRepository<Booking, Long> {
+public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpecificationExecutor<Booking> {
 
     /**
      * Find an existing booking by idempotency key.
@@ -751,6 +754,23 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
      */
     @Query("SELECT COUNT(b) FROM Booking b WHERE b.status = :status")
     Long countByStatus(@Param("status") BookingStatus status);
+    
+    /**
+     * Count bookings with a given status created within a period.
+     */
+    @Query("SELECT COUNT(b) FROM Booking b WHERE b.status = :status AND b.createdAt BETWEEN :start AND :end")
+    Long countByStatusAndCreatedAtBetween(
+        @Param("status") BookingStatus status,
+        @Param("start") java.time.Instant start,
+        @Param("end") java.time.Instant end);
+    
+    /**
+     * Count bookings created within a period.
+     */
+    @Query("SELECT COUNT(b) FROM Booking b WHERE b.createdAt BETWEEN :start AND :end")
+    Long countBookingsInPeriod(
+        @Param("start") java.time.Instant start,
+        @Param("end") java.time.Instant end);
     
     /**
      * Find bookings by status and updated before a certain date.

@@ -8,7 +8,9 @@ import org.example.rentoza.admin.entity.AdminAction;
 import org.example.rentoza.admin.entity.AdminAuditLog;
 import org.example.rentoza.admin.entity.ResourceType;
 import org.example.rentoza.admin.repository.AdminAuditLogRepository;
+import org.example.rentoza.admin.service.AdminAuditService;
 import org.example.rentoza.security.CurrentUser;
+import org.example.rentoza.user.UserRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -24,6 +26,7 @@ import org.springframework.web.bind.annotation.*;
 
 import jakarta.persistence.criteria.Predicate;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
@@ -63,6 +66,8 @@ public class AdminAuditController {
     
     private final AdminAuditLogRepository auditRepo;
     private final CurrentUser currentUser;
+    private final AdminAuditService auditService;
+    private final UserRepository userRepo;
     
     private static final int MAX_PAGE_SIZE = 100;
     private static final int MAX_EXPORT_SIZE = 10000;
@@ -105,7 +110,7 @@ public class AdminAuditController {
             size = MAX_PAGE_SIZE;
         }
         
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "timestamp"));
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
         
         // Build dynamic specification
         Specification<AdminAuditLog> spec = buildSpecification(
@@ -153,7 +158,7 @@ public class AdminAuditController {
             size = MAX_PAGE_SIZE;
         }
         
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "timestamp"));
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
         
         Page<AdminAuditLog> auditLogs = auditRepo.findByResourceTypeAndResourceId(type, id, pageable);
         
@@ -183,7 +188,7 @@ public class AdminAuditController {
         log.info("Admin {} exporting audit logs: resourceType={}, action={}", 
                  currentUser.id(), resourceType, action);
         
-        Pageable pageable = PageRequest.of(0, MAX_EXPORT_SIZE, Sort.by(Sort.Direction.DESC, "timestamp"));
+        Pageable pageable = PageRequest.of(0, MAX_EXPORT_SIZE, Sort.by(Sort.Direction.DESC, "createdAt"));
         
         Specification<AdminAuditLog> spec = buildSpecification(
             adminId, resourceType, resourceId, action, startDate, endDate, searchTerm
@@ -192,6 +197,12 @@ public class AdminAuditController {
         Page<AdminAuditLog> auditLogs = auditRepo.findAll(spec, pageable);
         
         String csv = generateCsv(auditLogs.getContent());
+        
+        // Log the export action to audit trail
+        userRepo.findById(currentUser.id()).ifPresent(admin ->
+            auditService.logAction(admin, AdminAction.AUDIT_EXPORTED, ResourceType.CONFIG, null, null,
+                auditLogs.getTotalElements() + " audit records exported", "Audit log CSV export")
+        );
         
         String filename = "audit_logs_" + Instant.now().toEpochMilli() + ".csv";
         
@@ -213,10 +224,15 @@ public class AdminAuditController {
         
         log.debug("Admin {} requesting audit stats", currentUser.id());
         
-        Instant start = startDate != null ? startDate : Instant.now().minus(30, java.time.temporal.ChronoUnit.DAYS);
-        Instant end = endDate != null ? endDate : Instant.now();
+        // Convert Instant to LocalDateTime for entity field compatibility
+        LocalDateTime start = startDate != null 
+            ? LocalDateTime.ofInstant(startDate, java.time.ZoneId.systemDefault())
+            : LocalDateTime.now().minusDays(30);
+        LocalDateTime end = endDate != null 
+            ? LocalDateTime.ofInstant(endDate, java.time.ZoneId.systemDefault())
+            : LocalDateTime.now();
         
-        List<AdminAuditLog> logs = auditRepo.findByTimestampBetween(start, end);
+        List<AdminAuditLog> logs = auditRepo.findByCreatedAtBetween(start, end);
         
         // Group by action
         var byAction = logs.stream()
@@ -269,19 +285,21 @@ public class AdminAuditController {
             }
             
             if (startDate != null) {
-                predicates.add(cb.greaterThanOrEqualTo(root.get("timestamp"), startDate));
+                LocalDateTime startLocal = LocalDateTime.ofInstant(startDate, java.time.ZoneId.systemDefault());
+                predicates.add(cb.greaterThanOrEqualTo(root.get("createdAt"), startLocal));
             }
             
             if (endDate != null) {
-                predicates.add(cb.lessThanOrEqualTo(root.get("timestamp"), endDate));
+                LocalDateTime endLocal = LocalDateTime.ofInstant(endDate, java.time.ZoneId.systemDefault());
+                predicates.add(cb.lessThanOrEqualTo(root.get("createdAt"), endLocal));
             }
             
             if (searchTerm != null && !searchTerm.isBlank()) {
                 String pattern = "%" + searchTerm.toLowerCase() + "%";
-                Predicate notesMatch = cb.like(cb.lower(root.get("notes")), pattern);
+                Predicate reasonMatch = cb.like(cb.lower(root.get("reason")), pattern);
                 Predicate beforeMatch = cb.like(cb.lower(root.get("beforeState")), pattern);
                 Predicate afterMatch = cb.like(cb.lower(root.get("afterState")), pattern);
-                predicates.add(cb.or(notesMatch, beforeMatch, afterMatch));
+                predicates.add(cb.or(reasonMatch, beforeMatch, afterMatch));
             }
             
             return cb.and(predicates.toArray(new Predicate[0]));

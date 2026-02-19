@@ -12,6 +12,7 @@ import org.example.rentoza.booking.BookingRepository;
 import org.example.rentoza.booking.BookingStatus;
 import org.example.rentoza.booking.dispute.DamageClaimRepository;
 import org.example.rentoza.car.CarRepository;
+import org.example.rentoza.car.ListingStatus;
 import org.example.rentoza.config.timezone.SerbiaTimeZone;
 import org.example.rentoza.user.UserRepository;
 import org.springframework.cache.annotation.Cacheable;
@@ -88,14 +89,15 @@ public class AdminDashboardService {
         // ==================== REAL-TIME METRICS ====================
         
         Long activeTripsCount = bookingRepo.countActiveTrips();
-        Long pendingApprovalsCount = 0L; // Car approvals - will be added when car approval is implemented
+        Long pendingApprovalsCount = carRepo.countByListingStatus(ListingStatus.PENDING_APPROVAL);
         Long openDisputesCount = damageClaimRepo.countOpenDisputes();
         Long suspendedUsersCount = adminUserRepo.countBannedUsers();
         
         // ==================== REVENUE CALCULATION ====================
         
         // This month's completed bookings
-        Long completedThisMonth = bookingRepo.countByStatus(BookingStatus.COMPLETED);
+        Long completedThisMonth = bookingRepo.countByStatusAndCreatedAtBetween(
+            BookingStatus.COMPLETED, startOfMonthInstant, Instant.now());
         BigDecimal revenueThisMonth = calculateRevenueForPeriod(startOfMonthInstant, Instant.now());
         BigDecimal revenueLastMonth = calculateRevenueForPeriod(startOfLastMonthInstant, endOfLastMonthInstant);
         
@@ -235,16 +237,14 @@ public class AdminDashboardService {
      * Count users registered in a specific period.
      */
     private Long countUsersInPeriod(Instant start, Instant end) {
-        // Uses createdAt between start and end
-        return adminUserRepo.countUsersSince(start);
+        return adminUserRepo.countUsersBetween(start, end);
     }
     
     /**
      * Count bookings created in a specific period.
      */
     private Long countBookingsInPeriod(Instant start, Instant end) {
-        // For now, return total - TODO: Add date range query
-        return bookingRepo.count();
+        return bookingRepo.countBookingsInPeriod(start, end);
     }
     
     /**

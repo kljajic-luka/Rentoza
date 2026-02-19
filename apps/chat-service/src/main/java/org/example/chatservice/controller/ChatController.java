@@ -8,6 +8,8 @@ import org.example.chatservice.dto.*;
 import org.example.chatservice.exception.ContentModerationException;
 import org.example.chatservice.exception.RateLimitExceededException;
 import org.example.chatservice.model.ConversationStatus;
+import org.example.chatservice.model.Message;
+import org.example.chatservice.repository.MessageRepository;
 import org.example.chatservice.security.ContentModerationFilter;
 import org.example.chatservice.security.ContentModerationFilter.ContentModerationResult;
 import org.example.chatservice.service.ChatService;
@@ -18,8 +20,12 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * REST controller for chat messaging.
@@ -51,6 +57,7 @@ public class ChatController {
     private final RateLimitConfig rateLimitConfig;
     private final FileStorageService fileStorageService;
     private final org.example.chatservice.service.IdempotencyService idempotencyService;
+    private final MessageRepository messageRepository;
 
     /**
      * Extract user ID from SecurityContext principal.
@@ -529,5 +536,102 @@ public class ChatController {
         } catch (Exception e) {
             return ResponseEntity.notFound().build();
         }
+    }
+
+    // =========================================================================
+    // Admin: Flagged Message Moderation Queue
+    // =========================================================================
+
+    /**
+     * Admin-only: Get messages with moderation flags (review queue).
+     * 
+     * @param page Page number (0-indexed)
+     * @param size Page size (max 50)
+     * @param authentication The authenticated admin user
+     * @return Paginated list of flagged messages with moderation details
+     */
+    @GetMapping("/admin/messages/flagged")
+    public ResponseEntity<?> getFlaggedMessages(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            Authentication authentication
+    ) {
+        Long adminUserId = extractUserId(authentication);
+        
+        boolean isAdmin = authentication.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN") || a.getAuthority().equals("ADMIN"));
+        if (!isAdmin) {
+            log.warn("[Security] Non-admin user {} attempted to access flagged messages queue", adminUserId);
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        
+        if (size > 50) size = 50;
+        
+        log.info("[Admin][Audit] Admin user {} accessing flagged messages queue (page={}, size={})", 
+                adminUserId, page, size);
+        
+        Page<Message> flaggedMessages = messageRepository.findFlaggedMessages(PageRequest.of(page, size));
+        
+        Page<MessageDTO> flaggedDTOs = flaggedMessages.map(msg -> MessageDTO.builder()
+                .id(msg.getId())
+                .conversationId(msg.getConversationId())
+                .senderId(msg.getSenderId())
+                .content(msg.getContent())
+                .timestamp(msg.getTimestamp())
+                .readBy(msg.getReadBy() != null ? msg.getReadBy() : Set.of())
+                .mediaUrl(msg.getMediaUrl())
+                .isOwnMessage(false)
+                .sentAt(msg.getTimestamp())
+                .moderationFlags(msg.getModerationFlags())
+                .build());
+        
+        return ResponseEntity.ok(flaggedDTOs);
+    }
+
+    /**
+     * Admin-only: Get count of flagged messages (for dashboard badge).
+     */
+    @GetMapping("/admin/messages/flagged/count")
+    public ResponseEntity<?> getFlaggedMessageCount(Authentication authentication) {
+        Long adminUserId = extractUserId(authentication);
+        
+        boolean isAdmin = authentication.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN") || a.getAuthority().equals("ADMIN"));
+        if (!isAdmin) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        
+        long count = messageRepository.countFlaggedMessages();
+        return ResponseEntity.ok(Map.of("count", count));
+    }
+
+    /**
+     * Admin-only: Dismiss moderation flags on a message (mark as reviewed/OK).
+     */
+    @PostMapping("/admin/messages/{messageId}/dismiss-flags")
+    public ResponseEntity<?> dismissFlags(
+            @PathVariable Long messageId,
+            Authentication authentication
+    ) {
+        Long adminUserId = extractUserId(authentication);
+        
+        boolean isAdmin = authentication.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN") || a.getAuthority().equals("ADMIN"));
+        if (!isAdmin) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        
+        Message msg = messageRepository.findById(messageId).orElse(null);
+        if (msg == null) {
+            return ResponseEntity.notFound().build();
+        }
+        
+        log.info("[Admin][Audit] Admin user {} dismissed moderation flags on message {} (flags were: {})", 
+                adminUserId, messageId, msg.getModerationFlags());
+        
+        msg.setModerationFlags(null);
+        messageRepository.save(msg);
+        
+        return ResponseEntity.ok(Map.of("message", "Flags dismissed"));
     }
 }

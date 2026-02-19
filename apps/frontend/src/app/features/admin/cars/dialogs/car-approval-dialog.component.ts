@@ -183,7 +183,7 @@ export class CarApprovalDialogComponent {
         request = this.adminApi.rejectCar(carId, reason || '');
         break;
       case 'SUSPEND':
-        request = this.adminApi.suspendCar(carId);
+        request = this.adminApi.suspendCar(carId, reason || '');
         break;
     }
 

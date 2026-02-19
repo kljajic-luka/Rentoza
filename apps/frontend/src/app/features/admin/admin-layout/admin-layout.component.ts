@@ -156,6 +156,26 @@ import { ThemeService } from '../../../core/services/theme.service';
             </a>
             <a
               mat-list-item
+              routerLink="/admin/bookings"
+              routerLinkActive="active"
+              class="nav-item pill"
+            >
+              <mat-icon matListItemIcon>event_note</mat-icon>
+              <span matListItemTitle>Bookings</span>
+              <span class="nav-caret">›</span>
+            </a>
+            <a
+              mat-list-item
+              routerLink="/admin/flagged-messages"
+              routerLinkActive="active"
+              class="nav-item pill"
+            >
+              <mat-icon matListItemIcon>flag</mat-icon>
+              <span matListItemTitle>Flagged Messages</span>
+              <span class="nav-caret">›</span>
+            </a>
+            <a
+              mat-list-item
               routerLink="/admin/financial"
               routerLinkActive="active"
               class="nav-item pill"

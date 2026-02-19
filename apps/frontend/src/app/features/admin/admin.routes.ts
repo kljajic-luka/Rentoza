@@ -54,6 +54,32 @@ export const ADMIN_ROUTES: Routes = [
         ],
       },
       {
+        path: 'bookings',
+        children: [
+          {
+            path: '',
+            loadComponent: () =>
+              import('./bookings/booking-list/booking-list.component').then(
+                (m) => m.BookingListComponent
+              ),
+          },
+          {
+            path: ':id',
+            loadComponent: () =>
+              import('./bookings/booking-detail/booking-detail.component').then(
+                (m) => m.BookingDetailComponent
+              ),
+          },
+        ],
+      },
+      {
+        path: 'flagged-messages',
+        loadComponent: () =>
+          import('./flagged-messages/flagged-message-list/flagged-message-list.component').then(
+            (m) => m.FlaggedMessageListComponent
+          ),
+      },
+      {
         path: 'disputes',
         children: [
           {

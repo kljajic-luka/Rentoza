@@ -39,4 +39,14 @@ public interface UserRepository extends JpaRepository<User, Long> {
      * @return true if user exists
      */
     boolean existsByAuthUid(UUID authUid);
+
+    /**
+     * Look up user role for admin authority mapping in JWT filters.
+     * Returns the user_role column value (e.g., "ADMIN", "USER", "OWNER").
+     *
+     * @param userId Rentoza BIGINT user ID
+     * @return Optional role string
+     */
+    @Query("SELECT u.role FROM User u WHERE u.id = :userId")
+    Optional<String> findRoleByUserId(@Param("userId") Long userId);
 }

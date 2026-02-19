@@ -365,6 +365,51 @@ export interface AuditLogSearchParams {
   size?: number;
 }
 
+// ==================== ADMIN BOOKINGS ====================
+
+export interface AdminBookingDto {
+  id: number;
+  status: string;
+  paymentStatus: string;
+  carId: number;
+  carTitle: string;
+  renterId: number;
+  renterName: string;
+  renterEmail: string;
+  ownerId: number;
+  ownerName: string;
+  ownerEmail: string;
+  startTime: string;
+  endTime: string;
+  totalPrice: number;
+  insuranceType: string;
+  createdAt: string;
+}
+
+export interface ForceCompleteBookingRequest {
+  reason: string;
+}
+
+// ==================== FLAGGED MESSAGE MODERATION ====================
+
+export interface FlaggedMessageDto {
+  id: number;
+  senderId: number;
+  conversationId: number;
+  content: string;
+  moderationFlags: string;
+  timestamp: string;
+  mediaUrl?: string;
+}
+
+export interface FlaggedMessagePage {
+  content: FlaggedMessageDto[];
+  totalElements: number;
+  totalPages: number;
+  number: number;
+  size: number;
+}
+
 // ==================== ADMIN SETTINGS ====================
 
 export interface AdminSettings {
@@ -376,7 +421,7 @@ export interface AdminSettings {
   // Reports
   weeklyReport: boolean;
   monthlyReport: boolean;
-  reportFormat: 'pdf' | 'csv' | 'excel' | 'json';
+  reportFormat: 'pdf' | 'csv' | 'xlsx';
 
   // Regional
   timezone: string;
@@ -394,6 +439,7 @@ export interface AdminSettings {
 export class AdminApiService {
   private http = inject(HttpClient);
   private apiUrl = `${environment.baseApiUrl}/admin`;
+  private chatApiUrl = `${environment.chatApiUrl}/admin`;
 
   // ==================== DASHBOARD ====================
 
@@ -655,8 +701,8 @@ export class AdminApiService {
     } as CarApprovalRequest);
   }
 
-  suspendCar(carId: number): Observable<AdminCarDto> {
-    return this.http.post<AdminCarDto>(`${this.apiUrl}/cars/${carId}/suspend`, {});
+  suspendCar(carId: number, reason: string): Observable<AdminCarDto> {
+    return this.http.post<AdminCarDto>(`${this.apiUrl}/cars/${carId}/suspend`, { reason });
   }
 
   reactivateCar(carId: number): Observable<AdminCarDto> {
@@ -888,6 +934,61 @@ export class AdminApiService {
    */
   resetAdminSettings(): Observable<AdminSettings> {
     return this.http.post<AdminSettings>(`${this.apiUrl}/settings/reset`, {});
+  }
+
+  // ==================== BOOKINGS ====================
+
+  /**
+   * List bookings with filters and pagination.
+   */
+  getBookings(params?: { status?: string; search?: string; page?: number; size?: number }): Observable<PaginatedResponse<AdminBookingDto>> {
+    let httpParams = new HttpParams();
+    if (params?.status) httpParams = httpParams.set('status', params.status);
+    if (params?.search) httpParams = httpParams.set('search', params.search);
+    if (params?.page !== undefined) httpParams = httpParams.set('page', params.page.toString());
+    if (params?.size !== undefined) httpParams = httpParams.set('size', params.size.toString());
+    return this.http.get<any>(`${this.apiUrl}/bookings`, { params: httpParams }).pipe(
+      map(response => this.normalizePage<AdminBookingDto>(response))
+    );
+  }
+
+  /**
+   * Get booking detail.
+   */
+  getBookingDetail(id: number): Observable<AdminBookingDto> {
+    return this.http.get<AdminBookingDto>(`${this.apiUrl}/bookings/${id}`);
+  }
+
+  /**
+   * Force-complete a booking.
+   */
+  forceCompleteBooking(id: number, reason: string): Observable<AdminBookingDto> {
+    return this.http.post<AdminBookingDto>(`${this.apiUrl}/bookings/${id}/force-complete`, { reason } as ForceCompleteBookingRequest);
+  }
+
+  // ==================== FLAGGED MESSAGE MODERATION ====================
+
+  /**
+   * Get paginated list of flagged messages from the chat service.
+   */
+  getFlaggedMessages(page: number = 0, size: number = 20): Observable<FlaggedMessagePage> {
+    return this.http.get<FlaggedMessagePage>(`${this.chatApiUrl}/messages/flagged`, {
+      params: { page: page.toString(), size: size.toString() },
+    });
+  }
+
+  /**
+   * Get count of flagged messages (for badge display).
+   */
+  getFlaggedMessageCount(): Observable<{ count: number }> {
+    return this.http.get<{ count: number }>(`${this.chatApiUrl}/messages/flagged/count`);
+  }
+
+  /**
+   * Dismiss moderation flags on a message (mark as reviewed/OK).
+   */
+  dismissMessageFlags(messageId: number): Observable<void> {
+    return this.http.post<void>(`${this.chatApiUrl}/messages/${messageId}/dismiss-flags`, {});
   }
 
   private normalizePage<T>(response: HateoasPage<T>): PaginatedResponse<T> {

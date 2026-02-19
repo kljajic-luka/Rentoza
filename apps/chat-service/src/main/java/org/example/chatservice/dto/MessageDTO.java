@@ -27,4 +27,7 @@ public class MessageDTO {
     private LocalDateTime sentAt;
     private LocalDateTime deliveredAt;
     private LocalDateTime readAt;
+    
+    // Moderation (populated for admin views)
+    private String moderationFlags;
 }

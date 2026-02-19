@@ -7,8 +7,11 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.example.chatservice.repository.UserRepository;
 import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
@@ -16,6 +19,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Supabase JWT Authentication Filter for ES256 Tokens
@@ -55,6 +59,7 @@ import java.util.ArrayList;
 public class SupabaseJwtAuthFilter extends OncePerRequestFilter {
 
     private final SupabaseJwtUtil supabaseJwtUtil;
+    private final UserRepository userRepository;
 
     @Override
     protected void doFilterInternal(
@@ -83,13 +88,29 @@ public class SupabaseJwtAuthFilter extends OncePerRequestFilter {
 
                 if (rentozaUserId != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                     
+                    // Build authorities from user role in database
+                    List<GrantedAuthority> authorities = new ArrayList<>();
+                    try {
+                        userRepository.findRoleByUserId(rentozaUserId).ifPresent(role -> {
+                            if (role != null && !role.isBlank()) {
+                                authorities.add(new SimpleGrantedAuthority("ROLE_" + role));
+                                // Also add without prefix for flexible checks
+                                authorities.add(new SimpleGrantedAuthority(role));
+                                log.debug("Mapped role '{}' to authorities for userId={}", role, rentozaUserId);
+                            }
+                        });
+                    } catch (Exception e) {
+                        log.warn("Failed to load role for userId={}: {}", rentozaUserId, e.getMessage());
+                        // Continue with empty authorities — user can still access non-admin endpoints
+                    }
+
                     // Create authentication token and populate SecurityContext
                     // CRITICAL: Store BIGINT user ID as Long (not String) to match SQL schema
                     UsernamePasswordAuthenticationToken authToken = 
                         new UsernamePasswordAuthenticationToken(
                             rentozaUserId,  // Store Long directly (was: String.valueOf(rentozaUserId))
                             null,
-                            new ArrayList<>()  // No authorities for regular users
+                            authorities  // Populated from DB role (was: empty list)
                         );
                     
                     authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));

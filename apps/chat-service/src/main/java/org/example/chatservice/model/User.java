@@ -48,6 +48,11 @@ public class User {
     @Column(name = "email")
     private String email;
 
-    // Additional fields from main backend not needed by chat service
-    // (name, phone, role, etc. omitted)
+    /**
+     * User role from main backend (e.g., USER, OWNER, ADMIN).
+     * Required for admin oversight endpoints to grant ROLE_ADMIN authority.
+     * Maps to users.user_role column.
+     */
+    @Column(name = "user_role", length = 50)
+    private String role;
 }

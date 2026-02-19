@@ -126,8 +126,7 @@ import { AdminApiService, AdminSettings } from '../../../core/services/admin-api
                   <mat-select formControlName="reportFormat">
                     <mat-option value="pdf">PDF Document</mat-option>
                     <mat-option value="csv">CSV Spreadsheet</mat-option>
-                    <mat-option value="excel">Excel Workbook</mat-option>
-                    <mat-option value="json">JSON Data</mat-option>
+                    <mat-option value="xlsx">Excel Workbook</mat-option>
                   </mat-select>
                   <mat-icon matPrefix>description</mat-icon>
                   <mat-hint>Choose your preferred report file format</mat-hint>

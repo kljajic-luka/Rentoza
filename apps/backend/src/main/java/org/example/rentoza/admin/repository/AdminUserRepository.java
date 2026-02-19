@@ -63,6 +63,13 @@ public interface AdminUserRepository extends UserRepository {
     @Query("SELECT COUNT(u) FROM User u WHERE u.createdAt >= :since")
     Long countUsersSince(@Param("since") Instant since);
     
+    /**
+     * Count users created between two dates.
+     * Used for period comparison metrics.
+     */
+    @Query("SELECT COUNT(u) FROM User u WHERE u.createdAt >= :start AND u.createdAt < :end")
+    Long countUsersBetween(@Param("start") Instant start, @Param("end") Instant end);
+    
     // ==================== BANNED USERS ====================
     
     /**

@@ -59,6 +59,8 @@ public enum AdminAction {
     BOOKING_EXTENDED,
     /** Refund forced by admin */
     BOOKING_FORCED_REFUND,
+    /** Booking force-completed by admin */
+    BOOKING_FORCE_COMPLETED,
     
     // ==================== DISPUTES ====================
     /** Dispute resolved with outcome */
@@ -90,5 +92,7 @@ public enum AdminAction {
     /** Admin permissions changed */
     PERMISSION_CHANGED,
     /** Analytics data exported */
-    ANALYTICS_EXPORTED
+    ANALYTICS_EXPORTED,
+    /** Audit logs exported */
+    AUDIT_EXPORTED
 }

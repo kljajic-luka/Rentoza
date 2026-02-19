@@ -206,7 +206,7 @@ export class CarDetailComponent implements OnInit {
         obs = this.adminApi.rejectCar(this.carId, reason || '');
         break;
       case 'suspend':
-        obs = this.adminApi.suspendCar(this.carId);
+        obs = this.adminApi.suspendCar(this.carId, reason || '');
         break;
       case 'reactivate':
         obs = this.adminApi.reactivateCar(this.carId);

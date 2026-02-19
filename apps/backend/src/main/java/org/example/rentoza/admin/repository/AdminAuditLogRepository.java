@@ -159,8 +159,8 @@ public interface AdminAuditLogRepository extends JpaRepository<AdminAuditLog, Lo
     @Query("SELECT a FROM AdminAuditLog a " +
            "WHERE a.createdAt BETWEEN :start AND :end " +
            "ORDER BY a.createdAt DESC")
-    List<AdminAuditLog> findByTimestampBetween(
-        @Param("start") java.time.Instant start,
-        @Param("end") java.time.Instant end);
+    List<AdminAuditLog> findByCreatedAtBetween(
+        @Param("start") LocalDateTime start,
+        @Param("end") LocalDateTime end);
 }
 

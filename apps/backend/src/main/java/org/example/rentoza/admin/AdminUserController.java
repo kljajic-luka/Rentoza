@@ -21,6 +21,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import jakarta.validation.Valid;
+
 @RestController
 @RequestMapping("/api/admin/users")
 @RequiredArgsConstructor
@@ -56,7 +58,7 @@ public class AdminUserController {
     @PutMapping("/{id}/ban")
     public ResponseEntity<Void> banUser(
             @PathVariable Long id,
-            @RequestBody BanUserRequest request) {
+            @Valid @RequestBody BanUserRequest request) {
         
         User admin = adminUserRepository.findById(currentUser.id())
                 .orElseThrow(() -> new ResourceNotFoundException("Admin not found"));

@@ -26,4 +26,17 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
            "AND m.senderId != :userId " +
            "AND NOT EXISTS (SELECT 1 FROM MessageReadReceipt r WHERE r.messageId = m.id AND r.userId = :userId)")
     long countUnreadMessages(@Param("conversationId") Long conversationId, @Param("userId") Long userId);
+    
+    /**
+     * Find messages with moderation flags (admin review queue).
+     * Returns messages where moderationFlags is not null/empty, newest first.
+     */
+    @Query("SELECT m FROM Message m WHERE m.moderationFlags IS NOT NULL AND m.moderationFlags != '' ORDER BY m.timestamp DESC")
+    Page<Message> findFlaggedMessages(Pageable pageable);
+    
+    /**
+     * Count messages with moderation flags (for dashboard badge).
+     */
+    @Query("SELECT COUNT(m) FROM Message m WHERE m.moderationFlags IS NOT NULL AND m.moderationFlags != ''")
+    long countFlaggedMessages();
 }

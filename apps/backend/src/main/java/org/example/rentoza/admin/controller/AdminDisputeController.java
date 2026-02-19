@@ -7,9 +7,10 @@ import org.example.rentoza.admin.dto.enums.DisputeSeverity;
 import org.example.rentoza.admin.service.AdminDisputeService;
 import org.example.rentoza.booking.dispute.DamageClaimStatus;
 import org.example.rentoza.config.HateoasAssembler;
-import org.example.rentoza.security.CurrentUser; // Assuming this exists or using Authentication
+import org.example.rentoza.exception.ResourceNotFoundException;
+import org.example.rentoza.security.CurrentUser;
 import org.example.rentoza.user.User;
-import org.example.rentoza.user.UserService; // To fetch full user object if needed
+import org.example.rentoza.user.UserRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -19,7 +20,6 @@ import org.springframework.hateoas.EntityModel;
 import org.springframework.hateoas.PagedModel;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.validation.Valid;
@@ -35,7 +35,8 @@ import static org.springframework.data.domain.Sort.Direction.DESC;
 public class AdminDisputeController {
 
     private final AdminDisputeService disputeService;
-    private final UserService userService; // Or helper to resolve User from Principal
+    private final UserRepository userRepository;
+    private final CurrentUser currentUser;
     private final HateoasAssembler hateoasAssembler;
 
     /**
@@ -77,16 +78,12 @@ public class AdminDisputeController {
     @PostMapping("/{id}/resolve")
     public ResponseEntity<Void> resolveDispute(
             @PathVariable Long id,
-            @RequestBody @Valid DisputeResolutionRequest request,
-            @AuthenticationPrincipal User principal) { // Spring Security injection
+            @RequestBody @Valid DisputeResolutionRequest request) {
 
-        // If principal is not full entity, fetch it. 
-        // Assuming custom UserDetails or simple User principal. 
-        // Safer to fetch fresh user from DB to ensure Admin status/existence.
-        // User admin = userService.getCurrentUser(); // Implementation dependent
-        // For now, using principal cast if it matches User entity
+        User admin = userRepository.findById(currentUser.id())
+                .orElseThrow(() -> new ResourceNotFoundException("Admin user not found"));
         
-        disputeService.resolveDispute(id, request, principal);
+        disputeService.resolveDispute(id, request, admin);
         return ResponseEntity.ok().build();
     }
 
@@ -97,10 +94,12 @@ public class AdminDisputeController {
     @PostMapping("/{id}/escalate")
     public ResponseEntity<Void> escalateDispute(
             @PathVariable Long id,
-            @RequestBody @Valid EscalateDisputeRequest request,
-            @AuthenticationPrincipal User principal) {
+            @RequestBody @Valid EscalateDisputeRequest request) {
+
+        User admin = userRepository.findById(currentUser.id())
+                .orElseThrow(() -> new ResourceNotFoundException("Admin user not found"));
         
-        disputeService.escalateDispute(id, request.getReason(), principal);
+        disputeService.escalateDispute(id, request.getReason(), admin);
         return ResponseEntity.ok().build();
     }
     
@@ -128,11 +127,13 @@ public class AdminDisputeController {
     @PostMapping("/check-in/{id}/resolve")
     public ResponseEntity<Void> resolveCheckInDispute(
             @PathVariable Long id,
-            @RequestBody @Valid CheckInDisputeResolutionDTO request,
-            @AuthenticationPrincipal User principal) {
+            @RequestBody @Valid CheckInDisputeResolutionDTO request) {
+
+        User admin = userRepository.findById(currentUser.id())
+                .orElseThrow(() -> new ResourceNotFoundException("Admin user not found"));
         
-        log.info("[VAL-004] Admin {} resolving check-in dispute {}", principal.getId(), id);
-        disputeService.resolveCheckInDispute(id, request, principal);
+        log.info("[VAL-004] Admin {} resolving check-in dispute {}", admin.getId(), id);
+        disputeService.resolveCheckInDispute(id, request, admin);
         return ResponseEntity.ok().build();
     }
     
@@ -167,13 +168,15 @@ public class AdminDisputeController {
     @PostMapping("/checkout/{id}/resolve")
     public ResponseEntity<CheckoutDisputeResolutionResponseDTO> resolveCheckoutDispute(
             @PathVariable Long id,
-            @RequestBody @Valid CheckoutDisputeResolutionDTO request,
-            @AuthenticationPrincipal User principal) {
+            @RequestBody @Valid CheckoutDisputeResolutionDTO request) {
+
+        User admin = userRepository.findById(currentUser.id())
+                .orElseThrow(() -> new ResourceNotFoundException("Admin user not found"));
         
         log.info("[VAL-010] Admin {} resolving checkout damage dispute {} with decision {}",
-                principal.getId(), id, request.getDecision());
+                admin.getId(), id, request.getDecision());
         
-        CheckoutDisputeResolutionResponseDTO response = disputeService.resolveCheckoutDispute(id, request, principal);
+        CheckoutDisputeResolutionResponseDTO response = disputeService.resolveCheckoutDispute(id, request, admin);
         return ResponseEntity.ok(response);
     }
     

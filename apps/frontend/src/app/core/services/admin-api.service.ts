@@ -715,12 +715,15 @@ export class AdminApiService {
   }
 
   /** Resolve a checkout-specific damage dispute (uses checkout resolution endpoint). */
-  resolveCheckoutDispute(damageClaimId: number, request: {
-    decision: 'APPROVE' | 'REJECT' | 'PARTIAL';
-    approvedAmountRsd?: number;
-    resolutionNotes: string;
-    notifyParties?: boolean;
-  }): Observable<unknown> {
+  resolveCheckoutDispute(
+    damageClaimId: number,
+    request: {
+      decision: 'APPROVE' | 'REJECT' | 'PARTIAL';
+      approvedAmountRsd?: number;
+      resolutionNotes: string;
+      notifyParties?: boolean;
+    },
+  ): Observable<unknown> {
     return this.http.post(`${this.apiUrl}/disputes/checkout/${damageClaimId}/resolve`, request);
   }
 

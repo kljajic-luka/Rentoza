@@ -17,5 +17,13 @@ public class SendMessageRequest {
     @Size(max = 2000, message = "Message cannot exceed 2000 characters")
     private String content;
 
+    /**
+     * Optional attachment URL. Must be a platform attachment path
+     * (i.e., start with /api/attachments/booking-). Arbitrary external
+     * URLs are rejected to prevent injection/phishing.
+     */
+    @jakarta.validation.constraints.Pattern(
+            regexp = "^/api/attachments/booking-\\d+/.+$",
+            message = "Invalid media URL: must be a platform attachment")
     private String mediaUrl;
 }

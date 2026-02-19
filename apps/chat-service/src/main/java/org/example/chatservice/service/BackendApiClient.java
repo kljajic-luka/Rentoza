@@ -165,7 +165,7 @@ public class BackendApiClient {
         logger.info("📤 Sending NEW_MESSAGE notification to user {} for booking {}", recipientId, bookingId);
         
         return webClient.post()
-                .uri("/api/internal/notifications/new-message")
+                .uri("/api/notifications/internal/new-message")
                 .bodyValue(new NewMessageNotificationRequest(recipientId, bookingId, senderName, messagePreview))
                 .retrieve()
                 .bodyToMono(Void.class)

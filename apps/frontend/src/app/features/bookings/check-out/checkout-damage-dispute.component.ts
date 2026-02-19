@@ -349,7 +349,11 @@ import { CheckoutService } from '@core/services/checkout.service';
           color: #666;
           font-size: 0.9rem;
           margin-bottom: 8px;
-          mat-icon { font-size: 18px; width: 18px; height: 18px; }
+          mat-icon {
+            font-size: 18px;
+            width: 18px;
+            height: 18px;
+          }
         }
       }
 
@@ -442,12 +446,7 @@ export class CheckoutDamageDisputeComponent {
 
     const slotId = `evidence-${index}`;
     // Use guest checkout photo upload for evidence (CHECKOUT_DAMAGE_NEW type)
-    this.checkoutService.uploadPhoto(
-      this.bookingId,
-      file,
-      slotId,
-      'CHECKOUT_DAMAGE_NEW',
-    );
+    this.checkoutService.uploadPhoto(this.bookingId, file, slotId, 'CHECKOUT_DAMAGE_NEW');
     input.value = '';
   }
 
@@ -500,18 +499,24 @@ export class CheckoutDamageDisputeComponent {
 
     this.isProcessing.set(true);
     const evidencePhotoIds = this.collectEvidencePhotoIds();
-    this.checkoutService.disputeDamageClaim(this.bookingId, this.disputeReason, evidencePhotoIds.length > 0 ? evidencePhotoIds : undefined).subscribe({
-      next: () => {
-        this.isProcessing.set(false);
-        this.snackBar.open('Osporavanje poslato admin timu na pregled.', 'Zatvori', {
-          duration: 4000,
-        });
-        this.resolved.emit();
-      },
-      error: () => {
-        this.isProcessing.set(false);
-        this.snackBar.open('Greška pri slanju osporavanja.', 'Zatvori', { duration: 4000 });
-      },
-    });
+    this.checkoutService
+      .disputeDamageClaim(
+        this.bookingId,
+        this.disputeReason,
+        evidencePhotoIds.length > 0 ? evidencePhotoIds : undefined,
+      )
+      .subscribe({
+        next: () => {
+          this.isProcessing.set(false);
+          this.snackBar.open('Osporavanje poslato admin timu na pregled.', 'Zatvori', {
+            duration: 4000,
+          });
+          this.resolved.emit();
+        },
+        error: () => {
+          this.isProcessing.set(false);
+          this.snackBar.open('Greška pri slanju osporavanja.', 'Zatvori', { duration: 4000 });
+        },
+      });
   }
 }

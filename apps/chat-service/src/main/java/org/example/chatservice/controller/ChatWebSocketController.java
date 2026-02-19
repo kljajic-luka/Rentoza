@@ -86,10 +86,18 @@ public class ChatWebSocketController {
             return;
         }
 
+        // Collect moderation flags for persistence (message still sent)
+        java.util.List<String> moderationFlags = null;
+        if (moderationResult.hasFlags()) {
+            moderationFlags = moderationResult.getFlags();
+            log.info("[WS][Moderation] Message from user {} in booking {} flagged: {}", 
+                    userId, bookingId, moderationFlags);
+        }
+
         try {
             // Send message through service (handles persistence, authorization, AND WebSocket broadcast)
             Long bookingIdLong = Long.parseLong(bookingId);
-            MessageDTO message = chatService.sendMessage(bookingIdLong, userId, request);
+            MessageDTO message = chatService.sendMessage(bookingIdLong, userId, request, moderationFlags);
             
             // ✅ DO NOT broadcast here - ChatService.sendMessage() already broadcasts to WebSocket topic
             // with isOwnMessage=false via toMessageDTOForBroadcast(). This prevents the inverted
@@ -127,6 +135,14 @@ public class ChatWebSocketController {
 
         String userIdStr = principal.getName();
         Long userId = Long.parseLong(userIdStr);  // Parse String → Long
+        
+        // SECURITY: Verify user is a participant before broadcasting typing indicator
+        Long bookingIdLong = Long.parseLong(bookingId);
+        if (!chatService.isUserParticipant(bookingIdLong, userId)) {
+            log.warn("[WS][Security] Non-participant user {} attempted typing indicator in booking {}", 
+                    userId, bookingId);
+            return;
+        }
         
         // Set the user ID from authenticated principal (don't trust client)
         typingIndicator.setUserId(userId);

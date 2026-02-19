@@ -39,6 +39,7 @@ public class ChatService {
     private final BackendApiClient backendApiClient;
     private final ConversationEnrichmentService enrichmentService;
     private final ReadReceiptService readReceiptService;
+    private final org.example.chatservice.security.ContentModerationFilter contentModerationFilter;
 
     /**
      * Create a conversation with authorization check.
@@ -60,7 +61,7 @@ public class ChatService {
             return createConversation(request);
         }
         
-        // SECURITY: Verify the authenticated user is one of the participants
+        // SECURITY: Verify the authenticated user is one of the participants in the request
         if (!Objects.equals(authenticatedUserId, request.getRenterId()) && 
             !Objects.equals(authenticatedUserId, request.getOwnerId())) {
             log.warn("[Security] UNAUTHORIZED: User {} attempted to create conversation for booking {} " +
@@ -68,17 +69,71 @@ public class ChatService {
                     authenticatedUserId, request.getBookingId(), request.getRenterId(), request.getOwnerId());
             throw new ForbiddenException("You are not authorized to create a conversation for this booking");
         }
+
+        // SECURITY: Validate participant IDs against the actual booking from main backend
+        // This prevents users from spoofing renter/owner IDs in the request body
+        // FAIL-CLOSED: If validation fails (network error, etc.), reject the request
+        try {
+            var bookingDetails = backendApiClient.getBookingDetails(String.valueOf(request.getBookingId())).block();
+            if (bookingDetails == null || bookingDetails.getId() == null || bookingDetails.isFallback()) {
+                log.warn("[Security] FAIL-CLOSED: Could not fetch booking details for booking {}. Rejecting.",
+                        request.getBookingId());
+                throw new ForbiddenException("Could not verify booking participants. Please try again.");
+            }
+
+            // Verify renter from the booking matches the request
+            if (bookingDetails.getRenter() != null && bookingDetails.getRenter().getId() != null) {
+                Long bookingRenterId = bookingDetails.getRenter().getId();
+                if (!Objects.equals(request.getRenterId(), bookingRenterId)) {
+                    log.warn("[Security] SPOOFING ATTEMPT: User {} provided mismatched renter ID. " +
+                            "Request renter={}, Booking renter={}",
+                            authenticatedUserId, request.getRenterId(), bookingRenterId);
+                    throw new ForbiddenException("Participant IDs do not match the booking");
+                }
+            }
+
+            // Verify owner from the booking matches the request (if owner info available)
+            if (bookingDetails.getOwner() != null && bookingDetails.getOwner().getId() != null) {
+                Long bookingOwnerId = bookingDetails.getOwner().getId();
+                if (!Objects.equals(request.getOwnerId(), bookingOwnerId)) {
+                    log.warn("[Security] SPOOFING ATTEMPT: User {} provided mismatched owner ID. " +
+                            "Request owner={}, Booking owner={}",
+                            authenticatedUserId, request.getOwnerId(), bookingOwnerId);
+                    throw new ForbiddenException("Participant IDs do not match the booking");
+                }
+            }
+        } catch (ForbiddenException e) {
+            throw e; // Re-throw ForbiddenException
+        } catch (Exception e) {
+            // FAIL-CLOSED: If booking validation fails, reject the request to prevent spoofing
+            log.error("[Security] FAIL-CLOSED: Booking validation error for booking {}: {}. Rejecting.",
+                    request.getBookingId(), e.getMessage());
+            throw new ForbiddenException("Could not verify booking participants. Please try again later.");
+        }
         
-        return createConversation(request);
+        return createConversation(request, authenticatedUserId);
     }
 
     /**
-     * @deprecated Use {@link #createConversationSecure(CreateConversationRequest, String)} instead.
+     * @deprecated Use {@link #createConversationSecure(CreateConversationRequest, Long, boolean)} instead.
      * This method lacks authorization checks and should only be used for internal/system operations.
      */
     @Deprecated
     @Transactional
     public ConversationDTO createConversation(CreateConversationRequest request) {
+        // For backward-compat: use renterId as sender if no authenticated user context
+        return createConversation(request, request.getRenterId());
+    }
+
+    /**
+     * Internal conversation creation with explicit sender ID.
+     *
+     * @param request The conversation creation request
+     * @param senderId The authenticated user who is creating the conversation (used for initial message)
+     * @return The created conversation DTO
+     */
+    @Transactional
+    private ConversationDTO createConversation(CreateConversationRequest request, Long senderId) {
         // Check if conversation already exists
         if (conversationRepository.existsByBookingId(request.getBookingId())) {
             throw new IllegalStateException("Conversation already exists for booking: " + request.getBookingId());
@@ -94,16 +149,29 @@ public class ChatService {
         conversation = conversationRepository.save(conversation);
         log.info("Created conversation {} for booking {}", conversation.getId(), request.getBookingId());
 
-        // Send initial message if provided
+        // Send initial message if provided (with moderation check)
         if (request.getInitialMessage() != null && !request.getInitialMessage().isBlank()) {
-            Message initialMessage = Message.builder()
-                    .conversationId(conversation.getId())
-                    .senderId(request.getRenterId())
-                    .content(request.getInitialMessage())
-                    .build();
-            messageRepository.save(initialMessage);
-            conversation.setLastMessageAt(LocalDateTime.now());
-            conversationRepository.save(conversation);
+            // Moderate initial message content
+            var moderationResult = contentModerationFilter.validateMessage(request.getInitialMessage());
+            if (!moderationResult.isApproved()) {
+                log.warn("[Security] Initial message blocked by moderation for booking {}: {}",
+                        request.getBookingId(), moderationResult.getReason());
+                // Still create conversation, just skip the initial message
+            } else {
+                Message initialMessage = Message.builder()
+                        .conversationId(conversation.getId())
+                        .senderId(senderId)
+                        .content(request.getInitialMessage())
+                        .build();
+                messageRepository.save(initialMessage);
+                conversation.setLastMessageAt(LocalDateTime.now());
+                conversationRepository.save(conversation);
+                
+                if (moderationResult.hasFlags()) {
+                    log.info("[Moderation] Initial message flagged for admin review in booking {}: {}", 
+                            request.getBookingId(), moderationResult.getFlags());
+                }
+            }
         }
 
         return toDTO(conversation, request.getRenterId());
@@ -141,6 +209,13 @@ public class ChatService {
 
     @Transactional
     public MessageDTO sendMessage(Long bookingId, Long userId, SendMessageRequest request) {
+        return sendMessage(bookingId, userId, request, null);
+    }
+
+    /**
+     * Send a message with optional moderation flags for admin review persistence.
+     */
+    public MessageDTO sendMessage(Long bookingId, Long userId, SendMessageRequest request, List<String> moderationFlags) {
         Conversation conversation = conversationRepository.findByBookingId(bookingId)
                 .orElseThrow(() -> new ConversationNotFoundException("Conversation not found for booking: " + bookingId));
 
@@ -154,11 +229,23 @@ public class ChatService {
             throw new MessagingNotAllowedException("Messaging is not allowed in this conversation state");
         }
 
+        // Validate mediaUrl (defense-in-depth: also checked by @Pattern on DTO)
+        String mediaUrl = request.getMediaUrl();
+        if (mediaUrl != null && !mediaUrl.isBlank()) {
+            if (!mediaUrl.startsWith("/api/attachments/booking-")) {
+                log.warn("[Security] User {} attempted to send message with invalid mediaUrl: {}",
+                        userId, mediaUrl.length() > 80 ? mediaUrl.substring(0, 80) + "..." : mediaUrl);
+                throw new IllegalArgumentException("Invalid media URL: must be a platform attachment");
+            }
+        }
+
         Message message = Message.builder()
                 .conversationId(conversation.getId())
                 .senderId(userId)
                 .content(request.getContent())
-                .mediaUrl(request.getMediaUrl())
+                .mediaUrl(mediaUrl)
+                .moderationFlags(moderationFlags != null && !moderationFlags.isEmpty()
+                        ? String.join(",", moderationFlags) : null)
                 .build();
 
         // ✅ CRITICAL FIX: Save in correct order
@@ -234,6 +321,64 @@ public class ChatService {
         return conversationRepository.findByBookingId(bookingId)
                 .map(conversation -> conversation.isParticipant(userId))
                 .orElse(false);
+    }
+
+    /**
+     * Admin-only: Get full conversation transcript without participant check.
+     * Used for dispute resolution. All messages returned unpaginated.
+     * 
+     * @param bookingId The booking ID for the conversation
+     * @return Full conversation DTO with all messages
+     * @throws ConversationNotFoundException if conversation doesn't exist
+     */
+    @Transactional(readOnly = true)
+    public ConversationDTO getConversationForAdmin(Long bookingId) {
+        Conversation conversation = conversationRepository.findByBookingId(bookingId)
+                .orElseThrow(() -> new ConversationNotFoundException("Conversation not found for booking: " + bookingId));
+
+        // Fetch ALL messages (no pagination for admin dispute review)
+        List<Message> allMessages = messageRepository.findByConversationIdOrderByTimestampAsc(conversation.getId());
+
+        List<MessageDTO> messages = allMessages.stream()
+                .map(msg -> toMessageDTOForBroadcast(msg)) // Use neutral DTO (no isOwnMessage bias)
+                .collect(Collectors.toList());
+
+        // Use renter ID as the "viewer" for DTO construction (admin has no side)
+        ConversationDTO dto = toDTO(conversation, conversation.getRenterId());
+        dto.setMessages(messages);
+        dto.setUnreadCount(0); // Not relevant for admin view
+
+        // Enrich with backend data using renter ID for RLS pass-through
+        return enrichDtoWithBackendData(dto, conversation.getRenterId());
+    }
+
+    /**
+     * Admin-only: Retrieve ALL conversations for admin oversight.
+     * No participant filter applied. Returns conversation summaries with last message previews.
+     */
+    public List<ConversationDTO> getAllConversationsForAdmin() {
+        List<Conversation> conversations = conversationRepository.findAll(
+                org.springframework.data.domain.Sort.by(
+                        org.springframework.data.domain.Sort.Direction.DESC, "lastMessageAt"));
+
+        return conversations.stream()
+                .map(conv -> {
+                    // Use renter as the "viewer" for DTO construction (admin sees neutral view)
+                    ConversationDTO dto = toDTO(conv, conv.getRenterId());
+                    dto.setUnreadCount(0);
+
+                    // Fetch last message for preview
+                    Message lastMessage = messageRepository.findFirstByConversationIdOrderByTimestampDesc(conv.getId());
+                    if (lastMessage != null) {
+                        String content = lastMessage.getContent();
+                        dto.setLastMessageContent(content != null && content.length() > 100
+                                ? content.substring(0, 100) + "..."
+                                : content);
+                    }
+
+                    return enrichDtoWithBackendData(dto, conv.getRenterId());
+                })
+                .collect(Collectors.toList());
     }
 
     /**

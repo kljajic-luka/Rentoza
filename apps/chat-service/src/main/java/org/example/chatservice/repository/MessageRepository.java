@@ -8,10 +8,15 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
+
 @Repository
 public interface MessageRepository extends JpaRepository<Message, Long> {
 
     Page<Message> findByConversationIdOrderByTimestampDesc(Long conversationId, Pageable pageable);
+
+    // Get all messages for a conversation (for admin transcript review)
+    List<Message> findByConversationIdOrderByTimestampAsc(Long conversationId);
 
     // Get the latest message for a conversation (for preview in list)
     Message findFirstByConversationIdOrderByTimestampDesc(Long conversationId);

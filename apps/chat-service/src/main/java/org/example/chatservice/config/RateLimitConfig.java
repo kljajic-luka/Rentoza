@@ -29,7 +29,7 @@ public class RateLimitConfig {
 
     // Rate limit configuration
     private static final int HOURLY_LIMIT = 50;
-    private static final int BURST_LIMIT = 5;
+    private static final int BURST_LIMIT = 10;
     private static final Duration BURST_DURATION = Duration.ofMinutes(1);
     private static final Duration HOURLY_DURATION = Duration.ofHours(1);
 

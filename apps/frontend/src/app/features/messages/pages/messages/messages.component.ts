@@ -82,6 +82,7 @@ export class MessagesComponent implements OnInit, OnDestroy {
   selectedConversationId = signal<number | null>(null);
   messages = signal<MessageDTO[]>([]);
   currentUserId = signal('');
+  isAdminMode = signal(false);
 
   // UI state signals
   isLoading = signal(true);
@@ -140,7 +141,7 @@ export class MessagesComponent implements OnInit, OnDestroy {
   // ============================================================================
 
   async ngOnInit(): Promise<void> {
-    // Get current user
+    // Get current user and detect admin mode
     this.authService.currentUser$
       .pipe(takeUntil(this.destroy$))
       .subscribe((user) => {
@@ -148,6 +149,9 @@ export class MessagesComponent implements OnInit, OnDestroy {
           this.currentUserId.set(user.id);
         }
       });
+
+    // Detect admin mode (admin viewing messages for dispute resolution)
+    this.isAdminMode.set(this.authService.hasAnyRole('ADMIN' as any));
 
     // Monitor breakpoint for responsive layout
     this.breakpointObserver
@@ -257,9 +261,14 @@ export class MessagesComponent implements OnInit, OnDestroy {
     this.isLoading.set(true);
 
     try {
-      // Use subscription to ensure signal update completes before setting isLoading to false
+      // Admin mode: load ALL conversations (no participant filter)
+      // Regular mode: load only conversations where user is renter/owner
+      const conversations$ = this.isAdminMode()
+        ? this.chatService.getAdminConversations()
+        : this.chatService.getUserConversations();
+
       return await new Promise<void>((resolve, reject) => {
-        this.chatService.getUserConversations().subscribe({
+        conversations$.subscribe({
           next: (conversations) => {
             if (!conversations || conversations.length === 0) {
               this.conversations.set([]);
@@ -301,11 +310,22 @@ export class MessagesComponent implements OnInit, OnDestroy {
   private loadMessagesForConversation(conv: ConversationDTO): void {
     this.isLoadingMessages.set(true);
 
-    this.chatService.getConversation(conv.bookingId).subscribe({
+    // Subscribe to conversation-specific WebSocket topics
+    this.chatService.subscribeToConversation(conv.bookingId);
+
+    // Admin mode: use admin transcript endpoint (read-only, no participant check)
+    // Regular user mode: use participant-scoped endpoint
+    const messageSource$ = this.isAdminMode()
+      ? this.chatService.getAdminTranscript(conv.bookingId)
+      : this.chatService.getConversation(conv.bookingId);
+
+    messageSource$.subscribe({
       next: (updatedConv) => {
         this.messages.set(updatedConv.messages || []);
         this.isLoadingMessages.set(false);
-        this.markAsRead();
+        if (!this.isAdminMode()) {
+          this.markAsRead();
+        }
       },
       error: (err) => {
         console.error('Failed to load messages:', err);
@@ -322,6 +342,9 @@ export class MessagesComponent implements OnInit, OnDestroy {
     if (this.selectedConversationId() === conv.id) {
       return; // Already selected
     }
+
+    // Clear any pending attachment from previous conversation (privacy: prevent cross-conversation leak)
+    this.pendingAttachmentUrl = null;
 
     this.selectedConversationId.set(conv.id);
     this.chatService.setActiveConversation(conv);
@@ -343,6 +366,42 @@ export class MessagesComponent implements OnInit, OnDestroy {
   // MESSAGE SENDING
   // ============================================================================
 
+  /** URL of a pending uploaded attachment (set after successful upload) */
+  private pendingAttachmentUrl: string | null = null;
+
+  /**
+   * Handle file attachment selection from MessageInputComponent.
+   * Uploads the file immediately and stores the returned URL for
+   * inclusion in the next message send.
+   */
+  /**
+   * Handle attachment removal from MessageInputComponent.
+   * Clears the pending uploaded URL so it is not attached to the next message.
+   */
+  onAttachmentRemoved(): void {
+    this.pendingAttachmentUrl = null;
+  }
+
+  onAttachmentSelected(file: File): void {
+    const conv = this.selectedConversation();
+    if (!conv) return;
+
+    this.isSendingMessage.set(true);
+
+    this.chatService.uploadAttachment(conv.bookingId, file).subscribe({
+      next: (result) => {
+        this.pendingAttachmentUrl = result.url;
+        this.isSendingMessage.set(false);
+        this.toast.info('Fajl otpremljen. Pošaljite poruku da priložite.');
+      },
+      error: (err) => {
+        console.error('Attachment upload failed:', err);
+        this.isSendingMessage.set(false);
+        this.pendingAttachmentUrl = null;
+      },
+    });
+  }
+
   onSendMessage(content: string): void {
     const conv = this.selectedConversation();
     if (!content.trim() || !conv || !conv.messagingAllowed) {
@@ -351,8 +410,11 @@ export class MessagesComponent implements OnInit, OnDestroy {
 
     this.isSendingMessage.set(true);
 
+    const mediaUrl = this.pendingAttachmentUrl ?? undefined;
+    this.pendingAttachmentUrl = null; // Clear after consuming
+
     // Use optimistic update with offline queue fallback
-    this.chatService.sendMessageOptimistic(conv.bookingId, content.trim(), conv.id).subscribe({
+    this.chatService.sendMessageOptimistic(conv.bookingId, content.trim(), conv.id, mediaUrl).subscribe({
       next: () => {
         this.isSendingMessage.set(false);
       },

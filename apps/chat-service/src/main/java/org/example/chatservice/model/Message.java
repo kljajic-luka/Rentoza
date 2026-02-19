@@ -40,6 +40,13 @@ public class Message {
     @Column
     private String mediaUrl;
 
+    /**
+     * Comma-separated moderation flags (e.g., "URL_DETECTED,POSSIBLE_OBFUSCATION").
+     * Null/empty if no flags. Used by admin review queue.
+     */
+    @Column(name = "moderation_flags")
+    private String moderationFlags;
+
     // Users who have read this message (proper @OneToMany relationship)
     @OneToMany(fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
     @JoinColumn(name = "message_id")

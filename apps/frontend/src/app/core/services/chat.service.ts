@@ -75,6 +75,7 @@ export class ChatService implements OnDestroy {
   private isWebSocketInitialized = false;
   private webSocketInitPromise: Promise<void> | null = null;
   private typingTimeouts = new Map<number, ReturnType<typeof setTimeout>>();
+  private activeSubscriptionBookingId: string | null = null;
 
   // Public observables
   public messages$ = this.messageSubject.asObservable();
@@ -95,6 +96,19 @@ export class ChatService implements OnDestroy {
         this.flushOfflineQueue();
       }
     });
+
+    // Also flush offline queue when browser comes back online (REST fallback)
+    // This handles the case where WS is not connected but HTTP is available
+    if (typeof window !== 'undefined') {
+      const onlineHandler = () => {
+        if (this.offlineQueueSubject.value.length > 0) {
+          console.log('[Chat] Network online detected, flushing offline queue via REST');
+          this.flushOfflineQueue();
+        }
+      };
+      window.addEventListener('online', onlineHandler);
+      this.destroy$.subscribe(() => window.removeEventListener('online', onlineHandler));
+    }
   }
 
   ngOnDestroy(): void {
@@ -136,27 +150,20 @@ export class ChatService implements OnDestroy {
 
       await this.webSocketService.connect();
 
-      // Subscribe to user's personal queue for messages
-      this.webSocketService.subscribe('/user/queue/messages', (message) => {
+      // Subscribe to user-specific error queue (server sends errors here)
+      this.webSocketService.subscribe('/user/queue/errors', (message) => {
         try {
-          const msg: MessageDTO = JSON.parse(message.body);
-          this.handleIncomingMessage(msg);
-        } catch (error) {
+          const error = JSON.parse(message.body);
+          console.warn('[WS] Server error:', error);
+          if (error.error) {
+            this.toast.error(error.error);
+          }
+        } catch (e) {
           // Silent error handling
         }
       });
 
-      // Subscribe to broadcast topic for public messages
-      this.webSocketService.subscribe('/topic/messages', (message) => {
-        try {
-          const msg: MessageDTO = JSON.parse(message.body);
-          this.handleIncomingMessage(msg);
-        } catch (error) {
-          // Silent error handling
-        }
-      });
-
-      // Subscribe to message status updates
+      // Subscribe to message status updates via user queue
       this.webSocketService.subscribe('/user/queue/message-status', (message) => {
         try {
           const statusUpdate: MessageStatusUpdate = JSON.parse(message.body);
@@ -166,20 +173,97 @@ export class ChatService implements OnDestroy {
         }
       });
 
-      // Subscribe to typing indicators
-      this.webSocketService.subscribe('/user/queue/typing', (message) => {
-        try {
-          const typing: TypingIndicatorDTO = JSON.parse(message.body);
-          this.handleTypingIndicator(typing);
-        } catch (error) {
-          // Silent error handling
-        }
-      });
-
       this.isWebSocketInitialized = true;
     } catch (error) {
       this.isWebSocketInitialized = false;
       throw error;
+    }
+  }
+
+  /**
+   * Subscribe to conversation-specific WebSocket topics.
+   * Backend broadcasts to /topic/conversation/{bookingId}, /topic/conversation/{bookingId}/typing,
+   * and /topic/conversation/{bookingId}/read.
+   */
+  subscribeToConversation(bookingId: string): void {
+    // Unsubscribe from previous conversation
+    if (this.activeSubscriptionBookingId && this.activeSubscriptionBookingId !== bookingId) {
+      this.unsubscribeFromConversation(this.activeSubscriptionBookingId);
+    }
+
+    if (this.activeSubscriptionBookingId === bookingId) {
+      return; // Already subscribed
+    }
+
+    if (!this.webSocketService.isConnected()) {
+      return;
+    }
+
+    this.activeSubscriptionBookingId = bookingId;
+
+    // Subscribe to messages for this conversation
+    this.webSocketService.subscribe(`/topic/conversation/${bookingId}`, (message) => {
+      try {
+        const msg: MessageDTO = JSON.parse(message.body);
+        this.handleIncomingMessage(msg);
+      } catch (error) {
+        // Silent error handling
+      }
+    });
+
+    // Subscribe to typing indicators for this conversation
+    this.webSocketService.subscribe(`/topic/conversation/${bookingId}/typing`, (message) => {
+      try {
+        const rawTyping = JSON.parse(message.body);
+        // Map backend DTO (userId/typing/displayName) to frontend DTO (userId/isTyping/userName)
+        const typing: TypingIndicatorDTO = {
+          conversationId: 0, // Will be set from active conversation context
+          userId: rawTyping.userId?.toString() || '',
+          userName: rawTyping.displayName || rawTyping.userName || '',
+          isTyping: rawTyping.typing ?? rawTyping.isTyping ?? false,
+          timestamp: new Date().toISOString(),
+        };
+        // Set conversationId from the active conversation
+        const activeConv = this.activeConversationSubject.value;
+        if (activeConv) {
+          typing.conversationId = activeConv.id;
+        }
+        this.handleTypingIndicator(typing);
+      } catch (error) {
+        // Silent error handling
+      }
+    });
+
+    // Subscribe to read receipts for this conversation
+    this.webSocketService.subscribe(`/topic/conversation/${bookingId}/read`, (message) => {
+      try {
+        const readReceipt = JSON.parse(message.body);
+        // Update messages with read status
+        const activeConv = this.activeConversationSubject.value;
+        if (activeConv) {
+          const statusUpdate: MessageStatusUpdate = {
+            messageId: 0, // Read receipt applies to all messages
+            conversationId: activeConv.id,
+            readAt: new Date(readReceipt.timestamp).toISOString(),
+            readBy: [readReceipt.userId?.toString()],
+          };
+          this.handleMessageStatusUpdate(statusUpdate);
+        }
+      } catch (error) {
+        // Silent error handling
+      }
+    });
+  }
+
+  /**
+   * Unsubscribe from conversation-specific WebSocket topics.
+   */
+  unsubscribeFromConversation(bookingId: string): void {
+    this.webSocketService.unsubscribe(`/topic/conversation/${bookingId}`);
+    this.webSocketService.unsubscribe(`/topic/conversation/${bookingId}/typing`);
+    this.webSocketService.unsubscribe(`/topic/conversation/${bookingId}/read`);
+    if (this.activeSubscriptionBookingId === bookingId) {
+      this.activeSubscriptionBookingId = null;
     }
   }
 
@@ -206,10 +290,11 @@ export class ChatService implements OnDestroy {
       return;
     }
 
+    // Send typing DTO matching backend TypingIndicatorDTO (userId/typing/displayName)
     this.webSocketService.send(`/app/chat/${bookingId}/typing`, {
-      isTyping,
+      typing: isTyping,
       userId: user.id,
-      userName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'User',
+      displayName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'User',
     });
   }
 
@@ -468,15 +553,58 @@ export class ChatService implements OnDestroy {
   }
 
   /**
-   * Send message with optimistic update and offline fallback
+   * Upload a file attachment for a conversation.
+   * Returns the URL of the uploaded file to be used as mediaUrl in SendMessageRequest.
+   *
+   * @param bookingId The booking ID for the conversation
+   * @param file The file to upload
+   * @returns Observable with { url: string, filename: string }
+   */
+  uploadAttachment(bookingId: string, file: File): Observable<{ url: string; filename: string }> {
+    const formData = new FormData();
+    formData.append('file', file, file.name);
+    return this.http
+      .post<{ url: string; filename: string }>(
+        `${this.chatApiUrl}/conversations/${bookingId}/attachments`,
+        formData,
+      )
+      .pipe(
+        catchError((error) => {
+          const msg = error?.error?.error || 'Neuspešno otpremanje fajla.';
+          this.toast.error(msg);
+          return this.handleError(error);
+        }),
+      );
+  }
+
+  /**
+   * Get admin transcript for dispute resolution.
+   * Requires ADMIN role. Returns full conversation with all messages.
+   *
+   * @param bookingId The booking ID for the conversation
+   * @returns Observable<ConversationDTO> with all messages
+   */
+  getAdminTranscript(bookingId: string): Observable<ConversationDTO> {
+    return this.http
+      .get<ConversationDTO>(`${this.chatApiUrl}/admin/conversations/${bookingId}/transcript`)
+      .pipe(catchError(this.handleError.bind(this)));
+  }
+
+  /**
+   * Send message with optimistic update and offline fallback.
+   * Optionally includes a mediaUrl for attachment messages.
    */
   sendMessageOptimistic(
     bookingId: string,
     content: string,
     conversationId: number,
+    mediaUrl?: string,
   ): Observable<MessageDTO> {
     // Create optimistic message
     const optimisticMsg = this.createOptimisticMessage(content, conversationId);
+    if (mediaUrl) {
+      optimisticMsg.mediaUrl = mediaUrl;
+    }
 
     // Add to UI immediately
     const activeConv = this.activeConversationSubject.value;
@@ -489,22 +617,33 @@ export class ChatService implements OnDestroy {
       });
     }
 
-    // Check if online
-    if (!navigator.onLine || !this.webSocketService.isConnected()) {
-      // Offline - queue message
+    // Check if online (only check navigator.onLine, not WS health - REST works independently)
+    if (!navigator.onLine) {
+      // Truly offline - queue message
       this.queueOfflineMessage(bookingId, content);
       this.markOptimisticMessageFailed(optimisticMsg.optimisticId!);
       return throwError(() => new Error('Offline - message queued'));
     }
 
-    // Send message
-    return this.sendMessage(bookingId, { content }).pipe(
+    // Send message via REST (independent of WebSocket health)
+    const request: SendMessageRequest = { content };
+    if (mediaUrl) {
+      request.mediaUrl = mediaUrl;
+    }
+    return this.sendMessage(bookingId, request).pipe(
       tap((serverMessage) => {
         this.replaceOptimisticMessage(optimisticMsg.optimisticId!, serverMessage);
       }),
       catchError((error) => {
         this.markOptimisticMessageFailed(optimisticMsg.optimisticId!);
-        this.queueOfflineMessage(bookingId, content);
+        
+        // Only queue for network errors, NOT for 4xx client errors (moderation, validation)
+        const status = error?.status || error?.error?.status;
+        const isClientError = status >= 400 && status < 500;
+        if (!isClientError) {
+          this.queueOfflineMessage(bookingId, content);
+        }
+        
         return throwError(() => error);
       }),
     );
@@ -516,9 +655,9 @@ export class ChatService implements OnDestroy {
       return;
     }
 
-    this.webSocketService.send(`/app/chat/${bookingId}`, {
+    // Backend expects /app/chat/{bookingId}/send with SendMessageRequest payload
+    this.webSocketService.send(`/app/chat/${bookingId}/send`, {
       content,
-      bookingId,
     });
   }
 
@@ -598,6 +737,40 @@ export class ChatService implements OnDestroy {
       retry({ count: 2, delay: 1000 }),
       catchError((error) => {
         this.toast.error('Neuspešno učitavanje konverzacija. Pokušajte ponovo.');
+        return this.handleError(error);
+      }),
+    );
+  }
+
+  /**
+   * Admin-only: Fetch ALL conversations (no participant filter).
+   * Used by admin oversight / dispute resolution UI.
+   */
+  getAdminConversations(): Observable<ConversationDTO[]> {
+    return this.http.get<ConversationDTO[]>(`${this.chatApiUrl}/admin/conversations`).pipe(
+      map((conversations) => {
+        // Filter out malformed entries, but skip RBAC owner/renter check (admin sees all)
+        const valid = conversations.filter((conv) => conv.id != null);
+
+        // Remove duplicates
+        const uniqueIds = new Set<number>();
+        const deduplicated = valid.filter((conv) => {
+          if (uniqueIds.has(conv.id)) return false;
+          uniqueIds.add(conv.id);
+          return true;
+        });
+
+        // Sort by recency
+        return deduplicated.sort((a, b) => {
+          const dateA = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+          const dateB = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+          return dateB - dateA;
+        });
+      }),
+      tap((conversations) => this.conversationsSubject.next(conversations)),
+      retry({ count: 2, delay: 1000 }),
+      catchError((error) => {
+        this.toast.error('Neuspešno učitavanje konverzacija (admin). Pokušajte ponovo.');
         return this.handleError(error);
       }),
     );

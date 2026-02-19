@@ -13,6 +13,7 @@ public class BookingDetailsDTO {
     private Long id;
     private CarDetailsDTO car;
     private RenterDetailsDTO renter;
+    private OwnerDetailsDTO owner;
     private LocalDate startDate;
     private LocalDate endDate;
     private boolean isFallback; // Marker to indicate this is a fallback DTO
@@ -29,6 +30,7 @@ public class BookingDetailsDTO {
         }
         fallback.setCar(new CarDetailsDTO(0L, "Unknown", "Unknown", 0));
         fallback.setRenter(new RenterDetailsDTO(0L, "Unknown", ""));
+        fallback.setOwner(new OwnerDetailsDTO(0L, "Unknown", ""));
         fallback.setStartDate(LocalDate.now());
         fallback.setEndDate(LocalDate.now());
         fallback.setFallback(true);
@@ -49,6 +51,15 @@ public class BookingDetailsDTO {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class RenterDetailsDTO {
+        private Long id;
+        private String firstName;
+        private String lastName;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class OwnerDetailsDTO {
         private Long id;
         private String firstName;
         private String lastName;

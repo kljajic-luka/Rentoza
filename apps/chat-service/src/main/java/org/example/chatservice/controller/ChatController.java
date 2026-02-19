@@ -11,10 +11,13 @@ import org.example.chatservice.model.ConversationStatus;
 import org.example.chatservice.security.ContentModerationFilter;
 import org.example.chatservice.security.ContentModerationFilter.ContentModerationResult;
 import org.example.chatservice.service.ChatService;
+import org.example.chatservice.service.FileStorageService;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -46,6 +49,8 @@ public class ChatController {
     private final ChatService chatService;
     private final ContentModerationFilter contentModerationFilter;
     private final RateLimitConfig rateLimitConfig;
+    private final FileStorageService fileStorageService;
+    private final org.example.chatservice.service.IdempotencyService idempotencyService;
 
     /**
      * Extract user ID from SecurityContext principal.
@@ -227,17 +232,53 @@ public class ChatController {
                     moderationResult.getViolations()
             );
         }
+
+        // 2b. Log moderation flags for admin review queue (message still sent)
+        List<String> moderationFlags = null;
+        if (moderationResult.hasFlags()) {
+            moderationFlags = moderationResult.getFlags();
+            log.info("[Moderation] Message from user {} in booking {} flagged for admin review: {}", 
+                    userId, bookingIdLong, moderationFlags);
+        }
         
-        // 3. Log with idempotency key if present (for future Redis idempotency integration)
+        // 3. Idempotency check - return cached result if duplicate request
+        //    Keys are user-scoped to prevent cross-user collisions
+        String scopedKey = null;
         if (idempotencyKey != null && !idempotencyKey.isBlank()) {
-            log.debug("[Idempotency] Processing message with key {} from user {}", 
-                    idempotencyKey.substring(0, Math.min(8, idempotencyKey.length())) + "...", userId);
-            // TODO: Integrate with Redis idempotency service when available
+            scopedKey = userId + ":" + idempotencyKey;
+            MessageDTO cachedResult = idempotencyService.getExistingResult(scopedKey);
+            if (cachedResult != null) {
+                log.info("[Idempotency] Returning cached result for key {} from user {}", 
+                        idempotencyKey.substring(0, Math.min(8, idempotencyKey.length())) + "...", userId);
+                return ResponseEntity.status(HttpStatus.CREATED).body(cachedResult);
+            }
+            // Try to claim the key (prevent concurrent duplicate processing)
+            if (!idempotencyService.tryClaimKey(scopedKey)) {
+                log.warn("[Idempotency] Concurrent duplicate request for key {} from user {}", 
+                        idempotencyKey.substring(0, Math.min(8, idempotencyKey.length())) + "...", userId);
+                return ResponseEntity.status(HttpStatus.CONFLICT)
+                        .header("Retry-After", "1")
+                        .build();
+            }
         }
         
         log.info("Sending message in conversation for booking {} by user {}", bookingIdLong, userId);
         
-        MessageDTO message = chatService.sendMessage(bookingIdLong, userId, request);
+        MessageDTO message;
+        try {
+            message = chatService.sendMessage(bookingIdLong, userId, request, moderationFlags);
+        } catch (Exception e) {
+            // Release the idempotency key so client can retry
+            if (scopedKey != null) {
+                idempotencyService.releaseKey(scopedKey);
+            }
+            throw e;
+        }
+        
+        // Store result for idempotency
+        if (scopedKey != null) {
+            idempotencyService.storeResult(scopedKey, message);
+        }
         
         // Add rate limit remaining to response headers for client awareness
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -302,5 +343,191 @@ public class ChatController {
     @GetMapping("/health")
     public ResponseEntity<String> health() {
         return ResponseEntity.ok("Chat service is running");
+    }
+
+    // =========================================================================
+    // Admin Dispute Transcript API (P1 - Turo Standard)
+    // =========================================================================
+
+    /**
+     * Admin-only: List ALL conversations for admin oversight / dispute resolution.
+     *
+     * Security:
+     * - Requires ADMIN role
+     * - Returns all conversations regardless of participant
+     * - Audit-logged
+     */
+    @GetMapping("/admin/conversations")
+    public ResponseEntity<List<ConversationDTO>> getAdminConversations(
+            Authentication authentication
+    ) {
+        Long adminUserId = extractUserId(authentication);
+
+        boolean isAdmin = authentication.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN") || a.getAuthority().equals("ADMIN"));
+        if (!isAdmin) {
+            log.warn("[Security] Non-admin user {} attempted to list all conversations", adminUserId);
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
+        log.info("[Admin][Audit] Admin user {} listing all conversations", adminUserId);
+        List<ConversationDTO> conversations = chatService.getAllConversationsForAdmin();
+        return ResponseEntity.ok(conversations);
+    }
+
+    /**
+     * Admin-only: Get read-only conversation transcript for dispute resolution.
+     * 
+     * Security:
+     * - Requires ADMIN role (checked via @PreAuthorize or role in token)
+     * - Read-only access - admin cannot send messages through this endpoint
+     * - All admin access is audit-logged
+     * 
+     * @param bookingId The booking ID for the conversation
+     * @param authentication The authenticated admin user
+     * @return Full conversation with all messages (unpaginated for dispute review)
+     */
+    @GetMapping("/admin/conversations/{bookingId}/transcript")
+    public ResponseEntity<ConversationDTO> getAdminTranscript(
+            @PathVariable String bookingId,
+            Authentication authentication
+    ) {
+        Long adminUserId = extractUserId(authentication);
+        Long bookingIdLong = Long.parseLong(bookingId);
+
+        // Verify admin role
+        boolean isAdmin = authentication.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN") || a.getAuthority().equals("ADMIN"));
+        if (!isAdmin) {
+            log.warn("[Security] Non-admin user {} attempted to access admin transcript for booking {}", 
+                    adminUserId, bookingIdLong);
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
+        log.info("[Admin][Audit] Admin user {} accessing transcript for booking {} (dispute resolution)", 
+                adminUserId, bookingIdLong);
+
+        // Fetch full transcript without participant check (admin override)
+        ConversationDTO transcript = chatService.getConversationForAdmin(bookingIdLong);
+        
+        log.info("[Admin][Audit] Admin user {} retrieved {} messages for booking {}", 
+                adminUserId, 
+                transcript.getMessages() != null ? transcript.getMessages().size() : 0,
+                bookingIdLong);
+        
+        return ResponseEntity.ok(transcript);
+    }
+
+    // =========================================================================
+    // Attachment Upload/Retrieval (P1 - Turo Standard)
+    // =========================================================================
+
+    /**
+     * Upload a file attachment for a conversation.
+     * 
+     * Validation:
+     * - MIME type: image/jpeg, image/png, image/gif, image/webp, application/pdf
+     * - Size: max 10MB
+     * - User must be a conversation participant
+     * 
+     * @param bookingId The booking ID for the conversation
+     * @param file The uploaded file
+     * @param authentication The authenticated user
+     * @return The URL to the uploaded file (to be used in mediaUrl field)
+     */
+    @PostMapping(value = "/conversations/{bookingId}/attachments", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> uploadAttachment(
+            @PathVariable String bookingId,
+            @RequestParam("file") MultipartFile file,
+            Authentication authentication
+    ) {
+        Long userId = extractUserId(authentication);
+        Long bookingIdLong = Long.parseLong(bookingId);
+
+        // Verify user is a participant
+        if (!chatService.isUserParticipant(bookingIdLong, userId)) {
+            log.warn("[Security] Non-participant user {} attempted to upload attachment for booking {}", 
+                    userId, bookingIdLong);
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(java.util.Map.of("error", "You are not a participant in this conversation"));
+        }
+
+        try {
+            String fileUrl = fileStorageService.uploadAttachment(file, bookingIdLong, userId);
+            log.info("[Upload] User {} uploaded attachment for booking {}: {}", userId, bookingIdLong, fileUrl);
+            return ResponseEntity.status(HttpStatus.CREATED)
+                    .body(java.util.Map.of("url", fileUrl, "filename", file.getOriginalFilename()));
+        } catch (IllegalArgumentException e) {
+            log.warn("[Upload] Validation failed for user {} in booking {}: {}", userId, bookingIdLong, e.getMessage());
+            return ResponseEntity.badRequest()
+                    .body(java.util.Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Retrieve an uploaded attachment.
+     * 
+     * Security:
+     * - Requires authentication (JWT)
+     * - Extracts booking ID from path (booking-{id}/{file})
+     * - Verifies user is a participant or admin before serving
+     * - Uses Cache-Control: private (not public — these are private chat files)
+     * 
+     * @param request The HTTP request (for path extraction)
+     * @param authentication The authenticated user
+     * @return The file content with correct content type
+     */
+    @GetMapping("/attachments/**")
+    public ResponseEntity<byte[]> getAttachment(
+            jakarta.servlet.http.HttpServletRequest request,
+            Authentication authentication
+    ) {
+        // Extract path after /api/attachments/
+        String fullPath = request.getRequestURI();
+        String prefix = "/api/attachments/";
+        int prefixIndex = fullPath.indexOf(prefix);
+        if (prefixIndex < 0) {
+            return ResponseEntity.notFound().build();
+        }
+        String relativePath = fullPath.substring(prefixIndex + prefix.length());
+
+        // SECURITY: Extract booking ID from path pattern "booking-{id}/{filename}"
+        // and verify the requesting user is a participant or admin
+        try {
+            Long requestingUserId = extractUserId(authentication);
+            boolean isAdmin = authentication.getAuthorities().stream()
+                    .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN") || a.getAuthority().equals("ADMIN"));
+
+            // Parse booking ID from directory name (e.g., "booking-123/uuid.jpg")
+            String[] pathParts = relativePath.split("/");
+            if (pathParts.length < 2 || !pathParts[0].startsWith("booking-")) {
+                log.warn("[Security] Invalid attachment path format: {}", relativePath);
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+            }
+            Long bookingId = Long.parseLong(pathParts[0].substring("booking-".length()));
+
+            // Authorization: user must be participant or admin
+            if (!isAdmin && !chatService.isUserParticipant(bookingId, requestingUserId)) {
+                log.warn("[Security] IDOR attempt: User {} tried to access attachment for booking {} (not a participant)",
+                        requestingUserId, bookingId);
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+
+            byte[] fileData = fileStorageService.getFile(relativePath);
+            String contentType = fileStorageService.getContentType(relativePath);
+            return ResponseEntity.ok()
+                    .header("Content-Type", contentType)
+                    .header("Cache-Control", "private, max-age=86400") // Private — chat files are not public
+                    .header("X-Content-Type-Options", "nosniff")
+                    .body(fileData);
+        } catch (SecurityException e) {
+            log.warn("[Security] Path traversal attempt: {}", relativePath);
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        } catch (NumberFormatException e) {
+            log.warn("[Security] Invalid booking ID in attachment path: {}", relativePath);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+        } catch (Exception e) {
+            return ResponseEntity.notFound().build();
+        }
     }
 }

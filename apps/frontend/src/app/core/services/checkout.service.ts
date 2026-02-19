@@ -525,10 +525,17 @@ export class CheckoutService {
    * Guest disputes a checkout damage claim.
    * Escalates to admin for resolution. Deposit remains held.
    */
-  disputeDamageClaim(bookingId: number, reason: string, evidencePhotoIds?: number[]): Observable<any> {
+  disputeDamageClaim(
+    bookingId: number,
+    reason: string,
+    evidencePhotoIds?: number[],
+  ): Observable<any> {
     this._isLoading.set(true);
     return this.http
-      .post<any>(`${this.apiUrl}/${bookingId}/checkout/damage/dispute`, { reason, evidencePhotoIds })
+      .post<any>(`${this.apiUrl}/${bookingId}/checkout/damage/dispute`, {
+        reason,
+        evidencePhotoIds,
+      })
       .pipe(
         tap(() => {
           this._isLoading.set(false);

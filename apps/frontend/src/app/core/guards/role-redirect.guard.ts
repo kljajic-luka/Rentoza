@@ -34,7 +34,8 @@ export class RoleRedirectGuard implements CanActivate {
   private readonly bookingsListPath = '/bookings';
 
   // Admin-only routes (admin can ONLY access these)
-  private readonly adminAllowedPrefixes = ['/admin', '/auth'];
+  // /messages included for admin dispute transcript review
+  private readonly adminAllowedPrefixes = ['/admin', '/auth', '/messages'];
 
   canActivate(
     route: ActivatedRouteSnapshot,

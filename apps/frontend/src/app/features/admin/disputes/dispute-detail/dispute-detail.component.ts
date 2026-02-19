@@ -87,7 +87,16 @@ export class DisputeDetailComponent implements OnInit {
   // Computed
   canResolve = computed(() => {
     const d = this.dispute();
-    return d && ['DISPUTED', 'ESCALATED', 'CHECKOUT_GUEST_DISPUTED', 'CHECKOUT_TIMEOUT_ESCALATED', 'CHECKOUT_PENDING'].includes(d.status);
+    return (
+      d &&
+      [
+        'DISPUTED',
+        'ESCALATED',
+        'CHECKOUT_GUEST_DISPUTED',
+        'CHECKOUT_TIMEOUT_ESCALATED',
+        'CHECKOUT_PENDING',
+      ].includes(d.status)
+    );
   });
 
   hasEvidence = computed(() => {
@@ -157,8 +166,17 @@ export class DisputeDetailComponent implements OnInit {
   /** Check if this is a checkout-stage dispute (uses different resolution endpoint). */
   isCheckoutDispute = computed(() => {
     const d = this.dispute();
-    return d && ['CHECKOUT_PENDING', 'CHECKOUT_GUEST_DISPUTED', 'CHECKOUT_TIMEOUT_ESCALATED',
-      'CHECKOUT_GUEST_ACCEPTED', 'CHECKOUT_ADMIN_APPROVED', 'CHECKOUT_ADMIN_REJECTED'].includes(d.status);
+    return (
+      d &&
+      [
+        'CHECKOUT_PENDING',
+        'CHECKOUT_GUEST_DISPUTED',
+        'CHECKOUT_TIMEOUT_ESCALATED',
+        'CHECKOUT_GUEST_ACCEPTED',
+        'CHECKOUT_ADMIN_APPROVED',
+        'CHECKOUT_ADMIN_REJECTED',
+      ].includes(d.status)
+    );
   });
 
   submitResolution(): void {
@@ -192,9 +210,13 @@ export class DisputeDetailComponent implements OnInit {
         },
         error: (error: any) => {
           console.error('Failed to resolve checkout dispute:', error);
-          this.snackBar.open('Failed to resolve dispute: ' + (error?.error?.message || error.message), 'Close', {
-            duration: 5000,
-          });
+          this.snackBar.open(
+            'Failed to resolve dispute: ' + (error?.error?.message || error.message),
+            'Close',
+            {
+              duration: 5000,
+            },
+          );
           this.submitting.set(false);
         },
       });

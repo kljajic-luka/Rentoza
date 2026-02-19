@@ -51,6 +51,37 @@ import { TimeFormatPipe } from '../../shared/pipes/time-format.pipe';
         <!-- Message content (XSS protected) -->
         <p class="content">{{ safeContent() }}</p>
 
+        <!-- Attachment rendering -->
+        <div class="attachment" *ngIf="message().mediaUrl">
+          <!-- Image attachment -->
+          <a
+            *ngIf="isImageAttachment()"
+            [href]="message().mediaUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="image-attachment"
+          >
+            <img
+              [src]="message().mediaUrl"
+              alt="Prilog slike"
+              class="attachment-image"
+              loading="lazy"
+              (error)="onAttachmentError($event)"
+            />
+          </a>
+          <!-- PDF/file attachment -->
+          <a
+            *ngIf="!isImageAttachment()"
+            [href]="message().mediaUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="file-attachment"
+          >
+            <mat-icon>picture_as_pdf</mat-icon>
+            <span>Preuzmi prilog</span>
+          </a>
+        </div>
+
         <!-- Meta info -->
         <div class="meta">
           <time class="timestamp">{{ message().timestamp | timeFormat:'short' }}</time>
@@ -176,6 +207,47 @@ import { TimeFormatPipe } from '../../shared/pipes/time-format.pipe';
       line-height: 1.45;
       white-space: pre-wrap;
       word-break: break-word;
+    }
+
+    .attachment {
+      margin-top: 8px;
+      border-radius: 8px;
+      overflow: hidden;
+
+      .image-attachment {
+        display: block;
+        cursor: pointer;
+
+        .attachment-image {
+          max-width: 100%;
+          max-height: 240px;
+          border-radius: 8px;
+          object-fit: cover;
+        }
+      }
+
+      .file-attachment {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        background-color: rgba(0, 0, 0, 0.06);
+        border-radius: 8px;
+        text-decoration: none;
+        color: inherit;
+        font-size: 13px;
+
+        mat-icon {
+          font-size: 20px;
+          width: 20px;
+          height: 20px;
+          color: #d32f2f;
+        }
+
+        &:hover {
+          background-color: rgba(0, 0, 0, 0.1);
+        }
+      }
     }
 
     .meta {
@@ -349,6 +421,21 @@ export class MessageBubbleComponent {
 
   // Fallback to initials if image fails to load
   onImageError(event: Event): void {
+    const img = event.target as HTMLImageElement;
+    img.style.display = 'none';
+  }
+
+  // Check if attachment is an image based on URL extension
+  isImageAttachment(): boolean {
+    const url = this.message()?.mediaUrl;
+    if (!url) return false;
+    const lower = url.toLowerCase();
+    return lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.png') ||
+           lower.endsWith('.gif') || lower.endsWith('.webp');
+  }
+
+  // Handle attachment load error
+  onAttachmentError(event: Event): void {
     const img = event.target as HTMLImageElement;
     img.style.display = 'none';
   }

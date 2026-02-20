@@ -63,10 +63,14 @@ public class SupabaseStorageClient {
                     .responseTimeout(Duration.ofSeconds(30));
 
             // Do NOT log the service role key — build header silently.
+            // Codec buffer must be at least as large as the maximum allowed attachment
+            // size (10 MB) so that bodyToMono(byte[].class) on large downloads does NOT
+            // throw DataBufferLimitException (which surfaces as a misleading "HTTP 200" error).
             this.webClient = webClientBuilder
                     .clientConnector(new ReactorClientHttpConnector(httpClient))
                     .baseUrl(supabaseUrl + "/storage/v1")
                     .defaultHeader("Authorization", "Bearer " + serviceRoleKey)
+                    .codecs(c -> c.defaultCodecs().maxInMemorySize(10 * 1024 * 1024))
                     .build();
 
             log.info("[Storage] SupabaseStorageClient ready — bucket='{}', baseUrl={}/storage/v1",

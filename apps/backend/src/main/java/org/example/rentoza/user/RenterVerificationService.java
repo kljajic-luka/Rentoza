@@ -113,7 +113,8 @@ public class RenterVerificationService {
             MultipartFile file,
             DriverLicenseSubmissionRequest request) throws IOException {
         
-        log.info("Document submission: userId={}, type={}", userId, request.getDocumentType());
+        log.info("Document submission: userId={}, type={}, fileSize={}, filename={}",
+            userId, request.getDocumentType(), file.getSize(), file.getOriginalFilename());
         
         // Get user
         User user = userRepository.findById(userId)
@@ -141,17 +142,54 @@ public class RenterVerificationService {
         
         // Calculate document hash for duplicate detection
         String documentHash = calculateSha256(file.getBytes());
-        
-        // Check for duplicate document from another user (fraud detection)
+        String hashPrefix = documentHash.length() >= 8 ? documentHash.substring(0, 8) : documentHash;
+
+        // ── Duplicate hash analysis (3 deterministic scenarios) ──────────────
+        //
+        // 1. Different user + same hash  → cross-user fraud, reject 409
+        // 2. Same user + same type + same hash → idempotent, return existing
+        // 3. Same user + different type + same hash → same photo for two slots, reject 400
+        //
+        // NOTE: Scenario 2 prevents the INSERT that would hit idx_renter_documents_hash_unique.
+        // Scenario 3 prevents a confusing DB 500 with a clear user message.
+        // The DB constraint is a last-resort safety net, not the primary path.
+
         if (documentRepository.existsByDocumentHashForDifferentUser(documentHash, userId)) {
-            log.warn("Duplicate document detected: userId={}, hash={}", userId, documentHash);
-            throw new ValidationException("This document has already been submitted by another user");
+            log.warn("[submitDocument] REJECT cross-user duplicate: userId={}, docType={}, hashPrefix={}",
+                userId, docType, hashPrefix);
+            throw new ValidationException("This document has already been submitted by another user.");
         }
-        
-        // Replace existing document of same type
+
+        Optional<RenterDocument> existingSameUserSameHash =
+            documentRepository.findByUserIdAndDocumentHash(userId, documentHash);
+
+        if (existingSameUserSameHash.isPresent()) {
+            RenterDocument existing = existingSameUserSameHash.get();
+            if (existing.getType() == docType) {
+                // Idempotent: same user, same type, same file — no-op
+                log.info("[submitDocument] IDEMPOTENT: userId={}, docType={}, hashPrefix={}, existingDocId={}",
+                    userId, docType, hashPrefix, existing.getId());
+                return RenterDocumentDTO.fromEntity(existing);
+            } else {
+                // Same photo submitted for a different document slot — clear user error
+                log.warn("[submitDocument] REJECT same-photo cross-type: userId={}, "
+                    + "existingType={}, newType={}, hashPrefix={}",
+                    userId, existing.getType(), docType, hashPrefix);
+                throw new ValidationException(
+                    "Front and back documents must be different photos. "
+                    + "You have already submitted this image as: "
+                    + existing.getType().getSerbianName() + ".");
+            }
+        }
+
+        log.info("[submitDocument] INSERT new document: userId={}, docType={}, hashPrefix={}",
+            userId, docType, hashPrefix);
+
+        // Replace existing document of same type (re-submission with a different file)
         documentRepository.findByUserIdAndType(userId, docType)
             .ifPresent(existing -> {
-                log.info("Replacing existing {} for userId={}", docType, userId);
+                log.info("[submitDocument] Replacing existing {} docId={} for userId={}",
+                    docType, existing.getId(), userId);
                 documentRepository.delete(existing);
             });
         
@@ -474,6 +512,20 @@ public class RenterVerificationService {
         // Auto-approve decision
         boolean meetsOcrThreshold = riskLevel.meetsAutoApproveThreshold(ocrConfidence);
         boolean meetsNameThreshold = nameMatch >= nameMatchThreshold;
+
+        // POLICY: MOCK provider means no real biometric verification happened.
+        // Simulated scores must never trigger auto-approval — force manual review.
+        boolean isMockProvider = "MOCK".equalsIgnoreCase(verificationProvider.getProviderName());
+        if (isMockProvider) {
+            log.info("Forcing manual review: provider=MOCK, userId={}. "
+                + "Automatic approval is disabled when no third-party provider is configured.", userId);
+            createAudit(user, licenseDoc, null,
+                RenterVerificationAudit.AuditAction.ESCALATED_TO_REVIEW,
+                DriverLicenseStatus.PENDING_REVIEW, DriverLicenseStatus.PENDING_REVIEW,
+                "Manual review required: MOCK provider active, biometric scores are simulated.");
+            userRepository.save(user);
+            return;
+        }
         
         // SECURITY: Check license expiry date before auto-approval
         // Turo standard: never auto-approve an expired or missing-expiry license

@@ -161,7 +161,7 @@ public interface RenterDocumentRepository extends JpaRepository<RenterDocument, 
     boolean existsByDocumentHash(String documentHash);
     
     /**
-     * Check if document hash exists for different user (fraud detection).
+     * Check if document hash exists for different user (cross-user fraud detection).
      */
     @Query("""
         SELECT CASE WHEN COUNT(d) > 0 THEN true ELSE false END 
@@ -172,6 +172,20 @@ public interface RenterDocumentRepository extends JpaRepository<RenterDocument, 
     boolean existsByDocumentHashForDifferentUser(
         @Param("hash") String hash, 
         @Param("userId") Long userId
+    );
+
+    /**
+     * Find any document belonging to a specific user with the given hash.
+     * Used for same-user duplicate detection: idempotency vs cross-type same-photo guard.
+     */
+    @Query("""
+        SELECT d FROM RenterDocument d 
+        WHERE d.user.id = :userId 
+        AND d.documentHash = :hash
+        """)
+    Optional<RenterDocument> findByUserIdAndDocumentHash(
+        @Param("userId") Long userId,
+        @Param("hash") String hash
     );
     
     // ==================== VERIFICATION CHECKS ====================

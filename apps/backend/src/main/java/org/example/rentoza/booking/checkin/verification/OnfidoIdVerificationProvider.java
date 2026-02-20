@@ -7,6 +7,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.*;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
+import jakarta.annotation.PostConstruct;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -79,6 +80,22 @@ public class OnfidoIdVerificationProvider implements IdVerificationProvider {
     
     public OnfidoIdVerificationProvider() {
         this.restTemplate = new RestTemplate();
+    }
+
+    /**
+     * Fail fast on startup if Onfido API key is not configured.
+     * Prevents silent failures at request time; misconfiguration must be detected
+     * at boot, not at the first document submission.
+     */
+    @PostConstruct
+    void validateConfiguration() {
+        if (apiKey == null || apiKey.isBlank()) {
+            throw new IllegalStateException(
+                "Onfido provider is active (app.id-verification.provider=ONFIDO) "
+                + "but ONFIDO_API_KEY / app.id-verification.onfido.api-key is not set. "
+                + "Either configure the API key or switch APP_ID_VERIFICATION_PROVIDER=MOCK.");
+        }
+        log.info("[OnfidoIdVerificationProvider] Configuration validated. API URL: {}", apiUrl);
     }
     
     @Override

@@ -275,4 +275,4 @@ If issues arise post-deployment:
 For issues or questions, contact:
 - **Team**: Frontend Platform Team
 - **Slack**: #frontend-support
-- **On-call**: platform-engineering@rentoza.com
+- **On-call**: platform-engineering@rentoza.rs

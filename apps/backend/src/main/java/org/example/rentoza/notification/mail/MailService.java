@@ -35,7 +35,7 @@ public class MailService {
     private final JavaMailSender mailSender;
     private final TemplateEngine templateEngine;
 
-    @Value("${spring.mail.from:noreply@rentoza.com}")
+    @Value("${spring.mail.from:noreply@rentoza.rs}")
     private String fromEmail;
 
     @Value("${spring.mail.username:}")
@@ -318,23 +318,23 @@ public class MailService {
      * Build deep link URLs for email CTAs.
      */
     private String buildBookingUrl(String bookingId) {
-        return "https://rentoza.com/bookings/" + bookingId;
+        return "https://rentoza.rs/bookings/" + bookingId;
     }
 
     private String buildCheckInUrl(String bookingId) {
-        return "https://rentoza.com/bookings/" + bookingId + "/check-in";
+        return "https://rentoza.rs/bookings/" + bookingId + "/check-in";
     }
 
     private String buildCheckOutUrl(String bookingId) {
-        return "https://rentoza.com/bookings/" + bookingId + "/check-out";
+        return "https://rentoza.rs/bookings/" + bookingId + "/check-out";
     }
 
     private String buildReviewUrl(String reviewId) {
-        return "https://rentoza.com/reviews/" + reviewId;
+        return "https://rentoza.rs/reviews/" + reviewId;
     }
 
     private String buildChatUrl() {
-        return "https://rentoza.com/chat";
+        return "https://rentoza.rs/chat";
     }
 
     // =====================================================

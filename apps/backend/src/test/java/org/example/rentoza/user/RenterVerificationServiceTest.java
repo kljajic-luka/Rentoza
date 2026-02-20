@@ -244,6 +244,80 @@ class RenterVerificationServiceTest {
             assertThat(user.getDriverLicenseStatus()).isEqualTo(DriverLicenseStatus.PENDING_REVIEW);
             verify(userRepository, atLeast(1)).save(user);
         }
+
+        @Test
+        @DisplayName("submitDocument - same user, same type, same hash => idempotent success (no 500)")
+        void submitDocument_SameUserSameTypeSameHash_IdempotentSuccess() throws Exception {
+            // Arrange
+            Long userId = 1L;
+            User user = createTestUser(userId, DriverLicenseStatus.NOT_STARTED);
+            when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+            setupValidMockFile("image/jpeg", 1000L);
+
+            // Simulate: hash already exists for same user + same doc type
+            RenterDocument existingDoc = createTestDocument(userId, RenterDocumentType.DRIVERS_LICENSE_FRONT, "aabbccdd");
+            when(documentRepository.existsByDocumentHashForDifferentUser(any(), eq(userId))).thenReturn(false);
+            when(documentRepository.findByUserIdAndDocumentHash(eq(userId), any())).thenReturn(Optional.of(existingDoc));
+
+            DriverLicenseSubmissionRequest request = DriverLicenseSubmissionRequest.builder()
+                .documentType(RenterDocumentType.DRIVERS_LICENSE_FRONT)
+                .build();
+
+            // Act - must NOT throw
+            RenterDocumentDTO result = service.submitDocument(userId, mockFile, request);
+
+            // Assert: returns existing document, no new insert
+            assertThat(result).isNotNull();
+            assertThat(result.getId()).isEqualTo(existingDoc.getId());
+            verify(documentRepository, never()).save(any(RenterDocument.class));
+            verify(storageService, never()).uploadRenterDocument(anyLong(), any(), any());
+        }
+
+        @Test
+        @DisplayName("submitDocument - same user, different type, same hash => validation reject (no 500)")
+        void submitDocument_SameUserDifferentTypeSameHash_RejectsWithValidation() throws Exception {
+            // Arrange
+            Long userId = 1L;
+            User user = createTestUser(userId, DriverLicenseStatus.NOT_STARTED);
+            when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+            setupValidMockFile("image/jpeg", 1000L);
+
+            // Simulate: same hash exists for FRONT, but user is submitting BACK with the same image
+            RenterDocument existingFront = createTestDocument(userId, RenterDocumentType.DRIVERS_LICENSE_FRONT, "aabbccdd");
+            when(documentRepository.existsByDocumentHashForDifferentUser(any(), eq(userId))).thenReturn(false);
+            when(documentRepository.findByUserIdAndDocumentHash(eq(userId), any())).thenReturn(Optional.of(existingFront));
+
+            DriverLicenseSubmissionRequest request = DriverLicenseSubmissionRequest.builder()
+                .documentType(RenterDocumentType.DRIVERS_LICENSE_BACK) // different type
+                .build();
+
+            // Act & Assert: clear validation error, not a 500
+            assertThatThrownBy(() -> service.submitDocument(userId, mockFile, request))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("Front and back documents must be different photos");
+        }
+
+        @Test
+        @DisplayName("submitDocument - different user, same hash => fraud detection reject")
+        void submitDocument_DifferentUserSameHash_FraudReject() throws Exception {
+            // Arrange
+            Long userId = 1L;
+            User user = createTestUser(userId, DriverLicenseStatus.NOT_STARTED);
+            when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+            setupValidMockFile("image/jpeg", 1000L);
+
+            // Simulate: hash already exists for a different user
+            when(documentRepository.existsByDocumentHashForDifferentUser(any(), eq(userId))).thenReturn(true);
+
+            DriverLicenseSubmissionRequest request = DriverLicenseSubmissionRequest.builder()
+                .documentType(RenterDocumentType.DRIVERS_LICENSE_FRONT)
+                .build();
+
+            // Act & Assert
+            assertThatThrownBy(() -> service.submitDocument(userId, mockFile, request))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("already been submitted by another user");
+        }
     }
     
     // ==================== BOOKING ELIGIBILITY TESTS ====================
@@ -595,6 +669,23 @@ class RenterVerificationServiceTest {
         doc.setUser(user);
         doc.setType(type);
         doc.setDocumentUrl("renters/" + user.getId() + "/documents/" + type.name().toLowerCase() + "/test.jpg");
+        doc.setStatus(DocumentVerificationStatus.PENDING);
+        doc.setProcessingStatus(RenterDocument.ProcessingStatus.COMPLETED);
+        doc.setCreatedAt(LocalDateTime.now());
+        return doc;
+    }
+
+    /**
+     * Overload for duplicate-hash tests: creates a document with a specific hash, no User object needed.
+     */
+    private RenterDocument createTestDocument(Long userId, RenterDocumentType type, String hash) {
+        User user = createTestUser(userId, DriverLicenseStatus.NOT_STARTED);
+        RenterDocument doc = new RenterDocument();
+        doc.setId(99L);
+        doc.setUser(user);
+        doc.setType(type);
+        doc.setDocumentHash(hash);
+        doc.setDocumentUrl("renters/" + userId + "/documents/" + type.name().toLowerCase() + "/test.jpg");
         doc.setStatus(DocumentVerificationStatus.PENDING);
         doc.setProcessingStatus(RenterDocument.ProcessingStatus.COMPLETED);
         doc.setCreatedAt(LocalDateTime.now());

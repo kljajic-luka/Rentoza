@@ -2659,7 +2659,7 @@ metadata:
   name: rentoza-checkin
 spec:
   hosts:
-    - api.rentoza.com
+    - api.rentoza.rs
   http:
     - match:
         - uri:

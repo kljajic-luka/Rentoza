@@ -212,6 +212,18 @@ public class GlobalExceptionHandler {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
         }
 
+        // Renter document hash uniqueness violation
+        // This is a last-resort guard; normal path handles duplicates before the INSERT.
+        if (message != null && message.contains("idx_renter_documents_hash_unique")) {
+            log.warn("Renter document hash unique constraint violated (race condition guard): {}", message);
+            Map<String, Object> body = new HashMap<>();
+            body.put("timestamp", Instant.now().toString());
+            body.put("error", "Conflict");
+            body.put("code", "DUPLICATE_DOCUMENT");
+            body.put("message", "Ovaj dokument je već dodat u sistem. Molimo proverite da niste slali isti fajl.");
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+        }
+
         // Fall through to generic DB error handling
         String correlationId = "DB-" + UUID.randomUUID().toString().substring(0, 8);
         log.error("[{}] Data integrity violation: type={}, message={}",

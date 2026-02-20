@@ -7,6 +7,9 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.MultipartException;
+import org.example.chatservice.exception.StorageUpstreamException;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -89,6 +92,48 @@ public class GlobalExceptionHandler {
         response.put("violations", ex.getViolations());
         
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<Map<String, Object>> handleMaxUploadSizeExceeded(MaxUploadSizeExceededException ex) {
+        log.warn("Attachment upload rejected: file too large");
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("timestamp", LocalDateTime.now());
+        response.put("status", HttpStatus.PAYLOAD_TOO_LARGE.value());
+        response.put("error", "Payload Too Large");
+        response.put("message", "Attachment exceeds the maximum allowed size");
+        response.put("userMessage", "Fajl je prevelik. Maksimalna veličina je 10MB.");
+
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(response);
+    }
+
+    @ExceptionHandler(MultipartException.class)
+    public ResponseEntity<Map<String, Object>> handleMultipartException(MultipartException ex) {
+        String message = ex.getMessage() != null ? ex.getMessage().toLowerCase() : "";
+
+        if (message.contains("size") || message.contains("too large") || message.contains("maxuploadsize")) {
+            log.warn("Attachment upload rejected by multipart resolver due to size limit");
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("timestamp", LocalDateTime.now());
+            response.put("status", HttpStatus.PAYLOAD_TOO_LARGE.value());
+            response.put("error", "Payload Too Large");
+            response.put("message", "Attachment exceeds the maximum allowed size");
+            response.put("userMessage", "Fajl je prevelik. Maksimalna veličina je 10MB.");
+
+            return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(response);
+        }
+
+        return buildErrorResponse("Neispravan upload fajla.", HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(StorageUpstreamException.class)
+    public ResponseEntity<Map<String, Object>> handleStorageUpstream(StorageUpstreamException ex) {
+        log.error("[Storage] Upstream failure: {}", ex.getMessage());
+        return buildErrorResponse(
+                "Usluga za fajlove trenutno nije dostupna. Pokušajte ponovo.",
+                HttpStatus.BAD_GATEWAY);
     }
 
     @ExceptionHandler(Exception.class)

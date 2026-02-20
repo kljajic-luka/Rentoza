@@ -78,13 +78,14 @@ public class AdminDashboardService {
         log.debug("Calculating dashboard KPIs (cache miss)");
         
         LocalDateTime now = SerbiaTimeZone.now();
-        LocalDateTime startOfMonth = now.withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0);
+        LocalDateTime startOfMonth = now.toLocalDate().withDayOfMonth(1).atStartOfDay();
         LocalDateTime startOfLastMonth = startOfMonth.minusMonths(1);
-        LocalDateTime endOfLastMonth = startOfMonth.minusSeconds(1);
+        LocalDateTime endOfLastMonthExclusive = startOfMonth;
         
+        Instant nowInstant = Instant.now();
         Instant startOfMonthInstant = SerbiaTimeZone.toInstant(startOfMonth);
         Instant startOfLastMonthInstant = SerbiaTimeZone.toInstant(startOfLastMonth);
-        Instant endOfLastMonthInstant = SerbiaTimeZone.toInstant(endOfLastMonth);
+        Instant endOfLastMonthExclusiveInstant = SerbiaTimeZone.toInstant(endOfLastMonthExclusive);
         
         // ==================== REAL-TIME METRICS ====================
         
@@ -97,9 +98,9 @@ public class AdminDashboardService {
         
         // This month's completed bookings
         Long completedThisMonth = bookingRepo.countByStatusAndCreatedAtBetween(
-            BookingStatus.COMPLETED, startOfMonthInstant, Instant.now());
-        BigDecimal revenueThisMonth = calculateRevenueForPeriod(startOfMonthInstant, Instant.now());
-        BigDecimal revenueLastMonth = calculateRevenueForPeriod(startOfLastMonthInstant, endOfLastMonthInstant);
+            BookingStatus.COMPLETED, startOfMonth, now);
+        BigDecimal revenueThisMonth = calculateRevenueForPeriod(startOfMonthInstant, nowInstant);
+        BigDecimal revenueLastMonth = calculateRevenueForPeriod(startOfLastMonthInstant, endOfLastMonthExclusiveInstant);
         
         Double revenueGrowth = calculateGrowthPercent(revenueThisMonth, revenueLastMonth);
         
@@ -107,7 +108,7 @@ public class AdminDashboardService {
         
         Long totalUsers = userRepo.count();
         Long newUsersThisMonth = adminUserRepo.countUsersSince(startOfMonthInstant);
-        Long newUsersLastMonth = countUsersInPeriod(startOfLastMonthInstant, endOfLastMonthInstant);
+        Long newUsersLastMonth = countUsersInPeriod(startOfLastMonthInstant, endOfLastMonthExclusiveInstant);
         
         Double userGrowth = calculateGrowthPercent(
             newUsersThisMonth != null ? newUsersThisMonth : 0L,
@@ -117,8 +118,8 @@ public class AdminDashboardService {
         // ==================== BOOKING METRICS ====================
         
         Long totalBookings = bookingRepo.count();
-        Long bookingsThisMonth = countBookingsInPeriod(startOfMonthInstant, Instant.now());
-        Long bookingsLastMonth = countBookingsInPeriod(startOfLastMonthInstant, endOfLastMonthInstant);
+        Long bookingsThisMonth = countBookingsInPeriod(startOfMonth, now);
+        Long bookingsLastMonth = countBookingsInPeriod(startOfLastMonth, endOfLastMonthExclusive);
         
         Double bookingGrowth = calculateGrowthPercent(
             bookingsThisMonth != null ? bookingsThisMonth : 0L,
@@ -243,7 +244,7 @@ public class AdminDashboardService {
     /**
      * Count bookings created in a specific period.
      */
-    private Long countBookingsInPeriod(Instant start, Instant end) {
+    private Long countBookingsInPeriod(LocalDateTime start, LocalDateTime end) {
         return bookingRepo.countBookingsInPeriod(start, end);
     }
     

@@ -65,6 +65,7 @@ public class AdminBookingController {
      * @return Paginated booking list
      */
     @GetMapping
+    @Transactional(readOnly = true)
     public ResponseEntity<Page<AdminBookingDto>> listBookings(
             @RequestParam(required = false) BookingStatus status,
             @RequestParam(required = false) String search,
@@ -91,8 +92,9 @@ public class AdminBookingController {
      * Get booking detail.
      */
     @GetMapping("/{id}")
+    @Transactional(readOnly = true)
     public ResponseEntity<AdminBookingDto> getBookingDetail(@PathVariable Long id) {
-        Booking booking = bookingRepo.findById(id)
+        Booking booking = bookingRepo.findByIdWithRelations(id)
             .orElseThrow(() -> new ResourceNotFoundException("Booking not found: " + id));
         return ResponseEntity.ok(AdminBookingDto.fromEntity(booking));
     }
@@ -118,7 +120,9 @@ public class AdminBookingController {
         User admin = userRepo.findById(currentUser.id())
             .orElseThrow(() -> new ResourceNotFoundException("Admin not found"));
         
-        Booking booking = bookingRepo.findById(id)
+        // findByIdWithLock acquires a pessimistic write lock and JOIN FETCHes car/renter/owner
+        // in one query, preventing concurrent force-completes and avoiding N+1 on the return DTO.
+        Booking booking = bookingRepo.findByIdWithLock(id)
             .orElseThrow(() -> new ResourceNotFoundException("Booking not found: " + id));
         
         // Guard: already terminal

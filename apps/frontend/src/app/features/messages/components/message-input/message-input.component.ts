@@ -363,6 +363,7 @@ export class MessageInputComponent implements AfterViewInit, OnDestroy {
   messageSent = output<string>();
   attachmentSelected = output<File>();
   attachmentRemoved = output<void>();
+  attachmentValidationError = output<string>();
   typingStarted = output<void>();
   typingStopped = output<void>();
 
@@ -501,6 +502,7 @@ export class MessageInputComponent implements AfterViewInit, OnDestroy {
 
     // Validate file type
     if (!this.ALLOWED_TYPES.includes(file.type)) {
+      this.attachmentValidationError.emit('Dozvoljeni formati su JPG, PNG, GIF, WEBP ili PDF.');
       // Reset input
       input.value = '';
       return;
@@ -508,6 +510,7 @@ export class MessageInputComponent implements AfterViewInit, OnDestroy {
 
     // Validate file size
     if (file.size > this.MAX_FILE_SIZE) {
+      this.attachmentValidationError.emit('Fajl je prevelik. Maksimalna veličina je 10MB.');
       // Reset input
       input.value = '';
       return;

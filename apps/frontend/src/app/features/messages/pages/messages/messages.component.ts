@@ -364,11 +364,6 @@ export class MessagesComponent implements OnInit, OnDestroy {
   private pendingAttachmentUrl: string | null = null;
 
   /**
-   * Handle file attachment selection from MessageInputComponent.
-   * Uploads the file immediately and stores the returned URL for
-   * inclusion in the next message send.
-   */
-  /**
    * Handle attachment removal from MessageInputComponent.
    * Clears the pending uploaded URL so it is not attached to the next message.
    */
@@ -376,6 +371,16 @@ export class MessagesComponent implements OnInit, OnDestroy {
     this.pendingAttachmentUrl = null;
   }
 
+  onAttachmentValidationError(message: string): void {
+    this.pendingAttachmentUrl = null;
+    this.toast.warning(message);
+  }
+
+  /**
+   * Handle file attachment selection from MessageInputComponent.
+   * Uploads the file immediately and stores the returned URL for
+   * inclusion in the next message send.
+   */
   onAttachmentSelected(file: File): void {
     const conv = this.selectedConversation();
     if (!conv) return;

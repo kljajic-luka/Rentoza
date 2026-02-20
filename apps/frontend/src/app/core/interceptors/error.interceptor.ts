@@ -15,6 +15,7 @@ const SILENT_ERROR_ENDPOINTS = [
   '/availability', // Availability checks are non-critical and handled in component
   '/stats', // Stats endpoints are non-blocking
   '/reviews', // Review loading is non-blocking
+  '/attachments', // Chat attachment upload/retrieval errors are handled in chat UX
 ];
 
 /**

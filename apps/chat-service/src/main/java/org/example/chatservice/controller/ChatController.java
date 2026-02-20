@@ -533,8 +533,14 @@ public class ChatController {
         } catch (NumberFormatException e) {
             log.warn("[Security] Invalid booking ID in attachment path: {}", relativePath);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
-        } catch (Exception e) {
+        } catch (org.example.chatservice.exception.StorageUpstreamException e) {
+            // Preserve upstream failure semantics (mapped to 502 by GlobalExceptionHandler)
+            throw e;
+        } catch (java.io.FileNotFoundException e) {
             return ResponseEntity.notFound().build();
+        } catch (Exception e) {
+            log.error("[Attachment] Unexpected retrieval error for path {}", relativePath, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 

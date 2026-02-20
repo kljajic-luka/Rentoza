@@ -161,12 +161,12 @@ public class AdminAnalyticsService {
             LocalDate monthStart = targetMonth.atDay(1);
             LocalDate monthEnd = targetMonth.atEndOfMonth();
             
-            Instant monthStartInstant = SerbiaTimeZone.toStartOfDayInstant(monthStart);
-            Instant monthEndInstant = SerbiaTimeZone.toEndOfDayInstant(monthEnd);
+            LocalDateTime monthStartDateTime = monthStart.atStartOfDay();
+            LocalDateTime monthEndExclusive = monthEnd.plusDays(1).atStartOfDay();
             
             // Count active users (made at least 1 booking this month)
             List<Booking> monthBookings = bookingRepo.findByCreatedAtBetween(
-                monthStartInstant, monthEndInstant
+                monthStartDateTime, monthEndExclusive
             );
             
             Set<Long> activeUserIds = monthBookings.stream()

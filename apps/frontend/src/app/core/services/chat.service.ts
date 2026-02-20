@@ -570,9 +570,9 @@ export class ChatService implements OnDestroy {
       }>(`${this.chatApiUrl}/conversations/${bookingId}/attachments`, formData)
       .pipe(
         catchError((error) => {
-          const msg = error?.error?.error || 'Neuspešno otpremanje fajla.';
+          const msg = this.getAttachmentUploadErrorMessage(error);
           this.toast.error(msg);
-          return this.handleError(error);
+          return throwError(() => error);
         }),
       );
   }
@@ -990,6 +990,49 @@ export class ChatService implements OnDestroy {
 
   private handleError(error: HttpErrorResponse): Observable<never> {
     return throwError(() => error);
+  }
+
+  private getAttachmentUploadErrorMessage(error: HttpErrorResponse): string {
+    const payload = error?.error;
+    const rawMessage =
+      (typeof payload === 'string' ? payload : payload?.userMessage || payload?.error || payload?.message || '')
+        .toString()
+        .trim();
+    const normalized = rawMessage.toLowerCase();
+
+    if (
+      error.status === 413 ||
+      normalized.includes('maxuploadsize') ||
+      normalized.includes('maximum upload size') ||
+      normalized.includes('too large') ||
+      normalized.includes('file too large') ||
+      normalized.includes('prevelik')
+    ) {
+      return 'Fajl je prevelik. Maksimalna veličina je 10MB.';
+    }
+
+    if (
+      error.status === 415 ||
+      normalized.includes('invalid file type') ||
+      normalized.includes('invalid file extension') ||
+      normalized.includes('content does not match declared type')
+    ) {
+      return 'Dozvoljeni formati su JPG, PNG, GIF, WEBP ili PDF.';
+    }
+
+    if (error.status === 0) {
+      return 'Nema konekcije. Proverite internet i pokušajte ponovo.';
+    }
+
+    if (rawMessage) {
+      return rawMessage;
+    }
+
+    if (error.status === 400) {
+      return 'Neispravan fajl. Proverite format i veličinu.';
+    }
+
+    return 'Neuspešno otpremanje fajla. Pokušajte ponovo.';
   }
 
   // Legacy polling methods (deprecated)

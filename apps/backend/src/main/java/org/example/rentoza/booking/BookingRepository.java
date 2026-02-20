@@ -148,7 +148,7 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
      * @return Total revenue in BigDecimal, or 0 if no bookings
      */
     @Query("SELECT COALESCE(SUM(b.totalPrice), 0) FROM Booking b " +
-           "WHERE b.status = 'COMPLETED' AND b.updatedAt BETWEEN :start AND :end")
+           "WHERE b.status = 'COMPLETED' AND b.updatedAt >= :start AND b.updatedAt < :end")
     java.math.BigDecimal sumTotalAmountByCompletedBookingsInPeriod(
         @Param("start") java.time.Instant start, 
         @Param("end") java.time.Instant end);
@@ -758,19 +758,19 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
     /**
      * Count bookings with a given status created within a period.
      */
-    @Query("SELECT COUNT(b) FROM Booking b WHERE b.status = :status AND b.createdAt BETWEEN :start AND :end")
+    @Query("SELECT COUNT(b) FROM Booking b WHERE b.status = :status AND b.createdAt >= :start AND b.createdAt < :end")
     Long countByStatusAndCreatedAtBetween(
         @Param("status") BookingStatus status,
-        @Param("start") java.time.Instant start,
-        @Param("end") java.time.Instant end);
+        @Param("start") java.time.LocalDateTime start,
+        @Param("end") java.time.LocalDateTime end);
     
     /**
      * Count bookings created within a period.
      */
-    @Query("SELECT COUNT(b) FROM Booking b WHERE b.createdAt BETWEEN :start AND :end")
+    @Query("SELECT COUNT(b) FROM Booking b WHERE b.createdAt >= :start AND b.createdAt < :end")
     Long countBookingsInPeriod(
-        @Param("start") java.time.Instant start,
-        @Param("end") java.time.Instant end);
+        @Param("start") java.time.LocalDateTime start,
+        @Param("end") java.time.LocalDateTime end);
     
     /**
      * Find bookings by status and updated before a certain date.
@@ -832,10 +832,10 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
     @Query("SELECT b FROM Booking b " +
            "JOIN FETCH b.car c " +
            "JOIN FETCH b.renter r " +
-           "WHERE b.createdAt BETWEEN :start AND :end")
+           "WHERE b.createdAt >= :start AND b.createdAt < :end")
     List<Booking> findByCreatedAtBetween(
-        @Param("start") java.time.Instant start,
-        @Param("end") java.time.Instant end
+        @Param("start") java.time.LocalDateTime start,
+        @Param("end") java.time.LocalDateTime end
     );
     
     /**
@@ -1020,5 +1020,3 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
     @Query("SELECT COUNT(b) FROM Booking b")
     long countAll();
 }
-
-

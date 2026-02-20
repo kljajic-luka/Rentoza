@@ -30,6 +30,10 @@ websocket.allowed-origins=http://localhost:4200,http://localhost:3000
 # CORS
 cors.allowed-origins=http://localhost:4200,http://localhost:3000
 
+# File upload limits (chat attachments)
+spring.servlet.multipart.max-file-size=10MB
+spring.servlet.multipart.max-request-size=10MB
+
 # JWT (must match main Rentoza backend secret)
 jwt.secret=your_base64_encoded_secret_here
 

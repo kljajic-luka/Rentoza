@@ -1,10 +1,12 @@
-import { Component, input, computed, ChangeDetectionStrategy } from '@angular/core';
+import { Component, input, computed, signal, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { MessageDTO } from '@core/models/chat.model';
 import { TimeFormatPipe } from '../../shared/pipes/time-format.pipe';
+import { resolveAttachmentUrl } from '@shared/utils/media-url.util';
+import { environment } from '@environments/environment';
 
 /**
  * MessageBubbleComponent - Presentational Component
@@ -57,27 +59,38 @@ import { TimeFormatPipe } from '../../shared/pipes/time-format.pipe';
         <p class="content">{{ safeContent() }}</p>
 
         <!-- Attachment rendering -->
-        <div class="attachment" *ngIf="message().mediaUrl">
-          <!-- Image attachment -->
+        <div class="attachment" *ngIf="resolvedMediaUrl()">
+          <!-- Image attachment (visible until load error) -->
           <a
-            *ngIf="isImageAttachment()"
-            [href]="message().mediaUrl"
+            *ngIf="isImageAttachment() && !imageLoadFailed()"
+            [href]="resolvedMediaUrl()!"
             target="_blank"
             rel="noopener noreferrer"
             class="image-attachment"
           >
             <img
-              [src]="message().mediaUrl"
+              [src]="resolvedMediaUrl()!"
               alt="Prilog slike"
               class="attachment-image"
               loading="lazy"
               (error)="onAttachmentError($event)"
             />
           </a>
+          <!-- Fallback: image failed – show Open CTA -->
+          <a
+            *ngIf="isImageAttachment() && imageLoadFailed()"
+            [href]="resolvedMediaUrl()!"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="file-attachment"
+          >
+            <mat-icon>image</mat-icon>
+            <span>Otvori prilog</span>
+          </a>
           <!-- PDF/file attachment -->
           <a
             *ngIf="!isImageAttachment()"
-            [href]="message().mediaUrl"
+            [href]="resolvedMediaUrl()!"
             target="_blank"
             rel="noopener noreferrer"
             class="file-attachment"
@@ -435,6 +448,17 @@ export class MessageBubbleComponent {
     return tooltips[status] || '';
   });
 
+  // Chat service origin derived once at construction time.
+  private readonly chatOrigin = new URL(environment.chatApiUrl).origin;
+
+  // True after the <img> fires an (error) event (e.g. 404, CORS, network).
+  imageLoadFailed = signal(false);
+
+  // Fully-qualified URL for the attachment, or null when mediaUrl is absent/unrecognised.
+  resolvedMediaUrl = computed(() =>
+    resolveAttachmentUrl(this.message().mediaUrl ?? null, this.chatOrigin),
+  );
+
   // Fallback to initials if image fails to load
   onImageError(event: Event): void {
     const img = event.target as HTMLImageElement;
@@ -455,10 +479,9 @@ export class MessageBubbleComponent {
     );
   }
 
-  // Handle attachment load error
-  onAttachmentError(event: Event): void {
-    const img = event.target as HTMLImageElement;
-    img.style.display = 'none';
+  // Handle attachment load error — signal the fallback CTA instead of silently hiding.
+  onAttachmentError(_event: Event): void {
+    this.imageLoadFailed.set(true);
   }
 
   /**

@@ -1,78 +1,127 @@
-# GCP Backend Redeploying Logic
+# GCP Platform Redeploying Logic
 
-This document explains how backend redeploys are controlled in `infrastructure/gcp/deploy-backend-secure.sh`.
+This document describes the canonical redeploy flow in
+`/Users/kljaja01/Developer/Rentoza/infrastructure/gcp/deploy-backend-secure.sh`.
 
-## Source of truth
+The script now deploys **chat-service + backend** in one run by default, with one shared image tag.
 
-Deploy runtime policy is env-file driven:
+## Source Of Truth
+
+Runtime policy is env-file driven:
 
 - `staging.env` = canonical staging values
 - `staging-smoke.env` = temporary smoke overrides layered on staging
 - `prod.env` = canonical production values
 
-The deploy script loads files in this order:
+Load order:
 
 1. `<environment>.env`
-2. `<environment>-<profile>.env` (only when profile is not `default`)
+2. `<environment>-<profile>.env` (only when profile != `default`)
 3. already-exported shell env vars (highest precedence)
 
-## Script usage
+## Script Usage
 
-From `infrastructure/gcp`:
+From `/Users/kljaja01/Developer/Rentoza/infrastructure/gcp`:
 
-- `./deploy-backend-secure.sh [environment] [profile] [--allow-prod-mock]`
+- `./deploy-backend-secure.sh [environment] [profile] [flags]`
 - `environment`: `prod` (default) | `staging`
 - `profile`: `default` (default) | `smoke`
 
+Flags:
+
+- `--allow-prod-mock`
+- `--backend-only`
+- `--chat-only`
+- `--image-tag <tag>`
+- `--skip-build` (deploy prebuilt images; requires `--image-tag`)
+
 Examples:
 
-- Staging normal deploy: `./deploy-backend-secure.sh staging`
+- Full staging deploy (chat + backend): `./deploy-backend-secure.sh staging`
 - Staging smoke deploy: `./deploy-backend-secure.sh staging smoke`
-- Prod deploy: `./deploy-backend-secure.sh prod`
-- Explicit prod mock override: `./deploy-backend-secure.sh prod --allow-prod-mock`
+- Chat-only emergency redeploy: `./deploy-backend-secure.sh staging --chat-only`
+- Backend-only emergency redeploy: `./deploy-backend-secure.sh staging --backend-only`
+- Full prod deploy: `./deploy-backend-secure.sh prod`
+- Deploy prebuilt artifacts: `./deploy-backend-secure.sh staging --image-tag <tag> --skip-build`
 
-## Production payment guard
+## Deploy Order
+
+Default order is intentional:
+
+1. Build and deploy chat-service
+2. Resolve chat URL from Cloud Run
+3. Build and deploy backend with fresh `CHAT_SERVICE_URL`
+
+This prevents backend from pointing at stale chat revisions.
+
+## CI/CD Source Of Truth
+
+`/Users/kljaja01/Developer/Rentoza/infrastructure/gcp/cloudbuild.yaml` now:
+
+1. Builds/pushes both images with `SHORT_SHA`
+2. Calls `deploy-backend-secure.sh` with:
+   - `--image-tag ${SHORT_SHA}`
+   - `--skip-build`
+
+This keeps Cloud Build and manual deploys on the exact same deploy logic.
+
+Recommended trigger model:
+
+- `staging-daily` trigger:
+  - branch: `main`
+  - automatic: yes
+  - substitutions: `_ENVIRONMENT=staging`, `_DEPLOY_PROFILE=default`, `_ALLOW_PROD_MOCK=false`
+- `prod-release` trigger:
+  - source: release tag (`v*`) or manual run
+  - approval: required
+  - substitutions: `_ENVIRONMENT=prod`, `_DEPLOY_PROFILE=default`, `_ALLOW_PROD_MOCK=false`
+
+## Secret Strategy
+
+The script uses `--update-secrets` only (no plaintext secrets in env files):
+
+- Shared secrets for both services: DB/Supabase/JWT/Internal JWT
+- Backend-only secrets: Google OAuth, PII key, mail creds
+
+It supports both legacy and current secret IDs for two migrated names:
+
+- `rentoza-supabase-service-role-key` fallback `rentoza-supabase-service-role`
+- `rentoza-internal-service-jwt-secret` fallback `rentoza-internal-jwt-secret`
+
+## Production Guard
 
 The script blocks accidental production deploys when:
 
 - `environment=prod`
 - `PAYMENT_PROVIDER=MOCK`
-- `--allow-prod-mock` is **not** passed
+- `--allow-prod-mock` is not present
 
-Failure message:
+Set `PAYMENT_PROVIDER` in `prod.env` to your real provider before go-live.
 
-- `Blocking prod deploy: PAYMENT_PROVIDER=MOCK`
+## Daily Staging Runbook
 
-This is intentional. For real production deploys, set `PAYMENT_PROVIDER` in `prod.env` to the real provider.
+1. Update `staging.env` (and `staging-smoke.env` only if needed).
+2. Deploy stack: `./deploy-backend-secure.sh staging`
+3. Verify:
+   - chat attachment upload/download
+   - websocket messaging
+   - backend ↔ chat notification flow
+4. Roll forward by rerunning the same command with a new tag, or roll back by deploying an earlier known-good image tag (`--image-tag`).
 
-## Standard redeploy workflow
+## Production Runbook
 
-1. Update values in the correct env file (`staging.env` or `prod.env`).
-2. (Optional) Add temporary smoke values in `staging-smoke.env`.
-3. Validate script + env parsing:
-   - `bash -n deploy-backend-secure.sh`
-   - `set -a && source staging.env && set +a`
-   - `set -a && source staging-smoke.env && set +a`
-   - `set -a && source prod.env && set +a`
-4. Deploy:
-   - Staging default: `./deploy-backend-secure.sh staging`
-   - Staging smoke: `./deploy-backend-secure.sh staging smoke`
-   - Prod: `./deploy-backend-secure.sh prod`
-5. Verify Cloud Run revision and env values in GCP console/logs.
+1. Confirm `prod.env` and payment provider are correct.
+2. Confirm Secret Manager values are rotated/current.
+3. Deploy stack: `./deploy-backend-secure.sh prod`
+4. Run production smoke checks (auth, booking flow, chat attachments, notifications).
 
-## Smoke flow and rollback
+## Rollback Strategy
 
-Recommended smoke cycle:
+Use immutable image tags printed by the deploy script. To roll back:
 
-1. Deploy `staging smoke`.
-2. Execute smoke validation (DB-driven no-show scenarios + logs).
-3. Remove/stop smoke overrides by redeploying staging default:
-   - `./deploy-backend-secure.sh staging`
+- redeploy with previous tag: `./deploy-backend-secure.sh <env> --image-tag <old-tag>`
 
-This ensures staging returns to canonical policy values.
+If one service is impacted, use targeted rollback:
 
-## Notes
-
-- `SPRING_PROFILE` defaults to `prod` unless exported.
-- Script uses `--update-env-vars` and `--update-secrets` so unrelated settings stay intact.
-- Secret values are sourced from Secret Manager at deploy time; do not place secrets in env files.
+- chat only: `--chat-only`
+- backend only: `--backend-only`

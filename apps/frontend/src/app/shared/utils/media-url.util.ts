@@ -86,3 +86,37 @@ export function getPrimaryImageUrl(params: {
   const normalizedSingle = normalizeMediaUrl(params.imageUrl);
   return normalizedImageUrls[0] ?? normalizedSingle;
 }
+
+const CHAT_ATTACHMENT_PREFIX = '/api/attachments/';
+
+/**
+ * Resolve a chat attachment URL to an absolute URL against the chat service origin.
+ *
+ * The chat service stores attachment paths as platform-relative paths:
+ *   /api/attachments/booking-{id}/{uuid}.{ext}
+ *
+ * These must be resolved against the chat service origin so the browser
+ * hits the correct host instead of the Angular SPA origin.
+ *
+ * @param mediaUrl   Raw mediaUrl from MessageDTO (e.g. '/api/attachments/booking-7/abc.jpg')
+ * @param chatOrigin Chat service origin (e.g. 'https://chat.rentoza.rs')
+ * @returns Absolute URL, or null if input is invalid/unrecognized
+ */
+export function resolveAttachmentUrl(
+  mediaUrl: string | null | undefined,
+  chatOrigin: string,
+): string | null {
+  if (!mediaUrl) return null;
+  const url = mediaUrl.trim();
+  if (!url) return null;
+
+  // Our own platform attachment path — prepend chat service origin.
+  if (url.startsWith(CHAT_ATTACHMENT_PREFIX)) {
+    return chatOrigin + url;
+  }
+
+  // Already-absolute URLs (e.g. legacy Supabase CDN links) pass through unchanged.
+  if (/^https?:\/\//i.test(url)) return url;
+
+  return null;
+}

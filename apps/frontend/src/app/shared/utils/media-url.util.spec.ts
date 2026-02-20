@@ -1,4 +1,4 @@
-import { getPrimaryImageUrl, normalizeMediaUrl } from './media-url.util';
+import { getPrimaryImageUrl, normalizeMediaUrl, resolveAttachmentUrl } from './media-url.util';
 
 describe('media-url.util', () => {
   describe('normalizeMediaUrl', () => {
@@ -60,6 +60,45 @@ describe('media-url.util', () => {
         imageUrls: ['data:image/jpeg;base64,ARRAY0', 'data:image/jpeg;base64,ARRAY1'],
       });
       expect(primary).toBe('data:image/jpeg;base64,ARRAY0');
+    });
+  });
+
+  describe('resolveAttachmentUrl', () => {
+    const CHAT_ORIGIN = 'https://chat.rentoza.rs';
+
+    it('should prepend chat origin for /api/attachments/ paths', () => {
+      expect(resolveAttachmentUrl('/api/attachments/booking-7/abc.jpg', CHAT_ORIGIN)).toBe(
+        'https://chat.rentoza.rs/api/attachments/booking-7/abc.jpg',
+      );
+    });
+
+    it('should handle nested paths with UUID filenames', () => {
+      expect(
+        resolveAttachmentUrl(
+          '/api/attachments/booking-123/550e8400-e29b-41d4-a716-446655440000.pdf',
+          CHAT_ORIGIN,
+        ),
+      ).toBe(
+        'https://chat.rentoza.rs/api/attachments/booking-123/550e8400-e29b-41d4-a716-446655440000.pdf',
+      );
+    });
+
+    it('should return null for null/undefined/empty input', () => {
+      expect(resolveAttachmentUrl(null, CHAT_ORIGIN)).toBeNull();
+      expect(resolveAttachmentUrl(undefined, CHAT_ORIGIN)).toBeNull();
+      expect(resolveAttachmentUrl('', CHAT_ORIGIN)).toBeNull();
+      expect(resolveAttachmentUrl('   ', CHAT_ORIGIN)).toBeNull();
+    });
+
+    it('should pass through already-absolute https URLs unchanged', () => {
+      const abs =
+        'https://xyzabc.supabase.co/storage/v1/object/sign/chat-attachments/booking-7/a.jpg';
+      expect(resolveAttachmentUrl(abs, CHAT_ORIGIN)).toBe(abs);
+    });
+
+    it('should return null for unrecognised relative paths', () => {
+      expect(resolveAttachmentUrl('/uploads/profile.jpg', CHAT_ORIGIN)).toBeNull();
+      expect(resolveAttachmentUrl('/some/other/path', CHAT_ORIGIN)).toBeNull();
     });
   });
 });

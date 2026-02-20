@@ -58,14 +58,22 @@ public class CachingConfig implements WebMvcConfigurer {
             
             // Admin data caches
             new ConcurrentMapCache("adminMetrics"),   // Dashboard KPIs (5min TTL)
+            new ConcurrentMapCache("adminSettings"),  // Admin settings singleton
             
             // Photo signed URLs (fallback when Redis is disabled)
             new ConcurrentMapCache("photoSignedUrls"),
+
+            // Check-in caches (CQRS read model fallback)
+            new ConcurrentMapCache("checkin-status"),
+            new ConcurrentMapCache("checkin-photos"),
+            new ConcurrentMapCache("checkin-status-minimal"),
+            new ConcurrentMapCache("checkin-dashboard"),
             
             // Geocoding caches (Phase 2.4)
             new ConcurrentMapCache("geocodeCache"),
             new ConcurrentMapCache("reverseGeocodeCache"),
-            new ConcurrentMapCache("osrmRouting")
+            new ConcurrentMapCache("osrmRouting"),
+            new ConcurrentMapCache("osrm-routes")
         ));
         return cacheManager;
     }

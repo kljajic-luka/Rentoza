@@ -356,8 +356,9 @@ export class ConversationItemComponent {
   participantName = computed(() => {
     const conv = this.conversation();
     const userId = this.currentUserId();
-    // Defensive null check for ownerId
-    const isOwner = conv.ownerId ? conv.ownerId === userId : false;
+    // Compare IDs as strings to avoid number/string mismatch from API payloads.
+    const isOwner =
+      conv.ownerId != null && userId != null ? conv.ownerId.toString() === userId.toString() : false;
 
     if (isOwner && conv.renterName && conv.renterName !== 'Renter') {
       return conv.renterName;
@@ -381,8 +382,8 @@ export class ConversationItemComponent {
   profilePicUrl = computed(() => {
     const conv = this.conversation();
     const userId = this.currentUserId();
-    // Defensive null check for ownerId
-    const isOwner = conv.ownerId ? conv.ownerId === userId : false;
+    const isOwner =
+      conv.ownerId != null && userId != null ? conv.ownerId.toString() === userId.toString() : false;
     // If current user is owner, show renter's pic; otherwise show owner's pic
     return isOwner ? conv.renterProfilePicUrl : conv.ownerProfilePicUrl;
   });

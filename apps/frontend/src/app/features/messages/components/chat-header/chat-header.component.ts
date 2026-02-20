@@ -314,8 +314,9 @@ export class ChatHeaderComponent {
     if (!conv) return '';
 
     const userId = this.currentUserId();
-    // Defensive null check for ownerId
-    const isOwner = conv.ownerId ? conv.ownerId === userId : false;
+    // Compare IDs as strings to avoid number/string mismatch from API payloads.
+    const isOwner =
+      conv.ownerId != null && userId != null ? conv.ownerId.toString() === userId.toString() : false;
 
     if (isOwner && conv.renterName && conv.renterName !== 'Renter') {
       return conv.renterName;
@@ -340,8 +341,8 @@ export class ChatHeaderComponent {
     const conv = this.conversation();
     if (!conv) return null;
     const userId = this.currentUserId();
-    // Defensive null check for ownerId
-    const isOwner = conv.ownerId ? conv.ownerId === userId : false;
+    const isOwner =
+      conv.ownerId != null && userId != null ? conv.ownerId.toString() === userId.toString() : false;
     return isOwner ? conv.renterProfilePicUrl : conv.ownerProfilePicUrl;
   });
 

@@ -565,19 +565,41 @@ public class ChatService {
                             }
                         }
 
-                        // Enrich with user names (with fallbacks)
-                        if (renter != null && renter.getFirstName() != null) {
-                            String lastName = renter.getLastName() != null ? " " + renter.getLastName() : "";
-                            dto.setRenterName(renter.getFirstName() + lastName);
-                        } else {
-                            dto.setRenterName("Renter");
+                        // Enrich with user names only as fallback.
+                        // Keep names from booking conversation view as source of truth when available.
+                        // Also guard against backend profile endpoints returning the wrong principal.
+                        boolean renterNameMissing = dto.getRenterName() == null
+                                || dto.getRenterName().isBlank()
+                                || "Renter".equals(dto.getRenterName());
+                        if (renterNameMissing) {
+                            if (renter != null && renter.getId() != null && renter.getId().equals(dto.getRenterId())
+                                    && renter.getFirstName() != null) {
+                                String lastName = renter.getLastName() != null ? " " + renter.getLastName() : "";
+                                dto.setRenterName(renter.getFirstName() + lastName);
+                            } else {
+                                dto.setRenterName("Renter");
+                            }
+                        } else if (renter != null && renter.getId() != null
+                                && !renter.getId().equals(dto.getRenterId())) {
+                            log.warn("[Enrichment] Renter profile mismatch for booking {}: expected renterId={}, got id={}",
+                                    dto.getBookingId(), dto.getRenterId(), renter.getId());
                         }
 
-                        if (owner != null && owner.getFirstName() != null) {
-                            String lastName = owner.getLastName() != null ? " " + owner.getLastName() : "";
-                            dto.setOwnerName(owner.getFirstName() + lastName);
-                        } else {
-                            dto.setOwnerName("Owner");
+                        boolean ownerNameMissing = dto.getOwnerName() == null
+                                || dto.getOwnerName().isBlank()
+                                || "Owner".equals(dto.getOwnerName());
+                        if (ownerNameMissing) {
+                            if (owner != null && owner.getId() != null && owner.getId().equals(dto.getOwnerId())
+                                    && owner.getFirstName() != null) {
+                                String lastName = owner.getLastName() != null ? " " + owner.getLastName() : "";
+                                dto.setOwnerName(owner.getFirstName() + lastName);
+                            } else {
+                                dto.setOwnerName("Owner");
+                            }
+                        } else if (owner != null && owner.getId() != null
+                                && !owner.getId().equals(dto.getOwnerId())) {
+                            log.warn("[Enrichment] Owner profile mismatch for booking {}: expected ownerId={}, got id={}",
+                                    dto.getBookingId(), dto.getOwnerId(), owner.getId());
                         }
 
                         // Log enrichment result

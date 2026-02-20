@@ -183,6 +183,14 @@ public class RedisCacheConfig implements CachingConfigurer {
         // User ratings aggregate
         configs.put("userRatings", defaultConfig.entryTtl(TTL_LONG));
         
+        // ========== ADMIN CACHES ==========
+        
+        // Admin dashboard KPIs
+        configs.put("adminMetrics", defaultConfig.entryTtl(TTL_SHORT));
+        
+        // Admin settings singleton
+        configs.put("adminSettings", defaultConfig.entryTtl(TTL_LONG));
+        
         // ========== RATE LIMITING ==========
         
         // Rate limit counters (managed by IdempotencyService)
@@ -201,6 +209,8 @@ public class RedisCacheConfig implements CachingConfigurer {
         
         // OSRM routing results - distance/duration (1h TTL - traffic patterns change)
         configs.put("osrmRouting", defaultConfig.entryTtl(TTL_LONG));
+        // Alias used by @Cacheable annotation in OsrmRoutingService
+        configs.put("osrm-routes", defaultConfig.entryTtl(TTL_LONG));
 
                 // Photo signed URLs (short-lived, refreshed often)
                 configs.put("photoSignedUrls", defaultConfig.entryTtl(TTL_PHOTO_SIGNED));

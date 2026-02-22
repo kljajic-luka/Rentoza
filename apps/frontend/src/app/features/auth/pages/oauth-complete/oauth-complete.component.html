@@ -104,95 +104,6 @@
         </mat-step>
 
         <!-- ═══════════════════════════════════════════════════════════════════════════ -->
-        <!-- STEP 1B: Driver License Information (only for USER/Renter registration) -->
-        <!-- ═══════════════════════════════════════════════════════════════════════════ -->
-        @if (isUserRegistration) {
-          <mat-step [stepControl]="driverLicenseForm" label="Vozačka dozvola">
-            <form [formGroup]="driverLicenseForm" class="step-form">
-              <div class="step-intro">
-                <mat-icon>badge</mat-icon>
-                <div>
-                  <h3>Vozačka dozvola</h3>
-                  <p>Unesite podatke o vašoj vozačkoj dozvoli za iznajmljivanje vozila.</p>
-                </div>
-              </div>
-
-              <mat-form-field appearance="fill">
-                <mat-label>Broj vozačke dozvole</mat-label>
-                <input
-                  matInput
-                  formControlName="driverLicenseNumber"
-                  placeholder="ABC123456"
-                  required
-                />
-                <mat-hint>5-20 alfanumeričkih karaktera (npr. ABC123456)</mat-hint>
-                <mat-error
-                  *ngIf="driverLicenseForm.controls.driverLicenseNumber.hasError('required')"
-                >
-                  Broj vozačke dozvole je obavezan
-                </mat-error>
-                <mat-error
-                  *ngIf="driverLicenseForm.controls.driverLicenseNumber.hasError('pattern')"
-                >
-                  Unesite ispravan broj dozvole (5-20 slova/brojeva)
-                </mat-error>
-              </mat-form-field>
-
-              <mat-form-field appearance="fill">
-                <mat-label>Datum isteka dozvole</mat-label>
-                <input
-                  matInput
-                  type="date"
-                  lang="en-GB"
-                  formControlName="driverLicenseExpiryDate"
-                  [min]="minLicenseExpiryDate() | date: 'yyyy-MM-dd'"
-                  required
-                />
-                <mat-hint>Dozvola mora biti važeća najmanje 30 dana</mat-hint>
-                <mat-error
-                  *ngIf="driverLicenseForm.controls.driverLicenseExpiryDate.hasError('required')"
-                >
-                  Datum isteka dozvole je obavezan
-                </mat-error>
-              </mat-form-field>
-
-              <mat-form-field appearance="fill">
-                <mat-label>Država izdavanja</mat-label>
-                <input
-                  matInput
-                  formControlName="driverLicenseCountry"
-                  placeholder="RS"
-                  maxlength="3"
-                  required
-                />
-                <mat-hint>2-3 karaktera (npr. RS za Srbiju, HR za Hrvatsku)</mat-hint>
-                <mat-error
-                  *ngIf="driverLicenseForm.controls.driverLicenseCountry.hasError('required')"
-                >
-                  Država izdavanja je obavezna
-                </mat-error>
-                <mat-error
-                  *ngIf="driverLicenseForm.controls.driverLicenseCountry.hasError('minlength')"
-                >
-                  Unesite kod države (2-3 karaktera)
-                </mat-error>
-              </mat-form-field>
-
-              <div class="step-actions">
-                <button mat-stroked-button matStepperPrevious type="button">
-                  <mat-icon>arrow_back</mat-icon>
-                  Nazad
-                </button>
-                <button mat-raised-button color="primary" matStepperNext type="button">
-                  Dalje
-                  <mat-icon iconPositionEnd>arrow_forward</mat-icon>
-                </button>
-              </div>
-            </form>
-          </mat-step>
-        }
-
-        <!-- ═══════════════════════════════════════════════════════════════════════════ -->
         <!-- STEP 2: Owner Information (only for owner registration) -->
         <!-- ═══════════════════════════════════════════════════════════════════════════ -->
         @if (isOwnerRegistration) {
@@ -412,28 +323,6 @@
                   getSummaryData().dateOfBirth | date: 'dd.MM.yyyy.'
                 }}</span>
               </div>
-
-              @if (isUserRegistration) {
-                <div class="summary-divider"></div>
-                <h4>Vozačka dozvola</h4>
-
-                <div class="summary-row">
-                  <span class="summary-label">Broj dozvole:</span>
-                  <span class="summary-value">{{ getSummaryData().driverLicenseNumber }} ✓</span>
-                </div>
-
-                <div class="summary-row">
-                  <span class="summary-label">Datum isteka:</span>
-                  <span class="summary-value">{{
-                    getSummaryData().driverLicenseExpiryDate | date: 'dd.MM.yyyy.'
-                  }}</span>
-                </div>
-
-                <div class="summary-row">
-                  <span class="summary-label">Država izdavanja:</span>
-                  <span class="summary-value">{{ getSummaryData().driverLicenseCountry }}</span>
-                </div>
-              }
 
               @if (isOwnerRegistration) {
                 <div class="summary-divider"></div>

@@ -283,7 +283,7 @@ export class CarDetailComponent {
   openBookingDialog(car: Car): void {
     // Skip eligibility check if user is not authenticated (login redirect will handle)
     if (!this.authService.isAuthenticated()) {
-      this.router.navigate(['/login'], {
+      this.router.navigate(['/auth/login'], {
         queryParams: { returnUrl: `/cars/${car.id}` },
       });
       return;

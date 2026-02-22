@@ -144,8 +144,8 @@ export interface DriverLicenseSubmissionRequest {
   licenseFront: File;
   /** Back side of driver's license (required) */
   licenseBack: File;
-  /** Optional manual expiry date if OCR fails (ISO format: YYYY-MM-DD) */
-  expiryDate?: string;
+  /** Selfie for liveness/face-match checks (required when selfie verification is enabled) */
+  selfie?: File;
 }
 
 // ============================================================================

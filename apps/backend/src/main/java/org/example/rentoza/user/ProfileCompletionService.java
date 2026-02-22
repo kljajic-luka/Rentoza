@@ -105,44 +105,17 @@ public class ProfileCompletionService {
 
     /**
      * Validate and populate USER (renter) specific fields.
+     *
+     * License metadata (number, expiry, country) is no longer collected at profile completion.
+     * It is sourced exclusively from OCR during document processing at /verify-license,
+     * keeping the OAuth and email registration paths symmetric.
      */
-    private void validateAndPopulateUserFields(User user, CompleteProfileRequestDTO request, 
+    private void validateAndPopulateUserFields(User user, CompleteProfileRequestDTO request,
                                                 List<String> errors) {
-        // Required: driverLicenseNumber
-        if (isBlank(request.getDriverLicenseNumber())) {
-            errors.add("Broj vozačke dozvole je obavezan za rentere");
-        } else {
-            // Check for duplicate license
-            String licenseHash = hashUtil.hash(request.getDriverLicenseNumber());
-            if (userRepository.existsByDriverLicenseNumberHashAndIdNot(licenseHash, user.getId())) {
-                throw new DuplicateIdentifierException("DRIVER_LICENSE", 
-                        "Ova vozačka dozvola je već registrovana na drugom nalogu");
-            }
-            user.setDriverLicenseNumber(request.getDriverLicenseNumber());
-            user.setDriverLicenseNumberHash(licenseHash);
-        }
+        // Profile completion captures basic profile only; verification starts after document upload.
+        user.setDriverLicenseStatus(DriverLicenseStatus.NOT_STARTED);
 
-        // Required: driverLicenseExpiryDate (must be future)
-        if (request.getDriverLicenseExpiryDate() == null) {
-            errors.add("Datum isteka vozačke dozvole je obavezan");
-        } else if (!request.getDriverLicenseExpiryDate().isAfter(LocalDate.now())) {
-            errors.add("Vozačka dozvola je istekla. Molimo obnovite pre iznajmljivanja");
-        } else {
-            user.setDriverLicenseExpiryDate(request.getDriverLicenseExpiryDate());
-        }
-
-        // Required: driverLicenseCountry (defaults to SRB)
-        String country = request.getDriverLicenseCountry();
-        if (isBlank(country)) {
-            country = "SRB";
-        }
-        user.setDriverLicenseCountry(country.toUpperCase());
-
-        // Set driver license status to pending (admin will verify)
-        user.setDriverLicenseStatus(DriverLicenseStatus.PENDING_REVIEW);
-        
-        log.debug("USER fields populated: license={}, expiry={}, country={}", 
-                "***", request.getDriverLicenseExpiryDate(), country);
+        log.debug("USER fields populated: driverLicenseStatus=NOT_STARTED (license metadata deferred to document upload)");
     }
 
     /**

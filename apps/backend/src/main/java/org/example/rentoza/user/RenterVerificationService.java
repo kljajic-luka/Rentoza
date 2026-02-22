@@ -15,6 +15,7 @@ import org.example.rentoza.user.dto.*;
 import org.example.rentoza.user.verification.event.VerificationApprovedEvent;
 import org.example.rentoza.user.verification.event.VerificationRejectedEvent;
 import org.example.rentoza.util.HashUtil;
+import org.springframework.context.ApplicationContext;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.annotation.Async;
@@ -68,10 +69,14 @@ public class RenterVerificationService {
     private final HashUtil hashUtil;
     private final ObjectMapper objectMapper;
     private final ApplicationEventPublisher eventPublisher;
+    private final ApplicationContext applicationContext;
     
     // ==================== CONFIGURATION ====================
     
-    private static final long MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB (Turo standard)
+    // Validation runs before uploadRenterDocument is called — oversized or non-image files
+    // are rejected here and never reach Supabase storage. The bucket's broader limits
+    // (20 MB + PDF) are irrelevant for renter docs; only license photos are accepted.
+    private static final long MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
     private static final Set<String> ALLOWED_MIME_TYPES = Set.of(
         "image/jpeg", "image/jpg", "image/png"
     );
@@ -203,6 +208,7 @@ public class RenterVerificationService {
             .user(user)
             .type(docType)
             .documentUrl(documentUrl)
+            .storageBucket(SupabaseStorageService.BUCKET_RENTER_DOCUMENTS)
             .originalFilename(file.getOriginalFilename())
             .documentHash(documentHash)
             .fileSize(file.getSize())
@@ -213,14 +219,31 @@ public class RenterVerificationService {
             .processingStatus(RenterDocument.ProcessingStatus.PENDING)
             .build();
         
-        document = documentRepository.save(document);
+        try {
+            document = documentRepository.save(document);
+        } catch (Exception dbEx) {
+            log.error("[submitDocument] DB save failed after successful storage upload - starting compensating delete: "
+                    + "userId={}, docType={}, bucket={}, path={}",
+                    userId, docType, SupabaseStorageService.BUCKET_RENTER_DOCUMENTS, documentUrl, dbEx);
+            try {
+                storageService.deleteRenterDocument(documentUrl);
+                log.warn("[submitDocument] Compensating delete succeeded: path={}", documentUrl);
+            } catch (Exception delEx) {
+                log.error("[submitDocument] Compensating delete FAILED - orphaned file in storage: path={}",
+                    documentUrl, delEx);
+            }
+            throw dbEx;
+        }
         
-        // Update user status if first submission
-        boolean isFirstSubmission = user.getDriverLicenseStatus() == DriverLicenseStatus.NOT_STARTED;
-        if (isFirstSubmission) {
+        // Transition to pending review on initial submission and re-submissions.
+        DriverLicenseStatus previousStatus = user.getDriverLicenseStatus();
+        boolean isFirstSubmission = user.getRenterVerificationSubmittedAt() == null;
+        if (previousStatus != DriverLicenseStatus.PENDING_REVIEW) {
             user.setDriverLicenseStatus(DriverLicenseStatus.PENDING_REVIEW);
+        }
+        if (isFirstSubmission || previousStatus == DriverLicenseStatus.REJECTED
+                || previousStatus == DriverLicenseStatus.EXPIRED) {
             user.setRenterVerificationSubmittedAt(LocalDateTime.now());
-            userRepository.save(user);
         }
         
         // Store optional metadata
@@ -243,7 +266,7 @@ public class RenterVerificationService {
         createAudit(user, document, null,
             isFirstSubmission ? RenterVerificationAudit.AuditAction.SUBMITTED 
                 : RenterVerificationAudit.AuditAction.RESUBMITTED,
-            user.getDriverLicenseStatus(), DriverLicenseStatus.PENDING_REVIEW,
+            previousStatus, DriverLicenseStatus.PENDING_REVIEW,
             "Document type: " + docType);
         
         log.info("Document submitted: userId={}, docId={}, type={}", userId, document.getId(), docType);
@@ -957,6 +980,11 @@ public class RenterVerificationService {
                 return BookingEligibilityDTO.needsVerification();
                 
             case PENDING_REVIEW:
+                // Guard legacy/inconsistent states: pending without any submission timestamp
+                // should be treated as not started to avoid blocking users in a false "pending" state.
+                if (user.getRenterVerificationSubmittedAt() == null) {
+                    return BookingEligibilityDTO.needsVerification();
+                }
                 return BookingEligibilityDTO.pendingReview("5-30 minutes");
                 
             case REJECTED:
@@ -1209,11 +1237,11 @@ public class RenterVerificationService {
     
     private void triggerDocumentProcessing(RenterDocument document) {
         // ASYNC: Processing is now handled by @Async("renterVerificationExecutor")
-        // The processDocument() call returns immediately; actual OCR runs in background
+        // Invoke through Spring proxy so @Async interceptor is applied.
         try {
-            // Note: @Async works through Spring proxy, so calling via 'this' works
-            // because we're calling a public @Transactional method
-            processDocument(document.getId());
+            applicationContext
+                .getBean(RenterVerificationService.class)
+                .processDocument(document.getId());
             log.debug("Document processing queued: docId={}", document.getId());
         } catch (Exception e) {
             log.error("Failed to queue async processing for docId={}, marking as COMPLETED for manual review", 

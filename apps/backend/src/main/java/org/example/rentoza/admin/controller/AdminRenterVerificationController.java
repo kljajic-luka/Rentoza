@@ -10,8 +10,8 @@ import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.car.DocumentVerificationStatus;
-import org.example.rentoza.car.storage.DocumentStorageStrategy;
 import org.example.rentoza.security.CurrentUser;
+import org.example.rentoza.storage.SupabaseStorageService;
 import org.example.rentoza.user.DriverLicenseStatus;
 import org.example.rentoza.user.RenterVerificationService;
 import org.example.rentoza.user.RiskLevel;
@@ -61,7 +61,7 @@ public class AdminRenterVerificationController {
     private final RenterDocumentRepository documentRepository;
     private final RenterVerificationAuditRepository auditRepository;
     private final UserRepository userRepository;
-    private final DocumentStorageStrategy storageStrategy;
+    private final SupabaseStorageService storageService;
     private final CurrentUser currentUser;
     
     // ==================== QUEUE MANAGEMENT ====================
@@ -218,17 +218,16 @@ public class AdminRenterVerificationController {
             .orElseThrow(() -> new org.example.rentoza.exception.ResourceNotFoundException(
                 "Document not found: " + documentId));
         
-        log.debug("Generating signed URL for documentId={}, user={}", documentId, doc.getUser().getId());
+        log.debug("[AdminRenter] Generating signed URL for documentId={}, user={}", documentId, doc.getUser().getId());
         
-        // For local storage: Return the download endpoint URL
-        // For S3 (future): This would call storageStrategy.getSignedUrl() with expiry
-        String downloadUrl = "/api/admin/renter-verifications/documents/" + documentId + "/download";
+        // 15-minute signed URL from renter-documents bucket
+        String signedUrl = storageService.getRenterDocumentSignedUrl(doc.getDocumentUrl(), 900);
         
         // Calculate expiry (15 minutes from now for security)
-        LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(15);
+        LocalDateTime expiresAt = LocalDateTime.now().plusSeconds(900);
         
         return ResponseEntity.ok(SignedUrlResponse.builder()
-            .url(downloadUrl)
+            .url(signedUrl)
             .expiresAt(expiresAt)
             .documentId(documentId)
             .build());
@@ -251,11 +250,12 @@ public class AdminRenterVerificationController {
             .orElseThrow(() -> new org.example.rentoza.exception.ResourceNotFoundException(
                 "Document not found: " + documentId));
         
-        log.info("Admin downloading renter document: docId={}, userId={}", documentId, doc.getUser().getId());
+        log.info("[AdminRenter] Downloading renter document: docId={}, userId={}, bucket=renter-documents, path={}",
+            documentId, doc.getUser().getId(), doc.getDocumentUrl());
         
         try {
-            // Get file content from storage
-            byte[] content = storageStrategy.getFile(doc.getDocumentUrl());
+            // Get file content from renter-documents bucket
+            byte[] content = storageService.downloadRenterDocument(doc.getDocumentUrl());
             
             // Determine MIME type
             org.springframework.http.MediaType mediaType = org.springframework.http.MediaType.APPLICATION_OCTET_STREAM;
@@ -285,9 +285,48 @@ public class AdminRenterVerificationController {
                 .body(content);
                 
         } catch (java.io.IOException e) {
-            log.error("Failed to read document content: docId={}, path={}", documentId, doc.getDocumentUrl(), e);
+            if (e.getMessage() != null && e.getMessage().toLowerCase().contains("not found")) {
+                log.warn("[AdminRenter] Document file missing in storage: docId={}, bucket=renter-documents, path={}",
+                    documentId, doc.getDocumentUrl());
+                String errorJson = "{\"code\":\"DOCUMENT_FILE_MISSING\","
+                    + "\"message\":\"Document file not found in storage. "
+                    + "The record exists but the file may have been deleted or failed to upload.\","
+                    + "\"documentId\":" + documentId + "}";
+                return ResponseEntity.status(org.springframework.http.HttpStatus.NOT_FOUND)
+                    .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                    .body(errorJson.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            }
+            log.error("[AdminRenter] Failed to read document content: docId={}, path={}", documentId, doc.getDocumentUrl(), e);
             throw new RuntimeException("Failed to read document: " + e.getMessage());
         }
+    }
+    
+    @Operation(
+        summary = "Check if renter document file exists in storage",
+        description = "Diagnostic endpoint to verify a document file is present in the renter-documents bucket. " +
+                      "Useful for debugging 404 download errors without requiring a full download."
+    )
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Existence check result"),
+        @ApiResponse(responseCode = "404", description = "Document record not found")
+    })
+    @GetMapping("/documents/{documentId}/exists")
+    @Transactional(readOnly = true)
+    public ResponseEntity<Map<String, Object>> checkDocumentExists(@PathVariable Long documentId) {
+        RenterDocument doc = documentRepository.findById(documentId)
+            .orElseThrow(() -> new org.example.rentoza.exception.ResourceNotFoundException(
+                "Document not found: " + documentId));
+
+        boolean existsInStorage = storageService.objectExistsInRenterDocuments(doc.getDocumentUrl());
+        log.debug("[AdminRenter] Existence check: docId={}, path={}, existsInStorage={}",
+            documentId, doc.getDocumentUrl(), existsInStorage);
+
+        return ResponseEntity.ok(Map.of(
+            "documentId", documentId,
+            "storagePath", doc.getDocumentUrl(),
+            "bucket", SupabaseStorageService.BUCKET_RENTER_DOCUMENTS,
+            "existsInStorage", existsInStorage
+        ));
     }
     
     // ==================== VERIFICATION ACTIONS ====================
@@ -472,12 +511,14 @@ public class AdminRenterVerificationController {
     // ==================== HELPER METHODS ====================
     
     private String getSignedUrl(RenterDocument doc) {
-        // In production, this would generate a signed S3 URL with expiry
-        // For local storage, just return the path
+        if (doc.getDocumentUrl() == null || doc.getDocumentUrl().isBlank()) {
+            return null;
+        }
         try {
-            return storageStrategy.getPublicUrl(doc.getDocumentUrl());
+            return storageService.getRenterDocumentSignedUrl(doc.getDocumentUrl(), 900);
         } catch (Exception e) {
-            log.warn("Could not get signed URL for docId={}", doc.getId());
+            log.warn("[AdminRenter] Could not get signed URL for docId={}, path={}: {}",
+                doc.getId(), doc.getDocumentUrl(), e.getMessage());
             return null;
         }
     }

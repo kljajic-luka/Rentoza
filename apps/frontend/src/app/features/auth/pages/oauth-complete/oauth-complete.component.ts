@@ -97,9 +97,6 @@ export class OAuthCompleteComponent implements OnInit {
   ).toUpperCase();
   protected readonly isOwnerRegistration = this.requestedRole === 'OWNER';
 
-  // For USER role (renters), we need driver license info
-  protected readonly isUserRegistration = !this.isOwnerRegistration;
-
   // Current user profile (loaded on init)
   protected readonly currentUser = signal<EnhancedUserProfile | null>(null);
 
@@ -132,26 +129,6 @@ export class OAuthCompleteComponent implements OnInit {
     phone: ['', [Validators.required, Validators.pattern(/^\d{8,15}$/)]],
     dateOfBirth: ['', [Validators.required, pastDateValidator(), minAgeValidator(21)]],
     confirmsAgeEligibility: [false, [Validators.requiredTrue]],
-  });
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // STEP 1B: Driver License Form (only for USER/Renter registration)
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  readonly driverLicenseForm = this.fb.nonNullable.group({
-    driverLicenseNumber: ['', [Validators.required, Validators.pattern(/^[A-Z0-9]{5,20}$/i)]],
-    driverLicenseExpiryDate: ['', [Validators.required]],
-    driverLicenseCountry: [
-      'RS',
-      [Validators.required, Validators.minLength(2), Validators.maxLength(3)],
-    ],
-  });
-
-  // Minimum expiry date for driver license (must be at least 30 days in future)
-  protected readonly minLicenseExpiryDate = computed(() => {
-    const date = new Date();
-    date.setDate(date.getDate() + 30);
-    return date;
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -262,12 +239,6 @@ export class OAuthCompleteComponent implements OnInit {
       return;
     }
 
-    // Validate driver license form for USER role (renters)
-    if (this.isUserRegistration && this.driverLicenseForm.invalid) {
-      this.driverLicenseForm.markAllAsTouched();
-      return;
-    }
-
     if (this.isOwnerRegistration && this.ownerForm.invalid) {
       this.ownerForm.markAllAsTouched();
       return;
@@ -290,14 +261,6 @@ export class OAuthCompleteComponent implements OnInit {
     // Include lastName if it was required (placeholder)
     if (this.needsLastName() && basicData.lastName) {
       payload.lastName = basicData.lastName;
-    }
-
-    // Include driver license fields for USER role (renters)
-    if (this.isUserRegistration) {
-      const licenseData = this.driverLicenseForm.getRawValue();
-      payload.driverLicenseNumber = licenseData.driverLicenseNumber;
-      payload.driverLicenseExpiryDate = licenseData.driverLicenseExpiryDate;
-      payload.driverLicenseCountry = licenseData.driverLicenseCountry;
     }
 
     // Include owner fields if owner registration
@@ -352,8 +315,6 @@ export class OAuthCompleteComponent implements OnInit {
       this.toast.error('Ovaj PIB je već registrovan.');
     } else if (message.includes('age') || message.includes('21')) {
       this.toast.error('Morate imati najmanje 21 godinu.');
-    } else if (message.includes('license') || message.includes('vozačk')) {
-      this.toast.error('Ovaj broj vozačke dozvole je već registrovan.');
     } else {
       this.toast.error('Greška pri kompletiranju profila. Pokušajte ponovo.');
     }
@@ -364,7 +325,6 @@ export class OAuthCompleteComponent implements OnInit {
    */
   protected getSummaryData() {
     const basic = this.basicForm.getRawValue();
-    const license = this.isUserRegistration ? this.driverLicenseForm.getRawValue() : null;
     const owner = this.isOwnerRegistration ? this.ownerForm.getRawValue() : null;
     const user = this.currentUser();
 
@@ -374,10 +334,6 @@ export class OAuthCompleteComponent implements OnInit {
       email: user?.email || '',
       phone: basic.phone,
       dateOfBirth: basic.dateOfBirth,
-      // Driver license info (USER role)
-      driverLicenseNumber: license?.driverLicenseNumber,
-      driverLicenseExpiryDate: license?.driverLicenseExpiryDate,
-      driverLicenseCountry: license?.driverLicenseCountry,
       // Owner info (OWNER role)
       ownerType: owner?.ownerType,
       hasJmbg: !!owner?.jmbg,

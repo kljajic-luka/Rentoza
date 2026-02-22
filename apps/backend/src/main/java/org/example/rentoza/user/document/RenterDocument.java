@@ -82,6 +82,15 @@ public class RenterDocument {
     private String originalFilename;
     
     /**
+     * Supabase bucket where this document is stored.
+     * Always 'renter-documents' for renter verification documents.
+     * Stored explicitly to eliminate bucket ambiguity in admin tooling.
+     */
+    @Column(name = "storage_bucket", nullable = false, length = 100)
+    @Builder.Default
+    private String storageBucket = "renter-documents";
+
+    /**
      * SHA256 hash for integrity verification & duplicate detection.
      */
     @Column(name = "document_hash", nullable = false, length = 64)

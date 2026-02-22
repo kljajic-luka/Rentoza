@@ -236,26 +236,6 @@
             }
           </div>
 
-          <!-- Optional expiry date -->
-          <div class="expiry-section">
-            <mat-form-field appearance="outline" class="expiry-field">
-              <mat-label>Datum isteka (opciono)</mat-label>
-              <mat-icon matIconPrefix class="calendar-prefix">event</mat-icon>
-              <input
-                matInput
-                [matDatepicker]="picker"
-                [formControl]="expiryDateControl"
-                [min]="minExpiryDate"
-                readonly
-                (click)="picker.open()"
-                placeholder="Kliknite da izaberete datum"
-              />
-              <mat-datepicker-toggle matIconSuffix [for]="picker"></mat-datepicker-toggle>
-              <mat-datepicker #picker></mat-datepicker>
-              <mat-hint>Automatski se očitava iz slike. Unesite samo ako je nejasna.</mat-hint>
-            </mat-form-field>
-          </div>
-
           <!-- Submit error -->
           @if (submitError()) {
             <div class="submit-error">

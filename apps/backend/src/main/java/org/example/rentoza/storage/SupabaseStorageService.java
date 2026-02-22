@@ -340,7 +340,15 @@ public class SupabaseStorageService {
         String filename = UUID.randomUUID().toString().substring(0, 12) + "." + extension;
         String storagePath = String.format("renters/%d/documents/%s/%s", userId, documentType, filename);
         
-        uploadToSupabase(BUCKET_RENTER_DOCUMENTS, storagePath, file.getBytes(), file.getContentType());
+        try {
+            uploadToSupabase(BUCKET_RENTER_DOCUMENTS, storagePath, file.getBytes(), file.getContentType());
+            log.info("[Storage-Renter] Upload OK: userId={}, docType={}, bucket={}, path={}, size={}B, contentType={}",
+                userId, documentType, BUCKET_RENTER_DOCUMENTS, storagePath, file.getSize(), file.getContentType());
+        } catch (Exception e) {
+            log.error("[Storage-Renter] Upload FAILED: userId={}, docType={}, bucket={}, path={}, size={}B, contentType={}",
+                userId, documentType, BUCKET_RENTER_DOCUMENTS, storagePath, file.getSize(), file.getContentType(), e);
+            throw e;
+        }
         
         return storagePath;
     }
@@ -355,10 +363,42 @@ public class SupabaseStorageService {
      *
      * @param storagePath Path returned from uploadRenterDocument
      * @return File bytes
-     * @throws IOException if download fails
+     * @throws IOException if download fails or file not found
      */
     public byte[] downloadRenterDocument(String storagePath) throws IOException {
         return downloadFromSupabase(BUCKET_RENTER_DOCUMENTS, storagePath);
+    }
+
+    /**
+     * Delete a renter verification document from storage.
+     * Used as compensating transaction when DB save fails after upload.
+     *
+     * @param storagePath Path returned from uploadRenterDocument
+     */
+    public void deleteRenterDocument(String storagePath) {
+        log.info("[Storage-Renter] Deleting: bucket={}, path={}", BUCKET_RENTER_DOCUMENTS, storagePath);
+        deleteFromSupabase(BUCKET_RENTER_DOCUMENTS, storagePath);
+    }
+
+    /**
+     * Check whether a renter document object actually exists in the renter-documents bucket.
+     * Intended for admin diagnostics only — performs a real download to verify presence.
+     *
+     * @param storagePath Storage path to check
+     * @return true if object exists and is readable; false if 404 or any error
+     */
+    public boolean objectExistsInRenterDocuments(String storagePath) {
+        try {
+            downloadFromSupabase(BUCKET_RENTER_DOCUMENTS, storagePath);
+            return true;
+        } catch (IOException e) {
+            if (e.getMessage() != null && e.getMessage().toLowerCase().contains("not found")) {
+                return false;
+            }
+            log.warn("[Storage-Renter] Existence check inconclusive: bucket={}, path={}, error={}",
+                BUCKET_RENTER_DOCUMENTS, storagePath, e.getMessage());
+            return false;
+        }
     }
     
     // ============================================================================

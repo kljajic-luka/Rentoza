@@ -102,6 +102,7 @@ public interface UserRepository extends JpaRepository<User,Long> {
     @Query("""
         SELECT u FROM User u 
         WHERE u.driverLicenseStatus = 'PENDING_REVIEW' 
+        AND u.renterVerificationSubmittedAt IS NOT NULL
         ORDER BY u.renterVerificationSubmittedAt ASC
         """)
     org.springframework.data.domain.Page<User> findUsersWithPendingDriverLicenseVerification(
@@ -121,6 +122,9 @@ public interface UserRepository extends JpaRepository<User,Long> {
         SELECT u FROM User u 
         WHERE (:status IS NULL OR u.driverLicenseStatus = :status) 
         AND (:riskLevel IS NULL OR u.riskLevel = :riskLevel)
+        AND (:status IS NULL 
+            OR :status <> org.example.rentoza.user.DriverLicenseStatus.PENDING_REVIEW
+            OR u.renterVerificationSubmittedAt IS NOT NULL)
         ORDER BY u.renterVerificationSubmittedAt ASC NULLS LAST
         """)
     org.springframework.data.domain.Page<User> findUsersByDriverLicenseStatusAndRiskLevel(
@@ -133,7 +137,7 @@ public interface UserRepository extends JpaRepository<User,Long> {
      * Count users with PENDING_REVIEW driver license status.
      * Used for queue statistics.
      */
-    @Query("SELECT COUNT(u) FROM User u WHERE u.driverLicenseStatus = 'PENDING_REVIEW'")
+    @Query("SELECT COUNT(u) FROM User u WHERE u.driverLicenseStatus = 'PENDING_REVIEW' AND u.renterVerificationSubmittedAt IS NOT NULL")
     long countPendingDriverLicenseVerifications();
     
     // ========== SUPABASE AUTH QUERIES ==========
@@ -186,4 +190,3 @@ public interface UserRepository extends JpaRepository<User,Long> {
         @org.springframework.data.repository.query.Param("date") java.time.LocalDate date
     );
 }
-

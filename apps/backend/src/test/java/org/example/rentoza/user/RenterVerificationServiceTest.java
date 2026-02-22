@@ -318,6 +318,63 @@ class RenterVerificationServiceTest {
                 .isInstanceOf(ValidationException.class)
                 .hasMessageContaining("already been submitted by another user");
         }
+
+        @Test
+        @DisplayName("submitDocument sets storageBucket = renter-documents on saved document")
+        void submitDocument_SetsStorageBucketOnSavedDocument() throws Exception {
+            // Arrange
+            Long userId = 1L;
+            User user = createTestUser(userId, DriverLicenseStatus.NOT_STARTED);
+
+            when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+            setupValidMockFile("image/jpeg", 1000L);
+            when(storageService.uploadRenterDocument(anyLong(), any(), any()))
+                .thenReturn("renters/1/documents/drivers_license_front/abc.jpg");
+            when(documentRepository.save(any(RenterDocument.class))).thenAnswer(i -> {
+                RenterDocument d = i.getArgument(0);
+                d.setId(101L);
+                return d;
+            });
+
+            DriverLicenseSubmissionRequest request = DriverLicenseSubmissionRequest.builder()
+                .documentType(RenterDocumentType.DRIVERS_LICENSE_FRONT)
+                .expiryDate(LocalDate.now().plusYears(1))
+                .build();
+
+            // Act
+            service.submitDocument(userId, mockFile, request);
+
+            // Assert: storageBucket must always be renter-documents, never car-documents
+            verify(documentRepository).save(documentCaptor.capture());
+            assertThat(documentCaptor.getValue().getStorageBucket()).isEqualTo("renter-documents");
+        }
+
+        @Test
+        @DisplayName("submitDocument calls compensating delete when DB save fails after upload")
+        void submitDocument_DbSaveFailure_CompensatingDeleteCalled() throws Exception {
+            // Arrange
+            Long userId = 2L;
+            User user = createTestUser(userId, DriverLicenseStatus.NOT_STARTED);
+            String uploadedPath = "renters/2/documents/drivers_license_front/xyz.jpg";
+
+            when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+            setupValidMockFile("image/jpeg", 1000L);
+            when(storageService.uploadRenterDocument(anyLong(), any(), any())).thenReturn(uploadedPath);
+            when(documentRepository.save(any(RenterDocument.class)))
+                .thenThrow(new org.springframework.dao.DataAccessResourceFailureException("DB connection lost"));
+
+            DriverLicenseSubmissionRequest request = DriverLicenseSubmissionRequest.builder()
+                .documentType(RenterDocumentType.DRIVERS_LICENSE_FRONT)
+                .expiryDate(LocalDate.now().plusYears(1))
+                .build();
+
+            // Act & Assert: original DB exception is re-thrown
+            assertThatThrownBy(() -> service.submitDocument(userId, mockFile, request))
+                .isInstanceOf(org.springframework.dao.DataAccessResourceFailureException.class);
+
+            // Compensating delete must be called with the exact uploaded path to prevent orphaned files
+            verify(storageService).deleteRenterDocument(uploadedPath);
+        }
     }
     
     // ==================== BOOKING ELIGIBILITY TESTS ====================

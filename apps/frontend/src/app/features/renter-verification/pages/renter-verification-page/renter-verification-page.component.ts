@@ -10,7 +10,7 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, ActivatedRoute } from '@angular/router';
-import { FormBuilder, FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
@@ -18,8 +18,6 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
-import { MatDatepickerModule } from '@angular/material/datepicker';
-import { MatNativeDateModule } from '@angular/material/core';
 import { Subject, takeUntil } from 'rxjs';
 
 import { RenterVerificationService } from '@core/services/renter-verification.service';
@@ -72,8 +70,6 @@ import { SelfieCaptureComponent } from '../../components/selfie-capture/selfie-c
     MatCardModule,
     MatFormFieldModule,
     MatInputModule,
-    MatDatepickerModule,
-    MatNativeDateModule,
     LicensePhotoUploadComponent,
     SelfieCaptureComponent,
   ],
@@ -88,7 +84,6 @@ export class RenterVerificationPageComponent implements OnInit, OnDestroy {
 
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
-  private readonly fb = inject(FormBuilder);
   private readonly verificationService = inject(RenterVerificationService);
 
   // ============================================================================
@@ -120,17 +115,6 @@ export class RenterVerificationPageComponent implements OnInit, OnDestroy {
 
   /** Return URL after verification */
   returnUrl: string | null = null;
-
-  /** Optional expiry date form */
-  expiryForm: FormGroup;
-
-  /** Getter for expiry date control */
-  get expiryDateControl(): FormControl {
-    return this.expiryForm.get('expiryDate') as FormControl;
-  }
-
-  /** Minimum date for expiry (today) */
-  readonly minExpiryDate = new Date();
 
   /** Destroy subject for cleanup */
   private readonly destroy$ = new Subject<void>();
@@ -204,7 +188,7 @@ export class RenterVerificationPageComponent implements OnInit, OnDestroy {
     );
   });
 
-  /** Has selfie been captured (optional but recommended) */
+  /** Has selfie been captured (required for submission) */
   readonly hasSelfie = computed(() => this.selfieFile() !== null);
 
   /** Status badge label */
@@ -230,12 +214,6 @@ export class RenterVerificationPageComponent implements OnInit, OnDestroy {
   // ============================================================================
   // LIFECYCLE
   // ============================================================================
-
-  constructor() {
-    this.expiryForm = this.fb.group({
-      expiryDate: [null],
-    });
-  }
 
   ngOnInit(): void {
     // Get return URL from query params
@@ -349,13 +327,8 @@ export class RenterVerificationPageComponent implements OnInit, OnDestroy {
     this.isSubmitting.set(true);
     this.submitError.set(null);
 
-    // Get optional expiry date
-    const expiryDate = this.expiryForm.value.expiryDate
-      ? this.formatDate(this.expiryForm.value.expiryDate)
-      : undefined;
-
     this.verificationService
-      .submitLicense(front, back, expiryDate, selfie ?? undefined)
+      .submitLicense(front, back, selfie ?? undefined)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: () => {
@@ -366,7 +339,6 @@ export class RenterVerificationPageComponent implements OnInit, OnDestroy {
           this.frontFile.set(null);
           this.backFile.set(null);
           this.selfieFile.set(null);
-          this.expiryForm.reset();
         },
         error: (err) => {
           this.isSubmitting.set(false);
@@ -394,16 +366,5 @@ export class RenterVerificationPageComponent implements OnInit, OnDestroy {
    */
   onGoBack(): void {
     this.router.navigate(['/users/profile']);
-  }
-
-  // ============================================================================
-  // HELPERS
-  // ============================================================================
-
-  /**
-   * Format date to ISO string (YYYY-MM-DD).
-   */
-  private formatDate(date: Date): string {
-    return date.toISOString().split('T')[0];
   }
 }

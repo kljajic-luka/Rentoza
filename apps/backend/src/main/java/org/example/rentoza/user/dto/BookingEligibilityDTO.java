@@ -81,7 +81,7 @@ public class BookingEligibilityDTO {
             .blockReason(EligibilityBlockReason.LICENSE_NOT_VERIFIED)
             .message("Driver's license verification required before booking")
             .messageSr("Vozačka dozvola mora biti verifikovana pre rezervacije")
-            .actionUrl("/profile/verification")
+            .actionUrl("/verify-license")
             .actionLabel("Verifikujte vozačku dozvolu")
             .build();
     }
@@ -96,7 +96,7 @@ public class BookingEligibilityDTO {
             .message("Your license verification is being reviewed")
             .messageSr("Vaša vozačka dozvola se pregleda")
             .estimatedWaitTime(waitTime)
-            .actionUrl("/profile/verification")
+            .actionUrl("/verify-license")
             .actionLabel("Pogledajte status")
             .build();
     }
@@ -110,7 +110,7 @@ public class BookingEligibilityDTO {
             .blockReason(EligibilityBlockReason.VERIFICATION_REJECTED)
             .message("Your license verification was rejected: " + reason)
             .messageSr("Vaša verifikacija je odbijena: " + reason)
-            .actionUrl("/profile/verification")
+            .actionUrl("/verify-license")
             .actionLabel("Ponovo podnesite dokumente")
             .build();
     }
@@ -125,7 +125,7 @@ public class BookingEligibilityDTO {
             .message("Your driver's license has expired")
             .messageSr("Vaša vozačka dozvola je istekla")
             .licenseExpiryDate(expiryDate)
-            .actionUrl("/profile/verification")
+            .actionUrl("/verify-license")
             .actionLabel("Ažurirajte vozačku dozvolu")
             .build();
     }
@@ -140,7 +140,7 @@ public class BookingEligibilityDTO {
             .message("Your license expires (" + expiryDate + ") before trip end (" + tripEnd + ")")
             .messageSr("Vaša dozvola ističe (" + expiryDate + ") pre kraja putovanja (" + tripEnd + ")")
             .licenseExpiryDate(expiryDate)
-            .actionUrl("/profile/verification")
+            .actionUrl("/verify-license")
             .actionLabel("Ažurirajte vozačku dozvolu")
             .build();
     }
@@ -192,7 +192,7 @@ public class BookingEligibilityDTO {
             .messageSr(String.format(
                 "Vozačka dozvola mora biti stara najmanje %d godine. Trenutni staž: %d meseci%s",
                 requiredTenureMonths / 12, currentTenureMonths, eligibleDateStrSr))
-            .actionUrl("/profile/verification")
+            .actionUrl("/verify-license")
             .actionLabel("Pogledajte detalje")
             .build();
     }

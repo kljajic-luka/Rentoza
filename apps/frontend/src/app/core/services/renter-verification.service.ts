@@ -213,14 +213,12 @@ export class RenterVerificationService {
    *
    * @param licenseFront - Front side of license image
    * @param licenseBack - Back side of license image
-   * @param expiryDate - Optional manual expiry date (ISO format)
    * @param selfie - Optional selfie for liveness verification
    * @returns Observable of updated verification profile
    */
   submitLicense(
     licenseFront: File,
     licenseBack: File,
-    expiryDate?: string,
     selfie?: File,
   ): Observable<RenterVerificationProfile> {
     // Client-side validation
@@ -232,9 +230,6 @@ export class RenterVerificationService {
     const formData = new FormData();
     formData.append('licenseFront', licenseFront);
     formData.append('licenseBack', licenseBack);
-    if (expiryDate) {
-      formData.append('expiryDate', expiryDate);
-    }
     if (selfie) {
       formData.append('selfie', selfie);
     }
@@ -287,15 +282,15 @@ export class RenterVerificationService {
    *
    * @param licenseFront - New front image
    * @param licenseBack - New back image
-   * @param expiryDate - Optional manual expiry
+   * @param selfie - Optional selfie for liveness verification
    * @returns Observable of updated verification profile
    */
   resubmitLicense(
     licenseFront: File,
     licenseBack: File,
-    expiryDate?: string,
+    selfie?: File,
   ): Observable<RenterVerificationProfile> {
-    return this.submitLicense(licenseFront, licenseBack, expiryDate);
+    return this.submitLicense(licenseFront, licenseBack, selfie);
   }
 
   /**

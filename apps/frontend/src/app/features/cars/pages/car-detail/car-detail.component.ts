@@ -129,12 +129,12 @@ export class CarDetailComponent {
   private readonly carId$ = this.route.paramMap.pipe(
     map((params) => params.get('id')),
     filter((id): id is string => !!id),
-    tap((id) => (this.selectedCarId = id))
+    tap((id) => (this.selectedCarId = id)),
   );
 
   readonly car$ = this.carId$.pipe(
     switchMap((id) => this.carService.getCarById(id)),
-    shareReplay({ refCount: true, bufferSize: 1 })
+    shareReplay({ refCount: true, bufferSize: 1 }),
   );
 
   readonly reviews$ = this.carId$.pipe(switchMap((id) => this.reviewService.getReviewsForCar(id)));
@@ -142,13 +142,13 @@ export class CarDetailComponent {
   readonly bookings$ = this.bookingsSubject.asObservable();
 
   readonly vm$ = combineLatest([this.car$, this.reviews$, this.bookings$]).pipe(
-    map(([car, reviews, bookings]) => ({ car, reviews, bookings }))
+    map(([car, reviews, bookings]) => ({ car, reviews, bookings })),
   );
 
   protected readonly isSubmitting = signal(false);
   readonly isAuthenticated$ = this.authService.currentUser$;
   readonly isOwner$ = this.authService.currentUser$.pipe(
-    map((user) => user?.roles?.includes('OWNER') ?? false)
+    map((user) => user?.roles?.includes('OWNER') ?? false),
   );
   readonly loginQueryParams = computed(() => ({ returnUrl: this.router.url }));
 
@@ -238,18 +238,18 @@ export class CarDetailComponent {
                 // Log for debugging but don't fail - calendar can work with just blocked dates
                 console.warn('Failed to load public booking slots:', error);
                 return of([]);
-              })
+              }),
             ),
             blockedDates: this.availabilityService.getBlockedDatesForCar(+id).pipe(
               catchError((error) => {
                 // Log for debugging but don't fail
                 console.warn('Failed to load blocked dates:', error);
                 return of([]);
-              })
+              }),
             ),
-          })
+          }),
         ),
-        takeUntilDestroyed(this.destroyRef)
+        takeUntilDestroyed(this.destroyRef),
       )
       .subscribe(({ bookings, blockedDates }) => {
         this.updateBookings(bookings);
@@ -299,7 +299,7 @@ export class CarDetailComponent {
       .checkBookingEligibility()
       .pipe(
         take(1),
-        finalize(() => this.isCheckingEligibility.set(false))
+        finalize(() => this.isCheckingEligibility.set(false)),
       )
       .subscribe({
         next: (eligibility: BookingEligibility) => {
@@ -317,7 +317,7 @@ export class CarDetailComponent {
           // On error, still allow booking attempt (backend will catch)
           // This prevents blocking users if eligibility endpoint is down
           this.toast.warning(
-            'Nije moguće proveriti status verifikacije. Nastavljamo sa rezervacijom.'
+            'Nije moguće proveriti status verifikacije. Nastavljamo sa rezervacijom.',
           );
           this.openBookingDialogInternal(car);
         },
@@ -441,7 +441,7 @@ export class CarDetailComponent {
         {
           duration: 5000,
           panelClass: ['snackbar-error'],
-        }
+        },
       );
       this.bookingForm.controls.endDate.setValue(null);
     }
@@ -494,8 +494,8 @@ export class CarDetailComponent {
       this.isDateWithinRange(
         normalized,
         this.addDays(this.normalizeDate(booking.startTime), -this.BUFFER_DAYS),
-        this.addDays(this.normalizeDate(booking.endTime), this.BUFFER_DAYS)
-      )
+        this.addDays(this.normalizeDate(booking.endTime), this.BUFFER_DAYS),
+      ),
     );
 
     // Check if date is in any blocked range (with buffer days)
@@ -503,8 +503,8 @@ export class CarDetailComponent {
       this.isDateWithinRange(
         normalized,
         this.addDays(this.normalizeDate(blocked.startDate), -this.BUFFER_DAYS),
-        this.addDays(this.normalizeDate(blocked.endDate), this.BUFFER_DAYS)
-      )
+        this.addDays(this.normalizeDate(blocked.endDate), this.BUFFER_DAYS),
+      ),
     );
 
     return isBooked || isBlocked;
@@ -562,8 +562,8 @@ export class CarDetailComponent {
         start,
         end,
         this.addDays(this.normalizeDate(booking.startTime), -this.BUFFER_DAYS),
-        this.addDays(this.normalizeDate(booking.endTime), this.BUFFER_DAYS)
-      )
+        this.addDays(this.normalizeDate(booking.endTime), this.BUFFER_DAYS),
+      ),
     );
 
     // Check if range overlaps with any blocked date range (including buffer days)
@@ -572,8 +572,8 @@ export class CarDetailComponent {
         start,
         end,
         this.addDays(this.normalizeDate(blocked.startDate), -this.BUFFER_DAYS),
-        this.addDays(this.normalizeDate(blocked.endDate), this.BUFFER_DAYS)
-      )
+        this.addDays(this.normalizeDate(blocked.endDate), this.BUFFER_DAYS),
+      ),
     );
 
     return !hasBookingConflict && !hasBlockedConflict;
@@ -585,7 +585,7 @@ export class CarDetailComponent {
    * Calendar only needs startDate and endDate, so both work.
    */
   private updateBookings(
-    bookings: Booking[] | import('@core/models/booking.model').BookingSlotDto[]
+    bookings: Booking[] | import('@core/models/booking.model').BookingSlotDto[],
   ): void {
     // Cast to Booking[] for type safety - calendar only uses startDate/endDate which both types have
     this.bookingsSubject.next(bookings as any);
@@ -750,10 +750,10 @@ export class CarDetailComponent {
 
       <div class="image-container" (swipeleft)="next()" (swiperight)="previous()">
         @if (isLoading()) {
-        <div class="loading-indicator">
-          <mat-icon>hourglass_empty</mat-icon>
-          <p>Učitavanje slike...</p>
-        </div>
+          <div class="loading-indicator">
+            <mat-icon>hourglass_empty</mat-icon>
+            <p>Učitavanje slike...</p>
+          </div>
         }
 
         <img
@@ -765,27 +765,27 @@ export class CarDetailComponent {
         />
 
         @if (data.images.length > 1) {
-        <button
-          mat-icon-button
-          class="nav-button nav-button--left"
-          (click)="previous()"
-          [disabled]="isLoading()"
-          aria-label="Previous image"
-        >
-          <mat-icon>chevron_left</mat-icon>
-        </button>
+          <button
+            mat-icon-button
+            class="nav-button nav-button--left"
+            (click)="previous()"
+            [disabled]="isLoading()"
+            aria-label="Previous image"
+          >
+            <mat-icon>chevron_left</mat-icon>
+          </button>
 
-        <button
-          mat-icon-button
-          class="nav-button nav-button--right"
-          (click)="next()"
-          [disabled]="isLoading()"
-          aria-label="Next image"
-        >
-          <mat-icon>chevron_right</mat-icon>
-        </button>
+          <button
+            mat-icon-button
+            class="nav-button nav-button--right"
+            (click)="next()"
+            [disabled]="isLoading()"
+            aria-label="Next image"
+          >
+            <mat-icon>chevron_right</mat-icon>
+          </button>
 
-        <div class="image-counter">{{ currentIndex() + 1 }} / {{ data.images.length }}</div>
+          <div class="image-counter">{{ currentIndex() + 1 }} / {{ data.images.length }}</div>
         }
       </div>
     </div>
@@ -957,7 +957,7 @@ export class ImageViewerDialogComponent {
       currentIndex: number;
       carName: string;
     },
-    private readonly dialogRef: MatDialogRef<ImageViewerDialogComponent>
+    private readonly dialogRef: MatDialogRef<ImageViewerDialogComponent>,
   ) {
     this.currentIndex.set(data.currentIndex);
   }

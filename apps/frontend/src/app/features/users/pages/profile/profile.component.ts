@@ -160,7 +160,7 @@ export class ProfileComponent {
         hasReviews: profile.reviews.length > 0,
       } satisfies ProfileViewModel;
     }),
-    shareReplay({ bufferSize: 1, refCount: true })
+    shareReplay({ bufferSize: 1, refCount: true }),
   );
 
   protected trackByReview(_index: number, review: ProfileReview): string {
@@ -273,7 +273,7 @@ export class ProfileComponent {
           });
           this.isSaving.set(false);
           return of(null);
-        })
+        }),
       )
       .subscribe();
   }
@@ -288,7 +288,7 @@ export class ProfileComponent {
       {
         duration: 6000,
         panelClass: ['snackbar-info'],
-      }
+      },
     );
   }
 

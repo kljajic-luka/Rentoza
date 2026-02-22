@@ -51,199 +51,209 @@ export interface CarLocationData {
   template: `
     <!-- COMPACT MODE: Single line for tight spaces -->
     @if (mode() === 'compact') {
-    <div class="readonly-pickup-location compact">
-      <mat-icon>location_on</mat-icon>
-      <span class="address">{{ displayAddress() }}</span>
-      @if (pickupLocation()?.isEstimated) {
-      <mat-icon
-        class="estimated-icon"
-        matTooltip="Procenjena lokacija (lokacija vozila)"
-        matTooltipPosition="above"
-      >
-        info
-      </mat-icon>
-      }
-    </div>
+      <div class="readonly-pickup-location compact">
+        <mat-icon>location_on</mat-icon>
+        <span class="address">{{ displayAddress() }}</span>
+        @if (pickupLocation()?.isEstimated) {
+          <mat-icon
+            class="estimated-icon"
+            matTooltip="Procenjena lokacija (lokacija vozila)"
+            matTooltipPosition="above"
+          >
+            info
+          </mat-icon>
+        }
+      </div>
     }
 
     <!-- STANDARD MODE: Modern Turo-style card (for dialogs) -->
     @if (mode() === 'standard') {
-    <div class="readonly-pickup-location standard turo-style">
-      <!-- Section Header -->
-      <div class="section-header">
-        <div class="header-icon">
-          <mat-icon>place</mat-icon>
-        </div>
-        <div class="header-content">
-          <h3 class="section-title">Lokacija preuzimanja</h3>
-          <p class="section-subtitle">Ovde preuzimate vozilo</p>
-        </div>
-        @if (pickupLocation()?.isEstimated) {
-        <span class="estimated-chip">
-          <mat-icon>info_outline</mat-icon>
-          Približno
-        </span>
-        }
-      </div>
-
-      <!-- Location Card -->
-      <div class="location-content">
-        <!-- Address Display -->
-        <div class="address-display">
-          <div class="address-icon">
-            <mat-icon>location_on</mat-icon>
+      <div class="readonly-pickup-location standard turo-style">
+        <!-- Section Header -->
+        <div class="section-header">
+          <div class="header-icon">
+            <mat-icon>place</mat-icon>
           </div>
-          <div class="address-text">
-            <span class="address-main">{{ displayAddress() }}</span>
-            @if (pickupLocation()?.city && pickupLocation()?.address) {
-            <span class="address-secondary">
-              {{ pickupLocation()?.city }}@if (pickupLocation()?.zipCode) {,
-              {{ pickupLocation()?.zipCode }}}
+          <div class="header-content">
+            <h3 class="section-title">Lokacija preuzimanja</h3>
+            <p class="section-subtitle">Ovde preuzimate vozilo</p>
+          </div>
+          @if (pickupLocation()?.isEstimated) {
+            <span class="estimated-chip">
+              <mat-icon>info_outline</mat-icon>
+              Približno
             </span>
+          }
+        </div>
+
+        <!-- Location Card -->
+        <div class="location-content">
+          <!-- Address Display -->
+          <div class="address-display">
+            <div class="address-icon">
+              <mat-icon>location_on</mat-icon>
+            </div>
+            <div class="address-text">
+              <span class="address-main">{{ displayAddress() }}</span>
+              @if (pickupLocation()?.city && pickupLocation()?.address) {
+                <span class="address-secondary">
+                  {{ pickupLocation()?.city }}
+                  @if (pickupLocation()?.zipCode) {
+                    , {{ pickupLocation()?.zipCode }}
+                  }
+                </span>
+              }
+            </div>
+            @if (hasCoordinates()) {
+              <button
+                mat-icon-button
+                class="directions-btn"
+                matTooltip="Otvori u Google Maps"
+                (click)="openInMaps()"
+              >
+                <mat-icon>directions</mat-icon>
+              </button>
             }
           </div>
+
+          <!-- Mini Map -->
           @if (hasCoordinates()) {
-          <button
-            mat-icon-button
-            class="directions-btn"
-            matTooltip="Otvori u Google Maps"
-            (click)="openInMaps()"
-          >
-            <mat-icon>directions</mat-icon>
-          </button>
-          }
-        </div>
-
-        <!-- Mini Map -->
-        @if (hasCoordinates()) {
-        <div class="map-wrapper" [class.expanded]="showMap()">
-          @if (showMap()) {
-          <app-location-picker
-            [latitude]="pickupLocation()?.latitude ?? null"
-            [longitude]="pickupLocation()?.longitude ?? null"
-            [editable]="false"
-            [showGeolocationButton]="false"
-            [height]="'180px'"
-            [zoom]="15"
-            [markerColor]="'#593CFB'"
-          />
-          } @else {
-          <button class="map-preview" (click)="toggleMap()">
-            <div class="map-preview-content">
-              <mat-icon>map</mat-icon>
-              <span>Prikaži mapu</span>
+            <div class="map-wrapper" [class.expanded]="showMap()">
+              @if (showMap()) {
+                <app-location-picker
+                  [latitude]="pickupLocation()?.latitude ?? null"
+                  [longitude]="pickupLocation()?.longitude ?? null"
+                  [editable]="false"
+                  [showGeolocationButton]="false"
+                  [height]="'180px'"
+                  [zoom]="15"
+                  [markerColor]="'#593CFB'"
+                />
+              } @else {
+                <button class="map-preview" (click)="toggleMap()">
+                  <div class="map-preview-content">
+                    <mat-icon>map</mat-icon>
+                    <span>Prikaži mapu</span>
+                  </div>
+                  <mat-icon class="expand-icon">expand_more</mat-icon>
+                </button>
+              }
             </div>
-            <mat-icon class="expand-icon">expand_more</mat-icon>
-          </button>
           }
-        </div>
-        }
 
-        <!-- Delivery Info Pills -->
-        @if (showDeliveryInfo() && hasDelivery()) {
-        <div class="delivery-pills">
-          <div class="pill delivery-distance">
-            <mat-icon>route</mat-icon>
-            <span>{{ deliveryDistance() | number : '1.1-1' }} km dostava</span>
-          </div>
-          @if (deliveryFee() && deliveryFee()! > 0) {
-          <div class="pill delivery-fee">
-            <mat-icon>payments</mat-icon>
-            <span>{{ deliveryFee() | number : '1.0-0' }} RSD</span>
-          </div>
-          } @else {
-          <div class="pill delivery-free">
-            <mat-icon>check_circle</mat-icon>
-            <span>Besplatna dostava</span>
-          </div>
+          <!-- Delivery Info Pills -->
+          @if (showDeliveryInfo() && hasDelivery()) {
+            <div class="delivery-pills">
+              <div class="pill delivery-distance">
+                <mat-icon>route</mat-icon>
+                <span>{{ deliveryDistance() | number: '1.1-1' }} km dostava</span>
+              </div>
+              @if (deliveryFee() && deliveryFee()! > 0) {
+                <div class="pill delivery-fee">
+                  <mat-icon>payments</mat-icon>
+                  <span>{{ deliveryFee() | number: '1.0-0' }} RSD</span>
+                </div>
+              } @else {
+                <div class="pill delivery-free">
+                  <mat-icon>check_circle</mat-icon>
+                  <span>Besplatna dostava</span>
+                </div>
+              }
+            </div>
           }
         </div>
-        }
       </div>
-    </div>
     }
 
     <!-- DETAILED MODE: Full context with variance (for check-in) -->
     @if (mode() === 'detailed') {
-    <div class="readonly-pickup-location detailed">
-      <!-- Variance Badge (if applicable) -->
-      @if (varianceStatus() && varianceStatus() !== 'NONE') {
-      <div class="variance-badge" [class]="varianceStatus()?.toLowerCase()">
-        @switch (varianceStatus()) { @case ('WARNING') {
-        <mat-icon>warning</mat-icon>
-        <span>Vozilo je {{ varianceMeters() | number : '1.0-0' }}m od dogovorene lokacije</span>
-        } @case ('BLOCKING') {
-        <mat-icon>error</mat-icon>
-        <span
-          >Vozilo je {{ varianceMeters() | number : '1.0-0' }}m od dogovorene lokacije (prelazi
-          2km)</span
-        >
-        } }
-      </div>
-      } @else if (hasCoordinates() && varianceMeters() !== null && varianceMeters() !== undefined) {
-      <div class="variance-badge none">
-        <mat-icon>check_circle</mat-icon>
-        <span>Vozilo je na dogovorenoj lokaciji</span>
-      </div>
-      }
-
-      <!-- Agreed Pickup Location Card -->
-      <mat-card class="location-card" appearance="outlined">
-        <mat-card-header>
-          <mat-icon mat-card-avatar>location_on</mat-icon>
-          <mat-card-title>Dogovorena lokacija preuzimanja</mat-card-title>
-        </mat-card-header>
-        <mat-card-content>
-          <div class="address-block">
-            <p class="address-line">{{ displayAddress() }}</p>
-            @if (pickupLocation()?.city && pickupLocation()?.address) {
-            <p class="city-zip">
-              {{ pickupLocation()?.city }}
-              @if (pickupLocation()?.zipCode) { , {{ pickupLocation()?.zipCode }}
+      <div class="readonly-pickup-location detailed">
+        <!-- Variance Badge (if applicable) -->
+        @if (varianceStatus() && varianceStatus() !== 'NONE') {
+          <div class="variance-badge" [class]="varianceStatus()?.toLowerCase()">
+            @switch (varianceStatus()) {
+              @case ('WARNING') {
+                <mat-icon>warning</mat-icon>
+                <span
+                  >Vozilo je {{ varianceMeters() | number: '1.0-0' }}m od dogovorene lokacije</span
+                >
               }
-            </p>
+              @case ('BLOCKING') {
+                <mat-icon>error</mat-icon>
+                <span
+                  >Vozilo je {{ varianceMeters() | number: '1.0-0' }}m od dogovorene lokacije
+                  (prelazi 2km)</span
+                >
+              }
             }
           </div>
-
-          @if (hasCoordinates()) {
-          <app-location-picker
-            [latitude]="pickupLocation()?.latitude ?? null"
-            [longitude]="pickupLocation()?.longitude ?? null"
-            [editable]="false"
-            [showGeolocationButton]="false"
-            [height]="'250px'"
-            [zoom]="15"
-            [markerColor]="'#593cfb'"
-          />
-          }
-        </mat-card-content>
-      </mat-card>
-
-      <!-- Actual Car Location Card (if variance exists) -->
-      @if (carLocation() && varianceStatus() && varianceStatus() !== 'NONE') {
-      <mat-card class="location-card car-location-card" appearance="outlined">
-        <mat-card-header>
-          <mat-icon mat-card-avatar>directions_car</mat-icon>
-          <mat-card-title>Stvarna lokacija vozila</mat-card-title>
-        </mat-card-header>
-        <mat-card-content>
-          <div class="address-block">
-            <p class="address-line">{{ carLocation()?.address || 'Koordinate dostupne' }}</p>
+        } @else if (
+          hasCoordinates() && varianceMeters() !== null && varianceMeters() !== undefined
+        ) {
+          <div class="variance-badge none">
+            <mat-icon>check_circle</mat-icon>
+            <span>Vozilo je na dogovorenoj lokaciji</span>
           </div>
+        }
 
-          <app-location-picker
-            [latitude]="carLocation()?.latitude ?? null"
-            [longitude]="carLocation()?.longitude ?? null"
-            [editable]="false"
-            [showGeolocationButton]="false"
-            [height]="'250px'"
-            [zoom]="15"
-            [markerColor]="'#f44336'"
-          />
-        </mat-card-content>
-      </mat-card>
-      }
-    </div>
+        <!-- Agreed Pickup Location Card -->
+        <mat-card class="location-card" appearance="outlined">
+          <mat-card-header>
+            <mat-icon mat-card-avatar>location_on</mat-icon>
+            <mat-card-title>Dogovorena lokacija preuzimanja</mat-card-title>
+          </mat-card-header>
+          <mat-card-content>
+            <div class="address-block">
+              <p class="address-line">{{ displayAddress() }}</p>
+              @if (pickupLocation()?.city && pickupLocation()?.address) {
+                <p class="city-zip">
+                  {{ pickupLocation()?.city }}
+                  @if (pickupLocation()?.zipCode) {
+                    , {{ pickupLocation()?.zipCode }}
+                  }
+                </p>
+              }
+            </div>
+
+            @if (hasCoordinates()) {
+              <app-location-picker
+                [latitude]="pickupLocation()?.latitude ?? null"
+                [longitude]="pickupLocation()?.longitude ?? null"
+                [editable]="false"
+                [showGeolocationButton]="false"
+                [height]="'250px'"
+                [zoom]="15"
+                [markerColor]="'#593cfb'"
+              />
+            }
+          </mat-card-content>
+        </mat-card>
+
+        <!-- Actual Car Location Card (if variance exists) -->
+        @if (carLocation() && varianceStatus() && varianceStatus() !== 'NONE') {
+          <mat-card class="location-card car-location-card" appearance="outlined">
+            <mat-card-header>
+              <mat-icon mat-card-avatar>directions_car</mat-icon>
+              <mat-card-title>Stvarna lokacija vozila</mat-card-title>
+            </mat-card-header>
+            <mat-card-content>
+              <div class="address-block">
+                <p class="address-line">{{ carLocation()?.address || 'Koordinate dostupne' }}</p>
+              </div>
+
+              <app-location-picker
+                [latitude]="carLocation()?.latitude ?? null"
+                [longitude]="carLocation()?.longitude ?? null"
+                [editable]="false"
+                [showGeolocationButton]="false"
+                [height]="'250px'"
+                [zoom]="15"
+                [markerColor]="'#f44336'"
+              />
+            </mat-card-content>
+          </mat-card>
+        }
+      </div>
     }
   `,
   styles: [
@@ -316,8 +326,8 @@ export interface CarLocationData {
       }
 
       .readonly-pickup-location {
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu,
-          sans-serif;
+        font-family:
+          -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
       }
 
       /* COMPACT MODE */

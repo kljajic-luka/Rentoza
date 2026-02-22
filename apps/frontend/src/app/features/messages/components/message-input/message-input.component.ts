@@ -148,7 +148,7 @@ import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
             font-size: 18px;
             width: 18px;
             height: 18px;
-            color: #1976d2;
+            color: var(--brand-primary);
           }
 
           .attachment-name {
@@ -218,7 +218,7 @@ import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
           background-color 0.15s ease;
 
         &:hover:not(:disabled) {
-          color: #1976d2;
+          color: var(--brand-primary);
           background-color: rgba(25, 118, 210, 0.08);
         }
 

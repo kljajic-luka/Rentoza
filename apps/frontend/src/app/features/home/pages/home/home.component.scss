@@ -3,10 +3,10 @@
   border-radius: 24px;
   overflow: hidden;
   margin-bottom: 3.5rem;
-  min-height: 520px;
+  min-height: 560px;
   /* 📱 iOS Safari: 100vh is too tall due to browser chrome; dvh fixes this */
-  min-height: max(520px, 50vh);
-  min-height: max(520px, 50dvh);
+  min-height: max(560px, 70vh);
+  min-height: max(560px, 70dvh);
   display: flex;
   align-items: center;
   background: radial-gradient(circle at 0% 0%, rgba(89, 60, 251, 0.28), rgba(61, 32, 232, 0.6)),

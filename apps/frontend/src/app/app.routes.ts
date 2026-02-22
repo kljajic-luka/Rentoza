@@ -10,6 +10,7 @@ export const routes: Routes = [
     path: '',
     canActivate: [RoleRedirectGuard],
     title: 'Iznajmi auto u Srbiji | Rentoza',
+    data: { fullBleed: true },
     loadComponent: () =>
       import('@features/home/pages/home/home.component').then((m) => m.HomeComponent),
   },

@@ -62,22 +62,14 @@
 
   <!-- Cars Section -->
   <div class="section cars-section">
-    <div
-      class="cars-header"
-      style="
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 16px;
-      "
-    >
+    <div class="cars-header">
       <h2>Automobili vlasnika {{ owner.firstName }}</h2>
       <button mat-stroked-button color="primary" (click)="openFilterDialog()">
         <mat-icon>calendar_today</mat-icon> Proveri dostupnost
       </button>
     </div>
 
-    <div class="active-filter" *ngIf="filterStart() && filterEnd()" style="margin-bottom: 16px">
+    <div class="active-filter" *ngIf="filterStart() && filterEnd()">
       <mat-chip-listbox>
         <mat-chip-option selected removable (removed)="clearFilter()">
           Dostupno: {{ filterStart() | date : 'mediumDate' }} -

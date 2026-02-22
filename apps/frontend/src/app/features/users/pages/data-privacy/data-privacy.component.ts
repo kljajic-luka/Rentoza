@@ -8,8 +8,12 @@ import { MatDividerModule } from '@angular/material/divider';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatDialogModule, MatDialog } from '@angular/material/dialog';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
+import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
+import { ConfirmDialogService } from '@core/services/confirm-dialog.service';
 
 /**
  * Data Privacy Component
@@ -32,6 +36,9 @@ import { firstValueFrom } from 'rxjs';
     MatProgressSpinnerModule,
     MatDialogModule,
     MatSnackBarModule,
+    MatFormFieldModule,
+    MatInputModule,
+    FormsModule,
   ],
   template: `
     <div class="privacy-container">
@@ -136,8 +143,8 @@ import { firstValueFrom } from 'rxjs';
           <button
             mat-raised-button
             color="warn"
-            (click)="confirmDeleteAccount()"
-            [disabled]="deleting()"
+            (click)="requestDeleteAccount()"
+            [disabled]="deleting() || showEmailStep()"
           >
             @if (deleting()) {
               <mat-spinner diameter="20"></mat-spinner>
@@ -147,6 +154,41 @@ import { firstValueFrom } from 'rxjs';
               Obriši moj nalog
             }
           </button>
+
+          <!-- Email verification step (replaces window.prompt) -->
+          @if (showEmailStep()) {
+            <div class="email-verify-step" role="form" aria-label="Potvrda brisanja naloga">
+              <p class="email-verify-step__label">
+                Unesite vašu email adresu za potvrdu:
+              </p>
+              <mat-form-field appearance="outline" class="email-verify-step__field">
+                <mat-label>Email adresa</mat-label>
+                <input
+                  matInput
+                  type="email"
+                  [(ngModel)]="deleteEmailValue"
+                  autocomplete="email"
+                  [disabled]="deleting()"
+                />
+              </mat-form-field>
+              <div class="email-verify-step__actions">
+                <button mat-stroked-button type="button" (click)="cancelDeleteStep()" [disabled]="deleting()">Odustani</button>
+                <button
+                  mat-raised-button
+                  color="warn"
+                  type="button"
+                  [disabled]="!deleteEmailValue || deleting()"
+                  (click)="executeDelete()"
+                >
+                  @if (deleting()) {
+                    <mat-spinner diameter="18"></mat-spinner>
+                  } @else {
+                    Potvrdi brisanje
+                  }
+                </button>
+              </div>
+            </div>
+          }
         </mat-card-actions>
       </mat-card>
 
@@ -259,6 +301,32 @@ import { firstValueFrom } from 'rxjs';
         }
       }
 
+      .email-verify-step {
+        margin-top: 16px;
+        padding: 16px;
+        background: var(--color-error-bg, rgba(255, 90, 95, 0.06));
+        border: 1px solid var(--color-error, #FF5A5F);
+        border-radius: var(--radius-lg, 16px);
+
+        &__label {
+          margin: 0 0 12px;
+          font-size: var(--font-size-sm, 0.875rem);
+          font-weight: 600;
+          color: var(--color-text-primary);
+        }
+
+        &__field {
+          width: 100%;
+        }
+
+        &__actions {
+          display: flex;
+          gap: 12px;
+          justify-content: flex-end;
+          margin-top: 8px;
+        }
+      }
+
       mat-divider {
         margin: 24px 0;
       }
@@ -273,7 +341,7 @@ import { firstValueFrom } from 'rxjs';
           display: flex;
           align-items: center;
           gap: 8px;
-          color: var(--primary-color, #3f51b5);
+          color: var(--brand-primary);
           text-decoration: none;
 
           &:hover {
@@ -289,9 +357,12 @@ export class DataPrivacyComponent {
   private http = inject(HttpClient);
   private dialog = inject(MatDialog);
   private snackBar = inject(MatSnackBar);
+  private confirmDialogService = inject(ConfirmDialogService);
 
   readonly exporting = signal(false);
   readonly deleting = signal(false);
+  readonly showEmailStep = signal(false);
+  deleteEmailValue = '';
 
   async exportData(): Promise<void> {
     this.exporting.set(true);
@@ -327,16 +398,33 @@ export class DataPrivacyComponent {
   }
 
   async confirmDeleteAccount(): Promise<void> {
-    const confirmed = window.confirm(
-      'Da li ste sigurni da želite da obrišete vaš nalog?\n\n' +
-        'Ova akcija će deaktivirati vaš nalog odmah.\n' +
-        'Imate 30 dana da otkažete brisanje.',
+    // kept for backward compat; delegates to requestDeleteAccount
+    await this.requestDeleteAccount();
+  }
+
+  async requestDeleteAccount(): Promise<void> {
+    const confirmed = await firstValueFrom(
+      this.confirmDialogService.open({
+        title: 'Obriši nalog',
+        message:
+          'Da li ste sigurni da želite da obrišete vaš nalog?\n' +
+          'Ova akcija će deaktivirati nalog odmah. Imate 30 dana da otkažete brisanje.',
+        confirmLabel: 'Da, obriši',
+        cancelLabel: 'Odustani',
+        danger: true,
+      }),
     );
-
     if (!confirmed) return;
+    this.showEmailStep.set(true);
+  }
 
-    const email = window.prompt('Unesite vašu email adresu za potvrdu:');
+  cancelDeleteStep(): void {
+    this.showEmailStep.set(false);
+    this.deleteEmailValue = '';
+  }
 
+  async executeDelete(): Promise<void> {
+    const email = this.deleteEmailValue?.trim();
     if (!email) return;
 
     this.deleting.set(true);
@@ -355,7 +443,6 @@ export class DataPrivacyComponent {
         duration: 5000,
       });
 
-      // Redirect to logout
       window.location.href = '/auth/logout';
     } catch (error: any) {
       if (error.status === 400) {

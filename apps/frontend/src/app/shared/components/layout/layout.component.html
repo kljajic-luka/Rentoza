@@ -10,7 +10,7 @@
   <!-- ═══════════════════════════════════════════════════════════════════
        TOP NAVBAR — sticky, 72px, transitions to solid on scroll
        ═══════════════════════════════════════════════════════════════════ -->
-  <header id="navigation" class="topnav" [class.topnav--scrolled]="isScrolled" role="banner">
+  <header id="navigation" class="topnav" [class.topnav--scrolled]="isScrolled" [class.topnav--transparent]="isTransparentNav" role="banner">
     <div class="topnav__inner">
       <!-- ── Logo ── -->
       <a class="topnav__logo" routerLink="/" aria-label="Rentoza – Idi na početnu stranicu">
@@ -61,6 +61,27 @@
           >
         </ng-template>
       </nav>
+
+      <!-- ── Desktop search field (skip-link target) ── -->
+      <form
+        id="search"
+        role="search"
+        class="topnav__search"
+        aria-label="Pretraži vozila"
+        (submit)="navigateSearch($event, searchInput)"
+      >
+        <input
+          #searchInput
+          type="search"
+          class="topnav__search-input"
+          placeholder="Pretraži vozila..."
+          aria-label="Pretraži vozila"
+          autocomplete="off"
+        />
+        <button type="submit" class="topnav__search-btn" aria-label="Pretraži">
+          <mat-icon>search</mat-icon>
+        </button>
+      </form>
 
       <!-- ── Right-side actions ── -->
       <div class="topnav__actions">
@@ -325,7 +346,7 @@
   <!-- ═══════════════════════════════════════════════════════════════════
        MAIN CONTENT AREA
        ═══════════════════════════════════════════════════════════════════ -->
-  <main class="layout-main" id="main-content" tabindex="-1">
+  <main class="layout-main" [class.layout-main--fullbleed]="isFullBleed()" id="main-content" tabindex="-1">
     <router-outlet />
   </main>
 

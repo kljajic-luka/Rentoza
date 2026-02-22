@@ -258,7 +258,7 @@ import { LoadingSkeletonComponent } from '@shared/components/loading-skeleton/lo
         .price {
           font-size: 1.125rem;
           font-weight: 600;
-          color: #6366f1;
+          color: var(--brand-primary);
         }
       }
 

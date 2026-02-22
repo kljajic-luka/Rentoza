@@ -463,7 +463,7 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
         font-size: 28px;
         width: 28px;
         height: 28px;
-        color: var(--primary-color, #1976d2);
+        color: var(--brand-primary);
       }
 
       .section-header h2 {
@@ -623,7 +623,7 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
         font-size: 32px;
         width: 32px;
         height: 32px;
-        color: var(--primary-color, #1976d2);
+        color: var(--brand-primary);
       }
 
       .lockbox-header h4 {
@@ -764,7 +764,7 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
         font-size: 28px;
         width: 28px;
         height: 28px;
-        color: var(--primary-color, #7c4dff);
+        color: var(--brand-primary);
       }
 
       :host-context(.dark-theme) .dual-party-section .section-header mat-icon,
@@ -828,7 +828,7 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
         font-size: 48px;
         width: 48px;
         height: 48px;
-        color: var(--primary-color, #7c4dff);
+        color: var(--brand-primary);
         opacity: 0.9;
       }
 

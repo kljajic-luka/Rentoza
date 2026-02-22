@@ -161,7 +161,7 @@ import { CheckInStatusDTO } from '../../../core/models/check-in.model';
         font-size: 48px;
         width: 48px;
         height: 48px;
-        color: var(--primary-color, #1976d2);
+        color: var(--brand-primary);
       }
 
       .status-icon.success {
@@ -217,7 +217,7 @@ import { CheckInStatusDTO } from '../../../core/models/check-in.model';
 
       .vehicle-card [mat-card-avatar] {
         background: var(--primary-light, rgba(25, 118, 210, 0.12));
-        color: var(--primary-color, #1976d2);
+        color: var(--brand-primary);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -310,7 +310,7 @@ import { CheckInStatusDTO } from '../../../core/models/check-in.model';
       }
 
       .steps-list li.current {
-        color: var(--primary-color, #1976d2);
+        color: var(--brand-primary);
         font-weight: 500;
       }
 
@@ -328,7 +328,7 @@ import { CheckInStatusDTO } from '../../../core/models/check-in.model';
       }
 
       .steps-list li.current .step-number {
-        background: var(--primary-color, #1976d2);
+        background: var(--brand-primary);
         color: white;
       }
 

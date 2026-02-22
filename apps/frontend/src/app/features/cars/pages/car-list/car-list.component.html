@@ -30,7 +30,7 @@
           >
             <mat-option *ngIf="isLoadingGeocoding" disabled class="geocode-loading-option">
               <mat-spinner diameter="20"></mat-spinner>
-              <span style="margin-left: 8px">Pretraga...</span>
+              <span class="geocode-loading-label">Pretraga...</span>
             </mat-option>
             <mat-option *ngFor="let suggestion of geocodeSuggestions" [value]="suggestion">
               <div class="geocode-suggestion">

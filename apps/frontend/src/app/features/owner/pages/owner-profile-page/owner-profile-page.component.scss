@@ -247,3 +247,10 @@
 .error-container {
   color: #f44336;
 }
+.cars-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+.active-filter { margin-bottom: 1rem; }

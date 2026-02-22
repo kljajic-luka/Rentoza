@@ -49,11 +49,11 @@ jobs:
         working-directory: apps/frontend
         run: |
           echo "📦 Bundle Size Check"
-          INITIAL_SIZE=$(du -sh dist/apps/frontend/browser | awk '{print $1}')
+          INITIAL_SIZE=$(du -sh dist/rentoza-frontend/browser | awk '{print $1}')
           echo "Total bundle size: $INITIAL_SIZE"
           
           # Check if any JS files exceed 1.5MB
-          find dist/apps/frontend/browser -name "*.js" -size +1500k -exec ls -lh {} \; | while read -r line; do
+          find dist/rentoza-frontend/browser -name "*.js" -size +1500k -exec ls -lh {} \; | while read -r line; do
             echo "⚠️  Large file detected: $line"
             exit 1
           done

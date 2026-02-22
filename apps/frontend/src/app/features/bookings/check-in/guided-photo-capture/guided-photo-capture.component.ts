@@ -350,7 +350,7 @@ interface PhotoCaptureState {
 
       .category-badge[data-category='exterior'] {
         background: rgba(33, 150, 243, 0.15);
-        color: #1976d2;
+        color: var(--brand-primary);
       }
 
       .category-badge[data-category='interior'] {
@@ -405,7 +405,7 @@ interface PhotoCaptureState {
         font-size: 40px;
         width: 40px;
         height: 40px;
-        color: var(--mat-primary-color, #1976d2);
+        color: var(--brand-primary);
         margin-bottom: 8px;
       }
 
@@ -509,7 +509,7 @@ interface PhotoCaptureState {
       }
 
       .hint-card mat-icon {
-        color: #1976d2;
+        color: var(--brand-primary);
         flex-shrink: 0;
       }
 
@@ -729,8 +729,8 @@ interface PhotoCaptureState {
       }
 
       .nav-pill.active {
-        border-color: var(--mat-primary-color, #1976d2);
-        background: var(--mat-primary-color, #1976d2);
+        border-color: var(--brand-primary);
+        background: var(--brand-primary);
         color: white;
       }
 

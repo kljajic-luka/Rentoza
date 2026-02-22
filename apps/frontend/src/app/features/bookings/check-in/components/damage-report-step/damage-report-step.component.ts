@@ -263,7 +263,7 @@ export interface RetryEvent {
       }
 
       .photo-slot:hover:not(.readonly) {
-        border-color: #1976d2;
+        border-color: var(--brand-primary);
         background: #e3f2fd;
       }
 

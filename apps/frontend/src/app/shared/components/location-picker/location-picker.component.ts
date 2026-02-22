@@ -724,7 +724,7 @@ export class LocationPickerComponent implements OnInit, AfterViewInit, OnDestroy
     return `
       <div style="padding: 8px; min-width: 120px;">
         <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">${title}</div>
-        ${price ? `<div style="color: #1976d2; font-weight: 500;">${price}</div>` : ''}
+        ${price ? `<div style="color: var(--brand-primary); font-weight: 500;">${price}</div>` : ''}
         ${distance ? `<div style="color: #666; font-size: 12px;">${distance}</div>` : ''}
       </div>
     `;

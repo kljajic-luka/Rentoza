@@ -67,7 +67,7 @@ import { AccessibilityService } from '../../services/accessibility.service';
         left: -9999px;
         top: 0;
         padding: 12px 24px;
-        background: #1976d2;
+        background: var(--brand-primary);
         color: white;
         text-decoration: none;
         font-weight: 600;
@@ -84,7 +84,7 @@ import { AccessibilityService } from '../../services/accessibility.service';
         }
 
         &:hover {
-          background: #1565c0;
+          background: var(--color-primary-hover);
         }
       }
 
@@ -102,10 +102,10 @@ import { AccessibilityService } from '../../services/accessibility.service';
       /* Dark mode */
       @media (prefers-color-scheme: dark) {
         .skip-link {
-          background: #2196f3;
+          background: var(--brand-primary);
 
           &:hover {
-            background: #1976d2;
+            background: var(--color-primary-hover);
           }
         }
       }
@@ -134,7 +134,7 @@ export class SkipLinksComponent {
 
     if (search) {
       this.a11yService.focusElement(search as HTMLElement);
-      this.a11yService.announce('Фокус премештен на претрагу');
+      this.a11yService.announce('Fokus premešten na pretragu');
     }
   }
 }

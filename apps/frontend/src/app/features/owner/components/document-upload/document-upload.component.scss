@@ -10,7 +10,7 @@
   font-size: var(--font-size-sm);
   
   .required-star {
-    color: var(--color-error);
+    color: var(--color-error-text);
     margin-left: 0.25rem;
   }
 }
@@ -135,7 +135,7 @@
   
   .remove-button {
     background: #fee2e2;
-    color: var(--color-error);
+    color: var(--color-error-text);
     border: none;
     width: 32px;
     height: 32px;
@@ -372,4 +372,3 @@
     background: #064e3b;
   }
 }
-

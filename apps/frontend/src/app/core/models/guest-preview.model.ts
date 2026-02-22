@@ -48,4 +48,3 @@ export interface GuestBookingPreview {
   message?: string;
   protectionPlan: string;
 }
-

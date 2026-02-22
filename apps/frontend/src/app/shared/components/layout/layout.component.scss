@@ -50,6 +50,51 @@ $nav-h-mobile: 60px;
     border-bottom-color: transparent;
   }
 
+  // Transparent navbar — home page top state (before scroll)
+  &--transparent {
+    background: transparent !important;
+    border-bottom-color: transparent !important;
+    box-shadow: none !important;
+
+    .topnav__nav-link {
+      color: rgba(255, 255, 255, 0.9);
+
+      &:hover,
+      &--active {
+        color: #fff;
+        background: rgba(255, 255, 255, 0.12);
+      }
+    }
+
+    .topnav__search-input {
+      background: rgba(255, 255, 255, 0.15);
+      border-color: rgba(255, 255, 255, 0.3);
+      color: #fff;
+
+      &::placeholder { color: rgba(255, 255, 255, 0.6); }
+      &:focus {
+        background: rgba(255, 255, 255, 0.2);
+        border-color: rgba(255, 255, 255, 0.5);
+      }
+    }
+
+    .topnav__search-btn {
+      color: rgba(255, 255, 255, 0.8);
+      &:hover { color: #fff; }
+    }
+
+    .topnav__avatar-btn,
+    .topnav__link-plain,
+    .topnav__link-register {
+      color: rgba(255, 255, 255, 0.9) !important;
+    }
+
+    .topnav__link-register {
+      border-color: rgba(255, 255, 255, 0.5) !important;
+      &:hover { background: rgba(255, 255, 255, 0.12) !important; }
+    }
+  }
+
   :host-context(.dark-theme) & {
     background: var(--color-surface);
     border-bottom-color: rgba(255, 255, 255, 0.08);
@@ -109,7 +154,7 @@ $nav-h-mobile: 60px;
   display: flex;
   align-items: center;
   gap: 4px;
-  flex: 1 1 auto;
+  flex: 0 0 auto; // changed from 1 1 auto to make room for search center
 
   @media (max-width: 767px) {
     display: none;
@@ -155,6 +200,81 @@ $nav-h-mobile: 60px;
   &:focus-visible {
     outline: 2px solid var(--color-primary);
     outline-offset: 2px;
+  }
+}
+
+// ── Navbar search field (desktop only) ────────────────────────────────────
+
+.topnav__search {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  max-width: 360px;
+  margin: 0 24px;
+  position: relative;
+
+  @media (max-width: 900px) {
+    display: none; // hidden on small-desktop and mobile; available via skip-link
+  }
+}
+
+.topnav__search-input {
+  width: 100%;
+  height: 40px;
+  padding: 0 12px 0 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full, 9999px);
+  background: var(--color-surface-raised, var(--color-surface));
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm, 0.875rem);
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+
+  &::placeholder {
+    color: var(--color-text-muted);
+  }
+
+  &:focus {
+    border-color: var(--brand-primary);
+    box-shadow: 0 0 0 2px var(--brand-primary-20, rgba(89, 60, 251, 0.2));
+  }
+
+  // Remove native search cancel button
+  &::-webkit-search-cancel-button { display: none; }
+}
+
+.topnav__search-btn {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: var(--radius-full, 9999px);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: color 0.15s, background-color 0.15s;
+
+  &:hover {
+    color: var(--brand-primary);
+    background: var(--brand-primary-10, rgba(89, 60, 251, 0.08));
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--brand-primary);
+    outline-offset: 2px;
+  }
+
+  mat-icon {
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
   }
 }
 
@@ -420,7 +540,7 @@ $nav-h-mobile: 60px;
   &--danger {
     color: var(--color-error-text);
 
-    mat-icon { color: var(--color-error); }
+    mat-icon { color: var(--color-error-text); }
 
     &:hover,
     &:focus-visible {

@@ -428,7 +428,7 @@ import { environment } from '@environments/environment';
       }
 
       .step.active .step-icon {
-        background: var(--primary-color, #1976d2);
+        background: var(--brand-primary);
         color: white;
       }
 
@@ -443,7 +443,7 @@ import { environment } from '@environments/environment';
       }
 
       .step.active .step-label {
-        color: var(--primary-color, #1976d2);
+        color: var(--brand-primary);
         font-weight: 500;
       }
 
@@ -517,7 +517,7 @@ import { environment } from '@environments/environment';
         font-size: 64px;
         width: 64px;
         height: 64px;
-        color: var(--primary-color, #1976d2);
+        color: var(--brand-primary);
       }
 
       .waiting-container h2 {
@@ -532,7 +532,7 @@ import { environment } from '@environments/environment';
 
       .start-time {
         font-weight: 500;
-        color: var(--primary-color, #1976d2) !important;
+        color: var(--brand-primary) !important;
       }
 
       /* Mobile optimizations */

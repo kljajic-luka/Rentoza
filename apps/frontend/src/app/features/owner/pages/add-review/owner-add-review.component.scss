@@ -320,21 +320,21 @@
   }
 
   &:hover:not(:disabled) mat-icon {
-    color: var(--color-warning);
+    color: var(--color-warning-text);
   }
 
   &--active mat-icon {
-    color: var(--color-warning) !important;
+    color: var(--color-warning-text) !important;
   }
 
   // Brighter gold in dark mode for better visibility
   :host-context(.theme-dark) &--active mat-icon {
-    color: var(--color-warning) !important;
+    color: var(--color-warning-text) !important;
     filter: brightness(1.15);
   }
 
   :host-context(.theme-dark) &:hover:not(:disabled) mat-icon {
-    color: var(--color-warning);
+    color: var(--color-warning-text);
   }
 
   @media (max-width: 600px) {

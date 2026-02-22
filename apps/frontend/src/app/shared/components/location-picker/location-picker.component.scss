@@ -297,7 +297,7 @@
   .location-picker {
     .privacy-indicator,
     .radius-indicator {
-      font-size: 11px;
+      font-size: 0.75rem; /* min 12px for map overlay indicators */
       padding: 4px 10px;
     }
 

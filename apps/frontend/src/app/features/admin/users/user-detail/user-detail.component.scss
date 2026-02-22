@@ -71,3 +71,6 @@
 	color: var(--admin-muted);
 	padding: 40px 0;
 }
+.stack--xs  { gap: var(--space-1); }
+.stack--sm  { gap: var(--space-2); }
+.stack--spaced { margin-top: var(--space-3); }

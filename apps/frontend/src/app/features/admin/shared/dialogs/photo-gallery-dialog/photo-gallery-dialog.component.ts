@@ -102,7 +102,7 @@ export interface PhotoGroup {
       .dialog-icon {
         vertical-align: middle;
         margin-right: 8px;
-        color: #1976d2;
+        color: var(--brand-primary);
       }
 
       .gallery-content {

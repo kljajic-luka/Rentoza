@@ -1,6 +1,7 @@
 import { AsyncPipe, CommonModule } from '@angular/common';
 import {
   ChangeDetectionStrategy,
+  ChangeDetectorRef,
   Component,
   DestroyRef,
   ElementRef,
@@ -8,8 +9,9 @@ import {
   OnInit,
   ViewChild,
   inject,
+  signal,
 } from '@angular/core';
-import { NavigationEnd, Router, RouterModule, RouterOutlet } from '@angular/router';
+import { NavigationEnd, Router, RouterModule, RouterOutlet, ActivatedRoute } from '@angular/router';
 import { BreakpointObserver, Breakpoints } from '@angular/cdk/layout';
 import { MatIconModule } from '@angular/material/icon';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -52,9 +54,11 @@ export class LayoutComponent implements OnInit {
   protected readonly authService = inject(AuthService);
   protected readonly themeService = inject(ThemeService);
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
   private readonly toast = inject(ToastService);
   private readonly breakpointObserver = inject(BreakpointObserver);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly cdr = inject(ChangeDetectorRef);
 
   // ── Responsive state ──────────────────────────────────────────────────────
   protected isMobile = false;
@@ -68,6 +72,14 @@ export class LayoutComponent implements OnInit {
   protected isUserMenuOpen = false;
   /** Hides entire layout shell for admin routes */
   protected isAdminRoute = false;
+  /** True when current route has data.fullBleed — removes layout padding */
+  protected readonly isFullBleed = signal(false);
+  /** True when on home page (/ or /pocetna) */
+  protected isHomePage = false;
+  /** Transparent navbar: home page + not yet scrolled */
+  protected get isTransparentNav(): boolean {
+    return this.isHomePage && !this.isScrolled;
+  }
 
   /** Snapshot of authenticated user for sync access (initials, name display) */
   protected currentUserSnapshot: UserProfile | null = null;
@@ -123,6 +135,7 @@ export class LayoutComponent implements OnInit {
 
   ngOnInit(): void {
     this.checkAdminRoute();
+    this.updateRouteState();
 
     // Keep user snapshot in sync for synchronous access (initials, greeting)
     this.currentUser$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((user) => {
@@ -139,6 +152,8 @@ export class LayoutComponent implements OnInit {
         this.checkAdminRoute();
         this.closeMobileMenu();
         this.isUserMenuOpen = false;
+        this.updateRouteState();
+        this.cdr.markForCheck();
       });
 
     // Track breakpoint for mobile-specific logic
@@ -165,7 +180,11 @@ export class LayoutComponent implements OnInit {
   /** Switch navbar to solid-white once user scrolls past 80px */
   @HostListener('window:scroll')
   onWindowScroll(): void {
+    const wasScrolled = this.isScrolled;
     this.isScrolled = window.scrollY > 80;
+    if (wasScrolled !== this.isScrolled) {
+      this.cdr.markForCheck();
+    }
   }
 
   /**
@@ -330,10 +349,34 @@ export class LayoutComponent implements OnInit {
     void this.router.navigate([route]);
   }
 
+  /** Handle navbar search form submission — routes to /vozila with query param */
+  protected navigateSearch(event: Event, input: HTMLInputElement): void {
+    event.preventDefault();
+    const q = input.value.trim();
+    if (q) {
+      void this.router.navigate(['/vozila'], { queryParams: { search: q } });
+      input.value = '';
+    } else {
+      void this.router.navigate(['/vozila']);
+    }
+    input.blur();
+  }
+
   // ── Private helpers ───────────────────────────────────────────────────────
 
   private checkAdminRoute(): void {
     this.isAdminRoute = this.router.url.startsWith('/admin');
+  }
+
+  private updateRouteState(): void {
+    const url = this.router.url.split('?')[0];
+    this.isHomePage = url === '/' || url === '/pocetna' || url === '';
+    // Walk to the deepest activated route to read route data
+    let snapshot = this.route.snapshot;
+    while (snapshot.firstChild) {
+      snapshot = snapshot.firstChild;
+    }
+    this.isFullBleed.set(snapshot.data?.['fullBleed'] === true);
   }
 
   /** Prevent body scroll while mobile drawer is open (iOS safe) */

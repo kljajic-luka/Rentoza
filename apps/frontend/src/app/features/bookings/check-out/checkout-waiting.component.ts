@@ -263,5 +263,3 @@ export class CheckoutWaitingComponent {
     }, 2000);
   }
 }
-
-

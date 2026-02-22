@@ -28,7 +28,7 @@
     </button>
   </div>
 
-  <div *ngIf="kpis$ | async as kpis" class="grid-auto" style="margin-bottom: 20px">
+  <div *ngIf="kpis$ | async as kpis" class="grid-auto kpi-grid">
     <app-kpi-card
       title="Total Revenue"
       [value]="(kpis.totalRevenueThisMonth | currency: 'RSD' : 'symbol' : '1.0-0') || '0'"
@@ -84,7 +84,7 @@
 
       <!-- Loading State -->
       <div *ngIf="recentBookingsLoading" class="card-banner">
-        <div class="row" style="gap: 12px">
+        <div class="row loading-state">
           <mat-progress-spinner mode="indeterminate" diameter="24"></mat-progress-spinner>
           <span class="muted">Loading recent bookings...</span>
         </div>

@@ -750,3 +750,16 @@
     grid-template-columns: 1fr;
   }
 }
+.car-detail__title-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+.car-detail__title { margin: 0; }
+.owner-info { cursor: pointer; }
+.owner-avatar__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}

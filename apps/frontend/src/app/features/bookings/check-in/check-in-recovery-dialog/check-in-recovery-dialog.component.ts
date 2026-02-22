@@ -156,7 +156,7 @@ export type RecoveryDialogResult =
         font-size: 32px;
         width: 32px;
         height: 32px;
-        color: var(--primary-color, #1976d2);
+        color: var(--brand-primary);
       }
 
       .header-icon.warning {
@@ -209,7 +209,7 @@ export type RecoveryDialogResult =
 
       .progress-fill {
         height: 100%;
-        background: var(--primary-color, #1976d2);
+        background: var(--brand-primary);
         border-radius: 4px;
         transition: width 0.3s ease;
       }

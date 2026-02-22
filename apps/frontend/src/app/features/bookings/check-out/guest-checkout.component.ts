@@ -397,7 +397,7 @@ import { environment } from '@environments/environment';
           font-size: 32px;
           width: 32px;
           height: 32px;
-          color: var(--primary-color, #1976d2);
+          color: var(--brand-primary);
         }
 
         h3 {
@@ -434,7 +434,7 @@ import { environment } from '@environments/environment';
       }
 
       .photo-slot.uploading {
-        border-color: var(--primary-color, #1976d2);
+        border-color: var(--brand-primary);
       }
 
       .photo-placeholder {
@@ -462,7 +462,7 @@ import { environment } from '@environments/environment';
       .required-badge {
         font-size: 10px;
         padding: 2px 6px;
-        background: var(--primary-color, #1976d2);
+        background: var(--brand-primary);
         color: white;
         border-radius: 8px;
       }
@@ -610,7 +610,7 @@ import { environment } from '@environments/environment';
           border-radius: 8px;
 
           mat-icon {
-            color: var(--primary-color, #1976d2);
+            color: var(--brand-primary);
           }
         }
       }
@@ -665,7 +665,7 @@ import { environment } from '@environments/environment';
         gap: 12px;
 
         mat-icon {
-          color: var(--primary-color, #1976d2);
+          color: var(--brand-primary);
         }
 
         .fuel-slider-input {

@@ -16,6 +16,8 @@ import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { FormInputComponent } from '@shared/components/form-input/form-input.component';
+import { ButtonComponent } from '@shared/components/button/button.component';
 import { PasswordCheckPipe } from './password-check.pipe';
 
 @Component({
@@ -31,6 +33,8 @@ import { PasswordCheckPipe } from './password-check.pipe';
     MatButtonModule,
     MatIconModule,
     MatProgressSpinnerModule,
+    FormInputComponent,
+    ButtonComponent,
     PasswordCheckPipe,
   ],
   templateUrl: './reset-password.component.html',

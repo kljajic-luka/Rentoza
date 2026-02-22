@@ -257,7 +257,7 @@ import { CheckInStatusDTO } from '../../../core/models/check-in.model';
         font-size: 64px;
         width: 64px;
         height: 64px;
-        color: var(--primary-color, #1976d2);
+        color: var(--brand-primary);
         margin-bottom: 16px;
       }
 
@@ -480,7 +480,7 @@ import { CheckInStatusDTO } from '../../../core/models/check-in.model';
         top: 0;
         left: 0;
         height: 100%;
-        background: var(--primary-color, #1976d2);
+        background: var(--brand-primary);
         border-radius: 28px;
         transition: width 0.1s ease;
       }

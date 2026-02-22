@@ -295,7 +295,7 @@ const HOTSPOT_ZONES: HotspotZone[] = [
 
       .hotspot-zone:hover .zone-path {
         fill: rgba(25, 118, 210, 0.1);
-        stroke: var(--primary-color, #1976d2);
+        stroke: var(--brand-primary);
         stroke-width: 2;
       }
 

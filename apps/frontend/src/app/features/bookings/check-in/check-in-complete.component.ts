@@ -222,7 +222,7 @@ import { CheckInStatusDTO } from '../../../core/models/check-in.model';
       }
 
       .timestamp-item mat-icon {
-        color: var(--primary-color, #1976d2);
+        color: var(--brand-primary);
       }
 
       .timestamp-item .label {

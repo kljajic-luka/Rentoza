@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
-import { Observable, Subject } from 'rxjs';
+import { Observable } from 'rxjs';
 import { ToastNotificationService } from './toast-notification.service';
+import { ConfirmDialogService } from './confirm-dialog.service';
 
 /**
  * Centralized Toast Notification Service - UX Messaging Polish
@@ -27,6 +28,7 @@ import { ToastNotificationService } from './toast-notification.service';
 })
 export class ToastService {
   private readonly notifications = inject(ToastNotificationService);
+  private readonly confirmDialog = inject(ConfirmDialogService);
 
   // ============================================================
   // Core Public Methods
@@ -136,13 +138,8 @@ export class ToastService {
   /**
    * Show confirmation dialog (returns Observable<boolean>).
    * For destructive actions like delete, cancel booking, etc.
-   * TODO: Replace window.confirm with ConfirmDialogService (Category 4 - Interaction 6)
    */
-  confirm(message: string, _title?: string): Observable<boolean> {
-    const result$ = new Subject<boolean>();
-    const confirmed = window.confirm(message);
-    result$.next(confirmed);
-    result$.complete();
-    return result$.asObservable();
+  confirm(message: string, title?: string): Observable<boolean> {
+    return this.confirmDialog.open({ message, title, danger: true });
   }
 }

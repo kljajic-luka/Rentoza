@@ -66,7 +66,7 @@
       </mat-form-field>
     </div>
 
-    <div *ngIf="loading$ | async" class="row between" style="padding: 14px 0">
+    <div *ngIf="loading$ | async" class="row between loading-row">
       <span class="muted">Fetching users…</span>
       <mat-progress-spinner diameter="28" mode="indeterminate"></mat-progress-spinner>
     </div>
@@ -79,7 +79,7 @@
             <td mat-cell *matCellDef="let user" (click)="viewUser(user.id)">
               <div class="row">
                 <div class="avatar">{{ user.firstName[0] }}{{ user.lastName[0] }}</div>
-                <div class="stack" style="gap: 2px">
+                <div class="stack stack--xs">
                   <span class="strong">{{ user.firstName }} {{ user.lastName }}</span>
                   <span class="muted mini-label">ID: {{ user.id }}</span>
                 </div>
@@ -203,7 +203,7 @@
 
           <tr class="mat-row" *matNoDataRow>
             <td class="mat-cell" colspan="7">
-              <div class="row" style="justify-content: center; padding: 20px">
+              <div class="row no-data-row">
                 <mat-icon>search_off</mat-icon>
                 <span>No users found matching "{{ searchTerm }}"</span>
               </div>

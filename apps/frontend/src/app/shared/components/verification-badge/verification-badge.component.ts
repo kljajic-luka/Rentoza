@@ -94,7 +94,7 @@ import {
 
         // Status variants
         &.badge-not-started {
-          background: var(--primary-color, #1976d2);
+          background: var(--brand-primary);
           color: white;
 
           &:hover {

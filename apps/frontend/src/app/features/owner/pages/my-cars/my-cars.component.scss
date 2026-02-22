@@ -200,7 +200,7 @@
       }
 
       .star-icon {
-        color: var(--color-warning);
+        color: var(--color-warning-text);
         opacity: 1;
       }
     }
@@ -248,7 +248,7 @@
   color: var(--color-error-text) !important;
 
   mat-icon {
-    color: var(--color-error) !important;
+    color: var(--color-error-text) !important;
   }
 }
 

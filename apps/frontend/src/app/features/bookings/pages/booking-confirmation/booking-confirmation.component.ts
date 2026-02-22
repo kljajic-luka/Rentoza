@@ -250,7 +250,7 @@ import { CommonModule } from '@angular/common';
         align-items: center;
         justify-content: center;
         flex-shrink: 0;
-        color: var(--color-primary, #6366f1);
+        color: var(--brand-primary);
         padding: 6px;
 
         svg {
@@ -292,17 +292,17 @@ import { CommonModule } from '@angular/common';
         padding: 0.875rem 1.5rem;
 
         &:focus-visible {
-          outline: 2px solid var(--color-primary, #6366f1);
+          outline: 2px solid var(--brand-primary);
           outline-offset: 2px;
         }
       }
 
       .btn--primary {
-        background: var(--color-primary, #6366f1);
+        background: var(--brand-primary);
         color: #fff;
 
         &:hover {
-          background: var(--color-primary-dark, #4f46e5);
+          background: var(--color-primary-hover);
           transform: translateY(-1px);
           box-shadow: 0 8px 20px rgba(99, 102, 241, 0.3);
         }
@@ -320,7 +320,7 @@ import { CommonModule } from '@angular/common';
 
       .btn--link {
         background: none;
-        color: var(--color-primary, #6366f1);
+        color: var(--brand-primary);
         font-size: 0.9rem;
         font-weight: 500;
         padding: 0.5rem;

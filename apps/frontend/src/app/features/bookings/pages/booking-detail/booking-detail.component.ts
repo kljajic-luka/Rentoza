@@ -265,7 +265,7 @@ import { ReadOnlyPickupLocationComponent } from '../../components/readonly-picku
       .status-active,
       .status-in_trip {
         background: var(--info-bg, #e3f2fd) !important;
-        color: var(--info-color, #1976d2) !important;
+        color: var(--info-color, var(--brand-primary)) !important;
       }
 
       .status-completed {
@@ -314,7 +314,7 @@ import { ReadOnlyPickupLocationComponent } from '../../components/readonly-picku
       }
 
       .date-row mat-icon {
-        color: var(--primary-color, #1976d2);
+        color: var(--brand-primary);
       }
 
       .date-row .label {
@@ -340,7 +340,7 @@ import { ReadOnlyPickupLocationComponent } from '../../components/readonly-picku
       .price {
         font-size: 20px;
         font-weight: bold;
-        color: var(--primary-color, #1976d2);
+        color: var(--brand-primary);
       }
 
       .actions {

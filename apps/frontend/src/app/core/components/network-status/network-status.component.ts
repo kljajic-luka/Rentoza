@@ -274,7 +274,7 @@ import { OfflineModeService } from '../../services/offline-mode.service';
         }
 
         &:focus {
-          outline: 2px solid #1976d2;
+          outline: 2px solid var(--brand-primary);
           outline-offset: 2px;
         }
       }

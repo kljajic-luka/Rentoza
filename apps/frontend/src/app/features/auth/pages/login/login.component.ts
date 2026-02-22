@@ -1,5 +1,6 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
@@ -16,6 +17,8 @@ import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { FormInputComponent } from '@shared/components/form-input/form-input.component';
+import { ButtonComponent } from '@shared/components/button/button.component';
 
 type LoginFeedbackKind =
   | 'invalid_form'
@@ -46,6 +49,8 @@ interface LoginFeedback {
     MatButtonModule,
     MatIconModule,
     MatProgressSpinnerModule,
+    FormInputComponent,
+    ButtonComponent,
   ],
   templateUrl: './login.component.html',
   styleUrls: ['./login.component.scss'],
@@ -58,6 +63,7 @@ export class LoginComponent {
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly toast = inject(ToastService);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly form = this.fb.nonNullable.group({
     email: ['', [Validators.required, Validators.email]],
@@ -66,6 +72,13 @@ export class LoginComponent {
 
   protected readonly isSubmitting = signal(false);
   protected readonly loginFeedback = signal<LoginFeedback | null>(null);
+
+  constructor() {
+    // Clear form-level feedback whenever the user edits any field
+    this.form.valueChanges
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => this.resetLoginFeedback());
+  }
 
   submit(): void {
     if (this.isSubmitting()) {

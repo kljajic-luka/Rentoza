@@ -211,7 +211,7 @@ mat-card-actions {
   border-radius: 12px;
   
   mat-icon {
-    color: var(--color-warning);
+    color: var(--color-warning-text);
     font-size: var(--font-size-xl);
     width: 24px;
     height: 24px;
@@ -275,4 +275,15 @@ mat-card-actions {
   border-color: rgba(251, 191, 36, 0.45);
   background: rgba(146, 64, 14, 0.24);
   color: rgba(254, 243, 199, 0.95);
+}
+
+.auth-form__forgot {
+  text-align: right;
+  margin-top: -0.5rem;
+}
+
+.auth-form__forgot-link {
+  font-size: var(--font-size-sm, 0.875rem) !important;
+  padding: 0 !important;
+  color: var(--brand-primary) !important;
 }

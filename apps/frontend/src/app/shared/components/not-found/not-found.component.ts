@@ -77,7 +77,7 @@ import { RouterModule } from '@angular/router';
         position: absolute;
         border-radius: 50%;
         opacity: 0.06;
-        background: var(--color-primary, #6366f1);
+        background: var(--brand-primary);
       }
 
       .bg-circle--1 {
@@ -107,7 +107,7 @@ import { RouterModule } from '@angular/router';
         font-weight: 800;
         line-height: 1;
         letter-spacing: -4px;
-        background: linear-gradient(135deg, var(--color-primary, #6366f1) 0%, #a78bfa 100%);
+        background: linear-gradient(135deg, var(--brand-primary) 0%, #a78bfa 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         background-clip: text;
@@ -120,7 +120,7 @@ import { RouterModule } from '@angular/router';
         width: 80px;
         height: 80px;
         margin: 0 auto 1.5rem;
-        color: var(--color-primary, #6366f1);
+        color: var(--brand-primary);
         opacity: 0.7;
 
         svg {
@@ -165,17 +165,17 @@ import { RouterModule } from '@angular/router';
         font-family: inherit;
 
         &:focus-visible {
-          outline: 2px solid var(--color-primary, #6366f1);
+          outline: 2px solid var(--brand-primary);
           outline-offset: 2px;
         }
       }
 
       .btn--primary {
-        background: var(--color-primary, #6366f1);
+        background: var(--brand-primary);
         color: #fff;
 
         &:hover {
-          background: var(--color-primary-dark, #4f46e5);
+          background: var(--color-primary-hover);
           transform: translateY(-1px);
           box-shadow: 0 8px 20px rgba(99, 102, 241, 0.35);
         }

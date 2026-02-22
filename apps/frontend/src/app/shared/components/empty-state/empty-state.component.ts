@@ -219,7 +219,7 @@ const PRESET_CONFIGS: Record<Exclude<EmptyStateVariant, 'custom'>, EmptyStateCon
         width: 100px;
         height: 100px;
         margin-bottom: 1.5rem;
-        color: var(--color-primary, #6366f1);
+        color: var(--brand-primary);
         opacity: 0.55;
 
         svg {
@@ -249,7 +249,7 @@ const PRESET_CONFIGS: Record<Exclude<EmptyStateVariant, 'custom'>, EmptyStateCon
         align-items: center;
         gap: 0.5rem;
         padding: 0.75rem 1.75rem;
-        background: var(--color-primary, #6366f1);
+        background: var(--brand-primary);
         color: #fff;
         border: none;
         border-radius: 10px;
@@ -261,13 +261,13 @@ const PRESET_CONFIGS: Record<Exclude<EmptyStateVariant, 'custom'>, EmptyStateCon
         transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
 
         &:hover {
-          background: var(--color-primary-dark, #4f46e5);
+          background: var(--color-primary-hover);
           transform: translateY(-2px);
           box-shadow: 0 8px 20px rgba(99, 102, 241, 0.3);
         }
 
         &:focus-visible {
-          outline: 2px solid var(--color-primary, #6366f1);
+          outline: 2px solid var(--brand-primary);
           outline-offset: 3px;
         }
       }

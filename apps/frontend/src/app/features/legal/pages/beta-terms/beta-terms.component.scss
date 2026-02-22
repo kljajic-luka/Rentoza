@@ -96,7 +96,7 @@
     font-size: 40px;
     width: 40px;
     height: 40px;
-    color: var(--color-warning);
+    color: var(--color-warning-text);
     flex-shrink: 0;
   }
 
@@ -104,7 +104,7 @@
     margin: 0 0 8px;
     font-size: 1.25rem;
     font-weight: 600;
-    color: var(--color-warning);
+    color: var(--color-warning-text);
   }
 
   p {
@@ -164,7 +164,7 @@
 }
 
 .dont-list li::marker {
-  color: var(--color-error);
+  color: var(--color-error-text);
 }
 
 .warning-box {
@@ -177,7 +177,7 @@
   margin-top: 16px;
 
   mat-icon {
-    color: var(--color-error);
+    color: var(--color-error-text);
     flex-shrink: 0;
   }
 

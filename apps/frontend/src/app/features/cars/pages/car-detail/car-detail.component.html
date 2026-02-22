@@ -3,8 +3,8 @@
     <div class="car-detail__header">
       <div class="car-detail__intro">
         <p class="eyebrow">Ekskluzivna ponuda</p>
-        <div style="display: flex; align-items: center; gap: 1rem">
-          <h1 style="margin: 0">{{ vm.car.make }} {{ vm.car.model }}</h1>
+        <div class="car-detail__title-row">
+          <h1 class="car-detail__title">{{ vm.car.make }} {{ vm.car.model }}</h1>
           <mat-chip *ngIf="!vm.car.available" color="warn" class="unavailable-chip">
             <mat-icon>block</mat-icon>
             Nedostupno
@@ -377,14 +377,13 @@
           <div
             class="owner-info"
             (click)="goToOwnerProfile(vm.car.ownerId)"
-            style="cursor: pointer"
           >
             <div class="owner-avatar">
               <img
                 *ngIf="vm.car.ownerAvatarUrl"
                 [src]="vm.car.ownerAvatarUrl"
                 alt="Owner Avatar"
-                style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%"
+                class="owner-avatar__img"
               />
               <mat-icon *ngIf="!vm.car.ownerAvatarUrl">person</mat-icon>
             </div>

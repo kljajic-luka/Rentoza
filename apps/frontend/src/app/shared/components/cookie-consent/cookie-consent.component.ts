@@ -103,7 +103,7 @@ import { animate, state, style, transition, trigger } from '@angular/animations'
         box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
         z-index: 9999;
         padding: 16px 24px;
-        border-top: 3px solid var(--primary-color, #3f51b5);
+        border-top: 3px solid var(--brand-primary);
       }
 
       .banner-content {
@@ -120,7 +120,7 @@ import { animate, state, style, transition, trigger } from '@angular/animations'
         border-radius: 50%;
         padding: 12px;
         mat-icon {
-          color: var(--primary-color, #3f51b5);
+          color: var(--brand-primary);
           font-size: 28px;
           width: 28px;
           height: 28px;
@@ -145,7 +145,7 @@ import { animate, state, style, transition, trigger } from '@angular/animations'
         }
 
         .privacy-link {
-          color: var(--primary-color, #3f51b5);
+          color: var(--brand-primary);
           font-size: 14px;
           text-decoration: none;
           &:hover {

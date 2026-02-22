@@ -179,7 +179,7 @@ import { CommonModule } from '@angular/common';
         color: #d32f2f;
       }
       .not-found .error-icon {
-        color: #1976d2;
+        color: var(--brand-primary);
       }
       .server .error-icon {
         color: #d32f2f;
@@ -263,7 +263,7 @@ import { CommonModule } from '@angular/common';
       }
 
       .btn-primary {
-        background: #1976d2;
+        background: var(--brand-primary);
         color: white;
         border: none;
 
@@ -272,7 +272,7 @@ import { CommonModule } from '@angular/common';
         }
 
         &:focus {
-          outline: 2px solid #1976d2;
+          outline: 2px solid var(--brand-primary);
           outline-offset: 2px;
         }
       }
@@ -288,7 +288,7 @@ import { CommonModule } from '@angular/common';
         }
 
         &:focus {
-          outline: 2px solid #1976d2;
+          outline: 2px solid var(--brand-primary);
           outline-offset: 2px;
         }
       }

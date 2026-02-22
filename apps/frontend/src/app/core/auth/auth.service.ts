@@ -1,6 +1,5 @@
 import { Injectable, Injector } from '@angular/core';
 import { HttpClient, HttpContext, HttpErrorResponse } from '@angular/common/http';
-import { JwtHelperService } from '@auth0/angular-jwt';
 import {
   BehaviorSubject,
   Observable,
@@ -57,7 +56,6 @@ export class AuthService {
 
   constructor(
     private readonly http: HttpClient,
-    private readonly jwtHelper: JwtHelperService,
     private readonly injector: Injector,
   ) {}
 

@@ -1,5 +1,4 @@
 <ng-container *ngIf="!isAdminRoute; else adminLayout">
-
   <!-- Skip Navigation Links (WCAG 2.4.1 — keyboard users bypass repetitive nav) -->
   <app-skip-links />
 
@@ -11,14 +10,8 @@
   <!-- ═══════════════════════════════════════════════════════════════════
        TOP NAVBAR — sticky, 72px, transitions to solid on scroll
        ═══════════════════════════════════════════════════════════════════ -->
-  <header
-    id="navigation"
-    class="topnav"
-    [class.topnav--scrolled]="isScrolled"
-    role="banner"
-  >
+  <header id="navigation" class="topnav" [class.topnav--scrolled]="isScrolled" role="banner">
     <div class="topnav__inner">
-
       <!-- ── Logo ── -->
       <a class="topnav__logo" routerLink="/" aria-label="Rentoza – Idi na početnu stranicu">
         <picture>
@@ -44,18 +37,33 @@
               #rlaDesktop="routerLinkActive"
               [attr.aria-current]="rlaDesktop.isActive ? 'page' : null"
               class="topnav__nav-link"
-            >{{ link.label }}</a>
+              >{{ link.label }}</a
+            >
           </ng-container>
         </ng-container>
         <ng-template #guestNavLinks>
-          <a routerLink="/pocetna" routerLinkActive="topnav__nav-link--active" #rlaGuestHome="routerLinkActive" [routerLinkActiveOptions]="{exact: true}" [attr.aria-current]="rlaGuestHome.isActive ? 'page' : null" class="topnav__nav-link">Početna</a>
-          <a routerLink="/vozila" routerLinkActive="topnav__nav-link--active" #rlaGuestCars="routerLinkActive" [attr.aria-current]="rlaGuestCars.isActive ? 'page' : null" class="topnav__nav-link">Vozila</a>
+          <a
+            routerLink="/pocetna"
+            routerLinkActive="topnav__nav-link--active"
+            #rlaGuestHome="routerLinkActive"
+            [routerLinkActiveOptions]="{ exact: true }"
+            [attr.aria-current]="rlaGuestHome.isActive ? 'page' : null"
+            class="topnav__nav-link"
+            >Početna</a
+          >
+          <a
+            routerLink="/vozila"
+            routerLinkActive="topnav__nav-link--active"
+            #rlaGuestCars="routerLinkActive"
+            [attr.aria-current]="rlaGuestCars.isActive ? 'page' : null"
+            class="topnav__nav-link"
+            >Vozila</a
+          >
         </ng-template>
       </nav>
 
       <!-- ── Right-side actions ── -->
       <div class="topnav__actions">
-
         <!-- Theme toggle (visible desktop, hidden mobile via CSS) -->
         <app-theme-toggle class="topnav__theme-toggle" />
 
@@ -71,18 +79,26 @@
               type="button"
             >
               <span class="topnav__avatar-initials">{{ getUserInitials() }}</span>
-              <svg class="topnav__avatar-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-                <path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <svg
+                class="topnav__avatar-chevron"
+                width="12"
+                height="12"
+                viewBox="0 0 12 12"
+                fill="none"
+                aria-hidden="true"
+              >
+                <path
+                  d="M2 4l4 4 4-4"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
               </svg>
             </button>
 
             <!-- User dropdown menu -->
-            <div
-              *ngIf="isUserMenuOpen"
-              class="user-menu"
-              role="menu"
-              aria-label="Korisnički meni"
-            >
+            <div *ngIf="isUserMenuOpen" class="user-menu" role="menu" aria-label="Korisnički meni">
               <ng-container *ngIf="currentUser$ | async as user">
                 <div class="user-menu__header">
                   <span class="user-menu__avatar">{{ getUserInitials() }}</span>
@@ -95,19 +111,39 @@
 
               <div class="user-menu__divider"></div>
 
-              <a routerLink="/users/profile" class="user-menu__item" role="menuitem" (click)="closeUserMenu()">
+              <a
+                routerLink="/users/profile"
+                class="user-menu__item"
+                role="menuitem"
+                (click)="closeUserMenu()"
+              >
                 <mat-icon>person_outline</mat-icon>
                 <span>Moj profil</span>
               </a>
-              <a routerLink="/bookings" class="user-menu__item" role="menuitem" (click)="closeUserMenu()">
+              <a
+                routerLink="/bookings"
+                class="user-menu__item"
+                role="menuitem"
+                (click)="closeUserMenu()"
+              >
                 <mat-icon>confirmation_number</mat-icon>
                 <span>Moja putovanja</span>
               </a>
-              <a routerLink="/messages" class="user-menu__item" role="menuitem" (click)="closeUserMenu()">
+              <a
+                routerLink="/messages"
+                class="user-menu__item"
+                role="menuitem"
+                (click)="closeUserMenu()"
+              >
                 <mat-icon>chat_bubble_outline</mat-icon>
                 <span>Poruke</span>
               </a>
-              <a routerLink="/favorites" class="user-menu__item" role="menuitem" (click)="closeUserMenu()">
+              <a
+                routerLink="/favorites"
+                class="user-menu__item"
+                role="menuitem"
+                (click)="closeUserMenu()"
+              >
                 <mat-icon>favorite_border</mat-icon>
                 <span>Omiljeni</span>
               </a>
@@ -143,15 +179,18 @@
           (click)="toggleMobileMenu($event)"
           [attr.aria-expanded]="isMobileMenuOpen"
           aria-controls="mobile-drawer"
-          [attr.aria-label]="isMobileMenuOpen ? 'Zatvori navigacioni meni' : 'Otvori navigacioni meni'"
+          [attr.aria-label]="
+            isMobileMenuOpen ? 'Zatvori navigacioni meni' : 'Otvori navigacioni meni'
+          "
         >
           <span class="hamburger-bar" [class.hamburger-bar--open]="isMobileMenuOpen"></span>
           <span class="hamburger-bar" [class.hamburger-bar--open]="isMobileMenuOpen"></span>
           <span class="hamburger-bar" [class.hamburger-bar--open]="isMobileMenuOpen"></span>
         </button>
-
-      </div><!-- /.topnav__actions -->
-    </div><!-- /.topnav__inner -->
+      </div>
+      <!-- /.topnav__actions -->
+    </div>
+    <!-- /.topnav__inner -->
   </header>
 
   <!-- ═══════════════════════════════════════════════════════════════════
@@ -208,11 +247,26 @@
       </ng-container>
 
       <ng-template #mobileGuestLinks>
-        <a routerLink="/pocetna" routerLinkActive="mobile-drawer__link--active" #rlaMobHome="routerLinkActive" [routerLinkActiveOptions]="{exact: true}" [attr.aria-current]="rlaMobHome.isActive ? 'page' : null" class="mobile-drawer__link" (click)="closeMobileMenu()">
+        <a
+          routerLink="/pocetna"
+          routerLinkActive="mobile-drawer__link--active"
+          #rlaMobHome="routerLinkActive"
+          [routerLinkActiveOptions]="{ exact: true }"
+          [attr.aria-current]="rlaMobHome.isActive ? 'page' : null"
+          class="mobile-drawer__link"
+          (click)="closeMobileMenu()"
+        >
           <mat-icon aria-hidden="true">home</mat-icon>
           <span>Početna</span>
         </a>
-        <a routerLink="/vozila" routerLinkActive="mobile-drawer__link--active" #rlaMobCars="routerLinkActive" [attr.aria-current]="rlaMobCars.isActive ? 'page' : null" class="mobile-drawer__link" (click)="closeMobileMenu()">
+        <a
+          routerLink="/vozila"
+          routerLinkActive="mobile-drawer__link--active"
+          #rlaMobCars="routerLinkActive"
+          [attr.aria-current]="rlaMobCars.isActive ? 'page' : null"
+          class="mobile-drawer__link"
+          (click)="closeMobileMenu()"
+        >
           <mat-icon aria-hidden="true">directions_car</mat-icon>
           <span>Vozila</span>
         </a>
@@ -255,12 +309,14 @@
             routerLink="/auth/login"
             class="mobile-drawer__btn mobile-drawer__btn--secondary"
             (click)="closeMobileMenu()"
-          >Prijavi se</a>
+            >Prijavi se</a
+          >
           <a
             routerLink="/auth/register"
             class="mobile-drawer__btn mobile-drawer__btn--primary"
             (click)="closeMobileMenu()"
-          >Registruj se</a>
+            >Registruj se</a
+          >
         </div>
       </ng-template>
     </div>
@@ -292,10 +348,8 @@
       <p class="footer-copyright">© 2026 Rentoza. Sva prava zadržana.</p>
     </div>
   </footer>
-
 </ng-container>
 
 <ng-template #adminLayout>
   <router-outlet />
 </ng-template>
-

@@ -20,6 +20,25 @@
   ],
   "dataGroups": [
     {
+      "name": "google-fonts-stylesheets",
+      "urls": ["https://fonts.googleapis.com/css2?**", "https://fonts.googleapis.com/icon?**"],
+      "cacheConfig": {
+        "strategy": "performance",
+        "maxSize": 10,
+        "maxAge": "7d",
+        "timeout": "3s"
+      }
+    },
+    {
+      "name": "google-fonts-webfonts",
+      "urls": ["https://fonts.gstatic.com/**"],
+      "cacheConfig": {
+        "strategy": "performance",
+        "maxSize": 30,
+        "maxAge": "365d"
+      }
+    },
+    {
       "name": "api-checkin-status",
       "urls": ["/api/bookings/*/check-in/status"],
       "cacheConfig": {

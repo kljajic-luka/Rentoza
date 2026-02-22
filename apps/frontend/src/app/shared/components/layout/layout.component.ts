@@ -90,12 +90,27 @@ export class LayoutComponent implements OnInit {
   /** Owner (OWNER role) navigation links */
   protected readonly ownerLinks: NavLink[] = [
     { label: 'Dashboard', icon: 'dashboard', route: '/owner/dashboard', roles: ['OWNER', 'ADMIN'] },
-    { label: 'Moja vozila', icon: 'directions_car', route: '/owner/cars', roles: ['OWNER', 'ADMIN'] },
+    {
+      label: 'Moja vozila',
+      icon: 'directions_car',
+      route: '/owner/cars',
+      roles: ['OWNER', 'ADMIN'],
+    },
     { label: 'Rezervacije', icon: 'event', route: '/owner/bookings', roles: ['OWNER', 'ADMIN'] },
     { label: 'Poruke', icon: 'chat', route: '/messages', roles: ['OWNER', 'ADMIN'] },
-    { label: 'Zarada', icon: 'account_balance_wallet', route: '/owner/earnings', roles: ['OWNER', 'ADMIN'] },
+    {
+      label: 'Zarada',
+      icon: 'account_balance_wallet',
+      route: '/owner/earnings',
+      roles: ['OWNER', 'ADMIN'],
+    },
     { label: 'Recenzije', icon: 'rate_review', route: '/owner/reviews', roles: ['OWNER', 'ADMIN'] },
-    { label: 'Verifikacija', icon: 'verified', route: '/owner/verification', roles: ['OWNER', 'ADMIN'] },
+    {
+      label: 'Verifikacija',
+      icon: 'verified',
+      route: '/owner/verification',
+      roles: ['OWNER', 'ADMIN'],
+    },
     { label: 'Profil', icon: 'person', route: '/users/profile', roles: ['OWNER', 'ADMIN'] },
   ];
 
@@ -110,11 +125,9 @@ export class LayoutComponent implements OnInit {
     this.checkAdminRoute();
 
     // Keep user snapshot in sync for synchronous access (initials, greeting)
-    this.currentUser$
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((user) => {
-        this.currentUserSnapshot = user;
-      });
+    this.currentUser$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((user) => {
+      this.currentUserSnapshot = user;
+    });
 
     // Close mobile drawer + user menu on every route navigation
     this.router.events
@@ -197,7 +210,7 @@ export class LayoutComponent implements OnInit {
       ).filter((el) => !el.hasAttribute('disabled'));
       if (focusable.length < 2) return;
       const first = focusable[0];
-      const last  = focusable[focusable.length - 1];
+      const last = focusable[focusable.length - 1];
       if (event.shiftKey && document.activeElement === first) {
         event.preventDefault();
         last.focus();
@@ -217,10 +230,18 @@ export class LayoutComponent implements OnInit {
       event.preventDefault();
       const idx = items.indexOf(document.activeElement as HTMLElement);
       switch (event.key) {
-        case 'ArrowDown': items[(idx + 1) % items.length]?.focus(); break;
-        case 'ArrowUp':   items[(idx - 1 + items.length) % items.length]?.focus(); break;
-        case 'Home':      items[0]?.focus(); break;
-        case 'End':       items[items.length - 1]?.focus(); break;
+        case 'ArrowDown':
+          items[(idx + 1) % items.length]?.focus();
+          break;
+        case 'ArrowUp':
+          items[(idx - 1 + items.length) % items.length]?.focus();
+          break;
+        case 'Home':
+          items[0]?.focus();
+          break;
+        case 'End':
+          items[items.length - 1]?.focus();
+          break;
       }
     }
   }

@@ -1,15 +1,3 @@
-// Polyfill for Node.js globals in browser environment
-// Required for sockjs-client and stompjs which expect Node.js globals
-(window as any).global = window;
-(window as any).process = {
-  env: { DEBUG: undefined },
-  version: '',
-  nextTick: (fn: Function) => setTimeout(fn, 0),
-};
-(window as any).Buffer = (window as any).Buffer || {
-  isBuffer: () => false,
-};
-
 import {
   APP_INITIALIZER,
   importProvidersFrom,
@@ -22,10 +10,8 @@ import { provideHttpClient, withInterceptors, withXsrfConfiguration } from '@ang
 import { provideRouter } from '@angular/router';
 import { MAT_DATE_LOCALE, provideNativeDateAdapter } from '@angular/material/core';
 import { provideServiceWorker } from '@angular/service-worker';
-import { JwtModule } from '@auth0/angular-jwt';
 import { provideToastr } from 'ngx-toastr';
 import { MatPaginatorIntl } from '@angular/material/paginator';
-import { provideCharts, withDefaultRegisterables } from 'ng2-charts';
 import { SrMatPaginatorIntl } from '@core/i18n/mat-paginator-i18n';
 
 import { App } from './app/app';
@@ -85,30 +71,7 @@ bootstrapApplication(App, {
       deps: [OverlayThemeService],
       multi: true,
     },
-    importProvidersFrom(
-      BrowserAnimationsModule,
-      JwtModule.forRoot({
-        config: {
-          tokenGetter: () => null,
-          // Dynamic domains from environment - extract hostname from full URLs
-          // For relative URLs (like '/api'), use current window.location.hostname
-          allowedDomains: [
-            ...new Set(
-              [
-                environment.baseUrl && environment.baseUrl.startsWith('http')
-                  ? new URL(environment.baseUrl).hostname
-                  : environment.baseApiUrl?.startsWith('http')
-                    ? new URL(environment.baseApiUrl).hostname
-                    : window.location.hostname,
-                environment.chatApiUrl?.startsWith('http')
-                  ? new URL(environment.chatApiUrl).hostname
-                  : undefined,
-              ].filter(Boolean) as string[],
-            ),
-          ],
-        },
-      }),
-    ),
+    importProvidersFrom(BrowserAnimationsModule),
     provideHttpClient(
       withXsrfConfiguration({
         cookieName: 'XSRF-TOKEN',
@@ -135,7 +98,6 @@ bootstrapApplication(App, {
       enabled: !isDevMode(),
       registrationStrategy: 'registerWhenStable:30000',
     }),
-    provideCharts(withDefaultRegisterables()),
     /* Serbian localization for Angular Material Paginator (WCAG 3.1.2 Language of Parts) */
     { provide: MatPaginatorIntl, useClass: SrMatPaginatorIntl },
   ],

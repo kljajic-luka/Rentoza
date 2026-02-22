@@ -1,26 +1,33 @@
 import { Component, ChangeDetectionStrategy, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { BaseChartDirective } from 'ng2-charts';
+import { BaseChartDirective, provideCharts, withDefaultRegisterables } from 'ng2-charts';
 import { ChartConfiguration, ChartOptions } from 'chart.js';
 import { MatCardModule } from '@angular/material/card';
 import { MatTabsModule } from '@angular/material/tabs';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
-import { AdminChartsService, RevenueChartData, TripActivityData } from '../../../shared/services/admin-charts.service';
+import {
+  AdminChartsService,
+  RevenueChartData,
+  TripActivityData,
+} from '../../../shared/services/admin-charts.service';
 import { BehaviorSubject, Subject, takeUntil } from 'rxjs';
 
 @Component({
   selector: 'app-dashboard-charts',
   standalone: true,
+  // provideCharts scoped here so chart.js is NOT pulled into the initial bundle.
+  // Only loads when the admin/dashboard lazy chunk is activated.
+  providers: [provideCharts(withDefaultRegisterables())],
   imports: [
-    CommonModule, 
-    BaseChartDirective, 
-    MatCardModule, 
+    CommonModule,
+    BaseChartDirective,
+    MatCardModule,
     MatTabsModule,
     MatProgressSpinnerModule,
     MatButtonModule,
-    MatIconModule
+    MatIconModule,
   ],
   template: `
     <div class="charts-grid">
@@ -33,24 +40,24 @@ import { BehaviorSubject, Subject, takeUntil } from 'rxjs';
               <mat-card-subtitle>Last {{ period }} months</mat-card-subtitle>
             </div>
             <div class="chart-controls">
-              <button 
-                mat-icon-button 
+              <button
+                mat-icon-button
                 (click)="changePeriod(3)"
                 [class.active]="period === 3"
                 aria-label="Show 3 months"
               >
                 3M
               </button>
-              <button 
-                mat-icon-button 
+              <button
+                mat-icon-button
                 (click)="changePeriod(6)"
                 [class.active]="period === 6"
                 aria-label="Show 6 months"
               >
                 6M
               </button>
-              <button 
-                mat-icon-button 
+              <button
+                mat-icon-button
                 (click)="changePeriod(12)"
                 [class.active]="period === 12"
                 aria-label="Show 12 months"
@@ -116,20 +123,20 @@ import { BehaviorSubject, Subject, takeUntil } from 'rxjs';
 })
 export class DashboardChartsComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>();
-  
+
   // Loading and error states
   revenueLoading$ = new BehaviorSubject<boolean>(false);
   tripsLoading$ = new BehaviorSubject<boolean>(false);
   revenueError$ = new BehaviorSubject<string | null>(null);
   tripsError$ = new BehaviorSubject<string | null>(null);
-  
+
   // Chart data
   revenueChartData: ChartConfiguration<'line'>['data'] = { labels: [], datasets: [] };
   tripsChartData: ChartConfiguration<'bar'>['data'] = { labels: [], datasets: [] };
-  
+
   // Period for revenue chart (in months)
   period = 6;
-  
+
   // Chart options
   public revenueChartOptions: ChartOptions<'line'> = {
     responsive: true,
@@ -142,17 +149,17 @@ export class DashboardChartsComponent implements OnInit, OnDestroy {
         titleFont: { size: 14, weight: 'bold' },
         bodyFont: { size: 13 },
         cornerRadius: 8,
-      }
+      },
     },
     scales: {
       y: {
         beginAtZero: true,
         grid: { display: false },
-        ticks: { color: '#94a3b8' }
+        ticks: { color: '#94a3b8' },
       },
       x: {
         grid: { display: false },
-        ticks: { color: '#94a3b8' }
+        ticks: { color: '#94a3b8' },
       },
     },
   };
@@ -161,14 +168,14 @@ export class DashboardChartsComponent implements OnInit, OnDestroy {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
-      legend: { 
+      legend: {
         display: true,
         position: 'bottom',
-        labels: { 
+        labels: {
           color: '#94a3b8',
           padding: 16,
-          font: { size: 12 }
-        }
+          font: { size: 12 },
+        },
       },
       tooltip: {
         backgroundColor: 'rgba(15, 23, 42, 0.9)',
@@ -176,17 +183,17 @@ export class DashboardChartsComponent implements OnInit, OnDestroy {
         titleFont: { size: 14, weight: 'bold' },
         bodyFont: { size: 13 },
         cornerRadius: 8,
-      }
+      },
     },
     scales: {
       y: {
         beginAtZero: true,
         grid: { display: false },
-        ticks: { color: '#94a3b8' }
+        ticks: { color: '#94a3b8' },
       },
       x: {
         grid: { display: false },
-        ticks: { color: '#94a3b8' }
+        ticks: { color: '#94a3b8' },
       },
     },
   };
@@ -204,7 +211,7 @@ export class DashboardChartsComponent implements OnInit, OnDestroy {
   loadRevenueChart(): void {
     this.revenueLoading$.next(true);
     this.revenueError$.next(null);
-    
+
     this.chartsService
       .getRevenueChart(this.period)
       .pipe(takeUntil(this.destroy$))
@@ -245,7 +252,7 @@ export class DashboardChartsComponent implements OnInit, OnDestroy {
   loadTripActivity(): void {
     this.tripsLoading$.next(true);
     this.tripsError$.next(null);
-    
+
     this.chartsService
       .getTripActivity(6)
       .pipe(takeUntil(this.destroy$))

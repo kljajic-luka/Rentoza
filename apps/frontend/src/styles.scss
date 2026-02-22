@@ -120,6 +120,76 @@ small {
  */
 
 /* ===================================================================
+   ♿ CATEGORY 6 — ACCESSIBILITY (WCAG 2.1 AA)
+   =================================================================== */
+
+/**
+ * .sr-only — Visually hidden but announced by screen readers.
+ * WCAG: 1.3.1 Info and Relationships
+ * Use for: live region containers, hidden labels, icon descriptions.
+ */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/**
+ * Global :focus-visible — Consistent focus ring on all interactive elements.
+ * WCAG: 2.4.7 Focus Visible (Level AA)
+ * :focus-visible = keyboard focus only (not mouse click).
+ */
+*:focus-visible {
+  outline: 2px solid var(--color-primary, #593CFB);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs, 2px);
+}
+
+*:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/**
+ * Windows High Contrast Mode
+ * WCAG: 1.4.11 Non-text Contrast
+ * Ensures interactive elements remain visible in forced-colors environments.
+ */
+@media (forced-colors: active) {
+  *:focus-visible {
+    outline: 3px solid ButtonText;
+    outline-offset: 2px;
+  }
+
+  .topnav,
+  .mobile-drawer {
+    border: 1px solid ButtonBorder;
+  }
+
+  button,
+  [role="button"],
+  a {
+    forced-color-adjust: auto;
+  }
+}
+
+/**
+ * Placeholder text contrast fix.
+ * WCAG: 1.4.3 Contrast (Minimum) — placeholders at minimum 4.5:1 on white.
+ * #6B7280 = 5.74:1 on white ✓
+ */
+input::placeholder,
+textarea::placeholder {
+  color: #6B7280;
+  opacity: 1; /* Firefox reduces opacity by default */
+}
+
+/* ===================================================================
    🚫 GLOBAL OVERFLOW GUARD (Category 5 — Critical)
    Prevents any element from causing horizontal scroll at root level.
    =================================================================== */

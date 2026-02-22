@@ -9,6 +9,7 @@ export const routes: Routes = [
   {
     path: '',
     canActivate: [RoleRedirectGuard],
+    title: 'Iznajmi auto u Srbiji | Rentoza',
     loadComponent: () =>
       import('@features/home/pages/home/home.component').then((m) => m.HomeComponent),
   },
@@ -29,12 +30,14 @@ export const routes: Routes = [
       {
         path: 'login',
         canActivate: [guestGuard],
+        title: 'Prijava | Rentoza',
         loadComponent: () =>
           import('@features/auth/pages/login/login.component').then((m) => m.LoginComponent),
       },
       {
         path: 'register',
         canActivate: [guestGuard],
+        title: 'Registracija | Rentoza',
         loadComponent: () =>
           import('@features/auth/pages/register/register.component').then(
             (m) => m.RegisterComponent,
@@ -118,12 +121,14 @@ export const routes: Routes = [
   {
     path: 'pocetna',
     canActivate: [RoleRedirectGuard],
+    title: 'Iznajmi auto u Srbiji | Rentoza',
     loadComponent: () =>
       import('@features/home/pages/home/home.component').then((m) => m.HomeComponent),
   },
   {
     path: 'vozila',
     canActivate: [RoleRedirectGuard],
+    title: 'Pretraži automobile | Rentoza',
     loadComponent: () =>
       import('@features/cars/pages/car-list/car-list.component').then((m) => m.CarListComponent),
   },
@@ -133,6 +138,7 @@ export const routes: Routes = [
       {
         path: '',
         canActivate: [RoleRedirectGuard],
+        title: 'Pretraži automobile | Rentoza',
         loadComponent: () =>
           import('@features/cars/pages/car-list/car-list.component').then(
             (m) => m.CarListComponent,
@@ -154,6 +160,7 @@ export const routes: Routes = [
       {
         path: '',
         canActivate: [RoleGuard, RoleRedirectGuard],
+        title: 'Moje rezervacije | Rentoza',
         data: { roles: ['USER', 'ADMIN'] },
         loadComponent: () =>
           import('@features/bookings/pages/booking-history/booking-history.component').then(
@@ -201,6 +208,7 @@ export const routes: Routes = [
   {
     path: 'favorites',
     canActivate: [RoleGuard, RoleRedirectGuard],
+    title: 'Omiljeni automobili | Rentoza',
     data: { roles: ['USER', 'ADMIN'] },
     loadComponent: () =>
       import('@features/favorites/pages/favorites-list/favorites-list.component').then(
@@ -210,6 +218,7 @@ export const routes: Routes = [
   {
     path: 'verify-license',
     canActivate: [RoleGuard],
+    title: 'Verifikacija vozačke dozvole | Rentoza',
     data: { roles: ['USER', 'ADMIN'] },
     loadComponent: () =>
       import('@features/renter-verification/pages/renter-verification-page/renter-verification-page.component').then(
@@ -218,6 +227,7 @@ export const routes: Routes = [
   },
   {
     path: 'reviews',
+    title: 'Recenzije | Rentoza',
     loadComponent: () =>
       import('@features/reviews/pages/review-list/review-list.component').then(
         (m) => m.ReviewListComponent,
@@ -235,6 +245,7 @@ export const routes: Routes = [
       },
       {
         path: 'dashboard',
+        title: 'Dashboard vlasnika | Rentoza',
         loadComponent: () =>
           import('@features/owner/pages/dashboard/owner-dashboard.component').then(
             (m) => m.OwnerDashboardComponent,
@@ -300,6 +311,7 @@ export const routes: Routes = [
       {
         path: 'profile',
         canActivate: [RoleGuard],
+        title: 'Moj profil | Rentoza',
         data: { roles: ['USER', 'OWNER', 'ADMIN'] },
         loadComponent: () =>
           import('@features/users/pages/profile/profile.component').then((m) => m.ProfileComponent),
@@ -309,6 +321,7 @@ export const routes: Routes = [
   {
     path: 'messages',
     canActivate: [RoleGuard, RoleRedirectGuard],
+    title: 'Poruke | Rentoza',
     data: { roles: ['USER', 'OWNER', 'ADMIN'] },
     loadComponent: () =>
       import('@features/messages/pages/messages/messages.component').then(

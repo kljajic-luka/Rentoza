@@ -1,9 +1,13 @@
 <ng-container *ngIf="!isAdminRoute; else adminLayout">
 
+  <!-- Skip Navigation Links (WCAG 2.4.1 — keyboard users bypass repetitive nav) -->
+  <app-skip-links />
+
   <!-- ═══════════════════════════════════════════════════════════════════
        TOP NAVBAR — sticky, 72px, transitions to solid on scroll
        ═══════════════════════════════════════════════════════════════════ -->
   <header
+    id="navigation"
     class="topnav"
     [class.topnav--scrolled]="isScrolled"
     role="banner"
@@ -192,7 +196,7 @@
             class="mobile-drawer__link"
             (click)="closeMobileMenu()"
           >
-            <mat-icon>{{ link.icon }}</mat-icon>
+            <mat-icon aria-hidden="true">{{ link.icon }}</mat-icon>
             <span>{{ link.label }}</span>
           </a>
         </ng-container>
@@ -200,11 +204,11 @@
 
       <ng-template #mobileGuestLinks>
         <a routerLink="/pocetna" routerLinkActive="mobile-drawer__link--active" #rlaMobHome="routerLinkActive" [routerLinkActiveOptions]="{exact: true}" [attr.aria-current]="rlaMobHome.isActive ? 'page' : null" class="mobile-drawer__link" (click)="closeMobileMenu()">
-          <mat-icon>home</mat-icon>
+          <mat-icon aria-hidden="true">home</mat-icon>
           <span>Početna</span>
         </a>
         <a routerLink="/vozila" routerLinkActive="mobile-drawer__link--active" #rlaMobCars="routerLinkActive" [attr.aria-current]="rlaMobCars.isActive ? 'page' : null" class="mobile-drawer__link" (click)="closeMobileMenu()">
-          <mat-icon>directions_car</mat-icon>
+          <mat-icon aria-hidden="true">directions_car</mat-icon>
           <span>Vozila</span>
         </a>
       </ng-template>
@@ -226,7 +230,7 @@
             type="button"
             (click)="navigate('/users/profile'); closeMobileMenu()"
           >
-            <mat-icon>person</mat-icon>
+            <mat-icon aria-hidden="true">person</mat-icon>
             <span>Moj profil</span>
           </button>
           <button
@@ -234,7 +238,7 @@
             type="button"
             (click)="logout()"
           >
-            <mat-icon>logout</mat-icon>
+            <mat-icon aria-hidden="true">logout</mat-icon>
             <span>Odjavi se</span>
           </button>
         </div>
@@ -260,7 +264,7 @@
   <!-- ═══════════════════════════════════════════════════════════════════
        MAIN CONTENT AREA
        ═══════════════════════════════════════════════════════════════════ -->
-  <main class="layout-main">
+  <main class="layout-main" id="main-content" tabindex="-1">
     <router-outlet />
   </main>
 

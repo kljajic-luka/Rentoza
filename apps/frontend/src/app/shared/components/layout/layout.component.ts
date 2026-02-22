@@ -21,6 +21,7 @@ import { UserProfile } from '@core/models/user.model';
 import { UserRole } from '@core/models/user-role.type';
 import { ThemeToggleComponent } from '../theme-toggle/theme-toggle.component';
 import { ThemeService } from '@core/services/theme.service';
+import { SkipLinksComponent } from '@core/components/skip-links/skip-links.component';
 
 interface NavLink {
   label: string;
@@ -39,6 +40,7 @@ interface NavLink {
     RouterOutlet,
     MatIconModule,
     ThemeToggleComponent,
+    SkipLinksComponent,
   ],
   templateUrl: './layout.component.html',
   styleUrls: ['./layout.component.scss'],

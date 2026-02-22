@@ -1,9 +1,9 @@
-<section class="car-list-page">
+<section class="car-list-page" aria-labelledby="car-list-heading">
   <!-- Page Header -->
   <header class="page-header">
     <div class="page-header__copy">
       <div class="eyebrow">Dostupna vozila</div>
-      <h1>Pronađite savršeno vozilo</h1>
+      <h1 id="car-list-heading">Pronađite savršeno vozilo</h1>
       <p>Pregledajte vozila od proverenih domaćina i rezervišite odmah.</p>
     </div>
   </header>
@@ -46,6 +46,7 @@
             (click)="useCurrentLocation()"
             [disabled]="isLoadingCurrentLocation"
             matTooltip="Koristi trenutnu lokaciju"
+            aria-label="Koristi moju trenutnu lokaciju"
             class="geolocation-btn"
           >
             <mat-icon *ngIf="!isLoadingCurrentLocation">my_location</mat-icon>
@@ -171,11 +172,12 @@
 
   <!-- Main Content -->
   <div class="content-grid">
-    <!-- Results Area -->
-    <main class="results">
+    <!-- Results Area (role=region, NOT main — avoids duplicate landmark) -->
+    <div class="results" role="region" aria-labelledby="car-list-heading">
       <!-- Loading Overlay (Turo-style dim effect) -->
-      <div class="loading-overlay" *ngIf="isLoading$ | async">
-        <mat-progress-spinner mode="indeterminate" diameter="40"></mat-progress-spinner>
+      <div class="loading-overlay" *ngIf="isLoading$ | async"
+        role="status" aria-live="polite" aria-label="Učitavanje vozila, molimo sačekaj">
+        <mat-progress-spinner mode="indeterminate" diameter="40" aria-hidden="true"></mat-progress-spinner>
       </div>
 
       <ng-container *ngIf="searchResults$ | async as results; else loading">
@@ -213,12 +215,16 @@
           </mat-chip-set>
         </div>
 
-        <!-- Results Count -->
+        <!-- Results Count — announced to screen readers on update -->
         <div class="results-header">
           <h2>
             {{ results.totalElements }}
             {{ results.totalElements === 1 ? 'vozilo pronađeno' : 'vozila pronađeno' }}
           </h2>
+          <!-- sr-only live region announces count to screen readers when results change -->
+          <p aria-live="polite" aria-atomic="true" class="sr-only">
+            {{ results.totalElements }} {{ results.totalElements === 1 ? 'vozilo pronađeno' : 'vozila pronađena' }}
+          </p>
         </div>
 
         <!-- Car Grid — uses extracted app-car-card component -->
@@ -282,6 +288,6 @@
           <p>Učitavanje vozila...</p>
         </div>
       </ng-template>
-    </main>
+    </div>
   </div>
 </section>

@@ -20,8 +20,7 @@
   <article
     class="car-card"
     [routerLink]="['/cars', car.id]"
-    role="article"
-    [attr.aria-label]="car.year + ' ' + car.make + ' ' + car.model"
+    [attr.aria-label]="car.year + ' ' + car.make + ' ' + car.model + ', ' + car.pricePerDay + ' RSD po danu'"
   >
     <!-- IMAGE AREA ───────────────────────────────────────────── -->
     <div class="car-card__media">
@@ -89,9 +88,10 @@
       <!-- Make + Model + Rating row -->
       <div class="car-card__header">
         <h3 class="car-card__title">{{ car.make }} {{ car.model }}</h3>
-        <div *ngIf="car.rating" class="car-card__rating" [attr.aria-label]="'Ocena: ' + car.rating + ' od 5'">
+        <div *ngIf="car.rating" class="car-card__rating"
+          [attr.aria-label]="'Ocena: ' + car.rating.toFixed(1) + ' od 5'">
           <mat-icon aria-hidden="true">star</mat-icon>
-          <span class="rating-value">{{ car.rating.toFixed(1) }}</span>
+          <span class="rating-value" aria-hidden="true">{{ car.rating.toFixed(1) }}</span>
         </div>
       </div>
 
@@ -122,14 +122,15 @@
 
       <!-- Price + CTA row -->
       <div class="car-card__footer">
-        <div class="car-card__price">
-          <span class="price-amount">{{ car.pricePerDay | number:'1.0-0' }}</span>
-          <span class="price-currency">RSD</span>
-          <span class="price-unit">/dan</span>
+        <div class="car-card__price"
+          [attr.aria-label]="'Cena: ' + (car.pricePerDay | number:'1.0-0') + ' RSD po danu'">
+          <span class="price-amount" aria-hidden="true">{{ car.pricePerDay | number:'1.0-0' }}</span>
+          <span class="price-currency" aria-hidden="true">RSD</span>
+          <span class="price-unit" aria-hidden="true">/dan</span>
         </div>
-        <!-- CTA: uses routerLink on the whole card, but this provides visual affordance -->
+        <!-- CTA arrow: purely decorative -->
         <span class="car-card__cta-arrow" aria-hidden="true">
-          <mat-icon>arrow_forward</mat-icon>
+          <mat-icon aria-hidden="true">arrow_forward</mat-icon>
         </span>
       </div>
 

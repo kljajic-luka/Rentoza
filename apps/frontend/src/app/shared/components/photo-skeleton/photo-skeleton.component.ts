@@ -38,9 +38,9 @@ import { CommonModule } from '@angular/common';
       [style.aspectRatio]="aspectRatioValue"
       [class.rounded]="rounded"
       [class.with-label]="showLabel"
-      role="progressbar"
+      role="img"
       aria-busy="true"
-      aria-label="Učitavanje fotografije"
+      [attr.aria-label]="'Učitavanje fotografije'"
     >
       <div class="shimmer"></div>
 

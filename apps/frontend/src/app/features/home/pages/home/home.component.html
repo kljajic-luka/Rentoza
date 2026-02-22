@@ -34,6 +34,7 @@
               type="button"
               (click)="useCurrentLocation()"
               matTooltip="Koristi moju lokaciju"
+              aria-label="Koristi moju trenutnu lokaciju"
               class="geolocation-btn"
             >
               <mat-icon>my_location</mat-icon>
@@ -220,8 +221,9 @@
   </div>
 
   <!-- Loading spinner -->
-  <div class="search-results__loading" *ngIf="isSearching">
-    <mat-spinner diameter="48"></mat-spinner>
+  <div class="search-results__loading" *ngIf="isSearching"
+    role="status" aria-live="polite" aria-label="Pretraga vozila u toku">
+    <mat-spinner diameter="48" aria-hidden="true"></mat-spinner>
     <p>Tražimo vozila u vašoj blizini...</p>
   </div>
 
@@ -313,7 +315,7 @@
   <header data-animate>
     <div>
       <p class="eyebrow">Istaknuti izbori</p>
-      <h2>Ručno odabrani automobili spremni za vašu sledeću avanturu</h2>
+      <h2 id="featured-heading">Ručno odabrani automobili spremni za vašu sledeću avanturu</h2>
     </div>
     <a mat-stroked-button color="accent" routerLink="/cars">
       Istražite flotu
@@ -375,7 +377,8 @@
 
 <section class="cta-strip" data-animate>
   <div class="cta-strip__content">
-    <h3>Podelite svoj automobil, zarađujte bez napora.</h3>
+    <!-- h2 here (not h3): no parent h2 in this section — heading hierarchy must not skip levels -->
+    <h2>Podelite svoj automobil, zarađujte bez napora.</h2>
     <p>
       Postavite svoje vozilo za nekoliko minuta i pridružite se rastućoj zajednici premium domaćina.
     </p>

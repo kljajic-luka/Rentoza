@@ -531,7 +531,9 @@ public class BookingApprovalService {
         try {
             // Release booking payment hold
             PaymentProvider.PaymentResult bookingResult = bookingPaymentService.releaseBookingPayment(booking.getId());
-            if (bookingResult.isSuccess()) {
+            if (bookingResult == null) {
+                log.info("[ApprovalService] No booking payment hold to release for booking {} (null result)", booking.getId());
+            } else if (bookingResult.isSuccess()) {
                 log.info("[ApprovalService] Released booking payment hold for booking {}", booking.getId());
             } else {
                 log.error("[ApprovalService] Booking payment release returned failure for booking {}: {}",
@@ -549,7 +551,9 @@ public class BookingApprovalService {
             String depositAuthId = booking.getDepositAuthorizationId();
             if (depositAuthId != null && !depositAuthId.isBlank()) {
                 PaymentProvider.PaymentResult depositResult = bookingPaymentService.releaseDeposit(booking.getId(), depositAuthId);
-                if (depositResult.isSuccess()) {
+                if (depositResult == null) {
+                    log.info("[ApprovalService] No deposit hold to release for booking {} (null result)", booking.getId());
+                } else if (depositResult.isSuccess()) {
                     log.info("[ApprovalService] Released deposit hold for booking {}", booking.getId());
                 } else {
                     log.error("[ApprovalService] Deposit release returned failure for booking {}: {}",

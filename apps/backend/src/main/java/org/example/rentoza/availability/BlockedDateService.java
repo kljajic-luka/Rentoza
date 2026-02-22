@@ -53,7 +53,7 @@ public class BlockedDateService {
         Car car = carRepository.findById(carId)
                 .orElseThrow(() -> new ResourceNotFoundException("Car not found with ID: " + carId));
 
-        List<BlockedDate> blockedDates = blockedDateRepository.findByCarIdOrderByStartDateAsc(carId);
+        List<BlockedDate> blockedDates = blockedDateRepository.findEffectiveByCarIdOrderByStartDateAsc(carId);
 
         return blockedDates.stream()
                 .map(this::toResponseDTO)
@@ -102,8 +102,8 @@ public class BlockedDateService {
             throw new IllegalStateException("Cannot block dates that overlap with existing bookings");
         }
 
-        // Check for overlap with other blocked ranges
-        boolean hasBlockConflict = blockedDateRepository.existsOverlappingBlockedDates(
+        // Check for overlap with other blocked ranges (status-aware: ignores stale no-show rows)
+        boolean hasBlockConflict = blockedDateRepository.existsEffectiveOverlappingBlockedDates(
                 car.getId(),
                 request.getStartDate(),
                 request.getEndDate()
@@ -163,7 +163,7 @@ public class BlockedDateService {
         LocalDateTime endTime = endDate.atTime(LocalTime.MAX);
         
         boolean hasBookings = bookingRepository.existsOverlappingBookings(carId, startTime, endTime);
-        boolean hasBlocks = blockedDateRepository.existsOverlappingBlockedDates(carId, startDate, endDate);
+        boolean hasBlocks = blockedDateRepository.existsEffectiveOverlappingBlockedDates(carId, startDate, endDate);
 
         return !hasBookings && !hasBlocks;
     }

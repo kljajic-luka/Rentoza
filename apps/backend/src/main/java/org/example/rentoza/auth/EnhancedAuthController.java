@@ -297,12 +297,10 @@ public class EnhancedAuthController {
                     user.setBankAccountNumber(dto.getBankAccountNumber());
                 }
             } else {
-                // USER (Renter) registration - collect driver license info
-                validateUserCompletion(dto, user);
-                user.setDriverLicenseNumber(dto.getDriverLicenseNumber());
-                user.setDriverLicenseNumberHash(hashUtil.hash(dto.getDriverLicenseNumber()));
-                user.setDriverLicenseExpiryDate(dto.getDriverLicenseExpiryDate());
-                user.setDriverLicenseCountry(dto.getDriverLicenseCountry().toUpperCase());
+                // USER (Renter) registration now collects only basic profile metadata here.
+                // Driver license data is captured via /verify-license document flow.
+                user.setRole(Role.USER);
+                user.setDriverLicenseStatus(DriverLicenseStatus.NOT_STARTED);
             }
 
             // Mark registration as complete
@@ -395,38 +393,6 @@ public class EnhancedAuthController {
                 throw new ValidationException("Bank account is required for legal entities");
             }
             identityValidator.validateIban(dto.getBankAccountNumber());
-        }
-    }
-
-    /**
-     * Validates USER (renter) profile completion fields.
-     * Ensures driver license info is provided and not duplicated.
-     */
-    private void validateUserCompletion(GoogleOAuthCompletionDTO dto, User user) {
-        // Driver license number is required
-        if (dto.getDriverLicenseNumber() == null || dto.getDriverLicenseNumber().isBlank()) {
-            throw new ValidationException("Driver license number is required");
-        }
-        
-        // Driver license expiry is required
-        if (dto.getDriverLicenseExpiryDate() == null) {
-            throw new ValidationException("Driver license expiry date is required");
-        }
-        
-        // License must be valid for at least 30 days
-        if (dto.getDriverLicenseExpiryDate().isBefore(LocalDate.now().plusDays(30))) {
-            throw new ValidationException("Driver license must be valid for at least 30 more days");
-        }
-        
-        // Country is required
-        if (dto.getDriverLicenseCountry() == null || dto.getDriverLicenseCountry().isBlank()) {
-            throw new ValidationException("Driver license issuing country is required");
-        }
-        
-        // Check for duplicate license number (excluding current user)
-        String licenseHash = hashUtil.hash(dto.getDriverLicenseNumber());
-        if (userRepository.existsByDriverLicenseNumberHashAndIdNot(licenseHash, user.getId())) {
-            throw new ValidationException("This driver license is already registered");
         }
     }
 

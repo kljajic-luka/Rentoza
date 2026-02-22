@@ -518,14 +518,16 @@ public class AvailabilityService {
         LocalDateTime requestedEnd
     ) {
         // 1. Check for Blocked Dates (Owner blocked time)
-        boolean hasBlockedDates = blockedDateRepository.existsOverlappingBlockedDates(
+        // Uses status-aware query: booking-linked rows only count if booking is still occupying.
+        // This prevents no-show / cancellation stale rows from suppressing availability.
+        boolean hasBlockedDates = blockedDateRepository.existsEffectiveOverlappingBlockedDates(
                 car.getId(),
                 requestedStart.toLocalDate(),
                 requestedEnd.toLocalDate()
         );
 
         if (hasBlockedDates) {
-            log.debug("[AvailabilityService] Car {} has blocked dates overlapping request {} - {}",
+            log.debug("[AvailabilityService] Car {} has effective blocked dates overlapping request {} - {}",
                     car.getId(), requestedStart, requestedEnd);
             return false;
         }
@@ -611,8 +613,8 @@ public class AvailabilityService {
                 queryEnd.plusDays(365)
         );
 
-        // Step 2: Fetch blocked dates
-        List<BlockedDate> blockedDates = blockedDateRepository.findByCarIdOrderByStartDateAsc(carId);
+        // Step 2: Fetch effective blocked dates (status-aware — excludes stale no-show / cancelled rows)
+        List<BlockedDate> blockedDates = blockedDateRepository.findEffectiveByCarIdOrderByStartDateAsc(carId);
 
         // Step 3: Convert to UnavailableRangeDTO list
         List<UnavailableRangeDTO> allRanges = new ArrayList<>();

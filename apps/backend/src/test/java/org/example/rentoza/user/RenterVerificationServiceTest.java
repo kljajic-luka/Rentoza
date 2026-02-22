@@ -21,6 +21,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.multipart.MultipartFile;
@@ -62,6 +63,7 @@ class RenterVerificationServiceTest {
     @Mock private SerbianNameNormalizer nameNormalizer;
     @Mock private HashUtil hashUtil;
     @Mock private ApplicationEventPublisher eventPublisher;
+    @Mock private ApplicationContext applicationContext;
     @Mock private MultipartFile mockFile;
 
     @Captor private ArgumentCaptor<VerificationApprovedEvent> approvedEventCaptor;
@@ -82,7 +84,8 @@ class RenterVerificationServiceTest {
             nameNormalizer,
             hashUtil,
             objectMapper,
-            eventPublisher
+            eventPublisher,
+            applicationContext
         );
         
         // Set default @Value properties

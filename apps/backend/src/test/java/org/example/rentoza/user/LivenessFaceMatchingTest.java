@@ -19,6 +19,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -60,6 +61,7 @@ class LivenessFaceMatchingTest {
     @Mock private SerbianNameNormalizer nameNormalizer;
     @Mock private HashUtil hashUtil;
     @Mock private ApplicationEventPublisher eventPublisher;
+    @Mock private ApplicationContext applicationContext;
 
     @Captor private ArgumentCaptor<RenterDocument> documentCaptor;
     @Captor private ArgumentCaptor<RenterVerificationAudit> auditCaptor;
@@ -83,7 +85,8 @@ class LivenessFaceMatchingTest {
             nameNormalizer,
             hashUtil,
             objectMapper,
-            eventPublisher
+            eventPublisher,
+            applicationContext
         );
         
         // Set threshold values

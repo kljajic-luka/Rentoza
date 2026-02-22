@@ -3,6 +3,8 @@ import {
   ChangeDetectionStrategy,
   ChangeDetectorRef,
   Component,
+  AfterViewInit,
+  ElementRef,
   OnDestroy,
   OnInit,
   inject,
@@ -53,6 +55,8 @@ import {
 } from '@core/services/location.service';
 import { HomeStats, PublicStatsService } from '@core/services/public-stats.service';
 import { FavoriteButtonComponent } from '@shared/components/favorite-button/favorite-button.component';
+import { observeEntrance } from '@app/utils/intersection-observer';
+
 import {
   LocationPickerComponent,
   LocationCoordinates,
@@ -86,13 +90,15 @@ import {
   styleUrls: ['./home.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class HomeComponent implements OnInit, OnDestroy {
+export class HomeComponent implements OnInit, AfterViewInit, OnDestroy {
+  private readonly el = inject(ElementRef);
   private readonly carService = inject(CarService);
   private readonly locationService = inject(LocationService);
   private readonly publicStatsService = inject(PublicStatsService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly cdr = inject(ChangeDetectorRef);
+  private entranceCleanup?: () => void;
   private navigationSubscription?: Subscription;
   private geocodeSubscription?: Subscription;
   private queryParamsSubscription?: Subscription;
@@ -174,7 +180,14 @@ export class HomeComponent implements OnInit, OnDestroy {
       });
   }
 
+  ngAfterViewInit(): void {
+    // Observe all [data-animate] elements in this component's template
+    const animated = this.el.nativeElement.querySelectorAll('[data-animate]');
+    this.entranceCleanup = observeEntrance(animated, { stagger: 100, translateY: 20 });
+  }
+
   ngOnDestroy(): void {
+    this.entranceCleanup?.();
     this.navigationSubscription?.unsubscribe();
     this.geocodeSubscription?.unsubscribe();
     this.queryParamsSubscription?.unsubscribe();

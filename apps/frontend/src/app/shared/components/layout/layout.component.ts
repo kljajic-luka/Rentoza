@@ -1,24 +1,17 @@
-import { AsyncPipe, CommonModule, NgClass } from '@angular/common';
+import { AsyncPipe, CommonModule } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  ElementRef,
   HostListener,
   OnInit,
   ViewChild,
   inject,
 } from '@angular/core';
-import { Router, RouterModule, RouterOutlet } from '@angular/router';
+import { NavigationEnd, Router, RouterModule, RouterOutlet } from '@angular/router';
 import { BreakpointObserver, Breakpoints } from '@angular/cdk/layout';
-import { MatSidenav, MatSidenavModule } from '@angular/material/sidenav';
-import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatIconModule } from '@angular/material/icon';
-import { MatButtonModule } from '@angular/material/button';
-import { MatListModule } from '@angular/material/list';
-import { MatMenuModule } from '@angular/material/menu';
-import { MatDividerModule } from '@angular/material/divider';
-import { MatTooltipModule } from '@angular/material/tooltip';
-import { FlexLayoutModule } from '@ngbracket/ngx-layout';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { filter, map } from 'rxjs';
 
@@ -44,15 +37,7 @@ interface NavLink {
     AsyncPipe,
     RouterModule,
     RouterOutlet,
-    MatSidenavModule,
-    MatToolbarModule,
     MatIconModule,
-    MatButtonModule,
-    MatListModule,
-    MatMenuModule,
-    MatDividerModule,
-    MatTooltipModule,
-    FlexLayoutModule,
     ThemeToggleComponent,
   ],
   templateUrl: './layout.component.html',
@@ -60,8 +45,6 @@ interface NavLink {
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class LayoutComponent implements OnInit {
-  @ViewChild(MatSidenav) sidenav?: MatSidenav;
-
   protected readonly authService = inject(AuthService);
   protected readonly themeService = inject(ThemeService);
   private readonly router = inject(Router);
@@ -69,9 +52,28 @@ export class LayoutComponent implements OnInit {
   private readonly breakpointObserver = inject(BreakpointObserver);
   private readonly destroyRef = inject(DestroyRef);
 
+  // ── Responsive state ──────────────────────────────────────────────────────
   protected isMobile = false;
 
-  // Renter navigation links (USER role)
+  // ── Navbar state ──────────────────────────────────────────────────────────
+  /** True once user has scrolled >80px — triggers solid navbar */
+  protected isScrolled = false;
+  /** Controls slide-in mobile drawer */
+  protected isMobileMenuOpen = false;
+  /** Controls desktop user avatar dropdown */
+  protected isUserMenuOpen = false;
+  /** Hides entire layout shell for admin routes */
+  protected isAdminRoute = false;
+
+  /** Snapshot of authenticated user for sync access (initials, name display) */
+  protected currentUserSnapshot: UserProfile | null = null;
+
+  /** Reference to the hamburger toggle — used to restore focus when drawer closes */
+  @ViewChild('hamburgerBtn') private hamburgerBtnRef?: ElementRef<HTMLButtonElement>;
+
+  // ── Navigation link definitions ───────────────────────────────────────────
+
+  /** Renter (USER role) navigation links */
   protected readonly renterLinks: NavLink[] = [
     { label: 'Početna', icon: 'home', route: '/pocetna' },
     { label: 'Vozila', icon: 'directions_car', route: '/vozila' },
@@ -81,30 +83,15 @@ export class LayoutComponent implements OnInit {
     { label: 'Profil', icon: 'person', route: '/users/profile', roles: ['USER', 'ADMIN'] },
   ];
 
-  // Owner navigation links (OWNER role)
+  /** Owner (OWNER role) navigation links */
   protected readonly ownerLinks: NavLink[] = [
     { label: 'Dashboard', icon: 'dashboard', route: '/owner/dashboard', roles: ['OWNER', 'ADMIN'] },
-    {
-      label: 'Moja vozila',
-      icon: 'directions_car',
-      route: '/owner/cars',
-      roles: ['OWNER', 'ADMIN'],
-    },
+    { label: 'Moja vozila', icon: 'directions_car', route: '/owner/cars', roles: ['OWNER', 'ADMIN'] },
     { label: 'Rezervacije', icon: 'event', route: '/owner/bookings', roles: ['OWNER', 'ADMIN'] },
     { label: 'Poruke', icon: 'chat', route: '/messages', roles: ['OWNER', 'ADMIN'] },
-    {
-      label: 'Zarada',
-      icon: 'account_balance_wallet',
-      route: '/owner/earnings',
-      roles: ['OWNER', 'ADMIN'],
-    },
+    { label: 'Zarada', icon: 'account_balance_wallet', route: '/owner/earnings', roles: ['OWNER', 'ADMIN'] },
     { label: 'Recenzije', icon: 'rate_review', route: '/owner/reviews', roles: ['OWNER', 'ADMIN'] },
-    {
-      label: 'Verifikacija',
-      icon: 'verified',
-      route: '/owner/verification',
-      roles: ['OWNER', 'ADMIN'],
-    },
+    { label: 'Verifikacija', icon: 'verified', route: '/owner/verification', roles: ['OWNER', 'ADMIN'] },
     { label: 'Profil', icon: 'person', route: '/users/profile', roles: ['OWNER', 'ADMIN'] },
   ];
 
@@ -113,28 +100,39 @@ export class LayoutComponent implements OnInit {
     map((user) => user !== null),
   );
 
-  protected isAdminRoute = false;
+  // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   ngOnInit(): void {
-    // Initial check
     this.checkAdminRoute();
 
-    this.router.events.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
-      this.checkAdminRoute();
+    // Keep user snapshot in sync for synchronous access (initials, greeting)
+    this.currentUser$
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((user) => {
+        this.currentUserSnapshot = user;
+      });
 
-      // Mobile sidenav logic (only if not admin route, theoretically)
-      if (this.isMobile && this.sidenav?.opened) {
-        this.sidenav.close();
-      }
-    });
+    // Close mobile drawer + user menu on every route navigation
+    this.router.events
+      .pipe(
+        filter((e) => e instanceof NavigationEnd),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe(() => {
+        this.checkAdminRoute();
+        this.closeMobileMenu();
+        this.isUserMenuOpen = false;
+      });
 
+    // Track breakpoint for mobile-specific logic
     this.breakpointObserver
       .observe([Breakpoints.Handset])
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((result) => {
         this.isMobile = result.matches;
-        if (!this.isMobile && !this.isAdminRoute) {
-          this.sidenav?.open();
+        // Close mobile drawer when viewport grows past mobile breakpoint
+        if (!this.isMobile) {
+          this.closeMobileMenu();
         }
       });
 
@@ -145,66 +143,160 @@ export class LayoutComponent implements OnInit {
     });
   }
 
-  private checkAdminRoute() {
-    this.isAdminRoute = this.router.url.startsWith('/admin');
+  // ── Host event listeners ──────────────────────────────────────────────────
+
+  /** Switch navbar to solid-white once user scrolls past 80px */
+  @HostListener('window:scroll')
+  onWindowScroll(): void {
+    this.isScrolled = window.scrollY > 80;
   }
 
   /**
-   * Get navigation links based on user role
+   * Close user dropdown when clicking anywhere outside it.
+   * The toggle button calls stopPropagation so this doesn't immediately
+   * close the menu that was just opened.
    */
-  protected getNavigationLinks(user: UserProfile | null): NavLink[] {
-    if (!user) {
-      return this.renterLinks; // Show renter links for guests
+  @HostListener('document:click')
+  onDocumentClick(): void {
+    if (this.isUserMenuOpen) {
+      this.isUserMenuOpen = false;
+    }
+  }
+
+  /** Close all menus on Escape key; restore focus to hamburger trigger when drawer was open */
+  @HostListener('window:keydown.escape')
+  closeOnEscape(): void {
+    const drawerWasOpen = this.isMobileMenuOpen;
+    this.isMobileMenuOpen = false;
+    this.isUserMenuOpen = false;
+    this.unlockBodyScroll();
+    if (drawerWasOpen) {
+      setTimeout(() => this.hamburgerBtnRef?.nativeElement.focus(), 50);
+    }
+  }
+
+  /**
+   * Keyboard accessibility:
+   *  - Tab focus trap while mobile drawer is open
+   *  - ArrowDown/Up/Home/End navigation in user dropdown
+   */
+  @HostListener('keydown', ['$event'])
+  onKeydown(event: KeyboardEvent): void {
+    // ── Focus trap in mobile drawer ──────────────────────────────────────
+    if (this.isMobileMenuOpen && event.key === 'Tab') {
+      const drawer = document.getElementById('mobile-drawer');
+      if (!drawer) return;
+      const focusable = Array.from(
+        drawer.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((el) => !el.hasAttribute('disabled'));
+      if (focusable.length < 2) return;
+      const first = focusable[0];
+      const last  = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+      return;
     }
 
-    // Check if user is an OWNER (but not a regular USER)
+    // ── Arrow-key navigation in user dropdown ────────────────────────────
+    if (this.isUserMenuOpen && ['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+      const items = Array.from(
+        document.querySelectorAll<HTMLElement>('.user-menu [role="menuitem"]'),
+      );
+      if (items.length === 0) return;
+      event.preventDefault();
+      const idx = items.indexOf(document.activeElement as HTMLElement);
+      switch (event.key) {
+        case 'ArrowDown': items[(idx + 1) % items.length]?.focus(); break;
+        case 'ArrowUp':   items[(idx - 1 + items.length) % items.length]?.focus(); break;
+        case 'Home':      items[0]?.focus(); break;
+        case 'End':       items[items.length - 1]?.focus(); break;
+      }
+    }
+  }
+
+  // ── Navigation helpers ────────────────────────────────────────────────────
+
+  /**
+   * Returns navigation links for the top navbar.
+   * "Profil" is excluded — it lives in the avatar dropdown instead.
+   */
+  protected getNavLinks(user: UserProfile | null): NavLink[] {
+    return this.getNavigationLinks(user).filter((l) => l.route !== '/users/profile');
+  }
+
+  /** Full link set (used in mobile drawer where Profil is surfaced separately) */
+  protected getNavigationLinks(user: UserProfile | null): NavLink[] {
+    if (!user) return this.renterLinks;
+
     const isOwner = user.roles?.includes('OWNER') ?? false;
     const isRegularUser = user.roles?.includes('USER') ?? false;
 
-    // If user has OWNER role, show owner navigation
-    if (isOwner && !isRegularUser) {
-      return this.ownerLinks;
-    }
-
-    // Otherwise show renter navigation
+    if (isOwner && !isRegularUser) return this.ownerLinks;
     return this.renterLinks;
   }
 
   protected canShowLink(link: NavLink, user: UserProfile | null): boolean {
-    if (!link.roles?.length) {
-      return true;
-    }
-
-    if (!user) {
-      return false;
-    }
-
+    if (!link.roles?.length) return true;
+    if (!user) return false;
     return user.roles?.some((role) => link.roles!.includes(role)) ?? false;
   }
 
-  protected canShowSearchButton(user: UserProfile | null): boolean {
-    // Show for guests
-    if (!user) {
-      return true;
-    }
-
-    // Show for USER role
-    if (user.roles?.includes('USER')) {
-      return true;
-    }
-
-    // Hide for OWNER role (unless they also have USER role, handled above)
-    return false;
+  /** Two-letter initials for the avatar circle */
+  protected getUserInitials(): string {
+    const u = this.currentUserSnapshot;
+    if (!u) return '?';
+    const f = u.firstName?.[0] ?? '';
+    const l = u.lastName?.[0] ?? '';
+    return (f + l).toUpperCase() || (u.email?.[0]?.toUpperCase() ?? '?');
   }
 
+  // ── Menu controls ─────────────────────────────────────────────────────────
+
+  protected toggleMobileMenu(event: MouseEvent): void {
+    event.stopPropagation();
+    if (this.isMobileMenuOpen) {
+      this.closeMobileMenu();
+    } else {
+      this.isMobileMenuOpen = true;
+      this.lockBodyScroll();
+    }
+  }
+
+  protected closeMobileMenu(restoreFocus = false): void {
+    this.isMobileMenuOpen = false;
+    this.unlockBodyScroll();
+    if (restoreFocus) {
+      setTimeout(() => this.hamburgerBtnRef?.nativeElement.focus(), 50);
+    }
+  }
+
+  protected toggleUserMenu(event: MouseEvent): void {
+    // Prevent the document:click listener from immediately closing the menu
+    event.stopPropagation();
+    this.isUserMenuOpen = !this.isUserMenuOpen;
+  }
+
+  protected closeUserMenu(): void {
+    this.isUserMenuOpen = false;
+  }
+
+  // ── Auth & routing ────────────────────────────────────────────────────────
+
   protected logout(): void {
+    this.closeMobileMenu();
+    this.closeUserMenu();
     this.authService.supabaseLogout().subscribe({
-      next: () => {
-        this.router.navigate(['/']);
-      },
+      next: () => void this.router.navigate(['/']),
       error: (err) => {
         console.error('Logout error (clearing session anyway):', err);
-        this.router.navigate(['/']);
+        void this.router.navigate(['/']);
       },
     });
   }
@@ -213,16 +305,18 @@ export class LayoutComponent implements OnInit {
     void this.router.navigate([route]);
   }
 
-  protected toggleMobileMenu(event: MouseEvent): void {
-    event.preventDefault();
-    event.stopPropagation();
-    this.sidenav?.toggle();
+  // ── Private helpers ───────────────────────────────────────────────────────
+
+  private checkAdminRoute(): void {
+    this.isAdminRoute = this.router.url.startsWith('/admin');
   }
 
-  @HostListener('window:keydown.escape')
-  closeOnEscape(): void {
-    if (this.isMobile) {
-      this.sidenav?.close();
-    }
+  /** Prevent body scroll while mobile drawer is open (iOS safe) */
+  private lockBodyScroll(): void {
+    document.body.style.overflow = 'hidden';
+  }
+
+  private unlockBodyScroll(): void {
+    document.body.style.overflow = '';
   }
 }

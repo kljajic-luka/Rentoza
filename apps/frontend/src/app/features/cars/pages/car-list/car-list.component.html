@@ -221,108 +221,13 @@
           </h2>
         </div>
 
-        <!-- Car Grid -->
+        <!-- Car Grid — uses extracted app-car-card component -->
         <div class="cars-grid" *ngIf="results.content.length > 0; else noResults">
-          <mat-card
+          <app-car-card
             *ngFor="let car of results.content; trackBy: trackByCarId"
-            class="car-card fade-in-card"
-            [routerLink]="['/cars', car.id]"
-          >
-            <!-- 📱 Swipeable Image Carousel (CSS Scroll Snap) -->
-            <div class="car-card__media">
-              <div class="image-carousel" *ngIf="car.imageUrls?.length; else singleImage">
-                <div class="carousel-track">
-                  <img
-                    *ngFor="let imageUrl of car.imageUrls; let i = index"
-                    [src]="imageUrl"
-                    [alt]="car.make + ' ' + car.model + ' - Image ' + (i + 1)"
-                    loading="lazy"
-                    class="carousel-image"
-                    (error)="handleImageError($event)"
-                  />
-                </div>
-                <!-- Dot Indicators -->
-                <div class="carousel-dots" *ngIf="car.imageUrls && car.imageUrls.length > 1">
-                  <span
-                    *ngFor="let _ of car.imageUrls; let i = index"
-                    class="dot"
-                    [class.active]="i === 0"
-                  ></span>
-                </div>
-              </div>
-              <ng-template #singleImage>
-                <img
-                  *ngIf="car.imageUrl; else placeholder"
-                  [src]="car.imageUrl"
-                  [alt]="car.make + ' ' + car.model"
-                  loading="lazy"
-                  class="single-image"
-                  (error)="handleImageError($event)"
-                />
-                <ng-template #placeholder>
-                  <div class="image-placeholder">
-                    <mat-icon>directions_car_filled</mat-icon>
-                  </div>
-                </ng-template>
-              </ng-template>
-
-              <!-- Year Badge -->
-              <span class="year-badge">{{ car.year }}</span>
-
-              <!-- 📱 Favorite Button (Thumb Zone - 44x44px minimum) -->
-              <div class="favorite-zone" (click)="$event.stopPropagation()">
-                <app-favorite-button [carId]="+car.id"></app-favorite-button>
-              </div>
-            </div>
-
-            <mat-card-content class="car-card__content">
-              <div class="car-card__header">
-                <h3>{{ car.make }} {{ car.model }}</h3>
-                <span class="price">{{ car.pricePerDay | number : '1.0-0' }} RSD/dan</span>
-              </div>
-
-              <div class="car-card__meta">
-                <div class="meta-item">
-                  <mat-icon>place</mat-icon>
-                  <span>{{ car.location }}</span>
-                </div>
-                <div class="meta-item" *ngIf="car.seats">
-                  <mat-icon>airline_seat_recline_normal</mat-icon>
-                  <span>{{ car.seats }} sedišta</span>
-                </div>
-                <div class="meta-item" *ngIf="car.transmissionType">
-                  <mat-icon>settings</mat-icon>
-                  <span>{{ car.transmissionType | translateEnum }}</span>
-                </div>
-              </div>
-
-              <p class="description">
-                {{ car.description || 'Opis trenutno nije dostupan.' }}
-              </p>
-
-              <!-- Features -->
-              <div class="feature-list" *ngIf="car.features && car.features.length > 0">
-                <span class="feature-item" *ngFor="let feature of car.features.slice(0, 3)">
-                  <mat-icon>check_circle</mat-icon>
-                  {{ feature | translateEnum }}
-                </span>
-                <span class="feature-more" *ngIf="car.features.length > 3">
-                  +{{ car.features.length - 3 }} više
-                </span>
-              </div>
-            </mat-card-content>
-
-            <mat-card-actions class="car-card__actions">
-              <a
-                mat-flat-button
-                color="primary"
-                [routerLink]="['/cars', car.id]"
-                (click)="$event.stopPropagation()"
-              >
-                Detalji vozila
-              </a>
-            </mat-card-actions>
-          </mat-card>
+            [car]="car"
+            class="fade-in-card"
+          ></app-car-card>
         </div>
 
         <!-- Empty State -->

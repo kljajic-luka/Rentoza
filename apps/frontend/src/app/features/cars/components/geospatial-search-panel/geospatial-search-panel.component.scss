@@ -24,8 +24,8 @@
       gap: 12px;
 
       .location-icon {
-        color: #1976d2;
-        font-size: 24px;
+        color: var(--brand-primary-dark);
+        font-size: var(--font-size-xl);
         width: 24px;
         height: 24px;
       }
@@ -38,17 +38,17 @@
         .location-address {
           font-weight: 500;
           color: #333;
-          font-size: 0.95rem;
+          font-size: var(--font-size-base);
         }
 
         .location-radius {
-          font-size: 0.8rem;
+          font-size: var(--font-size-xs);
           color: #666;
         }
 
         .location-placeholder {
           color: #666;
-          font-size: 0.95rem;
+          font-size: var(--font-size-base);
         }
       }
     }
@@ -78,7 +78,7 @@
       gap: 8px;
       padding: 8px 16px;
       border-radius: 8px;
-      font-size: 0.9rem;
+      font-size: var(--font-size-sm);
 
       mat-icon {
         font-size: 20px;
@@ -108,7 +108,7 @@
     }
 
     .suggestion-city {
-      font-size: 0.85rem;
+      font-size: var(--font-size-sm);
       color: #666;
     }
   }
@@ -130,11 +130,11 @@
         font-size: 20px;
         width: 20px;
         height: 20px;
-        color: #1976d2;
+        color: var(--brand-primary-dark);
       }
 
       strong {
-        color: #1976d2;
+        color: var(--brand-primary-dark);
       }
     }
 
@@ -145,7 +145,7 @@
     .radius-labels {
       display: flex;
       justify-content: space-between;
-      font-size: 0.75rem;
+      font-size: var(--font-size-xs);
       color: #666;
       margin-top: 4px;
     }

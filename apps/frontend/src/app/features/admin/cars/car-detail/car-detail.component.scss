@@ -9,7 +9,7 @@
   justify-content: center;
   align-items: center;
   height: 320px;
-  background: radial-gradient(circle at 50% 50%, rgba(59, 130, 246, 0.06), transparent 55%);
+  background: radial-gradient(circle at 50% 50%, rgba(89, 60, 251, 0.06), transparent 55%);
 }
 
 .car-grid {
@@ -65,14 +65,14 @@
 .spec-grid > div {
   padding: 12px;
   border-radius: 10px;
-  background: rgba(59, 130, 246, 0.04);
-  border: 1px solid rgba(59, 130, 246, 0.12);
+  background: rgba(89, 60, 251, 0.04);
+  border: 1px solid rgba(89, 60, 251, 0.12);
   transition: all 160ms ease;
 }
 
 .spec-grid > div:hover {
-  background: rgba(59, 130, 246, 0.08);
-  border-color: rgba(59, 130, 246, 0.18);
+  background: rgba(89, 60, 251, 0.08);
+  border-color: rgba(89, 60, 251, 0.18);
   transform: translateY(-1px);
 }
 

@@ -39,12 +39,12 @@
       background-color: #f7f7f7;
       padding: 4px 12px;
       border-radius: 16px;
-      font-size: 14px;
+      font-size: var(--font-size-sm);
       font-weight: 500;
       color: #333;
 
       mat-icon {
-        font-size: 18px;
+        font-size: var(--font-size-lg);
         width: 18px;
         height: 18px;
         color: #ff385c; // Airbnb-like color
@@ -56,7 +56,7 @@
     flex: 1;
 
     h1 {
-      font-size: 32px;
+      font-size: var(--font-size-2xl);
       margin: 0 0 8px 0;
       font-weight: 700;
     }
@@ -96,7 +96,7 @@
         }
 
         .label {
-          font-size: 12px;
+          font-size: var(--font-size-xs);
           color: #717171;
           text-transform: uppercase;
           letter-spacing: 0.5px;
@@ -110,7 +110,7 @@
   margin-bottom: 48px;
 
   h2 {
-    font-size: 24px;
+    font-size: var(--font-size-xl);
     font-weight: 600;
     margin-bottom: 24px;
   }
@@ -120,7 +120,7 @@
   p {
     line-height: 1.6;
     color: #484848;
-    font-size: 16px;
+    font-size: var(--font-size-base);
     max-width: 800px;
   }
 
@@ -130,10 +130,10 @@
     gap: 8px;
     margin-top: 16px;
     color: #717171;
-    font-size: 14px;
+    font-size: var(--font-size-sm);
 
     mat-icon {
-      font-size: 18px;
+      font-size: var(--font-size-lg);
       width: 18px;
       height: 18px;
     }
@@ -163,7 +163,7 @@
       padding: 16px;
 
       h3 {
-        font-size: 18px;
+        font-size: var(--font-size-lg);
         font-weight: 600;
         margin: 0 0 8px 0;
       }
@@ -172,11 +172,11 @@
         display: flex;
         justify-content: space-between;
         color: #717171;
-        font-size: 14px;
+        font-size: var(--font-size-sm);
         margin-bottom: 12px;
 
         .star-small {
-          font-size: 14px;
+          font-size: var(--font-size-sm);
           width: 14px;
           height: 14px;
           vertical-align: middle;
@@ -185,7 +185,7 @@
       }
 
       .price {
-        font-size: 18px;
+        font-size: var(--font-size-lg);
         font-weight: 700;
         color: #222;
         margin: 0;
@@ -215,7 +215,7 @@
         display: flex;
         
         mat-icon {
-          font-size: 16px;
+          font-size: var(--font-size-base);
           width: 16px;
           height: 16px;
           color: #ddd;

@@ -57,7 +57,7 @@
   &.status-active { background-color: #e8f5e9; color: #2e7d32; }
   &.status-pending { background-color: #fff3e0; color: #ef6c00; }
   &.status-cancelled { background-color: #ffebee; color: #c62828; }
-  &.status-check-in { background-color: #e3f2fd; color: #1565c0; }
+  &.status-check-in { background-color: #e3f2fd; color: var(--brand-primary-dark); }
   &.status-completed { background-color: #f3e5f5; color: #7b1fa2; }
 
   :host-context(.theme-dark) & {
@@ -67,7 +67,7 @@
     &.status-active { background-color: rgba(46, 125, 50, 0.2); color: #81c784; }
     &.status-pending { background-color: rgba(239, 108, 0, 0.2); color: #ffb74d; }
     &.status-cancelled { background-color: rgba(198, 40, 40, 0.2); color: #e57373; }
-    &.status-check-in { background-color: rgba(21, 101, 192, 0.2); color: #64b5f6; }
+    &.status-check-in { background-color: rgba(21, 101, 192, 0.2); color: var(--brand-primary-light); }
     &.status-completed { background-color: rgba(123, 31, 162, 0.2); color: #ba68c8; }
   }
 }
@@ -87,7 +87,7 @@
 
   h3 {
     margin: 0 0 12px 0;
-    font-size: 1rem;
+    font-size: var(--font-size-base);
     font-weight: 600;
     color: #333;
   }
@@ -119,7 +119,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 1.2rem;
+      font-size: var(--font-size-lg);
       font-weight: 600;
     }
 
@@ -131,7 +131,7 @@
       .renter-meta { 
         margin: 0; 
         color: #666;
-        font-size: 0.9rem;
+        font-size: var(--font-size-sm);
       }
 
       :host-context(.theme-dark) & {
@@ -171,7 +171,7 @@
       align-items: center;
       gap: 8px;
       color: #757575;
-      font-size: 0.85rem;
+      font-size: var(--font-size-sm);
       font-style: italic;
 
       :host-context(.theme-dark) & {
@@ -214,9 +214,9 @@
     color: #444;
 
     &.gross { font-weight: 600; color: #333; margin-top: 8px; }
-    &.fee { color: #d32f2f; font-size: 0.9rem; }
+    &.fee { color: #d32f2f; font-size: var(--font-size-sm); }
     &.net { 
-      font-size: 1.2rem; 
+      font-size: var(--font-size-lg); 
       font-weight: 700; 
       color: #2e7d32; 
       margin-top: 12px; 
@@ -247,7 +247,7 @@
   align-items: center;
   gap: 8px;
   color: #757575;
-  font-size: 0.85rem;
+  font-size: var(--font-size-sm);
   margin-top: 16px;
 
   :host-context(.theme-dark) & {
@@ -289,12 +289,12 @@
       background: white;
       color: #bdbdbd;
       
-      mat-icon { font-size: 24px; width: 24px; height: 24px; }
+      mat-icon { font-size: var(--font-size-xl); width: 24px; height: 24px; }
     }
 
     .step-content {
-      h4 { margin: 0 0 4px 0; font-size: 1rem; color: #757575; }
-      p { margin: 0; font-size: 0.85rem; color: #9e9e9e; }
+      h4 { margin: 0 0 4px 0; font-size: var(--font-size-base); color: #757575; }
+      p { margin: 0; font-size: var(--font-size-sm); color: #9e9e9e; }
     }
 
     &.completed {

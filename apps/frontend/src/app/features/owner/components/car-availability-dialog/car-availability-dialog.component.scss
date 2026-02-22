@@ -47,7 +47,7 @@
 
       .car-year {
         margin: 4px 0 0;
-        font-size: 0.875rem;
+        font-size: var(--font-size-sm);
         color: var(--color-text-muted);
       }
     }
@@ -91,14 +91,14 @@ mat-dialog-content {
 
   h3 {
     margin: 0 0 8px;
-    font-size: 1.125rem;
+    font-size: var(--font-size-lg);
     font-weight: 600;
     color: var(--color-text);
   }
 
   .description {
     margin: 0 0 20px;
-    font-size: 0.875rem;
+    font-size: var(--font-size-sm);
     color: var(--color-text-muted);
     line-height: 1.5;
   }
@@ -147,7 +147,7 @@ mat-dialog-content {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 0.875rem;
+    font-size: var(--font-size-sm);
     color: var(--color-text);
 
     .legend-color {
@@ -173,7 +173,7 @@ mat-dialog-content {
 .blocked-dates-section {
   h3 {
     margin: 0 0 16px;
-    font-size: 1.125rem;
+    font-size: var(--font-size-lg);
     font-weight: 600;
     color: var(--color-text);
   }
@@ -209,7 +209,7 @@ mat-dialog-content {
           display: flex;
           align-items: center;
           gap: 8px;
-          font-size: 0.9375rem;
+          font-size: var(--font-size-base);
 
           strong {
             color: var(--color-text);
@@ -248,10 +248,10 @@ mat-dialog-content {
   p {
     margin: 8px 0;
     color: var(--color-text);
-    font-size: 1rem;
+    font-size: var(--font-size-base);
 
     &.hint {
-      font-size: 0.875rem;
+      font-size: var(--font-size-sm);
       color: var(--color-text-muted);
     }
   }

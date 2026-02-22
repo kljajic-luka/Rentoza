@@ -4,16 +4,19 @@
   overflow: hidden;
   margin-bottom: 3.5rem;
   min-height: 520px;
+  /* 📱 iOS Safari: 100vh is too tall due to browser chrome; dvh fixes this */
+  min-height: max(520px, 50vh);
+  min-height: max(520px, 50dvh);
   display: flex;
   align-items: center;
-  background: radial-gradient(circle at 0% 0%, rgba(59, 130, 246, 0.28), rgba(30, 64, 175, 0.6)),
+  background: radial-gradient(circle at 0% 0%, rgba(89, 60, 251, 0.28), rgba(61, 32, 232, 0.6)),
     url('https://images.unsplash.com/photo-1542282088-fe8426682b8f?ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&q=80&w=687')
       center/cover no-repeat;
 
   &__overlay {
     position: absolute;
     inset: 0;
-    background: linear-gradient(120deg, rgba(15, 23, 42, 0.78) 10%, rgba(30, 64, 175, 0.35) 65%, rgba(59, 130, 246, 0.5));
+    background: linear-gradient(120deg, rgba(15, 23, 42, 0.78) 10%, rgba(61, 32, 232, 0.35) 65%, rgba(89, 60, 251, 0.5));
     z-index: 1;
   }
 
@@ -24,7 +27,7 @@
     flex-direction: column;
     justify-content: center;
     width: 100%;
-    padding: clamp(2.5rem, 4vw, 4rem);
+    padding: clamp(var(--space-5), 4vw, var(--space-8));
     color: #fff;
   }
 
@@ -40,20 +43,20 @@
   &__badge-pill {
     display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 1rem;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-2);
     background: rgba(255, 255, 255, 0.15);
     backdrop-filter: blur(12px);
     border: 1px solid rgba(255, 255, 255, 0.25);
     border-radius: 999px;
     color: #fff;
     font-weight: 600;
-    font-size: 0.85rem;
+    font-size: var(--font-size-sm);
     width: fit-content;
     margin-bottom: 0.5rem;
 
     mat-icon {
-      font-size: 18px;
+      font-size: var(--font-size-lg);
       width: 18px;
       height: 18px;
     }
@@ -66,7 +69,7 @@
   &__eyebrow {
     text-transform: uppercase;
     letter-spacing: 0.38em;
-    font-size: 0.75rem;
+    font-size: var(--font-size-xs);
     opacity: 0.8;
     max-width: 650px;
   }
@@ -79,7 +82,7 @@
   }
 
   &__lede {
-    font-size: 1.15rem;
+    font-size: var(--font-size-lg);
     line-height: 1.7;
     opacity: 0.9;
     max-width: 600px;
@@ -196,7 +199,7 @@
 
     ::ng-deep .mdc-text-field--focused .mat-mdc-text-field-wrapper {
       border-color: var(--mat-primary);
-      box-shadow: 0 6px 16px rgba(59, 130, 246, 0.2);
+      box-shadow: 0 6px 16px var(--brand-primary-20);
     }
 
     ::ng-deep .mat-mdc-form-field-focus-overlay {
@@ -207,19 +210,19 @@
     ::ng-deep .mat-mdc-select-value {
       color: rgba(15, 23, 42, 0.9) !important;
       font-weight: 500;
-      font-size: 0.95rem;
+      font-size: var(--font-size-base);
       padding: 4px 0;
     }
 
     ::ng-deep .mat-mdc-input-element::placeholder,
     ::ng-deep .mat-mdc-select-placeholder {
       color: rgba(51, 65, 85, 0.75);
-      font-size: 0.9rem;
+      font-size: var(--font-size-sm);
     }
 
     ::ng-deep label {
       color: rgba(30, 41, 59, 0.82) !important;
-      font-size: 0.9rem;
+      font-size: var(--font-size-sm);
       font-weight: 600;
     }
 
@@ -272,11 +275,11 @@
 
   // Geolocation button in search field
   .geolocation-btn {
-    color: var(--primary-color, #3b82f6);
+    color: var(--primary-color, var(--color-primary));
     transition: all 0.2s ease;
 
     &:hover {
-      color: var(--primary-dark, #2563eb);
+      color: var(--primary-dark, var(--brand-primary-dark));
       transform: scale(1.1);
     }
 
@@ -288,8 +291,8 @@
   }
 
   .validation-hint {
-    font-size: 0.75rem;
-    color: rgba(239, 68, 68, 0.95);
+    font-size: var(--font-size-xs);
+    color: var(--color-error-text);
     padding-left: 0.5rem;
     margin-top: 0.25rem;
     display: block;
@@ -297,7 +300,7 @@
     animation: fadeIn 200ms ease-in;
 
     :host-context(.theme-dark) & {
-      color: rgba(248, 113, 113, 0.95);
+      color: var(--color-error-text);
     }
   }
 
@@ -310,15 +313,15 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 10px 24px rgba(99, 102, 241, 0.35);
-    background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 50%, #4f46e5 100%);
+    box-shadow: 0 10px 24px rgba(89, 60, 251, 0.35);
+    background: linear-gradient(135deg, var(--brand-primary-light) 0%, var(--color-primary) 50%, var(--brand-primary-dark) 100%);
     color: #fff;
     transition: all 200ms ease;
     position: relative;
     z-index: 5;
 
     &:hover:not(:disabled) {
-      box-shadow: 0 14px 28px rgba(99, 102, 241, 0.5);
+      box-shadow: 0 14px 28px rgba(89, 60, 251, 0.5);
       transform: translateY(-1px);
     }
 
@@ -338,7 +341,7 @@
   &__actions {
     display: flex;
     flex-wrap: wrap;
-    gap: 1rem;
+    gap: var(--space-2);
     margin-top: 0.5rem;
 
     a[mat-raised-button],
@@ -354,7 +357,7 @@
   &__stats {
     display: flex;
     flex-wrap: wrap;
-    gap: 3rem;
+    gap: var(--space-6);
     margin-top: 1rem;
 
     .stat__value {
@@ -366,7 +369,7 @@
 
     .stat__label {
       color: rgba(255, 255, 255, 0.8);
-      font-size: 0.9rem;
+      font-size: var(--font-size-sm);
       font-weight: 500;
     }
   }
@@ -375,10 +378,10 @@
 @media (max-width: 960px) {
   .hero {
     min-height: auto;
-    padding: 4rem 0;
+    padding: var(--space-8) 0;
 
     &__container {
-      padding: 2rem;
+      padding: var(--space-4);
     }
 
     h1 {
@@ -389,24 +392,31 @@
 
 @media (max-width: 599px) {
   .hero {
-    border-radius: 0 0 24px 24px;
-    margin-inline: -1rem;
-    width: calc(100% + 2rem);
+    border-radius: 0 0 20px 20px;
+    /* 📱 FIX: Use negative margin without overflow by constraining the element */
+    /* The old `width: calc(100% + 2rem)` can cause horizontal scroll */
+    /* Instead we rely on layout-router padding removal at this breakpoint */
+    margin-left: calc(-1 * var(--layout-padding-inline, 12px));
+    margin-right: calc(-1 * var(--layout-padding-inline, 12px));
+    /* Width auto corrects to fill the overflowed margins */
+    width: auto;
+    /* Prevent this from adding to scroll width */
+    max-width: none;
 
     &__container {
-      padding: 1.5rem;
+      padding: var(--space-3);
     }
 
     &__eyebrow {
-      font-size: 0.7rem;
+      font-size: var(--font-size-xs);
     }
 
     h1 {
-      font-size: 2rem;
+      font-size: var(--font-size-2xl);
     }
 
     &__lede {
-      font-size: 1rem;
+      font-size: var(--font-size-base);
     }
 
     &__actions {
@@ -420,7 +430,7 @@
     }
 
     &__stats {
-      gap: 1.5rem;
+      gap: var(--space-3);
       justify-content: space-between;
       width: 100%;
     }
@@ -467,8 +477,8 @@
     .eyebrow {
       text-transform: uppercase;
       letter-spacing: 0.28em;
-      font-size: 0.75rem;
-      color: rgba(99, 102, 241, 0.9);
+      font-size: var(--font-size-xs);
+      color: rgba(89, 60, 251, 0.9);
       margin-bottom: 0.5rem;
     }
 
@@ -483,17 +493,17 @@
       font-weight: 600;
       display: inline-flex;
       align-items: center;
-      gap: 0.5rem;
+      gap: var(--space-1);
     }
     
     // 📱 MOBILE: Stack header vertically
     @media (max-width: 599px) {
       flex-direction: column;
       align-items: flex-start;
-      gap: 1rem;
+      gap: var(--space-2);
       
       h2 {
-        font-size: 1.5rem;
+        font-size: var(--font-size-xl);
         line-height: 1.3;
       }
       
@@ -509,22 +519,22 @@
   // ═══════════════════════════════════════════════════════════════════════════
   &__grid {
     display: grid;
-    // Desktop: 3 columns with adaptive sizing
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: 1.5rem;
+    // Desktop: 3 columns, never overflow viewport
+    grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr));
+    gap: var(--space-3);
     width: 100%;
     box-sizing: border-box;
-    
-    // Tablet: 2 columns
-    @media (max-width: 1024px) {
+
+    // Tablet: explicit 2 columns
+    @media (max-width: 1024px) and (min-width: 600px) {
       grid-template-columns: repeat(2, 1fr);
       gap: 1.25rem;
     }
-    
-    // 📱 MOBILE: Single column, full width, tight spacing
+
+    // 📱 MOBILE: Single column, full width — zero horizontal overflow
     @media (max-width: 599px) {
       grid-template-columns: 1fr;
-      gap: 1rem;
+      gap: var(--space-2);
     }
   }
 
@@ -584,7 +594,7 @@
       }
 
       .featured__header .price {
-        color: #60a5fa;
+        color: var(--brand-primary-light);
       }
 
       .meta {
@@ -603,7 +613,7 @@
         background: rgba(51, 65, 85, 0.4);
 
         mat-icon {
-          color: rgba(96, 165, 250, 0.6);
+          color: rgba(123, 99, 252, 0.6);
         }
       }
     }
@@ -653,12 +663,12 @@
 
       mat-icon {
         font-size: 42px;
-        color: rgba(59, 130, 246, 0.7);
+        color: rgba(89, 60, 251, 0.7);
       }
       
       @media (max-width: 599px) {
         mat-icon {
-          font-size: 32px;
+          font-size: var(--font-size-2xl);
         }
       }
     }
@@ -672,7 +682,7 @@
       color: #fff;
       padding: 0.35rem 0.75rem;
       border-radius: 999px;
-      font-size: 0.75rem;
+      font-size: var(--font-size-xs);
       letter-spacing: 0.08em;
       text-transform: uppercase;
       z-index: 2;
@@ -681,7 +691,7 @@
         left: 0.75rem;
         bottom: 0.75rem;
         padding: 0.25rem 0.6rem;
-        font-size: 0.7rem;
+        font-size: var(--font-size-xs);
       }
     }
     
@@ -729,7 +739,7 @@
     // 📱 MOBILE: Condensed padding (24px → 12px)
     // ═══════════════════════════════════════════════════════════════════════════
     @media (max-width: 599px) {
-      padding: 0.875rem 1rem 0.75rem;
+      padding: 0.875rem var(--space-2) 0.75rem;
       gap: 0.375rem;
     }
   }
@@ -752,7 +762,7 @@
       // 📱 MOBILE: Smaller title, single line with ellipsis
       // ═══════════════════════════════════════════════════════════════════════════
       @media (max-width: 599px) {
-        font-size: 1rem;
+        font-size: var(--font-size-base);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -762,18 +772,18 @@
     
     .price {
       font-weight: 700;
-      color: var(--primary-color, #3b82f6);
+      color: var(--primary-color, var(--color-primary));
       white-space: nowrap;
-      font-size: 1rem;
+      font-size: var(--font-size-base);
       
       @media (max-width: 599px) {
-        font-size: 0.9rem;
+        font-size: var(--font-size-sm);
       }
     }
     
     // 📱 MOBILE: Price styling
     @media (max-width: 599px) {
-      gap: 0.5rem;
+      gap: var(--space-1);
       align-items: center;
     }
   }
@@ -784,11 +794,11 @@
     gap: 0.35rem;
     color: rgba(100, 116, 139, 0.9);
     font-weight: 500;
-    font-size: 0.9rem;
+    font-size: var(--font-size-sm);
     margin: 0;
     
     .meta-icon {
-      font-size: 18px;
+      font-size: var(--font-size-lg);
       width: 18px;
       height: 18px;
       color: var(--icon-color, rgba(100, 116, 139, 0.7));
@@ -796,10 +806,10 @@
     
     // 📱 MOBILE: Smaller location text
     @media (max-width: 599px) {
-      font-size: 0.8rem;
+      font-size: var(--font-size-xs);
       
       .meta-icon {
-        font-size: 16px;
+        font-size: var(--font-size-base);
         width: 16px;
         height: 16px;
       }
@@ -809,7 +819,7 @@
   .description {
     color: var(--color-text-muted);
     line-height: 1.65;
-    font-size: 0.9rem;
+    font-size: var(--font-size-sm);
     margin: 0;
     // Limit to 2 lines
     display: -webkit-box;
@@ -843,14 +853,14 @@
       text-align: center;
 
       &:hover {
-        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        box-shadow: 0 4px 12px var(--brand-primary-30);
       }
       
       // 📱 MOBILE: Compact height
       @media (max-width: 599px) {
         min-height: 44px;
         padding-inline: 1rem;
-        font-size: 0.875rem;
+        font-size: var(--font-size-sm);
       }
     }
     
@@ -858,7 +868,7 @@
     // 📱 MOBILE: Condensed footer padding
     // ═══════════════════════════════════════════════════════════════════════════
     @media (max-width: 599px) {
-      padding: 0 1rem 1rem;
+      padding: 0 var(--space-2) var(--space-2);
     }
   }
 }
@@ -866,14 +876,14 @@
 .cta-strip {
   margin-top: 4rem;
   border-radius: 24px;
-  padding: clamp(1.75rem, 3vw, 2.5rem);
+  padding: clamp(1.75rem, 3vw, var(--space-5));
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 1.5rem;
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(99, 102, 241, 0.08));
-  border: 1px solid rgba(99, 102, 241, 0.18);
+  gap: var(--space-3);
+  background: linear-gradient(135deg, rgba(89, 60, 251, 0.12), rgba(89, 60, 251, 0.08));
+  border: 1px solid rgba(89, 60, 251, 0.18);
   
   // 📱 MOBILE: Container hygiene
   box-sizing: border-box;
@@ -957,11 +967,11 @@
     }
 
     &__eyebrow {
-      font-size: 0.65rem;
+      font-size: var(--font-size-xs); /* was 0.65rem (10.4px) — bumped to 12px min */
     }
 
     &__lede {
-      font-size: 0.95rem;
+      font-size: var(--font-size-base);
     }
 
     &__actions {
@@ -999,14 +1009,14 @@
     flex-wrap: wrap;
     justify-content: space-between;
     align-items: center;
-    gap: 1.5rem;
+    gap: var(--space-3);
     margin-bottom: 1.5rem;
     padding-bottom: 1rem;
     border-bottom: 1px solid rgba(148, 163, 184, 0.2);
 
     h2 {
       margin: 0;
-      font-size: 1.5rem;
+      font-size: var(--font-size-xl);
       font-weight: 600;
       color: var(--color-text-primary);
     }
@@ -1023,21 +1033,21 @@
     align-items: center;
     gap: 0.25rem;
     color: var(--color-text-muted);
-    font-size: 0.9rem;
+    font-size: var(--font-size-sm);
     margin: 0;
 
     mat-icon {
-      font-size: 18px;
+      font-size: var(--font-size-lg);
       width: 18px;
       height: 18px;
-      color: var(--primary-color, #3b82f6);
+      color: var(--primary-color, var(--color-primary));
     }
   }
 
   &__controls {
     display: flex;
     align-items: center;
-    gap: 1.5rem;
+    gap: var(--space-3);
   }
 
   .radius-control {
@@ -1069,8 +1079,8 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 1rem;
-    padding: 4rem 2rem;
+    gap: var(--space-2);
+    padding: var(--space-8) var(--space-4);
     text-align: center;
     color: var(--color-text-muted);
   }
@@ -1083,12 +1093,12 @@
 
   &__grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 1.5rem;
+    grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
+    gap: var(--space-3);
 
     @media (max-width: 599px) {
       grid-template-columns: 1fr;
-      gap: 1rem;
+      gap: var(--space-2);
     }
   }
 
@@ -1097,8 +1107,8 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 1rem;
-    padding: 4rem 2rem;
+    gap: var(--space-2);
+    padding: var(--space-8) var(--space-4);
     text-align: center;
     background: rgba(148, 163, 184, 0.1);
     border-radius: 16px;
@@ -1182,8 +1192,8 @@
       background: rgba(148, 163, 184, 0.2);
 
       mat-icon {
-        font-size: 48px;
-        color: rgba(59, 130, 246, 0.5);
+        font-size: var(--font-size-3xl);
+        color: rgba(89, 60, 251, 0.5);
       }
     }
 
@@ -1196,7 +1206,7 @@
       color: white;
       padding: 0.25rem 0.6rem;
       border-radius: 999px;
-      font-size: 0.75rem;
+      font-size: var(--font-size-xs);
       font-weight: 500;
     }
 
@@ -1207,15 +1217,15 @@
       display: flex;
       align-items: center;
       gap: 0.25rem;
-      background: rgba(59, 130, 246, 0.9);
+      background: rgba(89, 60, 251, 0.9);
       color: white;
       padding: 0.25rem 0.6rem;
       border-radius: 999px;
-      font-size: 0.75rem;
+      font-size: var(--font-size-xs);
       font-weight: 600;
 
       mat-icon {
-        font-size: 14px;
+        font-size: var(--font-size-sm);
         width: 14px;
         height: 14px;
       }
@@ -1223,15 +1233,15 @@
   }
 
   &__body {
-    padding: 1rem;
+    padding: var(--space-2);
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: var(--space-1);
     flex: 1;
 
     h3 {
       margin: 0;
-      font-size: 1.1rem;
+      font-size: var(--font-size-lg);
       font-weight: 600;
       color: var(--color-text-primary);
     }
@@ -1241,11 +1251,11 @@
       align-items: center;
       gap: 0.25rem;
       color: var(--color-text-muted);
-      font-size: 0.85rem;
+      font-size: var(--font-size-sm);
       margin: 0;
 
       mat-icon {
-        font-size: 16px;
+        font-size: var(--font-size-base);
         width: 16px;
         height: 16px;
       }
@@ -1260,14 +1270,14 @@
   &__features {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.5rem;
+    gap: var(--space-1);
     margin-top: 0.25rem;
 
     .feature-chip {
-      font-size: 0.7rem;
-      padding: 0.2rem 0.5rem;
-      background: rgba(59, 130, 246, 0.1);
-      color: var(--primary-color, #3b82f6);
+      font-size: var(--font-size-xs);
+      padding: 0.2rem var(--space-1);
+      background: var(--brand-primary-10);
+      color: var(--primary-color, var(--color-primary));
       border-radius: 999px;
       font-weight: 500;
     }
@@ -1277,26 +1287,26 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.75rem 1rem;
+    padding: 0.75rem var(--space-2);
     border-top: 1px solid rgba(148, 163, 184, 0.15);
     background: rgba(248, 250, 252, 0.5);
 
     .price {
-      font-size: 1rem;
+      font-size: var(--font-size-base);
       font-weight: 700;
-      color: var(--primary-color, #3b82f6);
+      color: var(--primary-color, var(--color-primary));
     }
 
     .delivery-badge {
       display: flex;
       align-items: center;
       gap: 0.25rem;
-      font-size: 0.75rem;
-      color: #22c55e;
+      font-size: var(--font-size-xs);
+      color: var(--color-success);
       font-weight: 500;
 
       mat-icon {
-        font-size: 16px;
+        font-size: var(--font-size-base);
         width: 16px;
         height: 16px;
       }
@@ -1325,8 +1335,8 @@
     }
 
     .search-result-card__features .feature-chip {
-      background: rgba(59, 130, 246, 0.2);
-      color: #60a5fa;
+      background: var(--brand-primary-20);
+      color: var(--brand-primary-light);
     }
 
     .search-result-card__footer {
@@ -1334,7 +1344,7 @@
       background: rgba(15, 23, 42, 0.6);
 
       .price {
-        color: #60a5fa;
+        color: var(--brand-primary-light);
       }
     }
 
@@ -1342,7 +1352,7 @@
       background: rgba(51, 65, 85, 0.4);
 
       mat-icon {
-        color: rgba(96, 165, 250, 0.6);
+        color: rgba(123, 99, 252, 0.6);
       }
     }
   }

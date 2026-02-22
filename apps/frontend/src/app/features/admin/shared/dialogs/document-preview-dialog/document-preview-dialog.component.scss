@@ -29,7 +29,7 @@ $breakpoint-lg: 992px;
     align-items: center;
     gap: 12px;
     margin: 0;
-    font-size: 18px;
+    font-size: var(--font-size-lg);
     font-weight: 600;
     
     mat-icon {
@@ -98,7 +98,7 @@ $breakpoint-lg: 992px;
   color: rgba(255, 255, 255, 0.7);
   
   mat-icon {
-    font-size: 48px;
+    font-size: var(--font-size-3xl);
     width: 48px;
     height: 48px;
     opacity: 0.5;
@@ -130,7 +130,7 @@ $breakpoint-lg: 992px;
   
   .zoom-level {
     color: white;
-    font-size: 13px;
+    font-size: var(--font-size-sm);
     font-weight: 600;
     min-width: 50px;
     text-align: center;
@@ -161,7 +161,7 @@ $breakpoint-lg: 992px;
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -169,7 +169,7 @@ $breakpoint-lg: 992px;
   margin: 0 0 12px;
   
   mat-icon {
-    font-size: 18px;
+    font-size: var(--font-size-lg);
     width: 18px;
     height: 18px;
   }
@@ -196,12 +196,12 @@ $breakpoint-lg: 992px;
 }
 
 .result-label {
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   color: var(--admin-muted);
 }
 
 .result-value {
-  font-size: 13px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   color: var(--admin-strong);
   text-align: right;
@@ -234,7 +234,7 @@ $breakpoint-lg: 992px;
 }
 
 .confidence-label {
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   color: var(--admin-muted);
 }
 
@@ -250,20 +250,20 @@ $breakpoint-lg: 992px;
   border-radius: 4px;
   transition: width 300ms ease;
   
-  &.confidence-low { background: linear-gradient(90deg, #ef4444, #f87171); }
-  &.confidence-medium { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
-  &.confidence-high { background: linear-gradient(90deg, #22c55e, #4ade80); }
+  &.confidence-low { background: linear-gradient(90deg, var(--color-error), #f87171); }
+  &.confidence-medium { background: linear-gradient(90deg, var(--color-warning), var(--color-warning)); }
+  &.confidence-high { background: linear-gradient(90deg, var(--color-success), var(--color-success)); }
   &.confidence-excellent { background: linear-gradient(90deg, #10b981, #34d399); }
 }
 
 .confidence-value {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 700;
   
   &.confidence-low { color: #dc2626; }
-  &.confidence-medium { color: #d97706; }
-  &.confidence-high { color: #16a34a; }
-  &.confidence-excellent { color: #059669; }
+  &.confidence-medium { color: var(--brand-warning-text); }
+  &.confidence-high { color: var(--brand-success-text); }
+  &.confidence-excellent { color: var(--color-success); }
 }
 
 // ==================== LIVENESS RESULT ====================
@@ -282,8 +282,8 @@ $breakpoint-lg: 992px;
     width: 28px;
     height: 28px;
     
-    &.success { color: #10b981; }
-    &.error { color: #ef4444; }
+    &.success { color: var(--color-success); }
+    &.error { color: var(--color-error); }
   }
 }
 
@@ -294,15 +294,15 @@ $breakpoint-lg: 992px;
 }
 
 .liveness-label {
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   color: var(--admin-muted);
 }
 
 .liveness-value {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 700;
   
-  &.success { color: #059669; }
+  &.success { color: var(--color-success); }
   &.error { color: #dc2626; }
 }
 
@@ -314,7 +314,7 @@ $breakpoint-lg: 992px;
   gap: 10px;
   padding: 12px;
   border-radius: 8px;
-  font-size: 13px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   margin-top: 12px;
   
@@ -330,12 +330,12 @@ $breakpoint-lg: 992px;
   }
   
   &.warn {
-    background: rgba(245, 158, 11, 0.12);
+    background: rgba(245, 166, 35, 0.12);
     color: #b45309;
   }
   
   &.error {
-    background: rgba(239, 68, 68, 0.12);
+    background: rgba(255, 90, 95, 0.12);
     color: #b91c1c;
   }
   

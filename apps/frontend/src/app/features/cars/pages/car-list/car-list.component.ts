@@ -16,7 +16,8 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatIconModule } from '@angular/material/icon';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
-import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatSnackBarModule } from '@angular/material/snack-bar';
+import { ToastService } from '@core/services/toast.service';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
@@ -61,6 +62,7 @@ import {
 import { FavoriteButtonComponent } from '@shared/components/favorite-button/favorite-button.component';
 import { CarFiltersComponent } from '../../components/car-filters/car-filters.component';
 import { TranslateEnumPipe } from '@shared/pipes/translate-enum.pipe';
+import { CarCardComponent } from '@shared/components/car-card/car-card.component';
 import { environment } from '@environments/environment';
 // Phase 2: Time validation utilities
 import {
@@ -95,6 +97,7 @@ import {
     FavoriteButtonComponent,
     CarFiltersComponent,
     TranslateEnumPipe,
+    CarCardComponent,
   ],
   templateUrl: './car-list.component.html',
   styleUrls: ['./car-list.component.scss'],
@@ -106,7 +109,7 @@ export class CarListComponent implements OnInit, OnDestroy {
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
-  private readonly snackBar = inject(MatSnackBar);
+  private readonly toast = inject(ToastService);
   private readonly destroy$ = new Subject<void>();
 
   private readonly loggedMissingImageForCarIds = new Set<string>();
@@ -219,11 +222,7 @@ export class CarListComponent implements OnInit, OnDestroy {
       }
 
       // Show error message
-      this.snackBar.open(errorMessage, 'Zatvori', {
-        duration: 5000,
-        horizontalPosition: 'center',
-        verticalPosition: 'bottom',
-      });
+      this.toast.error(errorMessage);
 
       // Return empty result set
       return of({
@@ -605,9 +604,7 @@ export class CarListComponent implements OnInit, OnDestroy {
 
   useCurrentLocation(): void {
     if (!navigator.geolocation) {
-      this.snackBar.open('Geolokacija nije podržana u vašem pretraživaču', 'Zatvori', {
-        duration: 3000,
-      });
+      this.toast.info('Geolokacija nije podržana u vašem pretraživaču.');
       return;
     }
 
@@ -674,7 +671,7 @@ export class CarListComponent implements OnInit, OnDestroy {
             errorMessage = 'Zahtev za lokaciju je istekao.';
             break;
         }
-        this.snackBar.open(errorMessage, 'Zatvori', { duration: 5000 });
+        this.toast.error(errorMessage);
         this.cdr.markForCheck();
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },

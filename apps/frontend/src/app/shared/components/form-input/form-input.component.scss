@@ -1,0 +1,318 @@
+// ─────────────────────────────────────────────────────────────
+// RTZ Form Input — Turo/Airbnb standard floating-label field
+// Uses design tokens only; no hardcoded colors except shadows
+// ─────────────────────────────────────────────────────────────
+
+// ── Shake animation for error entry ─────────────────────────
+@keyframes rtz-shake {
+  0%, 100% { transform: translateX(0); }
+  20%       { transform: translateX(-4px); }
+  40%       { transform: translateX(4px); }
+  60%       { transform: translateX(-4px); }
+  80%       { transform: translateX(2px); }
+}
+
+// ── Wrapper ──────────────────────────────────────────────────
+.rtz-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  background: var(--surface-input);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-md);
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background-color 0.2s ease;
+  cursor: text;
+
+  // ── States ────────────────────────────────────────────────
+
+  &--focused {
+    border-color: var(--color-border-focus);
+    box-shadow: 0 0 0 3px var(--brand-primary-20);
+    background: var(--color-surface);
+  }
+
+  &--invalid {
+    border-color: var(--color-error) !important; /* override focus color */
+    box-shadow: 0 0 0 3px var(--brand-error-10) !important;
+    animation: rtz-shake 0.35s ease;
+  }
+
+  &--valid {
+    border-color: var(--color-success);
+    box-shadow: 0 0 0 3px var(--brand-success-10);
+  }
+
+  &--disabled {
+    background: var(--color-surface-muted);
+    border-color: var(--color-border-subtle);
+    cursor: not-allowed;
+    opacity: 0.6;
+
+    .rtz-field__input {
+      cursor: not-allowed;
+      user-select: none;
+    }
+  }
+
+  // ── Left / right icon padding adjustment ──────────────────
+  &--has-left-icon {
+    .rtz-field__input {
+      padding-left: 44px;
+    }
+    .rtz-field__label {
+      left: 44px;
+    }
+  }
+
+  &--has-right-icon {
+    .rtz-field__input {
+      padding-right: 44px;
+    }
+  }
+}
+
+// ── Floating label ────────────────────────────────────────────
+.rtz-field__label {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-muted);
+  pointer-events: none;
+  transition:
+    top 0.2s ease,
+    transform 0.2s ease,
+    font-size 0.2s ease,
+    color 0.2s ease;
+  white-space: nowrap;
+  z-index: 1;
+  background: transparent;
+  padding: 0 3px;
+
+  // Textarea: start from top instead of center
+  .rtz-field:has(.rtz-field__textarea) & {
+    top: 20px;
+    transform: none;
+  }
+
+  &--floating {
+    top: 0;
+    transform: translateY(-50%) !important; // Pull above border line
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-primary);
+    background: var(--color-surface);
+    padding: 0 4px;
+    border-radius: 2px;
+  }
+
+  .rtz-field--invalid & {
+    color: var(--color-error-text);
+  }
+
+  .rtz-field--valid & {
+    color: var(--color-success-text);
+  }
+
+  .rtz-field--disabled & {
+    color: var(--color-text-muted);
+  }
+}
+
+.rtz-field__required {
+  color: var(--color-error);
+}
+
+// ── Native input / textarea ───────────────────────────────────
+.rtz-field__input {
+  // Reset
+  appearance: none;
+  -webkit-appearance: none;
+  border: none;
+  outline: none;
+  background: transparent;
+  width: 100%;
+  min-height: 52px;
+  padding: 20px 16px 8px;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-regular);
+  color: var(--color-text-primary);
+  line-height: var(--line-height-normal);
+  caret-color: var(--color-primary);
+  transition: color 0.2s ease;
+
+  // iOS: prevent font zoom on focus (must be >= 16px)
+  @media (max-width: 768px) {
+    font-size: 16px;
+  }
+
+  &::placeholder {
+    color: transparent; // Hide placeholder — only label acts as placeholder
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+  }
+}
+
+.rtz-field__textarea {
+  min-height: 100px;
+  resize: vertical;
+  padding-top: 28px; // More top padding so label has room
+  line-height: 1.6;
+}
+
+// ── Icons ─────────────────────────────────────────────────────
+.rtz-field__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-text-muted);
+  pointer-events: none;
+  z-index: 1;
+
+  .material-icons {
+    font-size: 20px;
+    width: 20px;
+    height: 20px;
+    display: block;
+  }
+
+  &--left {
+    left: 14px;
+  }
+
+  &--right {
+    right: 12px;
+  }
+
+  .rtz-field--focused & {
+    color: var(--color-primary);
+  }
+}
+
+// ── Right-action buttons (clear, password toggle) ─────────────
+.rtz-field__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+}
+
+.rtz-field__btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  transition: color 0.15s ease, background-color 0.15s ease;
+
+  &:hover {
+    background: var(--brand-primary-10);
+    color: var(--color-primary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
+  .material-icons {
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+    display: block;
+  }
+
+  &--password {
+    color: var(--color-text-muted);
+  }
+
+  &--clear {
+    color: var(--color-text-muted);
+  }
+}
+
+.rtz-field__status {
+  display: flex;
+  align-items: center;
+
+  .material-icons {
+    font-size: 18px;
+    display: block;
+  }
+
+  &--valid .material-icons {
+    color: var(--color-success);
+  }
+}
+
+// ── Meta row (messages + counter) ────────────────────────────
+.rtz-field__meta {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  min-height: 20px;
+  margin-top: 5px;
+  padding: 0 4px;
+  gap: 8px;
+}
+
+.rtz-field__messages {
+  flex: 1;
+}
+
+.rtz-field__error {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-size-xs);
+  color: var(--color-error-text);
+  line-height: 1.4;
+}
+
+.rtz-field__error-icon {
+  font-size: 14px !important; /* Material icon inside text — needs override to match x-height */
+  width: 14px !important;
+  height: 14px !important;
+  flex-shrink: 0;
+}
+
+.rtz-field__hint {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  line-height: 1.4;
+}
+
+.rtz-field__counter {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+
+  &--over {
+    color: var(--color-error-text);
+    font-weight: var(--font-weight-semibold);
+  }
+}

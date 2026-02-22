@@ -18,7 +18,7 @@
       font-weight: 500;
 
       mat-icon {
-        font-size: 32px;
+        font-size: var(--font-size-2xl);
         width: 32px;
         height: 32px;
       }
@@ -36,7 +36,7 @@
     p {
       color: inherit;
       opacity: 0.6;
-      font-size: 16px;
+      font-size: var(--font-size-base);
     }
   }
 
@@ -54,7 +54,7 @@
     }
 
     h3 {
-      font-size: 24px;
+      font-size: var(--font-size-xl);
       font-weight: 500;
       margin-bottom: 8px;
       color: inherit;
@@ -62,7 +62,7 @@
     }
 
     p {
-      font-size: 16px;
+      font-size: var(--font-size-base);
       color: inherit;
       opacity: 0.6;
     }
@@ -111,13 +111,13 @@
         }
 
         mat-card-title {
-          font-size: 18px;
+          font-size: var(--font-size-lg);
           font-weight: 500;
           margin-bottom: 4px;
         }
 
         mat-card-subtitle {
-          font-size: 14px;
+          font-size: var(--font-size-sm);
           color: inherit;
           opacity: 0.6;
         }
@@ -133,7 +133,7 @@
         flex-shrink: 0;
 
         mat-icon {
-          font-size: 18px;
+          font-size: var(--font-size-lg);
           width: 18px;
           height: 18px;
           opacity: 0.7;
@@ -143,7 +143,7 @@
         ::ng-deep .countdown-timer {
           padding: 0;
           background: none !important;
-          font-size: 13px;
+          font-size: var(--font-size-sm);
         }
       }
 
@@ -152,12 +152,12 @@
         align-items: center;
         gap: 4px;
         padding: 8px 12px;
-        font-size: 13px;
+        font-size: var(--font-size-sm);
         font-weight: 500;
         border-radius: 16px;
 
         mat-icon {
-          font-size: 16px;
+          font-size: var(--font-size-base);
           width: 16px;
           height: 16px;
         }
@@ -214,7 +214,7 @@
             flex-direction: column;
 
             .label {
-              font-size: 12px;
+              font-size: var(--font-size-xs);
               color: inherit;
               opacity: 0.6;
               text-transform: uppercase;
@@ -222,7 +222,7 @@
             }
 
             .value {
-              font-size: 14px;
+              font-size: var(--font-size-sm);
               font-weight: 500;
               color: inherit;
               opacity: 0.87;

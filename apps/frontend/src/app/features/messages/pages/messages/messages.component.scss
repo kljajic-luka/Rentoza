@@ -70,7 +70,7 @@ $input-area-height: 80px;
     }
 
     .ws-status {
-      font-size: 10px;
+      font-size: var(--font-size-xs);
       width: 10px;
       height: 10px;
 
@@ -93,7 +93,7 @@ $input-area-height: 80px;
       border-radius: 12px;
       background: $accent;
       color: white;
-      font-size: 12px;
+      font-size: var(--font-size-xs);
       font-weight: 700;
     }
   }
@@ -138,14 +138,14 @@ $input-area-height: 80px;
 
   h2 {
     margin: 0 0 12px 0;
-    font-size: 24px;
+    font-size: var(--font-size-xl);
     font-weight: 600;
     color: #333;
   }
 
   p {
     margin: 0;
-    font-size: 16px;
+    font-size: var(--font-size-base);
     color: #666;
   }
 }
@@ -199,7 +199,7 @@ $input-area-height: 80px;
   padding: 12px 20px;
   background-color: #fff3cd;
   border-top: 1px solid #ffc107;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: #856404;
 
   mat-icon {
@@ -251,7 +251,7 @@ $input-area-height: 80px;
     }
 
     p {
-      font-size: 14px;
+      font-size: var(--font-size-sm);
     }
   }
 }

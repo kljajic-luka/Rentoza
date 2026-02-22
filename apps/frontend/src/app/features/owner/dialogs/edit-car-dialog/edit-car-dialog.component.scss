@@ -7,24 +7,24 @@
 .edit-form {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: var(--space-3);
 }
 
 .form-section {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: var(--space-2);
 
   h3 {
-    margin: 0 0 0.5rem 0;
-    font-size: 1.125rem;
+    margin: 0 0 var(--space-1) 0;
+    font-size: var(--font-size-lg);
     font-weight: 600;
     opacity: 0.9; // Theme-agnostic: works in both light and dark modes
   }
 
   h4 {
-    margin: 0.5rem 0 0.25rem 0;
-    font-size: 0.875rem;
+    margin: var(--space-1) 0 0.25rem 0;
+    font-size: var(--font-size-sm);
     font-weight: 500;
     opacity: 0.8; // Theme-agnostic: works in both light and dark modes
   }
@@ -33,7 +33,7 @@
 .form-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 1rem;
+  gap: var(--space-2);
 
   @media (max-width: 600px) {
     grid-template-columns: 1fr;
@@ -50,7 +50,7 @@
   mat-chip-set {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.5rem;
+    gap: var(--space-1);
   }
 
   mat-chip-option {
@@ -73,13 +73,13 @@
 }
 
 mat-dialog-content {
-  padding: 1.5rem;
+  padding: var(--space-3);
   max-height: calc(90vh - 150px);
   overflow-y: auto;
 }
 
 mat-dialog-actions {
-  padding: 1rem 1.5rem;
+  padding: var(--space-2) var(--space-3);
   border-top: 1px solid rgba(0, 0, 0, 0.12);
 
   button {

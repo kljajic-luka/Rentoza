@@ -1,0 +1,15 @@
+<button
+  [type]="type"
+  [ngClass]="classes"
+  [attr.aria-label]="ariaLabel || null"
+  [attr.aria-busy]="loading ? 'true' : null"
+  [attr.disabled]="disabled || loading ? '' : null"
+  class="btn"
+  (click)="handleClick($event)"
+>
+  <span class="btn__spinner" aria-hidden="true" *ngIf="loading"></span>
+  <span class="btn__content" [class.btn__content--hidden]="loading">
+    <ng-content></ng-content>
+  </span>
+  <span class="btn__loading-label" *ngIf="loading" aria-live="polite">Učitavanje...</span>
+</button>

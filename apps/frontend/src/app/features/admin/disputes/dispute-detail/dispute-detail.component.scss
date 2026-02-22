@@ -28,7 +28,7 @@
 
   .back-button {
     mat-icon {
-      font-size: 24px;
+      font-size: var(--font-size-xl);
     }
   }
 
@@ -41,7 +41,7 @@
   }
 
   mat-chip {
-    font-size: 13px;
+    font-size: var(--font-size-sm);
   }
 }
 
@@ -63,7 +63,7 @@ mat-card {
 
   mat-card-header {
     mat-card-title {
-      font-size: 18px;
+      font-size: var(--font-size-lg);
       font-weight: 600;
       color: #1a237e;
     }
@@ -96,7 +96,7 @@ mat-card {
     &.amount {
       font-weight: 600;
       color: #1a237e;
-      font-size: 16px;
+      font-size: var(--font-size-base);
     }
   }
 }
@@ -137,7 +137,7 @@ mat-card {
   .photo-group {
     h4 {
       margin: 0 0 8px;
-      font-size: 15px;
+      font-size: var(--font-size-base);
       font-weight: 600;
       color: #1a237e;
     }
@@ -148,7 +148,7 @@ mat-card {
       background: #f5f5f5;
       border-radius: 4px;
       font-family: monospace;
-      font-size: 13px;
+      font-size: var(--font-size-sm);
       color: #666;
       white-space: pre-wrap;
       word-break: break-all;
@@ -166,7 +166,7 @@ mat-card {
   button {
     min-width: 200px;
     height: 48px;
-    font-size: 15px;
+    font-size: var(--font-size-base);
 
     mat-icon {
       margin-right: 8px;

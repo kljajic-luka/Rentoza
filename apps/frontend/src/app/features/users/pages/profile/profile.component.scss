@@ -1,7 +1,7 @@
 .profile {
   display: flex;
   flex-direction: column;
-  gap: 2rem;
+  gap: var(--space-4);
 }
 
 .profile__header {
@@ -9,8 +9,8 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 1.5rem;
-  padding: 1.8rem 2rem;
+  gap: var(--space-3);
+  padding: 1.8rem var(--space-4);
   border-radius: 24px;
   background: var(--color-surface-muted);
   border: 1px solid var(--color-border-subtle);
@@ -31,7 +31,7 @@
   font-size: 1.9rem;
   font-weight: 700;
   color: var(--color-text-inverse);
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.35), rgba(99, 102, 241, 0.25));
+  background: linear-gradient(135deg, rgba(89, 60, 251, 0.35), rgba(89, 60, 251, 0.25));
 }
 
 .profile__headline h1 {
@@ -40,7 +40,7 @@
 }
 
 .profile__verification {
-  margin: 0.5rem 0;
+  margin: var(--space-1) 0;
 }
 
 .profile__meta {
@@ -53,8 +53,8 @@
 .profile__meta-item {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  font-size: 0.95rem;
+  gap: var(--space-1);
+  font-size: var(--font-size-base);
   color: var(--color-text-muted);
 }
 
@@ -85,13 +85,13 @@
 }
 
 .profile__stat-card--accent {
-  border: 1px solid rgba(59, 130, 246, 0.35);
-  box-shadow: 0 16px 40px -18px rgba(37, 99, 235, 0.35);
+  border: 1px solid rgba(89, 60, 251, 0.35);
+  box-shadow: 0 16px 40px -18px rgba(89, 60, 251, 0.35);
 }
 
 .profile__stat-value {
   display: block;
-  font-size: 2rem;
+  font-size: var(--font-size-2xl);
   font-weight: 700;
   color: var(--color-text-primary);
 }
@@ -99,7 +99,7 @@
 .profile__stat-label {
   display: block;
   margin-top: 0.35rem;
-  font-size: 0.75rem;
+  font-size: var(--font-size-xs);
   letter-spacing: 0.15em;
   text-transform: uppercase;
   color: var(--color-text-muted);
@@ -108,7 +108,7 @@
 .profile__body {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 2rem;
+  gap: var(--space-4);
   align-items: start;
   max-width: calc(100% - 340px);
 }
@@ -119,7 +119,7 @@
 }
 
 .profile__role {
-  margin: 0 0 1rem;
+  margin: 0 0 var(--space-2);
   font-weight: 600;
   color: var(--color-text-primary);
 }
@@ -127,17 +127,17 @@
 .profile__roles {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: var(--space-1);
   margin-top: 1.2rem;
 }
 
 .profile__role-chip {
   padding: 0.35rem 0.9rem;
   border-radius: 999px;
-  background: rgba(59, 130, 246, 0.12);
-  color: var(--color-primary, #2563eb);
+  background: rgba(89, 60, 251, 0.12);
+  color: var(--color-primary, var(--brand-primary-dark));
   font-weight: 600;
-  font-size: 0.85rem;
+  font-size: var(--font-size-sm);
 }
 
 .profile__reviews {
@@ -154,17 +154,17 @@
 
 .profile__reviews-header h2 {
   margin: 0;
-  font-size: 1.5rem;
+  font-size: var(--font-size-xl);
 }
 
 .profile__reviews-count {
-  font-size: 0.95rem;
+  font-size: var(--font-size-base);
   color: var(--color-text-muted);
 }
 
 .profile__review-card {
   border-radius: 20px;
-  padding: 1.5rem;
+  padding: var(--space-3);
   box-shadow: var(--shadow-soft, 0 12px 32px -22px rgba(15, 23, 42, 0.2));
 }
 
@@ -172,7 +172,7 @@
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
-  gap: 1rem;
+  gap: var(--space-2);
 }
 
 .profile__review-avatar {
@@ -183,7 +183,7 @@
   display: grid;
   place-items: center;
   font-weight: 600;
-  font-size: 1.2rem;
+  font-size: var(--font-size-lg);
 }
 
 .profile__review-info h3 {
@@ -192,7 +192,7 @@
 }
 
 .profile__review-date {
-  font-size: 0.85rem;
+  font-size: var(--font-size-sm);
   color: var(--color-text-muted);
 }
 
@@ -204,7 +204,7 @@
 }
 
 .profile__review-rating mat-icon {
-  font-size: 1.2rem;
+  font-size: var(--font-size-lg);
   height: 1.2rem;
   width: 1.2rem;
 }
@@ -220,7 +220,7 @@
   flex-direction: column;
   align-items: center;
   gap: 0.75rem;
-  padding: 2.5rem 1rem;
+  padding: var(--space-5) var(--space-2);
   border-radius: 18px;
   border: 1px dashed rgba(148, 163, 184, 0.35);
   color: var(--color-text-muted);
@@ -234,7 +234,7 @@
 
 // Edit Profile Panel - Turo-inspired trust-first design
 .profile__edit-panel {
-  margin: 2rem 0;
+  margin: var(--space-4) 0;
   animation: slideDown 0.3s ease-out;
 }
 
@@ -255,24 +255,24 @@
   background: var(--color-surface);
 
   mat-card-header {
-    padding: 2rem 2rem 1rem;
+    padding: var(--space-4) var(--space-4) var(--space-2);
 
     mat-card-title {
       display: flex;
       align-items: center;
       gap: 0.75rem;
-      font-size: 1.5rem;
+      font-size: var(--font-size-xl);
       font-weight: 700;
       color: var(--color-text-primary);
 
       mat-icon {
-        color: var(--color-primary, #2563eb);
+        color: var(--color-primary, var(--brand-primary-dark));
       }
     }
 
     mat-card-subtitle {
       margin-top: 0.5rem;
-      font-size: 0.95rem;
+      font-size: var(--font-size-base);
       color: var(--color-text-muted);
     }
   }
@@ -281,7 +281,7 @@
 .edit-form {
   display: flex;
   flex-direction: column;
-  gap: 2rem;
+  gap: var(--space-4);
 
   &__section {
     display: flex;
@@ -294,7 +294,7 @@
     align-items: center;
     gap: 0.65rem;
     margin: 0;
-    font-size: 1.1rem;
+    font-size: var(--font-size-lg);
     font-weight: 600;
     color: var(--color-text-primary);
 
@@ -308,20 +308,20 @@
 
   &__section-subtitle {
     margin: 0;
-    font-size: 0.9rem;
+    font-size: var(--font-size-sm);
     color: var(--color-text-muted);
   }
 
   &__readonly-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 1rem;
+    gap: var(--space-2);
   }
 
   &__fields {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 1.5rem;
+    gap: var(--space-3);
   }
 
   &__field {
@@ -337,7 +337,7 @@
 .readonly-field {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: var(--space-2);
   padding: 1.25rem;
   border-radius: 16px;
   background: var(--color-surface-muted);
@@ -351,7 +351,7 @@
 
   > mat-icon:first-child {
     color: var(--color-text-muted);
-    font-size: 24px;
+    font-size: var(--font-size-xl);
     width: 24px;
     height: 24px;
   }
@@ -364,14 +364,14 @@
   }
 
   &__label {
-    font-size: 0.75rem;
+    font-size: var(--font-size-xs);
     letter-spacing: 0.05em;
     text-transform: uppercase;
     color: var(--color-text-muted);
   }
 
   &__value {
-    font-size: 1rem;
+    font-size: var(--font-size-base);
     font-weight: 600;
     color: var(--color-text-primary);
     opacity: 0.7;
@@ -389,8 +389,8 @@
 .edit-card__actions {
   display: flex;
   justify-content: flex-end;
-  gap: 1rem;
-  padding: 1.5rem 2rem;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
   border-top: 1px solid var(--color-border-subtle);
 
   button {
@@ -403,7 +403,7 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 0.5rem;
+      gap: var(--space-1);
 
       mat-progress-spinner {
         display: inline-block;
@@ -415,7 +415,7 @@
 // Snackbar styling
 ::ng-deep {
   .snackbar-success {
-    background-color: #10b981 !important;
+    background-color: var(--color-success) !important;
     color: white !important;
 
     .mat-mdc-snack-bar-label {
@@ -424,7 +424,7 @@
   }
 
   .snackbar-error {
-    background-color: #ef4444 !important;
+    background-color: var(--color-error) !important;
     color: white !important;
 
     .mat-mdc-snack-bar-label {
@@ -433,7 +433,7 @@
   }
 
   .snackbar-info {
-    background-color: #3b82f6 !important;
+    background-color: var(--color-primary) !important;
     color: white !important;
 
     .mat-mdc-snack-bar-label {
@@ -443,7 +443,7 @@
 }
 
 .loading {
-  padding: 3rem 0;
+  padding: var(--space-6) 0;
 }
 
 @media (max-width: 1024px) {
@@ -457,10 +457,10 @@
   display: flex;
   align-items: center;
   gap: 0.25rem;
-  color: var(--color-success, #22c55e);
+  color: var(--color-success, var(--color-success));
   
   .verified-icon {
-    font-size: 1rem;
+    font-size: var(--font-size-base);
     width: 1rem;
     height: 1rem;
   }
@@ -469,8 +469,8 @@
 .age-display {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1rem;
+  gap: var(--space-1);
+  padding: 0.75rem var(--space-2);
   background: var(--color-surface-muted);
   border-radius: 12px;
   margin-top: 0.5rem;
@@ -484,18 +484,18 @@
   
   .age-label {
     color: var(--color-text-muted);
-    font-size: 0.875rem;
+    font-size: var(--font-size-sm);
   }
   
   .age-value {
-    font-size: 1.125rem;
+    font-size: var(--font-size-lg);
     font-weight: 600;
     color: var(--color-text-primary);
   }
   
   .age-suffix {
     color: var(--color-text-muted);
-    font-size: 0.875rem;
+    font-size: var(--font-size-sm);
   }
 }
 

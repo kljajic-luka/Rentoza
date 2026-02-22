@@ -1,0 +1,138 @@
+<!-- ─── SKELETON STATE ─────────────────────────────────────────── -->
+<ng-container *ngIf="loading; else cardContent">
+  <article class="car-card car-card--skeleton" aria-busy="true" aria-label="Učitavanje vozila">
+    <div class="car-card__media car-card__media--skeleton"></div>
+    <div class="car-card__content">
+      <div class="skeleton-line skeleton-line--title"></div>
+      <div class="skeleton-line skeleton-line--sub"></div>
+      <div class="skeleton-pills">
+        <div class="skeleton-pill"></div>
+        <div class="skeleton-pill"></div>
+        <div class="skeleton-pill"></div>
+      </div>
+      <div class="skeleton-line skeleton-line--price"></div>
+    </div>
+  </article>
+</ng-container>
+
+<!-- ─── REAL CARD ──────────────────────────────────────────────── -->
+<ng-template #cardContent>
+  <article
+    class="car-card"
+    [routerLink]="['/cars', car.id]"
+    role="article"
+    [attr.aria-label]="car.year + ' ' + car.make + ' ' + car.model"
+  >
+    <!-- IMAGE AREA ───────────────────────────────────────────── -->
+    <div class="car-card__media">
+      <!-- Multi-image swipeable carousel -->
+      <div class="image-carousel" *ngIf="car.imageUrls?.length; else singleImage">
+        <div class="carousel-track">
+          <img
+            *ngFor="let url of car.imageUrls; let i = index"
+            [src]="url"
+            [alt]="car.make + ' ' + car.model + ' - slika ' + (i + 1)"
+            loading="lazy"
+            class="carousel-image"
+            (error)="handleImageError($event)"
+          />
+        </div>
+        <div class="carousel-dots" *ngIf="car.imageUrls && car.imageUrls.length > 1">
+          <span
+            *ngFor="let _ of car.imageUrls; let i = index"
+            class="dot"
+            [class.active]="i === 0"
+          ></span>
+        </div>
+      </div>
+
+      <!-- Single image fallback -->
+      <ng-template #singleImage>
+        <img
+          *ngIf="car.imageUrl; else placeholder"
+          [src]="car.imageUrl"
+          [alt]="car.make + ' ' + car.model"
+          loading="lazy"
+          class="single-image"
+          (error)="handleImageError($event)"
+        />
+        <!-- Placeholder if no image -->
+        <ng-template #placeholder>
+          <div class="image-placeholder">
+            <mat-icon aria-hidden="true">directions_car</mat-icon>
+          </div>
+        </ng-template>
+      </ng-template>
+
+      <!-- Year badge (top-left) -->
+      <span class="card-badge card-badge--year">{{ car.year }}</span>
+
+      <!-- Instant book badge (top-right area) -->
+      <span
+        *ngIf="car.instantBookEnabled"
+        class="card-badge card-badge--instant"
+        aria-label="Trenutna rezervacija dostupna"
+      >
+        <mat-icon aria-hidden="true">bolt</mat-icon>
+        Instant
+      </span>
+
+      <!-- Favorite button (top-right, stop propagation to card link) -->
+      <div class="favorite-zone" (click)="$event.stopPropagation(); $event.preventDefault()">
+        <app-favorite-button [carId]="+car.id"></app-favorite-button>
+      </div>
+    </div>
+
+    <!-- CONTENT AREA ─────────────────────────────────────────── -->
+    <div class="car-card__content">
+
+      <!-- Make + Model + Rating row -->
+      <div class="car-card__header">
+        <h3 class="car-card__title">{{ car.make }} {{ car.model }}</h3>
+        <div *ngIf="car.rating" class="car-card__rating" [attr.aria-label]="'Ocena: ' + car.rating + ' od 5'">
+          <mat-icon aria-hidden="true">star</mat-icon>
+          <span class="rating-value">{{ car.rating.toFixed(1) }}</span>
+        </div>
+      </div>
+
+      <!-- Feature pills row -->
+      <div class="car-card__pills">
+        <span *ngIf="car.transmissionType" class="feature-pill">
+          <mat-icon aria-hidden="true">settings</mat-icon>
+          {{ car.transmissionType | translateEnum }}
+        </span>
+        <span *ngIf="car.seats" class="feature-pill">
+          <mat-icon aria-hidden="true">airline_seat_recline_normal</mat-icon>
+          {{ car.seats }} sed.
+        </span>
+        <span *ngIf="car.fuelType" class="feature-pill">
+          <mat-icon aria-hidden="true">local_gas_station</mat-icon>
+          {{ car.fuelType | translateEnum }}
+        </span>
+      </div>
+
+      <!-- Location meta -->
+      <div class="car-card__location" *ngIf="car.location">
+        <mat-icon aria-hidden="true">place</mat-icon>
+        <span>{{ car.location }}</span>
+      </div>
+
+      <!-- Divider -->
+      <hr class="car-card__divider" aria-hidden="true" />
+
+      <!-- Price + CTA row -->
+      <div class="car-card__footer">
+        <div class="car-card__price">
+          <span class="price-amount">{{ car.pricePerDay | number:'1.0-0' }}</span>
+          <span class="price-currency">RSD</span>
+          <span class="price-unit">/dan</span>
+        </div>
+        <!-- CTA: uses routerLink on the whole card, but this provides visual affordance -->
+        <span class="car-card__cta-arrow" aria-hidden="true">
+          <mat-icon>arrow_forward</mat-icon>
+        </span>
+      </div>
+
+    </div>
+  </article>
+</ng-template>

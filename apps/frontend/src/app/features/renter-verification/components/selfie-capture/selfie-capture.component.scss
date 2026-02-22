@@ -1,7 +1,7 @@
 @use 'sass:color';
 
 // Design tokens
-$primary-color: #1976d2;
+$primary-color: var(--brand-primary-dark);
 $success-color: #4caf50;
 $warning-color: #ff9800;
 $error-color: #f44336;
@@ -38,7 +38,7 @@ $border-radius: 8px;
     }
 
     .label {
-      font-size: 18px;
+      font-size: var(--font-size-lg);
       font-weight: 600;
       color: $text-primary;
     }
@@ -50,7 +50,7 @@ $border-radius: 8px;
   }
 
   .description {
-    font-size: 14px;
+    font-size: var(--font-size-sm);
     color: $text-secondary;
     line-height: 1.5;
     margin: 0;
@@ -69,7 +69,7 @@ $border-radius: 8px;
 
   mat-checkbox {
     .consent-text {
-      font-size: 14px;
+      font-size: var(--font-size-sm);
       line-height: 1.4;
 
       .learn-more {
@@ -93,12 +93,12 @@ $border-radius: 8px;
 
     .privacy-icon {
       color: var(--mat-sys-tertiary);
-      font-size: 24px;
+      font-size: var(--font-size-xl);
       flex-shrink: 0;
     }
 
     .privacy-details {
-      font-size: 13px;
+      font-size: var(--font-size-sm);
       color: var(--mat-sys-on-surface-variant);
 
       strong {
@@ -164,11 +164,11 @@ $border-radius: 8px;
     justify-content: center;
     gap: 8px;
     margin-top: 16px;
-    font-size: 13px;
+    font-size: var(--font-size-sm);
     color: $warning-color;
 
     mat-icon {
-      font-size: 18px;
+      font-size: var(--font-size-lg);
       width: 18px;
       height: 18px;
     }
@@ -257,7 +257,7 @@ $border-radius: 8px;
         }
 
         .quality-label {
-          font-size: 12px;
+          font-size: var(--font-size-xs);
           white-space: nowrap;
         }
       }
@@ -272,10 +272,10 @@ $border-radius: 8px;
           display: flex;
           align-items: center;
           gap: 4px;
-          font-size: 12px;
+          font-size: var(--font-size-xs);
 
           mat-icon {
-            font-size: 14px;
+            font-size: var(--font-size-sm);
             width: 14px;
             height: 14px;
           }
@@ -292,7 +292,7 @@ $border-radius: 8px;
     padding: 12px;
     background: var(--mat-sys-surface-container-high);
     border-radius: $border-radius;
-    font-size: 14px;
+    font-size: var(--font-size-sm);
     color: var(--mat-sys-on-surface);
 
     mat-icon {
@@ -310,7 +310,7 @@ $border-radius: 8px;
       height: 72px;
 
       mat-icon {
-        font-size: 32px;
+        font-size: var(--font-size-2xl);
         width: 32px;
         height: 32px;
       }
@@ -343,7 +343,7 @@ $border-radius: 8px;
     }
 
     .upload-icon {
-      font-size: 48px;
+      font-size: var(--font-size-3xl);
       width: 48px;
       height: 48px;
       color: $primary-color;
@@ -352,13 +352,13 @@ $border-radius: 8px;
 
     .drop-text {
       margin: 16px 0 8px;
-      font-size: 16px;
+      font-size: var(--font-size-base);
       color: $text-primary;
     }
 
     .file-hints {
       margin: 0;
-      font-size: 13px;
+      font-size: var(--font-size-sm);
       color: $text-secondary;
     }
   }
@@ -465,7 +465,7 @@ $border-radius: 8px;
   }
 
   span {
-    font-size: 14px;
+    font-size: var(--font-size-sm);
     line-height: 1.4;
   }
 }

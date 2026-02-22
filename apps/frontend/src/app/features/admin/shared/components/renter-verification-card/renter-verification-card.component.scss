@@ -31,7 +31,7 @@ $breakpoint-lg: 992px;
 }
 
 .header-icon {
-  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  background: linear-gradient(135deg, var(--color-primary), var(--brand-primary-light));
   color: white;
   border-radius: 12px;
   padding: 8px;
@@ -59,7 +59,7 @@ $breakpoint-lg: 992px;
   text-align: center;
   
   mat-icon {
-    font-size: 48px;
+    font-size: var(--font-size-3xl);
     width: 48px;
     height: 48px;
     opacity: 0.5;
@@ -83,7 +83,7 @@ $breakpoint-lg: 992px;
 }
 
 .text-warn {
-  color: #d97706 !important;
+  color: var(--brand-warning-text) !important;
 }
 
 .text-error {
@@ -97,7 +97,7 @@ $breakpoint-lg: 992px;
 }
 
 .section-label {
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -157,10 +157,10 @@ $breakpoint-lg: 992px;
   justify-content: center;
   
   .doc-icon {
-    font-size: 32px;
+    font-size: var(--font-size-2xl);
     width: 32px;
     height: 32px;
-    color: #4f46e5;
+    color: var(--brand-primary-dark);
   }
 }
 
@@ -172,12 +172,12 @@ $breakpoint-lg: 992px;
 
 .doc-type {
   font-weight: 600;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--admin-strong);
 }
 
 .doc-status {
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   
   &.doc-status-pending {
@@ -216,7 +216,7 @@ $breakpoint-lg: 992px;
   font-weight: 600;
   
   mat-icon {
-    font-size: 12px;
+    font-size: var(--font-size-xs);
     width: 12px;
     height: 12px;
   }
@@ -224,18 +224,18 @@ $breakpoint-lg: 992px;
 
 // Confidence levels
 .confidence-low {
-  background: rgba(239, 68, 68, 0.12);
+  background: rgba(255, 90, 95, 0.12);
   color: #b91c1c;
 }
 
 .confidence-medium {
-  background: rgba(245, 158, 11, 0.12);
+  background: rgba(245, 166, 35, 0.12);
   color: #b45309;
 }
 
 .confidence-high {
-  background: rgba(34, 197, 94, 0.12);
-  color: #15803d;
+  background: rgba(0, 196, 140, 0.12);
+  color: var(--brand-success-text);
 }
 
 .confidence-excellent {
@@ -251,7 +251,7 @@ $breakpoint-lg: 992px;
   }
   
   &.failed {
-    background: rgba(239, 68, 68, 0.12);
+    background: rgba(255, 90, 95, 0.12);
     color: #b91c1c;
   }
 }
@@ -265,7 +265,7 @@ $breakpoint-lg: 992px;
   margin-top: auto;
   
   mat-icon {
-    font-size: 14px;
+    font-size: var(--font-size-sm);
     width: 14px;
     height: 14px;
   }
@@ -278,15 +278,15 @@ $breakpoint-lg: 992px;
   align-items: center;
   gap: 8px;
   padding: 12px 16px;
-  background: rgba(245, 158, 11, 0.1);
-  border: 1px solid rgba(245, 158, 11, 0.3);
+  background: rgba(245, 166, 35, 0.1);
+  border: 1px solid rgba(245, 166, 35, 0.3);
   border-radius: 8px;
   color: #b45309;
-  font-size: 13px;
+  font-size: var(--font-size-sm);
   margin: 16px 0;
   
   mat-icon {
-    font-size: 18px;
+    font-size: var(--font-size-lg);
     width: 18px;
     height: 18px;
   }
@@ -324,11 +324,11 @@ $breakpoint-lg: 992px;
   gap: 8px;
   padding: 12px 16px;
   border-radius: 8px;
-  font-size: 13px;
+  font-size: var(--font-size-sm);
   margin-top: 16px;
   
   mat-icon {
-    font-size: 18px;
+    font-size: var(--font-size-lg);
     width: 18px;
     height: 18px;
   }
@@ -340,14 +340,14 @@ $breakpoint-lg: 992px;
   }
   
   &.error {
-    background: rgba(239, 68, 68, 0.08);
-    border: 1px solid rgba(239, 68, 68, 0.2);
+    background: rgba(255, 90, 95, 0.08);
+    border: 1px solid rgba(255, 90, 95, 0.2);
     color: #b91c1c;
   }
   
   &.warn {
-    background: rgba(245, 158, 11, 0.08);
-    border: 1px solid rgba(245, 158, 11, 0.2);
+    background: rgba(245, 166, 35, 0.08);
+    border: 1px solid rgba(245, 166, 35, 0.2);
     color: #b45309;
   }
 }
@@ -355,7 +355,7 @@ $breakpoint-lg: 992px;
 // ==================== STATUS BADGE IN HEADER ====================
 
 .status-icon {
-  font-size: 14px !important;
+  font-size: var(--font-size-sm) !important;
   width: 14px !important;
   height: 14px !important;
   margin-right: 4px;

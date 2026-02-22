@@ -52,21 +52,21 @@
 
       h3 {
         margin: 0 0 4px;
-        font-size: 14px;
+        font-size: var(--font-size-sm);
         font-weight: 500;
         color: #666;
       }
 
       .amount {
         margin: 0 0 4px;
-        font-size: 24px;
+        font-size: var(--font-size-xl);
         font-weight: 600;
         color: #1a237e;
       }
 
       small {
         color: #999;
-        font-size: 12px;
+        font-size: var(--font-size-xs);
       }
     }
   }
@@ -151,14 +151,14 @@
 
       small {
         color: #999;
-        font-size: 12px;
+        font-size: var(--font-size-xs);
       }
     }
 
     .amount-cell {
       font-weight: 600;
       color: #1a237e;
-      font-size: 15px;
+      font-size: var(--font-size-base);
     }
   }
 }

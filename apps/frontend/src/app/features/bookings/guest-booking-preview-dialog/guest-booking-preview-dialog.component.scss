@@ -66,14 +66,14 @@ mat-dialog-content {
 
     h3 {
       margin: 0 0 4px 0;
-      font-size: 1.5rem;
+      font-size: var(--font-size-xl);
       font-weight: 500;
     }
 
     .join-date {
       margin: 0 0 12px 0;
       color: rgba(0, 0, 0, 0.6);
-      font-size: 0.875rem;
+      font-size: var(--font-size-sm);
     }
 
     // Verification badges (ID, Phone, Email)
@@ -84,13 +84,13 @@ mat-dialog-content {
       margin-bottom: 8px;
 
       .verified-badge {
-        font-size: 0.7rem;
+        font-size: var(--font-size-xs);
         height: 22px;
         background-color: #e8f5e9;
         color: #2e7d32;
         
         mat-icon {
-          font-size: 14px;
+          font-size: var(--font-size-sm);
           width: 14px;
           height: 14px;
           margin-right: 2px;
@@ -106,13 +106,13 @@ mat-dialog-content {
       gap: 6px;
 
       .achievement-badge {
-        font-size: 0.7rem;
+        font-size: var(--font-size-xs);
         height: 22px;
         background-color: #fff3e0;
         color: #e65100;
         
         mat-icon {
-          font-size: 14px;
+          font-size: var(--font-size-sm);
           width: 14px;
           height: 14px;
           margin-right: 4px;
@@ -139,7 +139,7 @@ mat-dialog-content {
     text-align: center;
 
     .stat-value {
-      font-size: 1.1rem;
+      font-size: var(--font-size-lg);
       font-weight: 600;
       display: flex;
       align-items: center;
@@ -148,7 +148,7 @@ mat-dialog-content {
       // Age verification indicator
       &.verified {
         .verified-icon {
-          font-size: 14px;
+          font-size: var(--font-size-sm);
           width: 14px;
           height: 14px;
           color: #2e7d32;
@@ -164,7 +164,7 @@ mat-dialog-content {
       &.warning { color: #d32f2f; }
 
       .star-icon {
-        font-size: 16px;
+        font-size: var(--font-size-base);
         width: 16px;
         height: 16px;
         color: #fbc02d;
@@ -172,7 +172,7 @@ mat-dialog-content {
     }
 
     .stat-label {
-      font-size: 0.7rem;
+      font-size: var(--font-size-xs);
       color: rgba(0, 0, 0, 0.6);
       margin-top: 4px;
       text-transform: uppercase;
@@ -190,14 +190,14 @@ mat-dialog-content {
 
   h4 {
     margin: 0 0 12px 0;
-    font-size: 0.9rem;
+    font-size: var(--font-size-sm);
     font-weight: 500;
     display: flex;
     align-items: center;
     gap: 8px;
 
     mat-icon {
-      font-size: 18px;
+      font-size: var(--font-size-lg);
       width: 18px;
       height: 18px;
       color: rgba(0, 0, 0, 0.6);
@@ -214,7 +214,7 @@ mat-dialog-content {
       flex-wrap: wrap;
       align-items: center;
       gap: 8px;
-      font-size: 0.875rem;
+      font-size: var(--font-size-sm);
       color: rgba(0, 0, 0, 0.87);
 
       .license-category {
@@ -224,10 +224,10 @@ mat-dialog-content {
         font-weight: 500;
 
         mat-icon {
-          font-size: 16px;
+          font-size: var(--font-size-base);
           width: 16px;
           height: 16px;
-          color: #1976d2;
+          color: var(--brand-primary-dark);
         }
       }
 
@@ -249,11 +249,11 @@ mat-dialog-content {
         gap: 4px;
         padding: 4px 10px;
         border-radius: 16px;
-        font-size: 0.75rem;
+        font-size: var(--font-size-xs);
         font-weight: 500;
 
         mat-icon {
-          font-size: 14px;
+          font-size: var(--font-size-sm);
           width: 14px;
           height: 14px;
         }
@@ -275,7 +275,7 @@ mat-dialog-content {
       }
 
       .expiry-date {
-        font-size: 0.75rem;
+        font-size: var(--font-size-xs);
         color: rgba(0, 0, 0, 0.6);
       }
     }
@@ -285,14 +285,14 @@ mat-dialog-content {
 .trip-details {
   h4 {
     margin: 0 0 16px 0;
-    font-size: 0.9rem;
+    font-size: var(--font-size-sm);
     font-weight: 500;
     display: flex;
     align-items: center;
     gap: 8px;
 
     mat-icon {
-      font-size: 18px;
+      font-size: var(--font-size-lg);
       width: 18px;
       height: 18px;
       color: rgba(0, 0, 0, 0.6);
@@ -305,11 +305,11 @@ mat-dialog-content {
     gap: 12px;
     margin-bottom: 12px;
     color: rgba(0, 0, 0, 0.87);
-    font-size: 0.875rem;
+    font-size: var(--font-size-sm);
 
     mat-icon {
       color: rgba(0, 0, 0, 0.54);
-      font-size: 18px;
+      font-size: var(--font-size-lg);
       width: 18px;
       height: 18px;
     }
@@ -327,7 +327,7 @@ mat-dialog-content {
     border-radius: 4px;
 
     .message-label {
-      font-size: 0.75rem;
+      font-size: var(--font-size-xs);
       color: rgba(0, 0, 0, 0.6);
       margin: 0 0 4px 0;
       display: flex;
@@ -335,7 +335,7 @@ mat-dialog-content {
       gap: 6px;
 
       mat-icon {
-        font-size: 14px;
+        font-size: var(--font-size-sm);
         width: 14px;
         height: 14px;
       }
@@ -352,14 +352,14 @@ mat-dialog-content {
 .reviews-section {
   h4 {
     margin: 0 0 16px 0;
-    font-size: 0.9rem;
+    font-size: var(--font-size-sm);
     font-weight: 500;
     display: flex;
     align-items: center;
     gap: 8px;
 
     mat-icon {
-      font-size: 18px;
+      font-size: var(--font-size-lg);
       width: 18px;
       height: 18px;
       color: rgba(0, 0, 0, 0.6);
@@ -387,7 +387,7 @@ mat-dialog-content {
           display: flex;
           
           mat-icon {
-            font-size: 14px;
+            font-size: var(--font-size-sm);
             width: 14px;
             height: 14px;
             color: #e0e0e0;
@@ -401,7 +401,7 @@ mat-dialog-content {
 
       .review-text {
         margin: 0;
-        font-size: 0.875rem;
+        font-size: var(--font-size-sm);
         color: rgba(0, 0, 0, 0.87);
         line-height: 1.4;
       }
@@ -417,8 +417,8 @@ mat-dialog-content {
   padding: 12px 16px;
   background-color: #e3f2fd;
   border-radius: 8px;
-  color: #1565c0;
-  font-size: 0.875rem;
+  color: var(--brand-primary-dark);
+  font-size: var(--font-size-sm);
 
   mat-icon {
     font-size: 20px;
@@ -474,7 +474,7 @@ mat-dialog-content {
       color: rgba(255, 255, 255, 0.87); 
       
       .license-category {
-        mat-icon { color: #64b5f6; } // Lighter blue for dark mode
+        mat-icon { color: var(--brand-primary-light); } // Lighter blue for dark mode
       }
     }
     .license-country, .license-tenure { color: rgba(255, 255, 255, 0.7) !important; }
@@ -527,7 +527,7 @@ mat-dialog-content {
 
   .new-user-notice {
     background-color: rgba(30, 136, 229, 0.15);
-    color: #64b5f6;
+    color: var(--brand-primary-light);
   }
 
   /* DARK MODE FINAL PATCH — FORCE ALL MDC TEXT TO WHITE */

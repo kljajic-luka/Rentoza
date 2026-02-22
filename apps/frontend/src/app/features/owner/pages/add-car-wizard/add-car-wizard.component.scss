@@ -5,8 +5,8 @@
   &__header {
     display: flex;
     align-items: flex-start;
-    gap: 1rem;
-    padding: 2rem 1.5rem;
+    gap: var(--space-2);
+    padding: var(--space-4) var(--space-3);
     max-width: 1000px;
     margin: 0 auto;
 
@@ -15,15 +15,15 @@
     }
 
     h1 {
-      font-size: 2rem;
+      font-size: var(--font-size-2xl);
       font-weight: 700;
-      margin: 0.5rem 0;
+      margin: var(--space-1) 0;
       color: var(--color-text-primary);
     }
 
     .subtitle {
       color: var(--color-text-muted);
-      font-size: 1rem;
+      font-size: var(--font-size-base);
       margin: 0.25rem 0 0 0;
     }
   }
@@ -33,7 +33,7 @@
 .wizard-stepper {
   max-width: 1000px;
   margin: 0 auto;
-  padding: 0 1.5rem 3rem;
+  padding: 0 var(--space-3) var(--space-6);
   background: transparent !important;
 
   ::ng-deep {
@@ -46,7 +46,7 @@
       }
 
       .mat-step-icon-selected {
-        background: #3b82f6 !important;
+        background: var(--color-primary) !important;
         color: white !important;
       }
 
@@ -74,29 +74,29 @@
 .step-form {
   background: var(--color-surface);
   border-radius: 16px;
-  padding: 2rem;
+  padding: var(--space-4);
   box-shadow: var(--shadow-elevated);
   transition: background 200ms ease, box-shadow 200ms ease;
 }
 
 .step-title {
-  font-size: 1.5rem;
+  font-size: var(--font-size-xl);
   font-weight: 600;
   color: var(--color-text-primary);
-  margin: 0 0 0.5rem 0;
+  margin: 0 0 var(--space-1) 0;
 }
 
 .step-description {
   color: var(--color-text-muted);
-  font-size: 1rem;
-  margin: 0 0 2rem 0;
+  font-size: var(--font-size-base);
+  margin: 0 0 var(--space-4) 0;
 }
 
 // Form Layout
 .form-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 1.5rem;
+  gap: var(--space-3);
   margin-bottom: 1.5rem;
 }
 
@@ -114,7 +114,7 @@
 
   &__label {
     display: block;
-    font-size: 1rem;
+    font-size: var(--font-size-base);
     font-weight: 500;
     color: var(--color-text-primary);
     margin-bottom: 1rem;
@@ -122,7 +122,7 @@
 
   &__options {
     display: flex;
-    gap: 2rem;
+    gap: var(--space-4);
 
     ::ng-deep .mat-mdc-radio-button {
       color: var(--color-text-primary);
@@ -138,14 +138,14 @@
     display: flex;
     align-items: center;
     gap: 0.75rem;
-    font-size: 1.1rem;
+    font-size: var(--font-size-lg);
     font-weight: 600;
     color: var(--color-text-primary);
-    margin: 0 0 1rem 0;
+    margin: 0 0 var(--space-2) 0;
 
     mat-icon {
       color: var(--icon-color);
-      font-size: 1.5rem;
+      font-size: var(--font-size-xl);
       width: 1.5rem;
       height: 1.5rem;
     }
@@ -160,13 +160,13 @@
   ::ng-deep {
     mat-chip-option {
       border-radius: 12px;
-      font-size: 0.9rem;
+      font-size: var(--font-size-sm);
       cursor: pointer;
       transition: all 200ms ease;
 
       &.mat-mdc-chip-selected {
-        background: rgba(59, 130, 246, 0.15) !important;
-        color: #3b82f6 !important;
+        background: var(--brand-primary-15) !important;
+        color: var(--color-primary) !important;
       }
 
       &:hover {
@@ -179,11 +179,11 @@
 
 .selected-count {
   margin-top: 1.5rem;
-  padding: 0.75rem 1rem;
+  padding: 0.75rem var(--space-2);
   background: var(--color-surface-muted);
   border-radius: 8px;
   color: var(--color-text-muted);
-  font-size: 0.9rem;
+  font-size: var(--font-size-sm);
   text-align: center;
 }
 
@@ -213,7 +213,7 @@
 }
 
 .empty-message {
-  padding: 2rem;
+  padding: var(--space-4);
   text-align: center;
   color: var(--color-text-muted);
   font-style: italic;
@@ -222,15 +222,15 @@
 // Rules Section
 .rules-section {
   margin-top: 2rem;
-  padding: 1.5rem;
+  padding: var(--space-3);
   background: var(--color-surface-muted);
   border-radius: 12px;
 
   h3 {
-    font-size: 1rem;
+    font-size: var(--font-size-base);
     font-weight: 600;
     color: var(--color-text-primary);
-    margin: 0 0 1rem 0;
+    margin: 0 0 var(--space-2) 0;
   }
 }
 
@@ -243,15 +243,15 @@
     display: flex;
     align-items: center;
     gap: 0.75rem;
-    padding: 0.5rem 0;
+    padding: var(--space-1) 0;
     color: var(--color-text-primary);
-    font-size: 0.95rem;
+    font-size: var(--font-size-base);
 
     mat-icon {
       font-size: 1.25rem;
       width: 1.25rem;
       height: 1.25rem;
-      color: #10b981;
+      color: var(--color-success);
     }
   }
 }
@@ -260,7 +260,7 @@
 .photo-upload {
   display: flex;
   align-items: center;
-  gap: 1.5rem;
+  gap: var(--space-3);
   margin-bottom: 2rem;
 
   button {
@@ -271,7 +271,7 @@
 
   .photo-count {
     color: var(--color-text-muted);
-    font-size: 0.9rem;
+    font-size: var(--font-size-sm);
     margin: 0;
   }
 }
@@ -279,7 +279,7 @@
 .photo-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 1.5rem;
+  gap: var(--space-3);
   margin-bottom: 2rem;
 }
 
@@ -316,9 +316,9 @@
     bottom: 0.5rem;
     left: 0.5rem;
     padding: 0.25rem 0.75rem;
-    background: rgba(59, 130, 246, 0.9);
+    background: rgba(89, 60, 251, 0.9);
     color: white;
-    font-size: 0.75rem;
+    font-size: var(--font-size-xs);
     font-weight: 600;
     border-radius: 6px;
     text-transform: uppercase;
@@ -331,7 +331,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 4rem 2rem;
+  padding: var(--space-8) var(--space-4);
   background: var(--color-surface-muted);
   border-radius: 12px;
   margin-bottom: 2rem;
@@ -347,7 +347,7 @@
 
   p {
     color: var(--color-text-muted);
-    font-size: 1rem;
+    font-size: var(--font-size-base);
     margin: 0;
   }
 }
@@ -363,7 +363,7 @@
     }
 
     .mat-mdc-card-title {
-      font-size: 1.5rem;
+      font-size: var(--font-size-xl);
       font-weight: 600;
       color: var(--color-text-primary);
     }
@@ -387,23 +387,23 @@
   }
 
   h4 {
-    font-size: 0.85rem;
+    font-size: var(--font-size-sm);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: var(--color-text-muted);
-    margin: 0 0 0.5rem 0;
+    margin: 0 0 var(--space-1) 0;
   }
 
   p {
-    font-size: 1rem;
+    font-size: var(--font-size-base);
     color: var(--color-text-primary);
     margin: 0;
 
     &.price {
-      font-size: 1.5rem;
+      font-size: var(--font-size-xl);
       font-weight: 700;
-      color: #3b82f6;
+      color: var(--color-primary);
     }
   }
 }
@@ -413,7 +413,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 1rem;
+  gap: var(--space-2);
   margin-top: 2rem;
   padding-top: 2rem;
   border-top: 1px solid var(--color-border-subtle);
@@ -436,7 +436,7 @@
 @media (max-width: 768px) {
   .add-car-wizard {
     &__header {
-      padding: 1.5rem 1rem;
+      padding: var(--space-3) var(--space-2);
 
       h1 {
         font-size: 1.75rem;
@@ -445,26 +445,26 @@
   }
 
   .wizard-stepper {
-    padding: 0 1rem 2rem;
+    padding: 0 var(--space-2) var(--space-4);
   }
 
   .step-form {
-    padding: 1.5rem;
+    padding: var(--space-3);
   }
 
   .form-grid {
     grid-template-columns: 1fr;
-    gap: 1rem;
+    gap: var(--space-2);
   }
 
   .radio-group__options {
     flex-direction: column;
-    gap: 1rem;
+    gap: var(--space-2);
   }
 
   .photo-grid {
     grid-template-columns: repeat(2, 1fr);
-    gap: 1rem;
+    gap: var(--space-2);
   }
 
   .step-actions {
@@ -479,15 +479,15 @@
 // Platform Cancellation Policy Notice (Turo-style migration)
 .platform-policy-notice {
   display: flex;
-  gap: 1rem;
-  padding: 1rem;
+  gap: var(--space-2);
+  padding: var(--space-2);
   margin-bottom: 1.5rem;
-  background: rgba(59, 130, 246, 0.1);
+  background: var(--brand-primary-10);
   border-radius: 8px;
-  border-left: 4px solid #3b82f6;
+  border-left: 4px solid var(--color-primary);
 
   mat-icon {
-    color: #3b82f6;
+    color: var(--color-primary);
     flex-shrink: 0;
     margin-top: 0.25rem;
   }
@@ -499,16 +499,16 @@
   }
 
   p {
-    margin: 0 0 0.5rem 0;
+    margin: 0 0 var(--space-1) 0;
     color: var(--color-text-muted);
-    font-size: 0.875rem;
+    font-size: var(--font-size-sm);
   }
 
   ul {
     margin: 0;
     padding-left: 1.25rem;
     color: var(--color-text-muted);
-    font-size: 0.875rem;
+    font-size: var(--font-size-sm);
 
     li {
       margin-bottom: 0.25rem;
@@ -519,12 +519,12 @@
 // Document Upload Step (Serbian Legal Compliance)
 .document-upload-grid {
   display: grid;
-  gap: 1.5rem;
+  gap: var(--space-3);
   margin-bottom: 2rem;
 }
 
 .document-upload-item {
-  padding: 1.5rem;
+  padding: var(--space-3);
   border: 1px solid var(--color-border-subtle);
   border-radius: 12px;
   background: var(--color-surface-muted);
@@ -544,7 +544,7 @@
 
   &.uploaded {
     mat-icon {
-      color: #10b981;
+      color: var(--color-success);
     }
   }
 }
@@ -552,8 +552,8 @@
 .document-placeholder {
   .placeholder-text {
     color: var(--color-text-muted);
-    font-size: 0.875rem;
-    margin: 0 0 1rem;
+    font-size: var(--font-size-sm);
+    margin: 0 0 var(--space-2);
   }
 
   button {
@@ -566,12 +566,12 @@
 .document-success {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-1);
   padding: 0.75rem;
   background: rgba(16, 185, 129, 0.1);
   border-radius: 8px;
   color: #065f46;
-  font-size: 0.875rem;
+  font-size: var(--font-size-sm);
 
   mat-icon {
     font-size: 1.25rem;
@@ -582,14 +582,14 @@
 
 .document-info-box {
   display: flex;
-  gap: 1rem;
-  padding: 1rem;
+  gap: var(--space-2);
+  padding: var(--space-2);
   background: rgba(251, 191, 36, 0.1);
   border-radius: 8px;
-  border-left: 4px solid #f59e0b;
+  border-left: 4px solid var(--color-warning);
 
   mat-icon {
-    color: #f59e0b;
+    color: var(--color-warning);
     flex-shrink: 0;
   }
 
@@ -602,7 +602,7 @@
   p {
     margin: 0;
     color: var(--color-text-muted);
-    font-size: 0.875rem;
+    font-size: var(--font-size-sm);
     line-height: 1.5;
   }
 }

@@ -40,15 +40,15 @@
   transition: width 160ms ease;
 }
 
-.risk-low { background: #10b981; }
-.risk-med { background: #f59e0b; }
-.risk-high { background: #ef4444; }
+.risk-low { background: var(--color-success); }
+.risk-med { background: var(--color-warning); }
+.risk-high { background: var(--color-error); }
 
 .strong { font-weight: 700; }
 
 .mat-mdc-header-row, .mat-mdc-row { height: 56px; }
 .mat-mdc-row { cursor: pointer; }
-.mat-mdc-row:hover { background: rgba(59, 130, 246, 0.04); }
+.mat-mdc-row:hover { background: rgba(89, 60, 251, 0.04); }
 
 .badge { text-transform: uppercase; }
 
@@ -67,6 +67,6 @@
   font-weight: 500;
 }
 
-.chip-pill.primary { background: rgba(59, 130, 246, 0.14); color: #1d4ed8; }
-.chip-pill.warn { background: rgba(239, 68, 68, 0.14); color: #b91c1c; }
-.chip-pill.accent { background: rgba(99, 102, 241, 0.14); color: #4338ca; }
+.chip-pill.primary { background: rgba(89, 60, 251, 0.14); color: var(--brand-primary-dark); }
+.chip-pill.warn { background: rgba(255, 90, 95, 0.14); color: #b91c1c; }
+.chip-pill.accent { background: rgba(89, 60, 251, 0.14); color: #4338ca; }

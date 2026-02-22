@@ -28,7 +28,7 @@
 
 .profile-hero {
 	height: 120px;
-	background: linear-gradient(120deg, rgba(59, 130, 246, 0.85), rgba(99, 102, 241, 0.85));
+	background: linear-gradient(120deg, rgba(89, 60, 251, 0.85), rgba(89, 60, 251, 0.85));
 }
 
 .profile-body {
@@ -58,9 +58,9 @@
 }
 
 .risk-score { font-weight: 700; }
-.risk-low { background: #10b981; color: #047857; }
-.risk-med { background: #f59e0b; color: #b45309; }
-.risk-high { background: #ef4444; color: #991b1b; }
+.risk-low { background: var(--color-success); color: #047857; }
+.risk-med { background: var(--color-warning); color: #b45309; }
+.risk-high { background: var(--color-error); color: #991b1b; }
 
 .content-column { display: grid; gap: 18px; }
 

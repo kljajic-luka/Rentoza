@@ -23,7 +23,7 @@
   
   .title-icon {
     /* Icon color is handled by color="warn" in HTML, or inherits */
-    font-size: 24px;
+    font-size: var(--font-size-xl);
     width: 24px;
     height: 24px;
   }
@@ -42,7 +42,7 @@
   margin: 16px 0 24px;
   /* Use opacity for theme-agnostic dimming instead of hardcoded gray */
   opacity: 0.7; 
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   line-height: 1.5;
 }
 
@@ -62,7 +62,7 @@
   }
 
   .car-text {
-    font-size: 14px;
+    font-size: var(--font-size-sm);
     
     strong {
       font-weight: 600;
@@ -76,7 +76,7 @@
 }
 
 .reason-label {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   margin-bottom: 12px;
   opacity: 0.9;

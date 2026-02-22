@@ -25,13 +25,13 @@
   .header-content {
     h1 {
       margin: 0;
-      font-size: 1.5rem;
+      font-size: var(--font-size-xl);
       font-weight: 500;
     }
 
     .user-info {
       color: var(--text-secondary, #666);
-      font-size: 0.875rem;
+      font-size: var(--font-size-sm);
     }
   }
 }
@@ -60,7 +60,7 @@
 
   mat-icon {
     color: var(--warn-color, #d32f2f);
-    font-size: 32px;
+    font-size: var(--font-size-2xl);
     width: 32px;
     height: 32px;
   }
@@ -132,7 +132,7 @@
       gap: 4px;
 
       .label {
-        font-size: 0.75rem;
+        font-size: var(--font-size-xs);
         text-transform: uppercase;
         color: var(--text-secondary, #666);
         letter-spacing: 0.5px;
@@ -165,7 +165,7 @@
   display: inline-block;
   padding: 4px 12px;
   border-radius: 12px;
-  font-size: 0.75rem;
+  font-size: var(--font-size-xs);
   font-weight: 600;
   text-transform: uppercase;
 
@@ -219,7 +219,7 @@
   color: var(--text-secondary, #666);
 
   mat-icon {
-    font-size: 48px;
+    font-size: var(--font-size-3xl);
     width: 48px;
     height: 48px;
     margin-bottom: 16px;
@@ -244,7 +244,7 @@
 .document-card {
   mat-card-header {
     mat-card-title {
-      font-size: 1rem;
+      font-size: var(--font-size-base);
     }
   }
 
@@ -275,7 +275,7 @@
     border: 2px dashed var(--border-color, #e0e0e0);
 
     mat-icon {
-      font-size: 48px;
+      font-size: var(--font-size-3xl);
       width: 48px;
       height: 48px;
       color: var(--text-secondary, #999);
@@ -304,14 +304,14 @@
   gap: 4px;
 
   .label {
-    font-size: 0.75rem;
+    font-size: var(--font-size-xs);
     text-transform: uppercase;
     color: var(--text-secondary, #666);
     letter-spacing: 0.5px;
   }
 
   .value {
-    font-size: 1rem;
+    font-size: var(--font-size-base);
     font-weight: 500;
   }
 
@@ -321,7 +321,7 @@
     border-radius: 8px;
 
     .confidence-value {
-      font-size: 1.5rem;
+      font-size: var(--font-size-xl);
     }
   }
 }
@@ -356,7 +356,7 @@
     width: 12px;
     height: 12px;
     border-radius: 50%;
-    background: var(--primary-color, #1976d2);
+    background: var(--primary-color, var(--brand-primary-dark));
     border: 2px solid var(--surface-bg, #fff);
   }
 
@@ -378,7 +378,7 @@
     }
 
     .event-time {
-      font-size: 0.75rem;
+      font-size: var(--font-size-xs);
       color: var(--text-secondary, #666);
     }
   }
@@ -387,12 +387,12 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    font-size: 0.875rem;
+    font-size: var(--font-size-sm);
     color: var(--text-secondary, #666);
     margin-top: 8px;
 
     mat-icon {
-      font-size: 16px;
+      font-size: var(--font-size-base);
       width: 16px;
       height: 16px;
     }
@@ -403,7 +403,7 @@
     padding: 8px 12px;
     background: var(--background-color, #fff);
     border-radius: 4px;
-    font-size: 0.875rem;
+    font-size: var(--font-size-sm);
     color: var(--text-secondary, #444);
   }
 }
@@ -423,14 +423,14 @@
     gap: 4px;
 
     .label {
-      font-size: 0.75rem;
+      font-size: var(--font-size-xs);
       text-transform: uppercase;
       color: var(--text-secondary, #666);
       letter-spacing: 0.5px;
     }
 
     .value {
-      font-size: 1rem;
+      font-size: var(--font-size-base);
       font-weight: 500;
     }
   }

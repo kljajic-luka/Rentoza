@@ -1,0 +1,521 @@
+// ─────────────────────────────────────────────────────────────
+// Car Card — Turo-standard listing card
+// Extracted from car-list.component → now standalone & reusable
+// ─────────────────────────────────────────────────────────────
+
+// ── Skeleton shimmer ──────────────────────────────────────────
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+// ── Card fade-in-up on mount ──────────────────────────────────
+@keyframes card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+// ── Host container ────────────────────────────────────────────
+:host {
+  display: block;
+}
+
+// ─────────────────────────────────────────────────────────────
+// BASE CARD
+// ─────────────────────────────────────────────────────────────
+.car-card {
+  background: var(--color-surface);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  box-shadow: var(--shadow-sm);
+  transition:
+    transform 0.3s ease,
+    box-shadow 0.3s ease;
+  cursor: pointer;
+  text-decoration: none;
+  color: inherit;
+  animation: card-enter 0.4s ease backwards;
+
+  // ── Hover state (desktop pointer only) ────────────────────
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      transform: translateY(-6px);
+      box-shadow: var(--shadow-xl);
+
+      .single-image {
+        transform: scale(1.04);
+      }
+
+      .car-card__cta-arrow {
+        transform: translateX(4px);
+        opacity: 1;
+      }
+    }
+  }
+
+  // ── Touch press effect ─────────────────────────────────────
+  @media (pointer: coarse) {
+    &:active {
+      transform: scale(0.98);
+      transition: transform 0.1s ease-out;
+    }
+
+    &:hover {
+      transform: none;
+      box-shadow: var(--shadow-sm);
+    }
+  }
+
+  // ── Dark mode ──────────────────────────────────────────────
+  :host-context(.theme-dark) & {
+    background: var(--color-surface);
+    box-shadow: var(--shadow-md);
+
+    @media (hover: hover) and (pointer: fine) {
+      &:hover {
+        box-shadow: var(--shadow-xl);
+      }
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// MEDIA AREA (Image)
+// ─────────────────────────────────────────────────────────────
+.car-card__media {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  background: var(--color-surface-muted);
+  flex-shrink: 0;
+
+  // Swipeable carousel
+  .image-carousel {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .carousel-track {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x mandatory;
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+
+    &::-webkit-scrollbar { display: none; }
+  }
+
+  .carousel-image {
+    flex: 0 0 100%;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    scroll-snap-align: center;
+    scroll-snap-stop: always;
+    pointer-events: none;
+  }
+
+  // Single image with zoom on hover
+  .single-image {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  }
+
+  // Carousel dots
+  .carousel-dots {
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 5px;
+    padding: 5px 10px;
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(8px);
+    border-radius: var(--radius-full);
+    z-index: 2;
+
+    .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.5);
+      transition: all 200ms ease;
+
+      &.active {
+        background: #fff;
+        width: 16px;
+        border-radius: 3px;
+      }
+    }
+  }
+
+  // Placeholder when no image
+  .image-placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    mat-icon {
+      font-size: 64px;
+      width: 64px;
+      height: 64px;
+      color: var(--icon-color);
+      opacity: 0.25;
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// BADGES
+// ─────────────────────────────────────────────────────────────
+.card-badge {
+  position: absolute;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1;
+  letter-spacing: 0.02em;
+  backdrop-filter: blur(10px);
+
+  &--year {
+    top: 12px;
+    left: 12px;
+    background: rgba(0, 0, 0, 0.72);
+    color: #ffffff;
+  }
+
+  &--instant {
+    top: 12px;
+    right: 56px; // Make room for favorite button
+    background: rgba(89, 60, 251, 0.88);
+    color: #ffffff;
+
+    mat-icon {
+      font-size: 14px;
+      width: 14px;
+      height: 14px;
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// FAVORITE BUTTON ZONE
+// ─────────────────────────────────────────────────────────────
+.favorite-zone {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+
+  // Style the inner mat-icon-button for Turo-look
+  ::ng-deep button {
+    width: 40px !important;
+    height: 40px !important;
+    min-width: 40px !important;
+    min-height: 40px !important;
+    background: rgba(255, 255, 255, 0.96) !important;
+    backdrop-filter: blur(8px);
+    border-radius: 50% !important;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18) !important;
+    transition: all 200ms ease !important;
+
+    &:active {
+      transform: scale(0.88) !important;
+    }
+
+    mat-icon {
+      font-size: 20px !important;
+      width: 20px !important;
+      height: 20px !important;
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// CONTENT AREA
+// ─────────────────────────────────────────────────────────────
+.car-card__content {
+  padding: 18px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+}
+
+.car-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.car-card__title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: var(--font-weight-bold);
+  line-height: 1.3;
+  color: var(--color-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.car-card__rating {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+
+  mat-icon {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    color: #F59E0B; // Amber gold — consistent cross-theme rating color
+  }
+
+  .rating-value {
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-text-primary);
+    line-height: 1;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// FEATURE PILLS
+// ─────────────────────────────────────────────────────────────
+.car-card__pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.feature-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: var(--brand-primary-10);
+  color: var(--color-primary);
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+
+  mat-icon {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+  }
+
+  :host-context(.theme-dark) & {
+    background: var(--chip-bg);
+    color: var(--chip-color);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// LOCATION
+// ─────────────────────────────────────────────────────────────
+.car-card__location {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+
+  mat-icon {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    color: var(--icon-color);
+    flex-shrink: 0;
+  }
+
+  span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// DIVIDER + FOOTER
+// ─────────────────────────────────────────────────────────────
+.car-card__divider {
+  margin: 2px 0;
+  border: none;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.car-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: auto;
+}
+
+.car-card__price {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+}
+
+.price-amount {
+  font-size: 1.4rem;
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  line-height: 1;
+}
+
+.price-currency {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-secondary);
+}
+
+.price-unit {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.car-card__cta-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--brand-primary-10);
+  color: var(--color-primary);
+  transition: transform 0.25s ease, opacity 0.25s ease, background-color 0.2s ease;
+  opacity: 0.8;
+  flex-shrink: 0;
+
+  mat-icon {
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .car-card:hover & {
+      background: var(--brand-primary-15);
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// SKELETON LOADING STATE
+// ─────────────────────────────────────────────────────────────
+$shimmer-gradient: linear-gradient(
+  90deg,
+  var(--color-surface-muted) 0%,
+  rgba(255, 255, 255, 0.6) 50%,
+  var(--color-surface-muted) 100%
+);
+
+.car-card--skeleton {
+  pointer-events: none;
+  cursor: default;
+  animation: none;
+  box-shadow: var(--shadow-xs);
+
+  &:hover {
+    transform: none;
+    box-shadow: var(--shadow-xs);
+  }
+}
+
+.car-card__media--skeleton {
+  background: var(--color-surface-muted);
+  background-size: 800px 100%;
+  animation: shimmer 1.4s linear infinite;
+  background-image: $shimmer-gradient;
+
+  :host-context(.theme-dark) & {
+    background-image: linear-gradient(
+      90deg,
+      var(--color-surface-muted) 0%,
+      rgba(255, 255, 255, 0.08) 50%,
+      var(--color-surface-muted) 100%
+    );
+  }
+}
+
+.skeleton-line {
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-muted);
+  background-size: 800px 100%;
+  background-image: $shimmer-gradient;
+  animation: shimmer 1.4s linear infinite;
+
+  :host-context(.theme-dark) & {
+    background-image: linear-gradient(
+      90deg,
+      var(--color-surface-muted) 0%,
+      rgba(255, 255, 255, 0.06) 50%,
+      var(--color-surface-muted) 100%
+    );
+  }
+
+  &--title  { height: 20px; width: 75%; }
+  &--sub    { height: 14px; width: 55%; margin-top: 2px; animation-delay: 0.1s; }
+  &--price  { height: 22px; width: 40%; margin-top: 8px; animation-delay: 0.2s; }
+}
+
+.skeleton-pills {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.skeleton-pill {
+  height: 24px;
+  width: 72px;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-muted);
+  background-size: 800px 100%;
+  background-image: $shimmer-gradient;
+  animation: shimmer 1.4s linear infinite;
+  animation-delay: 0.15s;
+
+  :host-context(.theme-dark) & {
+    background-image: linear-gradient(
+      90deg,
+      var(--color-surface-muted) 0%,
+      rgba(255, 255, 255, 0.06) 50%,
+      var(--color-surface-muted) 100%
+    );
+  }
+}

@@ -1,13 +1,16 @@
 /* ✅ Angular Material v17+ (Material Design 3) theming setup */
 @use '@angular/material' as mat;
 
+/* ✅ Brand design tokens — Category 1 foundation */
+@use './styles/design-tokens';
+
 @include mat.core();
 
 $light-theme: mat.define-theme((
   color: (
     theme-type: light,
-    primary: mat.$blue-palette,
-    tertiary: mat.$orange-palette
+    primary: mat.$violet-palette,
+    tertiary: mat.$cyan-palette
   ),
   density: (scale: 0)
 ));
@@ -15,8 +18,8 @@ $light-theme: mat.define-theme((
 $dark-theme: mat.define-theme((
   color: (
     theme-type: dark,
-    primary: mat.$blue-palette,
-    tertiary: mat.$orange-palette
+    primary: mat.$violet-palette,
+    tertiary: mat.$cyan-palette
   ),
   density: (scale: 0)
 ));
@@ -29,54 +32,6 @@ $dark-theme: mat.define-theme((
   @include mat.all-component-colors($dark-theme);
 }
 
-/* 🎯 Global design tokens */
-:root {
-  --color-bg: #f5f7fb;
-  --color-surface: rgba(255, 255, 255, 0.98);
-  --color-surface-elevated: rgba(244, 247, 254, 0.94);
-  --color-surface-muted: rgba(248, 250, 255, 0.88);
-  --color-border-subtle: rgba(148, 163, 184, 0.24);
-  --color-text-primary: rgba(15, 23, 42, 0.92);
-  --color-text-muted: rgba(71, 85, 105, 0.8);
-  --color-text-inverse: #ffffff;
-  --shadow-elevated: 0 32px 60px rgba(15, 23, 42, 0.12);
-  --shadow-soft: 0 18px 34px rgba(15, 23, 42, 0.16);
-  --icon-color: rgba(37, 99, 235, 0.9);
-  --icon-button-bg: rgba(59, 130, 246, 0.12);
-  --icon-button-hover-bg: rgba(59, 130, 246, 0.18);
-  --toolbar-bg: linear-gradient(135deg, rgba(59, 130, 246, 0.96), rgba(99, 102, 241, 0.92));
-  --toolbar-color: #ffffff;
-  --sidenav-bg: #ffffff;
-  --sidenav-divider: rgba(148, 163, 184, 0.18);
-  --surface-input: rgba(255, 255, 255, 0.9);
-  --chip-bg: rgba(59, 130, 246, 0.12);
-  --chip-color: rgba(30, 64, 175, 0.88);
-}
-
-/* 🌙 Dark theme overrides */
-.theme-dark {
-  --color-bg: #0b101b;
-  --color-surface: rgba(19, 23, 34, 0.95);
-  --color-surface-elevated: rgba(14, 18, 28, 0.92);
-  --color-surface-muted: rgba(26, 33, 50, 0.78);
-  --color-border-subtle: rgba(94, 117, 168, 0.35);
-  --color-text-primary: rgba(226, 232, 240, 0.92);
-  --color-text-muted: rgba(148, 163, 184, 0.78);
-  --color-text-inverse: rgba(15, 23, 42, 0.92);
-  --shadow-elevated: 0 32px 64px rgba(2, 6, 23, 0.68);
-  --shadow-soft: 0 24px 48px rgba(2, 10, 31, 0.6);
-  --icon-color: rgba(196, 210, 255, 0.92);
-  --icon-button-bg: rgba(59, 130, 246, 0.16);
-  --icon-button-hover-bg: rgba(99, 102, 241, 0.24);
-  --toolbar-bg: linear-gradient(135deg, rgba(30, 41, 59, 0.95), rgba(17, 24, 39, 0.95));
-  --toolbar-color: rgba(226, 232, 240, 0.92);
-  --sidenav-bg: rgba(15, 17, 27, 0.98);
-  --sidenav-divider: rgba(94, 117, 168, 0.28);
-  --surface-input: rgba(21, 27, 41, 0.86);
-  --chip-bg: rgba(59, 130, 246, 0.2);
-  --chip-color: rgba(196, 210, 255, 0.92);
-}
-
 /* 🧱 Base styles */
 html,
 body {
@@ -85,11 +40,99 @@ body {
 
 body {
   margin: 0;
-  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-normal);
   background: var(--color-bg);
   color: var(--color-text-primary);
   min-height: 100vh;
   transition: background-color 200ms ease, color 200ms ease;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-family-base);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-tight);
+  color: var(--color-text-primary);
+  margin: 0 0 var(--space-2) 0;
+}
+
+h1 { font-size: var(--font-size-3xl); }
+h2 { font-size: var(--font-size-2xl); }
+h3 { font-size: var(--font-size-xl); }
+h4 { font-size: var(--font-size-lg); }
+h5 { font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); }
+h6 { font-size: var(--font-size-sm); font-weight: var(--font-weight-semibold); }
+
+p {
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-normal);
+  color: var(--color-text-secondary);
+  margin: 0 0 var(--space-2) 0;
+}
+
+small {
+  font-size: var(--font-size-sm);  /* 14px min for accessible UI labels */
+  color: var(--color-text-muted);
+}
+
+/* Container utility */
+.container {
+  width: 100%;
+  max-width: var(--max-content-width);
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: var(--space-container-padding-mobile);
+  padding-right: var(--space-container-padding-mobile);
+
+  @media (min-width: 768px) {
+    padding-left: var(--space-container-padding-tablet);
+    padding-right: var(--space-container-padding-tablet);
+  }
+
+  @media (min-width: 1024px) {
+    padding-left: var(--space-container-padding-desktop);
+    padding-right: var(--space-container-padding-desktop);
+  }
+}
+
+/* ===================================================================
+   📐 BREAKPOINT MIXINS (Category 5 — Responsive System)
+   Standard project breakpoints. Mobile-first approach.
+   Mobile   < 768px
+   Tablet   768px – 1023px
+   Desktop  >= 1024px
+   Wide     >= 1280px
+
+   Usage in any .scss file:
+     @include mobile { ... }
+     @include tablet-up { ... }
+   =================================================================== */
+
+/*
+ * STANDARD BREAKPOINTS (reference — use inline @media queries in components)
+ *   Mobile   : max-width: 767px
+ *   Tablet   : min-width: 768px  and  max-width: 1023px
+ *   Desktop  : min-width: 1024px
+ *   Wide     : min-width: 1280px
+ *   tablet-up: min-width: 768px
+ *   desktop-up: min-width: 1024px
+ */
+
+/* ===================================================================
+   🚫 GLOBAL OVERFLOW GUARD (Category 5 — Critical)
+   Prevents any element from causing horizontal scroll at root level.
+   =================================================================== */
+html, body {
+  overflow-x: hidden;
+  /* Ensure width is truly viewport-constrained */
+  max-width: 100vw;
+}
+
+/* Ensure every direct child of body can't overflow */
+body > * {
+  max-width: 100vw;
+  overflow-x: hidden;
 }
 
 a {
@@ -98,7 +141,7 @@ a {
 }
 
 ::selection {
-  background: rgba(59, 130, 246, 0.25);
+  background: var(--brand-primary-20);
 }
 
 /* ✨ Smooth theme transitions */
@@ -145,7 +188,7 @@ mat-sidenav {
 }
 
 .mat-drawer-backdrop {
-  background: rgba(15, 23, 42, 0.45);
+  background: var(--color-overlay);
 }
 
 .mat-mdc-menu-panel,
@@ -205,7 +248,7 @@ button.mat-mdc-icon-button,
 button.mat-mdc-icon-button:hover,
 .mat-mdc-icon-button:hover {
   background: var(--icon-button-hover-bg);
-  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.18);
+    box-shadow: var(--shadow-md);
 }
 
 .theme-dark button.mat-mdc-icon-button:hover,
@@ -251,7 +294,7 @@ hr {
 }
 
 .mat-mdc-progress-spinner {
-  --mdc-circular-progress-active-indicator-color: rgba(59, 130, 246, 0.9);
+  --mdc-circular-progress-active-indicator-color: var(--brand-primary);
 }
 
 /* 🧠 Typography helpers */
@@ -703,7 +746,7 @@ textarea {
     }
     
     mat-icon {
-      color: var(--primary-color, #3b82f6);
+      color: var(--color-primary);
       font-size: 24px;
       width: 24px;
       height: 24px;
@@ -752,3 +795,223 @@ textarea {
 img {
   image-orientation: from-image !important;
 }
+
+/* ============================================================================
+   🎬 CATEGORY 4 — INTERACTIONS & ANIMATIONS
+   ============================================================================
+   Performance contract:
+     ✅ Only animate: opacity, transform (translate, scale, rotate)
+     ❌ Never animate: width, height, top, left, margin, padding
+   All animations respect: @media (prefers-reduced-motion: reduce)
+   No animation library. Pure CSS + minimal JS class toggles.
+   ============================================================================ */
+
+// ─────────────────────────────────────────────
+// 1. ROUTE PAGE TRANSITIONS
+// ─────────────────────────────────────────────
+// The .layout-router wraps <router-outlet> in layout.component.html.
+// Angular Router emits NavigationStart/End; we toggle a class via CSS.
+// We rely on Angular's own View Transitions (if enabled) or a CSS trick:
+// the outgoing view fades out, incoming fades + lifts in.
+
+.layout-router {
+  animation: page-enter 0.25s cubic-bezier(0.0, 0.0, 0.2, 1);
+}
+
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+// ─────────────────────────────────────────────
+// 2. SHIMMER SKELETON — brand-aware
+// ─────────────────────────────────────────────
+// Overrides the hardcoded #f0f0f0 in LoadingSkeletonComponent
+// so skeletons respect the design-token color scheme.
+
+.skeleton,
+.pulse {
+  background: linear-gradient(
+    90deg,
+    var(--color-surface-muted) 25%,
+    var(--color-surface-elevated) 50%,
+    var(--color-surface-muted) 75%
+  ) !important;
+  background-size: 200% 100% !important;
+  animation: shimmer 1.5s ease-in-out infinite !important;
+}
+
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+// ─────────────────────────────────────────────
+// 3. FORM MICRO-INTERACTIONS
+// ─────────────────────────────────────────────
+
+// 3a. Input focus glow (works on Angular Material outlined fields)
+.mat-mdc-form-field.mat-focused {
+  .mdc-notched-outline__leading,
+  .mdc-notched-outline__notch,
+  .mdc-notched-outline__trailing {
+    box-shadow: 0 0 0 3px var(--brand-primary-15, rgba(89, 60, 251, 0.15));
+    transition: box-shadow 0.2s ease !important;
+  }
+}
+
+// 3b. Shake animation — for invalid inputs on submit attempt
+@keyframes input-shake {
+  0%   { transform: translateX(0); }
+  20%  { transform: translateX(-5px); }
+  40%  { transform: translateX(5px); }
+  60%  { transform: translateX(-4px); }
+  80%  { transform: translateX(4px); }
+  100% { transform: translateX(0); }
+}
+
+.shake {
+  animation: input-shake 0.35s cubic-bezier(0.4, 0.0, 0.2, 1) both;
+}
+
+// 3c. Button success state (briefly green after submit)
+@keyframes btn-success-flash {
+  0%   { background-color: var(--color-success, #00C48C); transform: scale(1); }
+  30%  { transform: scale(1.03); }
+  100% { background-color: var(--brand-primary, #593CFB); transform: scale(1); }
+}
+
+.btn-success-flash {
+  animation: btn-success-flash 0.6s ease both;
+}
+
+// ─────────────────────────────────────────────
+// 4. CARD INTERACTIONS
+// ─────────────────────────────────────────────
+
+// 4a. Desktop card press (mousedown scale)
+.car-card,
+.booking-card,
+mat-card,
+.mat-mdc-card {
+  transition: transform 0.15s cubic-bezier(0.0, 0.0, 0.2, 1),
+              box-shadow 0.15s ease;
+}
+
+// Only apply hover lift to non-touch devices
+@media (hover: hover) and (pointer: fine) {
+  .car-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .car-card:active {
+    transform: scale(0.98) translateY(0);
+    transition-duration: 0.08s;
+  }
+}
+
+// 4b. Staggered card entrance (add .card-entering class in component)
+@keyframes card-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.card-entering {
+  animation: card-fade-up 0.3s cubic-bezier(0.0, 0.0, 0.2, 1) both;
+}
+
+// 4c. Favorite heart bounce
+@keyframes heart-bounce {
+  0%   { transform: scale(1); }
+  20%  { transform: scale(0); }
+  60%  { transform: scale(1.35); }
+  100% { transform: scale(1); }
+}
+
+.heart-bounce {
+  animation: heart-bounce 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+// ─────────────────────────────────────────────
+// 5. MODAL ANIMATIONS (supplement Angular Material)
+// ─────────────────────────────────────────────
+
+// Scale-in for dialogs (augments existing slideUpSheet for mobile)
+@keyframes modal-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+// Applied via Angular Material's panelClass
+.dialog-scale-in .mat-mdc-dialog-container .mat-mdc-dialog-surface {
+  animation: modal-scale-in 0.2s cubic-bezier(0.0, 0.0, 0.2, 1);
+}
+
+// ─────────────────────────────────────────────
+// 6. SCROLL ENTRANCE (IntersectionObserver baseline)
+// ─────────────────────────────────────────────
+// Elements that should animate on intersection need
+// [data-animate] attribute. JS sets inline styles.
+// This ensures they're invisible before JS kicks in.
+
+[data-animate] {
+  opacity: 0;
+  transform: translateY(24px);
+}
+
+// ─────────────────────────────────────────────
+// 7. PREFERS-REDUCED-MOTION: Global override
+// ─────────────────────────────────────────────
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  // Skeleton still shows (just no moving shimmer)
+  .pulse,
+  .skeleton {
+    animation: none !important;
+    background: var(--color-surface-muted) !important;
+  }
+
+  // Entrance elements appear immediately
+  [data-animate] {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  // Page transition — only opacity, no transform
+  .layout-router {
+    animation: page-enter-reduced 0.15s ease;
+  }
+
+  @keyframes page-enter-reduced {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+}
+

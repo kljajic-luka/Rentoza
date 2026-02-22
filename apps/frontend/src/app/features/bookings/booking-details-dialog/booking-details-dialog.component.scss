@@ -62,7 +62,7 @@ mat-dialog-content {
 
     h3 {
       margin: 0;
-      font-size: 1.5rem;
+      font-size: var(--font-size-xl);
       font-weight: 600;
     }
 
@@ -70,11 +70,11 @@ mat-dialog-content {
       margin: 4px 0 0;
       display: flex;
       align-items: center;
-      font-size: 0.9rem;
+      font-size: var(--font-size-sm);
       opacity: 0.9;
 
       mat-icon {
-        font-size: 16px;
+        font-size: var(--font-size-base);
         width: 16px;
         height: 16px;
         margin-right: 4px;
@@ -88,7 +88,7 @@ mat-dialog-content {
     right: 16px;
     padding: 6px 12px;
     border-radius: 16px;
-    font-size: 0.8rem;
+    font-size: var(--font-size-xs);
     font-weight: 600;
     background: rgba(0, 0, 0, 0.6);
     color: white;
@@ -113,13 +113,13 @@ mat-dialog-content {
     .plate-number {
       padding: 2px 8px;
       font-weight: bold;
-      font-size: 1rem;
+      font-size: var(--font-size-base);
     }
 
     .plate-label {
       background: #f0f0f0;
       padding: 2px 6px;
-      font-size: 0.7rem;
+      font-size: var(--font-size-xs);
       text-transform: uppercase;
       border-left: 1px solid #ccc;
     }
@@ -132,7 +132,7 @@ mat-dialog-content {
 
   h3 {
     margin: 0 0 16px;
-    font-size: 1.1rem;
+    font-size: var(--font-size-lg);
     font-weight: 600;
     color: rgba(0, 0, 0, 0.87);
   }
@@ -152,14 +152,14 @@ mat-dialog-content {
     flex-direction: column;
 
     .label {
-      font-size: 0.8rem;
+      font-size: var(--font-size-xs);
       color: rgba(0, 0, 0, 0.6);
       margin-bottom: 4px;
     }
 
     .value {
       font-weight: 500;
-      font-size: 1rem;
+      font-size: var(--font-size-base);
     }
   }
 }
@@ -177,7 +177,7 @@ mat-dialog-content {
     font-weight: 500;
     
     &.price {
-      font-size: 1.1rem;
+      font-size: var(--font-size-lg);
       color: #4caf50;
     }
   }
@@ -199,18 +199,18 @@ mat-dialog-content {
     .host-details {
       h4 {
         margin: 0;
-        font-size: 1.1rem;
+        font-size: var(--font-size-lg);
       }
 
       .host-stats {
         margin: 4px 0;
         display: flex;
         align-items: center;
-        font-size: 0.9rem;
+        font-size: var(--font-size-sm);
         color: rgba(0, 0, 0, 0.87);
 
         .star {
-          font-size: 16px;
+          font-size: var(--font-size-base);
           width: 16px;
           height: 16px;
           color: #ffc107;
@@ -220,7 +220,7 @@ mat-dialog-content {
 
       .joined-date {
         margin: 0;
-        font-size: 0.8rem;
+        font-size: var(--font-size-xs);
         color: rgba(0, 0, 0, 0.6);
       }
     }
@@ -236,7 +236,7 @@ mat-dialog-content {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 0.9rem;
+    font-size: var(--font-size-sm);
     color: rgba(0, 0, 0, 0.7);
 
     mat-icon {
@@ -392,7 +392,7 @@ mat-dialog-actions {
       /* Section header */
       .section-header {
         .header-icon {
-          background: rgba(89, 60, 251, 0.15) !important;
+          background: var(--brand-primary-15) !important;
           
           mat-icon {
             color: #a794ff !important;
@@ -445,7 +445,7 @@ mat-dialog-actions {
         
         .directions-btn {
           color: #a794ff !important;
-          background: rgba(89, 60, 251, 0.15) !important;
+          background: var(--brand-primary-15) !important;
           
           &:hover {
             background: #593CFB !important;
@@ -491,7 +491,7 @@ mat-dialog-actions {
           }
           
           &.delivery-fee {
-            background: rgba(89, 60, 251, 0.15) !important;
+            background: var(--brand-primary-15) !important;
             color: #a794ff !important;
           }
           

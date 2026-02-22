@@ -6,7 +6,7 @@
 
     h3 {
       margin: 0 0 8px 0;
-      font-size: 1.5rem;
+      font-size: var(--font-size-xl);
       font-weight: 500;
       color: #333;
     }
@@ -14,7 +14,7 @@
     .step-description {
       margin: 0;
       color: #666;
-      font-size: 0.95rem;
+      font-size: var(--font-size-base);
     }
   }
 
@@ -54,7 +54,7 @@
     border: 1px solid #ffcdd2;
     border-radius: 8px;
     color: #c62828;
-    font-size: 0.9rem;
+    font-size: var(--font-size-sm);
     margin-bottom: 16px;
 
     mat-icon {
@@ -88,12 +88,12 @@
 
     .suggestion-address {
       font-weight: 500;
-      font-size: 0.95rem;
+      font-size: var(--font-size-base);
     }
 
     .suggestion-city {
       color: #666;
-      font-size: 0.85rem;
+      font-size: var(--font-size-sm);
     }
   }
 
@@ -112,7 +112,7 @@
       gap: 4px;
 
       .coord-label {
-        font-size: 0.75rem;
+        font-size: var(--font-size-xs);
         color: #666;
         text-transform: uppercase;
         letter-spacing: 0.5px;
@@ -120,7 +120,7 @@
 
       .coord-value {
         font-family: 'Roboto Mono', monospace;
-        font-size: 0.9rem;
+        font-size: var(--font-size-sm);
         color: #333;
       }
     }
@@ -151,11 +151,11 @@
       gap: 6px;
       padding: 6px 12px;
       border-radius: 16px;
-      font-size: 0.85rem;
+      font-size: var(--font-size-sm);
       font-weight: 500;
 
       mat-icon {
-        font-size: 18px;
+        font-size: var(--font-size-lg);
         width: 18px;
         height: 18px;
       }
@@ -184,7 +184,7 @@
       background: #fff3e0;
       border-radius: 8px;
       color: #e65100;
-      font-size: 0.85rem;
+      font-size: var(--font-size-sm);
 
       mat-icon {
         font-size: 20px;
@@ -209,7 +209,7 @@
     text-align: center;
 
     mat-icon {
-      font-size: 48px;
+      font-size: var(--font-size-3xl);
       width: 48px;
       height: 48px;
       color: #bdbdbd;
@@ -219,7 +219,7 @@
     p {
       margin: 0;
       color: #666;
-      font-size: 0.95rem;
+      font-size: var(--font-size-base);
       max-width: 300px;
     }
   }

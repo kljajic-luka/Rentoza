@@ -15,12 +15,12 @@
     font-size: 28px;
     width: 28px;
     height: 28px;
-    color: var(--primary-color, #1976d2);
+    color: var(--primary-color, var(--brand-primary-dark));
   }
 
   &__title {
     margin: 0;
-    font-size: 24px;
+    font-size: var(--font-size-xl);
     font-weight: 500;
   }
 }
@@ -45,7 +45,7 @@
     font-size: 56px;
     width: 56px;
     height: 56px;
-    color: var(--primary-color, #1976d2);
+    color: var(--primary-color, var(--brand-primary-dark));
     flex-shrink: 0;
   }
 
@@ -66,11 +66,11 @@
     align-items: center;
     gap: 8px;
     margin: 4px 0;
-    font-size: 14px;
+    font-size: var(--font-size-sm);
     color: #666;
 
     mat-icon {
-      font-size: 18px;
+      font-size: var(--font-size-lg);
       width: 18px;
       height: 18px;
       color: #999;
@@ -82,14 +82,14 @@
 .rating-section {
   &__title {
     margin: 0 0 4px 0;
-    font-size: 18px;
+    font-size: var(--font-size-lg);
     font-weight: 500;
     color: #1a1a1a;
   }
 
   &__subtitle {
     margin: 0 0 20px 0;
-    font-size: 13px;
+    font-size: var(--font-size-sm);
     color: #666;
   }
 }
@@ -109,14 +109,14 @@
   }
 
   &__icon {
-    font-size: 24px;
+    font-size: var(--font-size-xl);
     width: 24px;
     height: 24px;
-    color: var(--primary-color, #1976d2);
+    color: var(--primary-color, var(--brand-primary-dark));
   }
 
   &__label {
-    font-size: 15px;
+    font-size: var(--font-size-base);
     font-weight: 500;
     color: #333;
   }
@@ -146,7 +146,7 @@
   }
 
   mat-icon {
-    font-size: 32px;
+    font-size: var(--font-size-2xl);
     width: 32px;
     height: 32px;
     color: #ddd;
@@ -213,13 +213,13 @@
 
   .renter-summary {
     &__avatar {
-      font-size: 48px;
+      font-size: var(--font-size-3xl);
       width: 48px;
       height: 48px;
     }
 
     &__name {
-      font-size: 18px;
+      font-size: var(--font-size-lg);
     }
   }
 

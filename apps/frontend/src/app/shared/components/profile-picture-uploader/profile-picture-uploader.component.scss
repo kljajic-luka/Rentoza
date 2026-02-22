@@ -2,7 +2,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1rem;
+  gap: var(--space-2);
 }
 
 .avatar-display {
@@ -17,12 +17,12 @@
   height: 100%;
   border-radius: 50%;
   object-fit: cover;
-  border: 3px solid var(--color-primary, #2563eb);
+  border: 3px solid var(--color-primary, var(--brand-primary-dark));
   transition: all 0.2s ease;
 
   &.preview {
-    border-color: var(--color-accent, #f59e0b);
-    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.2);
+    border-color: var(--color-accent, var(--color-warning));
+    box-shadow: 0 0 0 3px rgba(245, 166, 35, 0.2);
   }
 }
 
@@ -35,8 +35,8 @@
   font-size: 2.5rem;
   font-weight: 700;
   color: var(--color-text-inverse, #fff);
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.8), rgba(99, 102, 241, 0.8));
-  border: 3px solid var(--color-primary, #2563eb);
+  background: linear-gradient(135deg, rgba(89, 60, 251, 0.8), rgba(89, 60, 251, 0.8));
+  border: 3px solid var(--color-primary, var(--brand-primary-dark));
 }
 
 .upload-trigger-btn {
@@ -97,14 +97,14 @@
 
 .preview-label {
   margin: 0;
-  font-size: 0.875rem;
+  font-size: var(--font-size-sm);
   font-weight: 500;
-  color: var(--color-accent, #f59e0b);
+  color: var(--color-accent, var(--color-warning));
 }
 
 .action-buttons {
   display: flex;
-  gap: 0.5rem;
+  gap: var(--space-1);
 
   button {
     display: inline-flex;
@@ -114,7 +114,7 @@
     font-weight: 500;
 
     mat-icon {
-      font-size: 18px;
+      font-size: var(--font-size-lg);
       width: 18px;
       height: 18px;
     }
@@ -124,9 +124,9 @@
 .uploading-state {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-1);
   color: var(--color-text-muted, #64748b);
-  font-size: 0.875rem;
+  font-size: var(--font-size-sm);
 
   p {
     margin: 0;
@@ -136,16 +136,16 @@
 .error-message {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
   border-radius: 8px;
-  background: rgba(239, 68, 68, 0.1);
-  color: var(--color-error, #ef4444);
-  font-size: 0.875rem;
+  background: rgba(255, 90, 95, 0.1);
+  color: var(--color-error, var(--color-error));
+  font-size: var(--font-size-sm);
   animation: shake 0.3s ease-out;
 
   mat-icon {
-    font-size: 18px;
+    font-size: var(--font-size-lg);
     width: 18px;
     height: 18px;
   }
@@ -159,17 +159,17 @@
 
 .help-text {
   margin: 0;
-  font-size: 0.75rem;
+  font-size: var(--font-size-xs);
   color: var(--color-text-muted, #64748b);
   text-align: center;
 }
 
 .delete-btn {
   margin-top: 0.5rem;
-  font-size: 0.8125rem;
+  font-size: var(--font-size-sm);
 
   mat-icon {
-    font-size: 16px;
+    font-size: var(--font-size-base);
     width: 16px;
     height: 16px;
     margin-right: 0.25rem;
@@ -180,7 +180,7 @@
 .profile-picture-uploader:has(.avatar-display:focus-within),
 .profile-picture-uploader.drag-over {
   .avatar-display {
-    outline: 2px dashed var(--color-primary, #2563eb);
+    outline: 2px dashed var(--color-primary, var(--brand-primary-dark));
     outline-offset: 4px;
   }
 }

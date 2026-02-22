@@ -1,149 +1,292 @@
 <ng-container *ngIf="!isAdminRoute; else adminLayout">
-  <mat-sidenav-container class="layout-container" autosize>
-    <mat-sidenav
-      #sidenav
-      class="layout-sidenav"
-      [mode]="isMobile ? 'over' : 'side'"
-      [opened]="!isMobile"
-    >
-      <div class="sidenav-shell">
-        <div class="logo">
-          <picture>
-            <source srcset="assets/rentoza-logo.webp" type="image/webp" />
-            <img src="assets/rentoza-logo.png" alt="Rentoza Logo" class="logo__image" />
-          </picture>
-          <div class="logo__copy">
-            <span class="logo__title">Rentoza</span>
-            <small class="logo__subtitle">Doživite vožnju na viši način</small>
-          </div>
-        </div>
 
-        <mat-nav-list class="sidenav-nav">
-          <ng-container *ngIf="currentUser$ | async as user; else guestLinks">
+  <!-- ═══════════════════════════════════════════════════════════════════
+       TOP NAVBAR — sticky, 72px, transitions to solid on scroll
+       ═══════════════════════════════════════════════════════════════════ -->
+  <header
+    class="topnav"
+    [class.topnav--scrolled]="isScrolled"
+    role="banner"
+  >
+    <div class="topnav__inner">
+
+      <!-- ── Logo ── -->
+      <a class="topnav__logo" routerLink="/" aria-label="Rentoza – Idi na početnu stranicu">
+        <picture>
+          <source srcset="assets/rentoza-logo.webp" type="image/webp" />
+          <img
+            src="assets/rentoza-logo.png"
+            alt="Rentoza"
+            class="topnav__logo-img"
+            width="120"
+            height="32"
+          />
+        </picture>
+      </a>
+
+      <!-- ── Desktop navigation links ── -->
+      <nav class="topnav__nav" aria-label="Primarna navigacija">
+        <ng-container *ngIf="currentUser$ | async as user; else guestNavLinks">
+          <ng-container *ngFor="let link of getNavLinks(user)">
             <a
-              mat-list-item
-              *ngFor="let link of getNavigationLinks(user)"
+              *ngIf="canShowLink(link, user)"
               [routerLink]="link.route"
-              routerLinkActive="active"
-              (click)="navigate(link.route)"
-              [class.hidden]="!canShowLink(link, user)"
-            >
-              <mat-icon matListItemIcon>{{ link.icon }}</mat-icon>
-              <span matListItemTitle>{{ link.label }}</span>
-            </a>
+              routerLinkActive="topnav__nav-link--active"
+              #rlaDesktop="routerLinkActive"
+              [attr.aria-current]="rlaDesktop.isActive ? 'page' : null"
+              class="topnav__nav-link"
+            >{{ link.label }}</a>
           </ng-container>
-          <ng-template #guestLinks>
-            <a mat-list-item (click)="navigate('/pocetna')">
-              <mat-icon matListItemIcon>home</mat-icon>
-              <span matListItemTitle>Početna</span>
-            </a>
-            <a mat-list-item (click)="navigate('/vozila')">
-              <mat-icon matListItemIcon>directions_car</mat-icon>
-              <span matListItemTitle>Vozila</span>
-            </a>
-          </ng-template>
-        </mat-nav-list>
+        </ng-container>
+        <ng-template #guestNavLinks>
+          <a routerLink="/pocetna" routerLinkActive="topnav__nav-link--active" #rlaGuestHome="routerLinkActive" [routerLinkActiveOptions]="{exact: true}" [attr.aria-current]="rlaGuestHome.isActive ? 'page' : null" class="topnav__nav-link">Početna</a>
+          <a routerLink="/vozila" routerLinkActive="topnav__nav-link--active" #rlaGuestCars="routerLinkActive" [attr.aria-current]="rlaGuestCars.isActive ? 'page' : null" class="topnav__nav-link">Vozila</a>
+        </ng-template>
+      </nav>
 
-        <div class="sidenav-footer">
-          <div class="theme-toggle-row">
-            <app-theme-toggle />
-            <span>{{ themeService.theme() === 'light' ? 'Tamna tema' : 'Svetla tema' }}</span>
-          </div>
+      <!-- ── Right-side actions ── -->
+      <div class="topnav__actions">
 
-          <ng-container *ngIf="isAuthenticated$ | async; else guestFooter">
-            <div class="footer-actions">
-              <button mat-flat-button color="primary" (click)="navigate('/users/profile')">
-                <span>Profil</span>
-              </button>
-              <button mat-stroked-button color="warn" (click)="logout()">
+        <!-- Theme toggle (visible desktop, hidden mobile via CSS) -->
+        <app-theme-toggle class="topnav__theme-toggle" />
+
+        <!-- Authenticated state: avatar + dropdown -->
+        <ng-container *ngIf="isAuthenticated$ | async; else guestAuthActions">
+          <div class="topnav__user">
+            <button
+              class="topnav__avatar-btn"
+              (click)="toggleUserMenu($event)"
+              [attr.aria-expanded]="isUserMenuOpen"
+              aria-haspopup="true"
+              aria-label="Moj nalog"
+              type="button"
+            >
+              <span class="topnav__avatar-initials">{{ getUserInitials() }}</span>
+              <svg class="topnav__avatar-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                <path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+
+            <!-- User dropdown menu -->
+            <div
+              *ngIf="isUserMenuOpen"
+              class="user-menu"
+              role="menu"
+              aria-label="Korisnički meni"
+            >
+              <ng-container *ngIf="currentUser$ | async as user">
+                <div class="user-menu__header">
+                  <span class="user-menu__avatar">{{ getUserInitials() }}</span>
+                  <div class="user-menu__info">
+                    <span class="user-menu__name">{{ user.firstName }} {{ user.lastName }}</span>
+                    <span class="user-menu__email">{{ user.email }}</span>
+                  </div>
+                </div>
+              </ng-container>
+
+              <div class="user-menu__divider"></div>
+
+              <a routerLink="/users/profile" class="user-menu__item" role="menuitem" (click)="closeUserMenu()">
+                <mat-icon>person_outline</mat-icon>
+                <span>Moj profil</span>
+              </a>
+              <a routerLink="/bookings" class="user-menu__item" role="menuitem" (click)="closeUserMenu()">
+                <mat-icon>confirmation_number</mat-icon>
+                <span>Moja putovanja</span>
+              </a>
+              <a routerLink="/messages" class="user-menu__item" role="menuitem" (click)="closeUserMenu()">
+                <mat-icon>chat_bubble_outline</mat-icon>
+                <span>Poruke</span>
+              </a>
+              <a routerLink="/favorites" class="user-menu__item" role="menuitem" (click)="closeUserMenu()">
+                <mat-icon>favorite_border</mat-icon>
+                <span>Omiljeni</span>
+              </a>
+
+              <div class="user-menu__divider"></div>
+
+              <button
+                class="user-menu__item user-menu__item--danger"
+                role="menuitem"
+                type="button"
+                (click)="logout()"
+              >
+                <mat-icon>logout</mat-icon>
                 <span>Odjavi se</span>
               </button>
             </div>
-          </ng-container>
-
-          <ng-template #guestFooter>
-            <div class="footer-actions">
-              <button
-                mat-flat-button
-                color="primary"
-                class="footer-actions__btn"
-                (click)="navigate('/auth/login')"
-              >
-                <span>Prijavi se</span>
-              </button>
-              <button
-                mat-stroked-button
-                color="primary"
-                class="footer-actions__btn"
-                (click)="navigate('/auth/register')"
-              >
-                <span>Registruj se</span>
-              </button>
-            </div>
-          </ng-template>
-        </div>
-      </div>
-    </mat-sidenav>
-
-    <mat-sidenav-content class="layout-content">
-      <mat-toolbar color="primary" class="layout-toolbar elevation">
-        <button
-          mat-icon-button
-          type="button"
-          class="mobile-menu-button"
-          *ngIf="isMobile"
-          (click)="toggleMobileMenu($event)"
-          aria-label="Uključi meni navigacije"
-        >
-          <mat-icon>menu</mat-icon>
-        </button>
-        <div class="toolbar-title" (click)="navigate('/')">
-          <span>Rentoza Rent a Car</span>
-        </div>
-        <span class="spacer"></span>
-        <ng-container *ngIf="currentUser$ | async as user; else guestSearchBtn">
-          <button
-            *ngIf="canShowSearchButton(user)"
-            mat-stroked-button
-            color="accent"
-            class="toolbar-cta"
-            (click)="navigate('/cars')"
-          >
-            <span>Pretraži vozila</span>
-          </button>
-        </ng-container>
-        <ng-template #guestSearchBtn>
-          <button mat-stroked-button color="accent" class="toolbar-cta" (click)="navigate('/cars')">
-            <span>Pretraži vozila</span>
-          </button>
-        </ng-template>
-      </mat-toolbar>
-
-      <section class="layout-router">
-        <router-outlet />
-      </section>
-
-      <!-- Site Footer with Legal Links -->
-      <footer class="site-footer">
-        <div class="footer-content">
-          <div class="footer-brand">
-            <span class="footer-logo">Rentoza</span>
-            <span class="footer-tagline">Beta Testiranje</span>
           </div>
-          <nav class="footer-links">
-            <a routerLink="/privacy" class="footer-link">Politika Privatnosti</a>
-            <span class="footer-separator">•</span>
-            <a routerLink="/beta-terms" class="footer-link">Beta Uslovi</a>
-            <span class="footer-separator">•</span>
-            <a href="mailto:rentozzza@gmail.com" class="footer-link">Kontakt</a>
-          </nav>
-          <p class="footer-copyright">© 2026 Rentoza. Sva prava zadržana.</p>
+        </ng-container>
+
+        <!-- Guest state: login + register links -->
+        <ng-template #guestAuthActions>
+          <div class="topnav__guest-actions">
+            <a routerLink="/auth/login" class="topnav__link-plain">Prijavi se</a>
+            <a routerLink="/auth/register" class="topnav__link-register">Registruj se</a>
+          </div>
+        </ng-template>
+
+        <!-- Hamburger button (shown on mobile only via CSS) -->
+        <button
+          #hamburgerBtn
+          class="topnav__hamburger"
+          type="button"
+          (click)="toggleMobileMenu($event)"
+          [attr.aria-expanded]="isMobileMenuOpen"
+          aria-controls="mobile-drawer"
+          [attr.aria-label]="isMobileMenuOpen ? 'Zatvori navigacioni meni' : 'Otvori navigacioni meni'"
+        >
+          <span class="hamburger-bar" [class.hamburger-bar--open]="isMobileMenuOpen"></span>
+          <span class="hamburger-bar" [class.hamburger-bar--open]="isMobileMenuOpen"></span>
+          <span class="hamburger-bar" [class.hamburger-bar--open]="isMobileMenuOpen"></span>
+        </button>
+
+      </div><!-- /.topnav__actions -->
+    </div><!-- /.topnav__inner -->
+  </header>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       MOBILE DRAWER — slides in from the right (320px max)
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <!-- Semi-transparent backdrop — click to close -->
+  <div
+    class="drawer-backdrop"
+    [class.drawer-backdrop--visible]="isMobileMenuOpen"
+    (click)="closeMobileMenu(true)"
+    aria-hidden="true"
+  ></div>
+
+  <!-- Slide-in panel -->
+  <nav
+    id="mobile-drawer"
+    class="mobile-drawer"
+    [class.mobile-drawer--open]="isMobileMenuOpen"
+    role="navigation"
+    aria-label="Mobilna navigacija"
+    [attr.aria-hidden]="!isMobileMenuOpen"
+  >
+    <!-- Drawer header: title + close button -->
+    <div class="mobile-drawer__header">
+      <span class="mobile-drawer__title">Navigacija</span>
+      <button
+        class="mobile-drawer__close"
+        type="button"
+        (click)="closeMobileMenu(true)"
+        aria-label="Zatvori meni"
+      >
+        <mat-icon>close</mat-icon>
+      </button>
+    </div>
+
+    <!-- Nav links -->
+    <div class="mobile-drawer__links">
+      <ng-container *ngIf="currentUser$ | async as user; else mobileGuestLinks">
+        <ng-container *ngFor="let link of getNavigationLinks(user)">
+          <a
+            *ngIf="canShowLink(link, user)"
+            [routerLink]="link.route"
+            routerLinkActive="mobile-drawer__link--active"
+            #rlaMobile="routerLinkActive"
+            [attr.aria-current]="rlaMobile.isActive ? 'page' : null"
+            class="mobile-drawer__link"
+            (click)="closeMobileMenu()"
+          >
+            <mat-icon>{{ link.icon }}</mat-icon>
+            <span>{{ link.label }}</span>
+          </a>
+        </ng-container>
+      </ng-container>
+
+      <ng-template #mobileGuestLinks>
+        <a routerLink="/pocetna" routerLinkActive="mobile-drawer__link--active" #rlaMobHome="routerLinkActive" [routerLinkActiveOptions]="{exact: true}" [attr.aria-current]="rlaMobHome.isActive ? 'page' : null" class="mobile-drawer__link" (click)="closeMobileMenu()">
+          <mat-icon>home</mat-icon>
+          <span>Početna</span>
+        </a>
+        <a routerLink="/vozila" routerLinkActive="mobile-drawer__link--active" #rlaMobCars="routerLinkActive" [attr.aria-current]="rlaMobCars.isActive ? 'page' : null" class="mobile-drawer__link" (click)="closeMobileMenu()">
+          <mat-icon>directions_car</mat-icon>
+          <span>Vozila</span>
+        </a>
+      </ng-template>
+    </div>
+
+    <!-- Theme + auth section at the bottom -->
+    <div class="mobile-drawer__footer">
+      <div class="mobile-drawer__theme-row">
+        <app-theme-toggle />
+        <span>{{ themeService.theme() === 'light' ? 'Tamna tema' : 'Svetla tema' }}</span>
+      </div>
+
+      <div class="mobile-drawer__divider"></div>
+
+      <ng-container *ngIf="isAuthenticated$ | async; else mobileGuestFooter">
+        <div class="mobile-drawer__auth">
+          <button
+            class="mobile-drawer__btn mobile-drawer__btn--secondary"
+            type="button"
+            (click)="navigate('/users/profile'); closeMobileMenu()"
+          >
+            <mat-icon>person</mat-icon>
+            <span>Moj profil</span>
+          </button>
+          <button
+            class="mobile-drawer__btn mobile-drawer__btn--danger"
+            type="button"
+            (click)="logout()"
+          >
+            <mat-icon>logout</mat-icon>
+            <span>Odjavi se</span>
+          </button>
         </div>
-      </footer>
-    </mat-sidenav-content>
-  </mat-sidenav-container>
+      </ng-container>
+
+      <ng-template #mobileGuestFooter>
+        <div class="mobile-drawer__auth">
+          <a
+            routerLink="/auth/login"
+            class="mobile-drawer__btn mobile-drawer__btn--secondary"
+            (click)="closeMobileMenu()"
+          >Prijavi se</a>
+          <a
+            routerLink="/auth/register"
+            class="mobile-drawer__btn mobile-drawer__btn--primary"
+            (click)="closeMobileMenu()"
+          >Registruj se</a>
+        </div>
+      </ng-template>
+    </div>
+  </nav>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       MAIN CONTENT AREA
+       ═══════════════════════════════════════════════════════════════════ -->
+  <main class="layout-main">
+    <router-outlet />
+  </main>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       SITE FOOTER
+       ═══════════════════════════════════════════════════════════════════ -->
+  <footer class="site-footer">
+    <div class="footer-content">
+      <div class="footer-brand">
+        <span class="footer-logo">Rentoza</span>
+        <span class="footer-tagline">Beta Testiranje</span>
+      </div>
+      <nav class="footer-links" aria-label="Sekundarna navigacija">
+        <a routerLink="/privacy" class="footer-link">Politika Privatnosti</a>
+        <span class="footer-separator" aria-hidden="true">•</span>
+        <a routerLink="/beta-terms" class="footer-link">Beta Uslovi</a>
+        <span class="footer-separator" aria-hidden="true">•</span>
+        <a href="mailto:rentozzza@gmail.com" class="footer-link">Kontakt</a>
+      </nav>
+      <p class="footer-copyright">© 2026 Rentoza. Sva prava zadržana.</p>
+    </div>
+  </footer>
+
 </ng-container>
 
 <ng-template #adminLayout>
   <router-outlet />
 </ng-template>
+

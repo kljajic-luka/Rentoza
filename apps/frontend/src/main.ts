@@ -24,7 +24,9 @@ import { MAT_DATE_LOCALE, provideNativeDateAdapter } from '@angular/material/cor
 import { provideServiceWorker } from '@angular/service-worker';
 import { JwtModule } from '@auth0/angular-jwt';
 import { provideToastr } from 'ngx-toastr';
+import { MatPaginatorIntl } from '@angular/material/paginator';
 import { provideCharts, withDefaultRegisterables } from 'ng2-charts';
+import { SrMatPaginatorIntl } from '@core/i18n/mat-paginator-i18n';
 
 import { App } from './app/app';
 import { routes } from './app/app.routes';
@@ -134,5 +136,7 @@ bootstrapApplication(App, {
       registrationStrategy: 'registerWhenStable:30000',
     }),
     provideCharts(withDefaultRegisterables()),
+    /* Serbian localization for Angular Material Paginator (WCAG 3.1.2 Language of Parts) */
+    { provide: MatPaginatorIntl, useClass: SrMatPaginatorIntl },
   ],
 }).catch((err) => console.error(err));

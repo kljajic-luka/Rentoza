@@ -70,7 +70,7 @@
     text-transform: uppercase;
     letter-spacing: 0.38em;
     font-size: var(--font-size-xs);
-    opacity: 0.8;
+    color: rgba(255, 255, 255, 0.85); /* explicit white — overrides global rule */
     max-width: 650px;
   }
 
@@ -79,12 +79,14 @@
     font-size: clamp(2.5rem, 5vw, 3.5rem);
     line-height: 1.1;
     margin: 0;
+    color: #ffffff; /* force white — global h1 rule sets color-text-primary */
+    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.35); /* subtle shadow for legibility on image */
   }
 
   &__lede {
     font-size: var(--font-size-lg);
     line-height: 1.7;
-    opacity: 0.9;
+    color: rgba(255, 255, 255, 0.9); /* near-white, explicit */
     max-width: 600px;
   }
 

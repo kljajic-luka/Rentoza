@@ -63,6 +63,7 @@ import { FavoriteButtonComponent } from '@shared/components/favorite-button/favo
 import { CarFiltersComponent } from '../../components/car-filters/car-filters.component';
 import { TranslateEnumPipe } from '@shared/pipes/translate-enum.pipe';
 import { CarCardComponent } from '@shared/components/car-card/car-card.component';
+import { EmptyStateComponent } from '@shared/components/empty-state/empty-state.component';
 import { environment } from '@environments/environment';
 // Phase 2: Time validation utilities
 import {
@@ -98,6 +99,7 @@ import {
     CarFiltersComponent,
     TranslateEnumPipe,
     CarCardComponent,
+    EmptyStateComponent,
   ],
   templateUrl: './car-list.component.html',
   styleUrls: ['./car-list.component.scss'],

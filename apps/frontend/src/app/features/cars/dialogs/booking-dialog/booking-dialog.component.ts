@@ -632,7 +632,7 @@ export class BookingDialogComponent implements OnInit {
             panelClass: ['snackbar-success'],
           });
         }
-        this.dialogRef.close(true);
+        this.dialogRef.close({ bookingId: booking.id });
       },
       error: (error) => {
         console.error('Booking error:', error);

@@ -8,19 +8,14 @@
   </header>
 
   @if (isLoading()) {
-    <div class="loading">
-      <mat-progress-spinner mode="indeterminate"></mat-progress-spinner>
+    <!-- Card skeletons while loading -->
+    <div class="bookings__grid">
+      @for (i of [1,2,3]; track i) {
+        <app-loading-skeleton type="card" ariaLabel="rezervacije" />
+      }
     </div>
   } @else if (bookings().length === 0) {
-    <div class="empty-state">
-      <mat-icon>event_available</mat-icon>
-      <h2>Još nemate rezervacija</h2>
-      <p>Istražite vozila i započnite svoje prvo putovanje.</p>
-      <a mat-raised-button color="primary" routerLink="/cars">
-        <mat-icon>directions_car</mat-icon>
-        Pregledaj vozila
-      </a>
-    </div>
+    <app-empty-state variant="upcoming-trips" />
   } @else {
     <!-- Upcoming Bookings -->
     @if (categorizedBookings().upcoming.length > 0) {
@@ -138,7 +133,17 @@
       </section>
     }
 
-    <!-- Cancelled Bookings -->
+    <!-- Empty: no upcoming but has other bookings -->
+    @if (categorizedBookings().upcoming.length === 0 && bookings().length > 0) {
+      <app-empty-state
+        variant="upcoming-trips"
+        headline="Nemaš predstojećih putovanja"
+        subtext="Pronađi savršen auto za tvoju sledeću avanturu."
+        ctaLabel="Pretraži automobile"
+        ctaRoute="/cars"
+      />
+    }
+
     @if (categorizedBookings().cancelled.length > 0) {
       <section class="bookings__section">
         <h2 class="section-title">
@@ -463,6 +468,23 @@
           }
         </div>
       </section>
+    }
+
+    <!-- Empty: no past trips but has other bookings -->
+    @if (categorizedBookings().past.length === 0 && bookings().length > 0) {
+      <app-empty-state
+        variant="past-trips"
+        headline="Još nisi završio nijedno putovanje"
+        subtext="Tvoja prošla putovanja će se prikazati ovde."
+        [ctaLabel]="null"
+      />
+    }
+
+    <!-- Empty: no cancelled — positive state, no CTA needed -->
+    @if (categorizedBookings().cancelled.length === 0 && bookings().length > 0) {
+      <app-empty-state
+        variant="cancelled-trips"
+      />
     }
   }
 </section>

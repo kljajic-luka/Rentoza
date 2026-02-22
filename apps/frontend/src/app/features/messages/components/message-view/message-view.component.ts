@@ -17,6 +17,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { ConversationDTO, MessageDTO } from '@core/models/chat.model';
 import { MessageBubbleComponent } from '../message-bubble/message-bubble.component';
 import { TypingIndicatorComponent } from '../typing-indicator/typing-indicator.component';
+import { EmptyStateComponent } from '@shared/components/empty-state/empty-state.component';
 
 
 
@@ -38,14 +39,20 @@ import { TypingIndicatorComponent } from '../typing-indicator/typing-indicator.c
     MatIconModule,
     MessageBubbleComponent,
     TypingIndicatorComponent,
+    EmptyStateComponent,
   ],
   template: `
     <!-- Empty state -->
-    <div class="empty-messages" *ngIf="displayMessages().length === 0 && !isTyping()">
-      <mat-icon>chat_bubble_outline</mat-icon>
-      <h3>Nema poruka</h3>
-      <p>{{ emptyStateText() }}</p>
-    </div>
+    @if (displayMessages().length === 0 && !isTyping()) {
+      <div class="empty-state-wrapper">
+        <app-empty-state
+          variant="messages"
+          headline="Nema poruka"
+          [subtext]="emptyStateText()"
+          [ctaLabel]="null"
+        />
+      </div>
+    }
 
     <!-- Message list with virtual scroll -->
     <cdk-virtual-scroll-viewport
@@ -90,37 +97,13 @@ import { TypingIndicatorComponent } from '../typing-indicator/typing-indicator.c
       overflow: hidden;
     }
 
-    .empty-messages {
+    .empty-state-wrapper {
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
+      flex: 1;
       height: 100%;
-      padding: 40px 24px;
-      text-align: center;
-
-      mat-icon {
-        font-size: 64px;
-        width: 64px;
-        height: 64px;
-        color: #e0e0e0;
-        margin-bottom: 16px;
-      }
-
-      h3 {
-        margin: 0 0 8px 0;
-        font-size: 18px;
-        font-weight: 600;
-        color: #333;
-      }
-
-      p {
-        margin: 0;
-        font-size: 14px;
-        color: #666;
-        max-width: 280px;
-        line-height: 1.5;
-      }
     }
 
     .messages-viewport {
@@ -172,20 +155,6 @@ import { TypingIndicatorComponent } from '../typing-indicator/typing-indicator.c
 
     // Dark theme
     :host-context(.dark-theme) {
-      .empty-messages {
-        mat-icon {
-          color: #333;
-        }
-
-        h3 {
-          color: #e0e0e0;
-        }
-
-        p {
-          color: #888;
-        }
-      }
-
       .messages-viewport {
         &::-webkit-scrollbar-thumb {
           background: #444;

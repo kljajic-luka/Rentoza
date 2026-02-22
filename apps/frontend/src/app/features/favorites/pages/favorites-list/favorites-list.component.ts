@@ -4,10 +4,11 @@ import { Router, RouterModule } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
-import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { FavoriteService } from '@core/services/favorite.service';
 import { Favorite } from '@core/models/favorite.model';
 import { finalize } from 'rxjs';
+import { EmptyStateComponent } from '@shared/components/empty-state/empty-state.component';
+import { LoadingSkeletonComponent } from '@shared/components/loading-skeleton/loading-skeleton.component';
 
 @Component({
   selector: 'app-favorites-list',
@@ -18,7 +19,8 @@ import { finalize } from 'rxjs';
     MatCardModule,
     MatButtonModule,
     MatIconModule,
-    MatProgressSpinnerModule
+    EmptyStateComponent,
+    LoadingSkeletonComponent,
   ],
   template: `
     <section class="favorites">
@@ -28,18 +30,14 @@ import { finalize } from 'rxjs';
       </header>
 
       @if (isLoading()) {
-        <div class="loading">
-          <mat-progress-spinner mode="indeterminate"></mat-progress-spinner>
+        <!-- Card skeleton grid while loading -->
+        <div class="favorites__grid">
+          @for (i of [1,2,3]; track i) {
+            <app-loading-skeleton type="card" ariaLabel="omiljenog automobila" />
+          }
         </div>
       } @else if (favorites().length === 0) {
-        <div class="empty-state">
-          <mat-icon>favorite_border</mat-icon>
-          <h2>Još nemate omiljenih automobila</h2>
-          <p>Pregledajte dostupne automobile i dodajte ih u favorite</p>
-          <a mat-raised-button color="primary" routerLink="/cars">
-            Pregledaj automobile
-          </a>
-        </div>
+        <app-empty-state variant="favorites" />
       } @else {
         <div class="favorites__grid">
           @for (favorite of favorites(); track favorite.id) {

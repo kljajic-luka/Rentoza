@@ -16,6 +16,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { ConversationDTO } from '@core/models/chat.model';
 import { ChatUiHelper } from '@core/helpers/chat-ui.helper';
 import { ConversationItemComponent } from '../conversation-item/conversation-item.component';
+import { EmptyStateComponent } from '@shared/components/empty-state/empty-state.component';
 
 
 /**
@@ -33,6 +34,7 @@ import { ConversationItemComponent } from '../conversation-item/conversation-ite
     MatProgressSpinnerModule,
     MatIconModule,
     ConversationItemComponent,
+    EmptyStateComponent,
   ],
   template: `
     <!-- Loading state -->
@@ -45,10 +47,13 @@ import { ConversationItemComponent } from '../conversation-item/conversation-ite
 
     <!-- Empty state -->
     @if (!isLoading() && conversations().length === 0) {
-      <div class="empty-state">
-        <mat-icon>chat_bubble_outline</mat-icon>
-        <p>Nema razgovora</p>
-        <small>Rezerviši automobil da počneš razgovor sa vlasnikom.</small>
+      <div class="empty-state-wrapper">
+        <app-empty-state
+          variant="messages"
+          headline="Nema razgovora"
+          subtext="Rezerviši automobil da počneš razgovor sa vlasnikom."
+          [ctaLabel]="null"
+        />
       </div>
     }
 
@@ -90,35 +95,13 @@ import { ConversationItemComponent } from '../conversation-item/conversation-ite
       }
     }
 
-    .empty-state {
+    .empty-state-wrapper {
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      padding: 60px 24px;
-      text-align: center;
-
-      mat-icon {
-        font-size: 56px;
-        width: 56px;
-        height: 56px;
-        color: #e0e0e0;
-        margin-bottom: 16px;
-      }
-
-      p {
-        margin: 0 0 8px 0;
-        font-size: 17px;
-        font-weight: 600;
-        color: #333;
-      }
-
-      small {
-        color: #888;
-        font-size: 14px;
-        line-height: 1.5;
-        max-width: 240px;
-      }
+      padding: 24px;
+      flex: 1;
     }
 
     .conversation-viewport {

@@ -62,16 +62,12 @@ import { firstValueFrom } from 'rxjs';
       }
 
       @keyframes heartBeat {
-        0%,
-        100% {
-          transform: scale(1);
-        }
-        25% {
-          transform: scale(1.3);
-        }
-        50% {
-          transform: scale(1.1);
-        }
+        0% { transform: scale(1); }
+        14% { transform: scale(1.3); }
+        28% { transform: scale(1); }
+        42% { transform: scale(1.15); }
+        70% { transform: scale(1); }
+        100% { transform: scale(1); }
       }
     `,
   ],

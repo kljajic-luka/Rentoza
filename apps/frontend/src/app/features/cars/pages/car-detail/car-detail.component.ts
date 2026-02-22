@@ -364,11 +364,16 @@ export class CarDetailComponent {
       disableClose: false,
     });
 
-    dialogRef.afterClosed().subscribe((result) => {
-      if (result === true) {
-        // Booking was successful - dialog already showed appropriate message
-        // (either "pending approval" or "confirmed" based on status)
-        // Just refresh bookings to show the new blocked dates
+    dialogRef.afterClosed().subscribe((result: boolean | { bookingId: string }) => {
+      if (result === true || (result && typeof result === 'object' && result.bookingId)) {
+        // Navigate to confirmation page
+        const bookingId = typeof result === 'object' ? result.bookingId : null;
+        if (bookingId) {
+          void this.router.navigate(['/bookings', bookingId, 'confirmation']);
+        } else {
+          // Fallback: navigate to bookings list if ID not available
+          void this.router.navigate(['/bookings']);
+        }
         this.refreshBookings();
       }
     });

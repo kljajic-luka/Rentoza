@@ -177,6 +177,16 @@ export const routes: Routes = [
           ),
       },
       {
+        path: ':id/confirmation',
+        canActivate: [RoleGuard, RoleRedirectGuard],
+        title: 'Rezervacija potvrđena | Rentoza',
+        data: { roles: ['USER', 'OWNER', 'ADMIN'] },
+        loadComponent: () =>
+          import('@features/bookings/pages/booking-confirmation/booking-confirmation.component').then(
+            (m) => m.BookingConfirmationComponent,
+          ),
+      },
+      {
         path: ':id/check-in',
         canActivate: [RoleGuard, RoleRedirectGuard],
         data: { roles: ['USER', 'OWNER', 'ADMIN'] },

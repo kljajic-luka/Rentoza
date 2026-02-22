@@ -237,36 +237,16 @@
         </div>
 
         <!-- Empty State -->
+        <!-- Empty State -->
         <ng-template #noResults>
-          <div class="empty-state">
-            <mat-icon>{{ (isAvailabilityMode$ | async) ? 'event_busy' : 'search_off' }}</mat-icon>
-            <h3>
-              {{ (isAvailabilityMode$ | async) ? 'Nema dostupnih automobila' : 'Nema rezultata' }}
-            </h3>
-            <p>
-              {{
-                (isAvailabilityMode$ | async)
-                  ? 'Nema dostupnih automobila za ove datume. Pokušajte promeniti datume ili odabrati drugu lokaciju.'
-                  : 'Pokušajte da promenite filtere ili obrišete neke od postojećih.'
-              }}
-            </p>
-            <button
-              *ngIf="!(isAvailabilityMode$ | async)"
-              mat-flat-button
-              color="primary"
-              (click)="onClearAllFiltersClick()"
-            >
-              Obriši sve filtere
-            </button>
-            <a
-              *ngIf="isAvailabilityMode$ | async"
-              mat-flat-button
-              color="primary"
-              routerLink="/cars"
-            >
-              Prikaži sve automobile
-            </a>
-          </div>
+          <app-empty-state
+            variant="search"
+            [headline]="(isAvailabilityMode$ | async) ? 'Nema dostupnih automobila' : 'Nema rezultata'"
+            [subtext]="(isAvailabilityMode$ | async) ? 'Nema dostupnih automobila za ove datume. Pokušajte promeniti datume ili odabrati drugu lokaciju.' : 'Pokušajte da promenite filtere ili obrišete neke od postojećih.'"
+            [ctaLabel]="(isAvailabilityMode$ | async) ? 'Prikaži sve automobile' : 'Obriši sve filtere'"
+            [ctaRoute]="(isAvailabilityMode$ | async) ? '/cars' : null"
+            (ctaClicked)="onClearAllFiltersClick()"
+          />
         </ng-template>
 
         <!-- Pagination -->

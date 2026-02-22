@@ -18,6 +18,8 @@ import { AuthService } from '@core/auth/auth.service';
 import { environment } from '@environments/environment';
 import { EditCarDialogComponent } from '../../dialogs/edit-car-dialog/edit-car-dialog.component';
 import { CarAvailabilityDialogComponent } from '../../components/car-availability-dialog/car-availability-dialog.component';
+import { EmptyStateComponent } from '@shared/components/empty-state/empty-state.component';
+import { LoadingSkeletonComponent } from '@shared/components/loading-skeleton/loading-skeleton.component';
 
 @Component({
   selector: 'app-my-cars',
@@ -34,6 +36,8 @@ import { CarAvailabilityDialogComponent } from '../../components/car-availabilit
     MatSnackBarModule,
     MatDividerModule,
     MatDialogModule,
+    EmptyStateComponent,
+    LoadingSkeletonComponent,
   ],
   templateUrl: './my-cars.component.html',
   styleUrls: ['./my-cars.component.scss'],

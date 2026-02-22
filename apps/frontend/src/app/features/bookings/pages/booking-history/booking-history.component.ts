@@ -10,13 +10,14 @@ import {
 } from '@angular/core';
 import { Router, RouterModule } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
-import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatDialog } from '@angular/material/dialog';
 import { finalize } from 'rxjs';
+import { EmptyStateComponent } from '@shared/components/empty-state/empty-state.component';
+import { LoadingSkeletonComponent } from '@shared/components/loading-skeleton/loading-skeleton.component';
 
 import { UserBooking } from '@core/models/booking.model';
 import { BookingService } from '@core/services/booking.service';
@@ -39,11 +40,12 @@ interface CategorizedBookings {
     CommonModule,
     RouterModule,
     MatCardModule,
-    MatProgressSpinnerModule,
     MatButtonModule,
     MatIconModule,
     MatChipsModule,
     MatTooltipModule,
+    EmptyStateComponent,
+    LoadingSkeletonComponent,
   ],
   templateUrl: './booking-history.component.html',
   styleUrls: ['./booking-history.component.scss'],

@@ -8,19 +8,13 @@
   </header>
 
   @if (isLoading()) {
-    <div class="loading">
-      <mat-spinner diameter="48"></mat-spinner>
+    <div class="cars-grid">
+      @for (i of [1,2,3]; track i) {
+        <app-loading-skeleton type="card" ariaLabel="vozila" />
+      }
     </div>
   } @else if (cars().length === 0) {
-    <div class="empty-state">
-      <mat-icon>directions_car_filled</mat-icon>
-      <h2>Nemate vozila</h2>
-      <p>Dodajte svoje prvo vozilo i počnite da zarađujete</p>
-      <button mat-raised-button color="primary" [routerLink]="['/owner/cars/new']">
-        <mat-icon>add_circle</mat-icon>
-        Dodaj vozilo
-      </button>
-    </div>
+    <app-empty-state variant="host-cars" />
   } @else {
     <div class="cars-grid">
       @for (car of cars(); track car.id) {

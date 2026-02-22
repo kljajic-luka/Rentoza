@@ -549,7 +549,7 @@ const PHOTO_SLOTS: PhotoSlot[] = [
         --checkin-border: var(--mat-app-outline-variant, var(--mdc-theme-outline, #e0e0e0));
 
         /* Brand colors */
-        --checkin-primary: var(--mat-app-primary, var(--mdc-theme-primary, #1976d2));
+        --checkin-primary: var(--mat-app-primary, var(--mdc-theme-primary, var(--brand-primary)));
 
         /* Status colors - light mode */
         --checkin-success: #4caf50;
@@ -571,7 +571,7 @@ const PHOTO_SLOTS: PhotoSlot[] = [
         --checkin-surface: rgba(19, 23, 34, 0.95);
         --checkin-surface-muted: rgba(26, 33, 50, 0.78);
         --checkin-border: rgba(94, 117, 168, 0.35);
-        --checkin-primary: #3b82f6;
+        --checkin-primary: var(--brand-primary);
         --checkin-success: #4ade80;
         --checkin-warn: #fbbf24;
         --checkin-error: #f87171;

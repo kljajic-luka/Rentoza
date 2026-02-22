@@ -10,6 +10,7 @@ import {
 import { MatCardModule } from '@angular/material/card';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatButtonModule } from '@angular/material/button';
+import { LoadingSkeletonComponent } from '@shared/components/loading-skeleton/loading-skeleton.component';
 import { MatIconModule } from '@angular/material/icon';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -57,6 +58,7 @@ const optionalMinLengthValidator = (minLength: number) => {
     ReactiveFormsModule,
     MatCardModule,
     MatProgressSpinnerModule,
+    LoadingSkeletonComponent,
     MatButtonModule,
     MatIconModule,
     MatDividerModule,

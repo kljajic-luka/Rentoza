@@ -91,7 +91,7 @@
       }
 
       span {
-        font-size: 0.825rem;
+        font-size: var(--font-size-sm); /* 14px min */
       }
     }
   }

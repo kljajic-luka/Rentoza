@@ -181,10 +181,14 @@ import { environment } from '@environments/environment';
       }
 
       .own .bubble {
-        background: linear-gradient(135deg, #2196f3 0%, #1976d2 100%);
+        background: linear-gradient(
+          135deg,
+          var(--brand-primary) 0%,
+          var(--color-primary-hover) 100%
+        );
         color: #ffffff;
         border-bottom-right-radius: 4px;
-        box-shadow: 0 1px 3px rgba(33, 150, 243, 0.2);
+        box-shadow: 0 1px 3px rgba(89, 60, 251, 0.2);
       }
 
       .other .bubble {
@@ -337,7 +341,11 @@ import { environment } from '@environments/environment';
       // Dark theme
       :host-context(.dark-theme) {
         .own .bubble {
-          background: linear-gradient(135deg, #1976d2 0%, #1565c0 100%);
+          background: linear-gradient(
+            135deg,
+            var(--brand-primary) 0%,
+            var(--color-primary-hover) 100%
+          );
         }
 
         .other .bubble {

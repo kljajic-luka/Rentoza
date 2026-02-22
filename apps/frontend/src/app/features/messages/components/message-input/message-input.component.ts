@@ -281,7 +281,11 @@ import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
         height: 40px;
         border: none;
         border-radius: 50%;
-        background: linear-gradient(135deg, #2196f3 0%, #1976d2 100%);
+        background: linear-gradient(
+          135deg,
+          var(--brand-primary) 0%,
+          var(--color-primary-hover) 100%
+        );
         color: #ffffff;
         cursor: pointer;
         transition:

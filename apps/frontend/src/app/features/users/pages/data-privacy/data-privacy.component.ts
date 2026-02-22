@@ -158,9 +158,7 @@ import { ConfirmDialogService } from '@core/services/confirm-dialog.service';
           <!-- Email verification step (replaces window.prompt) -->
           @if (showEmailStep()) {
             <div class="email-verify-step" role="form" aria-label="Potvrda brisanja naloga">
-              <p class="email-verify-step__label">
-                Unesite vašu email adresu za potvrdu:
-              </p>
+              <p class="email-verify-step__label">Unesite vašu email adresu za potvrdu:</p>
               <mat-form-field appearance="outline" class="email-verify-step__field">
                 <mat-label>Email adresa</mat-label>
                 <input
@@ -172,7 +170,14 @@ import { ConfirmDialogService } from '@core/services/confirm-dialog.service';
                 />
               </mat-form-field>
               <div class="email-verify-step__actions">
-                <button mat-stroked-button type="button" (click)="cancelDeleteStep()" [disabled]="deleting()">Odustani</button>
+                <button
+                  mat-stroked-button
+                  type="button"
+                  (click)="cancelDeleteStep()"
+                  [disabled]="deleting()"
+                >
+                  Odustani
+                </button>
                 <button
                   mat-raised-button
                   color="warn"
@@ -305,7 +310,7 @@ import { ConfirmDialogService } from '@core/services/confirm-dialog.service';
         margin-top: 16px;
         padding: 16px;
         background: var(--color-error-bg, rgba(255, 90, 95, 0.06));
-        border: 1px solid var(--color-error, #FF5A5F);
+        border: 1px solid var(--color-error, #ff5a5f);
         border-radius: var(--radius-lg, 16px);
 
         &__label {

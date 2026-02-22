@@ -13,12 +13,7 @@ import {
   signal,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import {
-  ControlValueAccessor,
-  FormControl,
-  NgControl,
-  ReactiveFormsModule,
-} from '@angular/forms';
+import { ControlValueAccessor, FormControl, NgControl, ReactiveFormsModule } from '@angular/forms';
 
 /**
  * Enterprise-grade form input component.
@@ -58,6 +53,8 @@ export class FormInputComponent implements ControlValueAccessor, OnInit {
   @Input() required = false;
   /** Used for textarea variant */
   @Input() rows = 4;
+  /** Override or extend built-in error messages by validator key */
+  @Input() customErrors: Record<string, string> = {};
   /** Auto id for linking label ↔ input */
   readonly inputId = `rtz-input-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -161,6 +158,11 @@ export class FormInputComponent implements ControlValueAccessor, OnInit {
     const ctrl = this.parentControl;
     if (!ctrl || !ctrl.errors) return '';
     const errs = ctrl.errors;
+
+    // Check caller-provided overrides first
+    for (const key of Object.keys(errs)) {
+      if (this.customErrors[key]) return this.customErrors[key];
+    }
 
     if (errs['required']) return 'Ovo polje je obavezno';
     if (errs['email']) return 'Unesite ispravnu email adresu';

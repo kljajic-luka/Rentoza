@@ -10,7 +10,13 @@
   <!-- ═══════════════════════════════════════════════════════════════════
        TOP NAVBAR — sticky, 72px, transitions to solid on scroll
        ═══════════════════════════════════════════════════════════════════ -->
-  <header id="navigation" class="topnav" [class.topnav--scrolled]="isScrolled" [class.topnav--transparent]="isTransparentNav" role="banner">
+  <header
+    id="navigation"
+    class="topnav"
+    [class.topnav--scrolled]="isScrolled"
+    [class.topnav--transparent]="isTransparentNav"
+    role="banner"
+  >
     <div class="topnav__inner">
       <!-- ── Logo ── -->
       <a class="topnav__logo" routerLink="/" aria-label="Rentoza – Idi na početnu stranicu">
@@ -346,7 +352,12 @@
   <!-- ═══════════════════════════════════════════════════════════════════
        MAIN CONTENT AREA
        ═══════════════════════════════════════════════════════════════════ -->
-  <main class="layout-main" [class.layout-main--fullbleed]="isFullBleed()" id="main-content" tabindex="-1">
+  <main
+    class="layout-main"
+    [class.layout-main--fullbleed]="isFullBleed()"
+    id="main-content"
+    tabindex="-1"
+  >
     <router-outlet />
   </main>
 

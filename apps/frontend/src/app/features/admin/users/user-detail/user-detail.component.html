@@ -141,10 +141,7 @@
             <span class="strong">{{ user.maskedBankAccountNumber }}</span>
           </div>
 
-          <div
-            class="stack stack--sm"
-            *ngIf="user.ownerVerificationStatus === 'PENDING_REVIEW'"
-          >
+          <div class="stack stack--sm" *ngIf="user.ownerVerificationStatus === 'PENDING_REVIEW'">
             <button mat-flat-button color="primary" (click)="approveOwnerVerification()">
               <mat-icon>verified</mat-icon>
               Approve Verification

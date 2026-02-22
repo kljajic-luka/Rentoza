@@ -19,6 +19,7 @@ import { MatNativeDateModule } from '@angular/material/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatIconModule } from '@angular/material/icon';
+import { LoadingSkeletonComponent } from '@shared/components/loading-skeleton/loading-skeleton.component';
 import { MatChipsModule } from '@angular/material/chips'; // Still needed for unavailable chip in header
 import {
   MatDialogModule,
@@ -83,6 +84,7 @@ import {
     MatNativeDateModule,
     MatButtonModule,
     MatProgressSpinnerModule,
+    LoadingSkeletonComponent,
     MatIconModule,
     MatChipsModule, // Still needed for unavailable chip in header
     MatDialogModule,

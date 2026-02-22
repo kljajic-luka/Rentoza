@@ -371,7 +371,7 @@ hr {
 .eyebrow {
   text-transform: uppercase;
   letter-spacing: 0.28em;
-  font-size: 0.75rem;
+  font-size: var(--font-size-xs); /* 12px — decorative eyebrow label */
   color: var(--chip-color);
 }
 
@@ -384,7 +384,7 @@ hr {
   padding: 0.35rem 0.85rem;
   background: var(--chip-bg);
   color: var(--chip-color);
-  font-size: 0.75rem;
+  font-size: var(--font-size-xs); /* 12px — chip/badge label */
   text-transform: uppercase;
   letter-spacing: 0.08em;
   transition: background-color 200ms ease, color 200ms ease;

@@ -82,227 +82,247 @@ import { environment } from '@environments/environment';
 
         <!-- Offline indicator -->
         @if (offlineQueueService.isOnline() === false) {
-        <div class="offline-badge">
-          <mat-icon>cloud_off</mat-icon>
-          <span>Offline</span>
-        </div>
+          <div class="offline-badge">
+            <mat-icon>cloud_off</mat-icon>
+            <span>Offline</span>
+          </div>
         }
 
         <!-- Pending uploads badge -->
         @if (offlineQueueService.queueLength() > 0) {
-        <div class="pending-uploads-badge" [class.syncing]="offlineQueueService.isProcessing()">
-          <mat-icon>{{ offlineQueueService.isProcessing() ? 'sync' : 'cloud_upload' }}</mat-icon>
-          <span>{{ offlineQueueService.queueLength() }}</span>
-        </div>
+          <div class="pending-uploads-badge" [class.syncing]="offlineQueueService.isProcessing()">
+            <mat-icon>{{ offlineQueueService.isProcessing() ? 'sync' : 'cloud_upload' }}</mat-icon>
+            <span>{{ offlineQueueService.queueLength() }}</span>
+          </div>
         }
       </header>
 
       <!-- Loading state (derived from renderDecision signal) -->
       @if (checkInService.renderDecision() === 'LOADING') {
-      <div class="loading-container">
-        <mat-progress-bar mode="indeterminate"></mat-progress-bar>
-        <p>Učitavanje check-in statusa...</p>
-      </div>
+        <div class="loading-container">
+          <mat-progress-bar mode="indeterminate"></mat-progress-bar>
+          <p>Učitavanje check-in statusa...</p>
+        </div>
       }
 
       <!-- Error state -->
       @if (checkInService.error()) {
-      <div class="error-container">
-        <mat-icon>error</mat-icon>
-        <h2>Greška</h2>
-        <p>{{ checkInService.error() }}</p>
-        <button mat-raised-button color="primary" (click)="retryLoad()">
-          <mat-icon>refresh</mat-icon>
-          Pokušaj ponovo
-        </button>
-      </div>
+        <div class="error-container">
+          <mat-icon>error</mat-icon>
+          <h2>Greška</h2>
+          <p>{{ checkInService.error() }}</p>
+          <button mat-raised-button color="primary" (click)="retryLoad()">
+            <mat-icon>refresh</mat-icon>
+            Pokušaj ponovo
+          </button>
+        </div>
       }
 
       <!-- Main content - Role-Aware State Machine via renderDecision -->
       @if (checkInService.renderDecision() !== 'LOADING' && !checkInService.error()) {
-      <div class="wizard-content">
-        <!-- Progress indicator -->
-        <div class="progress-steps">
-          <div
-            class="step"
-            [class.active]="isStepActiveByRender('HOST')"
-            [class.completed]="isStepCompletedByRender('HOST')"
-          >
-            <div class="step-icon">
-              @if (isStepCompletedByRender('HOST')) {
-              <mat-icon>check</mat-icon>
-              } @else {
-              <span>1</span>
-              }
+        <div class="wizard-content">
+          <!-- Progress indicator -->
+          <div class="progress-steps">
+            <div
+              class="step"
+              [class.active]="isStepActiveByRender('HOST')"
+              [class.completed]="isStepCompletedByRender('HOST')"
+            >
+              <div class="step-icon">
+                @if (isStepCompletedByRender('HOST')) {
+                  <mat-icon>check</mat-icon>
+                } @else {
+                  <span>1</span>
+                }
+              </div>
+              <span class="step-label">Domaćin</span>
             </div>
-            <span class="step-label">Domaćin</span>
+
+            <div class="step-connector" [class.completed]="isStepCompletedByRender('HOST')"></div>
+
+            <div
+              class="step"
+              [class.active]="isStepActiveByRender('GUEST')"
+              [class.completed]="isStepCompletedByRender('GUEST')"
+            >
+              <div class="step-icon">
+                @if (isStepCompletedByRender('GUEST')) {
+                  <mat-icon>check</mat-icon>
+                } @else {
+                  <span>2</span>
+                }
+              </div>
+              <span class="step-label">Gost</span>
+            </div>
+
+            <div class="step-connector" [class.completed]="isStepCompletedByRender('GUEST')"></div>
+
+            <div
+              class="step"
+              [class.active]="isStepActiveByRender('HANDSHAKE')"
+              [class.completed]="isStepCompletedByRender('HANDSHAKE')"
+            >
+              <div class="step-icon">
+                @if (isStepCompletedByRender('HANDSHAKE')) {
+                  <mat-icon>check</mat-icon>
+                } @else {
+                  <span>3</span>
+                }
+              </div>
+              <span class="step-label">Potvrda</span>
+            </div>
           </div>
 
-          <div class="step-connector" [class.completed]="isStepCompletedByRender('HOST')"></div>
-
-          <div
-            class="step"
-            [class.active]="isStepActiveByRender('GUEST')"
-            [class.completed]="isStepCompletedByRender('GUEST')"
-          >
-            <div class="step-icon">
-              @if (isStepCompletedByRender('GUEST')) {
-              <mat-icon>check</mat-icon>
+          <!-- Location status -->
+          @if (showLocationStatus()) {
+            <div
+              class="location-status"
+              [class.error]="geolocationService.hasError() && !geolocationService.hasPosition()"
+              [class.warning]="geolocationService.isAccuracyPoor()"
+            >
+              @if (geolocationService.isLoading() && !geolocationService.hasPosition()) {
+                <mat-icon class="pulse">location_searching</mat-icon>
+                <span>Traženje GPS signala...</span>
+              } @else if (geolocationService.hasPosition()) {
+                <mat-icon>my_location</mat-icon>
+                <span
+                  >GPS aktivan (±{{ geolocationService.position()?.accuracy?.toFixed(0) }}m)</span
+                >
+              } @else if (geolocationService.hasError()) {
+                <mat-icon>location_off</mat-icon>
+                <span>{{ geolocationService.error()?.message }}</span>
+                <button mat-button (click)="retryLocation()">Pokušaj ponovo</button>
               } @else {
-              <span>2</span>
+                <mat-icon>location_searching</mat-icon>
+                <span>Čekanje GPS...</span>
               }
             </div>
-            <span class="step-label">Gost</span>
-          </div>
-
-          <div class="step-connector" [class.completed]="isStepCompletedByRender('GUEST')"></div>
-
-          <div
-            class="step"
-            [class.active]="isStepActiveByRender('HANDSHAKE')"
-            [class.completed]="isStepCompletedByRender('HANDSHAKE')"
-          >
-            <div class="step-icon">
-              @if (isStepCompletedByRender('HANDSHAKE')) {
-              <mat-icon>check</mat-icon>
-              } @else {
-              <span>3</span>
-              }
-            </div>
-            <span class="step-label">Potvrda</span>
-          </div>
-        </div>
-
-        <!-- Location status -->
-        @if (showLocationStatus()) {
-        <div
-          class="location-status"
-          [class.error]="geolocationService.hasError() && !geolocationService.hasPosition()"
-          [class.warning]="geolocationService.isAccuracyPoor()"
-        >
-          @if (geolocationService.isLoading() && !geolocationService.hasPosition()) {
-          <mat-icon class="pulse">location_searching</mat-icon>
-          <span>Traženje GPS signala...</span>
-          } @else if (geolocationService.hasPosition()) {
-          <mat-icon>my_location</mat-icon>
-          <span>GPS aktivan (±{{ geolocationService.position()?.accuracy?.toFixed(0) }}m)</span>
-          } @else if (geolocationService.hasError()) {
-          <mat-icon>location_off</mat-icon>
-          <span>{{ geolocationService.error()?.message }}</span>
-          <button mat-button (click)="retryLocation()">Pokušaj ponovo</button>
-          } @else {
-          <mat-icon>location_searching</mat-icon>
-          <span>Čekanje GPS...</span>
           }
-        </div>
-        }
 
-        <!-- ================================================================
+          <!-- ================================================================
              ROLE-AWARE STATE MACHINE (renderDecision)
              ================================================================
              This switch is EXHAUSTIVE and uses the single source of truth.
              No role checks needed here - renderDecision already incorporates role.
         -->
-        @switch (checkInService.renderDecision()) { @case ('HOST_EDIT') {
-        <!-- Host can upload photos and submit -->
-        <app-host-check-in
-          [bookingId]="bookingId()"
-          [status]="checkInService.currentStatus()"
-          (completed)="onHostPhaseCompleted()"
-        ></app-host-check-in>
-        } @case ('HOST_WAITING') {
-        <!-- Host waiting for guest - can review their submission -->
-        @if (showingReview()) {
-        <app-host-check-in
-          [bookingId]="bookingId()"
-          [status]="checkInService.currentStatus()"
-          [readOnly]="true"
-          (backFromReview)="exitReviewMode()"
-        ></app-host-check-in>
-        } @else {
-        <app-check-in-waiting
-          [status]="checkInService.currentStatus()"
-          [title]="waitingTitle()"
-          [message]="waitingMessage()"
-          icon="check_circle"
-          [iconType]="'success'"
-          [nextSteps]="hostWaitingSteps"
-          [showReviewButton]="true"
-          [showSubmittedData]="true"
-          [animate]="true"
-          (refresh)="retryLoad()"
-          (reviewData)="enterReviewMode()"
-        ></app-check-in-waiting>
-        } } @case ('HOST_REVIEW') {
-        <!-- Explicit HOST_REVIEW state if needed -->
-        <app-host-check-in
-          [bookingId]="bookingId()"
-          [status]="checkInService.currentStatus()"
-          [readOnly]="true"
-          (backFromReview)="exitReviewMode()"
-        ></app-host-check-in>
-        } @case ('GUEST_WAITING') {
-        <!-- Guest waiting for host to complete -->
-        <app-check-in-waiting
-          [status]="checkInService.currentStatus()"
-          [title]="waitingTitle()"
-          [message]="waitingMessage()"
-          icon="schedule"
-          [iconType]="'waiting'"
-          [nextSteps]="guestWaitingSteps"
-          [animate]="true"
-          (refresh)="retryLoad()"
-        ></app-check-in-waiting>
-        } @case ('GUEST_EDIT') {
-        <!-- Guest can review photos and acknowledge condition -->
-        <app-guest-check-in
-          [bookingId]="bookingId()"
-          [status]="checkInService.currentStatus()"
-          (completed)="onGuestPhaseCompleted()"
-        ></app-guest-check-in>
-        } @case ('HANDSHAKE') {
-        <!-- Both parties confirming physical handoff -->
-        <app-handshake
-          [bookingId]="bookingId()"
-          [status]="checkInService.currentStatus()"
-          (completed)="onHandshakeCompleted()"
-        ></app-handshake>
-        } @case ('COMPLETE') {
-        <!-- Trip has started -->
-        <app-check-in-complete
-          [bookingId]="bookingId()"
-          [status]="checkInService.currentStatus()"
-        ></app-check-in-complete>
-        } @case ('NOT_READY') {
-        <!-- Check-in window not yet open -->
-        <div class="waiting-container">
-          <mat-icon>schedule</mat-icon>
-          <h2>Check-in još nije dostupan</h2>
-          <p>Check-in postaje dostupan 2 sata pre početka rezervacije.</p>
-          @if (checkInService.currentStatus()?.bookingStartTime) {
-          <p class="start-time">
-            Početak:
-            {{ checkInService.currentStatus()?.bookingStartTime | date : 'dd.MM.yyyy HH:mm' }}
-          </p>
+          @switch (checkInService.renderDecision()) {
+            @case ('HOST_EDIT') {
+              <!-- Host can upload photos and submit -->
+              <app-host-check-in
+                [bookingId]="bookingId()"
+                [status]="checkInService.currentStatus()"
+                (completed)="onHostPhaseCompleted()"
+              ></app-host-check-in>
+            }
+            @case ('HOST_WAITING') {
+              <!-- Host waiting for guest - can review their submission -->
+              @if (showingReview()) {
+                <app-host-check-in
+                  [bookingId]="bookingId()"
+                  [status]="checkInService.currentStatus()"
+                  [readOnly]="true"
+                  (backFromReview)="exitReviewMode()"
+                ></app-host-check-in>
+              } @else {
+                <app-check-in-waiting
+                  [status]="checkInService.currentStatus()"
+                  [title]="waitingTitle()"
+                  [message]="waitingMessage()"
+                  icon="check_circle"
+                  [iconType]="'success'"
+                  [nextSteps]="hostWaitingSteps"
+                  [showReviewButton]="true"
+                  [showSubmittedData]="true"
+                  [animate]="true"
+                  (refresh)="retryLoad()"
+                  (reviewData)="enterReviewMode()"
+                ></app-check-in-waiting>
+              }
+            }
+            @case ('HOST_REVIEW') {
+              <!-- Explicit HOST_REVIEW state if needed -->
+              <app-host-check-in
+                [bookingId]="bookingId()"
+                [status]="checkInService.currentStatus()"
+                [readOnly]="true"
+                (backFromReview)="exitReviewMode()"
+              ></app-host-check-in>
+            }
+            @case ('GUEST_WAITING') {
+              <!-- Guest waiting for host to complete -->
+              <app-check-in-waiting
+                [status]="checkInService.currentStatus()"
+                [title]="waitingTitle()"
+                [message]="waitingMessage()"
+                icon="schedule"
+                [iconType]="'waiting'"
+                [nextSteps]="guestWaitingSteps"
+                [animate]="true"
+                (refresh)="retryLoad()"
+              ></app-check-in-waiting>
+            }
+            @case ('GUEST_EDIT') {
+              <!-- Guest can review photos and acknowledge condition -->
+              <app-guest-check-in
+                [bookingId]="bookingId()"
+                [status]="checkInService.currentStatus()"
+                (completed)="onGuestPhaseCompleted()"
+              ></app-guest-check-in>
+            }
+            @case ('HANDSHAKE') {
+              <!-- Both parties confirming physical handoff -->
+              <app-handshake
+                [bookingId]="bookingId()"
+                [status]="checkInService.currentStatus()"
+                (completed)="onHandshakeCompleted()"
+              ></app-handshake>
+            }
+            @case ('COMPLETE') {
+              <!-- Trip has started -->
+              <app-check-in-complete
+                [bookingId]="bookingId()"
+                [status]="checkInService.currentStatus()"
+              ></app-check-in-complete>
+            }
+            @case ('NOT_READY') {
+              <!-- Check-in window not yet open -->
+              <div class="waiting-container">
+                <mat-icon>schedule</mat-icon>
+                <h2>Check-in još nije dostupan</h2>
+                <p>Check-in postaje dostupan 2 sata pre početka rezervacije.</p>
+                @if (checkInService.currentStatus()?.bookingStartTime) {
+                  <p class="start-time">
+                    Početak:
+                    {{
+                      checkInService.currentStatus()?.bookingStartTime | date: 'dd.MM.yyyy HH:mm'
+                    }}
+                  </p>
+                }
+                <button
+                  mat-stroked-button
+                  color="primary"
+                  (click)="retryLoad()"
+                  class="refresh-btn"
+                >
+                  <mat-icon>refresh</mat-icon>
+                  Osveži status
+                </button>
+              </div>
+            }
+            @default {
+              <!-- Fallback for any unhandled state (should never happen with exhaustive switch) -->
+              <div class="waiting-container">
+                <mat-icon>help_outline</mat-icon>
+                <h2>Nepoznato stanje</h2>
+                <p>Došlo je do neočekivane greške. Pokušajte osvežiti stranicu.</p>
+                <button mat-raised-button color="primary" (click)="retryLoad()">
+                  <mat-icon>refresh</mat-icon>
+                  Osveži
+                </button>
+              </div>
+            }
           }
-          <button mat-stroked-button color="primary" (click)="retryLoad()" class="refresh-btn">
-            <mat-icon>refresh</mat-icon>
-            Osveži status
-          </button>
         </div>
-        } @default {
-        <!-- Fallback for any unhandled state (should never happen with exhaustive switch) -->
-        <div class="waiting-container">
-          <mat-icon>help_outline</mat-icon>
-          <h2>Nepoznato stanje</h2>
-          <p>Došlo je do neočekivane greške. Pokušajte osvežiti stranicu.</p>
-          <button mat-raised-button color="primary" (click)="retryLoad()">
-            <mat-icon>refresh</mat-icon>
-            Osveži
-          </button>
-        </div>
-        } }
-      </div>
       }
     </div>
   `,
@@ -320,7 +340,10 @@ import { environment } from '@environments/environment';
         align-items: center;
         gap: 8px;
         padding: 12px 16px;
-        background: var(--toolbar-bg, linear-gradient(135deg, #1976d2, #6366f1));
+        background: var(
+          --toolbar-bg,
+          linear-gradient(135deg, var(--brand-primary), var(--color-primary-hover))
+        );
         color: var(--toolbar-color, white);
         position: sticky;
         top: 0;
@@ -690,7 +713,7 @@ export class CheckInWizardComponent implements OnInit, OnDestroy {
           this.snackBar.open(
             `Upozorenje: Vaša vozačka dozvola ističe za ${daysUntil} dana, pre završetka putovanja.`,
             'Razumem',
-            { duration: 8000, panelClass: ['snackbar-warning'] }
+            { duration: 8000, panelClass: ['snackbar-warning'] },
           );
         }
       },
@@ -739,14 +762,14 @@ export class CheckInWizardComponent implements OnInit, OnDestroy {
       },
       (error) => {
         console.warn('[CheckInWizard] GPS error:', error);
-      }
+      },
     );
   }
 
   retryLocation(): void {
     this.geolocationService.getCurrentPosition().then(
       () => this.geolocationService.startWatching(),
-      (err) => console.warn('[CheckInWizard] Retry GPS error:', err)
+      (err) => console.warn('[CheckInWizard] Retry GPS error:', err),
     );
   }
 

@@ -3,7 +3,11 @@
     "collect": {
       "staticDistDir": "./dist/rentoza-frontend/browser",
       "numberOfRuns": 3,
-      "url": ["http://localhost:4200/", "http://localhost:4200/cars", "http://localhost:4200/auth/login"]
+      "url": [
+        "http://localhost:4200/",
+        "http://localhost:4200/cars",
+        "http://localhost:4200/auth/login"
+      ]
     },
     "assert": {
       "preset": "lighthouse:recommended",

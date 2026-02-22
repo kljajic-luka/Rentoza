@@ -145,7 +145,11 @@ import { OfflineModeService } from '../../services/offline-mode.service';
         }
 
         &.syncing {
-          background: linear-gradient(135deg, #1976d2 0%, #0d47a1 100%);
+          background: linear-gradient(
+            135deg,
+            var(--brand-primary) 0%,
+            var(--color-primary-hover) 100%
+          );
         }
 
         &.pending {

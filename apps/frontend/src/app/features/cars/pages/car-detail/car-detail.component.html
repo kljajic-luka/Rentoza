@@ -17,7 +17,7 @@
         <p class="subtitle">{{ vm.car.year }} • {{ vm.car.location }}</p>
       </div>
       <div class="car-detail__price">
-        <span>{{ vm.car.pricePerDay | currency : 'RSD' : 'symbol' : '1.0-0' }}</span>
+        <span>{{ vm.car.pricePerDay | currency: 'RSD' : 'symbol' : '1.0-0' }}</span>
         <small>po danu</small>
       </div>
     </div>
@@ -32,46 +32,46 @@
           (swiperight)="previousImage(vm.car)"
         >
           @if (getCurrentImage(vm.car); as currentImage) {
-          <img
-            [src]="currentImage"
-            [alt]="vm.car.make + ' ' + vm.car.model"
-            loading="lazy"
-            class="gallery__image"
-            (error)="handleImageError($event)"
-          />
+            <img
+              [src]="currentImage"
+              [alt]="vm.car.make + ' ' + vm.car.model"
+              loading="lazy"
+              class="gallery__image"
+              (error)="handleImageError($event)"
+            />
 
-          @if (getCarImages(vm.car).length > 1) {
-          <button
-            mat-icon-button
-            class="gallery__nav-button gallery__nav-button--left"
-            (click)="previousImage(vm.car, $event)"
-            aria-label="Previous image"
-          >
-            <mat-icon>chevron_left</mat-icon>
-          </button>
+            @if (getCarImages(vm.car).length > 1) {
+              <button
+                mat-icon-button
+                class="gallery__nav-button gallery__nav-button--left"
+                (click)="previousImage(vm.car, $event)"
+                aria-label="Previous image"
+              >
+                <mat-icon>chevron_left</mat-icon>
+              </button>
 
-          <button
-            mat-icon-button
-            class="gallery__nav-button gallery__nav-button--right"
-            (click)="nextImage(vm.car, $event)"
-            aria-label="Next image"
-          >
-            <mat-icon>chevron_right</mat-icon>
-          </button>
+              <button
+                mat-icon-button
+                class="gallery__nav-button gallery__nav-button--right"
+                (click)="nextImage(vm.car, $event)"
+                aria-label="Next image"
+              >
+                <mat-icon>chevron_right</mat-icon>
+              </button>
 
-          <div class="gallery__image-counter">
-            {{ currentImageIndex() + 1 }} / {{ getCarImages(vm.car).length }}
-          </div>
-          }
+              <div class="gallery__image-counter">
+                {{ currentImageIndex() + 1 }} / {{ getCarImages(vm.car).length }}
+              </div>
+            }
 
-          <div class="gallery__click-hint">
-            <mat-icon>fullscreen</mat-icon>
-            <span>Kliknite za prikaz</span>
-          </div>
+            <div class="gallery__click-hint">
+              <mat-icon>fullscreen</mat-icon>
+              <span>Kliknite za prikaz</span>
+            </div>
           } @else {
-          <div class="gallery__placeholder">
-            <mat-icon>directions_car</mat-icon>
-          </div>
+            <div class="gallery__placeholder">
+              <mat-icon>directions_car</mat-icon>
+            </div>
           }
         </div>
         <div class="gallery__details">
@@ -374,10 +374,7 @@
           <mat-card-title>Informacije o vlasniku</mat-card-title>
         </mat-card-header>
         <mat-card-content>
-          <div
-            class="owner-info"
-            (click)="goToOwnerProfile(vm.car.ownerId)"
-          >
+          <div class="owner-info" (click)="goToOwnerProfile(vm.car.ownerId)">
             <div class="owner-avatar">
               <img
                 *ngIf="vm.car.ownerAvatarUrl"
@@ -394,7 +391,7 @@
               </p>
               <div class="owner-stats">
                 <span *ngIf="vm.car.ownerRating">
-                  {{ vm.car.ownerRating | number : '1.1-1' }}
+                  {{ vm.car.ownerRating | number: '1.1-1' }}
                   <mat-icon class="star-icon">star</mat-icon>
                 </span>
                 <span *ngIf="vm.car.ownerTripCount !== undefined">
@@ -426,8 +423,8 @@
               review.reviewerFirstName
                 ? review.reviewerFirstName[0]
                 : review.reviewerLastName
-                ? review.reviewerLastName[0]
-                : 'R'
+                  ? review.reviewerLastName[0]
+                  : 'R'
             }}
           </div>
           <mat-card-title>
@@ -438,7 +435,7 @@
             }}
           </mat-card-title>
           <mat-card-subtitle>
-            {{ review.createdAt | date : 'mediumDate' }}
+            {{ review.createdAt | date: 'mediumDate' }}
             • Ocena: {{ review.rating }}/5
           </mat-card-subtitle>
         </mat-card-header>
@@ -456,7 +453,5 @@
 </ng-container>
 
 <ng-template #loading>
-  <div class="loading" fxLayout="row" fxLayoutAlign="center center">
-    <mat-progress-spinner mode="indeterminate"></mat-progress-spinner>
-  </div>
+  <app-loading-skeleton type="block" />
 </ng-template>

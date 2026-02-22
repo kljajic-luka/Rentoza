@@ -34,7 +34,7 @@
       <div class="stats-bar">
         <div class="stat">
           <span class="value"
-            >{{ owner.averageRating | number : '1.1-1' }}
+            >{{ owner.averageRating | number: '1.1-1' }}
             <mat-icon class="star">star</mat-icon></span
           >
           <span class="label">Ocena</span>
@@ -72,8 +72,8 @@
     <div class="active-filter" *ngIf="filterStart() && filterEnd()">
       <mat-chip-listbox>
         <mat-chip-option selected removable (removed)="clearFilter()">
-          Dostupno: {{ filterStart() | date : 'mediumDate' }} -
-          {{ filterEnd() | date : 'mediumDate' }}
+          Dostupno: {{ filterStart() | date: 'mediumDate' }} -
+          {{ filterEnd() | date: 'mediumDate' }}
           <mat-icon matChipRemove>cancel</mat-icon>
         </mat-chip-option>
       </mat-chip-listbox>
@@ -87,8 +87,7 @@
           <div class="car-stats">
             <span>{{ car.tripCount }} vožnji</span>
             <span *ngIf="car.rating > 0"
-              >{{ car.rating | number : '1.1-1' }}
-              <mat-icon class="star-small">star</mat-icon></span
+              >{{ car.rating | number: '1.1-1' }} <mat-icon class="star-small">star</mat-icon></span
             >
           </div>
           <p class="price">€{{ car.pricePerDay }}/dan</p>

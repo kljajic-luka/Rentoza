@@ -41,6 +41,8 @@ import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatRadioModule } from '@angular/material/radio';
 import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatNativeDateModule } from '@angular/material/core';
+import { FormInputComponent } from '@shared/components/form-input/form-input.component';
+import { ButtonComponent } from '@shared/components/button/button.component';
 
 @Component({
   selector: 'app-register-page',
@@ -59,6 +61,8 @@ import { MatNativeDateModule } from '@angular/material/core';
     MatRadioModule,
     MatDatepickerModule,
     MatNativeDateModule,
+    FormInputComponent,
+    ButtonComponent,
   ],
   templateUrl: './register.component.html',
   styleUrls: ['./register.component.scss'],

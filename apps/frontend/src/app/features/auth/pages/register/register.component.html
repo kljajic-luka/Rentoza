@@ -151,100 +151,66 @@
       <form [formGroup]="form" (ngSubmit)="submit()" class="auth-form">
         <!-- Basic Information -->
         <div class="grid">
-          <mat-form-field appearance="fill">
-            <mat-label>Ime</mat-label>
-            <input matInput formControlName="firstName" required />
-            <mat-error *ngIf="form.controls.firstName.hasError('required')"
-              >Ime je obavezno</mat-error
-            >
-            <mat-error *ngIf="form.controls.firstName.hasError('minlength')"
-              >Ime mora imati najmanje 3 karaktera</mat-error
-            >
-          </mat-form-field>
-          <mat-form-field appearance="fill">
-            <mat-label>Prezime</mat-label>
-            <input matInput formControlName="lastName" required />
-            <mat-error *ngIf="form.controls.lastName.hasError('required')"
-              >Prezime je obavezno</mat-error
-            >
-            <mat-error *ngIf="form.controls.lastName.hasError('minlength')"
-              >Prezime mora imati najmanje 3 karaktera</mat-error
-            >
-          </mat-form-field>
+          <app-rtz-input
+            label="Ime"
+            formControlName="firstName"
+            [required]="true"
+          />
+          <app-rtz-input
+            label="Prezime"
+            formControlName="lastName"
+            [required]="true"
+          />
         </div>
 
-        <mat-form-field appearance="fill">
-          <mat-label>Email adresa</mat-label>
-          <input matInput type="email" formControlName="email" required />
-          <mat-error *ngIf="form.controls.email.hasError('required')"
-            >Email adresa je obavezna</mat-error
-          >
-          <mat-error *ngIf="form.controls.email.hasError('email')"
-            >Unesite ispravnu email adresu</mat-error
-          >
-        </mat-form-field>
+        <app-rtz-input
+          label="Email adresa"
+          type="email"
+          leftIcon="email"
+          formControlName="email"
+          [required]="true"
+        />
 
-        <mat-form-field appearance="fill">
-          <mat-label>Broj telefona</mat-label>
-          <input matInput formControlName="phone" placeholder="381612345678" required />
-          <mat-hint>Format: 8-15 cifara (npr. 381612345678)</mat-hint>
-          <mat-error *ngIf="form.controls.phone.hasError('required')"
-            >Broj telefona je obavezan</mat-error
-          >
-          <mat-error *ngIf="form.controls.phone.hasError('pattern')"
-            >Unesite ispravan broj telefona (8-15 cifara)</mat-error
-          >
-        </mat-form-field>
+        <app-rtz-input
+          label="Broj telefona"
+          type="tel"
+          leftIcon="phone"
+          placeholder="381612345678"
+          hint="Format: 8-15 cifara (npr. 381612345678)"
+          formControlName="phone"
+          [required]="true"
+          [customErrors]="{ pattern: 'Unesite ispravan broj telefona (8-15 cifara)' }"
+        />
 
         <div class="grid">
-          <mat-form-field appearance="fill">
-            <mat-label>Lozinka</mat-label>
-            <input matInput type="password" formControlName="password" required />
-            <mat-error *ngIf="form.controls.password.hasError('required')"
-              >Lozinka je obavezna</mat-error
-            >
-            <mat-error *ngIf="form.controls.password.hasError('minlength')"
-              >Lozinka mora imati najmanje 8 karaktera</mat-error
-            >
-            <mat-error *ngIf="form.controls.password.hasError('pattern')"
-              >Lozinka mora sadržati veliko slovo, malo slovo i broj</mat-error
-            >
-          </mat-form-field>
-          <mat-form-field appearance="fill">
-            <mat-label>Potvrdite lozinku</mat-label>
-            <input matInput type="password" formControlName="confirmPassword" required />
-            <mat-error *ngIf="form.controls.confirmPassword.invalid">Potvrda je obavezna</mat-error>
-            <mat-error
-              *ngIf="form.value.password && form.value.password !== form.value.confirmPassword"
-            >
-              Lozinke se ne podudaraju
-            </mat-error>
-          </mat-form-field>
+          <app-rtz-input
+            label="Lozinka"
+            type="password"
+            formControlName="password"
+            [required]="true"
+            [customErrors]="{ pattern: 'Lozinka mora sadržati veliko slovo, malo slovo i broj' }"
+          />
+          <app-rtz-input
+            label="Potvrdite lozinku"
+            type="password"
+            formControlName="confirmPassword"
+            [required]="true"
+          />
         </div>
 
         <!-- Phase 2: Date of Birth and Age Confirmation -->
         @if (isEnhancedRegistration()) {
-          <mat-form-field appearance="fill">
-            <mat-label>Datum rođenja</mat-label>
-            <input
-              matInput
-              type="date"
-              lang="en-GB"
-              formControlName="dateOfBirth"
-              [max]="maxDateOfBirth() | date: 'yyyy-MM-dd'"
-              required
-            />
-            <mat-hint>Morate imati najmanje 21 godinu</mat-hint>
-            <mat-error *ngIf="form.controls.dateOfBirth.hasError('required')"
-              >Datum rođenja je obavezan</mat-error
-            >
-            <mat-error *ngIf="form.controls.dateOfBirth.hasError('futureDate')"
-              >Datum ne može biti u budućnosti</mat-error
-            >
-            <mat-error *ngIf="form.controls.dateOfBirth.hasError('minAge')"
-              >Morate imati najmanje 21 godinu</mat-error
-            >
-          </mat-form-field>
+          <app-rtz-input
+            label="Datum rođenja"
+            type="date"
+            formControlName="dateOfBirth"
+            hint="Morate imati najmanje 21 godinu"
+            [required]="true"
+            [customErrors]="{
+              futureDate: 'Datum ne može biti u budućnosti',
+              minAge: 'Morate imati najmanje 21 godinu'
+            }"
+          />
 
           <mat-checkbox formControlName="confirmsAgeEligibility" class="age-checkbox" required>
             Potvrđujem da imam 21 godinu ili više
@@ -289,88 +255,60 @@
 
             <!-- JMBG Field (Individual only) -->
             @if (ownerType() === 'INDIVIDUAL') {
-              <mat-form-field appearance="fill">
-                <mat-label>JMBG (Jedinstveni matični broj građana)</mat-label>
-                <input
-                  matInput
-                  formControlName="jmbg"
-                  maxlength="13"
-                  placeholder="1234567890123"
-                  required
-                />
-                <mat-hint>13 cifara - vaš jedinstveni identifikacioni broj</mat-hint>
-                <mat-error *ngIf="ownerForm.controls.jmbg.hasError('required')"
-                  >JMBG je obavezan</mat-error
-                >
-                <mat-error *ngIf="ownerForm.controls.jmbg.hasError('pattern')"
-                  >JMBG mora imati tačno 13 cifara</mat-error
-                >
-                <mat-error *ngIf="ownerForm.controls.jmbg.hasError('jmbgInvalid')"
-                  >Nevažeći JMBG - proverite kontrolnu cifru</mat-error
-                >
-              </mat-form-field>
+              <app-rtz-input
+                label="JMBG (Jedinstveni matični broj građana)"
+                formControlName="jmbg"
+                [maxlength]="13"
+                placeholder="1234567890123"
+                hint="13 cifara - vaš jedinstveni identifikacioni broj"
+                [required]="true"
+                [customErrors]="{
+                  pattern: 'JMBG mora imati tačno 13 cifara',
+                  jmbgInvalid: 'Nevažeći JMBG - proverite kontrolnu cifru'
+                }"
+              />
 
-              <mat-form-field appearance="fill">
-                <mat-label>Broj bankovnog računa (IBAN) - opciono</mat-label>
-                <input
-                  matInput
-                  formControlName="bankAccountNumber"
-                  maxlength="24"
-                  placeholder="RS35000000000000000000"
-                />
-                <mat-hint>Srpski IBAN format: RS + 22 cifre</mat-hint>
-                <mat-error *ngIf="ownerForm.controls.bankAccountNumber.hasError('ibanFormat')"
-                  >Neispravan IBAN format (RS + 22 cifre)</mat-error
-                >
-                <mat-error *ngIf="ownerForm.controls.bankAccountNumber.hasError('ibanInvalid')"
-                  >Nevažeći IBAN - proverite broj</mat-error
-                >
-              </mat-form-field>
+              <app-rtz-input
+                label="Broj bankovnog računa (IBAN) - opciono"
+                formControlName="bankAccountNumber"
+                [maxlength]="24"
+                placeholder="RS35000000000000000000"
+                hint="Srpski IBAN format: RS + 22 cifre"
+                [customErrors]="{
+                  ibanFormat: 'Neispravan IBAN format (RS + 22 cifre)',
+                  ibanInvalid: 'Nevažeći IBAN - proverite broj'
+                }"
+              />
             }
 
             <!-- PIB and Bank Fields (Legal Entity only) -->
             @if (ownerType() === 'LEGAL_ENTITY') {
-              <mat-form-field appearance="fill">
-                <mat-label>PIB (Poreski identifikacioni broj)</mat-label>
-                <input
-                  matInput
-                  formControlName="pib"
-                  maxlength="9"
-                  placeholder="123456789"
-                  required
-                />
-                <mat-hint>9 cifara - poreski identifikacioni broj kompanije</mat-hint>
-                <mat-error *ngIf="ownerForm.controls.pib.hasError('required')"
-                  >PIB je obavezan</mat-error
-                >
-                <mat-error *ngIf="ownerForm.controls.pib.hasError('pattern')"
-                  >PIB mora imati tačno 9 cifara</mat-error
-                >
-                <mat-error *ngIf="ownerForm.controls.pib.hasError('pibInvalid')"
-                  >Nevažeći PIB - proverite kontrolnu cifru</mat-error
-                >
-              </mat-form-field>
+              <app-rtz-input
+                label="PIB (Poreski identifikacioni broj)"
+                formControlName="pib"
+                [maxlength]="9"
+                placeholder="123456789"
+                hint="9 cifara - poreski identifikacioni broj kompanije"
+                [required]="true"
+                [customErrors]="{
+                  pattern: 'PIB mora imati tačno 9 cifara',
+                  pibInvalid: 'Nevažeći PIB - proverite kontrolnu cifru'
+                }"
+              />
 
-              <mat-form-field appearance="fill">
-                <mat-label>Broj bankovnog računa (IBAN)</mat-label>
-                <input
-                  matInput
-                  formControlName="bankAccountNumber"
-                  maxlength="24"
-                  placeholder="RS35000000000000000000"
-                  required
-                />
-                <mat-hint>Srpski IBAN format: RS + 22 cifre (obavezno za pravna lica)</mat-hint>
-                <mat-error *ngIf="ownerForm.controls.bankAccountNumber.hasError('required')"
-                  >Broj računa je obavezan za pravna lica</mat-error
-                >
-                <mat-error *ngIf="ownerForm.controls.bankAccountNumber.hasError('ibanFormat')"
-                  >Neispravan IBAN format (RS + 22 cifre)</mat-error
-                >
-                <mat-error *ngIf="ownerForm.controls.bankAccountNumber.hasError('ibanInvalid')"
-                  >Nevažeći IBAN - proverite broj</mat-error
-                >
-              </mat-form-field>
+              <app-rtz-input
+                label="Broj bankovnog računa (IBAN)"
+                formControlName="bankAccountNumber"
+                [maxlength]="24"
+                placeholder="RS35000000000000000000"
+                hint="Srpski IBAN format: RS + 22 cifre (obavezno za pravna lica)"
+                [required]="true"
+                [customErrors]="{
+                  required: 'Broj računa je obavezan za pravna lica',
+                  ibanFormat: 'Neispravan IBAN format (RS + 22 cifre)',
+                  ibanInvalid: 'Nevažeći IBAN - proverite broj'
+                }"
+              />
             }
 
             <!-- Agreement Checkboxes -->
@@ -420,15 +358,14 @@
           </div>
         }
 
-        <button mat-raised-button color="primary" type="submit" [disabled]="isSubmitting()">
-          @if (isSubmitting()) {
-            <mat-progress-spinner diameter="20" mode="indeterminate"></mat-progress-spinner>
-          } @else {
-            <span>
-              {{ isOwnerRegistration() ? 'Postani domaćin' : 'Kreiraj nalog' }}
-            </span>
-          }
-        </button>
+        <app-rtz-button
+          type="submit"
+          [loading]="isSubmitting()"
+          [fullWidth]="true"
+          size="lg"
+        >
+          {{ isOwnerRegistration() ? 'Postani domaćin' : 'Kreiraj nalog' }}
+        </app-rtz-button>
       </form>
 
       <!-- OR divider -->

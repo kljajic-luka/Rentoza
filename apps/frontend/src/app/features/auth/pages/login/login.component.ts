@@ -232,7 +232,8 @@ export class LoginComponent {
         return {
           kind: 'network',
           title: 'Nema konekcije',
-          message: 'Ne možemo da uspostavimo vezu sa serverom. Proverite internet i pokušajte ponovo.',
+          message:
+            'Ne možemo da uspostavimo vezu sa serverom. Proverite internet i pokušajte ponovo.',
           icon: 'wifi_off',
           tone: 'error',
         };
@@ -254,7 +255,11 @@ export class LoginComponent {
       };
     }
 
-    if (message.includes('suspended') || message.includes('blocked') || message.includes('banned')) {
+    if (
+      message.includes('suspended') ||
+      message.includes('blocked') ||
+      message.includes('banned')
+    ) {
       return {
         kind: 'account_blocked',
         title: 'Nalog je blokiran',
@@ -331,7 +336,9 @@ export class LoginComponent {
 
   private focusControl(controlName: 'email' | 'password'): void {
     queueMicrotask(() => {
-      const field = document.querySelector<HTMLInputElement>(`input[formControlName="${controlName}"]`);
+      const field = document.querySelector<HTMLInputElement>(
+        `input[formControlName="${controlName}"]`,
+      );
       field?.focus();
       field?.select();
     });

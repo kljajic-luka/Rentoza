@@ -301,7 +301,5 @@
 </ng-container>
 
 <ng-template #loading>
-  <div class="loading" fxLayout="row" fxLayoutAlign="center center">
-    <mat-progress-spinner mode="indeterminate"></mat-progress-spinner>
-  </div>
+  <app-loading-skeleton type="text" [lines]="8" />
 </ng-template>

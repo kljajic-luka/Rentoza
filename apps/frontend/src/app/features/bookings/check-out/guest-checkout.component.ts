@@ -832,7 +832,7 @@ import { environment } from '@environments/environment';
         }
 
         .required-badge {
-          background: #3b82f6;
+          background: var(--brand-primary);
         }
 
         .progress-summary span {

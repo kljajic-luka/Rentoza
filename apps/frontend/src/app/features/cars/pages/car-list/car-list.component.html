@@ -175,9 +175,18 @@
     <!-- Results Area (role=region, NOT main — avoids duplicate landmark) -->
     <div class="results" role="region" aria-labelledby="car-list-heading">
       <!-- Loading Overlay (Turo-style dim effect) -->
-      <div class="loading-overlay" *ngIf="isLoading$ | async"
-        role="status" aria-live="polite" aria-label="Učitavanje vozila, molimo sačekaj">
-        <mat-progress-spinner mode="indeterminate" diameter="40" aria-hidden="true"></mat-progress-spinner>
+      <div
+        class="loading-overlay"
+        *ngIf="isLoading$ | async"
+        role="status"
+        aria-live="polite"
+        aria-label="Učitavanje vozila, molimo sačekaj"
+      >
+        <mat-progress-spinner
+          mode="indeterminate"
+          diameter="40"
+          aria-hidden="true"
+        ></mat-progress-spinner>
       </div>
 
       <ng-container *ngIf="searchResults$ | async as results; else loading">
@@ -223,7 +232,8 @@
           </h2>
           <!-- sr-only live region announces count to screen readers when results change -->
           <p aria-live="polite" aria-atomic="true" class="sr-only">
-            {{ results.totalElements }} {{ results.totalElements === 1 ? 'vozilo pronađeno' : 'vozila pronađena' }}
+            {{ results.totalElements }}
+            {{ results.totalElements === 1 ? 'vozilo pronađeno' : 'vozila pronađena' }}
           </p>
         </div>
 
@@ -241,9 +251,17 @@
         <ng-template #noResults>
           <app-empty-state
             variant="search"
-            [headline]="(isAvailabilityMode$ | async) ? 'Nema dostupnih automobila' : 'Nema rezultata'"
-            [subtext]="(isAvailabilityMode$ | async) ? 'Nema dostupnih automobila za ove datume. Pokušajte promeniti datume ili odabrati drugu lokaciju.' : 'Pokušajte da promenite filtere ili obrišete neke od postojećih.'"
-            [ctaLabel]="(isAvailabilityMode$ | async) ? 'Prikaži sve automobile' : 'Obriši sve filtere'"
+            [headline]="
+              (isAvailabilityMode$ | async) ? 'Nema dostupnih automobila' : 'Nema rezultata'
+            "
+            [subtext]="
+              (isAvailabilityMode$ | async)
+                ? 'Nema dostupnih automobila za ove datume. Pokušajte promeniti datume ili odabrati drugu lokaciju.'
+                : 'Pokušajte da promenite filtere ili obrišete neke od postojećih.'
+            "
+            [ctaLabel]="
+              (isAvailabilityMode$ | async) ? 'Prikaži sve automobile' : 'Obriši sve filtere'
+            "
             [ctaRoute]="(isAvailabilityMode$ | async) ? '/cars' : null"
             (ctaClicked)="onClearAllFiltersClick()"
           />
@@ -263,10 +281,7 @@
 
       <!-- Loading State -->
       <ng-template #loading>
-        <div class="loading-state">
-          <mat-progress-spinner mode="indeterminate"></mat-progress-spinner>
-          <p>Učitavanje vozila...</p>
-        </div>
+        <app-loading-skeleton type="card" [count]="6" />
       </ng-template>
     </div>
   </div>

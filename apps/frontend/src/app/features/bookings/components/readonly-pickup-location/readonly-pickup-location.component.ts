@@ -213,7 +213,7 @@ export interface CarLocationData {
             [showGeolocationButton]="false"
             [height]="'250px'"
             [zoom]="15"
-            [markerColor]="'#1976d2'"
+            [markerColor]="'#593cfb'"
           />
           }
         </mat-card-content>

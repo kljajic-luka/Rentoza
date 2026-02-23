@@ -48,6 +48,13 @@ public class CarSearchCriteria {
     // Features filtering (comma-separated or list)
     private List<Feature> features;
 
+    /**
+     * Free-text search query (canonical param: q, legacy alias: search).
+     * OR-matched across brand, model, location, and description fields.
+     * Accent-insensitive, case-insensitive contains match.
+     */
+    private String q;
+
     // Pagination and sorting
     private Integer page;
     private Integer size;

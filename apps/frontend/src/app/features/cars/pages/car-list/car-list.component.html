@@ -218,9 +218,22 @@
             </button>
           </div>
           <mat-chip-set>
-            <mat-chip *ngFor="let chip of activeFilterChips$ | async">
-              <strong>{{ chip.label }}:</strong> {{ chip.value }}
-            </mat-chip>
+            <ng-container *ngFor="let chip of activeFilterChips$ | async">
+              <!-- Removable chip for the free-text query (q) -->
+              <mat-chip *ngIf="chip.key === 'q'"
+                        class="filter-chip--query"
+                        (removed)="clearQuerySearch()">
+                <mat-icon matChipAvatar>search</mat-icon>
+                <strong>{{ chip.label }}:</strong>&nbsp;{{ chip.value }}
+                <button matChipRemove aria-label="Ukloni tekstualnu pretragu">
+                  <mat-icon>cancel</mat-icon>
+                </button>
+              </mat-chip>
+              <!-- Static chip for all other filters -->
+              <mat-chip *ngIf="chip.key !== 'q'">
+                <strong>{{ chip.label }}:</strong> {{ chip.value }}
+              </mat-chip>
+            </ng-container>
           </mat-chip-set>
         </div>
 

@@ -362,16 +362,16 @@ export class LayoutComponent implements OnInit {
     void this.router.navigate([route]);
   }
 
-  /** Handle navbar search form submission — routes to /vozila with query param */
+  /** Handle navbar search form submission — routes to /vozila with canonical q param */
   protected navigateSearch(event: Event, input: HTMLInputElement): void {
     event.preventDefault();
     const q = input.value.trim();
-    if (q) {
-      void this.router.navigate(['/vozila'], { queryParams: { search: q } });
-      input.value = '';
-    } else {
-      void this.router.navigate(['/vozila']);
-    }
+    // Always navigate (even when already on /vozila) so queryParamMap emits.
+    // Use canonical `q` param; legacy `search` is read as fallback in car-list.
+    void this.router.navigate(['/vozila'], {
+      queryParams: q ? { q } : {},
+    });
+    input.value = '';
     input.blur();
   }
 

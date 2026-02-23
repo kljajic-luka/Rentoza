@@ -190,7 +190,14 @@ export class CarListComponent implements OnInit, OnDestroy {
     this.searchCriteria$,
   ]).pipe(
     debounceTime(100),
-    distinctUntilChanged((prev, curr) => JSON.stringify(prev) === JSON.stringify(curr)),
+    distinctUntilChanged((prev, curr) => {
+      // Explicit key-based comparator instead of JSON.stringify on full objects.
+      // Ensures q (and any other new fields) are always detected as changed.
+      const [pAvail, pAp, pSc] = prev;
+      const [cAvail, cAp, cSc] = curr;
+      if (pAvail !== cAvail) return false;
+      return JSON.stringify({ ap: pAp, sc: pSc }) === JSON.stringify({ ap: cAp, sc: cSc });
+    }),
     tap(() => this.isLoading$.next(true)),
     switchMap(([isAvailability, availParams, criteria]) => {
       if (isAvailability && availParams) {
@@ -358,6 +365,8 @@ export class CarListComponent implements OnInit, OnDestroy {
         minSeats: params.get('minSeats') ? Number(params.get('minSeats')) : undefined,
         transmission: (params.get('transmission') as TransmissionType) || undefined,
         features: params.get('features')?.split(',').filter(Boolean) as Feature[] | undefined,
+        // Free-text query: canonical `q` first, fallback to legacy `search` param
+        q: params.get('q') || params.get('search') || undefined,
         page: params.get('page') ? Number(params.get('page')) : 0,
         size: params.get('size') ? Number(params.get('size')) : 20,
         sort: params.get('sort') || undefined,
@@ -423,6 +432,7 @@ export class CarListComponent implements OnInit, OnDestroy {
           minSeats: parsedFilters.minSeats,
           transmission: parsedFilters.transmission,
           features: parsedFilters.features ? [...parsedFilters.features] : undefined,
+          q: parsedFilters.q,
           sort: parsedFilters.sort,
 
           // Pagination
@@ -958,6 +968,8 @@ export class CarListComponent implements OnInit, OnDestroy {
         updatedAvailParams.transmission = undefined;
       } else if (key === 'features') {
         updatedAvailParams.features = undefined;
+      } else if (key === 'q') {
+        updatedAvailParams.q = undefined;
       }
 
       this.availabilityParams$.next(updatedAvailParams);
@@ -990,8 +1002,38 @@ export class CarListComponent implements OnInit, OnDestroy {
     }
   }
 
+  /**
+   * Remove the active free-text query (q) chip.
+   * Clears ?q from URL, resets page to 0, and triggers a fresh search without the term.
+   */
+  clearQuerySearch(): void {
+    if (this.isAvailabilityMode$.value && this.availabilityParams$.value) {
+      const updated: AvailabilitySearchParams = {
+        ...this.availabilityParams$.value,
+        q: undefined,
+        page: 0,
+      };
+      this.availabilityParams$.next(updated);
+      const criteria = extractFiltersFromAvailabilityParams(updated);
+      this.searchCriteria$.next({ ...criteria });
+      this.updateActiveFilterChips(criteria);
+    } else {
+      const updated: CarSearchCriteria = { ...this.searchCriteria$.value };
+      delete updated.q;
+      updated.page = 0;
+      this.searchCriteria$.next(updated);
+      this.updateActiveFilterChips(updated);
+      this.syncUrlToActiveCriteria(updated);
+    }
+  }
+
   private updateActiveFilterChips(criteria: CarSearchCriteria): void {
     const chips: Array<{ label: string; value: string; key: keyof CarSearchCriteria }> = [];
+
+    // Free-text query chip — shown first (most prominent), removable via clearQuerySearch()
+    if (criteria.q?.trim()) {
+      chips.push({ label: 'Pretraga', value: criteria.q.trim(), key: 'q' });
+    }
 
     if (criteria.minPrice !== undefined || criteria.maxPrice !== undefined) {
       const min = criteria.minPrice ?? 0;
@@ -1086,6 +1128,7 @@ export class CarListComponent implements OnInit, OnDestroy {
     if (criteria.features && criteria.features.length > 0) {
       queryParams.features = criteria.features.join(',');
     }
+    if (criteria.q?.trim()) queryParams.q = criteria.q.trim();
     if (criteria.page && criteria.page > 0) queryParams.page = criteria.page;
     if (criteria.size && criteria.size !== 20) queryParams.size = criteria.size;
     if (criteria.sort) queryParams.sort = criteria.sort;
@@ -1449,6 +1492,9 @@ export class CarListComponent implements OnInit, OnDestroy {
     }
     if (params.features && params.features.length > 0) {
       queryParams['features'] = params.features.join(',');
+    }
+    if (params.q?.trim()) {
+      queryParams['q'] = params.q.trim();
     }
     if (params.sort) {
       queryParams['sort'] = params.sort;

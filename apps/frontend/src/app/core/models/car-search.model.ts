@@ -25,6 +25,10 @@ export interface CarSearchCriteria {
   // Features filtering
   features?: Feature[];
 
+  // Free-text query (canonical param: q, legacy alias: search)
+  // OR-matched across brand, model, location, description
+  q?: string;
+
   // Pagination and sorting
   page?: number;
   size?: number;
@@ -87,6 +91,8 @@ export interface AvailabilitySearchParams {
   transmission?: TransmissionType;
   /** Required features filter */
   features?: Feature[];
+  /** Free-text query (canonical param: q, legacy alias: search) */
+  q?: string;
 
   // ========== Pagination Params ==========
   /** Page number (0-indexed) */
@@ -126,6 +132,7 @@ export function mergeFiltersIntoAvailabilityParams(
     minSeats: filters.minSeats,
     transmission: filters.transmission,
     features: filters.features ? [...filters.features] : undefined,
+    q: filters.q?.trim() || base.q || undefined,
 
     // Pagination: reset to page 0 when filters change, preserve size
     page: 0,
@@ -158,6 +165,7 @@ export function extractFiltersFromAvailabilityParams(
     criteria.features = [...params.features];
   }
   if (params.sort) criteria.sort = params.sort;
+  if (params.q?.trim()) criteria.q = params.q.trim();
 
   return criteria;
 }

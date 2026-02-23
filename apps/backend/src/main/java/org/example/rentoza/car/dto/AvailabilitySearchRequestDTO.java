@@ -157,6 +157,13 @@ public class AvailabilitySearchRequestDTO {
     private String fuelType;
 
     /**
+     * Free-text search query (canonical param: q, legacy alias: search).
+     * OR-matched across brand, model, location, and description fields.
+     * Accent-insensitive, case-insensitive contains match.
+     */
+    private String q;
+
+    /**
      * Required features filter.
      * Comma-separated string parsed into list.
      * Example: "BLUETOOTH,USB,NAVIGATION"
@@ -233,6 +240,7 @@ public class AvailabilitySearchRequestDTO {
                transmission != null ||
                (vehicleType != null && !vehicleType.isBlank()) ||
                (fuelType != null && !fuelType.isBlank()) ||
+               (q != null && !q.isBlank()) ||
                (features != null && !features.isEmpty());
     }
 

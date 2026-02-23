@@ -809,6 +809,20 @@ public class CarService {
                     cb.equal(root.get("fuelType"), criteria.getFuelType()));
         }
 
+        // Free-text query (q): OR across brand, model, location, description
+        // Accent-insensitive: frontend normalizes before sending (š→s, ć→c, etc.)
+        if (criteria.getQ() != null && !criteria.getQ().isBlank()) {
+            String qLower = criteria.getQ().toLowerCase().trim();
+            spec = spec.and((root, query, cb) ->
+                cb.or(
+                    cb.like(cb.lower(root.get("brand")),       "%" + qLower + "%"),
+                    cb.like(cb.lower(root.get("model")),       "%" + qLower + "%"),
+                    cb.like(cb.lower(root.get("location")),    "%" + qLower + "%"),
+                    cb.like(cb.lower(root.get("description")), "%" + qLower + "%")
+                )
+            );
+        }
+
         return spec;
     }
 

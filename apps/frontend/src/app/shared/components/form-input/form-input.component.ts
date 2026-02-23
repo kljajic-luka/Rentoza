@@ -77,7 +77,9 @@ export class FormInputComponent implements ControlValueAccessor, OnInit {
   readonly charCount = computed(() => this.innerValue().length);
   // For type="date" the browser always renders a format placeholder (e.g. dd.MM.yyyy),
   // so the label must always float to avoid overlapping the native date hint.
-  readonly isLabelFloating = computed(() => this.isFocused() || this.hasValue() || this.type === 'date');
+  readonly isLabelFloating = computed(
+    () => this.isFocused() || this.hasValue() || this.type === 'date',
+  );
 
   // ── CVA internals ───────────────────────────────────────────────────────
   private onChange: (value: string) => void = () => {};

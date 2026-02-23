@@ -151,16 +151,8 @@
       <form [formGroup]="form" (ngSubmit)="submit()" class="auth-form">
         <!-- Basic Information -->
         <div class="grid">
-          <app-rtz-input
-            label="Ime"
-            formControlName="firstName"
-            [required]="true"
-          />
-          <app-rtz-input
-            label="Prezime"
-            formControlName="lastName"
-            [required]="true"
-          />
+          <app-rtz-input label="Ime" formControlName="firstName" [required]="true" />
+          <app-rtz-input label="Prezime" formControlName="lastName" [required]="true" />
         </div>
 
         <app-rtz-input
@@ -209,7 +201,7 @@
             [required]="true"
             [customErrors]="{
               futureDate: 'Datum ne može biti u budućnosti',
-              minAge: 'Morate imati najmanje 21 godinu'
+              minAge: 'Morate imati najmanje 21 godinu',
             }"
           />
 
@@ -265,7 +257,7 @@
                 [required]="true"
                 [customErrors]="{
                   pattern: 'JMBG mora imati tačno 13 cifara',
-                  jmbgInvalid: 'Nevažeći JMBG - proverite kontrolnu cifru'
+                  jmbgInvalid: 'Nevažeći JMBG - proverite kontrolnu cifru',
                 }"
               />
 
@@ -277,7 +269,7 @@
                 hint="Srpski IBAN format: RS + 22 cifre"
                 [customErrors]="{
                   ibanFormat: 'Neispravan IBAN format (RS + 22 cifre)',
-                  ibanInvalid: 'Nevažeći IBAN - proverite broj'
+                  ibanInvalid: 'Nevažeći IBAN - proverite broj',
                 }"
               />
             }
@@ -293,7 +285,7 @@
                 [required]="true"
                 [customErrors]="{
                   pattern: 'PIB mora imati tačno 9 cifara',
-                  pibInvalid: 'Nevažeći PIB - proverite kontrolnu cifru'
+                  pibInvalid: 'Nevažeći PIB - proverite kontrolnu cifru',
                 }"
               />
 
@@ -307,7 +299,7 @@
                 [customErrors]="{
                   required: 'Broj računa je obavezan za pravna lica',
                   ibanFormat: 'Neispravan IBAN format (RS + 22 cifre)',
-                  ibanInvalid: 'Nevažeći IBAN - proverite broj'
+                  ibanInvalid: 'Nevažeći IBAN - proverite broj',
                 }"
               />
             }
@@ -359,12 +351,7 @@
           </div>
         }
 
-        <app-rtz-button
-          type="submit"
-          [loading]="isSubmitting()"
-          [fullWidth]="true"
-          size="lg"
-        >
+        <app-rtz-button type="submit" [loading]="isSubmitting()" [fullWidth]="true" size="lg">
           {{ isOwnerRegistration() ? 'Postani domaćin' : 'Kreiraj nalog' }}
         </app-rtz-button>
       </form>

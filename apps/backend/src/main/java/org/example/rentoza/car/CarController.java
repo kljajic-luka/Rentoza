@@ -125,6 +125,8 @@ public class CarController {
             @RequestParam(required = false) Integer minSeats,
             @RequestParam(required = false) TransmissionType transmission,
             @RequestParam(required = false) String features,  // Comma-separated: "BLUETOOTH,USB,GPS"
+            @RequestParam(required = false) String q,          // Canonical free-text query
+            @RequestParam(required = false) String search,     // Legacy alias for q (backward compat)
             @RequestParam(required = false, defaultValue = "0") Integer page,
             @RequestParam(required = false, defaultValue = "20") Integer size,
             @RequestParam(required = false) String sort
@@ -163,6 +165,7 @@ public class CarController {
                     .minSeats(minSeats)
                     .transmission(transmission)
                     .features(featureList)
+                    .q(q != null ? q : search)   // canonical q first, legacy search fallback
                     .page(page)
                     .size(size)
                     .sort(sort)
@@ -263,6 +266,8 @@ public class CarController {
             @RequestParam(required = false) String vehicleType,     // P2: sedan, SUV, van etc.
             @RequestParam(required = false) String fuelType,        // P3: BENZIN, DIESEL, etc.
             @RequestParam(required = false) String features,  // Comma-separated: "BLUETOOTH,USB,GPS"
+            @RequestParam(required = false) String q,          // Canonical free-text query
+            @RequestParam(required = false) String search,     // Legacy alias for q (backward compat)
             // Pagination params
             @RequestParam(required = false, defaultValue = "0") Integer page,
             @RequestParam(required = false, defaultValue = "20") Integer size,
@@ -315,6 +320,7 @@ public class CarController {
                 .vehicleType(vehicleType)
                 .fuelType(fuelType)
                 .features(featureList)
+                .q(q != null ? q : search)   // canonical q first, legacy search fallback
                 // Pagination
                 .page(page)
                 .size(size)

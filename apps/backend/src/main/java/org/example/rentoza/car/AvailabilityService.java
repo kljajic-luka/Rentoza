@@ -466,6 +466,21 @@ public class AvailabilityService {
             }
         }
 
+        // Free-text query (q): OR across brand, model, location, description
+        // Accent-insensitive: frontend normalizes before sending (š→s, ć→c, etc.)
+        if (request.getQ() != null && !request.getQ().isBlank()) {
+            String q = request.getQ().toLowerCase().trim();
+            String carBrand    = car.getBrand()       != null ? car.getBrand().toLowerCase()       : "";
+            String carModel    = car.getModel()       != null ? car.getModel().toLowerCase()       : "";
+            String carLocation = car.getLocation()    != null ? car.getLocation().toLowerCase()    : "";
+            String carDesc     = car.getDescription() != null ? car.getDescription().toLowerCase() : "";
+            boolean qMatch = carBrand.contains(q) || carModel.contains(q)
+                          || carLocation.contains(q) || carDesc.contains(q);
+            if (!qMatch) {
+                return false;
+            }
+        }
+
         return true;
     }
 

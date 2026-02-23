@@ -147,6 +147,9 @@ export class CarService {
     if (params.features && params.features.length > 0) {
       httpParams = httpParams.set('features', params.features.join(','));
     }
+    if (params.q?.trim()) {
+      httpParams = httpParams.set('q', normalizeSearchString(params.q));
+    }
     if (params.sort) {
       httpParams = httpParams.set('sort', params.sort);
     }
@@ -283,6 +286,10 @@ export class CarService {
       // Send features as comma-separated string
       params = params.set('features', cleanedCriteria.features.join(','));
     }
+    if (cleanedCriteria.q?.trim()) {
+      // Normalize q before sending to backend (accent-strip, lowercase)
+      params = params.set('q', normalizeSearchString(cleanedCriteria.q));
+    }
     if (cleanedCriteria.page !== undefined) {
       params = params.set('page', cleanedCriteria.page.toString());
     }
@@ -364,6 +371,9 @@ export class CarService {
     }
     if (criteria.sort && criteria.sort.trim()) {
       cleaned.sort = criteria.sort.trim();
+    }
+    if (criteria.q?.trim()) {
+      cleaned.q = criteria.q.trim();
     }
 
     return cleaned;

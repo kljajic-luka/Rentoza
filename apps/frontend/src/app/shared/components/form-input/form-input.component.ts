@@ -53,6 +53,8 @@ export class FormInputComponent implements ControlValueAccessor, OnInit {
   @Input() required = false;
   /** Used for textarea variant */
   @Input() rows = 4;
+  /** BCP-47 language tag passed to native input for day-first date format (e.g. 'sr', 'hr') */
+  @Input() lang = '';
   /** Override or extend built-in error messages by validator key */
   @Input() customErrors: Record<string, string> = {};
   /** Auto id for linking label ↔ input */
@@ -73,7 +75,9 @@ export class FormInputComponent implements ControlValueAccessor, OnInit {
     return this.type;
   });
   readonly charCount = computed(() => this.innerValue().length);
-  readonly isLabelFloating = computed(() => this.isFocused() || this.hasValue());
+  // For type="date" the browser always renders a format placeholder (e.g. dd.MM.yyyy),
+  // so the label must always float to avoid overlapping the native date hint.
+  readonly isLabelFloating = computed(() => this.isFocused() || this.hasValue() || this.type === 'date');
 
   // ── CVA internals ───────────────────────────────────────────────────────
   private onChange: (value: string) => void = () => {};

@@ -160,6 +160,20 @@
   &:disabled {
     cursor: not-allowed;
   }
+
+  // ── Autofill — override browser yellow/blue background in dark mode ──────
+  // Box-shadow inset trick: covers the browser-injected background with our
+  // surface token so the input doesn't flash white/yellow in dark mode.
+  &:-webkit-autofill,
+  &:-webkit-autofill:hover,
+  &:-webkit-autofill:focus,
+  &:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 1000px var(--surface-input) inset !important;
+    -webkit-text-fill-color: var(--color-text-primary) !important;
+    caret-color: var(--color-text-primary);
+    // Delay browser transition so our inset shadow wins
+    transition: background-color 5000s ease-in-out 0s, color 5000s ease-in-out 0s;
+  }
 }
 
 .rtz-field__textarea {

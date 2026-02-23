@@ -68,8 +68,9 @@
         </ng-template>
       </nav>
 
-      <!-- ── Desktop search field (skip-link target) ── -->
+      <!-- ── Desktop search field (skip-link target, hidden for OWNER sessions) ── -->
       <form
+        *ngIf="!isOwnerOnly()"
         id="search"
         role="search"
         class="topnav__search"
@@ -166,6 +167,7 @@
                 <span>Poruke</span>
               </a>
               <a
+                *ngIf="!isOwnerOnly()"
                 routerLink="/favorites"
                 class="user-menu__item"
                 role="menuitem"

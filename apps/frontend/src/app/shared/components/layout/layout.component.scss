@@ -51,47 +51,50 @@ $nav-h-mobile: 60px;
   }
 
   // Transparent navbar — home page top state (before scroll)
+  // Uses design tokens so text adapts: dark on light-mode hero, light on dark-mode hero.
   &--transparent {
     background: transparent !important;
     border-bottom-color: transparent !important;
     box-shadow: none !important;
 
     .topnav__nav-link {
-      color: rgba(255, 255, 255, 0.9);
+      // token: rgba(18,18,20,0.92) in light → dark text; rgba(247,247,248,0.92) in dark → light text
+      color: var(--color-text-primary);
 
       &:hover,
       &--active {
-        color: #fff;
-        background: rgba(255, 255, 255, 0.12);
+        color: var(--color-text-primary);
+        background: rgba(128, 128, 128, 0.14);
       }
     }
 
     .topnav__search-input {
-      background: rgba(255, 255, 255, 0.15);
-      border-color: rgba(255, 255, 255, 0.3);
-      color: #fff;
+      background: rgba(128, 128, 128, 0.14);
+      border-color: rgba(128, 128, 128, 0.30);
+      color: var(--color-text-primary);
 
-      &::placeholder { color: rgba(255, 255, 255, 0.6); }
+      &::placeholder { color: var(--color-text-secondary); }
       &:focus {
-        background: rgba(255, 255, 255, 0.2);
-        border-color: rgba(255, 255, 255, 0.5);
+        background: rgba(128, 128, 128, 0.20);
+        border-color: var(--brand-primary);
       }
     }
 
     .topnav__search-btn {
-      color: rgba(255, 255, 255, 0.8);
-      &:hover { color: #fff; }
+      color: var(--color-text-secondary);
+      &:hover { color: var(--color-text-primary); }
     }
 
     .topnav__avatar-btn,
-    .topnav__link-plain,
-    .topnav__link-register {
-      color: rgba(255, 255, 255, 0.9) !important;
+    .topnav__link-plain {
+      color: var(--color-text-secondary) !important;
     }
 
     .topnav__link-register {
-      border-color: rgba(255, 255, 255, 0.5) !important;
-      &:hover { background: rgba(255, 255, 255, 0.12) !important; }
+      color: var(--color-text-on-primary) !important;
+      background: var(--color-primary);
+      border-color: transparent !important;
+      &:hover { background: var(--brand-primary-dark) !important; }
     }
   }
 

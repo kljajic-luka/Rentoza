@@ -140,6 +140,7 @@ export class LayoutComponent implements OnInit {
     // Keep user snapshot in sync for synchronous access (initials, greeting)
     this.currentUser$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((user) => {
       this.currentUserSnapshot = user;
+      this.cdr.markForCheck(); // ensure OnPush re-renders role-gated elements
     });
 
     // Close mobile drawer + user menu on every route navigation
@@ -329,6 +330,18 @@ export class LayoutComponent implements OnInit {
 
   protected closeUserMenu(): void {
     this.isUserMenuOpen = false;
+  }
+
+  /**
+   * True when authenticated user is exclusively OWNER (no USER role).
+   * Used to hide consumer-only UI: top search form, Favorites menu item.
+   */
+  protected isOwnerOnly(): boolean {
+    const u = this.currentUserSnapshot;
+    if (!u) return false;
+    const isOwner = u.roles?.includes('OWNER') ?? false;
+    const isUser = u.roles?.includes('USER') ?? false;
+    return isOwner && !isUser;
   }
 
   // ── Auth & routing ────────────────────────────────────────────────────────

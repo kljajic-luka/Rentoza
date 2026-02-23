@@ -220,9 +220,11 @@
           <mat-chip-set>
             <ng-container *ngFor="let chip of activeFilterChips$ | async">
               <!-- Removable chip for the free-text query (q) -->
-              <mat-chip *ngIf="chip.key === 'q'"
-                        class="filter-chip--query"
-                        (removed)="clearQuerySearch()">
+              <mat-chip
+                *ngIf="chip.key === 'q'"
+                class="filter-chip--query"
+                (removed)="clearQuerySearch()"
+              >
                 <mat-icon matChipAvatar>search</mat-icon>
                 <strong>{{ chip.label }}:</strong>&nbsp;{{ chip.value }}
                 <button matChipRemove aria-label="Ukloni tekstualnu pretragu">

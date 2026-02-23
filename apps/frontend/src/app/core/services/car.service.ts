@@ -163,7 +163,7 @@ export class CarService {
         pageSize: response.pageSize,
         hasNext: response.hasNext,
         hasPrevious: response.hasPrevious,
-      }))
+      })),
     );
   }
 
@@ -179,7 +179,7 @@ export class CarService {
     endTimeOfDay: string,
     page: number = 0,
     size: number = 20,
-    sort?: string
+    sort?: string,
   ): Observable<PagedResponse<Car>> {
     // Combine date + time if needed, or use as-is if already ISO timestamp
     const startTime = this.toISOTimestamp(startDateTime, startTimeOfDay);
@@ -209,7 +209,7 @@ export class CarService {
   getCarAvailability(
     carId: number,
     start?: string, // ISO-8601 datetime
-    end?: string // ISO-8601 datetime
+    end?: string, // ISO-8601 datetime
   ): Observable<UnavailableRange[]> {
     let params = new HttpParams();
     if (start) params = params.set('start', start);
@@ -311,7 +311,7 @@ export class CarService {
         hasNext: response.hasNext,
         hasPrevious: response.hasPrevious,
       })),
-      shareReplay({ bufferSize: 1, refCount: true })
+      shareReplay({ bufferSize: 1, refCount: true }),
     );
 
     // Add to cache
@@ -395,7 +395,7 @@ export class CarService {
           return Math.ceil(response.content[0].pricePerDay);
         }
         return 500; // Fallback to 500 if no cars found
-      })
+      }),
     );
   }
 
@@ -407,7 +407,7 @@ export class CarService {
   getCarsByLocation(location: string, radiusKm: number = 20): Observable<Car[]> {
     // Get all cars and filter client-side for radius search
     return this.getCars().pipe(
-      map((cars) => cars.filter((car) => isWithinRadius(car.location, location, radiusKm)))
+      map((cars) => cars.filter((car) => isWithinRadius(car.location, location, radiusKm))),
     );
   }
 
@@ -543,7 +543,7 @@ export class CarService {
         { available },
         {
           withCredentials: true,
-        }
+        },
       )
       .pipe(map((car) => this.mapBackendCarToFrontend(car)));
   }

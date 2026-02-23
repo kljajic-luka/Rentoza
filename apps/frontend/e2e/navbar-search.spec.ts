@@ -40,12 +40,14 @@ test.describe('Navbar search — happy path', () => {
     await page.waitForLoadState('networkidle');
 
     // Wait for the loading skeleton to disappear
-    await page.waitForSelector('.loading-skeleton, mat-progress-spinner', {
-      state: 'detached',
-      timeout: 12_000,
-    }).catch(() => {
-      // Skeleton may have already removed itself — that's fine
-    });
+    await page
+      .waitForSelector('.loading-skeleton, mat-progress-spinner', {
+        state: 'detached',
+        timeout: 12_000,
+      })
+      .catch(() => {
+        // Skeleton may have already removed itself — that's fine
+      });
 
     // Either the car grid OR the empty-state must be visible
     const carGrid = page.locator('.cars-grid');

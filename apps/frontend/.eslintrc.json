@@ -1,9 +1,10 @@
 {
   "root": true,
-  "ignorePatterns": ["projects/**/*", "**/*.spec.ts"],
+  "ignorePatterns": ["projects/**/*"],
   "overrides": [
     {
       "files": ["*.ts"],
+      "excludedFiles": ["*.spec.ts"],
       "parserOptions": {
         "project": ["tsconfig.app.json"],
         "sourceType": "module"
@@ -26,6 +27,29 @@
             "suffixes": ["Component", "Page"]
           }
         ]
+      }
+    },
+    {
+      "files": ["*.spec.ts"],
+      "parserOptions": {
+        "project": ["tsconfig.spec.json"],
+        "sourceType": "module"
+      },
+      "extends": [
+        "plugin:@typescript-eslint/recommended"
+      ],
+      "rules": {
+        "@typescript-eslint/no-unused-vars": [
+          "error",
+          { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }
+        ],
+        "@typescript-eslint/no-explicit-any": "warn",
+        "@typescript-eslint/no-unsafe-assignment": "off",
+        "@typescript-eslint/no-unsafe-argument": "off",
+        "@typescript-eslint/no-unsafe-member-access": "off",
+        "@typescript-eslint/no-unsafe-call": "off",
+        "@typescript-eslint/no-unsafe-return": "off",
+        "@typescript-eslint/explicit-function-return-type": "off"
       }
     },
     {

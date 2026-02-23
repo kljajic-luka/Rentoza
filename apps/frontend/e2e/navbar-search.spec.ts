@@ -96,13 +96,12 @@ test.describe('Navbar search — happy path', () => {
     expect(page.url()).toMatch(/[?&]q=Golf/i);
   });
 
-  test('owner role does not see search bar in navbar', async ({ page }) => {
-    // This navigation just loads the page as an unauthenticated user; owner
-    // session logic is already tested in owner-journey.spec.ts.  Here we only
-    // verify the search bar is visible for non-owner context.
+  test('non-authenticated user sees search bar in navbar', async ({ page }) => {
+    // Owner-specific hiding is covered in owner-journey.spec.ts.
+    // Here we verify the baseline: an unauthenticated (USER-role) visitor
+    // on /vozila must always see the search form.
     await page.goto('/vozila');
     const searchForm = page.locator('form#search');
-    // For a non-authenticated / USER context the search bar must be present
     await expect(searchForm).toBeVisible();
   });
 });

@@ -171,8 +171,6 @@ class BookingServiceTest {
             });
             when(bookingPaymentService.processBookingPayment(anyLong(), anyString()))
                     .thenReturn(successPayment());
-            when(bookingPaymentService.authorizeDeposit(anyLong(), anyString()))
-                    .thenReturn(successPayment());
 
             // When
             Booking result = bookingService.createBooking(validBookingRequest, "renter@test.com");
@@ -191,7 +189,11 @@ class BookingServiceTest {
                     eq(validBookingRequest.getEndTime())
             );
             verify(bookingPaymentService).processBookingPayment(eq(1L), anyString());
-            verify(bookingPaymentService).authorizeDeposit(eq(1L), anyString());
+            // Deposit auth now happens at check-in, not at booking creation
+            verify(bookingPaymentService, never()).authorizeDeposit(anyLong(), anyString());
+            // storedPaymentMethodId saved for deferred deposit auth
+            verify(bookingRepo, atLeastOnce()).save(argThat(b ->
+                    b.getStoredPaymentMethodId() != null));
         }
 
         @Test
@@ -212,8 +214,6 @@ class BookingServiceTest {
                 return b;
             });
             when(bookingPaymentService.processBookingPayment(anyLong(), anyString()))
-                    .thenReturn(successPayment());
-            when(bookingPaymentService.authorizeDeposit(anyLong(), anyString()))
                     .thenReturn(successPayment());
 
             // When
@@ -313,8 +313,7 @@ class BookingServiceTest {
             });
             when(bookingPaymentService.processBookingPayment(anyLong(), anyString()))
                     .thenReturn(successPayment());
-            when(bookingPaymentService.authorizeDeposit(anyLong(), anyString()))
-                    .thenReturn(successPayment());
+
 
             // When
             Booking result = bookingService.createBooking(validBookingRequest, "renter@test.com");
@@ -389,8 +388,6 @@ class BookingServiceTest {
             });
             when(bookingPaymentService.processBookingPayment(anyLong(), anyString()))
                     .thenReturn(successPayment());
-            when(bookingPaymentService.authorizeDeposit(anyLong(), anyString()))
-                    .thenReturn(successPayment());
 
             // When
             Booking result = bookingService.createBooking(validBookingRequest, "renter@test.com");
@@ -450,8 +447,6 @@ class BookingServiceTest {
                 return b;
             });
             when(bookingPaymentService.processBookingPayment(anyLong(), anyString()))
-                    .thenReturn(successPayment());
-            when(bookingPaymentService.authorizeDeposit(anyLong(), anyString()))
                     .thenReturn(successPayment());
 
             // When
@@ -533,8 +528,6 @@ class BookingServiceTest {
                 return b;
             });
             when(bookingPaymentService.processBookingPayment(anyLong(), anyString()))
-                    .thenReturn(successPayment());
-            when(bookingPaymentService.authorizeDeposit(anyLong(), anyString()))
                     .thenReturn(successPayment());
 
             // When
@@ -622,9 +615,11 @@ class BookingServiceTest {
         }
 
         @Test
-        @DisplayName("Should throw PaymentAuthorizationException and release hold when deposit auth fails")
-        void shouldThrowAndRefundWhenDepositAuthFails() {
-            // Given
+        @DisplayName("Deposit auth no longer happens at booking creation — payment method stored for check-in")
+        void shouldStorePaymentMethodForDeferredDepositAuth() {
+            // Given: deposit auth was moved to check-in (CheckInScheduler).
+            // At booking creation, only the booking payment auth happens and
+            // storedPaymentMethodId is saved for later deposit auth.
             when(userRepo.findByEmail("renter@test.com")).thenReturn(Optional.of(renter));
             when(carRepo.findById(100L)).thenReturn(Optional.of(car));
             when(bookingRepo.existsOverlappingBookingsWithLock(anyLong(), any(), any())).thenReturn(false);
@@ -637,27 +632,18 @@ class BookingServiceTest {
                 return b;
             });
 
-            // Booking payment authorization succeeds, deposit authorization fails
             when(bookingPaymentService.processBookingPayment(anyLong(), anyString()))
                     .thenReturn(successPayment());
 
-            PaymentResult failedDeposit = new PaymentResult();
-            ReflectionTestUtils.setField(failedDeposit, "success", false);
-            ReflectionTestUtils.setField(failedDeposit, "errorMessage", "Card declined");
-            ReflectionTestUtils.setField(failedDeposit, "errorCode", "CARD_DECLINED");
-            when(bookingPaymentService.authorizeDeposit(anyLong(), anyString()))
-                    .thenReturn(failedDeposit);
-            when(bookingPaymentService.releaseBookingPayment(anyLong()))
-                    .thenReturn(successPayment());
+            // When
+            bookingService.createBooking(validBookingRequest, "renter@test.com");
 
-            // When/Then
-            assertThatThrownBy(() ->
-                    bookingService.createBooking(validBookingRequest, "renter@test.com"))
-                    .isInstanceOf(org.example.rentoza.exception.PaymentAuthorizationException.class)
-                    .hasMessageContaining("depozita");
+            // Then: deposit auth is NOT called at booking time
+            verify(bookingPaymentService, never()).authorizeDeposit(anyLong(), anyString());
 
-            // Verify authorization hold was released (not refunded — authorize flow)
-            verify(bookingPaymentService).releaseBookingPayment(eq(1L));
+            // storedPaymentMethodId is persisted on the booking for deferred deposit
+            verify(bookingRepo, atLeastOnce()).save(argThat(b ->
+                    b.getStoredPaymentMethodId() != null));
         }
     }
 }

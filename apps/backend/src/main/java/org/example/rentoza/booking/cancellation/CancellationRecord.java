@@ -7,6 +7,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDateTime;
 
 /**
@@ -255,6 +256,44 @@ public class CancellationRecord {
      */
     @Column(name = "admin_notes", columnDefinition = "TEXT")
     private String adminNotes;
+
+    // ==================== REFUND RETRY TRACKING ====================
+
+    /**
+     * Number of refund processing attempts made so far.
+     * Incremented by the cancellation refund scheduler on each attempt.
+     */
+    @Column(name = "retry_count", nullable = false)
+    @Builder.Default
+    private int retryCount = 0;
+
+    /**
+     * Maximum retry attempts before escalating to {@link RefundStatus#MANUAL_REVIEW}.
+     * Default 3 — configurable via {@code app.payment.refund.max-retries}.
+     */
+    @Column(name = "max_retries", nullable = false)
+    @Builder.Default
+    private int maxRetries = 3;
+
+    /**
+     * UTC instant of the most recent refund attempt (null = never attempted).
+     */
+    @Column(name = "last_retry_at")
+    private Instant lastRetryAt;
+
+    /**
+     * UTC instant before which the next retry should not be attempted.
+     * Null means retry is allowed immediately.
+     */
+    @Column(name = "next_retry_at")
+    private Instant nextRetryAt;
+
+    /**
+     * Last error message or provider error code from the most recent retry.
+     * Stored for support team diagnostics.
+     */
+    @Column(name = "last_error", length = 500)
+    private String lastError;
 
     // ==================== AUDIT TIMESTAMPS ====================
 

@@ -66,25 +66,28 @@ public class InMemorySchedulerLockStore implements SchedulerLockStore {
     public boolean tryAcquireLock(String taskId, Duration ttl) {
         if (taskId == null || taskId.isBlank()) {
             log.warn("[SchedulerLock] Invalid taskId provided");
-            return true; // Allow execution for invalid input
+            return false; // Fail closed for invalid input.
         }
 
         Instant now = Instant.now();
         Instant expiresAt = now.plus(ttl);
 
-        // Check existing lock
-        Instant existingExpiry = locks.get(taskId);
-        if (existingExpiry != null && existingExpiry.isAfter(now)) {
-            log.debug("[SchedulerLock] Lock already held for task: {} (expires: {})", 
-                    taskId, existingExpiry);
-            return false;
-        }
+        // P1-10 FIX: Use compute() for an atomic check-and-set, eliminating the
+        // TOCTOU race window between the get() check and the put() write.
+        final boolean[] acquired = {false};
+        locks.compute(taskId, (k, existing) -> {
+            if (existing != null && existing.isAfter(now)) {
+                log.debug("[SchedulerLock] Lock already held for task: {} (expires: {})", taskId, existing);
+                return existing; // Keep existing — do NOT acquire
+            }
+            acquired[0] = true;
+            return expiresAt;
+        });
 
-        // Acquire lock
-        locks.put(taskId, expiresAt);
-        log.debug("[SchedulerLock] Acquired in-memory lock for task: {} (expires: {})", 
-                taskId, expiresAt);
-        return true;
+        if (acquired[0]) {
+            log.debug("[SchedulerLock] Acquired in-memory lock for task: {} (expires: {})", taskId, expiresAt);
+        }
+        return acquired[0];
     }
 
     @Override

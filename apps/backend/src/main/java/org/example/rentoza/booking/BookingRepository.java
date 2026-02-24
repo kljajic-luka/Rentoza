@@ -3,6 +3,7 @@ package org.example.rentoza.booking;
 import jakarta.persistence.LockModeType;
 import jakarta.persistence.QueryHint;
 import org.example.rentoza.car.Car;
+import org.example.rentoza.payment.ChargeLifecycleStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -13,6 +14,7 @@ import org.springframework.data.jpa.repository.QueryHints;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpecificationExecutor<Booking> {
@@ -911,19 +913,30 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
      * @param captureWindow Time threshold (now + 24h)
      * @return Bookings ready for payment capture
      */
+    /**
+     * Find IN_TRIP bookings whose payment is still AUTHORIZED but not yet CAPTURED.
+     *
+     * <p><b>P0-1 fix:</b> The T-24h pre-capture scheduler has been removed. Capture now
+     * happens exclusively at the physical hand-off handshake
+     * ({@code CheckInService.confirmHandshake} → {@code BookingPaymentService.captureBookingPaymentNow}).
+     * This scheduler job is retained ONLY as a safety-net fallback for bookings that
+     * transitioned to {@code IN_TRIP} but whose handshake capture never completed
+     * (e.g., transient provider timeout). Requiring {@code b.tripStartedAt IS NOT NULL}
+     * guarantees the physical hand-off has occurred before we attempt to charge the renter.
+     *
+     * @return IN_TRIP bookings still awaiting capture
+     */
     @Query("SELECT b FROM Booking b " +
            "JOIN FETCH b.car c " +
            "JOIN FETCH c.owner " +
            "JOIN FETCH b.renter r " +
-           "WHERE b.status IN :statuses " +
-           "AND b.paymentStatus IN ('AUTHORIZED', 'DEPOSIT_AUTHORIZED') " +
-           "AND b.startTime <= :captureWindow " +
+           "WHERE b.status = 'IN_TRIP' " +
+           "AND b.chargeLifecycleStatus IN ('AUTHORIZED', 'CAPTURE_FAILED') " +
+           "AND b.tripStartedAt IS NOT NULL " +
            "AND b.bookingAuthorizationId IS NOT NULL " +
-           "ORDER BY b.startTime ASC")
-    List<Booking> findBookingsNeedingPaymentCapture(
-        @Param("statuses") List<BookingStatus> statuses,
-        @Param("captureWindow") LocalDateTime captureWindow
-    );
+           "AND b.captureAttempts < 3 " +
+           "ORDER BY b.tripStartedAt ASC")
+    List<Booking> findBookingsNeedingPaymentCapture();
     
     /**
      * Find COMPLETED bookings eligible for deposit release (T+48h after trip end).
@@ -1011,6 +1024,41 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
     List<Long> findAllBookingIds();
 
     /**
+     * Find completed bookings that were completed recently (within last N days).
+     * Used by payout scheduler to batch-schedule PayoutLedger entries.
+     * The PayoutLedger service handles idempotency so duplicate calls are safe.
+     *
+     * @param since Only look at bookings completed after this instant
+     * @return Completed bookings eligible for payout scheduling
+     */
+    @Query("""
+           SELECT b FROM Booking b
+           JOIN FETCH b.car c
+           JOIN FETCH c.owner
+           JOIN FETCH b.renter r
+           WHERE b.status = 'COMPLETED'
+             AND b.tripEndedAt IS NOT NULL
+             AND b.tripEndedAt >= :since
+           ORDER BY b.tripEndedAt DESC
+           """)
+    List<Booking> findRecentlyCompletedBookings(@Param("since") java.time.Instant since);
+
+    /**
+     * All COMPLETED bookings regardless of date — used for payout scheduling backfill.
+     * Prefer {@link #findRecentlyCompletedBookings} for incremental processing.
+     */
+    @Query("""
+           SELECT b FROM Booking b
+           JOIN FETCH b.car c
+           JOIN FETCH c.owner
+           JOIN FETCH b.renter r
+           WHERE b.status = 'COMPLETED'
+             AND b.tripEndedAt IS NOT NULL
+           ORDER BY b.tripEndedAt DESC
+           """)
+    List<Booking> findCompletedBookingsNeedingPayout();
+
+    /**
      * Count total bookings (for admin dashboard).
      * 
      * P0-5 FIX: Use COUNT instead of loading entities.
@@ -1019,4 +1067,33 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
      */
     @Query("SELECT COUNT(b) FROM Booking b")
     long countAll();
+
+    // ========== P0-6: AUTH EXPIRY QUERY ==========
+
+    /**
+     * Find ACTIVE or APPROVED bookings in AUTHORIZED charge-lifecycle state whose payment
+     * authorisation expires before {@code thresholdTime}. Used by the reauth scheduler job
+     * to flag bookings that need re-authorisation before auth lapses.
+     *
+     * <p><b>P1-1 fix:</b> Only ACTIVE/APPROVED bookings are relevant — bookings in terminal
+     * or pre-approval states should not be marked REAUTH_REQUIRED.
+     *
+     * @param thresholdTime Instant boundary (e.g. now + 48h)
+     * @return Bookings at risk of auth expiry
+     */
+    @Query("""
+           SELECT b FROM Booking b
+           JOIN FETCH b.car c
+           JOIN FETCH c.owner
+           JOIN FETCH b.renter r
+           WHERE b.chargeLifecycleStatus = :status
+             AND b.status IN ('ACTIVE', 'APPROVED')
+             AND b.bookingAuthExpiresAt IS NOT NULL
+             AND b.bookingAuthExpiresAt <= :thresholdTime
+           ORDER BY b.bookingAuthExpiresAt ASC
+           """)
+    List<Booking> findBookingsWithExpiringAuth(
+        @Param("thresholdTime") Instant thresholdTime,
+        @Param("status") ChargeLifecycleStatus status
+    );
 }

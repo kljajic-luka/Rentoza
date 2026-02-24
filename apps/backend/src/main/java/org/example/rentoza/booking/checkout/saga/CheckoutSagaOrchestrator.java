@@ -18,8 +18,10 @@ import org.example.rentoza.notification.NotificationService;
 import org.example.rentoza.notification.NotificationType;
 import org.example.rentoza.notification.dto.CreateNotificationRequestDTO;
 import org.example.rentoza.payment.BookingPaymentService;
+import org.example.rentoza.payment.PaymentIdempotencyKey;
 import org.example.rentoza.payment.PaymentProvider;
 import org.example.rentoza.payment.PaymentProvider.PaymentResult;
+import org.example.rentoza.payment.PaymentProvider.ProviderResult;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -653,8 +655,9 @@ public class CheckoutSagaOrchestrator {
         
         BigDecimal captureAmount = saga.getTotalCharges().min(depositAmount);
 
-        // Capture from the held deposit via payment gateway
-        PaymentResult captureResult = paymentProvider.capture(depositAuthId, captureAmount);
+        // P0-4 FIX: Use deterministic idempotency key (not random wrapper) so retries are idempotent.
+        ProviderResult captureResult = paymentProvider.capture(depositAuthId, captureAmount,
+                PaymentIdempotencyKey.forDepositCapture(saga.getBookingId(), 1));
 
         if (!captureResult.isSuccess()) {
             log.error("[Saga] Deposit capture FAILED for booking {}: {} - {}",
@@ -664,7 +667,7 @@ public class CheckoutSagaOrchestrator {
         }
 
         saga.setCapturedAmount(captureAmount);
-        saga.setCaptureTransactionId(captureResult.getTransactionId());
+        saga.setCaptureTransactionId(captureResult.getProviderTransactionId());
 
         log.info("[Saga] Captured {} RSD from deposit for booking {} (txn: {})",
                 captureAmount, saga.getBookingId(), saga.getCaptureTransactionId());
@@ -686,13 +689,15 @@ public class CheckoutSagaOrchestrator {
                     .paymentMethodId(bookingForCharge.getBookingAuthorizationId())
                     .build();
 
-            PaymentResult remainderResult = paymentProvider.charge(remainderRequest);
+            // P0-4 FIX: Deterministic key for remainder charge.
+            ProviderResult remainderResult = paymentProvider.charge(remainderRequest,
+                    PaymentIdempotencyKey.forCheckoutRemainder(saga.getBookingId()));
 
             if (remainderResult.isSuccess()) {
                 saga.setRemainderAmount(remainderAmount);
-                saga.setRemainderTransactionId(remainderResult.getTransactionId());
+                saga.setRemainderTransactionId(remainderResult.getProviderTransactionId());
                 log.info("[Saga] Remainder {} RSD charged for booking {} (txn: {})",
-                        remainderAmount, saga.getBookingId(), remainderResult.getTransactionId());
+                        remainderAmount, saga.getBookingId(), remainderResult.getProviderTransactionId());
             } else {
                 // Log but do not fail the saga — deposit was captured, remainder becomes
                 // an outstanding invoice the admin can follow up on
@@ -889,15 +894,17 @@ public class CheckoutSagaOrchestrator {
         if (saga.getCaptureTransactionId() != null && saga.getCapturedAmount() != null
                 && saga.getCapturedAmount().compareTo(BigDecimal.ZERO) > 0) {
             try {
-                PaymentResult refundResult = paymentProvider.refund(
+                // P0-4 FIX: Deterministic key for saga compensation refund.
+                ProviderResult refundResult = paymentProvider.refund(
                         saga.getCaptureTransactionId(),
                         saga.getCapturedAmount(),
-                        "Saga compensation — reverting deposit capture for booking " + saga.getBookingId());
+                        "Saga compensation — reverting deposit capture for booking " + saga.getBookingId(),
+                        PaymentIdempotencyKey.forSagaCompensation(saga.getBookingId()));
 
                 if (refundResult.isSuccess()) {
                     log.info("[Saga] Refunded captured amount {} RSD for booking {} (original txn: {}, refund txn: {})",
                             saga.getCapturedAmount(), saga.getBookingId(),
-                            saga.getCaptureTransactionId(), refundResult.getTransactionId());
+                            saga.getCaptureTransactionId(), refundResult.getProviderRefundId());
                 } else {
                     log.error("[Saga] CRITICAL: Failed to refund deposit capture for booking {}. " +
                             "Manual intervention required. Error: {}",

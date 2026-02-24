@@ -512,6 +512,9 @@ public class BookingService {
         // 
         // Used by: TuroCancellationPolicyService.calculateGuestCancellation()
         // Immutable: This value should NEVER be updated after booking creation.
+        // Store the tokenized payment method ID before saving — needed at check-in
+        // to authorize the security deposit close to the trip start (P0-3 fix).
+        booking.setStoredPaymentMethodId(dto.getPaymentMethodId());
         booking.setSnapshotDailyRate(car.getPricePerDay());
 
         Booking savedBooking = repo.save(booking);
@@ -519,60 +522,33 @@ public class BookingService {
         // ========================================================================
         // PAYMENT AUTHORIZATION (P0 Fix - Must happen before booking is finalized)
         // ========================================================================
-        // Authorize payment for the total amount. Authorization places a hold on
-        // the guest's card but does not capture the funds.
+        // Authorize booking payment (hold total amount). Authorization places a hold
+        // on the guest's card but does not capture the funds.
         //
-        // For instant bookings: Payment is authorized immediately.
-        // For request-to-book: Payment is authorized at creation (hold on card),
-        //   and captured when host approves. If host declines, hold is released.
-        //
-        // If authorization fails (insufficient funds, card declined), the booking
-        // is rolled back via @Transactional and a PaymentAuthorizationException is thrown.
+        // Security deposit is intentionally NOT authorized here. It is authorized
+        // when the check-in window opens (T-Xh before trip start), keeping the
+        // hold within the card-authorization lifetime window (P0-3 fix).
         // ========================================================================
         String paymentMethodId = dto.getPaymentMethodId();
-        
+
         // 1. Authorize booking payment (hold total amount)
-        org.example.rentoza.payment.PaymentProvider.PaymentResult bookingPaymentResult = 
+        org.example.rentoza.payment.PaymentProvider.PaymentResult bookingPaymentResult =
                 bookingPaymentService.processBookingPayment(savedBooking.getId(), paymentMethodId);
-        
+
         if (!bookingPaymentResult.isSuccess()) {
-            log.warn("Payment authorization failed for booking {}: {}", 
+            log.warn("Payment authorization failed for booking {}: {}",
                     savedBooking.getId(), bookingPaymentResult.getErrorMessage());
             throw new org.example.rentoza.exception.PaymentAuthorizationException(
                     "Autorizacija plaćanja nije uspela: " + bookingPaymentResult.getErrorMessage(),
                     bookingPaymentResult.getErrorCode() != null ? bookingPaymentResult.getErrorCode() : "PAYMENT_FAILED"
             );
         }
-        
-        // 2. Authorize security deposit (hold deposit amount)
-        org.example.rentoza.payment.PaymentProvider.PaymentResult depositResult = 
-                bookingPaymentService.authorizeDeposit(savedBooking.getId(), paymentMethodId);
-        
-        if (!depositResult.isSuccess()) {
-            log.warn("Deposit authorization failed for booking {}: {}. Releasing booking payment hold.", 
-                    savedBooking.getId(), depositResult.getErrorMessage());
-            // Release the booking authorization hold since deposit auth failed
-            if (bookingPaymentResult.getAuthorizationId() != null) {
-                try {
-                    bookingPaymentService.releaseBookingPayment(savedBooking.getId());
-                } catch (Exception e) {
-                    log.error("Failed to release booking payment hold for booking {}: {}",
-                            savedBooking.getId(), e.getMessage());
-                }
-            }
-            throw new org.example.rentoza.exception.PaymentAuthorizationException(
-                    "Autorizacija depozita nije uspela: " + depositResult.getErrorMessage() +
-                    ". Potrebno je " + depositAmount + " RSD za sigurnosni depozit.",
-                    depositResult.getErrorCode() != null ? depositResult.getErrorCode() : "INSUFFICIENT_FUNDS"
-            );
-        }
-        
-        // Note: BookingPaymentService.processBookingPayment() and authorizeDeposit()
-        // already persist paymentVerificationRef, bookingAuthorizationId, depositAuthorizationId,
-        // and paymentStatus on the booking entity. No redundant set needed here.
-        
-        log.info("Payment authorized for booking {}: bookingAuth={}, depositAuth={}", 
-                savedBooking.getId(), bookingPaymentResult.getAuthorizationId(), depositResult.getAuthorizationId());
+
+        // Note: BookingPaymentService.processBookingPayment() already persists
+        // paymentVerificationRef, bookingAuthorizationId, and paymentStatus on the
+        // booking entity. Deposit authorization is deferred to check-in window opening.
+        log.info("Payment authorized for booking {} — deposit will be authorized at check-in. bookingAuth={}",
+                savedBooking.getId(), bookingPaymentResult.getAuthorizationId());
 
         // Initialize car and owner to avoid lazy loading issues
         Hibernate.initialize(savedBooking.getCar());

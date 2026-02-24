@@ -4,6 +4,8 @@ import jakarta.persistence.*;
 import lombok.*;
 import org.example.rentoza.booking.cancellation.CancelledBy;
 import org.example.rentoza.booking.cancellation.CancellationRecord;
+import org.example.rentoza.payment.ChargeLifecycleStatus;
+import org.example.rentoza.payment.DepositLifecycleStatus;
 import org.example.rentoza.booking.checkin.CheckInEvent;
 import org.example.rentoza.booking.checkin.CheckInIdVerification;
 import org.example.rentoza.booking.checkin.CheckInPhoto;
@@ -120,8 +122,34 @@ public class Booking {
     @Column(name = "payment_reference", length = 100)
     private String paymentReference;
 
+    /**
+     * Legacy free-form payment status string — kept for read-only backward compatibility.
+     * All runtime logic MUST use {@link #chargeLifecycleStatus} and {@link #depositLifecycleStatus}.
+     *
+     * @deprecated Use {@code chargeLifecycleStatus} instead.
+     */
+    @Deprecated(forRemoval = false)
     @Column(name = "payment_status", length = 20)
-    private String paymentStatus = "PENDING"; // PENDING, AUTHORIZED, RELEASED
+    private String paymentStatus = "PENDING"; // PENDING, AUTHORIZED, RELEASED — legacy
+
+    /**
+     * Typed charge lifecycle state machine.
+     * Drives all booking-payment logic (authorize → capture → refund / reauth paths).
+     *
+     * <p>This is the authoritative payment state. {@code paymentStatus} is kept only
+     * for backward-compat reads by existing code until full migration.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "charge_lifecycle_status", length = 30)
+    private ChargeLifecycleStatus chargeLifecycleStatus = ChargeLifecycleStatus.PENDING;
+
+    /**
+     * Typed security-deposit lifecycle state machine.
+     * Drives all deposit logic (authorize → release / capture for damage).
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "deposit_lifecycle_status", length = 30)
+    private DepositLifecycleStatus depositLifecycleStatus = DepositLifecycleStatus.PENDING;
 
     /**
      * Authorization ID for the booking payment hold.
@@ -137,13 +165,50 @@ public class Booking {
     /**
      * Authorization ID for the security deposit hold.
      * Used to release the deposit after checkout (no damage) or capture for damage claims.
-     * 
-     * <p><b>Set By:</b> BookingPaymentService.authorizeDeposit() at creation time.
+     *
+     * <p><b>Set By:</b> BookingPaymentService.authorizeDeposit() — called at check-in window
+     *   opening (T-Xh before trip start) rather than at booking creation, so the hold
+     *   remains within the card authorization lifetime.
      * <p><b>Released By:</b> BookingPaymentService.releaseDeposit() at checkout.
      * <p><b>Captured By:</b> BookingPaymentService.chargeDamage() if damage reported.
      */
     @Column(name = "deposit_authorization_id", length = 100)
     private String depositAuthorizationId;
+
+    /**
+     * Tokenized payment-method identifier stored at booking creation time.
+     * Re-used at check-in window opening to authorize the security deposit hold,
+     * so the deposit auth is placed ≤ 24h before trip start (within card auth lifetime).
+     */
+    @Column(name = "stored_payment_method_id", length = 100)
+    private String storedPaymentMethodId;
+
+    /**
+     * UTC instant at which the booking payment authorization expires.
+     * Monri authorizations are typically valid for 7 days; this field enables
+     * the scheduler to detect expiry and trigger the reauth flow.
+     */
+    @Column(name = "booking_auth_expires_at")
+    private Instant bookingAuthExpiresAt;
+
+    /**
+     * UTC instant at which the security deposit authorization expires.
+     */
+    @Column(name = "deposit_auth_expires_at")
+    private Instant depositAuthExpiresAt;
+
+    /**
+     * Number of capture attempts made for the booking payment.
+     * Incremented on each attempt; stops at max (see BookingPaymentService).
+     */
+    @Column(name = "capture_attempts", nullable = false)
+    private int captureAttempts = 0;
+
+    /**
+     * Number of capture attempts made for the security deposit.
+     */
+    @Column(name = "deposit_capture_attempts", nullable = false)
+    private int depositCaptureAttempts = 0;
 
     /**
      * Service fee snapshot at booking creation time.

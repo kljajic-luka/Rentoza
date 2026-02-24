@@ -37,16 +37,24 @@ public enum RefundStatus {
     COMPLETED,
     
     /**
-     * Refund processing failed.
-     * 
+     * Refund processing failed — eligible for retry (transient provider error).
+     *
      * <p>Failure reasons may include:
      * <ul>
      *   <li>Payment method expired or invalid</li>
      *   <li>Bank rejected the refund</li>
      *   <li>Payment gateway error</li>
      * </ul>
-     * 
-     * <p>Requires manual intervention by support team.
      */
-    FAILED
+    FAILED,
+
+    /**
+     * Terminal state: refund exhausted all retry attempts and requires a human agent.
+     *
+     * <p>Transitions here from {@code FAILED} when
+     * {@code CancellationRecord.retryCount >= CancellationRecord.maxRetries}.
+     * Support team must investigate and either manually trigger a refund
+     * or issue a credit note to the guest.
+     */
+    MANUAL_REVIEW
 }

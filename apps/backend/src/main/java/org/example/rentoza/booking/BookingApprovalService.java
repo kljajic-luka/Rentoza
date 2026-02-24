@@ -142,7 +142,8 @@ public class BookingApprovalService {
         booking.setApprovedAt(LocalDateTime.now());
         // Payment was already authorized at booking creation time (P0 fix).
         // Status remains "AUTHORIZED" (set during createBooking flow).
-        // Payment capture happens at trip completion.
+        // Deposit is authorized at check-in window opening (T-Xh before trip start).
+        // Payment capture occurs at the physical hand-off handshake (captureBookingPaymentNow).
 
         try {
             Booking savedBooking = bookingRepository.save(booking);

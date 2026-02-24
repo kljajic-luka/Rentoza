@@ -5,21 +5,20 @@ import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingRepository;
+import org.example.rentoza.payment.ChargeLifecycleStatus;
 import org.example.rentoza.booking.BookingStatus;
 import org.example.rentoza.booking.cancellation.CancellationRecord;
 import org.example.rentoza.booking.cancellation.CancellationRecordRepository;
 import org.example.rentoza.booking.cancellation.RefundStatus;
 import org.example.rentoza.booking.dispute.DamageClaimRepository;
 import org.example.rentoza.notification.NotificationService;
-import org.example.rentoza.notification.NotificationType;
-import org.example.rentoza.notification.dto.CreateNotificationRequestDTO;
-import org.example.rentoza.payment.PaymentProvider.PaymentResult;
+import org.example.rentoza.scheduler.SchedulerLockStore;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
+
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -27,23 +26,28 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 /**
- * Payment Lifecycle Scheduler — Turo-standard payment automation.
- * 
+ * Payment Lifecycle Scheduler — enterprise-grade payment automation.
+ *
+ * <h2>Concurrency Safety</h2>
+ * Every job acquires a distributed lock before running ({@link SchedulerLockStore}).
+ * If the lock is held (another pod won), the job exits immediately — no duplicate work.
+ * The lock TTL is set to ≤ 58 min so a crashed pod releases it before the next hourly tick.
+ *
+ * <h2>Isolation</h2>
+ * Job-level methods are NOT @Transactional. Each booking is processed in its own
+ * isolated transaction (via BookingPaymentService). A single booking failure does
+ * not roll back the rest of the batch.
+ *
  * <h2>Scheduled Jobs</h2>
  * <ol>
- *   <li><b>captureUpcomingPayments</b> — Capture authorized booking payments T-24h before trip start</li>
- *   <li><b>releaseDepositsAfterTrip</b> — Release security deposits T+48h after trip end (no claims)</li>
- *   <li><b>autoReleaseOverdueDeposits</b> — Safety net: force-release deposits held >7 days</li>
- *   <li><b>processPendingCancellationRefunds</b> — Execute refunds for cancelled bookings</li>
+ *   <li><b>captureUpcomingPayments</b> — Capture authorized booking payments T-24h</li>
+ *   <li><b>releaseDepositsAfterTrip</b> — Release security deposits T+48h after trip</li>
+ *   <li><b>autoReleaseOverdueDeposits</b> — Safety net: force-release after 7 days</li>
+ *   <li><b>processCancellationRefunds</b> — Execute PENDING/FAILED/stale-PROCESSING refunds</li>
+ *   <li><b>scheduleHostPayouts</b> — Create PayoutLedger entries for completed bookings</li>
+ *   <li><b>executeEligiblePayouts</b> — Disburse host payouts after dispute window</li>
+ *   <li><b>reauthExpiredBookings</b> — Mark AUTHORIZED bookings near auth-expiry as REAUTH_REQUIRED</li>
  * </ol>
- * 
- * <h2>Turo Standard Compliance</h2>
- * <ul>
- *   <li>Payment captured 24h before trip → guest committed</li>
- *   <li>Deposit released 48h after trip end → no-claim window</li>
- *   <li>Deposits auto-released after 7 days → safety net, never held forever</li>
- *   <li>Cancellation refunds processed immediately → guest sees money back</li>
- * </ul>
  */
 @Service
 @Slf4j
@@ -51,12 +55,37 @@ public class PaymentLifecycleScheduler {
 
     private static final ZoneId SERBIA_ZONE = ZoneId.of("Europe/Belgrade");
 
+    // Lock keys — unique per job
+    private static final String LOCK_CAPTURE      = "payment.scheduler.capture";
+    private static final String LOCK_DEP_RELEASE  = "payment.scheduler.deposit.release";
+    private static final String LOCK_DEP_OVERDUE  = "payment.scheduler.deposit.overdue";
+    private static final String LOCK_REFUND       = "payment.scheduler.refund";
+    private static final String LOCK_PAYOUT_SCHED = "payment.scheduler.payout.schedule";
+    private static final String LOCK_PAYOUT_EXEC  = "payment.scheduler.payout.execute";
+    private static final String LOCK_REAUTH        = "payment.scheduler.reauth";
+
+    // Conservative TTL: must cover worst-case job duration; must leave gap before next tick
+    private static final Duration LOCK_TTL_HOURLY  = Duration.ofMinutes(55);
+    private static final Duration LOCK_TTL_SHORT   = Duration.ofMinutes(13);
+    private static final Duration LOCK_TTL_SIXHRLY = Duration.ofHours(5).plusMinutes(30);
+
+    /** Stale PROCESSING cutoff — records stuck longer than this are crash-recovery candidates. */
+    private static final Duration STALE_PROCESSING_CUTOFF = Duration.ofMinutes(30);
+
     private final BookingRepository bookingRepository;
     private final BookingPaymentService paymentService;
     private final PaymentProvider paymentProvider;
     private final CancellationRecordRepository cancellationRecordRepository;
     private final DamageClaimRepository damageClaimRepository;
     private final NotificationService notificationService;
+    private final SchedulerLockStore schedulerLockStore;
+    private final PayoutLedgerRepository payoutLedgerRepository;
+    /**
+     * P1-1: Per-item processor lives in a separate bean so that
+     * {@code @Transactional(REQUIRES_NEW)} takes effect via the Spring proxy.
+     * Direct self-invocation (same bean) would bypass the proxy.
+     */
+    private final SchedulerItemProcessor itemProcessor;
 
     // Metrics
     private final Counter captureSuccessCounter;
@@ -65,6 +94,9 @@ public class PaymentLifecycleScheduler {
     private final Counter overdueDepositReleaseCounter;
     private final Counter refundProcessedCounter;
     private final Counter refundFailedCounter;
+    private final Counter refundManualReviewCounter;
+    private final Counter payoutScheduledCounter;
+    private final Counter payoutExecutedCounter;
 
     @Value("${app.payment.capture.hours-before-trip:24}")
     private int captureHoursBeforeTrip;
@@ -75,6 +107,9 @@ public class PaymentLifecycleScheduler {
     @Value("${app.payment.deposit.max-hold-days:7}")
     private int maxDepositHoldDays;
 
+    @Value("${app.payment.refund.retry-backoff-minutes:60}")
+    private int refundRetryBackoffMinutes;
+
     public PaymentLifecycleScheduler(
             BookingRepository bookingRepository,
             BookingPaymentService paymentService,
@@ -82,6 +117,9 @@ public class PaymentLifecycleScheduler {
             CancellationRecordRepository cancellationRecordRepository,
             DamageClaimRepository damageClaimRepository,
             NotificationService notificationService,
+            SchedulerLockStore schedulerLockStore,
+            PayoutLedgerRepository payoutLedgerRepository,
+            SchedulerItemProcessor itemProcessor,
             MeterRegistry meterRegistry) {
         this.bookingRepository = bookingRepository;
         this.paymentService = paymentService;
@@ -89,408 +127,283 @@ public class PaymentLifecycleScheduler {
         this.cancellationRecordRepository = cancellationRecordRepository;
         this.damageClaimRepository = damageClaimRepository;
         this.notificationService = notificationService;
+        this.schedulerLockStore = schedulerLockStore;
+        this.payoutLedgerRepository = payoutLedgerRepository;
+        this.itemProcessor = itemProcessor;
 
-        this.captureSuccessCounter = Counter.builder("payment.scheduler.capture.success")
-                .description("Scheduled payment captures succeeded")
-                .register(meterRegistry);
-        this.captureFailedCounter = Counter.builder("payment.scheduler.capture.failed")
-                .description("Scheduled payment captures failed")
-                .register(meterRegistry);
-        this.depositReleaseCounter = Counter.builder("payment.scheduler.deposit.released")
-                .description("Deposits released by scheduler")
-                .register(meterRegistry);
-        this.overdueDepositReleaseCounter = Counter.builder("payment.scheduler.deposit.overdue_released")
-                .description("Overdue deposits force-released by safety net")
-                .register(meterRegistry);
-        this.refundProcessedCounter = Counter.builder("payment.scheduler.refund.processed")
-                .description("Cancellation refunds processed by scheduler")
-                .register(meterRegistry);
-        this.refundFailedCounter = Counter.builder("payment.scheduler.refund.failed")
-                .description("Cancellation refund processing failures")
-                .register(meterRegistry);
+        this.captureSuccessCounter      = counter(meterRegistry, "payment.scheduler.capture.success",   "Scheduled captures succeeded");
+        this.captureFailedCounter       = counter(meterRegistry, "payment.scheduler.capture.failed",    "Scheduled captures failed");
+        this.depositReleaseCounter      = counter(meterRegistry, "payment.scheduler.deposit.released",   "Deposits released");
+        this.overdueDepositReleaseCounter = counter(meterRegistry, "payment.scheduler.deposit.overdue_released", "Overdue deposits force-released");
+        this.refundProcessedCounter     = counter(meterRegistry, "payment.scheduler.refund.processed",  "Cancellation refunds processed");
+        this.refundFailedCounter        = counter(meterRegistry, "payment.scheduler.refund.failed",     "Cancellation refund failures");
+        this.refundManualReviewCounter  = counter(meterRegistry, "payment.scheduler.refund.manual_review", "Refunds escalated to MANUAL_REVIEW");
+        this.payoutScheduledCounter     = counter(meterRegistry, "payment.scheduler.payout.scheduled",  "Host payouts scheduled");
+        this.payoutExecutedCounter      = counter(meterRegistry, "payment.scheduler.payout.executed",   "Host payouts executed");
     }
 
-    // ========== JOB 1: CAPTURE PAYMENTS 24H BEFORE TRIP ==========
+    // ========== JOB 1: IN-TRIP CAPTURE SAFETY-NET ==========
+    //
+    // P0-1 FIX: The T-24h pre-capture scheduler has been REMOVED.
+    // Capture now happens exclusively at the physical hand-off handshake
+    // (CheckInService.confirmHandshake → BookingPaymentService.captureBookingPaymentNow).
+    // This job is a pure safety-net: it captures any IN_TRIP booking whose
+    // handshake capture never completed (e.g., transient provider timeout).
+    // tripStartedAt IS NOT NULL ensures the physical hand-off already occurred.
 
-    /**
-     * Capture authorized payments for bookings starting within 24 hours.
-     * 
-     * <p><b>Turo Standard:</b> Payment is captured 24h before trip start.
-     * If capture fails (card expired, insufficient funds), the booking is cancelled
-     * and both parties are notified.
-     * 
-     * <p>Runs every hour to ensure timely capture.
-     */
     @Scheduled(cron = "0 0 * * * *") // Every hour
-    @Transactional
     public void captureUpcomingPayments() {
-        log.info("[PaymentScheduler] Running captureUpcomingPayments job");
-
-        LocalDateTime captureWindow = LocalDateTime.now(SERBIA_ZONE).plusHours(captureHoursBeforeTrip);
-        List<BookingStatus> eligibleStatuses = List.of(BookingStatus.ACTIVE, BookingStatus.APPROVED);
-
-        List<Booking> bookingsToCapture = bookingRepository.findBookingsNeedingPaymentCapture(
-                eligibleStatuses, captureWindow);
-
-        if (bookingsToCapture.isEmpty()) {
-            log.debug("[PaymentScheduler] No bookings need payment capture");
+        if (!schedulerLockStore.tryAcquireLock(LOCK_CAPTURE, LOCK_TTL_HOURLY)) {
+            log.debug("[PaymentScheduler] captureUpcomingPayments — lock held by another pod, skipping");
             return;
         }
+        try {
+            log.info("[PaymentScheduler] Running IN_TRIP capture safety-net job");
+            List<Booking> bookingsToCapture = bookingRepository.findBookingsNeedingPaymentCapture();
 
-        log.info("[PaymentScheduler] Found {} bookings needing payment capture", bookingsToCapture.size());
-
-        for (Booking booking : bookingsToCapture) {
-            try {
-                PaymentResult result = paymentService.captureBookingPayment(booking.getId());
-
-                if (result.isSuccess()) {
-                    captureSuccessCounter.increment();
-                    log.info("[PaymentScheduler] Payment captured for booking {}: {}",
-                            booking.getId(), result.getTransactionId());
-
-                    // Notify guest that payment has been charged
-                    notificationService.createNotification(CreateNotificationRequestDTO.builder()
-                            .recipientId(booking.getRenter().getId())
-                            .type(NotificationType.PAYMENT_CAPTURED)
-                            .message(String.format(
-                                    "Plaćanje od %s RSD za rezervaciju #%d je uspešno naplaćeno. Vaš trip počinje uskoro!",
-                                    booking.getTotalPrice(), booking.getId()))
-                            .relatedEntityId(String.valueOf(booking.getId()))
-                            .build());
-                } else {
-                    captureFailedCounter.increment();
-                    log.error("[PaymentScheduler] Payment capture FAILED for booking {}: {} (code: {})",
-                            booking.getId(), result.getErrorMessage(), result.getErrorCode());
-
-                    // Cancel the booking - payment failed
-                    handleCaptureFailure(booking, result);
-                }
-            } catch (Exception e) {
-                captureFailedCounter.increment();
-                log.error("[PaymentScheduler] Exception during payment capture for booking {}: {}",
-                        booking.getId(), e.getMessage(), e);
-
-                // P1 FIX: Treat unhandled exceptions the same as structured capture failure —
-                // cancel booking and notify both parties (stale auth, network error, etc.)
-                PaymentResult syntheticFailure = PaymentResult.builder()
-                        .success(false)
-                        .errorCode("CAPTURE_EXCEPTION")
-                        .errorMessage(e.getMessage())
-                        .build();
-                handleCaptureFailure(booking, syntheticFailure);
+            if (!bookingsToCapture.isEmpty()) {
+                log.warn("[PaymentScheduler] Safety-net: {} IN_TRIP booking(s) have AUTHORIZED charge not yet captured",
+                        bookingsToCapture.size());
             }
+
+            for (Booking booking : bookingsToCapture) {
+                processCaptureSafely(booking);
+            }
+        } finally {
+            schedulerLockStore.releaseLock(LOCK_CAPTURE);
         }
     }
 
     /**
-     * Handle payment capture failure — cancel booking and notify both parties.
+     * Delegates to {@link SchedulerItemProcessor#processCaptureSafely} which runs
+     * in an isolated {@code REQUIRES_NEW} transaction via the Spring proxy.
+     * Kept here for backward-compatibility with tests that call this method directly.
      */
-    private void handleCaptureFailure(Booking booking, PaymentResult result) {
-        try {
-            // Cancel the booking
-            booking.setStatus(BookingStatus.CANCELLED);
-            booking.setCancelledAt(LocalDateTime.now(SERBIA_ZONE));
-            booking.setPaymentStatus("CAPTURE_FAILED");
-            bookingRepository.save(booking);
-
-            // Release any remaining holds
-            try {
-                paymentService.releaseBookingPayment(booking.getId());
-            } catch (Exception e) {
-                log.warn("[PaymentScheduler] Failed to release auth for cancelled booking {}: {}", 
-                    booking.getId(), e.getMessage());
-            }
-
-            // Release deposit hold
-            String depositAuthId = booking.getDepositAuthorizationId();
-            if (depositAuthId != null && !depositAuthId.isBlank()) {
-                try {
-                    paymentService.releaseDeposit(booking.getId(), depositAuthId);
-                } catch (Exception e) {
-                    log.warn("[PaymentScheduler] Failed to release deposit for cancelled booking {}: {}",
-                            booking.getId(), e.getMessage());
-                }
-            }
-
-            // Notify guest
-            notificationService.createNotification(CreateNotificationRequestDTO.builder()
-                    .recipientId(booking.getRenter().getId())
-                    .type(NotificationType.BOOKING_CANCELLED)
-                    .message(String.format(
-                            "Vaša rezervacija #%d je otkazana jer naplaćivanje nije uspelo: %s. " +
-                            "Molimo proverite vaše podatke o plaćanju.",
-                            booking.getId(), result.getErrorMessage()))
-                    .relatedEntityId(String.valueOf(booking.getId()))
-                    .build());
-
-            // Notify host
-            notificationService.createNotification(CreateNotificationRequestDTO.builder()
-                    .recipientId(booking.getCar().getOwner().getId())
-                    .type(NotificationType.BOOKING_CANCELLED)
-                    .message(String.format(
-                            "Rezervacija #%d je automatski otkazana jer naplaćivanje gostu nije uspelo.",
-                            booking.getId()))
-                    .relatedEntityId(String.valueOf(booking.getId()))
-                    .build());
-
-            log.info("[PaymentScheduler] Booking {} cancelled due to capture failure", booking.getId());
-
-        } catch (Exception e) {
-            log.error("[PaymentScheduler] Failed to handle capture failure for booking {}: {}",
-                    booking.getId(), e.getMessage(), e);
-        }
+    /** Delegates to {@link SchedulerItemProcessor#processCaptureSafely} for isolated transaction. */
+    public void processCaptureSafely(Booking booking) {
+        itemProcessor.processCaptureSafely(booking);
     }
 
     // ========== JOB 2: RELEASE DEPOSITS 48H AFTER TRIP ==========
 
-    /**
-     * Release security deposits for completed trips with no pending damage claims.
-     * 
-     * <p><b>Turo Standard:</b> Deposit is released 48h after trip ends if no damage claims.
-     * This window gives the host time to file a damage claim after the trip.
-     * 
-     * <p>Runs every 30 minutes.
-     */
     @Scheduled(cron = "0 */30 * * * *") // Every 30 minutes
-    @Transactional
     public void releaseDepositsAfterTrip() {
-        log.info("[PaymentScheduler] Running releaseDepositsAfterTrip job");
-
-        Instant releaseAfter = Instant.now().minus(depositReleaseHoursAfterTrip, ChronoUnit.HOURS);
-        List<Booking> eligibleBookings = bookingRepository.findBookingsEligibleForDepositRelease(
-                BookingStatus.COMPLETED, releaseAfter);
-
-        if (eligibleBookings.isEmpty()) {
-            log.debug("[PaymentScheduler] No deposits eligible for release");
+        if (!schedulerLockStore.tryAcquireLock(LOCK_DEP_RELEASE, LOCK_TTL_SHORT)) {
+            log.debug("[PaymentScheduler] releaseDepositsAfterTrip — lock held, skipping");
             return;
         }
+        try {
+            log.info("[PaymentScheduler] Running releaseDepositsAfterTrip job");
+            Instant releaseAfter = Instant.now().minus(depositReleaseHoursAfterTrip, ChronoUnit.HOURS);
+            List<Booking> eligible = bookingRepository.findBookingsEligibleForDepositRelease(
+                    BookingStatus.COMPLETED, releaseAfter);
 
-        log.info("[PaymentScheduler] Found {} deposits eligible for release", eligibleBookings.size());
+            log.info("[PaymentScheduler] Found {} deposits eligible for release", eligible.size());
 
-        for (Booking booking : eligibleBookings) {
-            try {
-                // Double-check for pending damage claims (defense in depth)
-                if (damageClaimRepository.hasClaimsBlockingDepositRelease(booking.getId())) {
-                    log.info("[PaymentScheduler] Deposit release blocked for booking {} - pending damage claims",
-                            booking.getId());
-                    continue;
-                }
-
-                String depositAuthId = booking.getDepositAuthorizationId();
-                if (depositAuthId == null || depositAuthId.isBlank()) {
-                    log.warn("[PaymentScheduler] No deposit auth ID for booking {} - marking as released",
-                            booking.getId());
-                    booking.setSecurityDepositReleased(true);
-                    booking.setSecurityDepositResolvedAt(Instant.now());
-                    bookingRepository.save(booking);
-                    continue;
-                }
-
-                PaymentResult result = paymentService.releaseDeposit(booking.getId(), depositAuthId);
-
-                if (result.isSuccess()) {
-                    booking.setSecurityDepositReleased(true);
-                    booking.setSecurityDepositResolvedAt(Instant.now());
-                    bookingRepository.save(booking);
-                    depositReleaseCounter.increment();
-
-                    // Notify guest
-                    notificationService.createNotification(CreateNotificationRequestDTO.builder()
-                            .recipientId(booking.getRenter().getId())
-                            .type(NotificationType.DEPOSIT_RELEASED)
-                            .message(String.format(
-                                    "Vaš depozit od %s RSD za rezervaciju #%d je vraćen.",
-                                    booking.getSecurityDeposit() != null ? booking.getSecurityDeposit() : "30,000",
-                                    booking.getId()))
-                            .relatedEntityId(String.valueOf(booking.getId()))
-                            .build());
-
-                    log.info("[PaymentScheduler] Deposit released for booking {}", booking.getId());
-                } else {
-                    log.warn("[PaymentScheduler] Deposit release failed for booking {}: {}",
-                            booking.getId(), result.getErrorMessage());
-                }
-            } catch (IllegalStateException e) {
-                // Expected: pending damage claims block release
-                log.info("[PaymentScheduler] Deposit release blocked for booking {}: {}", 
-                    booking.getId(), e.getMessage());
-            } catch (Exception e) {
-                log.error("[PaymentScheduler] Exception during deposit release for booking {}: {}",
-                        booking.getId(), e.getMessage(), e);
+            for (Booking booking : eligible) {
+                releaseDepositSafely(booking);
             }
+        } finally {
+            schedulerLockStore.releaseLock(LOCK_DEP_RELEASE);
         }
+    }
+
+    /** Delegates to {@link SchedulerItemProcessor#releaseDepositSafely} for isolated transaction. */
+    public void releaseDepositSafely(Booking booking) {
+        itemProcessor.releaseDepositSafely(booking);
     }
 
     // ========== JOB 3: SAFETY NET — AUTO-RELEASE OVERDUE DEPOSITS ==========
 
-    /**
-     * Safety net: force-release deposits held longer than 7 days.
-     * 
-     * <p><b>Critical:</b> Deposits should NEVER be held indefinitely.
-     * Even if there are unresolved damage claims, the deposit must be released
-     * after the maximum hold period. Any remaining damage charges are pursued
-     * through separate collections.
-     * 
-     * <p>Runs every 6 hours.
-     */
     @Scheduled(cron = "0 0 */6 * * *") // Every 6 hours
-    @Transactional
     public void autoReleaseOverdueDeposits() {
-        log.info("[PaymentScheduler] Running autoReleaseOverdueDeposits safety net");
-
-        Instant maxHoldDeadline = Instant.now().minus(maxDepositHoldDays, ChronoUnit.DAYS);
-        List<BookingStatus> terminalStatuses = List.of(
-                BookingStatus.COMPLETED, BookingStatus.CANCELLED);
-
-        List<Booking> overdueBookings = bookingRepository.findBookingsWithOverdueDepositHold(
-                maxHoldDeadline, terminalStatuses);
-
-        if (overdueBookings.isEmpty()) {
-            log.debug("[PaymentScheduler] No overdue deposit holds found");
+        if (!schedulerLockStore.tryAcquireLock(LOCK_DEP_OVERDUE, LOCK_TTL_SIXHRLY)) {
+            log.debug("[PaymentScheduler] autoReleaseOverdueDeposits — lock held, skipping");
             return;
         }
+        try {
+            log.info("[PaymentScheduler] Running autoReleaseOverdueDeposits safety net");
+            Instant maxHoldDeadline = Instant.now().minus(maxDepositHoldDays, ChronoUnit.DAYS);
+            List<BookingStatus> terminalStatuses = List.of(BookingStatus.COMPLETED, BookingStatus.CANCELLED);
+            List<Booking> overdueBookings = bookingRepository.findBookingsWithOverdueDepositHold(
+                    maxHoldDeadline, terminalStatuses);
 
-        log.warn("[PaymentScheduler] SAFETY NET: Found {} deposits held beyond {} day limit",
-                overdueBookings.size(), maxDepositHoldDays);
-
-        for (Booking booking : overdueBookings) {
-            try {
-                String depositAuthId = booking.getDepositAuthorizationId();
-                boolean gatewayReleased = false;
-                if (depositAuthId != null && !depositAuthId.isBlank()) {
-                    try {
-                        PaymentResult releaseResult = paymentService.releaseDeposit(booking.getId(), depositAuthId);
-                        gatewayReleased = releaseResult.isSuccess();
-                    } catch (IllegalStateException e) {
-                        // If blocked by claims, force-release via provider directly (safety net override)
-                        log.warn("[PaymentScheduler] SAFETY NET: Force-releasing deposit for booking {} " +
-                                "despite pending claims (held {} days)", booking.getId(), maxDepositHoldDays);
-                        try {
-                            PaymentResult forceResult = paymentProvider.releaseAuthorization(depositAuthId);
-                            gatewayReleased = forceResult.isSuccess();
-                            if (!forceResult.isSuccess()) {
-                                log.error("[PaymentScheduler] SAFETY NET: Gateway force-release FAILED for booking {}: {}",
-                                        booking.getId(), forceResult.getErrorMessage());
-                            }
-                        } catch (Exception ex) {
-                            log.error("[PaymentScheduler] SAFETY NET: Gateway force-release exception for booking {}: {}",
-                                    booking.getId(), ex.getMessage());
-                        }
-                    }
-                } else {
-                    // No auth ID — deposit may have already been released or never created
-                    gatewayReleased = true;
-                }
-
-                if (!gatewayReleased) {
-                    log.error("[PaymentScheduler] SAFETY NET: Skipping DB update for booking {} — gateway release not confirmed",
-                            booking.getId());
-                    continue;
-                }
-
-                booking.setSecurityDepositReleased(true);
-                booking.setSecurityDepositResolvedAt(Instant.now());
-                booking.setSecurityDepositHoldReason("AUTO_RELEASED_SAFETY_NET");
-                bookingRepository.save(booking);
-                overdueDepositReleaseCounter.increment();
-
-                // Alert admin about forced release
-                log.warn("[PaymentScheduler] ADMIN ALERT: Deposit auto-released for booking {} " +
-                        "(held {} days, trip ended: {})", 
-                        booking.getId(), maxDepositHoldDays, booking.getTripEndedAt());
-
-                // Notify guest
-                notificationService.createNotification(CreateNotificationRequestDTO.builder()
-                        .recipientId(booking.getRenter().getId())
-                        .type(NotificationType.DEPOSIT_RELEASED)
-                        .message(String.format(
-                                "Vaš depozit za rezervaciju #%d je automatski vraćen.",
-                                booking.getId()))
-                        .relatedEntityId(String.valueOf(booking.getId()))
-                        .build());
-
-            } catch (Exception e) {
-                log.error("[PaymentScheduler] Failed to auto-release deposit for booking {}: {}",
-                        booking.getId(), e.getMessage(), e);
+            if (!overdueBookings.isEmpty()) {
+                log.warn("[PaymentScheduler] SAFETY NET: {} deposits held beyond {} day limit",
+                        overdueBookings.size(), maxDepositHoldDays);
             }
+
+            for (Booking booking : overdueBookings) {
+                forceReleaseDepositSafely(booking);
+            }
+        } finally {
+            schedulerLockStore.releaseLock(LOCK_DEP_OVERDUE);
         }
     }
 
-    // ========== JOB 4: PROCESS PENDING CANCELLATION REFUNDS ==========
+    /** Delegates to {@link SchedulerItemProcessor#forceReleaseDepositSafely} for isolated transaction. */
+    public void forceReleaseDepositSafely(Booking booking) {
+        itemProcessor.forceReleaseDepositSafely(booking);
+    }
+
+    // ========== JOB 4: PROCESS CANCELLATION REFUNDS (PENDING + FAILED + STALE PROCESSING) ==========
 
     /**
-     * Process pending refunds from cancelled bookings.
-     * 
-     * <p><b>P0 FIX:</b> Previously, cancellation policy computed refund amounts but
-     * never executed them. This job picks up PENDING refunds and executes settlement.
-     * 
-     * <p>Runs every 15 minutes.
+     * Process refunds across three states:
+     * <ol>
+     *   <li>PENDING — initial pending, process now</li>
+     *   <li>FAILED — retry-eligible failed (retryCount &lt; maxRetries, backoff elapsed)</li>
+     *   <li>PROCESSING (stale) — crash-recovery: treat like PENDING and re-attempt</li>
+     * </ol>
+     * On final failure (retryCount == maxRetries), escalates to MANUAL_REVIEW.
      */
     @Scheduled(cron = "0 */15 * * * *") // Every 15 minutes
-    @Transactional
-    public void processPendingCancellationRefunds() {
-        log.info("[PaymentScheduler] Running processPendingCancellationRefunds job");
-
-        List<CancellationRecord> pendingRefunds = cancellationRecordRepository
-                .findByRefundStatus(RefundStatus.PENDING);
-
-        if (pendingRefunds.isEmpty()) {
-            log.debug("[PaymentScheduler] No pending cancellation refunds");
+    public void processCancellationRefunds() {
+        if (!schedulerLockStore.tryAcquireLock(LOCK_REFUND, LOCK_TTL_SHORT)) {
+            log.debug("[PaymentScheduler] processCancellationRefunds — lock held, skipping");
             return;
         }
+        try {
+            log.info("[PaymentScheduler] Running processCancellationRefunds job");
+            Instant now = Instant.now();
 
-        log.info("[PaymentScheduler] Found {} pending cancellation refunds to process", pendingRefunds.size());
+            List<CancellationRecord> pending = cancellationRecordRepository.findByRefundStatus(RefundStatus.PENDING);
+            List<CancellationRecord> retryable = cancellationRecordRepository.findRetryEligibleFailed(now);
+            List<CancellationRecord> stale = cancellationRecordRepository.findStaleProcessing(
+                    now.minus(STALE_PROCESSING_CUTOFF));
 
-        for (CancellationRecord record : pendingRefunds) {
-            try {
-                Long bookingId = record.getBooking().getId();
-                BigDecimal refundAmount = record.getRefundToGuest();
-
-                // Mark as processing
-                record.setRefundStatus(RefundStatus.PROCESSING);
-                cancellationRecordRepository.save(record);
-
-                PaymentResult result = paymentService.processCancellationSettlement(
-                        bookingId, refundAmount,
-                        "Cancellation refund: " + record.getAppliedRule());
-
-                if (result.isSuccess()) {
-                    record.setRefundStatus(RefundStatus.COMPLETED);
-                    cancellationRecordRepository.save(record);
-                    refundProcessedCounter.increment();
-
-                    log.info("[PaymentScheduler] Cancellation refund processed for booking {}: {} RSD",
-                            bookingId, refundAmount);
-
-                    // Notify guest
-                    Booking booking = record.getBooking();
-                    if (booking.getRenter() != null) {
-                        notificationService.createNotification(CreateNotificationRequestDTO.builder()
-                                .recipientId(booking.getRenter().getId())
-                                .type(NotificationType.REFUND_PROCESSED)
-                                .message(String.format(
-                                        "Povraćaj od %s RSD za otkazanu rezervaciju #%d je obrađen.",
-                                        refundAmount, bookingId))
-                                .relatedEntityId(String.valueOf(bookingId))
-                                .build());
-                    }
-                } else {
-                    record.setRefundStatus(RefundStatus.FAILED);
-                    cancellationRecordRepository.save(record);
-                    refundFailedCounter.increment();
-
-                    log.error("[PaymentScheduler] Cancellation refund FAILED for booking {}: {}",
-                            bookingId, result.getErrorMessage());
-                }
-
-            } catch (Exception e) {
-                record.setRefundStatus(RefundStatus.FAILED);
-                cancellationRecordRepository.save(record);
-                refundFailedCounter.increment();
-
-                log.error("[PaymentScheduler] Exception processing cancellation refund for record {}: {}",
-                        record.getId(), e.getMessage(), e);
+            int total = pending.size() + retryable.size() + stale.size();
+            if (total > 0) {
+                log.info("[PaymentScheduler] Processing {} refunds: {} PENDING, {} FAILED retry, {} stale PROCESSING",
+                        total, pending.size(), retryable.size(), stale.size());
             }
+
+            for (CancellationRecord r : pending)   processRefundSafely(r);
+            for (CancellationRecord r : retryable)  processRefundSafely(r);
+            for (CancellationRecord r : stale)      processRefundSafely(r);
+
+        } finally {
+            schedulerLockStore.releaseLock(LOCK_REFUND);
         }
     }
+
+    /** Delegates to {@link SchedulerItemProcessor#processRefundSafely} for isolated transaction. */
+    public void processRefundSafely(CancellationRecord record) {
+        itemProcessor.processRefundSafely(record);
+    }
+
+    // ========== JOB 5: SCHEDULE HOST PAYOUTS ==========
+
+    @Scheduled(cron = "0 0 * * * *") // Every hour (offset scheduling via different second)
+    public void scheduleHostPayouts() {
+        if (!schedulerLockStore.tryAcquireLock(LOCK_PAYOUT_SCHED, LOCK_TTL_HOURLY)) {
+            log.debug("[PaymentScheduler] scheduleHostPayouts — lock held, skipping");
+            return;
+        }
+        try {
+            log.info("[PaymentScheduler] Running scheduleHostPayouts job");
+            // Find completed bookings without a payout ledger entry yet
+            List<Booking> completedWithoutPayout = bookingRepository.findCompletedBookingsNeedingPayout();
+            log.info("[PaymentScheduler] Found {} completed bookings to schedule payouts for", completedWithoutPayout.size());
+
+            for (Booking booking : completedWithoutPayout) {
+                schedulePayoutSafely(booking);
+            }
+        } finally {
+            schedulerLockStore.releaseLock(LOCK_PAYOUT_SCHED);
+        }
+    }
+
+    /** Delegates to {@link SchedulerItemProcessor#schedulePayoutSafely} for isolated transaction. */
+    public void schedulePayoutSafely(Booking booking) {
+        itemProcessor.schedulePayoutSafely(booking);
+    }
+
+    // ========== JOB 6: EXECUTE ELIGIBLE PAYOUTS ==========
+
+    @Scheduled(cron = "0 30 * * * *") // Every hour at :30 past
+    public void executeEligiblePayouts() {
+        if (!schedulerLockStore.tryAcquireLock(LOCK_PAYOUT_EXEC, LOCK_TTL_HOURLY)) {
+            log.debug("[PaymentScheduler] executeEligiblePayouts — lock held, skipping");
+            return;
+        }
+        try {
+            log.info("[PaymentScheduler] Running executeEligiblePayouts job");
+            Instant now = Instant.now();
+
+            // First: mark PENDING→ELIGIBLE where dispute window has elapsed
+            List<PayoutLedger> readyToEligible = payoutLedgerRepository.findReadyToMarkEligible(now);
+            for (PayoutLedger ledger : readyToEligible) {
+                markPayoutEligibleSafely(ledger);
+            }
+
+            // Then: execute ELIGIBLE payouts
+            List<PayoutLedger> eligible = payoutLedgerRepository.findEligibleForPayout(now);
+            log.info("[PaymentScheduler] Found {} payouts eligible for execution", eligible.size());
+
+            for (PayoutLedger ledger : eligible) {
+                executePayoutSafely(ledger);
+            }
+
+            // Recovery: check stale PROCESSING payouts
+            List<PayoutLedger> staleProcessing = payoutLedgerRepository.findStaleProcessing(
+                    now.minus(STALE_PROCESSING_CUTOFF));
+            for (PayoutLedger ledger : staleProcessing) {
+                log.warn("[PaymentScheduler] Stale payout PROCESSING for booking {} — re-queueing as ELIGIBLE",
+                        ledger.getBookingId());
+                markPayoutEligibleSafely(ledger);
+            }
+        } finally {
+            schedulerLockStore.releaseLock(LOCK_PAYOUT_EXEC);
+        }
+    }
+
+    /** Delegates to {@link SchedulerItemProcessor#markPayoutEligibleSafely} for isolated transaction. */
+    public void markPayoutEligibleSafely(PayoutLedger ledger) {
+        itemProcessor.markPayoutEligibleSafely(ledger);
+    }
+
+    /** Delegates to {@link SchedulerItemProcessor#executePayoutSafely} for isolated transaction. */
+    public void executePayoutSafely(PayoutLedger ledger) {
+        itemProcessor.executePayoutSafely(ledger);
+    }
+
+    // ========== P0-6: AUTH EXPIRY REAUTH JOB ==========
+
+    /**
+     * Runs every 6 hours. Finds bookings whose payment authorisation is expiring within
+     * the next 48 hours and marks them as REAUTH_REQUIRED so the owner / renter can take action.
+     */
+    @Scheduled(cron = "0 0 */6 * * *") // Every 6 hours
+    public void reauthExpiredBookings() {
+        if (!schedulerLockStore.tryAcquireLock(LOCK_REAUTH, LOCK_TTL_SIXHRLY)) {
+            log.debug("[PaymentScheduler] Reauth lock held by another pod — skipping");
+            return;
+        }
+        try {
+            Instant thresholdTime = Instant.now().plus(48, ChronoUnit.HOURS);
+            List<Booking> expiring = bookingRepository.findBookingsWithExpiringAuth(
+                    thresholdTime, ChargeLifecycleStatus.AUTHORIZED);
+            log.info("[PaymentScheduler] Reauth check: {} booking(s) have auth expiring before {}",
+                    expiring.size(), thresholdTime);
+            for (Booking booking : expiring) {
+                markReauthRequiredSafely(booking);
+            }
+        } finally {
+            schedulerLockStore.releaseLock(LOCK_REAUTH);
+        }
+    }
+
+    /** Delegates to {@link SchedulerItemProcessor#markReauthRequiredSafely} for isolated transaction. */
+    public void markReauthRequiredSafely(Booking booking) {
+        itemProcessor.markReauthRequiredSafely(booking);
+    }
+
+    // ========== HELPERS ==========
+
+    private static Counter counter(MeterRegistry registry, String name, String description) {
+        return Counter.builder(name).description(description).register(registry);
+    }
 }
+
+

@@ -5,10 +5,13 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
-import java.time.Instant;
+import java.util.Collections;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Redis-based implementation of scheduler lock storage.
@@ -42,7 +45,22 @@ public class RedisSchedulerLockStore implements SchedulerLockStore {
     private static final Logger log = LoggerFactory.getLogger(RedisSchedulerLockStore.class);
     private static final String LOCK_KEY_PREFIX = "scheduler:lock:";
 
+    /**
+     * Lua script for atomic compare-and-delete.
+     * Releases the lock ONLY if the stored token matches the caller's token.
+     * Returns 1 on success, 0 if no match (lock not owned by this pod).
+     */
+    private static final DefaultRedisScript<Long> RELEASE_SCRIPT = new DefaultRedisScript<>(
+            "if redis.call('get', KEYS[1]) == ARGV[1] then " +
+            "    return redis.call('del', KEYS[1]) " +
+            "else " +
+            "    return 0 " +
+            "end",
+            Long.class);
+
     private final StringRedisTemplate redisTemplate;
+    /** Maps taskId → UUID token for locks held by this JVM instance. */
+    private final ConcurrentHashMap<String, String> heldTokens = new ConcurrentHashMap<>();
 
     public RedisSchedulerLockStore(StringRedisTemplate redisTemplate) {
         this.redisTemplate = redisTemplate;
@@ -53,17 +71,19 @@ public class RedisSchedulerLockStore implements SchedulerLockStore {
     public boolean tryAcquireLock(String taskId, Duration ttl) {
         if (taskId == null || taskId.isBlank()) {
             log.warn("[SchedulerLock] Invalid taskId provided");
-            return true; // Allow execution for invalid input
+            return false; // Fail closed for null/blank input.
         }
 
         String key = LOCK_KEY_PREFIX + taskId;
-        String value = Instant.now().toString();
+        // P1-10 FIX: Use a unique token per acquisition so only the lock’s owner can release it.
+        String token = UUID.randomUUID().toString();
 
         try {
             // SET NX (only if not exists) with TTL - atomic operation
-            Boolean acquired = redisTemplate.opsForValue().setIfAbsent(key, value, ttl);
+            Boolean acquired = redisTemplate.opsForValue().setIfAbsent(key, token, ttl);
 
             if (Boolean.TRUE.equals(acquired)) {
+                heldTokens.put(taskId, token);
                 log.debug("[SchedulerLock] Acquired Redis lock for task: {} (TTL: {})", taskId, ttl);
                 return true;
             } else {
@@ -71,10 +91,10 @@ public class RedisSchedulerLockStore implements SchedulerLockStore {
                 return false;
             }
         } catch (Exception e) {
-            log.error("[SchedulerLock] Error acquiring Redis lock for task {}: {}", 
+            log.error("[SchedulerLock] Error acquiring Redis lock for task {}: {} — FAILING CLOSED",
                     taskId, e.getMessage());
-            // Fail open - allow execution on Redis errors
-            return true;
+            // P1-10 FIX: Fail closed — do NOT run the job if we cannot confirm lock ownership.
+            return false;
         }
     }
 
@@ -102,14 +122,22 @@ public class RedisSchedulerLockStore implements SchedulerLockStore {
         }
 
         String key = LOCK_KEY_PREFIX + taskId;
+        String token = heldTokens.remove(taskId);
+        if (token == null) {
+            log.warn("[SchedulerLock] releaseLock called for task {} but no token found — not owner?", taskId);
+            return;
+        }
 
         try {
-            Boolean deleted = redisTemplate.delete(key);
-            if (Boolean.TRUE.equals(deleted)) {
+            // P1-10 FIX: Atomic compare-and-delete — only deletes if we still own the lock.
+            Long deleted = redisTemplate.execute(RELEASE_SCRIPT, Collections.singletonList(key), token);
+            if (Long.valueOf(1L).equals(deleted)) {
                 log.debug("[SchedulerLock] Released Redis lock for task: {}", taskId);
+            } else {
+                log.warn("[SchedulerLock] Lock for task {} was NOT released (expired or taken by another pod)", taskId);
             }
         } catch (Exception e) {
-            log.warn("[SchedulerLock] Error releasing lock for task {}: {}", 
+            log.warn("[SchedulerLock] Error releasing lock for task {}: {}",
                     taskId, e.getMessage());
         }
     }

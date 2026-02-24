@@ -52,7 +52,7 @@ class MockPaymentProviderTest {
 
             assertThat(result.isSuccess()).isTrue();
             assertThat(result.getStatus()).isEqualTo(PaymentStatus.CAPTURED);
-            assertThat(result.getTransactionId()).startsWith("txn_");
+            assertThat(result.getTransactionId()).startsWith("mock_txn_");
             assertThat(result.getAmount()).isEqualByComparingTo(BigDecimal.valueOf(5000));
         }
 
@@ -69,33 +69,60 @@ class MockPaymentProviderTest {
 
             assertThat(result.isSuccess()).isTrue();
             assertThat(result.getStatus()).isEqualTo(PaymentStatus.AUTHORIZED);
-            assertThat(result.getAuthorizationId()).startsWith("auth_");
+            assertThat(result.getAuthorizationId()).startsWith("mock_auth_");
         }
 
         @Test
         @DisplayName("capture() captures authorized amount")
         void captureSucceedsNormally() {
-            PaymentResult result = provider.capture("auth_12345678", BigDecimal.valueOf(7500));
+            // Must first authorize to get a valid auth ID in the mock's internal map
+            PaymentRequest authRequest = PaymentRequest.builder()
+                    .amount(BigDecimal.valueOf(7500))
+                    .currency("RSD")
+                    .bookingId(789L)
+                    .build();
+            PaymentResult authorized = provider.authorize(authRequest);
+            assertThat(authorized.isSuccess()).isTrue();
+            String authId = authorized.getAuthorizationId();
+
+            PaymentResult result = provider.capture(authId, BigDecimal.valueOf(7500));
 
             assertThat(result.isSuccess()).isTrue();
             assertThat(result.getStatus()).isEqualTo(PaymentStatus.CAPTURED);
-            assertThat(result.getTransactionId()).startsWith("txn_");
+            assertThat(result.getTransactionId()).startsWith("mock_txn_");
         }
 
         @Test
         @DisplayName("refund() processes refund")
         void refundSucceedsNormally() {
-            PaymentResult result = provider.refund("txn_12345678", BigDecimal.valueOf(3000), "Customer request");
+            // Must first authorize+capture to get a valid captured-transaction ID
+            PaymentRequest authRequest = PaymentRequest.builder()
+                    .amount(BigDecimal.valueOf(3000))
+                    .currency("RSD")
+                    .bookingId(111L)
+                    .build();
+            String authId = provider.authorize(authRequest).getAuthorizationId();
+            String txnId = provider.capture(authId, BigDecimal.valueOf(3000)).getTransactionId();
+
+            PaymentResult result = provider.refund(txnId, BigDecimal.valueOf(3000), "Customer request");
 
             assertThat(result.isSuccess()).isTrue();
             assertThat(result.getStatus()).isEqualTo(PaymentStatus.REFUNDED);
-            assertThat(result.getTransactionId()).startsWith("ref_");
+            assertThat(result.getTransactionId()).startsWith("mock_ref_");
         }
 
         @Test
         @DisplayName("releaseAuthorization() releases hold")
         void releaseAuthorizationSucceedsNormally() {
-            PaymentResult result = provider.releaseAuthorization("auth_12345678");
+            // Must first authorize to get a valid auth ID in the mock's internal map
+            PaymentRequest authRequest = PaymentRequest.builder()
+                    .amount(BigDecimal.valueOf(5000))
+                    .currency("RSD")
+                    .bookingId(222L)
+                    .build();
+            String authId = provider.authorize(authRequest).getAuthorizationId();
+
+            PaymentResult result = provider.releaseAuthorization(authId);
 
             assertThat(result.isSuccess()).isTrue();
             assertThat(result.getStatus()).isEqualTo(PaymentStatus.CANCELLED);

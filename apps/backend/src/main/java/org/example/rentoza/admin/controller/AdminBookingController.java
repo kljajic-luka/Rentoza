@@ -11,6 +11,7 @@ import org.example.rentoza.admin.service.AdminAuditService;
 import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingRepository;
 import org.example.rentoza.booking.BookingStatus;
+import org.example.rentoza.payment.ChargeLifecycleStatus;
 import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.security.CurrentUser;
 import org.example.rentoza.user.User;
@@ -133,8 +134,10 @@ public class AdminBookingController {
             ));
         }
         
-        // Guard: payment still authorized (funds held by payment provider)
-        if ("AUTHORIZED".equals(booking.getPaymentStatus())) {
+        // Guard: payment authorization still held by provider (P1-5: use typed lifecycle status)
+        ChargeLifecycleStatus chargeStatus = booking.getChargeLifecycleStatus();
+        if (chargeStatus == ChargeLifecycleStatus.AUTHORIZED
+                || chargeStatus == ChargeLifecycleStatus.REAUTH_REQUIRED) {
             return ResponseEntity.badRequest().body(Map.of(
                 "error", "PAYMENT_HOLD_ACTIVE",
                 "message", "Cannot force-complete while payment is in AUTHORIZED state. Release or capture the payment first."

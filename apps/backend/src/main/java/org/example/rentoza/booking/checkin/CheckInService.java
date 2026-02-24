@@ -868,7 +868,7 @@ public class CheckInService {
             booking.setStatus(BookingStatus.IN_TRIP);
             booking.setHandshakeCompletedAt(Instant.now());
             booking.setTripStartedAt(Instant.now());
-            
+
             eventService.recordEvent(
                 booking,
                 booking.getCheckInSessionId(),
@@ -880,19 +880,33 @@ public class CheckInService {
                     "geofenceStatus", booking.getGeofenceDistanceMeters() != null ? "PASSED" : "N/A"
                 )
             );
-            
+
             handshakeCompletedCounter.increment();
-            
+
             // Record check-in duration
             if (booking.getCheckInOpenedAt() != null) {
                 Duration duration = Duration.between(booking.getCheckInOpenedAt(), Instant.now());
                 checkInDurationTimer.record(duration);
             }
-            
+
             log.info("[CheckIn] Trip started for booking {} - handshake complete", booking.getId());
-            
+
             // Notify both parties
             notifyTripStarted(booking);
+
+            // P1-FIX: Trigger payment capture at the physical handoff point rather than
+            // relying solely on the T-24h scheduler. Runs in REQUIRES_NEW so a transient
+            // capture failure cannot roll back the IN_TRIP transition.
+            // The PaymentLifecycleScheduler is the authoritative fallback for any capture
+            // that does not complete synchronously here.
+            final Long captureBookingId = booking.getId();
+            try {
+                bookingPaymentService.captureBookingPaymentNow(captureBookingId);
+                log.info("[CheckIn] Payment captured at trip start for booking {}", captureBookingId);
+            } catch (Exception capEx) {
+                log.warn("[CheckIn] Capture at trip start was not successful for booking {} — " +
+                        "scheduler will retry: {}", captureBookingId, capEx.getMessage());
+            }
         }
         
         bookingRepository.save(booking);

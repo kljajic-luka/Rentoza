@@ -123,6 +123,38 @@ public interface CancellationRecordRepository extends JpaRepository<Cancellation
            "ORDER BY cr.processedAt ASC")
     List<CancellationRecord> findFailedRefunds();
 
+    /**
+     * Find FAILED records that are eligible for retry right now.
+     * Conditions:
+     * <ul>
+     *   <li>refundStatus = FAILED (not yet promoted to MANUAL_REVIEW)</li>
+     *   <li>retryCount &lt; maxRetries — attempts remaining</li>
+     *   <li>nextRetryAt is null OR nextRetryAt &lt;= :now — backoff window elapsed</li>
+     * </ul>
+     */
+    @Query("""
+           SELECT cr FROM CancellationRecord cr
+           WHERE cr.refundStatus = 'FAILED'
+             AND cr.retryCount < cr.maxRetries
+             AND (cr.nextRetryAt IS NULL OR cr.nextRetryAt <= :now)
+           ORDER BY cr.processedAt ASC
+           """)
+    List<CancellationRecord> findRetryEligibleFailed(
+            @org.springframework.data.repository.query.Param("now") java.time.Instant now);
+
+    /**
+     * Find PROCESSING records that are stale (started but never resolved, likely scheduler crash).
+     * These should be re-attempted or escalated.
+     */
+    @Query("""
+           SELECT cr FROM CancellationRecord cr
+           WHERE cr.refundStatus = 'PROCESSING'
+             AND cr.lastRetryAt < :staleBefore
+           ORDER BY cr.lastRetryAt ASC
+           """)
+    List<CancellationRecord> findStaleProcessing(
+            @org.springframework.data.repository.query.Param("staleBefore") java.time.Instant staleBefore);
+
     // ==================== DISPUTE RESOLUTION ====================
 
     /**

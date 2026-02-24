@@ -251,7 +251,26 @@ public class CheckInScheduler {
                     
                     // Send notification to host
                     checkInService.notifyCheckInWindowOpened(booking);
-                    
+
+                    // P0-3: Authorize security deposit at check-in window opening.
+                    // Uses a REQUIRES_NEW transaction so a deposit auth failure never
+                    // rolls back the check-in window transition committed above.
+                    try {
+                        org.example.rentoza.payment.PaymentProvider.PaymentResult depositResult =
+                                bookingPaymentService.authorizeDepositAtCheckIn(
+                                        booking.getId(), booking.getStoredPaymentMethodId());
+                        if (depositResult.isSuccess()) {
+                            log.info("[CheckIn] Deposit authorized for booking {} at check-in window opening: {}",
+                                    booking.getId(), depositResult.getAuthorizationId());
+                        } else {
+                            log.warn("[CheckIn] Deposit auth FAILED for booking {} — check-in NOT blocked: {} ({})",
+                                    booking.getId(), depositResult.getErrorMessage(), depositResult.getErrorCode());
+                        }
+                    } catch (Exception depositEx) {
+                        log.error("[CheckIn] Unexpected error during deposit auth for booking {} — check-in NOT blocked: {}",
+                                booking.getId(), depositEx.getMessage(), depositEx);
+                    }
+
                     opened++;
                     log.info("[CheckIn] Opened check-in window for booking {} (session: {}, startTime: {})", 
                         booking.getId(), sessionId, booking.getStartTime());

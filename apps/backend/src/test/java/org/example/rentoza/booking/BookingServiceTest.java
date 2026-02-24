@@ -173,7 +173,8 @@ class BookingServiceTest {
                     .thenReturn(successPayment());
 
             // When
-            Booking result = bookingService.createBooking(validBookingRequest, "renter@test.com");
+            BookingService.BookingCreationResult creationResult = bookingService.createBooking(validBookingRequest, "renter@test.com");
+            Booking result = creationResult.booking();
 
             // Then
             assertThat(result).isNotNull();
@@ -217,7 +218,8 @@ class BookingServiceTest {
                     .thenReturn(successPayment());
 
             // When
-            Booking result = bookingService.createBooking(validBookingRequest, "renter@test.com");
+            BookingService.BookingCreationResult creationResult = bookingService.createBooking(validBookingRequest, "renter@test.com");
+            Booking result = creationResult.booking();
 
             // Then
             assertThat(result.getStatus()).isEqualTo(BookingStatus.PENDING_APPROVAL);
@@ -316,7 +318,8 @@ class BookingServiceTest {
 
 
             // When
-            Booking result = bookingService.createBooking(validBookingRequest, "renter@test.com");
+            BookingService.BookingCreationResult creationResult = bookingService.createBooking(validBookingRequest, "renter@test.com");
+            Booking result = creationResult.booking();
 
             // Then
             assertThat(result).isNotNull();
@@ -390,7 +393,8 @@ class BookingServiceTest {
                     .thenReturn(successPayment());
 
             // When
-            Booking result = bookingService.createBooking(validBookingRequest, "renter@test.com");
+            BookingService.BookingCreationResult creationResult = bookingService.createBooking(validBookingRequest, "renter@test.com");
+            Booking result = creationResult.booking();
 
             // Then
             assertThat(result).isNotNull();
@@ -450,7 +454,8 @@ class BookingServiceTest {
                     .thenReturn(successPayment());
 
             // When
-            Booking result = bookingService.createBooking(validBookingRequest, "renter@test.com");
+            BookingService.BookingCreationResult creationResult = bookingService.createBooking(validBookingRequest, "renter@test.com");
+            Booking result = creationResult.booking();
 
             // Then
             assertThat(result).isNotNull();
@@ -531,7 +536,8 @@ class BookingServiceTest {
                     .thenReturn(successPayment());
 
             // When
-            Booking result = bookingService.createBooking(validBookingRequest, "renter@test.com");
+            BookingService.BookingCreationResult creationResult = bookingService.createBooking(validBookingRequest, "renter@test.com");
+            Booking result = creationResult.booking();
 
             // Then
             assertThat(result).isNotNull();
@@ -644,6 +650,46 @@ class BookingServiceTest {
             // storedPaymentMethodId is persisted on the booking for deferred deposit
             verify(bookingRepo, atLeastOnce()).save(argThat(b ->
                     b.getStoredPaymentMethodId() != null));
+        }
+
+        @Test
+        @DisplayName("R1-FIX: REDIRECT_REQUIRED persists booking and returns redirect info instead of throwing")
+        void shouldReturnRedirectResultWhenPaymentRequires3DS() {
+            // Given: payment returns REDIRECT_REQUIRED (3DS/SCA flow)
+            when(userRepo.findByEmail("renter@test.com")).thenReturn(Optional.of(renter));
+            when(carRepo.findById(100L)).thenReturn(Optional.of(car));
+            when(bookingRepo.existsOverlappingBookingsWithLock(anyLong(), any(), any())).thenReturn(false);
+            when(bookingRepo.existsOverlappingUserBooking(anyLong(), any(), any())).thenReturn(false);
+            when(renterVerificationService.checkBookingEligibilityForUser(any(), any()))
+                    .thenReturn(BookingEligibilityDTO.eligible());
+            when(bookingRepo.save(any(Booking.class))).thenAnswer(inv -> {
+                Booking b = inv.getArgument(0);
+                b.setId(1L);
+                return b;
+            });
+
+            // REDIRECT_REQUIRED: success=false but has redirectUrl
+            PaymentResult redirectPayment = new PaymentResult();
+            ReflectionTestUtils.setField(redirectPayment, "success", false);
+            ReflectionTestUtils.setField(redirectPayment, "redirectUrl", "https://3ds.example.com/verify");
+            when(bookingPaymentService.processBookingPayment(anyLong(), anyString()))
+                    .thenReturn(redirectPayment);
+
+            // When: createBooking should NOT throw; should return redirect result
+            BookingService.BookingCreationResult result = bookingService.createBooking(
+                    validBookingRequest, "renter@test.com");
+
+            // Then: booking is persisted (not rolled back)
+            assertThat(result).isNotNull();
+            assertThat(result.redirectRequired()).isTrue();
+            assertThat(result.redirectUrl()).isEqualTo("https://3ds.example.com/verify");
+            assertThat(result.booking()).isNotNull();
+            assertThat(result.booking().getId()).isEqualTo(1L);
+
+            // Booking was saved (not rolled back)
+            verify(bookingRepo, atLeastOnce()).save(any(Booking.class));
+            // No notifications sent during redirect — webhook will confirm payment
+            verify(notificationService, never()).createNotification(any());
         }
     }
 }

@@ -163,34 +163,40 @@ public class SchedulerItemProcessor {
                 return;
             }
 
-            booking.setStatus(BookingStatus.CANCELLED);
-            booking.setCancelledAt(LocalDateTime.now(SERBIA_ZONE));
-            booking.setPaymentStatus("CAPTURE_FAILED");
-            bookingRepository.save(booking);
+            // R4-FIX: Mutate and save the re-read 'fresh' entity — not the stale method
+            // parameter 'booking' — to avoid OptimisticLockException or overwriting
+            // concurrent changes committed between scheduler dispatch and this point.
+            // R6-FIX: Also set chargeLifecycleStatus to CAPTURE_FAILED alongside the
+            // legacy paymentStatus to keep both fields synchronized.
+            fresh.setStatus(BookingStatus.CANCELLED);
+            fresh.setCancelledAt(LocalDateTime.now(SERBIA_ZONE));
+            fresh.setPaymentStatus("CAPTURE_FAILED");
+            fresh.setChargeLifecycleStatus(ChargeLifecycleStatus.CAPTURE_FAILED);
+            bookingRepository.save(fresh);
 
-            try { paymentService.releaseBookingPayment(booking.getId()); }
-            catch (Exception e) { log.warn("[SchedulerProcessor] Failed to release auth for {}: {}", booking.getId(), e.getMessage()); }
+            try { paymentService.releaseBookingPayment(fresh.getId()); }
+            catch (Exception e) { log.warn("[SchedulerProcessor] Failed to release auth for {}: {}", fresh.getId(), e.getMessage()); }
 
-            String depositAuthId = booking.getDepositAuthorizationId();
+            String depositAuthId = fresh.getDepositAuthorizationId();
             if (depositAuthId != null && !depositAuthId.isBlank()) {
-                try { paymentService.releaseDeposit(booking.getId(), depositAuthId); }
-                catch (Exception e) { log.warn("[SchedulerProcessor] Failed to release deposit for {}: {}", booking.getId(), e.getMessage()); }
+                try { paymentService.releaseDeposit(fresh.getId(), depositAuthId); }
+                catch (Exception e) { log.warn("[SchedulerProcessor] Failed to release deposit for {}: {}", fresh.getId(), e.getMessage()); }
             }
 
             notificationService.createNotification(CreateNotificationRequestDTO.builder()
-                    .recipientId(booking.getRenter().getId())
+                    .recipientId(fresh.getRenter().getId())
                     .type(NotificationType.BOOKING_CANCELLED)
                     .message(String.format("Vaša rezervacija #%d je otkazana jer naplaćivanje nije uspelo: %s.",
-                            booking.getId(), result.getErrorMessage()))
-                    .relatedEntityId(String.valueOf(booking.getId()))
+                            fresh.getId(), result.getErrorMessage()))
+                    .relatedEntityId(String.valueOf(fresh.getId()))
                     .build());
 
             notificationService.createNotification(CreateNotificationRequestDTO.builder()
-                    .recipientId(booking.getCar().getOwner().getId())
+                    .recipientId(fresh.getCar().getOwner().getId())
                     .type(NotificationType.BOOKING_CANCELLED)
                     .message(String.format("Rezervacija #%d je automatski otkazana jer naplaćivanje gostu nije uspelo.",
-                            booking.getId()))
-                    .relatedEntityId(String.valueOf(booking.getId()))
+                            fresh.getId()))
+                    .relatedEntityId(String.valueOf(fresh.getId()))
                     .build());
         } catch (Exception e) {
             log.error("[SchedulerProcessor] Failed to handle capture failure for {}: {}", booking.getId(), e.getMessage(), e);
@@ -489,6 +495,9 @@ public class SchedulerItemProcessor {
                 return;
             }
             booking.setChargeLifecycleStatus(ChargeLifecycleStatus.REAUTH_REQUIRED);
+            // R5-FIX: Keep legacy paymentStatus in sync with typed lifecycle status.
+            // Admin UI reads paymentStatus only; without this, REAUTH_REQUIRED shows as stale "AUTHORIZED".
+            booking.setPaymentStatus("REAUTH_REQUIRED");
             bookingRepository.save(booking);
             log.info("[SchedulerProcessor] Booking {} marked as REAUTH_REQUIRED (auth expires {})",
                     booking.getId(), booking.getBookingAuthExpiresAt());

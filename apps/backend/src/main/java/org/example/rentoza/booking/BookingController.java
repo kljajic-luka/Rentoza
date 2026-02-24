@@ -123,8 +123,20 @@ public class BookingController {
         // ValidationException → 400 with structured error
         // ResourceNotFoundException → 404
         // PaymentAuthorizationException → 402 with code=PAYMENT_FAILED
-        Booking booking = service.createBooking(dto, principal.getUsername());
-        return ResponseEntity.ok(new BookingResponseDTO(booking));
+        BookingService.BookingCreationResult result = service.createBooking(dto, principal.getUsername());
+
+        // R1-FIX: Handle 3DS/SCA redirect. Booking + payment transaction rows are
+        // persisted (not rolled back). Frontend redirects user to the provider's 3DS
+        // verification URL. The webhook confirms payment upon successful verification.
+        if (result.redirectRequired()) {
+            return ResponseEntity.ok(Map.of(
+                    "booking", new BookingResponseDTO(result.booking()),
+                    "redirectRequired", true,
+                    "redirectUrl", result.redirectUrl()
+            ));
+        }
+
+        return ResponseEntity.ok(new BookingResponseDTO(result.booking()));
     }
 
     /**

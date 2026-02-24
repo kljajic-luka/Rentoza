@@ -49,6 +49,25 @@ import java.util.stream.Collectors;
 @Slf4j
 public class BookingService {
 
+    // ── R1-FIX: Result wrapper for booking creation ─────────────────────────
+    // Carries the created booking plus optional 3DS redirect data so the controller
+    // can return redirect info to the frontend without an exception/rollback.
+    public record BookingCreationResult(
+            Booking booking,
+            boolean redirectRequired,
+            String redirectUrl
+    ) {
+        /** Convenience factory for the normal (non-redirect) path. */
+        public static BookingCreationResult success(Booking booking) {
+            return new BookingCreationResult(booking, false, null);
+        }
+
+        /** Factory for the 3DS/SCA redirect path. */
+        public static BookingCreationResult redirect(Booking booking, String redirectUrl) {
+            return new BookingCreationResult(booking, true, redirectUrl);
+        }
+    }
+
     private final BookingRepository repo;
     private final CarRepository carRepo;
     private final UserRepository userRepo;
@@ -103,7 +122,7 @@ public class BookingService {
     }
 
     @Transactional
-    public Booking createBooking(BookingRequestDTO dto, String renterEmail) {
+    public BookingCreationResult createBooking(BookingRequestDTO dto, String renterEmail) {
 
         // ========================================================================
         // P1 FIX: IDEMPOTENCY CHECK
@@ -116,7 +135,7 @@ public class BookingService {
             if (existing.isPresent()) {
                 log.info("Idempotent booking creation: returning existing booking {} for key {}", 
                         existing.get().getId(), dto.getIdempotencyKey());
-                return existing.get();
+                return BookingCreationResult.success(existing.get());
             }
         }
 
@@ -535,6 +554,21 @@ public class BookingService {
         org.example.rentoza.payment.PaymentProvider.PaymentResult bookingPaymentResult =
                 bookingPaymentService.processBookingPayment(savedBooking.getId(), paymentMethodId);
 
+        // R1-FIX: Handle 3DS/SCA redirect as a non-exception path. When the provider
+        // returns REDIRECT_REQUIRED, the booking and PaymentTransaction rows must persist
+        // (not roll back) so the guest can complete 3DS verification and return.
+        // processBookingPayment() already saved paymentStatus="REDIRECT_REQUIRED" on the
+        // booking entity and persisted the PaymentTransaction with REDIRECT_REQUIRED status.
+        if (bookingPaymentResult.isRedirectRequired()) {
+            log.info("Payment requires 3DS redirect for booking {} — persisting booking and returning redirect URL: {}",
+                    savedBooking.getId(), bookingPaymentResult.getRedirectUrl());
+            Hibernate.initialize(savedBooking.getCar());
+            Hibernate.initialize(savedBooking.getCar().getOwner());
+            // Do NOT send booking-confirmed notifications — payment is not yet confirmed.
+            // Notifications will be sent when the webhook confirms the payment.
+            return BookingCreationResult.redirect(savedBooking, bookingPaymentResult.getRedirectUrl());
+        }
+
         if (!bookingPaymentResult.isSuccess()) {
             log.warn("Payment authorization failed for booking {}: {}",
                     savedBooking.getId(), bookingPaymentResult.getErrorMessage());
@@ -568,7 +602,7 @@ public class BookingService {
                     savedBooking.getId(), renter.getId(), car.getId());
         }
 
-        return savedBooking;
+        return BookingCreationResult.success(savedBooking);
     }
 
     LocalDateTime calculateDecisionDeadline(LocalDateTime createdAt, LocalDateTime tripStartDateTime) {

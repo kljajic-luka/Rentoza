@@ -679,6 +679,30 @@ public class CheckoutSagaOrchestrator {
                     saga.getTotalCharges(), depositAmount, saga.getBookingId(), remainderAmount);
 
             Booking bookingForCharge = loadBooking(saga.getBookingId());
+
+            // R2-FIX: Use the stored payment method token (tokenized card) for direct charges,
+            // not the booking authorization ID. An authorization ID is a hold reference, not a
+            // valid charge token — real gateways reject it. storedPaymentMethodId is persisted
+            // at booking creation and represents the guest's actual payment instrument.
+            String chargePaymentMethod = bookingForCharge.getStoredPaymentMethodId();
+            if (chargePaymentMethod == null || chargePaymentMethod.isBlank()) {
+                log.error("[Saga] REMAINDER CHARGE SKIPPED for booking {} — storedPaymentMethodId is missing. "
+                        + "Cannot charge {} RSD remainder without a valid payment method.",
+                        saga.getBookingId(), remainderAmount);
+                saga.setRemainderAmount(remainderAmount);
+                saga.setRemainderTransactionId("FAILED:MISSING_PAYMENT_METHOD");
+                notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                        .recipientId(bookingForCharge.getCar().getOwner().getId())
+                        .type(NotificationType.PAYMENT_FAILED)
+                        .message(String.format(
+                                "Dodatni troškovi od %s RSD za rezervaciju #%d nisu naplaćeni — "
+                                + "nije pronađen sačuvan način plaćanja. Potrebno ručno rešavanje.",
+                                remainderAmount, saga.getBookingId()))
+                        .relatedEntityId(String.valueOf(saga.getBookingId()))
+                        .build());
+                return;
+            }
+
             PaymentProvider.PaymentRequest remainderRequest = PaymentProvider.PaymentRequest.builder()
                     .bookingId(saga.getBookingId())
                     .userId(bookingForCharge.getRenter().getId())
@@ -686,7 +710,7 @@ public class CheckoutSagaOrchestrator {
                     .currency("RSD")
                     .description(String.format("Dodatni troškovi iznad depozita - Rezervacija #%d", saga.getBookingId()))
                     .type(PaymentProvider.PaymentType.LATE_FEE)
-                    .paymentMethodId(bookingForCharge.getBookingAuthorizationId())
+                    .paymentMethodId(chargePaymentMethod)
                     .build();
 
             // P0-4 FIX: Deterministic key for remainder charge.

@@ -106,4 +106,18 @@ export interface BookingDetails {
 
   /** Delivery fee in RSD */
   deliveryFeeCalculated?: number;
+
+  // ==================== PAYMENT LIFECYCLE (FA4) ====================
+  // TODO (FA4): The renter booking detail should display dynamic deposit/payment state
+  // (e.g. CAPTURE_FAILED, REAUTH_REQUIRED) instead of the static "30,000 RSD held" text.
+  //
+  // Dependency: Backend GET /bookings/:id/details must expose:
+  //   - paymentStatus: string          (e.g. 'AUTHORIZED', 'REAUTH_REQUIRED', 'CAPTURE_FAILED')
+  //   - chargeLifecycleStatus: string  (mirrors Booking entity field from R5/R6 patch)
+  //   - depositAmount: number          (in RSD; currently hardcoded 30,000 on frontend)
+  //
+  // Until those fields are added to BookingDetailsDto.java and BookingDetailsResponseMapper,
+  // do NOT invent client-side states — keep the static deposit display as-is.
+  //
+  // Track this in: https://github.com/anthropics/claude-code/issues
 }

@@ -44,7 +44,11 @@ public class AdminBookingDto {
     
     // Timestamps
     private LocalDateTime createdAt;
-    
+
+    // FA3: Payment lifecycle diagnostics (from R5/R6 payment hardening patch)
+    private String chargeLifecycleStatus;
+    private Integer captureAttempts;
+
     public static AdminBookingDto fromEntity(Booking b) {
         return AdminBookingDto.builder()
             .id(b.getId())
@@ -69,6 +73,9 @@ public class AdminBookingDto {
             .totalPrice(b.getTotalPrice())
             .insuranceType(b.getInsuranceType())
             .createdAt(b.getCreatedAt())
+            .chargeLifecycleStatus(
+                b.getChargeLifecycleStatus() != null ? b.getChargeLifecycleStatus().name() : null)
+            .captureAttempts(b.getCaptureAttempts())
             .build();
     }
 }

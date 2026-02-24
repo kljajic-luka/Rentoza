@@ -2,7 +2,6 @@ package org.example.rentoza.scheduler;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -19,7 +18,6 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>This implementation is activated ONLY when:
  * <ul>
  *   <li>Redis is explicitly enabled (app.redis.enabled=true)</li>
- *   <li>StringRedisTemplate bean is available in the context</li>
  * </ul>
  * </p>
  * 
@@ -39,7 +37,6 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 @Service
 @ConditionalOnProperty(name = "app.redis.enabled", havingValue = "true")
-@ConditionalOnBean(StringRedisTemplate.class)
 public class RedisSchedulerLockStore implements SchedulerLockStore {
 
     private static final Logger log = LoggerFactory.getLogger(RedisSchedulerLockStore.class);

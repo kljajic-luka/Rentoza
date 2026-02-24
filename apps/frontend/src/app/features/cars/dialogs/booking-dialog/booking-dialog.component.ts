@@ -36,6 +36,9 @@ import {
   TimeSlot,
   combineDateTime,
   calculatePeriods,
+  BookingRequest,
+  BookingCreateResponse,
+  isRedirectResponse,
 } from '@core/models/booking.model';
 import { BlockedDate } from '@core/models/blocked-date.model';
 import {
@@ -556,7 +559,7 @@ export class BookingDialogComponent implements OnInit {
     // Build payload with exact timestamps (reuse endDateTime from above)
     // Include pickup location data if available (Phase 2.4)
     const pickup = this.pickupLocation();
-    const payload = {
+    const payload: BookingRequest = {
       carId: this.data.car.id.toString(),
       startTime: startDateTime,
       endTime: endDateTime,
@@ -617,9 +620,26 @@ export class BookingDialogComponent implements OnInit {
     });
   }
 
-  private createBookingConfirmed(payload: any): void {
+  private createBookingConfirmed(payload: BookingRequest): void {
     this.bookingService.createBooking(payload).subscribe({
-      next: (booking) => {
+      next: (response: BookingCreateResponse) => {
+        // R1-FIX: Handle 3DS/SCA redirect from payment provider.
+        // When payment requires Strong Customer Authentication, the backend persists
+        // the booking (not rolled back) and returns a redirect URL for 3DS verification.
+        // The webhook confirms payment upon successful verification.
+        if (isRedirectResponse(response)) {
+          this.snackBar.open('Preusmeravanje na verifikaciju plaćanja...', 'Zatvori', {
+            duration: 3000,
+            panelClass: ['snackbar-info'],
+          });
+          const bookingId = response.booking?.id;
+          this.dialogRef.close({ bookingId, redirecting: true });
+          window.location.href = response.redirectUrl;
+          return;
+        }
+
+        // Normal booking flow
+        const booking = response as Booking;
         if (booking.status === 'PENDING_APPROVAL') {
           this.snackBar.open(
             'Vaš zahtev za rezervaciju je poslat! Čekamo odobrenje domaćina.',

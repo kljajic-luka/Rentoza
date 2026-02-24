@@ -1,12 +1,12 @@
 package org.example.rentoza.config;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.cache.concurrent.ConcurrentMapCache;
 import org.springframework.cache.support.SimpleCacheManager;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Primary;
 import org.springframework.http.CacheControl;
 import org.springframework.web.filter.ShallowEtagHeaderFilter;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -36,7 +36,7 @@ public class CachingConfig implements WebMvcConfigurer {
      * Caches frequently accessed data like car features, makes, and search results
      */
     @Bean
-    @Primary
+    @ConditionalOnProperty(name = "app.redis.enabled", havingValue = "false", matchIfMissing = true)
     public CacheManager cacheManager() {
         SimpleCacheManager cacheManager = new SimpleCacheManager();
         cacheManager.setCaches(Arrays.asList(

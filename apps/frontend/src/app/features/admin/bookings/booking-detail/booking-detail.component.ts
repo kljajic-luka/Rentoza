@@ -59,7 +59,35 @@ import { AdminNotificationService } from '../../../../core/services/admin-notifi
                 >
               </div>
               <div class="detail-row">
-                <span class="label">Payment</span><span class="value">{{ b.paymentStatus }}</span>
+                <span class="label">Payment</span>
+                <span class="value">
+                  <mat-chip [ngClass]="getPaymentStatusClass(b.paymentStatus)">
+                    {{ getPaymentStatusLabel(b.paymentStatus) }}
+                  </mat-chip>
+                </span>
+              </div>
+              <div class="detail-row">
+                <span class="label">Charge Lifecycle</span>
+                <span class="value">
+                  <mat-chip
+                    *ngIf="b.chargeLifecycleStatus; else noLifecycle"
+                    [ngClass]="getChargeLifecycleClass(b.chargeLifecycleStatus)"
+                  >
+                    {{ b.chargeLifecycleStatus }}
+                  </mat-chip>
+                  <ng-template #noLifecycle>
+                    <span style="color: rgba(0,0,0,0.38);">—</span>
+                  </ng-template>
+                </span>
+              </div>
+              <div
+                class="detail-row"
+                *ngIf="b.captureAttempts !== undefined && b.captureAttempts !== null"
+              >
+                <span class="label">Capture Attempts</span>
+                <span class="value" [style.color]="b.captureAttempts! > 0 ? '#c62828' : 'inherit'">
+                  {{ b.captureAttempts }}
+                </span>
               </div>
               <div class="detail-row">
                 <span class="label">Total Price</span
@@ -232,5 +260,55 @@ export class BookingDetailComponent implements OnInit {
     if (status === 'IN_TRIP') return 'badge-success';
     if (status.startsWith('CHECK_IN') || status.startsWith('CHECKOUT')) return 'badge-warn';
     return 'badge-info';
+  }
+
+  /** FA1: Human-readable label for payment status values including new lifecycle states. */
+  getPaymentStatusLabel(status: string): string {
+    const labels: Record<string, string> = {
+      PENDING: 'Pending',
+      AUTHORIZED: 'Authorized',
+      CONFIRMED: 'Confirmed',
+      FAILED: 'Failed',
+      REFUNDED: 'Refunded',
+      MANUAL_REVIEW: 'Manual Review',
+      REDIRECT_REQUIRED: 'Redirect Required',
+      REAUTH_REQUIRED: 'Re-auth Required',
+    };
+    return labels[status] ?? status;
+  }
+
+  /** FA1: Badge color class for payment status chip. */
+  getPaymentStatusClass(status: string): string {
+    switch (status) {
+      case 'CONFIRMED':
+      case 'AUTHORIZED':
+        return 'badge-success';
+      case 'FAILED':
+        return 'badge-neutral';
+      case 'MANUAL_REVIEW':
+      case 'REAUTH_REQUIRED':
+        return 'badge-warn';
+      case 'REDIRECT_REQUIRED':
+        return 'badge-info';
+      default:
+        return 'badge-info';
+    }
+  }
+
+  /** FA3: Badge color class for chargeLifecycleStatus chip. */
+  getChargeLifecycleClass(status: string): string {
+    switch (status) {
+      case 'CAPTURED':
+      case 'RELEASED':
+        return 'badge-success';
+      case 'CAPTURE_FAILED':
+        return 'badge-neutral';
+      case 'REAUTH_REQUIRED':
+        return 'badge-warn';
+      case 'AUTHORIZED':
+        return 'badge-info';
+      default:
+        return 'badge-info';
+    }
   }
 }

@@ -3,7 +3,13 @@ import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
 import { environment } from '@environments/environment';
-import { Booking, BookingRequest, UserBooking, BookingSlotDto } from '@core/models/booking.model';
+import {
+  Booking,
+  BookingCreateResponse,
+  BookingRequest,
+  UserBooking,
+  BookingSlotDto,
+} from '@core/models/booking.model';
 import { GuestBookingPreview } from '@core/models/guest-preview.model';
 
 @Injectable({ providedIn: 'root' })
@@ -85,8 +91,8 @@ export class BookingService {
     });
   }
 
-  createBooking(payload: BookingRequest): Observable<Booking> {
-    return this.http.post<Booking>(this.baseUrl, payload, {
+  createBooking(payload: BookingRequest): Observable<BookingCreateResponse> {
+    return this.http.post<BookingCreateResponse>(this.baseUrl, payload, {
       withCredentials: true,
     });
   }
@@ -143,7 +149,7 @@ export class BookingService {
       {},
       {
         withCredentials: true,
-      }
+      },
     );
   }
 
@@ -180,7 +186,7 @@ export class BookingService {
       {},
       {
         withCredentials: true,
-      }
+      },
     );
   }
 
@@ -210,13 +216,13 @@ export class BookingService {
    * Includes rich data about the trip, car, and host.
    */
   getBookingDetails(
-    id: number | string
+    id: number | string,
   ): Observable<import('../models/booking-details.model').BookingDetails> {
     return this.http.get<import('../models/booking-details.model').BookingDetails>(
       `${this.baseUrl}/${id}/details`,
       {
         withCredentials: true,
-      }
+      },
     );
   }
 

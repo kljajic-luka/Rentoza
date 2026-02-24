@@ -132,6 +132,34 @@ export interface BookingRequest {
   pickupZipCode?: string;
   /** Whether guest requests delivery to a custom location (triggers fee calculation) */
   deliveryRequested?: boolean;
+
+  // Payment fields (used during booking creation; not sent for validateBooking)
+  /** Tokenized payment method ID. Use 'mock_default' in dev/staging MOCK mode. */
+  paymentMethodId?: string;
+  /** UUID generated per-submission to prevent duplicate charges on network retry. */
+  idempotencyKey?: string;
+}
+
+/**
+ * Redirect envelope returned by createBooking when 3DS/SCA is required.
+ * The booking is already persisted; the webhook confirms payment on return.
+ */
+export interface BookingCreateRedirectResponse {
+  redirectRequired: true;
+  redirectUrl: string;
+  booking?: Booking;
+}
+
+/**
+ * Union of the two possible shapes returned by POST /bookings.
+ * - Normal flow: Booking DTO
+ * - 3DS/SCA flow: BookingCreateRedirectResponse
+ */
+export type BookingCreateResponse = Booking | BookingCreateRedirectResponse;
+
+/** Narrows a BookingCreateResponse to the redirect envelope. */
+export function isRedirectResponse(r: BookingCreateResponse): r is BookingCreateRedirectResponse {
+  return (r as BookingCreateRedirectResponse).redirectRequired === true;
 }
 
 /**

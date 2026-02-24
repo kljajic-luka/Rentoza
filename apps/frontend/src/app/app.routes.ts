@@ -214,6 +214,17 @@ export const routes: Routes = [
             (m) => m.AddReviewComponent,
           ),
       },
+      {
+        // FA2: 3DS/SCA payment return callback landing page.
+        // Payment provider redirects here after bank authentication completes.
+        // Handles:  /bookings/payment-return?bookingId=...&status=success|failed
+        path: 'payment-return',
+        title: 'Status plaćanja | Rentoza',
+        loadComponent: () =>
+          import('@features/bookings/pages/payment-return/payment-return.component').then(
+            (m) => m.PaymentReturnComponent,
+          ),
+      },
     ],
   },
   {
@@ -365,6 +376,15 @@ export const routes: Routes = [
         (m) => m.BetaTermsComponent,
       ),
     title: 'Beta Terms - Rentoza',
+  },
+  {
+    // FA2: Alias for payment providers that use singular "booking" in their callback URL.
+    path: 'booking/payment-return',
+    title: 'Status plaćanja | Rentoza',
+    loadComponent: () =>
+      import('@features/bookings/pages/payment-return/payment-return.component').then(
+        (m) => m.PaymentReturnComponent,
+      ),
   },
   {
     path: '**',

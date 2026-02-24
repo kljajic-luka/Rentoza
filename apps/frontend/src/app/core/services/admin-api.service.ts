@@ -384,6 +384,9 @@ export interface AdminBookingDto {
   totalPrice: number;
   insuranceType: string;
   createdAt: string;
+  // FA3: Payment lifecycle diagnostics (R5/R6 payment hardening)
+  chargeLifecycleStatus?: string;
+  captureAttempts?: number;
 }
 
 export interface ForceCompleteBookingRequest {

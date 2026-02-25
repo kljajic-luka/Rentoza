@@ -47,6 +47,7 @@ class ProviderEventServiceTest {
     void setUp() {
         // No webhook secret → skip HMAC verification, no fail-closed behavior
         ReflectionTestUtils.setField(service, "webhookSecret", "");
+        ReflectionTestUtils.setField(service, "activeProfile", "dev");
         // Not a duplicate event
         lenient().when(eventRepository.existsByProviderEventId(any())).thenReturn(false);
         lenient().when(eventRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));

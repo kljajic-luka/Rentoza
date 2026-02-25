@@ -5,7 +5,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.example.rentoza.config.AppProperties;
 import org.example.rentoza.security.CookieConstants;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -15,15 +17,17 @@ import java.util.Map;
 
 /**
  * Diagnostic endpoint for debugging authentication and cookie issues.
- * 
- * <p>SECURITY: This endpoint should be disabled in production or
- * protected by admin role. Only enable for development debugging.
- * 
+ *
+ * <p>SECURITY: Restricted to non-production profiles via @Profile("!prod").
+ * Defense-in-depth: @PreAuthorize requires ADMIN role even in dev.
+ *
  * <p>Usage: GET /api/auth/debug/cookie-status
  * Returns information about current request context and cookie state.
  */
 @RestController
 @RequestMapping("/api/auth/debug")
+@Profile("!prod")
+@PreAuthorize("hasRole('ADMIN')")
 public class AuthDiagnosticController {
 
     private final AppProperties appProperties;

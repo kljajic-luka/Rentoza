@@ -205,8 +205,9 @@ public class SecurityConfig {
                                 "/api/auth/supabase/reset-password",  // P0: Password reset
                                 "/api/auth/supabase/google/**"       // Google OAuth via Supabase
                         ).permitAll()
-                        // Debug endpoints (for development - consider disabling in production)
-                        .requestMatchers("/api/auth/debug/**").permitAll()
+                        // Debug endpoints — @Profile("!prod") prevents bean registration in production.
+                        // Defense-in-depth: require ADMIN even in dev (controller also has @PreAuthorize).
+                        .requestMatchers("/api/auth/debug/**").hasRole("ADMIN")
                         // OAuth2 endpoints - required for Google login flow
                         .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
                         // Public static resources (images, documents, uploads)

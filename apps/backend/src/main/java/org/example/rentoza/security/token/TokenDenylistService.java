@@ -2,7 +2,6 @@ package org.example.rentoza.security.token;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -62,19 +61,6 @@ public class TokenDenylistService {
     public boolean isTokenDenied(String accessToken) {
         String tokenHash = hashToken(accessToken);
         return deniedTokenRepository.existsByTokenHash(tokenHash);
-    }
-
-    /**
-     * Scheduled cleanup of expired denylist entries.
-     * Runs every hour.
-     */
-    @Scheduled(fixedDelay = 3600000) // 1 hour
-    @Transactional
-    public void cleanupExpiredEntries() {
-        int deleted = deniedTokenRepository.deleteExpiredEntries(Instant.now());
-        if (deleted > 0) {
-            log.info("Cleaned up {} expired token denylist entries", deleted);
-        }
     }
 
     /**

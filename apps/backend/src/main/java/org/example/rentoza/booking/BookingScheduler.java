@@ -2,11 +2,14 @@ package org.example.rentoza.booking;
 
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import org.example.rentoza.scheduler.SchedulerIdempotencyService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+
+import java.time.Duration;
 
 /**
  * Scheduled task to automatically expire pending booking approval requests
@@ -32,12 +35,19 @@ public class BookingScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(BookingScheduler.class);
 
+    private static final String LOCK_EXPIRY = "booking.scheduler.auto-expiry";
+    private static final String LOCK_REMINDER = "booking.scheduler.approval-reminder";
+
     private final BookingApprovalService approvalService;
+    private final SchedulerIdempotencyService lockService;
     private final Counter expiredBookingsCounter;
     private final Counter approvalRemindersCounter;
 
-    public BookingScheduler(BookingApprovalService approvalService, MeterRegistry meterRegistry) {
+    public BookingScheduler(BookingApprovalService approvalService,
+                            SchedulerIdempotencyService lockService,
+                            MeterRegistry meterRegistry) {
         this.approvalService = approvalService;
+        this.lockService = lockService;
         this.expiredBookingsCounter = Counter.builder("booking.expired.count")
                 .description("Number of booking approval requests that expired due to timeout")
                 .tag("type", "auto_expiry")
@@ -69,6 +79,10 @@ public class BookingScheduler {
      */
     @Scheduled(cron = "${app.booking.scheduler.expiry-cron:0 0/15 * * * *}", zone = "Europe/Belgrade")
     public void autoExpirePendingBookings() {
+        if (!lockService.tryAcquireLock(LOCK_EXPIRY, Duration.ofMinutes(14))) {
+            log.debug("[BookingScheduler] Skipping auto-expiry — lock held by another instance");
+            return;
+        }
         log.info("Starting scheduled auto-expiry of pending booking approval requests");
 
         try {
@@ -83,6 +97,8 @@ public class BookingScheduler {
 
         } catch (Exception e) {
             log.error("Error during auto-expiry of pending bookings", e);
+        } finally {
+            lockService.releaseLock(LOCK_EXPIRY);
         }
     }
 
@@ -92,6 +108,11 @@ public class BookingScheduler {
      */
     @Scheduled(cron = "${app.booking.scheduler.reminder-cron:0 0/30 * * * *}", zone = "Europe/Belgrade")
     public void sendPendingApprovalReminders() {
+        if (!lockService.tryAcquireLock(LOCK_REMINDER, Duration.ofMinutes(29))) {
+            log.debug("[BookingScheduler] Skipping approval reminder — lock held by another instance");
+            return;
+        }
+
         try {
             int reminderCount = approvalService.sendPendingApprovalReminders();
             if (reminderCount > 0) {
@@ -102,6 +123,8 @@ public class BookingScheduler {
             }
         } catch (Exception e) {
             log.error("Error during pending-approval reminder job", e);
+        } finally {
+            lockService.releaseLock(LOCK_REMINDER);
         }
     }
 

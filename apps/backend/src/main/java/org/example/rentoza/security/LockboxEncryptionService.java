@@ -62,18 +62,28 @@ public class LockboxEncryptionService {
 
     /**
      * Initialize the encryption service with key from environment.
-     * 
+     *
      * @param keyBase64 Base64-encoded 256-bit AES key from application properties
+     * @param activeProfile The active Spring profile (used for fail-fast in production)
      * @throws IllegalStateException if key is invalid or missing in production
      */
     public LockboxEncryptionService(
-            @Value("${app.security.lockbox-encryption-key:}") String keyBase64) {
-        
+            @Value("${app.security.lockbox-encryption-key:}") String keyBase64,
+            @Value("${spring.profiles.active:dev}") String activeProfile) {
+
         this.secureRandom = new SecureRandom();
-        
+
         if (keyBase64 == null || keyBase64.isBlank()) {
-            log.warn("⚠️ LOCKBOX ENCRYPTION DISABLED: No key configured. " +
-                    "Set 'app.security.lockbox-encryption-key' in production!");
+            if (activeProfile != null && (activeProfile.equals("prod") || activeProfile.contains("prod"))) {
+                throw new IllegalStateException(
+                    "FATAL: LOCKBOX_ENCRYPTION_KEY must be configured in production. " +
+                    "Refusing to start with plaintext lockbox storage. " +
+                    "Set the app.security.lockbox-encryption-key environment variable " +
+                    "in Cloud Run secrets. Generate with: openssl rand -base64 32"
+                );
+            }
+            log.warn("[DEV ONLY] Lockbox encryption disabled — no key configured. " +
+                     "This MUST NOT reach production.");
             this.secretKey = null;
             this.enabled = false;
             return;
@@ -121,7 +131,7 @@ public class LockboxEncryptionService {
      */
     public byte[] encrypt(String plainText) {
         if (!enabled) {
-            log.warn("[LOCKBOX] Encryption disabled - storing plain text as bytes");
+            log.warn("[LOCKBOX] Encryption disabled - storing plain text. NEVER acceptable in production.");
             return plainText.getBytes(StandardCharsets.UTF_8);
         }
         

@@ -14,7 +14,6 @@ import org.example.rentoza.security.supabase.SupabaseJwtUtil;
 import org.example.rentoza.security.supabase.SupabaseUserMappingRepository;
 import org.example.rentoza.security.token.TokenDenylistService;
 import org.example.rentoza.deprecated.jwt.JwtAuthenticationEntryPoint;
-import org.example.rentoza.deprecated.jwt.JwtAuthFilter;
 import org.example.rentoza.deprecated.jwt.JwtUtil;
 import org.example.rentoza.user.UserRepository;
 import org.slf4j.Logger;
@@ -71,25 +70,27 @@ public class SecurityConfig {
 
     /**
      * Register RateLimitingFilter as a Spring-managed bean.
-     * 
+     *
      * Purpose: Token bucket rate limiting before authentication
      * Order: 1st in chain (fail-fast for abusive requests)
-     * 
+     *
      * Implementation Selection:
      * - If spring.data.redis.host is configured: RedisRateLimitService (distributed)
      * - Otherwise: InMemoryRateLimitService (single-instance)
-     * 
+     *
      * @param rateLimitService Rate limiting service (Redis or In-Memory)
      * @param appProperties Configuration for rate limits
      * @param jwtUtil JWT parser for extracting user email from tokens
+     * @param internalServiceJwtUtil Validator for internal service tokens (rate-limit bypass guard)
      * @return Configured RateLimitingFilter instance
      */
     @Bean
     public RateLimitingFilter rateLimitingFilter(
             RateLimitService rateLimitService,
             AppProperties appProperties,
-            JwtUtil jwtUtil) {
-        return new RateLimitingFilter(rateLimitService, appProperties, jwtUtil);
+            JwtUtil jwtUtil,
+            InternalServiceJwtUtil internalServiceJwtUtil) {
+        return new RateLimitingFilter(rateLimitService, appProperties, jwtUtil, internalServiceJwtUtil);
     }
 
     /**
@@ -108,26 +109,10 @@ public class SecurityConfig {
     }
 
     /**
-     * Register JwtAuthFilter as a Spring-managed bean (Legacy - kept for compatibility).
-     * 
-     * Purpose: Authenticate external client JWT Bearer tokens
-     * Order: 3rd in chain (after internal service auth, before UsernamePasswordAuthenticationFilter)
-     * 
-     * @param jwtUtil JWT parser and validator
-     * @param userDetailsService Spring Security user details loader
-     * @return Configured JwtAuthFilter instance
-     * @deprecated Use SupabaseJwtAuthFilter instead for Supabase Auth
-     */
-    @Bean
-    public JwtAuthFilter jwtAuthFilter(JwtUtil jwtUtil, UserDetailsService userDetailsService) {
-        return new JwtAuthFilter(jwtUtil, userDetailsService);
-    }
-
-    /**
      * Register SupabaseJwtAuthFilter as a Spring-managed bean.
-     * 
+     *
      * Purpose: Validate Supabase Auth JWT tokens and map to Rentoza users
-     * Order: 4th in chain (after legacy JWT filter, before UsernamePasswordAuthenticationFilter)
+     * Order: 3rd in chain (after internal service auth, before UsernamePasswordAuthenticationFilter)
      * 
      * @param supabaseJwtUtil Supabase JWT validator
      * @param userRepository Rentoza user repository
@@ -147,7 +132,6 @@ public class SecurityConfig {
     public SecurityFilterChain filterChain(HttpSecurity http,
                                            RateLimitingFilter rateLimitingFilter,
                                            ServiceAuthenticationFilter serviceAuthenticationFilter,
-                                           JwtAuthFilter jwtAuthFilter,
                                            SupabaseJwtAuthFilter supabaseJwtAuthFilter) throws Exception {
         http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
@@ -164,7 +148,10 @@ public class SecurityConfig {
                         "/api/auth/supabase/reset-password",  // One-time token flow; CSRF adds no security value
                         "/api/auth/supabase/google/callback",  // OAuth callback from Supabase (PKCE)
                         "/api/auth/supabase/google/token-callback",  // OAuth token callback (implicit flow)
-                        "/uploads/**"         // Static files - no state change
+                        "/uploads/**",        // Static files - no state change
+                        // Webhook endpoint: auth delegated to HMAC signature verification
+                        // in ProviderEventService. Must be CSRF-exempt for external gateway callbacks.
+                        "/api/webhooks/payment"
                     )
                 )
                 .authorizeHttpRequests(auth -> auth
@@ -173,9 +160,10 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                         // Info endpoint is semi-public (minimal app info)
                         .requestMatchers("/actuator/info").permitAll()
-                        // Prometheus metrics endpoint (needs to be accessible by monitoring systems)
-                        // Protected by network security (internal network only) - see firewall rules
-                        .requestMatchers("/actuator/prometheus").permitAll()
+                        // Prometheus metrics endpoint — exposes JVM, HikariCP, and HTTP metrics.
+                        // W3: Require ADMIN role instead of permitAll to prevent reconnaissance.
+                        // Monitoring systems should use a service account with ADMIN credentials.
+                        .requestMatchers("/actuator/prometheus").hasRole("ADMIN")
                         // Sensitive actuator endpoints require ADMIN role
                         .requestMatchers("/actuator/**").hasRole("ADMIN")
                         
@@ -200,8 +188,9 @@ public class SecurityConfig {
                                 "/api/auth/supabase/reset-password",  // P0: Password reset
                                 "/api/auth/supabase/google/**"       // Google OAuth via Supabase
                         ).permitAll()
-                        // Debug endpoints (for development - consider disabling in production)
-                        .requestMatchers("/api/auth/debug/**").permitAll()
+                        // Debug endpoints — @Profile("!prod") prevents bean registration in production.
+                        // Defense-in-depth: require ADMIN even in dev (controller also has @PreAuthorize).
+                        .requestMatchers("/api/auth/debug/**").hasRole("ADMIN")
                         // OAuth2 endpoints - required for Google login flow
                         .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
                         // Public static resources (images, documents, uploads)
@@ -273,6 +262,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/bookings/*").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/bookings/debug/**").hasAuthority("INTERNAL_SERVICE")
                         .requestMatchers("/api/favorites/**").authenticated()
+                        // Webhook endpoint: auth delegated to HMAC signature verification
+                        // in ProviderEventService. Must be permitAll for external gateway callbacks.
+                        .requestMatchers(HttpMethod.POST, "/api/webhooks/payment").permitAll()
                         .anyRequest().authenticated()
                 )
                 .headers(h -> h
@@ -311,7 +303,7 @@ public class SecurityConfig {
                 // - All API endpoints use JWT Bearer tokens (no server-side sessions)
                 // - OAuth2 login is only used for initial user provisioning
                 // - After OAuth2 success, frontend receives JWT and uses it exclusively
-                // - JwtAuthFilter ALWAYS replaces any OAuth2 session auth with JWT auth
+                // - SupabaseJwtAuthFilter ALWAYS replaces any OAuth2 session auth with JWT auth
                 // - Prevents session fixation attacks and reduces server memory overhead
                 //
                 // OAuth2 Flow with STATELESS:
@@ -323,7 +315,7 @@ public class SecurityConfig {
                 // 6. No persistent session is maintained after OAuth2 redirect
                 //
                 // Defense in Depth:
-                // - Even if OAuth2 creates temporary session, JwtAuthFilter replaces it
+                // - Even if OAuth2 creates temporary session, SupabaseJwtAuthFilter replaces it
                 // - FavoriteController has fallback to handle DefaultOidcUser gracefully
                 // - JWT validation happens on every request (stateless verification)
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -347,9 +339,8 @@ public class SecurityConfig {
                 // FILTER CHAIN ORDER (execution from top to bottom):
                 // 1. RateLimitingFilter (fail fast on rate limit exceeded)
                 // 2. ServiceAuthenticationFilter (internal service authentication)
-                // 3. JwtAuthFilter (legacy JWT authentication - kept for compatibility)
-                // 4. SupabaseJwtAuthFilter (Supabase Auth JWT validation)
-                // 5. UsernamePasswordAuthenticationFilter (Spring Security default)
+                // 3. SupabaseJwtAuthFilter (Supabase Auth JWT validation)
+                // 4. UsernamePasswordAuthenticationFilter (Spring Security default)
                 //
                 // CRITICAL: Using bean instances (not class references) to avoid IllegalArgumentException
                 // "The Filter class X does not have a registered order"
@@ -360,13 +351,9 @@ public class SecurityConfig {
                 // - ONLY use built-in Spring Security filters as anchors (e.g., UsernamePasswordAuthenticationFilter)
                 // - NEVER use custom filter classes as anchors (e.g., JwtAuthFilter.class)
                 //
-                // SUPABASE AUTH MIGRATION:
-                // - SupabaseJwtAuthFilter runs after legacy JwtAuthFilter
-                // - If legacy filter authenticates, Supabase filter will skip
-                // - Once migration complete, remove legacy JwtAuthFilter
+                // Filter chain: RateLimit -> ServiceAuth -> SupabaseJwtAuth -> UsernamePassword
                 .addFilterBefore(rateLimitingFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(serviceAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(supabaseJwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterAfter(new CsrfCookieFilter(), org.springframework.security.web.csrf.CsrfFilter.class);
 
@@ -499,15 +486,15 @@ public class SecurityConfig {
      * Filter Chain Execution Order:
      * 1. RateLimitingFilter → Fail-fast for abusive IPs/users (no authentication cost)
      * 2. ServiceAuthenticationFilter → Authenticate internal microservice calls
-     * 3. JwtAuthFilter → Authenticate external client JWT Bearer tokens
+     * 3. SupabaseJwtAuthFilter → Validate Supabase Auth JWT tokens
      * 4. UsernamePasswordAuthenticationFilter → Spring Security default (rarely used)
      */
     private void logSecurityChainInitialization() {
-        log.info("🔐 Security Filter Chain successfully initialized with custom filters in order:");
-        log.info("   1️⃣  RateLimitingFilter → Token bucket rate limiting (IP/user-based)");
-        log.info("   2️⃣  ServiceAuthenticationFilter → Internal microservice authentication");
-        log.info("   3️⃣  JwtAuthFilter → JWT Bearer token authentication");
-        log.info("   4️⃣  UsernamePasswordAuthenticationFilter → Spring Security default");
-        log.info("🛡️  Stateless authentication model: JWT-first with OAuth2 provisioning");
+        log.info("Security Filter Chain initialized with custom filters in order:");
+        log.info("   1. RateLimitingFilter - Token bucket rate limiting (IP/user-based)");
+        log.info("   2. ServiceAuthenticationFilter - Internal microservice authentication");
+        log.info("   3. SupabaseJwtAuthFilter - Supabase Auth JWT validation");
+        log.info("   4. UsernamePasswordAuthenticationFilter - Spring Security default");
+        log.info("   Stateless authentication model: JWT-first with OAuth2 provisioning");
     }
 }

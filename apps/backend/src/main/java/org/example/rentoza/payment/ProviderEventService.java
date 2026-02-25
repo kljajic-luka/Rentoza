@@ -1,5 +1,6 @@
 package org.example.rentoza.payment;
 
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.booking.Booking;
@@ -54,8 +55,38 @@ public class ProviderEventService {
     private final PaymentTransactionRepository txRepository;
     private final BookingRepository bookingRepository;
 
-    @Value("${app.payment.webhook.secret:}")
+    @Value("${app.payment.webhook.secret}")
     private String webhookSecret;
+
+    @Value("${spring.profiles.active:dev}")
+    private String activeProfile;
+
+    /**
+     * B5: Fail-fast on missing or dev-mock webhook HMAC secret in production.
+     * Without a real HMAC secret, ALL webhook events bypass signature verification,
+     * allowing forged payment-confirmed webhooks to mark bookings as paid.
+     */
+    @PostConstruct
+    void validateWebhookSecret() {
+        if (webhookSecret == null || webhookSecret.isBlank()) {
+            if (activeProfile != null && activeProfile.contains("prod")) {
+                throw new IllegalStateException(
+                        "FATAL: PAYMENT_WEBHOOK_SECRET must be configured in production. " +
+                        "Refusing to start without webhook HMAC verification. " +
+                        "Set the app.payment.webhook.secret property via environment variable " +
+                        "PAYMENT_WEBHOOK_SECRET in Cloud Run secrets.");
+            }
+            log.warn("[SECURITY] Webhook HMAC secret is blank — signature verification disabled. " +
+                     "This MUST NOT reach production.");
+        } else if ("dev-mock-webhook-secret-not-for-production".equals(webhookSecret)) {
+            if (activeProfile != null && activeProfile.contains("prod")) {
+                throw new IllegalStateException(
+                        "FATAL: PAYMENT_WEBHOOK_SECRET is set to the dev mock value in production. " +
+                        "Set a real HMAC secret via environment variable PAYMENT_WEBHOOK_SECRET.");
+            }
+            log.warn("[SECURITY] Using dev mock webhook secret — this MUST NOT reach production.");
+        }
+    }
 
     // ── Entry point ──────────────────────────────────────────────────────────
 

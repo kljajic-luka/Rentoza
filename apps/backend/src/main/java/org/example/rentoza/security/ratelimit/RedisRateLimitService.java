@@ -71,6 +71,8 @@ public class RedisRateLimitService implements RateLimitService {
     private final Counter blockedCounter;
     private final Counter redisErrorCounter;
     private final Counter circuitOpenBypassCounter;
+    private final Counter criticalFailClosedCounter;
+    private final Counter standardFailOpenCounter;
     private final Timer redisLatencyTimer;
     private final AtomicLong circuitStateGauge;
 
@@ -153,6 +155,16 @@ public class RedisRateLimitService implements RateLimitService {
                 .tag("service", "rate-limit")
                 .register(meterRegistry);
 
+        this.criticalFailClosedCounter = Counter.builder("rate_limit.redis.failure.critical")
+                .description("CRITICAL-tier requests blocked due to Redis failure (fail-closed)")
+                .tag("service", "rate-limit")
+                .register(meterRegistry);
+
+        this.standardFailOpenCounter = Counter.builder("rate_limit.redis.failure.standard")
+                .description("STANDARD-tier requests allowed despite Redis failure (fail-open)")
+                .tag("service", "rate-limit")
+                .register(meterRegistry);
+
         this.redisLatencyTimer = Timer.builder("rate_limit.redis.latency")
                 .description("Redis operation latency")
                 .tag("service", "rate-limit")
@@ -194,18 +206,66 @@ public class RedisRateLimitService implements RateLimitService {
             return allowed;
 
         } catch (io.github.resilience4j.circuitbreaker.CallNotPermittedException e) {
-            // Circuit is OPEN - fail open (allow request)
+            // Circuit is OPEN - fail open (allow request) for backward-compatible callers
             circuitOpenBypassCounter.increment();
-            log.debug("🔌 Circuit breaker OPEN - bypassing rate limit for key: {}", key);
+            log.debug("Circuit breaker OPEN - bypassing rate limit for key: {}", key);
             return true;
 
         } catch (Exception e) {
-            // Unexpected exception - fail open
+            // Unexpected exception - fail open for backward-compatible callers
             redisErrorCounter.increment();
-            log.error("❌ Unexpected error in rate limit check for key: {}. Failing OPEN. Error: {}",
+            log.error("Unexpected error in rate limit check for key: {}. Failing OPEN. Error: {}",
                     key, e.getMessage());
             return true;
         }
+    }
+
+    /**
+     * Tier-aware rate limit check.
+     *
+     * <p>{@link RateLimitTier#CRITICAL} endpoints (auth, payment, booking mutations)
+     * return {@code false} when Redis is unavailable, causing the caller to respond 503.
+     * {@link RateLimitTier#STANDARD} endpoints preserve the existing fail-open behavior.
+     */
+    @Override
+    public boolean allowRequest(String key, int limit, int windowSeconds, RateLimitTier tier) {
+        String redisKey = buildRedisKey(key, windowSeconds);
+        updateCircuitStateGauge();
+
+        Supplier<Boolean> redisCheck = () -> executeRateLimitCheck(redisKey, limit, windowSeconds);
+
+        try {
+            boolean allowed = circuitBreaker.executeSupplier(redisCheck);
+            if (allowed) {
+                allowedCounter.increment();
+            } else {
+                blockedCounter.increment();
+            }
+            return allowed;
+
+        } catch (io.github.resilience4j.circuitbreaker.CallNotPermittedException e) {
+            return handleRedisFailure(key, tier, "Circuit breaker OPEN");
+
+        } catch (Exception e) {
+            redisErrorCounter.increment();
+            return handleRedisFailure(key, tier, e.getMessage());
+        }
+    }
+
+    /**
+     * Central failure handler that respects the tier policy.
+     */
+    private boolean handleRedisFailure(String key, RateLimitTier tier, String reason) {
+        if (tier == RateLimitTier.CRITICAL) {
+            criticalFailClosedCounter.increment();
+            log.warn("[RATE-LIMIT] Redis unavailable — BLOCKING critical request. key={}, reason={}",
+                    key, reason);
+            return false;
+        }
+        standardFailOpenCounter.increment();
+        log.debug("[RATE-LIMIT] Redis unavailable — allowing standard request. key={}, reason={}",
+                key, reason);
+        return true;
     }
 
     /**

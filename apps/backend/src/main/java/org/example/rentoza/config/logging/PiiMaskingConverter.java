@@ -63,7 +63,7 @@ public class PiiMaskingConverter extends ClassicConverter {
     /**
      * Credit card pattern - 16 digits with optional separators.
      * Masks all but last 4 digits.
-     * 
+     *
      * Examples:
      * - 4111-1111-1111-1234 → ****-****-****-1234
      * - 4111111111111234 → ************1234
@@ -71,6 +71,30 @@ public class PiiMaskingConverter extends ClassicConverter {
     private static final Pattern CREDIT_CARD_PATTERN = Pattern.compile(
             "(\\d{4}[\\s.-]?)(\\d{4}[\\s.-]?)(\\d{4}[\\s.-]?)(\\d{4})"
     );
+
+    /**
+     * Bearer/JWT token pattern — masks the token value after "Bearer ".
+     * Preserves the first 10 characters of the token for header/alg identification.
+     *
+     * Examples:
+     * - Bearer eyJhbGciOiJIUzI1N... → Bearer eyJhbGciOi[REDACTED]
+     */
+    private static final Pattern BEARER_TOKEN_PATTERN = Pattern.compile(
+            "(Bearer\\s+)([A-Za-z0-9_\\-]{10})([A-Za-z0-9_.\\-]+)"
+    );
+
+    /**
+     * Singleton instance for static access from JsonLogLayout and other non-converter contexts.
+     */
+    private static final PiiMaskingConverter INSTANCE = new PiiMaskingConverter();
+
+    /**
+     * Static convenience method for masking PII outside of Logback converter context.
+     * Used by JsonLogLayout to apply consistent masking to structured JSON log messages.
+     */
+    public static String mask(String input) {
+        return INSTANCE.maskPii(input);
+    }
 
     @Override
     public String convert(ILoggingEvent event) {
@@ -101,9 +125,12 @@ public class PiiMaskingConverter extends ClassicConverter {
         
         // 2. Mask credit cards (if any payment data leaks)
         result = maskCreditCards(result);
-        
+
         // 3. Mask phone numbers
         result = maskPhoneNumbers(result);
+
+        // 4. Mask Bearer/JWT tokens
+        result = maskBearerTokens(result);
         
         return result;
     }
@@ -179,6 +206,25 @@ public class PiiMaskingConverter extends ClassicConverter {
         }
         matcher.appendTail(sb);
         
+        return sb.toString();
+    }
+
+    /**
+     * Mask Bearer/JWT tokens.
+     * Pattern: Bearer eyJhbGciOiJIUzI1N... → Bearer eyJhbGciOi[REDACTED]
+     *
+     * Preserves: First 10 characters of token (header/algorithm identification)
+     */
+    private String maskBearerTokens(String input) {
+        Matcher matcher = BEARER_TOKEN_PATTERN.matcher(input);
+        StringBuilder sb = new StringBuilder();
+
+        while (matcher.find()) {
+            String replacement = matcher.group(1) + matcher.group(2) + "[REDACTED]";
+            matcher.appendReplacement(sb, Matcher.quoteReplacement(replacement));
+        }
+        matcher.appendTail(sb);
+
         return sb.toString();
     }
 

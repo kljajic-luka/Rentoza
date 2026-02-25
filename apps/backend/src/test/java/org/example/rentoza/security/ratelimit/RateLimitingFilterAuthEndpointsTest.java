@@ -3,6 +3,7 @@ package org.example.rentoza.security.ratelimit;
 import jakarta.servlet.ServletException;
 import org.example.rentoza.config.AppProperties;
 import org.example.rentoza.deprecated.jwt.JwtUtil;
+import org.example.rentoza.security.InternalServiceJwtUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -20,12 +21,14 @@ class RateLimitingFilterAuthEndpointsTest {
 
     private RateLimitService rateLimitService;
     private JwtUtil jwtUtil;
+    private InternalServiceJwtUtil internalServiceJwtUtil;
     private AppProperties appProperties;
 
     @BeforeEach
     void setUp() {
         rateLimitService = mock(RateLimitService.class);
         jwtUtil = mock(JwtUtil.class);
+        internalServiceJwtUtil = mock(InternalServiceJwtUtil.class);
 
         appProperties = new AppProperties();
         appProperties.getRateLimit().setEnabled(true);
@@ -54,55 +57,59 @@ class RateLimitingFilterAuthEndpointsTest {
     @Test
     @DisplayName("Applies /login limit 5 per 60 seconds")
     void loginEndpoint_usesConfiguredLimit() throws ServletException, IOException {
-        when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt())).thenReturn(true);
+        when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt(), any(RateLimitTier.class)))
+                .thenReturn(true);
 
-        RateLimitingFilter filter = new RateLimitingFilter(rateLimitService, appProperties, jwtUtil);
+        RateLimitingFilter filter = new RateLimitingFilter(rateLimitService, appProperties, jwtUtil, internalServiceJwtUtil);
 
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/auth/supabase/login");
         request.setRemoteAddr("127.0.0.1");
 
         filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());
 
-        verify(rateLimitService).allowRequest(eq("ip:127.0.0.1"), eq(5), eq(60));
+        verify(rateLimitService).allowRequest(eq("ip:127.0.0.1"), eq(5), eq(60), eq(RateLimitTier.CRITICAL));
     }
 
     @Test
     @DisplayName("Applies /forgot-password limit 3 per 5 minutes")
     void forgotPasswordEndpoint_usesConfiguredLimit() throws ServletException, IOException {
-        when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt())).thenReturn(true);
+        when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt(), any(RateLimitTier.class)))
+                .thenReturn(true);
 
-        RateLimitingFilter filter = new RateLimitingFilter(rateLimitService, appProperties, jwtUtil);
+        RateLimitingFilter filter = new RateLimitingFilter(rateLimitService, appProperties, jwtUtil, internalServiceJwtUtil);
 
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/auth/supabase/forgot-password");
         request.setRemoteAddr("127.0.0.1");
 
         filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());
 
-        verify(rateLimitService).allowRequest(eq("ip:127.0.0.1"), eq(3), eq(300));
+        verify(rateLimitService).allowRequest(eq("ip:127.0.0.1"), eq(3), eq(300), any(RateLimitTier.class));
     }
 
     @Test
     @DisplayName("Applies /reset-password limit 5 per 5 minutes")
     void resetPasswordEndpoint_usesConfiguredLimit() throws ServletException, IOException {
-        when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt())).thenReturn(true);
+        when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt(), any(RateLimitTier.class)))
+                .thenReturn(true);
 
-        RateLimitingFilter filter = new RateLimitingFilter(rateLimitService, appProperties, jwtUtil);
+        RateLimitingFilter filter = new RateLimitingFilter(rateLimitService, appProperties, jwtUtil, internalServiceJwtUtil);
 
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/auth/supabase/reset-password");
         request.setRemoteAddr("127.0.0.1");
 
         filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());
 
-        verify(rateLimitService).allowRequest(eq("ip:127.0.0.1"), eq(5), eq(300));
+        verify(rateLimitService).allowRequest(eq("ip:127.0.0.1"), eq(5), eq(300), any(RateLimitTier.class));
     }
 
     @Test
     @DisplayName("Blocks request when limit is exceeded")
     void exceededLimit_throwsRateLimitExceededException() {
-        when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt())).thenReturn(false);
+        when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt(), any(RateLimitTier.class)))
+                .thenReturn(false);
         when(rateLimitService.getRemainingSeconds(anyString())).thenReturn(45L);
 
-        RateLimitingFilter filter = new RateLimitingFilter(rateLimitService, appProperties, jwtUtil);
+        RateLimitingFilter filter = new RateLimitingFilter(rateLimitService, appProperties, jwtUtil, internalServiceJwtUtil);
 
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/auth/supabase/login");
         request.setRemoteAddr("127.0.0.1");

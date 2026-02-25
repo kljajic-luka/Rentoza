@@ -1,13 +1,14 @@
 package org.example.rentoza.auth;
 
+import org.example.rentoza.deprecated.auth.RefreshTokenRepository;
+import org.example.rentoza.scheduler.SchedulerIdempotencyService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import org.example.rentoza.deprecated.auth.RefreshTokenRepository;
-
+import java.time.Duration;
 import java.time.Instant;
 
 /**
@@ -20,10 +21,16 @@ public class TokenCleanupScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(TokenCleanupScheduler.class);
 
-    private final RefreshTokenRepository repo;
+    private static final String LOCK_CLEANUP = "token.cleanup.expired";
+    private static final String LOCK_FREQUENT = "token.cleanup.frequent";
 
-    public TokenCleanupScheduler(RefreshTokenRepository repo) {
+    private final RefreshTokenRepository repo;
+    private final SchedulerIdempotencyService lockService;
+
+    public TokenCleanupScheduler(RefreshTokenRepository repo,
+                                  SchedulerIdempotencyService lockService) {
         this.repo = repo;
+        this.lockService = lockService;
     }
 
     /**
@@ -34,9 +41,13 @@ public class TokenCleanupScheduler {
     @Scheduled(cron = "${refresh-token.cleanup.cron:0 0 2 * * ?}", zone = "Europe/Belgrade")
     @Transactional
     public void cleanupExpiredTokens() {
-        log.info("Starting scheduled cleanup of expired refresh tokens");
+        if (!lockService.tryAcquireLock(LOCK_CLEANUP, Duration.ofHours(23))) {
+            log.debug("[TokenCleanup] Skipping daily cleanup — lock held by another instance");
+            return;
+        }
 
         try {
+            log.info("Starting scheduled cleanup of expired refresh tokens");
             Instant now = Instant.now();
             int deletedCount = repo.deleteAllExpired(now);
 
@@ -45,9 +56,10 @@ public class TokenCleanupScheduler {
             } else {
                 log.debug("Cleanup completed: no expired tokens found");
             }
-
         } catch (Exception e) {
             log.error("Error during token cleanup: {}", e.getMessage(), e);
+        } finally {
+            lockService.releaseLock(LOCK_CLEANUP);
         }
     }
 
@@ -59,9 +71,13 @@ public class TokenCleanupScheduler {
     @Transactional
     public void frequentCleanup() {
         if (Boolean.parseBoolean(System.getProperty("refresh-token.cleanup.frequent.enabled", "false"))) {
-            log.debug("Running frequent token cleanup");
+            if (!lockService.tryAcquireLock(LOCK_FREQUENT, Duration.ofHours(5).plusMinutes(50))) {
+                log.debug("[TokenCleanup] Skipping frequent cleanup — lock held by another instance");
+                return;
+            }
 
             try {
+                log.debug("Running frequent token cleanup");
                 Instant now = Instant.now();
                 int deletedCount = repo.deleteAllExpired(now);
 
@@ -70,6 +86,8 @@ public class TokenCleanupScheduler {
                 }
             } catch (Exception e) {
                 log.warn("Error during frequent cleanup: {}", e.getMessage());
+            } finally {
+                lockService.releaseLock(LOCK_FREQUENT);
             }
         }
     }

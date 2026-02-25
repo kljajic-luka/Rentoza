@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingRepository;
+import org.example.rentoza.car.CarRepository;
 import org.springframework.stereotype.Component;
 
 import org.springframework.transaction.annotation.Transactional;
@@ -34,6 +35,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class BookingSecurityService {
 
     private final BookingRepository bookingRepository;
+    private final CarRepository carRepository;
     private final CurrentUser currentUser;
 
     /**
@@ -115,16 +117,26 @@ public class BookingSecurityService {
 
     /**
      * Checks if the user can view bookings for a specific car.
-     * Only the car owner can view all bookings for their car.
-     * 
+     * Only the car owner or admin can view all bookings for their car.
+     *
+     * W5: Replaced unconditional return true with real ownership verification
+     * using CarRepository.findByIdAndOwnerId to prevent IDOR.
+     *
      * @param carId Car ID
-     * @param userId Authenticated user's ID  
+     * @param userId Authenticated user's ID
      * @return true if user is the car owner or admin
      */
     public boolean canViewCarBookings(Long carId, Long userId) {
-        // This will be checked at service layer using repository queries
-        // This method is a placeholder for potential controller-level @PreAuthorize
-        return true; // Actual check done in service layer with findByCarIdForOwner
+        if (currentUser.isAdmin()) {
+            log.debug("Admin access granted for car {} bookings", carId);
+            return true;
+        }
+
+        boolean isOwner = carRepository.findByIdAndOwnerId(carId, userId).isPresent();
+
+        log.debug("canViewCarBookings: carId={}, userId={}, isOwner={}", carId, userId, isOwner);
+
+        return isOwner;
     }
 
     // ========== HOST APPROVAL WORKFLOW SECURITY METHODS ==========

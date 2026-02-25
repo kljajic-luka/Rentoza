@@ -75,8 +75,10 @@ public class JsonLogLayout extends LayoutBase<ILoggingEvent> {
         // Logger name (shortened for readability)
         json.put("logger", shortenLoggerName(event.getLoggerName()));
         
-        // The actual log message
-        json.put("message", event.getFormattedMessage());
+        // The actual log message — apply PII masking for production JSON logs.
+        // W4: Console appenders use %piiMsg via logback pattern, but JsonLogLayout
+        // calls getFormattedMessage() directly, bypassing the converter chain.
+        json.put("message", PiiMaskingConverter.mask(event.getFormattedMessage()));
         
         // Thread info
         json.put("thread", event.getThreadName());

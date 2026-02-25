@@ -12,6 +12,7 @@ import org.example.rentoza.notification.dto.RegisterDeviceTokenRequestDTO;
 import org.example.rentoza.user.Role;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
+import org.example.rentoza.scheduler.SchedulerIdempotencyService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -20,6 +21,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
@@ -45,6 +47,7 @@ public class NotificationService {
     private final UserRepository userRepository;
     private final UserDeviceTokenRepository deviceTokenRepository;
     private final List<NotificationChannel> notificationChannels;
+    private final SchedulerIdempotencyService lockService;
 
     /**
      * Create and send a notification to a single recipient.
@@ -437,15 +440,26 @@ public class NotificationService {
     /**
      * Scheduled cleanup of expired notifications (older than 30 days).
      * Runs daily at 2 AM Europe/Belgrade timezone.
+     *
+     * <p>Uses distributed locking to prevent duplicate cleanup in multi-instance deployments.</p>
      */
     @Scheduled(cron = "0 0 2 * * *", zone = "Europe/Belgrade")
     @Transactional
     public void cleanupExpiredNotifications() {
-        Instant expirationDate = Instant.now().minus(30, ChronoUnit.DAYS);
-        int deleted = notificationRepository.deleteExpiredNotifications(expirationDate);
+        if (!lockService.tryAcquireLock("notification.cleanup.expired", Duration.ofHours(23))) {
+            log.debug("[NotificationService] Skipping cleanup — lock held by another instance");
+            return;
+        }
 
-        if (deleted > 0) {
-            log.info("Cleaned up {} expired notifications", deleted);
+        try {
+            Instant expirationDate = Instant.now().minus(30, ChronoUnit.DAYS);
+            int deleted = notificationRepository.deleteExpiredNotifications(expirationDate);
+
+            if (deleted > 0) {
+                log.info("Cleaned up {} expired notifications", deleted);
+            }
+        } finally {
+            lockService.releaseLock("notification.cleanup.expired");
         }
     }
     }

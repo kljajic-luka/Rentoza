@@ -165,6 +165,19 @@ public class BookingRequestDTO {
     }
 
     /**
+     * W1: Validates maximum rental duration (30 days / 720 hours).
+     * Prevents abuse, insurance complications, and quasi-lease arrangements.
+     */
+    @AssertTrue(message = "Maximum rental duration is 30 days")
+    private boolean isMaximumDurationNotExceeded() {
+        if (startTime == null || endTime == null) {
+            return true; // Let @NotNull handle nulls
+        }
+        long hours = ChronoUnit.HOURS.between(startTime, endTime);
+        return hours <= 720; // 30 days * 24 hours
+    }
+
+    /**
      * Validates that times are on 30-minute boundaries.
      */
     @AssertTrue(message = "Times must be on 30-minute boundaries (e.g., 09:00, 09:30)")

@@ -785,5 +785,32 @@ class BookingServiceTest {
             assertThat(result.booking().getId()).isEqualTo(42L);
             verify(bookingPaymentService, never()).processBookingPayment(anyLong(), anyString());
         }
+
+        @Test
+        @DisplayName("Race-collision via conflict-path: concurrent request sees overlap, resolved via idempotency key")
+        void shouldResolveConflictPathRaceViaIdempotencyKey() {
+            // Given: request-B reached existsOverlappingBookingsWithLock AFTER request-A committed,
+            // so it sees an overlap. Same idempotency key means it's the same booking.
+            validBookingRequest.setIdempotencyKey("idem-key-conflict-race-001");
+            // Early idempotency check misses (both requests cleared it before A committed);
+            // second call (at the conflict-path rescue site) finds request-A's row.
+            when(bookingRepo.findByIdempotencyKeyWithRelations("idem-key-conflict-race-001"))
+                    .thenReturn(Optional.empty())
+                    .thenReturn(Optional.of(existingBooking));
+            when(userRepo.findByEmail("renter@test.com")).thenReturn(Optional.of(renter));
+            when(carRepo.findById(100L)).thenReturn(Optional.of(car));
+            // existsOverlappingBookingsWithLock returns true (request-A's booking committed)
+            when(bookingRepo.existsOverlappingBookingsWithLock(anyLong(), any(), any())).thenReturn(true);
+
+            // When
+            BookingService.BookingCreationResult result =
+                    bookingService.createBooking(validBookingRequest, "renter@test.com");
+
+            // Then: canonical booking returned (200), not 409 BookingConflictException
+            assertThat(result).isNotNull();
+            assertThat(result.redirectRequired()).isFalse();
+            assertThat(result.booking().getId()).isEqualTo(42L);
+            verify(bookingPaymentService, never()).processBookingPayment(anyLong(), anyString());
+        }
     }
 }

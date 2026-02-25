@@ -190,7 +190,29 @@ public class BookingService {
         );
         
         if (hasConflict) {
-            log.warn("Booking conflict detected: carId={}, times={} to {}", 
+            // Before surfacing a 409, check whether the conflict is caused by a concurrent
+            // duplicate submit carrying the same idempotency key. This happens when two
+            // requests race past the idempotency early-check (both see no existing row),
+            // request-A commits first, and request-B then sees request-A's booking as an
+            // overlap. In that case request-B should return canonically, not 409.
+            if (dto.getIdempotencyKey() != null && !dto.getIdempotencyKey().isBlank()) {
+                java.util.Optional<Booking> raceWinner =
+                        repo.findByIdempotencyKeyWithRelations(dto.getIdempotencyKey());
+                if (raceWinner.isPresent()) {
+                    Booking b = raceWinner.get();
+                    log.info("[Idempotency] Conflict-path race resolution: returning existing booking {} for key {}",
+                            b.getId(), dto.getIdempotencyKey());
+                    if ("REDIRECT_REQUIRED".equals(b.getPaymentStatus())) {
+                        java.util.Optional<String> redirectUrl =
+                                bookingPaymentService.findPendingRedirectUrl(b.getId());
+                        if (redirectUrl.isPresent()) {
+                            return BookingCreationResult.redirect(b, redirectUrl.get());
+                        }
+                    }
+                    return BookingCreationResult.success(b);
+                }
+            }
+            log.warn("Booking conflict detected: carId={}, times={} to {}",
                     dto.getCarId(), dto.getStartTime(), dto.getEndTime());
             throw new BookingConflictException(
                     "This car is already booked for the selected times. Please choose different times."

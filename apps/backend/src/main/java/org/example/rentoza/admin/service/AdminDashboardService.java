@@ -14,6 +14,7 @@ import org.example.rentoza.booking.dispute.DamageClaimRepository;
 import org.example.rentoza.car.CarRepository;
 import org.example.rentoza.car.ListingStatus;
 import org.example.rentoza.config.timezone.SerbiaTimeZone;
+import org.example.rentoza.scheduler.SchedulerIdempotencyService;
 import org.example.rentoza.user.UserRepository;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.PageRequest;
@@ -24,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
@@ -64,6 +66,7 @@ public class AdminDashboardService {
     private final AdminUserRepository adminUserRepo;
     private final DamageClaimRepository damageClaimRepo;
     private final AdminMetricsRepository metricsRepo;
+    private final SchedulerIdempotencyService lockService;
     
     /**
      * Get real-time dashboard KPIs.
@@ -167,18 +170,24 @@ public class AdminDashboardService {
     
     /**
      * Save hourly metrics snapshot.
-     * 
+     *
      * <p>Scheduled to run every hour at minute 0.
      * Stores current KPIs for historical trend analysis.
+     * Uses distributed locking to prevent duplicate snapshots in multi-instance deployments.
      */
     @Scheduled(cron = "0 0 * * * *", zone = "Europe/Belgrade") // Every hour at minute 0
     @Transactional
     public void saveMetricsSnapshot() {
-        log.info("Saving hourly metrics snapshot");
-        
+        if (!lockService.tryAcquireLock("admin.metrics.snapshot", Duration.ofMinutes(55))) {
+            log.debug("[AdminDashboard] Skipping metrics snapshot — lock held by another instance");
+            return;
+        }
+
         try {
+            log.info("Saving hourly metrics snapshot");
+
             DashboardKpiDto kpis = getDashboardKpis();
-            
+
             AdminMetrics snapshot = AdminMetrics.builder()
                 .activeTripsCount(kpis.getActiveTripsCount().intValue())
                 .totalRevenueCents(kpis.getTotalRevenueThisMonth()
@@ -195,32 +204,44 @@ public class AdminDashboardService {
                 .bookingGrowthPercent(kpis.getBookingGrowthPercent())
                 .snapshotDate(LocalDateTime.now())
                 .build();
-            
+
             metricsRepo.save(snapshot);
-            
+
             log.info("Metrics snapshot saved: activeTrips={}, revenue={}, disputes={}",
                 kpis.getActiveTripsCount(),
                 kpis.getTotalRevenueThisMonth(),
                 kpis.getOpenDisputesCount());
-            
+
         } catch (Exception e) {
             log.error("Failed to save metrics snapshot: {}", e.getMessage(), e);
+        } finally {
+            lockService.releaseLock("admin.metrics.snapshot");
         }
     }
     
     /**
      * Clean up old metrics (retention: 12 months).
-     * 
+     *
      * <p>Scheduled to run daily at 3 AM.
+     * Uses distributed locking to prevent duplicate cleanup in multi-instance deployments.
      */
     @Scheduled(cron = "0 0 3 * * *", zone = "Europe/Belgrade") // Daily at 3 AM
     @Transactional
     public void cleanupOldMetrics() {
-        LocalDateTime cutoff = LocalDateTime.now().minusMonths(12);
-        int deleted = metricsRepo.deleteOlderThan(cutoff);
-        
-        if (deleted > 0) {
-            log.info("Cleaned up {} old metrics snapshots (older than {})", deleted, cutoff);
+        if (!lockService.tryAcquireLock("admin.metrics.cleanup", Duration.ofHours(23))) {
+            log.debug("[AdminDashboard] Skipping metrics cleanup — lock held by another instance");
+            return;
+        }
+
+        try {
+            LocalDateTime cutoff = LocalDateTime.now().minusMonths(12);
+            int deleted = metricsRepo.deleteOlderThan(cutoff);
+
+            if (deleted > 0) {
+                log.info("Cleaned up {} old metrics snapshots (older than {})", deleted, cutoff);
+            }
+        } finally {
+            lockService.releaseLock("admin.metrics.cleanup");
         }
     }
     

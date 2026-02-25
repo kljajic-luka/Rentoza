@@ -45,7 +45,8 @@ class RateLimitingFilterInternalTokenTest {
     @Test
     @DisplayName("B1: No internal token header — rate limit is applied normally")
     void givenNoInternalToken_rateLimitIsApplied() throws ServletException, IOException {
-        when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt())).thenReturn(true);
+        when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt(), any(RateLimitTier.class)))
+                .thenReturn(true);
 
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/bookings");
         request.setRemoteAddr("10.0.0.1");
@@ -53,7 +54,7 @@ class RateLimitingFilterInternalTokenTest {
         filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());
 
         verify(internalServiceJwtUtil, never()).validateServiceToken(anyString());
-        verify(rateLimitService).allowRequest(anyString(), eq(100), eq(60));
+        verify(rateLimitService).allowRequest(anyString(), eq(100), eq(60), eq(RateLimitTier.CRITICAL));
     }
 
     @Test
@@ -68,14 +69,15 @@ class RateLimitingFilterInternalTokenTest {
         filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());
 
         verify(internalServiceJwtUtil).validateServiceToken("valid-jwt-token");
-        verify(rateLimitService, never()).allowRequest(anyString(), anyInt(), anyInt());
+        verify(rateLimitService, never()).allowRequest(anyString(), anyInt(), anyInt(), any());
     }
 
     @Test
     @DisplayName("B1: Invalid internal token — rate limit is applied normally (not bypassed)")
     void givenInvalidInternalToken_rateLimitIsAppliedNormally() throws ServletException, IOException {
         when(internalServiceJwtUtil.validateServiceToken("bad-token")).thenReturn(false);
-        when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt())).thenReturn(true);
+        when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt(), any(RateLimitTier.class)))
+                .thenReturn(true);
 
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/bookings");
         request.setRemoteAddr("10.0.0.1");
@@ -84,14 +86,15 @@ class RateLimitingFilterInternalTokenTest {
         filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());
 
         verify(internalServiceJwtUtil).validateServiceToken("bad-token");
-        verify(rateLimitService).allowRequest(anyString(), eq(100), eq(60));
+        verify(rateLimitService).allowRequest(anyString(), eq(100), eq(60), eq(RateLimitTier.CRITICAL));
     }
 
     @Test
     @DisplayName("B1: Spoofed non-empty token 'anything' — no bypass, rate limit proceeds")
     void givenSpoofedNonEmptyToken_noBypassOccurs() throws ServletException, IOException {
         when(internalServiceJwtUtil.validateServiceToken("anything")).thenReturn(false);
-        when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt())).thenReturn(true);
+        when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt(), any(RateLimitTier.class)))
+                .thenReturn(true);
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/cars");
         request.setRemoteAddr("203.0.113.50");
@@ -100,13 +103,14 @@ class RateLimitingFilterInternalTokenTest {
         filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());
 
         verify(internalServiceJwtUtil).validateServiceToken("anything");
-        verify(rateLimitService).allowRequest(startsWith("ip:"), eq(100), eq(60));
+        verify(rateLimitService).allowRequest(startsWith("ip:"), eq(100), eq(60), eq(RateLimitTier.STANDARD));
     }
 
     @Test
     @DisplayName("B1: Empty internal token header — treated as absent, rate limit applied")
     void givenEmptyInternalToken_rateLimitIsApplied() throws ServletException, IOException {
-        when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt())).thenReturn(true);
+        when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt(), any(RateLimitTier.class)))
+                .thenReturn(true);
 
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/bookings");
         request.setRemoteAddr("10.0.0.1");
@@ -115,6 +119,6 @@ class RateLimitingFilterInternalTokenTest {
         filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());
 
         verify(internalServiceJwtUtil, never()).validateServiceToken(anyString());
-        verify(rateLimitService).allowRequest(anyString(), eq(100), eq(60));
+        verify(rateLimitService).allowRequest(anyString(), eq(100), eq(60), eq(RateLimitTier.CRITICAL));
     }
 }

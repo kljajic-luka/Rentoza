@@ -57,7 +57,8 @@ class RateLimitingFilterAuthEndpointsTest {
     @Test
     @DisplayName("Applies /login limit 5 per 60 seconds")
     void loginEndpoint_usesConfiguredLimit() throws ServletException, IOException {
-        when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt())).thenReturn(true);
+        when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt(), any(RateLimitTier.class)))
+                .thenReturn(true);
 
         RateLimitingFilter filter = new RateLimitingFilter(rateLimitService, appProperties, jwtUtil, internalServiceJwtUtil);
 
@@ -66,13 +67,14 @@ class RateLimitingFilterAuthEndpointsTest {
 
         filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());
 
-        verify(rateLimitService).allowRequest(eq("ip:127.0.0.1"), eq(5), eq(60));
+        verify(rateLimitService).allowRequest(eq("ip:127.0.0.1"), eq(5), eq(60), eq(RateLimitTier.CRITICAL));
     }
 
     @Test
     @DisplayName("Applies /forgot-password limit 3 per 5 minutes")
     void forgotPasswordEndpoint_usesConfiguredLimit() throws ServletException, IOException {
-        when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt())).thenReturn(true);
+        when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt(), any(RateLimitTier.class)))
+                .thenReturn(true);
 
         RateLimitingFilter filter = new RateLimitingFilter(rateLimitService, appProperties, jwtUtil, internalServiceJwtUtil);
 
@@ -81,13 +83,14 @@ class RateLimitingFilterAuthEndpointsTest {
 
         filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());
 
-        verify(rateLimitService).allowRequest(eq("ip:127.0.0.1"), eq(3), eq(300));
+        verify(rateLimitService).allowRequest(eq("ip:127.0.0.1"), eq(3), eq(300), any(RateLimitTier.class));
     }
 
     @Test
     @DisplayName("Applies /reset-password limit 5 per 5 minutes")
     void resetPasswordEndpoint_usesConfiguredLimit() throws ServletException, IOException {
-        when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt())).thenReturn(true);
+        when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt(), any(RateLimitTier.class)))
+                .thenReturn(true);
 
         RateLimitingFilter filter = new RateLimitingFilter(rateLimitService, appProperties, jwtUtil, internalServiceJwtUtil);
 
@@ -96,13 +99,14 @@ class RateLimitingFilterAuthEndpointsTest {
 
         filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());
 
-        verify(rateLimitService).allowRequest(eq("ip:127.0.0.1"), eq(5), eq(300));
+        verify(rateLimitService).allowRequest(eq("ip:127.0.0.1"), eq(5), eq(300), any(RateLimitTier.class));
     }
 
     @Test
     @DisplayName("Blocks request when limit is exceeded")
     void exceededLimit_throwsRateLimitExceededException() {
-        when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt())).thenReturn(false);
+        when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt(), any(RateLimitTier.class)))
+                .thenReturn(false);
         when(rateLimitService.getRemainingSeconds(anyString())).thenReturn(45L);
 
         RateLimitingFilter filter = new RateLimitingFilter(rateLimitService, appProperties, jwtUtil, internalServiceJwtUtil);

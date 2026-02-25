@@ -100,7 +100,7 @@ public class RateLimitingFilter extends OncePerRequestFilter {
     protected void doFilterInternal(@NonNull HttpServletRequest request,
                                      @NonNull HttpServletResponse response,
                                      @NonNull FilterChain filterChain) throws ServletException, IOException {
-        
+
         // Skip rate limiting if disabled globally
         if (!appProperties.getRateLimit().isEnabled()) {
             filterChain.doFilter(request, response);
@@ -108,6 +108,7 @@ public class RateLimitingFilter extends OncePerRequestFilter {
         }
 
         String requestPath = request.getRequestURI();
+        String requestMethod = request.getMethod();
 
         // Extract rate limit configuration for this endpoint
         RateLimitConfig config = getRateLimitConfig(requestPath);
@@ -115,16 +116,33 @@ public class RateLimitingFilter extends OncePerRequestFilter {
         // Determine rate limit key: JWT email (authenticated) or IP (unauthenticated)
         String rateLimitKey = getRateLimitKey(request);
 
-        // Check if request is allowed
-        boolean allowed = rateLimitService.allowRequest(rateLimitKey, config.limit, config.windowSeconds);
+        // Determine endpoint criticality tier for fail-open vs fail-closed behavior
+        RateLimitTier tier = resolveRateLimitTier(requestPath, requestMethod);
+
+        // Check if request is allowed (tier-aware: CRITICAL endpoints fail-closed on Redis outage)
+        boolean allowed = rateLimitService.allowRequest(rateLimitKey, config.limit, config.windowSeconds, tier);
 
         if (!allowed) {
-            // Rate limit exceeded - throw exception (handled by GlobalExceptionHandler)
+            // Differentiate: rate limit exceeded vs. Redis unavailable on CRITICAL path
+            // When Redis is down for a CRITICAL endpoint, the service returns false;
+            // we check the remaining seconds to distinguish. If remaining == 0 and the
+            // service returned false, it may be a Redis outage → respond 503.
             long retryAfterSeconds = rateLimitService.getRemainingSeconds(rateLimitKey);
-            
-            log.warn("🚫 Rate limit exceeded: key={}, endpoint={}, limit={}/{} seconds", 
+
+            if (retryAfterSeconds == 0 && tier == RateLimitTier.CRITICAL) {
+                // Redis is likely unavailable for a CRITICAL endpoint → 503
+                log.warn("[RATE-LIMIT] Service unavailable for critical endpoint: {} {}", requestMethod, requestPath);
+                response.setStatus(503);
+                response.setContentType("application/json");
+                response.getWriter().write(
+                        "{\"error\":\"SERVICE_TEMPORARILY_UNAVAILABLE\"," +
+                        "\"message\":\"Rate limiting service is unavailable. Please retry shortly.\"}");
+                return;
+            }
+
+            log.warn("Rate limit exceeded: key={}, endpoint={}, limit={}/{} seconds",
                     rateLimitKey, requestPath, config.limit, config.windowSeconds);
-            
+
             throw new RateLimitExceededException(
                     "Rate limit exceeded for " + requestPath,
                     requestPath,
@@ -134,6 +152,36 @@ public class RateLimitingFilter extends OncePerRequestFilter {
 
         // Request allowed - continue filter chain
         filterChain.doFilter(request, response);
+    }
+
+    /**
+     * Classify endpoint criticality for rate-limit failure behavior.
+     *
+     * <p>CRITICAL endpoints are fail-closed: if Redis is down, the request is blocked (503).
+     * STANDARD endpoints are fail-open: if Redis is down, the request is allowed through.
+     */
+    static RateLimitTier resolveRateLimitTier(String path, String method) {
+        // Auth endpoints are always critical regardless of method
+        if (path.startsWith("/api/auth/login") ||
+            path.startsWith("/api/auth/register") ||
+            path.startsWith("/api/auth/refresh") ||
+            path.startsWith("/api/auth/supabase/login") ||
+            path.startsWith("/api/auth/supabase/register") ||
+            path.startsWith("/api/auth/supabase/refresh")) {
+            return RateLimitTier.CRITICAL;
+        }
+        // Payment endpoints are always critical
+        if (path.startsWith("/api/payments/")) {
+            return RateLimitTier.CRITICAL;
+        }
+        // Booking creation and reauthorization are critical
+        if (path.startsWith("/api/bookings") && "POST".equalsIgnoreCase(method)) {
+            return RateLimitTier.CRITICAL;
+        }
+        if (path.contains("/reauthorize")) {
+            return RateLimitTier.CRITICAL;
+        }
+        return RateLimitTier.STANDARD;
     }
 
     /**

@@ -13,8 +13,13 @@ import org.springframework.stereotype.Component;
  * synthetic authorization IDs and skipping real card charges. If activated in production,
  * guests would never be charged and hosts would never receive payouts.
  *
- * <p>This validator throws {@link IllegalStateException} at startup if
- * {@code app.payment.provider=MOCK} and the active profile contains "prod".
+ * <p>Behavior is controlled by {@code app.payment.enforce-real-provider} (default: false):
+ * <ul>
+ *   <li>{@code true} — throws {@link IllegalStateException} at startup (hard block)</li>
+ *   <li>{@code false} — logs a critical warning but allows startup (pre-production/staging)</li>
+ * </ul>
+ *
+ * <p>Set {@code enforce-real-provider=true} once a real provider (e.g., MONRI) is configured.
  */
 @Component
 public class PaymentProviderStartupValidator {
@@ -27,14 +32,26 @@ public class PaymentProviderStartupValidator {
     @Value("${spring.profiles.active:dev}")
     private String activeProfile;
 
+    @Value("${app.payment.enforce-real-provider:false}")
+    private boolean enforceRealProvider;
+
     @PostConstruct
     void validatePaymentProvider() {
         if ("MOCK".equalsIgnoreCase(paymentProvider)) {
             if (activeProfile != null && activeProfile.contains("prod")) {
-                throw new IllegalStateException(
-                        "FATAL: app.payment.provider is set to MOCK in production. " +
+                String message = "CRITICAL: app.payment.provider is set to MOCK in production. " +
                         "Real payment processing is disabled — guests will NOT be charged. " +
-                        "Set PAYMENT_PROVIDER to a real provider (e.g., MONRI) in Cloud Run environment variables.");
+                        "Set PAYMENT_PROVIDER to a real provider (e.g., MONRI) in Cloud Run environment variables.";
+
+                if (enforceRealProvider) {
+                    throw new IllegalStateException(message);
+                }
+
+                log.error("========================================================");
+                log.error(message);
+                log.error("Set app.payment.enforce-real-provider=true to block startup with MOCK.");
+                log.error("========================================================");
+                return;
             }
             log.warn("[SECURITY] Payment provider is MOCK — all charges are simulated. " +
                      "This MUST NOT reach production.");

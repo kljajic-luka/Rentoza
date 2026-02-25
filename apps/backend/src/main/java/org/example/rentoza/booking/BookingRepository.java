@@ -25,6 +25,22 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
      */
     java.util.Optional<Booking> findByIdempotencyKey(String idempotencyKey);
 
+    /**
+     * Idempotency replay query — same as {@link #findByIdempotencyKey} but with all
+     * associations eagerly fetched. Prevents {@code LazyInitializationException} when
+     * the returned entity is used to build {@code BookingResponseDTO} after the original
+     * {@code @Transactional} session has closed.
+     *
+     * <p>Used exclusively in the idempotency early-return path of
+     * {@code BookingService.createBooking} and the race-collision catch block.
+     */
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.car c " +
+           "JOIN FETCH b.renter r " +
+           "LEFT JOIN FETCH c.owner " +
+           "WHERE b.idempotencyKey = :key")
+    java.util.Optional<Booking> findByIdempotencyKeyWithRelations(@Param("key") String key);
+
     @Query("SELECT b FROM Booking b JOIN FETCH b.renter JOIN FETCH b.car WHERE b.car.id = :carId")
     List<Booking> findByCarId(@Param("carId") Long carId);
     List<Booking> findByRenterEmailIgnoreCase(String email);

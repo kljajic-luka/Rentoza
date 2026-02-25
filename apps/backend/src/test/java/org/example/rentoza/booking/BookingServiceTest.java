@@ -692,4 +692,98 @@ class BookingServiceTest {
             verify(notificationService, never()).createNotification(any());
         }
     }
+
+    // ========================================================================
+    // IDEMPOTENCY REPLAY TESTS (P1 Fix)
+    // ========================================================================
+
+    @Nested
+    @DisplayName("Idempotency Replay (P1 Fix)")
+    class IdempotencyReplayTests {
+
+        private Booking existingBooking;
+
+        @BeforeEach
+        void setUpExisting() {
+            existingBooking = new Booking();
+            existingBooking.setId(42L);
+            existingBooking.setCar(car);
+            existingBooking.setRenter(renter);
+            existingBooking.setPaymentStatus("AUTHORIZED");
+            existingBooking.setStatus(BookingStatus.ACTIVE);
+        }
+
+        @Test
+        @DisplayName("Normal replay: returns existing booking without issuing a duplicate charge")
+        void shouldReturnExistingBookingOnNormalReplay() {
+            // Given
+            validBookingRequest.setIdempotencyKey("idem-key-normal-001");
+            when(bookingRepo.findByIdempotencyKeyWithRelations("idem-key-normal-001"))
+                    .thenReturn(Optional.of(existingBooking));
+
+            // When
+            BookingService.BookingCreationResult result =
+                    bookingService.createBooking(validBookingRequest, "renter@test.com");
+
+            // Then: existing booking returned, no duplicate payment charge
+            assertThat(result).isNotNull();
+            assertThat(result.redirectRequired()).isFalse();
+            assertThat(result.booking().getId()).isEqualTo(42L);
+            verify(bookingPaymentService, never()).processBookingPayment(anyLong(), anyString());
+        }
+
+        @Test
+        @DisplayName("SCA replay: returns redirectRequired=true with recovered redirect URL on retry")
+        void shouldReturnRedirectEnvelopeOnScaBookingReplay() {
+            // Given: booking persisted but still awaiting 3DS completion
+            existingBooking.setPaymentStatus("REDIRECT_REQUIRED");
+            validBookingRequest.setIdempotencyKey("idem-key-sca-001");
+            when(bookingRepo.findByIdempotencyKeyWithRelations("idem-key-sca-001"))
+                    .thenReturn(Optional.of(existingBooking));
+            when(bookingPaymentService.findPendingRedirectUrl(42L))
+                    .thenReturn(Optional.of("https://3ds.bank.example/sca-verify"));
+
+            // When
+            BookingService.BookingCreationResult result =
+                    bookingService.createBooking(validBookingRequest, "renter@test.com");
+
+            // Then: redirect envelope reconstructed — client receives consistent shape on retry
+            assertThat(result).isNotNull();
+            assertThat(result.redirectRequired()).isTrue();
+            assertThat(result.redirectUrl()).isEqualTo("https://3ds.bank.example/sca-verify");
+            assertThat(result.booking().getId()).isEqualTo(42L);
+            verify(bookingPaymentService, never()).processBookingPayment(anyLong(), anyString());
+        }
+
+        @Test
+        @DisplayName("Race-collision: DataIntegrityViolation resolves via DB lookup instead of 500")
+        void shouldResolveRaceCollisionViaLookupInsteadOf500() {
+            // Given: two concurrent requests with the same key both clear the early check
+            validBookingRequest.setIdempotencyKey("idem-key-race-001");
+            // First call (early guard) misses; second call (post-collision) finds the winner row
+            when(bookingRepo.findByIdempotencyKeyWithRelations("idem-key-race-001"))
+                    .thenReturn(Optional.empty())
+                    .thenReturn(Optional.of(existingBooking));
+            // Request progresses past guards to repo.save(), which then throws
+            when(userRepo.findByEmail("renter@test.com")).thenReturn(Optional.of(renter));
+            when(carRepo.findById(100L)).thenReturn(Optional.of(car));
+            when(bookingRepo.existsOverlappingBookingsWithLock(anyLong(), any(), any())).thenReturn(false);
+            when(bookingRepo.existsOverlappingUserBooking(anyLong(), any(), any())).thenReturn(false);
+            when(renterVerificationService.checkBookingEligibilityForUser(any(), any()))
+                    .thenReturn(BookingEligibilityDTO.eligible());
+            when(bookingRepo.save(any(Booking.class)))
+                    .thenThrow(new org.springframework.dao.DataIntegrityViolationException(
+                            "ERROR: duplicate key value violates unique constraint \"uk_booking_idempotency_key\""));
+
+            // When
+            BookingService.BookingCreationResult result =
+                    bookingService.createBooking(validBookingRequest, "renter@test.com");
+
+            // Then: canonical booking returned (200), not a 500
+            assertThat(result).isNotNull();
+            assertThat(result.redirectRequired()).isFalse();
+            assertThat(result.booking().getId()).isEqualTo(42L);
+            verify(bookingPaymentService, never()).processBookingPayment(anyLong(), anyString());
+        }
+    }
 }

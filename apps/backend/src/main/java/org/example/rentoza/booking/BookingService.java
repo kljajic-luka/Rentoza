@@ -33,6 +33,7 @@ import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
 import org.example.rentoza.user.dto.BookingEligibilityDTO;
 import org.hibernate.Hibernate;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -131,11 +132,20 @@ public class BookingService {
         // This prevents duplicate bookings (and duplicate payment holds) on retry.
         // ========================================================================
         if (dto.getIdempotencyKey() != null && !dto.getIdempotencyKey().isBlank()) {
-            java.util.Optional<Booking> existing = repo.findByIdempotencyKey(dto.getIdempotencyKey());
+            java.util.Optional<Booking> existing = repo.findByIdempotencyKeyWithRelations(dto.getIdempotencyKey());
             if (existing.isPresent()) {
-                log.info("Idempotent booking creation: returning existing booking {} for key {}", 
-                        existing.get().getId(), dto.getIdempotencyKey());
-                return BookingCreationResult.success(existing.get());
+                Booking b = existing.get();
+                log.info("Idempotent replay: returning existing booking {} for key {}",
+                        b.getId(), dto.getIdempotencyKey());
+                // For SCA bookings still waiting for 3DS completion, reconstruct the redirect envelope
+                // so the client gets a consistent response shape on retry.
+                if ("REDIRECT_REQUIRED".equals(b.getPaymentStatus())) {
+                    java.util.Optional<String> redirectUrl = bookingPaymentService.findPendingRedirectUrl(b.getId());
+                    if (redirectUrl.isPresent()) {
+                        return BookingCreationResult.redirect(b, redirectUrl.get());
+                    }
+                }
+                return BookingCreationResult.success(b);
             }
         }
 
@@ -536,7 +546,30 @@ public class BookingService {
         booking.setStoredPaymentMethodId(dto.getPaymentMethodId());
         booking.setSnapshotDailyRate(car.getPricePerDay());
 
-        Booking savedBooking = repo.save(booking);
+        final Booking savedBooking;
+        try {
+            savedBooking = repo.save(booking);
+        } catch (DataIntegrityViolationException ex) {
+            // Race-safe collision fallback: two concurrent requests carrying the same
+            // idempotency key both cleared the early check before either committed.
+            // The unique constraint on idempotency_key rejected the second insert —
+            // resolve canonically rather than surfacing a 500.
+            if (dto.getIdempotencyKey() != null && !dto.getIdempotencyKey().isBlank()) {
+                log.warn("[Idempotency] DB collision on key {} — resolving via hydrated lookup",
+                        dto.getIdempotencyKey());
+                return repo.findByIdempotencyKeyWithRelations(dto.getIdempotencyKey())
+                        .map(b -> {
+                            if ("REDIRECT_REQUIRED".equals(b.getPaymentStatus())) {
+                                return bookingPaymentService.findPendingRedirectUrl(b.getId())
+                                        .map(url -> BookingCreationResult.redirect(b, url))
+                                        .orElseGet(() -> BookingCreationResult.success(b));
+                            }
+                            return BookingCreationResult.success(b);
+                        })
+                        .orElseThrow(() -> ex);
+            }
+            throw ex;
+        }
 
         // ========================================================================
         // PAYMENT AUTHORIZATION (P0 Fix - Must happen before booking is finalized)

@@ -1397,6 +1397,7 @@ public class BookingPaymentService {
 
     private PaymentResult toLegacyResult(PaymentTransaction tx) {
         boolean success = tx.getStatus() == PaymentTransactionStatus.SUCCEEDED;
+        boolean isRedirect = tx.getStatus() == PaymentTransactionStatus.REDIRECT_REQUIRED;
         return PaymentResult.builder()
                 .success(success)
                 .transactionId(tx.getProviderReference())
@@ -1404,7 +1405,9 @@ public class BookingPaymentService {
                 .amount(tx.getAmount())
                 .currency(tx.getCurrency())
                 .redirectUrl(tx.getRedirectUrl())
-                .status(success ? PaymentStatus.SUCCESS : PaymentStatus.FAILED)
+                .status(success ? PaymentStatus.SUCCESS
+                        : isRedirect ? PaymentStatus.REDIRECT_REQUIRED
+                        : PaymentStatus.FAILED)
                 .build();
     }
 
@@ -1417,6 +1420,25 @@ public class BookingPaymentService {
                 .currency(tx.getCurrency())
                 .status(PaymentStatus.SUCCESS)
                 .build();
+    }
+
+    /**
+     * Resolve the pending 3DS redirect URL for a booking, if one exists.
+     *
+     * <p>Called by {@code BookingService} during idempotent replay of SCA bookings to
+     * reconstruct the {@code BookingCreationResult.redirect()} envelope so the client
+     * receives a consistent response shape on retry.
+     *
+     * @param bookingId booking whose authorize transaction to inspect
+     * @return the redirect URL if the AUTHORIZE transaction is still in REDIRECT_REQUIRED state,
+     *         empty otherwise (authorization already confirmed or not found)
+     */
+    @Transactional(readOnly = true)
+    public java.util.Optional<String> findPendingRedirectUrl(Long bookingId) {
+        String ikey = PaymentIdempotencyKey.forAuthorize(bookingId);
+        return txRepository.findByIdempotencyKey(ikey)
+                .filter(tx -> tx.getStatus() == PaymentTransactionStatus.REDIRECT_REQUIRED)
+                .map(PaymentTransaction::getRedirectUrl);
     }
 
     // ========== LIFECYCLE TRANSITION GUARDS ==========

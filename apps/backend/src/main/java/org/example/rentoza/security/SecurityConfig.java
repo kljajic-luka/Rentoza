@@ -178,9 +178,10 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                         // Info endpoint is semi-public (minimal app info)
                         .requestMatchers("/actuator/info").permitAll()
-                        // Prometheus metrics endpoint (needs to be accessible by monitoring systems)
-                        // Protected by network security (internal network only) - see firewall rules
-                        .requestMatchers("/actuator/prometheus").permitAll()
+                        // Prometheus metrics endpoint — exposes JVM, HikariCP, and HTTP metrics.
+                        // W3: Require ADMIN role instead of permitAll to prevent reconnaissance.
+                        // Monitoring systems should use a service account with ADMIN credentials.
+                        .requestMatchers("/actuator/prometheus").hasRole("ADMIN")
                         // Sensitive actuator endpoints require ADMIN role
                         .requestMatchers("/actuator/**").hasRole("ADMIN")
                         

@@ -6,6 +6,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.example.rentoza.config.AppProperties;
 import org.example.rentoza.deprecated.jwt.JwtUtil;
+import org.example.rentoza.security.InternalServiceJwtUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.lang.NonNull;
@@ -56,6 +57,7 @@ public class RateLimitingFilter extends OncePerRequestFilter {
     private final RateLimitService rateLimitService;
     private final AppProperties appProperties;
     private final JwtUtil jwtUtil;
+    private final InternalServiceJwtUtil internalServiceJwtUtil;
 
     /**
      * Common private network CIDR ranges.
@@ -86,10 +88,12 @@ public class RateLimitingFilter extends OncePerRequestFilter {
 
     public RateLimitingFilter(RateLimitService rateLimitService,
                               AppProperties appProperties,
-                              JwtUtil jwtUtil) {
+                              JwtUtil jwtUtil,
+                              InternalServiceJwtUtil internalServiceJwtUtil) {
         this.rateLimitService = rateLimitService;
         this.appProperties = appProperties;
         this.jwtUtil = jwtUtil;
+        this.internalServiceJwtUtil = internalServiceJwtUtil;
     }
 
     @Override
@@ -151,10 +155,15 @@ public class RateLimitingFilter extends OncePerRequestFilter {
             }
         }
 
-        // Bypass rate limiting for internal service calls
+        // Bypass rate limiting for internal service calls only if token is cryptographically valid
         String internalToken = request.getHeader("X-Internal-Service-Token");
         if (internalToken != null && !internalToken.isEmpty()) {
-            return true;
+            if (internalServiceJwtUtil.validateServiceToken(internalToken)) {
+                return true; // Only bypass if token is cryptographically valid
+            }
+            log.warn("[RATE-LIMIT] Invalid X-Internal-Service-Token from {}", request.getRemoteAddr());
+            // Fall through to normal rate limiting — do NOT hard-block.
+            // A spoofed header is not a reason to reject; just rate-limit normally.
         }
 
         return false;

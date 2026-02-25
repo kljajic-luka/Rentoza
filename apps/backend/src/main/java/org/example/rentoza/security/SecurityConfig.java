@@ -71,25 +71,27 @@ public class SecurityConfig {
 
     /**
      * Register RateLimitingFilter as a Spring-managed bean.
-     * 
+     *
      * Purpose: Token bucket rate limiting before authentication
      * Order: 1st in chain (fail-fast for abusive requests)
-     * 
+     *
      * Implementation Selection:
      * - If spring.data.redis.host is configured: RedisRateLimitService (distributed)
      * - Otherwise: InMemoryRateLimitService (single-instance)
-     * 
+     *
      * @param rateLimitService Rate limiting service (Redis or In-Memory)
      * @param appProperties Configuration for rate limits
      * @param jwtUtil JWT parser for extracting user email from tokens
+     * @param internalServiceJwtUtil Validator for internal service tokens (rate-limit bypass guard)
      * @return Configured RateLimitingFilter instance
      */
     @Bean
     public RateLimitingFilter rateLimitingFilter(
             RateLimitService rateLimitService,
             AppProperties appProperties,
-            JwtUtil jwtUtil) {
-        return new RateLimitingFilter(rateLimitService, appProperties, jwtUtil);
+            JwtUtil jwtUtil,
+            InternalServiceJwtUtil internalServiceJwtUtil) {
+        return new RateLimitingFilter(rateLimitService, appProperties, jwtUtil, internalServiceJwtUtil);
     }
 
     /**

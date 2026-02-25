@@ -3,6 +3,7 @@ package org.example.rentoza.security.ratelimit;
 import jakarta.servlet.ServletException;
 import org.example.rentoza.config.AppProperties;
 import org.example.rentoza.deprecated.jwt.JwtUtil;
+import org.example.rentoza.security.InternalServiceJwtUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -20,12 +21,14 @@ class RateLimitingFilterAuthEndpointsTest {
 
     private RateLimitService rateLimitService;
     private JwtUtil jwtUtil;
+    private InternalServiceJwtUtil internalServiceJwtUtil;
     private AppProperties appProperties;
 
     @BeforeEach
     void setUp() {
         rateLimitService = mock(RateLimitService.class);
         jwtUtil = mock(JwtUtil.class);
+        internalServiceJwtUtil = mock(InternalServiceJwtUtil.class);
 
         appProperties = new AppProperties();
         appProperties.getRateLimit().setEnabled(true);
@@ -56,7 +59,7 @@ class RateLimitingFilterAuthEndpointsTest {
     void loginEndpoint_usesConfiguredLimit() throws ServletException, IOException {
         when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt())).thenReturn(true);
 
-        RateLimitingFilter filter = new RateLimitingFilter(rateLimitService, appProperties, jwtUtil);
+        RateLimitingFilter filter = new RateLimitingFilter(rateLimitService, appProperties, jwtUtil, internalServiceJwtUtil);
 
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/auth/supabase/login");
         request.setRemoteAddr("127.0.0.1");
@@ -71,7 +74,7 @@ class RateLimitingFilterAuthEndpointsTest {
     void forgotPasswordEndpoint_usesConfiguredLimit() throws ServletException, IOException {
         when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt())).thenReturn(true);
 
-        RateLimitingFilter filter = new RateLimitingFilter(rateLimitService, appProperties, jwtUtil);
+        RateLimitingFilter filter = new RateLimitingFilter(rateLimitService, appProperties, jwtUtil, internalServiceJwtUtil);
 
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/auth/supabase/forgot-password");
         request.setRemoteAddr("127.0.0.1");
@@ -86,7 +89,7 @@ class RateLimitingFilterAuthEndpointsTest {
     void resetPasswordEndpoint_usesConfiguredLimit() throws ServletException, IOException {
         when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt())).thenReturn(true);
 
-        RateLimitingFilter filter = new RateLimitingFilter(rateLimitService, appProperties, jwtUtil);
+        RateLimitingFilter filter = new RateLimitingFilter(rateLimitService, appProperties, jwtUtil, internalServiceJwtUtil);
 
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/auth/supabase/reset-password");
         request.setRemoteAddr("127.0.0.1");
@@ -102,7 +105,7 @@ class RateLimitingFilterAuthEndpointsTest {
         when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt())).thenReturn(false);
         when(rateLimitService.getRemainingSeconds(anyString())).thenReturn(45L);
 
-        RateLimitingFilter filter = new RateLimitingFilter(rateLimitService, appProperties, jwtUtil);
+        RateLimitingFilter filter = new RateLimitingFilter(rateLimitService, appProperties, jwtUtil, internalServiceJwtUtil);
 
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/auth/supabase/login");
         request.setRemoteAddr("127.0.0.1");

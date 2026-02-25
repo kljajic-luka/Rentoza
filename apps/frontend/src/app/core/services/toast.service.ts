@@ -63,6 +63,16 @@ export class ToastService {
     this.notifications.info('Sesija istekla. Prijavite se ponovo.');
   }
 
+  /** Session evicted notification (signed in on another device) */
+  sessionEvicted(): void {
+    this.notifications.info('Odjavljeni ste jer ste se prijavili na drugom uređaju.', 6000);
+  }
+
+  /** Rate limited notification (429 Too Many Requests) */
+  rateLimited(message?: string): void {
+    this.notifications.warning(message || 'Previše zahteva. Molimo sačekajte i pokušajte ponovo.');
+  }
+
   /** Server error notification (500-series) */
   serverError(): void {
     this.notifications.error('Servis nedostupan. Pokušajte kasnije.');

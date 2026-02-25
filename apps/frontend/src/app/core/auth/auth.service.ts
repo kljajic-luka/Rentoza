@@ -50,6 +50,20 @@ export class AuthService {
    */
   private hasHadActiveSession = false;
 
+  /**
+   * Reason why the session ended. Read by layout component to show
+   * context-specific toast messages (e.g., eviction vs natural expiry).
+   *
+   * Values:
+   * - 'expired': Token expired naturally or was invalidated
+   * - 'evicted': Session ended because user signed in on another device
+   * - 'security': Token revoked due to suspicious activity
+   */
+  private _sessionEndReason: 'expired' | 'evicted' | 'security' = 'expired';
+  get sessionEndReason(): 'expired' | 'evicted' | 'security' {
+    return this._sessionEndReason;
+  }
+
   readonly currentUser$ = this.currentUserSubject.asObservable();
   readonly accessToken$ = this.accessTokenSubject.asObservable();
   readonly sessionExpired$ = this.sessionExpiredSubject.asObservable();
@@ -801,7 +815,22 @@ export class AuthService {
           });
 
           if (error.status === 401) {
-            console.log('🔒 Refresh token expired or invalid - session ended');
+            // Classify session end reason from backend error code
+            const errorCode = error.error?.error;
+            if (errorCode === 'SESSION_EVICTED') {
+              this._sessionEndReason = 'evicted';
+            } else if (
+              errorCode === 'TOKEN_THEFT_DETECTED' ||
+              errorCode === 'TOKEN_REUSE_DETECTED'
+            ) {
+              this._sessionEndReason = 'security';
+            } else {
+              this._sessionEndReason = 'expired';
+            }
+
+            console.log(
+              `🔒 Refresh token expired or invalid - session ended (reason: ${this._sessionEndReason})`,
+            );
             this.clearSession();
             // SECURITY FIX: Only show session expired if there was a previous session
             // This prevents false "session expired" toasts for first-time visitors

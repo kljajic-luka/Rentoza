@@ -169,9 +169,20 @@ export class LayoutComponent implements OnInit {
         }
       });
 
-    // Handle session expiration gracefully
+    // Handle session expiration gracefully with context-specific messaging
     this.authService.sessionExpired$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
-      this.toast.sessionExpired();
+      const reason = this.authService.sessionEndReason;
+      switch (reason) {
+        case 'evicted':
+          this.toast.sessionEvicted();
+          break;
+        case 'security':
+          this.toast.error('Sesija je prekinuta iz bezbednosnih razloga. Prijavite se ponovo.');
+          break;
+        default:
+          this.toast.sessionExpired();
+          break;
+      }
       void this.router.navigate(['/pocetna']);
     });
   }

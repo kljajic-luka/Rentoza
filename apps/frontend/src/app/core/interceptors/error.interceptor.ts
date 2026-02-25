@@ -146,6 +146,20 @@ function extractUserFriendlyMessage(error: HttpErrorResponse): string {
       return 'Traženi resurs nije pronađen.';
     case 422:
       return 'Podaci koje ste uneli nisu validni.';
+    case 429: {
+      const retryAfter = error.headers?.get('Retry-After');
+      if (retryAfter) {
+        const seconds = parseInt(retryAfter, 10);
+        if (!isNaN(seconds) && seconds > 0) {
+          if (seconds >= 60) {
+            const minutes = Math.ceil(seconds / 60);
+            return `Previše zahteva. Pokušajte ponovo za ${minutes} min.`;
+          }
+          return `Previše zahteva. Pokušajte ponovo za ${seconds} sek.`;
+        }
+      }
+      return 'Previše zahteva. Molimo sačekajte i pokušajte ponovo.';
+    }
     case 500:
     case 502:
     case 503:

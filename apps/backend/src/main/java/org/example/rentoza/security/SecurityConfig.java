@@ -166,7 +166,10 @@ public class SecurityConfig {
                         "/api/auth/supabase/reset-password",  // One-time token flow; CSRF adds no security value
                         "/api/auth/supabase/google/callback",  // OAuth callback from Supabase (PKCE)
                         "/api/auth/supabase/google/token-callback",  // OAuth token callback (implicit flow)
-                        "/uploads/**"         // Static files - no state change
+                        "/uploads/**",        // Static files - no state change
+                        // Webhook endpoint: auth delegated to HMAC signature verification
+                        // in ProviderEventService. Must be CSRF-exempt for external gateway callbacks.
+                        "/api/webhooks/payment"
                     )
                 )
                 .authorizeHttpRequests(auth -> auth
@@ -275,6 +278,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/bookings/*").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/bookings/debug/**").hasAuthority("INTERNAL_SERVICE")
                         .requestMatchers("/api/favorites/**").authenticated()
+                        // Webhook endpoint: auth delegated to HMAC signature verification
+                        // in ProviderEventService. Must be permitAll for external gateway callbacks.
+                        .requestMatchers(HttpMethod.POST, "/api/webhooks/payment").permitAll()
                         .anyRequest().authenticated()
                 )
                 .headers(h -> h

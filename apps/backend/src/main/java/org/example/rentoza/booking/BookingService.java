@@ -36,11 +36,13 @@ import org.hibernate.Hibernate;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.example.rentoza.scheduler.SchedulerIdempotencyService;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
@@ -82,6 +84,7 @@ public class BookingService {
     private final DeliveryFeeCalculator deliveryFeeCalculator;
     private final RenterVerificationService renterVerificationService;
     private final org.example.rentoza.payment.BookingPaymentService bookingPaymentService;
+    private final SchedulerIdempotencyService lockService;
 
     @org.springframework.beans.factory.annotation.Value("${app.booking.host-approval.enabled:false}")
     private boolean approvalEnabled;
@@ -110,7 +113,8 @@ public class BookingService {
                           CancellationPolicyService cancellationPolicyService,
                           DeliveryFeeCalculator deliveryFeeCalculator,
                           RenterVerificationService renterVerificationService,
-                          org.example.rentoza.payment.BookingPaymentService bookingPaymentService) {
+                          org.example.rentoza.payment.BookingPaymentService bookingPaymentService,
+                          SchedulerIdempotencyService lockService) {
         this.repo = repo;
         this.carRepo = carRepo;
         this.userRepo = userRepo;
@@ -122,6 +126,7 @@ public class BookingService {
         this.deliveryFeeCalculator = deliveryFeeCalculator;
         this.renterVerificationService = renterVerificationService;
         this.bookingPaymentService = bookingPaymentService;
+        this.lockService = lockService;
     }
 
     @Transactional
@@ -1110,23 +1115,37 @@ public class BookingService {
      * This maintains data integrity by ensuring bookings whose end date has passed
      * are automatically marked as COMPLETED, keeping the database aligned with
      * the unified completion logic used in review validation.
+     *
+     * <p>G6-ext: Uses distributed locking to prevent duplicate completions
+     * and notification noise in multi-instance deployments.</p>
      */
     @Scheduled(cron = "0 0 * * * *", zone = "Europe/Belgrade") // Every hour at minute 0
     @Transactional
     public void autoCompleteOverdueBookings() {
-        LocalDateTime now = LocalDateTime.now();
-        List<Booking> overdueBookings = repo.findOverdueBookings(now);
+        if (!lockService.tryAcquireLock("booking.auto-complete-overdue", Duration.ofMinutes(55))) {
+            log.debug("[BookingService] Skipping auto-complete — lock held by another instance");
+            return;
+        }
 
-        if (!overdueBookings.isEmpty()) {
-            log.info("Auto-completing {} overdue bookings", overdueBookings.size());
+        try {
+            LocalDateTime now = LocalDateTime.now();
+            List<Booking> overdueBookings = repo.findOverdueBookings(now);
 
-            for (Booking booking : overdueBookings) {
-                booking.setStatus(BookingStatus.COMPLETED);
-                log.debug("Auto-completed booking ID {} (end time: {})", booking.getId(), booking.getEndTime());
+            if (!overdueBookings.isEmpty()) {
+                log.info("Auto-completing {} overdue bookings", overdueBookings.size());
+
+                for (Booking booking : overdueBookings) {
+                    booking.setStatus(BookingStatus.COMPLETED);
+                    log.debug("Auto-completed booking ID {} (end time: {})", booking.getId(), booking.getEndTime());
+                }
+
+                repo.saveAll(overdueBookings);
+                log.info("Successfully auto-completed {} bookings", overdueBookings.size());
             }
-
-            repo.saveAll(overdueBookings);
-            log.info("Successfully auto-completed {} bookings", overdueBookings.size());
+        } catch (Exception e) {
+            log.error("Error during auto-completion of overdue bookings", e);
+        } finally {
+            lockService.releaseLock("booking.auto-complete-overdue");
         }
     }
 

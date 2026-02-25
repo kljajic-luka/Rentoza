@@ -185,9 +185,9 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         if (request.getCookies() != null) {
             log.debug("Checking cookies for access token. Cookie count: {}", request.getCookies().length);
             for (jakarta.servlet.http.Cookie cookie : request.getCookies()) {
-                log.trace("Cookie found: {} (first 20 chars of value: {})", 
-                    cookie.getName(), 
-                    cookie.getValue() != null ? cookie.getValue().substring(0, Math.min(20, cookie.getValue().length())) + "..." : "null");
+                log.trace("Cookie found: {} (length: {})",
+                    cookie.getName(),
+                    cookie.getValue() != null ? cookie.getValue().length() : 0);
                 if (CookieConstants.ACCESS_TOKEN.equals(cookie.getName())) {
                     log.debug("Access token cookie found");
                     return cookie.getValue();

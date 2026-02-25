@@ -173,8 +173,12 @@ public class BookingController {
 
     /**
      * Get all bookings for a specific car.
-     * RLS-ENFORCED: Only car owner can view bookings (verified at service layer).
-     * SpEL expression ensures user has OWNER role and service validates actual ownership.
+     * RLS-ENFORCED: SpEL expression delegates to BookingSecurityService.canViewCarBookings
+     * which verifies car ownership via CarRepository.findByIdAndOwnerId (W5 fix).
+     * Admin bypass is handled both in the SpEL expression and inside canViewCarBookings.
+     *
+     * <p>G3: Updated @PreAuthorize to exercise W5 defense-in-depth ownership check
+     * at the authorization layer, not just the service layer.
      */
     @Operation(
             summary = "Get bookings for a car",
@@ -185,7 +189,7 @@ public class BookingController {
             @ApiResponse(responseCode = "403", description = "Forbidden - not car owner")
     })
     @GetMapping("/car/{carId}")
-    @PreAuthorize("hasAnyRole('OWNER', 'ADMIN')")
+    @PreAuthorize("@bookingSecurity.canViewCarBookings(#carId, authentication.principal.id) or hasRole('ADMIN')")
     public ResponseEntity<List<BookingResponseDTO>> getBookingsForCar(
             @Parameter(description = "Car ID", example = "123")
             @PathVariable Long carId) {

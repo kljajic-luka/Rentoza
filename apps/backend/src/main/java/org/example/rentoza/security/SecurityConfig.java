@@ -14,7 +14,6 @@ import org.example.rentoza.security.supabase.SupabaseJwtUtil;
 import org.example.rentoza.security.supabase.SupabaseUserMappingRepository;
 import org.example.rentoza.security.token.TokenDenylistService;
 import org.example.rentoza.deprecated.jwt.JwtAuthenticationEntryPoint;
-import org.example.rentoza.deprecated.jwt.JwtAuthFilter;
 import org.example.rentoza.deprecated.jwt.JwtUtil;
 import org.example.rentoza.user.UserRepository;
 import org.slf4j.Logger;
@@ -110,26 +109,10 @@ public class SecurityConfig {
     }
 
     /**
-     * Register JwtAuthFilter as a Spring-managed bean (Legacy - kept for compatibility).
-     * 
-     * Purpose: Authenticate external client JWT Bearer tokens
-     * Order: 3rd in chain (after internal service auth, before UsernamePasswordAuthenticationFilter)
-     * 
-     * @param jwtUtil JWT parser and validator
-     * @param userDetailsService Spring Security user details loader
-     * @return Configured JwtAuthFilter instance
-     * @deprecated Use SupabaseJwtAuthFilter instead for Supabase Auth
-     */
-    @Bean
-    public JwtAuthFilter jwtAuthFilter(JwtUtil jwtUtil, UserDetailsService userDetailsService) {
-        return new JwtAuthFilter(jwtUtil, userDetailsService);
-    }
-
-    /**
      * Register SupabaseJwtAuthFilter as a Spring-managed bean.
-     * 
+     *
      * Purpose: Validate Supabase Auth JWT tokens and map to Rentoza users
-     * Order: 4th in chain (after legacy JWT filter, before UsernamePasswordAuthenticationFilter)
+     * Order: 3rd in chain (after internal service auth, before UsernamePasswordAuthenticationFilter)
      * 
      * @param supabaseJwtUtil Supabase JWT validator
      * @param userRepository Rentoza user repository
@@ -149,7 +132,6 @@ public class SecurityConfig {
     public SecurityFilterChain filterChain(HttpSecurity http,
                                            RateLimitingFilter rateLimitingFilter,
                                            ServiceAuthenticationFilter serviceAuthenticationFilter,
-                                           JwtAuthFilter jwtAuthFilter,
                                            SupabaseJwtAuthFilter supabaseJwtAuthFilter) throws Exception {
         http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
@@ -321,7 +303,7 @@ public class SecurityConfig {
                 // - All API endpoints use JWT Bearer tokens (no server-side sessions)
                 // - OAuth2 login is only used for initial user provisioning
                 // - After OAuth2 success, frontend receives JWT and uses it exclusively
-                // - JwtAuthFilter ALWAYS replaces any OAuth2 session auth with JWT auth
+                // - SupabaseJwtAuthFilter ALWAYS replaces any OAuth2 session auth with JWT auth
                 // - Prevents session fixation attacks and reduces server memory overhead
                 //
                 // OAuth2 Flow with STATELESS:
@@ -333,7 +315,7 @@ public class SecurityConfig {
                 // 6. No persistent session is maintained after OAuth2 redirect
                 //
                 // Defense in Depth:
-                // - Even if OAuth2 creates temporary session, JwtAuthFilter replaces it
+                // - Even if OAuth2 creates temporary session, SupabaseJwtAuthFilter replaces it
                 // - FavoriteController has fallback to handle DefaultOidcUser gracefully
                 // - JWT validation happens on every request (stateless verification)
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -357,9 +339,8 @@ public class SecurityConfig {
                 // FILTER CHAIN ORDER (execution from top to bottom):
                 // 1. RateLimitingFilter (fail fast on rate limit exceeded)
                 // 2. ServiceAuthenticationFilter (internal service authentication)
-                // 3. JwtAuthFilter (legacy JWT authentication - kept for compatibility)
-                // 4. SupabaseJwtAuthFilter (Supabase Auth JWT validation)
-                // 5. UsernamePasswordAuthenticationFilter (Spring Security default)
+                // 3. SupabaseJwtAuthFilter (Supabase Auth JWT validation)
+                // 4. UsernamePasswordAuthenticationFilter (Spring Security default)
                 //
                 // CRITICAL: Using bean instances (not class references) to avoid IllegalArgumentException
                 // "The Filter class X does not have a registered order"
@@ -370,13 +351,9 @@ public class SecurityConfig {
                 // - ONLY use built-in Spring Security filters as anchors (e.g., UsernamePasswordAuthenticationFilter)
                 // - NEVER use custom filter classes as anchors (e.g., JwtAuthFilter.class)
                 //
-                // SUPABASE AUTH MIGRATION:
-                // - SupabaseJwtAuthFilter runs after legacy JwtAuthFilter
-                // - If legacy filter authenticates, Supabase filter will skip
-                // - Once migration complete, remove legacy JwtAuthFilter
+                // Filter chain: RateLimit -> ServiceAuth -> SupabaseJwtAuth -> UsernamePassword
                 .addFilterBefore(rateLimitingFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(serviceAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(supabaseJwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterAfter(new CsrfCookieFilter(), org.springframework.security.web.csrf.CsrfFilter.class);
 
@@ -509,15 +486,15 @@ public class SecurityConfig {
      * Filter Chain Execution Order:
      * 1. RateLimitingFilter → Fail-fast for abusive IPs/users (no authentication cost)
      * 2. ServiceAuthenticationFilter → Authenticate internal microservice calls
-     * 3. JwtAuthFilter → Authenticate external client JWT Bearer tokens
+     * 3. SupabaseJwtAuthFilter → Validate Supabase Auth JWT tokens
      * 4. UsernamePasswordAuthenticationFilter → Spring Security default (rarely used)
      */
     private void logSecurityChainInitialization() {
-        log.info("🔐 Security Filter Chain successfully initialized with custom filters in order:");
-        log.info("   1️⃣  RateLimitingFilter → Token bucket rate limiting (IP/user-based)");
-        log.info("   2️⃣  ServiceAuthenticationFilter → Internal microservice authentication");
-        log.info("   3️⃣  JwtAuthFilter → JWT Bearer token authentication");
-        log.info("   4️⃣  UsernamePasswordAuthenticationFilter → Spring Security default");
-        log.info("🛡️  Stateless authentication model: JWT-first with OAuth2 provisioning");
+        log.info("Security Filter Chain initialized with custom filters in order:");
+        log.info("   1. RateLimitingFilter - Token bucket rate limiting (IP/user-based)");
+        log.info("   2. ServiceAuthenticationFilter - Internal microservice authentication");
+        log.info("   3. SupabaseJwtAuthFilter - Supabase Auth JWT validation");
+        log.info("   4. UsernamePasswordAuthenticationFilter - Spring Security default");
+        log.info("   Stateless authentication model: JWT-first with OAuth2 provisioning");
     }
 }

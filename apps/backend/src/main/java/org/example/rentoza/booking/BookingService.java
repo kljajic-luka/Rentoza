@@ -33,6 +33,8 @@ import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
 import org.example.rentoza.user.dto.BookingEligibilityDTO;
 import org.hibernate.Hibernate;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -123,6 +125,7 @@ public class BookingService {
     }
 
     @Transactional
+    @CacheEvict(value = "bookingAvailability", key = "'slots-' + #dto.carId")
     public BookingCreationResult createBooking(BookingRequestDTO dto, String renterEmail) {
 
         // ========================================================================
@@ -740,6 +743,7 @@ public class BookingService {
      * @param carId Car ID to fetch booking slots for
      * @return List of BookingSlotDTO with only date ranges
      */
+    @Cacheable(value = "bookingAvailability", key = "'slots-' + #carId", unless = "#result.isEmpty()")
     public List<org.example.rentoza.booking.dto.BookingSlotDTO> getPublicBookedSlots(Long carId) {
         // Use optimized query that already filters by blocking statuses (ACTIVE, PENDING_APPROVAL)
         List<Booking> bookings = repo.findPublicBookingsForCar(carId);

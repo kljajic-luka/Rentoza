@@ -45,6 +45,7 @@ import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
@@ -53,6 +54,12 @@ import java.util.stream.Collectors;
 @Service
 @Slf4j
 public class BookingService {
+
+    /**
+     * F-TZ-1 FIX: All scheduler time calculations MUST use Belgrade timezone,
+     * not system default. Stored booking times are Europe/Belgrade local timestamps.
+     */
+    private static final ZoneId SERBIA_ZONE = ZoneId.of("Europe/Belgrade");
 
     // ── R1-FIX: Result wrapper for booking creation ─────────────────────────
     // Carries the created booking plus optional 3DS redirect data so the controller
@@ -918,7 +925,11 @@ public class BookingService {
      */
     @Transactional
     public CancellationResultDTO cancelBookingWithPolicy(Long id, CancellationRequestDTO request) {
-        var booking = repo.findById(id)
+        // R-6 FIX: Use PESSIMISTIC_WRITE lock to prevent race condition with concurrent
+        // host approval. Without this, guest cancellation (no lock) can race with host
+        // approval (PESSIMISTIC_WRITE lock in BookingApprovalService:83), leading to
+        // both operations succeeding on the same booking.
+        var booking = repo.findByIdWithRelationsForUpdate(id)
                 .orElseThrow(() -> new RuntimeException("Booking not found"));
         
         // RLS ENFORCEMENT: Only renter or host can cancel
@@ -1109,12 +1120,15 @@ public class BookingService {
     }
 
     /**
-     * Scheduled task to automatically mark overdue bookings as COMPLETED.
-     * Runs every hour to ensure database consistency.
+     * Scheduled task to automatically mark overdue ACTIVE bookings as COMPLETED.
+     * Runs every hour to clean up orphaned bookings where the trip window elapsed
+     * without check-in ever opening (e.g., host never approved, scheduler timing gap).
      *
-     * This maintains data integrity by ensuring bookings whose end date has passed
-     * are automatically marked as COMPLETED, keeping the database aligned with
-     * the unified completion logic used in review validation.
+     * <p><b>F-AC-1 FIX:</b> IN_TRIP bookings are deliberately NOT handled here.
+     * They must go through the checkout saga (CheckOutScheduler → CheckoutSagaOrchestrator)
+     * to ensure security deposit settlement, damage assessment, and late fee calculation.
+     * Without this exclusion, this hourly scheduler races the 6-hourly ghost trip handler
+     * and would mark bookings COMPLETED before deposit capture, causing deposit loss.</p>
      *
      * <p>G6-ext: Uses distributed locking to prevent duplicate completions
      * and notification noise in multi-instance deployments.</p>
@@ -1128,7 +1142,10 @@ public class BookingService {
         }
 
         try {
-            LocalDateTime now = LocalDateTime.now();
+            // F-TZ-1 FIX: Use Belgrade timezone consistently. Booking times are stored as
+            // Europe/Belgrade local timestamps. Using system default (e.g. UTC) would cause
+            // bookings to be auto-completed 1-2 hours early depending on DST offset.
+            LocalDateTime now = LocalDateTime.now(SERBIA_ZONE);
             List<Booking> overdueBookings = repo.findOverdueBookings(now);
 
             if (!overdueBookings.isEmpty()) {
@@ -1166,7 +1183,7 @@ public class BookingService {
         }
 
         return booking.getStatus() == BookingStatus.COMPLETED
-            || (booking.getEndTime() != null && booking.getEndTime().isBefore(LocalDateTime.now()));
+            || (booking.getEndTime() != null && booking.getEndTime().isBefore(LocalDateTime.now(SERBIA_ZONE)));
     }
 
     /**

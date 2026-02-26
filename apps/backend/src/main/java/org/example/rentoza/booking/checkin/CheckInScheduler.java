@@ -807,6 +807,16 @@ public class CheckInScheduler {
     }
 
     private void cancelStaleHandshakeBooking(Booking booking) {
+        // F-SM-2: Guard against race with concurrent handshake confirmation.
+        // Between the scheduler query and this processing, confirmHandshake() could
+        // have advanced the booking to IN_TRIP under pessimistic lock.
+        if (booking.getStatus() != BookingStatus.CHECK_IN_COMPLETE) {
+            log.warn("[CheckIn] Skipping stale handshake cancellation for booking {} — status is {} " +
+                     "(expected CHECK_IN_COMPLETE). Likely race with concurrent handshake confirmation.",
+                     booking.getId(), booking.getStatus());
+            return;
+        }
+
         booking.setStatus(BookingStatus.CANCELLED);
         booking.setCancelledAt(LocalDateTime.now(SERBIA_ZONE));
         bookingRepository.save(booking);

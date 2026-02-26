@@ -918,10 +918,29 @@ public class CheckInService {
 
     /**
      * Process a no-show scenario.
+     *
+     * <p><b>F-SM-1 FIX:</b> Validates current booking status before transitioning.
+     * The no-show scheduler pre-filters by status, but between query and processing
+     * a concurrent handshake could advance the booking (e.g., CHECK_IN_OPEN → IN_TRIP).
+     * Without this guard, a no-show would incorrectly overwrite IN_TRIP status.</p>
+     *
+     * <p>Expected statuses:</p>
+     * <ul>
+     *   <li>HOST no-show: booking must be in CHECK_IN_OPEN</li>
+     *   <li>GUEST no-show: booking must be in CHECK_IN_HOST_COMPLETE</li>
+     * </ul>
      */
     @Transactional
     public void processNoShow(Booking booking, String party) {
         if ("HOST".equals(party)) {
+            // F-SM-1: Guard against race with concurrent status advancement
+            if (booking.getStatus() != BookingStatus.CHECK_IN_OPEN) {
+                log.warn("[CheckIn] Skipping HOST no-show for booking {} — status is {} (expected CHECK_IN_OPEN). " +
+                         "Likely race with concurrent handshake or status change.",
+                         booking.getId(), booking.getStatus());
+                return;
+            }
+
             booking.setStatus(BookingStatus.NO_SHOW_HOST);
             
             eventService.recordSystemEvent(
@@ -957,6 +976,14 @@ public class CheckInService {
             );
             
         } else if ("GUEST".equals(party)) {
+            // F-SM-1: Guard against race with concurrent status advancement
+            if (booking.getStatus() != BookingStatus.CHECK_IN_HOST_COMPLETE) {
+                log.warn("[CheckIn] Skipping GUEST no-show for booking {} — status is {} (expected CHECK_IN_HOST_COMPLETE). " +
+                         "Likely race with concurrent acknowledgment or handshake.",
+                         booking.getId(), booking.getStatus());
+                return;
+            }
+
             booking.setStatus(BookingStatus.NO_SHOW_GUEST);
             
             eventService.recordSystemEvent(

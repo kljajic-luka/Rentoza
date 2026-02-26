@@ -274,12 +274,16 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
     /**
      * Find all bookings that are overdue (end time in the past) but not yet marked as COMPLETED.
      * Used by scheduled task to auto-complete bookings.
-     * 
-     * Note: This targets ACTIVE bookings (pre-check-in) and IN_TRIP bookings (during trip).
-     * The scheduler should transition IN_TRIP → COMPLETED when trip ends.
+     *
+     * F-AC-1 FIX: Targets ONLY ACTIVE bookings (pre-check-in orphans where trip time
+     * fully elapsed without check-in opening). IN_TRIP bookings are deliberately EXCLUDED
+     * because they must go through the checkout saga (CheckOutScheduler → CheckoutSagaOrchestrator)
+     * to ensure deposit settlement, damage assessment, and late fee calculation.
+     * Without this exclusion, the hourly auto-complete would race ahead of the 6-hourly
+     * ghost trip handler, marking IN_TRIP bookings as COMPLETED before deposit capture.
      */
     @Query("SELECT b FROM Booking b " +
-           "WHERE b.status IN ('ACTIVE', 'IN_TRIP') " +
+           "WHERE b.status = 'ACTIVE' " +
            "AND b.endTime < :currentTime")
     List<Booking> findOverdueBookings(@Param("currentTime") LocalDateTime currentTime);
 

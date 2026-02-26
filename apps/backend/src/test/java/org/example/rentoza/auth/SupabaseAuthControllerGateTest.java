@@ -273,6 +273,111 @@ class SupabaseAuthControllerGateTest {
         verify(supabaseAuthService).logout("bearer.jwt");
     }
 
+    // =====================================================
+    // P0: Role escalation regression tests
+    // =====================================================
+
+    @Test
+    @DisplayName("P0: Register with ADMIN role in body must NOT create admin — gets USER instead")
+    void register_withAdminRole_shouldDemoteToUser() throws Exception {
+        User user = createUser(301L, "attacker@test.com");
+        user.setRole(Role.USER);
+        UserResponseDTO userResponse = mock(UserResponseDTO.class);
+
+        SupabaseAuthResult pendingResult = SupabaseAuthResult.builder()
+                .user(user)
+                .emailConfirmationPending(true)
+                .build();
+
+        when(passwordPolicyService.validatePasswordStrength(anyString())).thenReturn(java.util.List.of());
+        // Verify the service is called with USER role, not ADMIN
+        when(supabaseAuthService.register(eq("attacker@test.com"), anyString(), anyString(), anyString(), eq(Role.USER)))
+                .thenReturn(pendingResult);
+        when(userService.toUserResponse(any(User.class))).thenReturn(userResponse);
+
+        mockMvc.perform(post("/api/auth/supabase/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "attacker@test.com",
+                                  "password": "StrongP@ss1!",
+                                  "firstName": "Evil",
+                                  "lastName": "Admin",
+                                  "role": "ADMIN"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        // Must be called with USER, not ADMIN
+        verify(supabaseAuthService).register(eq("attacker@test.com"), anyString(), anyString(), anyString(), eq(Role.USER));
+        verify(supabaseAuthService, never()).register(anyString(), anyString(), anyString(), anyString(), eq(Role.ADMIN));
+    }
+
+    @Test
+    @DisplayName("P0: Register with OWNER role still works (valid self-registration role)")
+    void register_withOwnerRole_shouldPassThroughOwner() throws Exception {
+        User user = createUser(302L, "owner@test.com");
+        user.setRole(Role.OWNER);
+        UserResponseDTO userResponse = mock(UserResponseDTO.class);
+
+        SupabaseAuthResult pendingResult = SupabaseAuthResult.builder()
+                .user(user)
+                .emailConfirmationPending(true)
+                .build();
+
+        when(passwordPolicyService.validatePasswordStrength(anyString())).thenReturn(java.util.List.of());
+        when(supabaseAuthService.register(eq("owner@test.com"), anyString(), anyString(), anyString(), eq(Role.OWNER)))
+                .thenReturn(pendingResult);
+        when(userService.toUserResponse(any(User.class))).thenReturn(userResponse);
+
+        mockMvc.perform(post("/api/auth/supabase/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "owner@test.com",
+                                  "password": "StrongP@ss1!",
+                                  "firstName": "Test",
+                                  "lastName": "Owner",
+                                  "role": "OWNER"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        verify(supabaseAuthService).register(eq("owner@test.com"), anyString(), anyString(), anyString(), eq(Role.OWNER));
+    }
+
+    @Test
+    @DisplayName("P0: Register with null role defaults to USER")
+    void register_withNullRole_shouldDefaultToUser() throws Exception {
+        User user = createUser(303L, "norol@test.com");
+        user.setRole(Role.USER);
+        UserResponseDTO userResponse = mock(UserResponseDTO.class);
+
+        SupabaseAuthResult pendingResult = SupabaseAuthResult.builder()
+                .user(user)
+                .emailConfirmationPending(true)
+                .build();
+
+        when(passwordPolicyService.validatePasswordStrength(anyString())).thenReturn(java.util.List.of());
+        when(supabaseAuthService.register(eq("norol@test.com"), anyString(), anyString(), anyString(), eq(Role.USER)))
+                .thenReturn(pendingResult);
+        when(userService.toUserResponse(any(User.class))).thenReturn(userResponse);
+
+        mockMvc.perform(post("/api/auth/supabase/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "norol@test.com",
+                                  "password": "StrongP@ss1!",
+                                  "firstName": "Test",
+                                  "lastName": "User"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        verify(supabaseAuthService).register(eq("norol@test.com"), anyString(), anyString(), anyString(), eq(Role.USER));
+    }
+
     private User createUser(Long id, String email) {
         User user = new User();
         user.setId(id);

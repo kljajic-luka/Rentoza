@@ -47,7 +47,7 @@ public class SupabaseJwtUtil {
     private static final Logger log = LoggerFactory.getLogger(SupabaseJwtUtil.class);
 
     private final String supabaseUrl;
-    private final String jwtSecret; // Fallback for HS256 if needed
+    private final String jwtSecret; // Retained for JwtUtil consumers; not used for Supabase token validation
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final RestTemplate restTemplate = new RestTemplate();
     
@@ -101,13 +101,11 @@ public class SupabaseJwtUtil {
             String kid = header.has("kid") ? header.get("kid").asText() : null;
             
             log.debug("Validating JWT with alg={}, kid={}", alg, kid);
-            
+
             if ("ES256".equals(alg)) {
                 return validateEs256Token(token, kid);
-            } else if ("HS256".equals(alg)) {
-                return validateHs256Token(token);
             } else {
-                log.warn("Unsupported JWT algorithm: {}", alg);
+                log.warn("Rejected non-ES256 Supabase token (alg={})", alg);
                 return false;
             }
         } catch (ExpiredJwtException e) {
@@ -135,9 +133,11 @@ public class SupabaseJwtUtil {
                 log.error("No public key found for kid: {}", kid);
                 return false;
             }
-            
+
             Jwts.parserBuilder()
                     .setSigningKey(publicKey)
+                    .requireIssuer(supabaseUrl + "/auth/v1")
+                    .requireAudience("authenticated")
                     .build()
                     .parseClaimsJws(token);
             return true;
@@ -146,26 +146,6 @@ public class SupabaseJwtUtil {
             return false;
         } catch (Exception e) {
             log.warn("ES256 JWT validation failed: {}", e.getMessage());
-            return false;
-        }
-    }
-    
-    /**
-     * Validate HS256 (HMAC) signed JWT using shared secret (fallback).
-     */
-    private boolean validateHs256Token(String token) {
-        try {
-            byte[] keyBytes = Base64.getDecoder().decode(jwtSecret);
-            Jwts.parserBuilder()
-                    .setSigningKey(keyBytes)
-                    .build()
-                    .parseClaimsJws(token);
-            return true;
-        } catch (ExpiredJwtException e) {
-            log.debug("HS256 JWT expired");
-            return false;
-        } catch (Exception e) {
-            log.warn("HS256 JWT validation failed: {}", e.getMessage());
             return false;
         }
     }
@@ -343,27 +323,22 @@ public class SupabaseJwtUtil {
             // Parse header to determine algorithm
             String[] parts = token.split("\\.");
             if (parts.length < 2) return null;
-            
+
             String headerJson = new String(Base64.getUrlDecoder().decode(parts[0]));
             JsonNode header = objectMapper.readTree(headerJson);
-            String alg = header.has("alg") ? header.get("alg").asText() : "HS256";
             String kid = header.has("kid") ? header.get("kid").asText() : null;
-            
-            JwtParserBuilder parserBuilder = Jwts.parserBuilder();
-            
-            if ("ES256".equals(alg)) {
-                PublicKey publicKey = getPublicKey(kid);
-                if (publicKey == null) {
-                    log.warn("No public key found for claims extraction");
-                    return parseClaimsWithoutVerification(token);
-                }
-                parserBuilder.setSigningKey(publicKey);
-            } else {
-                byte[] keyBytes = Base64.getDecoder().decode(jwtSecret);
-                parserBuilder.setSigningKey(keyBytes);
+
+            PublicKey publicKey = getPublicKey(kid);
+            if (publicKey == null) {
+                log.warn("No public key found for claims extraction");
+                return parseClaimsWithoutVerification(token);
             }
-            
-            return parserBuilder.build().parseClaimsJws(token).getBody();
+
+            return Jwts.parserBuilder()
+                    .setSigningKey(publicKey)
+                    .build()
+                    .parseClaimsJws(token)
+                    .getBody();
         } catch (ExpiredJwtException e) {
             // For expired tokens, we can still extract claims
             return e.getClaims();

@@ -451,7 +451,9 @@ public class SupabaseAuthController {
                 ));
             }
 
-            Role role = dto.getRole() != null ? dto.getRole() : Role.USER;
+            // SECURITY: Only USER and OWNER are valid self-registration roles
+            Role role = (dto.getRole() == Role.USER || dto.getRole() == Role.OWNER)
+                    ? dto.getRole() : Role.USER;
 
             SupabaseAuthResult result = supabaseAuthService.register(
                     dto.getEmail(),
@@ -845,11 +847,11 @@ public class SupabaseAuthController {
                 .domain(getCookieDomain())
                 .build();
 
-        // Refresh token cookie
+        // Refresh token cookie — scoped to refresh endpoint to minimize exposure
         ResponseCookie refreshCookie = ResponseCookie.from(CookieConstants.REFRESH_TOKEN, refreshToken)
                 .httpOnly(true)
                 .secure(appProperties.getCookie().isSecure())
-                .path("/")
+                .path("/api/auth/supabase/refresh")
                 .sameSite(appProperties.getCookie().getSameSite())
                 .maxAge(Duration.ofDays(REFRESH_TOKEN_EXPIRY_DAYS))
                 .domain(getCookieDomain())
@@ -873,8 +875,19 @@ public class SupabaseAuthController {
                 .domain(getCookieDomain())
                 .build();
 
-        // Clear refresh token
+        // Clear refresh token on the new narrowed path
         ResponseCookie clearedRefresh = ResponseCookie.from(CookieConstants.REFRESH_TOKEN, "")
+                .httpOnly(true)
+                .secure(appProperties.getCookie().isSecure())
+                .path("/api/auth/supabase/refresh")
+                .sameSite(appProperties.getCookie().getSameSite())
+                .maxAge(0)
+                .domain(getCookieDomain())
+                .build();
+
+        // Clear legacy refresh cookie on the old root path (rollout transition)
+        // Old cookies set with path=/ persist until explicitly cleared on the same path
+        ResponseCookie clearedLegacyRefresh = ResponseCookie.from(CookieConstants.REFRESH_TOKEN, "")
                 .httpOnly(true)
                 .secure(appProperties.getCookie().isSecure())
                 .path("/")
@@ -885,6 +898,7 @@ public class SupabaseAuthController {
 
         response.addHeader("Set-Cookie", clearedAccess.toString());
         response.addHeader("Set-Cookie", clearedRefresh.toString());
+        response.addHeader("Set-Cookie", clearedLegacyRefresh.toString());
     }
 
     private String getCookieDomain() {

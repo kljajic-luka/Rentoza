@@ -17,6 +17,7 @@ import org.example.chatservice.service.FileStorageService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -364,18 +365,12 @@ public class ChatController {
      * - Returns all conversations regardless of participant
      * - Audit-logged
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/admin/conversations")
     public ResponseEntity<List<ConversationDTO>> getAdminConversations(
             Authentication authentication
     ) {
         Long adminUserId = extractUserId(authentication);
-
-        boolean isAdmin = authentication.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN") || a.getAuthority().equals("ADMIN"));
-        if (!isAdmin) {
-            log.warn("[Security] Non-admin user {} attempted to list all conversations", adminUserId);
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-        }
 
         log.info("[Admin][Audit] Admin user {} listing all conversations", adminUserId);
         List<ConversationDTO> conversations = chatService.getAllConversationsForAdmin();
@@ -394,6 +389,7 @@ public class ChatController {
      * @param authentication The authenticated admin user
      * @return Full conversation with all messages (unpaginated for dispute review)
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/admin/conversations/{bookingId}/transcript")
     public ResponseEntity<ConversationDTO> getAdminTranscript(
             @PathVariable String bookingId,
@@ -402,26 +398,17 @@ public class ChatController {
         Long adminUserId = extractUserId(authentication);
         Long bookingIdLong = Long.parseLong(bookingId);
 
-        // Verify admin role
-        boolean isAdmin = authentication.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN") || a.getAuthority().equals("ADMIN"));
-        if (!isAdmin) {
-            log.warn("[Security] Non-admin user {} attempted to access admin transcript for booking {}", 
-                    adminUserId, bookingIdLong);
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-        }
-
-        log.info("[Admin][Audit] Admin user {} accessing transcript for booking {} (dispute resolution)", 
+        log.info("[Admin][Audit] Admin user {} accessing transcript for booking {} (dispute resolution)",
                 adminUserId, bookingIdLong);
 
         // Fetch full transcript without participant check (admin override)
         ConversationDTO transcript = chatService.getConversationForAdmin(bookingIdLong);
-        
-        log.info("[Admin][Audit] Admin user {} retrieved {} messages for booking {}", 
-                adminUserId, 
+
+        log.info("[Admin][Audit] Admin user {} retrieved {} messages for booking {}",
+                adminUserId,
                 transcript.getMessages() != null ? transcript.getMessages().size() : 0,
                 bookingIdLong);
-        
+
         return ResponseEntity.ok(transcript);
     }
 
@@ -556,6 +543,7 @@ public class ChatController {
      * @param authentication The authenticated admin user
      * @return Paginated list of flagged messages with moderation details
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/admin/messages/flagged")
     public ResponseEntity<?> getFlaggedMessages(
             @RequestParam(defaultValue = "0") int page,
@@ -563,17 +551,10 @@ public class ChatController {
             Authentication authentication
     ) {
         Long adminUserId = extractUserId(authentication);
-        
-        boolean isAdmin = authentication.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN") || a.getAuthority().equals("ADMIN"));
-        if (!isAdmin) {
-            log.warn("[Security] Non-admin user {} attempted to access flagged messages queue", adminUserId);
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-        }
-        
+
         if (size > 50) size = 50;
-        
-        log.info("[Admin][Audit] Admin user {} accessing flagged messages queue (page={}, size={})", 
+
+        log.info("[Admin][Audit] Admin user {} accessing flagged messages queue (page={}, size={})",
                 adminUserId, page, size);
         
         Page<Message> flaggedMessages = messageRepository.findFlaggedMessages(PageRequest.of(page, size));
@@ -597,16 +578,11 @@ public class ChatController {
     /**
      * Admin-only: Get count of flagged messages (for dashboard badge).
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/admin/messages/flagged/count")
     public ResponseEntity<?> getFlaggedMessageCount(Authentication authentication) {
         Long adminUserId = extractUserId(authentication);
-        
-        boolean isAdmin = authentication.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN") || a.getAuthority().equals("ADMIN"));
-        if (!isAdmin) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-        }
-        
+
         long count = messageRepository.countFlaggedMessages();
         return ResponseEntity.ok(Map.of("count", count));
     }
@@ -614,30 +590,25 @@ public class ChatController {
     /**
      * Admin-only: Dismiss moderation flags on a message (mark as reviewed/OK).
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/admin/messages/{messageId}/dismiss-flags")
     public ResponseEntity<?> dismissFlags(
             @PathVariable Long messageId,
             Authentication authentication
     ) {
         Long adminUserId = extractUserId(authentication);
-        
-        boolean isAdmin = authentication.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN") || a.getAuthority().equals("ADMIN"));
-        if (!isAdmin) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-        }
-        
+
         Message msg = messageRepository.findById(messageId).orElse(null);
         if (msg == null) {
             return ResponseEntity.notFound().build();
         }
-        
-        log.info("[Admin][Audit] Admin user {} dismissed moderation flags on message {} (flags were: {})", 
+
+        log.info("[Admin][Audit] Admin user {} dismissed moderation flags on message {} (flags were: {})",
                 adminUserId, messageId, msg.getModerationFlags());
-        
+
         msg.setModerationFlags(null);
         messageRepository.save(msg);
-        
+
         return ResponseEntity.ok(Map.of("message", "Flags dismissed"));
     }
 }

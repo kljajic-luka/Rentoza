@@ -716,6 +716,12 @@ public class SupabaseAuthService {
             String lastName,
             Role role
     ) {
+        // Defense-in-depth: reject ADMIN role in self-registration even if controller missed it
+        if (role == null || role == Role.ADMIN) {
+            log.warn("SECURITY: Rejected non-registerable role {} for: {}", role, email);
+            role = Role.USER;
+        }
+
         // Check if email already exists in Rentoza
         if (userRepository.findByEmail(email).isPresent()) {
             throw new SupabaseAuthException("Email already registered");

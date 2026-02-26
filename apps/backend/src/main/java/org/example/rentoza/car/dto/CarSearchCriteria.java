@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.example.rentoza.car.CarFilterCriteria;
 import org.example.rentoza.car.Feature;
 import org.example.rentoza.car.FuelType;
 import org.example.rentoza.car.TransmissionType;
@@ -18,7 +19,7 @@ import java.util.List;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class CarSearchCriteria {
+public class CarSearchCriteria implements CarFilterCriteria {
 
     // Price filtering
     private Double minPrice;
@@ -59,6 +60,11 @@ public class CarSearchCriteria {
     private Integer page;
     private Integer size;
     private String sort;  // e.g., "price,asc" or "year,desc"
+
+    @Override
+    public FuelType getResolvedFuelType() {
+        return fuelType;
+    }
 
     /**
      * Normalize and validate criteria

@@ -15,6 +15,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 
 public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpecificationExecutor<Booking> {
@@ -1111,5 +1112,32 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
     List<Booking> findBookingsWithExpiringAuth(
         @Param("thresholdTime") Instant thresholdTime,
         @Param("status") ChargeLifecycleStatus status
+    );
+
+    // ========== BATCH AVAILABILITY QUERIES (P2 N+1 fix) ==========
+
+    /**
+     * Batch: find car IDs that have at least one overlapping booking in blocking status.
+     *
+     * Blocking statuses (same as {@link #existsOverlappingBookings}):
+     * PENDING_APPROVAL, ACTIVE, CHECK_IN_OPEN, CHECK_IN_HOST_COMPLETE,
+     * CHECK_IN_COMPLETE, IN_TRIP
+     *
+     * Overlap formula: (booking.startTime < requestedEnd) AND (booking.endTime > requestedStart)
+     *
+     * @param carIds    Candidate car IDs
+     * @param startTime Requested range start
+     * @param endTime   Requested range end
+     * @return Car IDs with at least one overlapping blocking booking
+     */
+    @Query("SELECT DISTINCT b.car.id FROM Booking b " +
+           "WHERE b.car.id IN :carIds " +
+           "AND b.status IN ('PENDING_APPROVAL', 'ACTIVE', 'CHECK_IN_OPEN', " +
+           "    'CHECK_IN_HOST_COMPLETE', 'CHECK_IN_COMPLETE', 'IN_TRIP') " +
+           "AND b.startTime < :endTime AND b.endTime > :startTime")
+    List<Long> findCarIdsWithOverlappingBookings(
+            @Param("carIds") Collection<Long> carIds,
+            @Param("startTime") LocalDateTime startTime,
+            @Param("endTime") LocalDateTime endTime
     );
 }

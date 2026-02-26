@@ -4,7 +4,9 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.example.rentoza.car.CarFilterCriteria;
 import org.example.rentoza.car.Feature;
+import org.example.rentoza.car.FuelType;
 import org.example.rentoza.car.TransmissionType;
 
 import java.time.Duration;
@@ -46,7 +48,7 @@ import java.util.List;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class AvailabilitySearchRequestDTO {
+public class AvailabilitySearchRequestDTO implements CarFilterCriteria {
 
     // ========== Core Availability Params (Required) ==========
 
@@ -222,6 +224,14 @@ public class AvailabilitySearchRequestDTO {
      */
     public boolean hasGeospatialCoordinates() {
         return latitude != null && longitude != null;
+    }
+
+    @Override
+    public FuelType getResolvedFuelType() {
+        if (fuelType == null || fuelType.isBlank()) {
+            return null;
+        }
+        return FuelType.fromAlias(fuelType);
     }
 
     /**

@@ -701,59 +701,20 @@ public class CarService {
      * - available = true
      * - approvalStatus = APPROVED
      *
-     * Optional filters applied when present:
-     * - minPrice / maxPrice
-     * - make (brand, case-insensitive contains)
-     * - model (case-insensitive contains)
-     * - minYear / maxYear
-     * - location (case-insensitive contains)
-     * - minSeats
-     * - transmission
-     * - features (car must have ALL requested features)
-     * - vehicleType (comma-separated list matched against brand+model, e.g. "SUV")
+     * Optional filters delegated to {@link CarFilterEngine#buildSpecification}
+     * to ensure consistency with the availability-search in-memory path.
+     *
+     * Location filter is CarService-specific (availability search handles location
+     * via geospatial/city queries before the filter stage).
      */
     private Specification<Car> buildSearchSpecification(CarSearchCriteria criteria) {
-        Specification<Car> spec = Specification.where(null);
-
         // CRITICAL: Only show APPROVED and available cars in public search
-        spec = spec.and((root, query, cb) ->
-                cb.equal(root.get("available"), true));
+        Specification<Car> spec = Specification.where(
+                (root, query, cb) -> cb.equal(root.get("available"), true));
         spec = spec.and((root, query, cb) ->
                 cb.equal(root.get("approvalStatus"), ApprovalStatus.APPROVED));
 
-        // Price range
-        if (criteria.getMinPrice() != null) {
-            spec = spec.and((root, query, cb) ->
-                    cb.greaterThanOrEqualTo(root.get("pricePerDay"), java.math.BigDecimal.valueOf(criteria.getMinPrice())));
-        }
-        if (criteria.getMaxPrice() != null) {
-            spec = spec.and((root, query, cb) ->
-                    cb.lessThanOrEqualTo(root.get("pricePerDay"), java.math.BigDecimal.valueOf(criteria.getMaxPrice())));
-        }
-
-        // Brand (make) filter - case-insensitive contains
-        if (criteria.getMake() != null && !criteria.getMake().isBlank()) {
-            spec = spec.and((root, query, cb) ->
-                    cb.like(cb.lower(root.get("brand")), "%" + criteria.getMake().toLowerCase().trim() + "%"));
-        }
-
-        // Model filter - case-insensitive contains
-        if (criteria.getModel() != null && !criteria.getModel().isBlank()) {
-            spec = spec.and((root, query, cb) ->
-                    cb.like(cb.lower(root.get("model")), "%" + criteria.getModel().toLowerCase().trim() + "%"));
-        }
-
-        // Year range
-        if (criteria.getMinYear() != null) {
-            spec = spec.and((root, query, cb) ->
-                    cb.greaterThanOrEqualTo(root.get("year"), criteria.getMinYear()));
-        }
-        if (criteria.getMaxYear() != null) {
-            spec = spec.and((root, query, cb) ->
-                    cb.lessThanOrEqualTo(root.get("year"), criteria.getMaxYear()));
-        }
-
-        // Location filter - case-insensitive contains on city or legacy location field
+        // Location filter (CarService-specific — not in CarFilterEngine)
         if (criteria.getLocation() != null && !criteria.getLocation().isBlank()) {
             String loc = criteria.getLocation().toLowerCase().trim();
             spec = spec.and((root, query, cb) ->
@@ -763,65 +724,8 @@ public class CarService {
                     ));
         }
 
-        // Minimum seats
-        if (criteria.getMinSeats() != null) {
-            spec = spec.and((root, query, cb) ->
-                    cb.greaterThanOrEqualTo(root.get("seats"), criteria.getMinSeats()));
-        }
-
-        // Transmission type
-        if (criteria.getTransmission() != null) {
-            spec = spec.and((root, query, cb) ->
-                    cb.equal(root.get("transmissionType"), criteria.getTransmission()));
-        }
-
-        // Features filter: car must have ALL requested features
-        if (criteria.getFeatures() != null && !criteria.getFeatures().isEmpty()) {
-            for (Feature feature : criteria.getFeatures()) {
-                spec = spec.and((root, query, cb) ->
-                        cb.isMember(feature, root.get("features")));
-            }
-        }
-
-        // Vehicle type filter: match against brand+model+description
-        // Supports comma-separated multi-select from frontend (e.g. "SUV,Sedan")
-        if (criteria.getVehicleType() != null && !criteria.getVehicleType().isBlank()) {
-            String[] tokens = criteria.getVehicleType().split(",");
-            // Build OR predicate: car matches ANY of the supplied vehicle types
-            spec = spec.and((root, query, cb) -> {
-                jakarta.persistence.criteria.Predicate[] alternatives = java.util.Arrays.stream(tokens)
-                        .map(String::trim)
-                        .filter(t -> !t.isEmpty())
-                        .map(String::toLowerCase)
-                        .map(vt -> cb.or(
-                                cb.like(cb.lower(root.get("brand")), "%" + vt + "%"),
-                                cb.like(cb.lower(root.get("model")), "%" + vt + "%"),
-                                cb.like(cb.lower(root.get("description")), "%" + vt + "%")
-                        ))
-                        .toArray(jakarta.persistence.criteria.Predicate[]::new);
-                return cb.or(alternatives);
-            });
-        }
-
-        // Fuel type filter: exact match on Car.fuelType enum
-        if (criteria.getFuelType() != null) {
-            spec = spec.and((root, query, cb) ->
-                    cb.equal(root.get("fuelType"), criteria.getFuelType()));
-        }
-
-        // Free-text query (q): OR across brand, model, location, description
-        // Accent-insensitive: frontend normalizes before sending (š→s, ć→c, etc.)
-        if (criteria.getQ() != null && !criteria.getQ().isBlank()) {
-            String qLower = criteria.getQ().toLowerCase().trim();
-            spec = spec.and((root, query, cb) ->
-                cb.or(
-                    cb.like(cb.lower(root.get("brand")),       "%" + qLower + "%"),
-                    cb.like(cb.lower(root.get("model")),       "%" + qLower + "%"),
-                    cb.like(cb.lower(root.get("location")),    "%" + qLower + "%"),
-                    cb.like(cb.lower(root.get("description")), "%" + qLower + "%")
-                )
-            );
-        }
+        // Delegate all shared filter criteria to the centralized engine
+        spec = spec.and(CarFilterEngine.buildSpecification(criteria));
 
         return spec;
     }

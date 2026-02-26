@@ -6,6 +6,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -144,4 +145,49 @@ public interface BlockedDateRepository extends JpaRepository<BlockedDate, Long> 
             """,
             nativeQuery = true)
     List<BlockedDate> findEffectiveByCarIdOrderByStartDateAsc(@Param("carId") Long carId);
+
+    // =========================================================================
+    // Batch availability queries (P2 N+1 fix)
+    //
+    // Return the set of car IDs (from a given candidate set) that have at least
+    // one effective blocked date overlapping the requested range.  One query
+    // replaces N per-car calls in the search hot-path.
+    // =========================================================================
+
+    /**
+     * Batch: find car IDs with effective overlapping blocked dates.
+     * Mirrors the logic of {@link #existsEffectiveOverlappingBlockedDates} but
+     * operates on a collection of car IDs in a single round-trip.
+     *
+     * @param carIds    Candidate car IDs
+     * @param startDate Range start (inclusive)
+     * @param endDate   Range end (inclusive)
+     * @return Car IDs that have at least one effective overlapping blocked date
+     */
+    @Query(value = """
+            SELECT DISTINCT bd.car_id
+            FROM   blocked_dates bd
+            WHERE  bd.car_id IN (:carIds)
+              AND  bd.start_date <= :endDate
+              AND  bd.end_date   >= :startDate
+              AND  (
+                       bd.booking_id IS NULL
+                   OR EXISTS (
+                       SELECT 1 FROM bookings b
+                       WHERE  b.id = bd.booking_id
+                         AND  b.status IN (
+                                 'ACTIVE','APPROVED','CHECK_IN_OPEN',
+                                 'CHECK_IN_HOST_COMPLETE','CHECK_IN_COMPLETE',
+                                 'CHECK_IN_DISPUTE','IN_TRIP','CHECKOUT_OPEN',
+                                 'CHECKOUT_GUEST_COMPLETE','CHECKOUT_HOST_COMPLETE'
+                              )
+                   )
+              )
+            """,
+            nativeQuery = true)
+    List<Long> findCarIdsWithEffectiveOverlappingBlockedDates(
+            @Param("carIds") Collection<Long> carIds,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate
+    );
 }

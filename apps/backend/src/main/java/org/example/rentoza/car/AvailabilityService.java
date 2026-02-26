@@ -21,7 +21,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.example.rentoza.review.ReviewDirection;
 import org.example.rentoza.review.ReviewRepository;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
@@ -73,13 +72,12 @@ public class AvailabilityService {
     /**
      * Search for cars available in a specific location and time range.
      *
-     * UPGRADED Algorithm:
-     * 1. Fetch candidate cars:
-     *    - If geospatial coordinates provided: use findNearby() spatial query
-     *    - Otherwise: use findAvailableWithDetailsByLocation() string query
-     * 2. For each car, check if it's available in the requested time range
-     * 3. Apply in-memory filters (price, make, transmission, features, etc.)
-     * 4. Apply pagination to results
+     * Algorithm (P2 batch-optimized):
+     * 1. Fetch candidate cars (geospatial or location-string based)
+     * 2. Batch-query blocked-date and booking overlaps for ALL candidates at once
+     *    (replaces per-car N+1 calls)
+     * 3. Apply rental-duration and filter criteria
+     * 4. Sort and paginate
      *
      * @param request Validated AvailabilitySearchRequestDTO
      * @return Paginated list of available cars
@@ -110,15 +108,47 @@ public class AvailabilityService {
             .filter(car -> car.getApprovalStatus() == org.example.rentoza.car.ApprovalStatus.APPROVED)
             .collect(Collectors.toList());
 
-        // Step 2: Filter by time-based availability
+        // Step 2: Batch availability filtering (P2 fix — eliminates N+1)
         LocalDateTime requestedStart = request.getStartDateTime();
         LocalDateTime requestedEnd = request.getEndDateTime();
 
-        List<Car> availableCars = candidateCars.stream()
-            .filter(car -> isCarAvailableInTimeRange(car, requestedStart, requestedEnd))
-            .toList();
+        List<Car> availableCars;
+        if (candidateCars.isEmpty()) {
+            availableCars = List.of();
+        } else {
+            List<Long> candidateIds = candidateCars.stream()
+                    .map(Car::getId)
+                    .toList();
 
-        log.debug("[AvailabilityService] After time filtering: {} available cars", availableCars.size());
+            // Single query: find car IDs blocked by effective blocked dates
+            Set<Long> blockedByDates = Set.copyOf(
+                    blockedDateRepository.findCarIdsWithEffectiveOverlappingBlockedDates(
+                            candidateIds,
+                            requestedStart.toLocalDate(),
+                            requestedEnd.toLocalDate()
+                    ));
+
+            // Single query: find car IDs with overlapping bookings in blocking status
+            Set<Long> blockedByBookings = Set.copyOf(
+                    bookingRepository.findCarIdsWithOverlappingBookings(
+                            candidateIds,
+                            requestedStart,
+                            requestedEnd
+                    ));
+
+            // Combine unavailable sets and filter
+            Set<Long> unavailableCarIds = new java.util.HashSet<>(blockedByDates);
+            unavailableCarIds.addAll(blockedByBookings);
+
+            availableCars = candidateCars.stream()
+                    .filter(car -> !unavailableCarIds.contains(car.getId()))
+                    .toList();
+
+            log.debug("[AvailabilityService] Batch availability: {} blocked by dates, {} by bookings, " +
+                            "{} available (from {} candidates)",
+                    blockedByDates.size(), blockedByBookings.size(),
+                    availableCars.size(), candidateCars.size());
+        }
 
         // Step 3a: ALWAYS filter by rental duration constraints (min/max days)
         // This is critical - owners set these limits and they must be respected
@@ -360,6 +390,7 @@ public class AvailabilityService {
 
     /**
      * Check if a car matches all active filter criteria.
+     * Delegates to {@link CarFilterEngine#matchesCar} for consistent filter semantics.
      *
      * @param car Car to check
      * @param request Request containing filter criteria
@@ -369,119 +400,7 @@ public class AvailabilityService {
         // NOTE: Rental duration constraints (min/max days) are checked by
         // filterByRentalDuration() which runs BEFORE this method.
         // Do NOT duplicate that logic here.
-
-        // ========== PRICE FILTERS ==========
-        if (request.getMinPrice() != null &&
-            car.getPricePerDay().compareTo(BigDecimal.valueOf(request.getMinPrice())) < 0) {
-            return false;
-        }
-        if (request.getMaxPrice() != null &&
-            car.getPricePerDay().compareTo(BigDecimal.valueOf(request.getMaxPrice())) > 0) {
-            return false;
-        }
-
-        // Make/Brand filter (case-insensitive contains match)
-        if (request.getMake() != null && !request.getMake().isBlank()) {
-            String carBrand = car.getBrand() != null ? car.getBrand().toLowerCase() : "";
-            String filterMake = request.getMake().toLowerCase().trim();
-            if (!carBrand.contains(filterMake)) {
-                return false;
-            }
-        }
-
-        // Model filter (case-insensitive contains match)
-        if (request.getModel() != null && !request.getModel().isBlank()) {
-            String carModel = car.getModel() != null ? car.getModel().toLowerCase() : "";
-            String filterModel = request.getModel().toLowerCase().trim();
-            if (!carModel.contains(filterModel)) {
-                return false;
-            }
-        }
-
-        // Year filters
-        if (request.getMinYear() != null && car.getYear() < request.getMinYear()) {
-            return false;
-        }
-        if (request.getMaxYear() != null && car.getYear() > request.getMaxYear()) {
-            return false;
-        }
-
-        // Seats filter
-        if (request.getMinSeats() != null) {
-            Integer carSeats = car.getSeats();
-            if (carSeats == null || carSeats < request.getMinSeats()) {
-                return false;
-            }
-        }
-
-        // Transmission filter
-        if (request.getTransmission() != null) {
-            if (car.getTransmissionType() != request.getTransmission()) {
-                return false;
-            }
-        }
-
-        // Features filter (car must have ALL requested features)
-        if (request.getFeatures() != null && !request.getFeatures().isEmpty()) {
-            Set<Feature> carFeatures = car.getFeatures();
-            if (carFeatures == null || carFeatures.isEmpty()) {
-                return false;
-            }
-            for (Feature requiredFeature : request.getFeatures()) {
-                if (!carFeatures.contains(requiredFeature)) {
-                    return false;
-                }
-            }
-        }
-
-        // P2 FIX: Vehicle type filter (sedan, SUV, van, etc.)
-        // Supports comma-separated multi-select from frontend (e.g. "SUV,Sedan")
-        if (request.getVehicleType() != null && !request.getVehicleType().isBlank()) {
-            String carBrand = car.getBrand() != null ? car.getBrand().toLowerCase() : "";
-            String carModel = car.getModel() != null ? car.getModel().toLowerCase() : "";
-            String carDesc = car.getDescription() != null ? car.getDescription().toLowerCase() : "";
-            String[] tokens = request.getVehicleType().split(",");
-            boolean anyMatch = false;
-            for (String token : tokens) {
-                String vt = token.trim().toLowerCase();
-                if (!vt.isEmpty() && (carBrand.contains(vt) || carModel.contains(vt) || carDesc.contains(vt))) {
-                    anyMatch = true;
-                    break;
-                }
-            }
-            if (!anyMatch) {
-                return false;
-            }
-        }
-
-        // P3 FIX: Fuel type filter (accepts fuelType sent by frontend)
-        // Uses FuelType.fromAlias() to accept both English (PETROL) and Serbian (BENZIN) names
-        if (request.getFuelType() != null && !request.getFuelType().isBlank()) {
-            FuelType requestedFuelType = FuelType.fromAlias(request.getFuelType());
-            if (requestedFuelType != null && car.getFuelType() != requestedFuelType) {
-                return false;
-            }
-            if (requestedFuelType == null) {
-                log.warn("[AvailabilityService] Unrecognised fuelType filter value: {}", request.getFuelType());
-            }
-        }
-
-        // Free-text query (q): OR across brand, model, location, description
-        // Accent-insensitive: frontend normalizes before sending (š→s, ć→c, etc.)
-        if (request.getQ() != null && !request.getQ().isBlank()) {
-            String q = request.getQ().toLowerCase().trim();
-            String carBrand    = car.getBrand()       != null ? car.getBrand().toLowerCase()       : "";
-            String carModel    = car.getModel()       != null ? car.getModel().toLowerCase()       : "";
-            String carLocation = car.getLocation()    != null ? car.getLocation().toLowerCase()    : "";
-            String carDesc     = car.getDescription() != null ? car.getDescription().toLowerCase() : "";
-            boolean qMatch = carBrand.contains(q) || carModel.contains(q)
-                          || carLocation.contains(q) || carDesc.contains(q);
-            if (!qMatch) {
-                return false;
-            }
-        }
-
-        return true;
+        return CarFilterEngine.matchesCar(car, request);
     }
 
     /**

@@ -109,7 +109,9 @@ selected by `PAYMENT_PROVIDER` env var and wired via `@ConditionalOnProperty` in
 No payment credentials needed. `staging.env` sets:
 
 - `PAYMENT_PROVIDER=MOCK` — credentialless mock adapter
-- `SPRING_PROFILE=staging` — loads `application-staging.properties` (no `enforce-real-provider`)
+- `SPRING_PROFILE=prod,staging` — loads `application-prod.properties` for all infrastructure
+  properties (Supabase, CORS, OAuth, Redis, etc.), then `application-staging.properties`
+  overrides payment-specific settings (`enforce-real-provider=false`, MOCK provider)
 - `MONRI_API_URL=https://ipgtest.monri.com` — inert when MOCK, pre-configured for integration testing
 
 ### Production (Monri mode)

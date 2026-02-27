@@ -30,6 +30,16 @@ public class EmailNotificationChannel implements NotificationChannel {
         this.mailService = Optional.ofNullable(mailService);
     }
 
+    /**
+     * C1 FIX: Exceptions propagate to sendThroughChannels() so the outbox
+     * pattern can persist a retry entry. isEnabled() already guards mailService.isPresent().
+     *
+     * <p>{@link MailService#sendNotificationEmail} is {@code @Async} and returns
+     * {@code CompletableFuture<Void>}.  We call {@code .join()} to block until
+     * SMTP delivery completes (or fails).  On {@code MessagingException} the
+     * future is completed exceptionally, and {@code .join()} re-throws as
+     * {@code CompletionException} — which propagates to the outbox layer.</p>
+     */
     @Override
     public void send(Notification notification) {
         if (!isEnabled()) {
@@ -37,29 +47,25 @@ public class EmailNotificationChannel implements NotificationChannel {
             return;
         }
 
-        mailService.ifPresent(service -> {
-            try {
-                String recipientEmail = notification.getRecipient().getEmail();
-                String subject = getSubjectForType(notification.getType().name());
+        MailService service = mailService.orElseThrow(() ->
+                new IllegalStateException("MailService unavailable despite isEnabled()=true"));
 
-                // Delegate to MailService for async sending
-                service.sendNotificationEmail(
-                        recipientEmail,
-                        subject,
-                        notification.getMessage(),
-                        notification.getType(),
-                        notification.getRelatedEntityId()
-                );
+        String recipientEmail = notification.getRecipient().getEmail();
+        String subject = getSubjectForType(notification.getType().name());
 
-                log.debug("Email notification queued for user {} ({})",
-                        notification.getRecipient().getId(),
-                        recipientEmail);
-            } catch (Exception e) {
-                log.error("Failed to queue email notification for user {}: {}",
-                        notification.getRecipient().getId(),
-                        e.getMessage(), e);
-            }
-        });
+        // C1 FIX: .join() blocks until SMTP delivery completes so failures
+        // surface as CompletionException → outbox entry created for retry.
+        service.sendNotificationEmail(
+                recipientEmail,
+                subject,
+                notification.getMessage(),
+                notification.getType(),
+                notification.getRelatedEntityId()
+        ).join();
+
+        log.debug("Email notification sent for user {} ({})",
+                notification.getRecipient().getId(),
+                recipientEmail);
     }
 
     @Override
@@ -123,6 +129,7 @@ public class EmailNotificationChannel implements NotificationChannel {
             
             // Disputes
             case "DISPUTE_RESOLVED" -> "📋 Spor je rešen - Rentoza";
+            case "DISPUTE_ESCALATED" -> "⚠️ Spor eskaliran na višu instancu - Rentoza";
             
             default -> "Obaveštenje - Rentoza";
         };

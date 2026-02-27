@@ -187,14 +187,17 @@ public class NotificationController {
             @org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal) {
 
         try {
-            // Verify authenticated (no need to check user ID for unregistration, but principal ensures it)
             if (principal == null) {
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "Unauthorized"));
             }
 
-            notificationService.unregisterDeviceToken(request.getDeviceToken());
+            // C5 FIX: Pass authenticated userId for ownership verification
+            notificationService.unregisterDeviceToken(request.getDeviceToken(), principal.id());
             return ResponseEntity.ok(Map.of("message", "Device token unregistered successfully"));
 
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
             log.error("Failed to unregister device token: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)

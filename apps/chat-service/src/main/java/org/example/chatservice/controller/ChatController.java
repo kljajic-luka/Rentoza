@@ -589,6 +589,8 @@ public class ChatController {
 
     /**
      * Admin-only: Dismiss moderation flags on a message (mark as reviewed/OK).
+     * D3 FIX: Preserves moderation history by recording reviewedBy/reviewedAt/reviewOutcome
+     * instead of erasing the original flags.
      */
     @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/admin/messages/{messageId}/dismiss-flags")
@@ -606,9 +608,13 @@ public class ChatController {
         log.info("[Admin][Audit] Admin user {} dismissed moderation flags on message {} (flags were: {})",
                 adminUserId, messageId, msg.getModerationFlags());
 
-        msg.setModerationFlags(null);
+        // D3 FIX: Preserve flags and record review metadata for retrospective analysis
+        msg.setReviewedBy(adminUserId);
+        msg.setReviewedAt(java.time.LocalDateTime.now());
+        msg.setReviewOutcome("DISMISSED");
+        // NOTE: moderationFlags are intentionally NOT nulled — preserved for audit history
         messageRepository.save(msg);
 
-        return ResponseEntity.ok(Map.of("message", "Flags dismissed"));
+        return ResponseEntity.ok(Map.of("message", "Flags dismissed", "reviewedBy", adminUserId));
     }
 }

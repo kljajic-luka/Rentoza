@@ -48,6 +48,7 @@ public class NotificationService {
     private final UserDeviceTokenRepository deviceTokenRepository;
     private final List<NotificationChannel> notificationChannels;
     private final SchedulerIdempotencyService lockService;
+    private final NotificationDeliveryOutboxRepository deliveryOutboxRepository;
 
     /**
      * Create and send a notification to a single recipient.
@@ -109,7 +110,9 @@ public class NotificationService {
 
     /**
      * Send notification through all enabled channels.
-     * Each channel handles delivery asynchronously and logs failures internally.
+     * C1 FIX: For channels that support durable delivery (Email, FCM),
+     * writes outbox entries in the same transaction for retry on failure.
+     * WebSocket is still fire-and-forget (real-time, no persistence needed).
      */
     private void sendThroughChannels(Notification notification) {
         for (NotificationChannel channel : notificationChannels) {
@@ -122,10 +125,47 @@ public class NotificationService {
                             notification.getId(),
                             channel.getChannelName(),
                             e.getMessage(), e);
+                    // C1 FIX: Write outbox entry for retry (Email and FCM channels)
+                    if (isDurableChannel(channel.getChannelName())) {
+                        writeOutboxEntry(notification, channel.getChannelName(), e.getMessage());
+                    }
                 }
             } else {
                 log.debug("Channel {} is disabled, skipping", channel.getChannelName());
             }
+        }
+    }
+
+    /**
+     * C1 FIX: Check if a channel supports durable delivery via outbox retry.
+     * WebSocket is real-time only; Email and FCM should be retried on failure.
+     */
+    private boolean isDurableChannel(String channelName) {
+        return "Email".equals(channelName) || "Firebase Push".equals(channelName);
+    }
+
+    /**
+     * C1 FIX: Write an outbox entry for a failed channel delivery.
+     * Will be picked up by NotificationDeliveryRetryWorker for retry.
+     */
+    private void writeOutboxEntry(Notification notification, String channelName, String errorMessage) {
+        try {
+            NotificationDeliveryOutbox outbox = NotificationDeliveryOutbox.builder()
+                    .notificationId(notification.getId())
+                    .channelName(channelName)
+                    .status(NotificationDeliveryOutbox.DeliveryStatus.PENDING)
+                    .attemptCount(1)
+                    .maxAttempts(3)
+                    .lastError(errorMessage != null && errorMessage.length() > 500
+                            ? errorMessage.substring(0, 500) : errorMessage)
+                    .nextAttemptAt(java.time.Instant.now().plusSeconds(30))
+                    .build();
+            deliveryOutboxRepository.save(outbox);
+            log.info("[Outbox] Retry entry created for notification {} via {} (next attempt in 30s)",
+                    notification.getId(), channelName);
+        } catch (Exception ex) {
+            log.error("[Outbox] CRITICAL: Failed to write outbox entry for notification {} via {}: {}",
+                    notification.getId(), channelName, ex.getMessage());
         }
     }
 
@@ -238,10 +278,34 @@ public class NotificationService {
     }
 
     /**
-     * Unregister a device token.
+     * Unregister a device token with ownership verification.
+     * C5 FIX: Only the token owner can unregister their device token.
      *
      * @param deviceToken Device token to remove
+     * @param userId The authenticated user requesting unregistration
+     * @throws IllegalStateException if the token belongs to another user
      */
+    @Transactional
+    public void unregisterDeviceToken(String deviceToken, Long userId) {
+        Optional<UserDeviceToken> existing = deviceTokenRepository.findByDeviceToken(deviceToken);
+        if (existing.isPresent()) {
+            UserDeviceToken token = existing.get();
+            if (!token.getUser().getId().equals(userId)) {
+                log.warn("[Security] User {} attempted to unregister device token belonging to user {}",
+                        userId, token.getUser().getId());
+                throw new IllegalStateException("Cannot unregister another user's device token");
+            }
+            deviceTokenRepository.delete(token);
+            log.info("Device token unregistered for user {}", userId);
+        } else {
+            log.debug("Device token not found for unregistration (may have already been removed)");
+        }
+    }
+
+    /**
+     * @deprecated Use {@link #unregisterDeviceToken(String, Long)} instead for ownership verification.
+     */
+    @Deprecated
     @Transactional
     public void unregisterDeviceToken(String deviceToken) {
         deviceTokenRepository.deleteByDeviceToken(deviceToken);
@@ -412,7 +476,7 @@ public class NotificationService {
             if (booking.getRenter() != null) {
                 createNotification(CreateNotificationRequestDTO.builder()
                         .recipientId(booking.getRenter().getId())
-                        .type(NotificationType.DISPUTE_RESOLVED)
+                        .type(NotificationType.DISPUTE_ESCALATED)
                         .message("Your check-in dispute for booking #" + booking.getId() +
                                 " has been escalated to senior management for priority resolution.")
                         .relatedEntityId(String.valueOf(booking.getId()))
@@ -423,7 +487,7 @@ public class NotificationService {
             if (booking.getCar() != null && booking.getCar().getOwner() != null) {
                 createNotification(CreateNotificationRequestDTO.builder()
                         .recipientId(booking.getCar().getOwner().getId())
-                        .type(NotificationType.DISPUTE_RESOLVED)
+                        .type(NotificationType.DISPUTE_ESCALATED)
                         .message("The check-in dispute for booking #" + booking.getId() +
                                 " has been escalated for priority resolution.")
                         .relatedEntityId(String.valueOf(booking.getId()))

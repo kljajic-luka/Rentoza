@@ -84,9 +84,8 @@ public class InternalChatController {
         log.info("[Internal] Creating conversation for booking {} (called by service: {})", 
                 request.getBookingId(), serviceName);
 
-        // Create conversation without additional validation
-        // Main backend has already validated booking status
-        ConversationDTO conversation = chatService.createConversation(request);
+        // A3 FIX: Use secure method with isInternalService=true (authorization already enforced by @PreAuthorize)
+        ConversationDTO conversation = chatService.createConversationSecure(request, 0L, true);
 
         log.info("[Internal] Conversation created successfully: conversationId={}, bookingId={}", 
                 conversation.getId(), request.getBookingId());
@@ -136,9 +135,9 @@ public class InternalChatController {
         log.info("[Internal] Updating conversation status: bookingId={}, newStatus={} (called by: {})", 
                 bookingId, status, serviceName);
 
-        // Update conversation status
-        Long bookingIdLong = Long.parseLong(bookingId);  // Parse String → Long
-        chatService.updateConversationStatus(bookingIdLong, status);
+        // A3 FIX: Use secure method with isInternalService=true (participant check bypassed)
+        Long bookingIdLong = Long.parseLong(bookingId);
+        chatService.updateConversationStatusSecure(bookingIdLong, status, 0L, true);
 
         // Broadcast via WebSocket (handled internally by ChatService)
         log.info("[Internal] Conversation status updated successfully: bookingId={}, status={}", 

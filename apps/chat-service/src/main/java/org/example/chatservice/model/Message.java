@@ -43,9 +43,31 @@ public class Message {
     /**
      * Comma-separated moderation flags (e.g., "URL_DETECTED,POSSIBLE_OBFUSCATION").
      * Null/empty if no flags. Used by admin review queue.
+     * D3 FIX: Flags are preserved after review — not erased.
      */
     @Column(name = "moderation_flags")
     private String moderationFlags;
+
+    /**
+     * D3 FIX: Admin user ID who reviewed this flagged message.
+     * Null if not yet reviewed.
+     */
+    @Column(name = "reviewed_by")
+    private Long reviewedBy;
+
+    /**
+     * D3 FIX: Timestamp when the moderation review occurred.
+     */
+    @Column(name = "reviewed_at")
+    private LocalDateTime reviewedAt;
+
+    /**
+     * D3 FIX: Outcome of the moderation review.
+     * Values: DISMISSED (flags cleared, content OK), ACTIONED (content removed/hidden).
+     * Null if not yet reviewed.
+     */
+    @Column(name = "review_outcome", length = 20)
+    private String reviewOutcome;
 
     // Users who have read this message (proper @OneToMany relationship)
     @OneToMany(fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)

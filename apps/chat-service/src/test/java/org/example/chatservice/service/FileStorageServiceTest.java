@@ -1,6 +1,7 @@
 package org.example.chatservice.service;
 
 import org.example.chatservice.exception.StorageUpstreamException;
+import org.example.chatservice.service.FileScanningService.ScanResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -11,6 +12,7 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
 import static org.assertj.core.api.Assertions.*;
@@ -29,6 +31,9 @@ class FileStorageServiceTest {
     @Mock
     private SupabaseStorageClient storageClient;
 
+    @Mock
+    private FileScanningService fileScanningService;
+
     @InjectMocks
     private FileStorageService service;
 
@@ -46,6 +51,7 @@ class FileStorageServiceTest {
         ReflectionTestUtils.setField(service, "storageProvider", "supabase");
         ReflectionTestUtils.setField(service, "uploadDirectory", "/tmp/chat-test-uploads");
         ReflectionTestUtils.setField(service, "baseUrl", "/api/attachments");
+        ReflectionTestUtils.setField(service, "scanPolicy", "reject");
     }
 
     // -------------------------------------------------------------------------
@@ -53,7 +59,9 @@ class FileStorageServiceTest {
     // -------------------------------------------------------------------------
 
     @Test
-    void uploadAttachment_validJpeg_callsSupabaseAndReturnsUrl() {
+    void uploadAttachment_validJpeg_callsSupabaseAndReturnsUrl() throws IOException {
+        when(fileScanningService.scan(any(), eq("image/jpeg")))
+                .thenReturn(ScanResult.clean("magic-byte"));
         doNothing().when(storageClient).upload(anyString(), any(), eq("image/jpeg"));
 
         MockMultipartFile file = new MockMultipartFile(
@@ -67,7 +75,9 @@ class FileStorageServiceTest {
     }
 
     @Test
-    void uploadAttachment_validPng_succeeds() {
+    void uploadAttachment_validPng_succeeds() throws IOException {
+        when(fileScanningService.scan(any(), eq("image/png")))
+                .thenReturn(ScanResult.clean("magic-byte"));
         doNothing().when(storageClient).upload(anyString(), any(), eq("image/png"));
         MockMultipartFile file = new MockMultipartFile(
                 "file", "image.png", "image/png", PNG_MAGIC);
@@ -77,7 +87,9 @@ class FileStorageServiceTest {
     }
 
     @Test
-    void uploadAttachment_validGif_succeeds() {
+    void uploadAttachment_validGif_succeeds() throws IOException {
+        when(fileScanningService.scan(any(), eq("image/gif")))
+                .thenReturn(ScanResult.clean("magic-byte"));
         doNothing().when(storageClient).upload(anyString(), any(), eq("image/gif"));
         MockMultipartFile file = new MockMultipartFile(
                 "file", "anim.gif", "image/gif", GIF_MAGIC);
@@ -87,7 +99,9 @@ class FileStorageServiceTest {
     }
 
     @Test
-    void uploadAttachment_validPdf_succeeds() {
+    void uploadAttachment_validPdf_succeeds() throws IOException {
+        when(fileScanningService.scan(any(), eq("application/pdf")))
+                .thenReturn(ScanResult.clean("magic-byte"));
         doNothing().when(storageClient).upload(anyString(), any(), eq("application/pdf"));
         MockMultipartFile file = new MockMultipartFile(
                 "file", "document.pdf", "application/pdf", PDF_MAGIC);
@@ -151,8 +165,13 @@ class FileStorageServiceTest {
     }
 
     @Test
-    void uploadAttachment_magicByteMismatch_throwsIllegalArgument() {
-        // Claims to be JPEG but content looks like HTML
+    void uploadAttachment_magicByteMismatch_throwsIllegalArgument() throws IOException {
+        // Scanning service returns INFECTED for mismatched content
+        when(fileScanningService.scan(any(), eq("image/jpeg")))
+                .thenReturn(ScanResult.infected(
+                        "File content does not match declared type. Possible disguised file.",
+                        "magic-byte"));
+
         byte[] fakeJpeg = "<html>malicious</html>".getBytes(StandardCharsets.UTF_8);
         MockMultipartFile file = new MockMultipartFile(
                 "file", "evil.jpg", "image/jpeg", fakeJpeg);
@@ -163,7 +182,9 @@ class FileStorageServiceTest {
     }
 
     @Test
-    void uploadAttachment_supabaseUpstreamFailure_propagates() {
+    void uploadAttachment_supabaseUpstreamFailure_propagates() throws IOException {
+        when(fileScanningService.scan(any(), eq("image/jpeg")))
+                .thenReturn(ScanResult.clean("magic-byte"));
         doThrow(new StorageUpstreamException("S3 down"))
                 .when(storageClient).upload(anyString(), any(), anyString());
 
@@ -173,6 +194,39 @@ class FileStorageServiceTest {
         assertThatThrownBy(() -> service.uploadAttachment(file, 1L, 1L))
                 .isInstanceOf(StorageUpstreamException.class)
                 .hasMessageContaining("S3 down");
+    }
+
+    // -------------------------------------------------------------------------
+    // uploadAttachment — quarantine policy
+    // -------------------------------------------------------------------------
+
+    @Test
+    void uploadAttachment_quarantinePolicy_allowsFlaggedFile() throws IOException {
+        ReflectionTestUtils.setField(service, "scanPolicy", "quarantine");
+        when(fileScanningService.scan(any(), eq("image/jpeg")))
+                .thenReturn(ScanResult.infected("Suspicious header", "magic-byte"));
+        doNothing().when(storageClient).upload(anyString(), any(), eq("image/jpeg"));
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "suspect.jpg", "image/jpeg", JPEG_MAGIC);
+
+        // Should NOT throw — quarantine policy logs but allows
+        String url = service.uploadAttachment(file, 10L, 5L);
+        assertThat(url).startsWith("/api/attachments/booking-10/").endsWith(".jpg");
+        verify(storageClient).upload(anyString(), any(), eq("image/jpeg"));
+    }
+
+    @Test
+    void uploadAttachment_scanIOException_throwsIllegalArgument() throws IOException {
+        when(fileScanningService.scan(any(), eq("image/jpeg")))
+                .thenThrow(new IOException("Disk read failure"));
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "photo.jpg", "image/jpeg", JPEG_MAGIC);
+
+        assertThatThrownBy(() -> service.uploadAttachment(file, 1L, 1L))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("could not be validated");
     }
 
     // -------------------------------------------------------------------------

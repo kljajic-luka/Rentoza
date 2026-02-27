@@ -7,8 +7,10 @@ import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -80,6 +82,55 @@ public class ContentModerationFilter {
     );
 
     /**
+     * B3 FIX: Common Unicode homoglyph mappings to ASCII equivalents.
+     * Prevents bypass via look-alike characters (e.g., Cyrillic 'а' for Latin 'a').
+     */
+    private static final Map<Character, Character> HOMOGLYPH_MAP = Map.ofEntries(
+            // Cyrillic look-alikes
+            Map.entry('\u0430', 'a'),  // Cyrillic а
+            Map.entry('\u0435', 'e'),  // Cyrillic е
+            Map.entry('\u043E', 'o'),  // Cyrillic о
+            Map.entry('\u0440', 'p'),  // Cyrillic р
+            Map.entry('\u0441', 'c'),  // Cyrillic с
+            Map.entry('\u0443', 'y'),  // Cyrillic у
+            Map.entry('\u0445', 'x'),  // Cyrillic х
+            Map.entry('\u0410', 'A'),  // Cyrillic А
+            Map.entry('\u0412', 'B'),  // Cyrillic В
+            Map.entry('\u0415', 'E'),  // Cyrillic Е
+            Map.entry('\u041A', 'K'),  // Cyrillic К
+            Map.entry('\u041C', 'M'),  // Cyrillic М
+            Map.entry('\u041D', 'H'),  // Cyrillic Н
+            Map.entry('\u041E', 'O'),  // Cyrillic О
+            Map.entry('\u0420', 'P'),  // Cyrillic Р
+            Map.entry('\u0421', 'C'),  // Cyrillic С
+            Map.entry('\u0422', 'T'),  // Cyrillic Т
+            Map.entry('\u0425', 'X'),  // Cyrillic Х
+            // Fullwidth digits (common bypass for phone numbers)
+            Map.entry('\uFF10', '0'),  // ０
+            Map.entry('\uFF11', '1'),  // １
+            Map.entry('\uFF12', '2'),  // ２
+            Map.entry('\uFF13', '3'),  // ３
+            Map.entry('\uFF14', '4'),  // ４
+            Map.entry('\uFF15', '5'),  // ５
+            Map.entry('\uFF16', '6'),  // ６
+            Map.entry('\uFF17', '7'),  // ７
+            Map.entry('\uFF18', '8'),  // ８
+            Map.entry('\uFF19', '9'),  // ９
+            // Common symbol substitutions
+            Map.entry('\u0040', '@'),  // already ASCII but included for completeness
+            Map.entry('\uFF20', '@'), // fullwidth @
+            Map.entry('\uFF0E', '.'), // fullwidth .
+            Map.entry('\u2024', '.'), // one dot leader
+            Map.entry('\u2219', '.'), // bullet operator as dot
+            Map.entry('\u00B7', '.'), // middle dot
+            Map.entry('\u2010', '-'), // hyphen
+            Map.entry('\u2011', '-'), // non-breaking hyphen
+            Map.entry('\u2012', '-'), // figure dash
+            Map.entry('\u2013', '-'), // en dash
+            Map.entry('\u2014', '-')  // em dash
+    );
+
+    /**
      * Validate message content for policy violations.
      * 
      * @param content The message content to validate
@@ -91,29 +142,37 @@ public class ContentModerationFilter {
         }
 
         String trimmedContent = content.trim();
+
+        // B3 FIX: Normalize Unicode before moderation checks to prevent homoglyph bypass.
+        // 1. NFKC normalization: decomposes compatibility characters then recomposes
+        //    (e.g., fullwidth digits → ASCII, ligatures → separate chars)
+        // 2. Homoglyph replacement: map remaining look-alike characters to ASCII
+        // 3. Strip zero-width characters and other invisible Unicode
+        String normalizedContent = normalizeForModeration(trimmedContent);
+
         List<String> violations = new ArrayList<>();
         List<String> flags = new ArrayList<>();
 
         // 1. Check for phone numbers (BLOCKED - enables off-platform contact)
-        if (PHONE_PATTERN.matcher(trimmedContent).find()) {
+        if (PHONE_PATTERN.matcher(normalizedContent).find()) {
             violations.add("phone numbers");
             log.debug("[Moderation] Phone number detected - BLOCKED");
         }
 
         // 2. Check for email addresses (BLOCKED - prevents off-platform transactions)
-        if (EMAIL_PATTERN.matcher(trimmedContent).find()) {
+        if (EMAIL_PATTERN.matcher(normalizedContent).find()) {
             violations.add("email addresses");
             log.debug("[Moderation] Email address detected - BLOCKED");
         }
 
         // 3. Check for contact sharing obfuscation (BLOCKED)
-        if (CONTACT_OBFUSCATION_PATTERN.matcher(trimmedContent).find()) {
+        if (CONTACT_OBFUSCATION_PATTERN.matcher(normalizedContent).find()) {
             violations.add("contact sharing attempts");
             log.debug("[Moderation] Contact obfuscation detected - BLOCKED");
         }
 
         // 4. Check for off-platform payment app mentions (BLOCKED)
-        String lowerContent = trimmedContent.toLowerCase();
+        String lowerContent = normalizedContent.toLowerCase();
         for (String keyword : PAYMENT_KEYWORDS) {
             if (lowerContent.contains(keyword)) {
                 violations.add("off-platform payment");
@@ -123,6 +182,7 @@ public class ContentModerationFilter {
         }
 
         // 5. Check for URLs (ALLOWED if maps, FLAGGED otherwise for admin review)
+        // Use original trimmed content for URL matching since normalization may break URLs
         Matcher urlMatcher = URL_PATTERN.matcher(trimmedContent);
         while (urlMatcher.find()) {
             String url = urlMatcher.group().toLowerCase();
@@ -151,6 +211,43 @@ public class ContentModerationFilter {
         }
 
         return ContentModerationResult.approved();
+    }
+
+    /**
+     * B3 FIX: Normalize Unicode text to defeat homoglyph and obfuscation bypasses.
+     *
+     * Steps:
+     * 1. NFKC normalization (decomposes compatibility chars, recomposes canonical)
+     * 2. Strip zero-width and invisible Unicode characters
+     * 3. Map known homoglyphs (Cyrillic look-alikes, fullwidth digits) to ASCII
+     * 4. Collapse dots used as separators (e.g., "P.a.y.p.a.l" → "Paypal")
+     *
+     * @param input Raw message text
+     * @return Normalized text suitable for pattern matching
+     */
+    String normalizeForModeration(String input) {
+        if (input == null) return null;
+
+        // Step 1: NFKC normalization (handles fullwidth chars, ligatures, etc.)
+        String normalized = Normalizer.normalize(input, Normalizer.Form.NFKC);
+
+        // Step 2: Strip zero-width and invisible characters
+        normalized = normalized.replaceAll("[\\u200B\\u200C\\u200D\\u2060\\uFEFF\\u00AD]", "");
+
+        // Step 3: Replace known homoglyphs
+        StringBuilder sb = new StringBuilder(normalized.length());
+        for (int i = 0; i < normalized.length(); i++) {
+            char c = normalized.charAt(i);
+            Character replacement = HOMOGLYPH_MAP.get(c);
+            sb.append(replacement != null ? replacement : c);
+        }
+        normalized = sb.toString();
+
+        // Step 4: Collapse single-char dot separators in words (e.g., "P.a.y.p.a.l" → "Paypal")
+        // Only collapse when dots separate single characters
+        normalized = normalized.replaceAll("(?<=\\w)\\.(?=\\w(?:\\.|\\s|$))", "");
+
+        return normalized;
     }
 
     /**

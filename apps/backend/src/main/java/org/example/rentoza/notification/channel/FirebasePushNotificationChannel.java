@@ -28,6 +28,14 @@ public class FirebasePushNotificationChannel implements NotificationChannel {
     @Value("${notifications.push.enabled:true}")
     private boolean enabled;
 
+    /**
+     * C1 FIX: Exceptions propagate to sendThroughChannels() so the outbox
+     * pattern can persist a retry entry for durable push delivery.
+     *
+     * <p>Attempts delivery to ALL registered devices before propagating
+     * the first failure.  On retry the outbox will re-invoke this method
+     * and all devices are attempted again (duplicate push is acceptable).</p>
+     */
     @Override
     public void send(Notification notification) {
         if (!isEnabled()) {
@@ -35,36 +43,49 @@ public class FirebasePushNotificationChannel implements NotificationChannel {
             return;
         }
 
-        try {
-            Long userId = notification.getRecipient().getId();
-            List<UserDeviceToken> deviceTokens = deviceTokenRepository.findByUserId(userId);
+        Long userId = notification.getRecipient().getId();
+        List<UserDeviceToken> deviceTokens = deviceTokenRepository.findByUserId(userId);
 
-            if (deviceTokens.isEmpty()) {
-                log.debug("No device tokens found for user {}, skipping push notification", userId);
-                return;
-            }
+        if (deviceTokens.isEmpty()) {
+            log.debug("No device tokens found for user {}, skipping push notification", userId);
+            return;
+        }
 
-            String title = getTitleForType(notification.getType().name());
-            String body = notification.getMessage();
+        String title = getTitleForType(notification.getType().name());
+        String body = notification.getMessage();
 
-            // Send to all devices
-            for (UserDeviceToken deviceToken : deviceTokens) {
+        // C1 FIX: Try all devices, collect first failure, re-throw after loop
+        // so remaining tokens are still attempted before the outbox sees the error.
+        RuntimeException firstFailure = null;
+        int successCount = 0;
+
+        for (UserDeviceToken deviceToken : deviceTokens) {
+            try {
                 firebasePushService.sendNotification(
                         deviceToken.getDeviceToken(),
                         title,
                         body,
                         notification.getRelatedEntityId()
                 );
+                successCount++;
+            } catch (RuntimeException e) {
+                log.warn("Push delivery failed for device {} of user {}: {}",
+                        deviceToken.getDeviceToken(), userId, e.getMessage());
+                if (firstFailure == null) {
+                    firstFailure = e;
+                }
             }
-
-            log.debug("Push notifications sent to {} devices for user {}",
-                    deviceTokens.size(),
-                    userId);
-        } catch (Exception e) {
-            log.error("Failed to send push notification to user {}: {}",
-                    notification.getRecipient().getId(),
-                    e.getMessage(), e);
         }
+
+        if (firstFailure != null) {
+            log.warn("Push delivery: {}/{} devices succeeded for user {}; propagating failure to outbox",
+                    successCount, deviceTokens.size(), userId);
+            throw firstFailure;
+        }
+
+        log.debug("Push notifications sent to {} devices for user {}",
+                deviceTokens.size(),
+                userId);
     }
 
     @Override

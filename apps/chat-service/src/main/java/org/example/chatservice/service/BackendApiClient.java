@@ -9,7 +9,12 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -84,6 +89,37 @@ public class BackendApiClient {
                     logger.warn("⚠️ Returning empty user details due to error for userId: {}", userId);
                     return Mono.empty();
                 });
+    }
+
+    /**
+     * P2 N+1 FIX: Batch-fetch user details for multiple user IDs in parallel.
+     * Reduces N individual HTTP calls to a bounded set of parallel requests.
+     *
+     * Used by getUserConversations() and getAllConversationsForAdmin() to pre-fetch
+     * all unique user details before enriching each conversation, avoiding 2N
+     * sequential HTTP calls (one per renter + one per owner per conversation).
+     *
+     * @param userIds Set of unique user IDs to fetch details for
+     * @return Mono containing a Map of userId -> UserDetailsDTO (failed lookups omitted)
+     */
+    public Mono<Map<Long, UserDetailsDTO>> getUserDetailsBatch(Set<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return Mono.just(Map.of());
+        }
+
+        logger.info("Batch-fetching user details for {} unique user IDs", userIds.size());
+
+        List<Mono<Map.Entry<Long, UserDetailsDTO>>> monos = userIds.stream()
+                .map(id -> getUserDetails(id)
+                        .map(dto -> Map.entry(id, dto))
+                        .onErrorResume(e -> {
+                            logger.warn("Failed to fetch user details for userId {} in batch: {}", id, e.getMessage());
+                            return Mono.empty();
+                        }))
+                .toList();
+
+        return Flux.merge(monos)
+                .collectMap(Map.Entry::getKey, Map.Entry::getValue);
     }
 
     /**

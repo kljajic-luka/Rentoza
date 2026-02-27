@@ -192,11 +192,37 @@ class ConversationAuthorizationTest {
             active.setStatus(ConversationStatus.ACTIVE);
             assertThat(active.isMessagingAllowed()).isTrue();
 
-            // CLOSED conversations allow messaging per current model implementation
-            // (Conversation.isMessagingAllowed() returns true for CLOSED)
+            // A1 FIX: CLOSED conversations must NOT allow messaging (read-only after booking ends)
             Conversation closed = createTestConversation();
             closed.setStatus(ConversationStatus.CLOSED);
-            assertThat(closed.isMessagingAllowed()).isTrue();
+            assertThat(closed.isMessagingAllowed()).isFalse();
+        }
+
+        @Test
+        @DisplayName("CLOSED conversation must block messaging (A1 regression guard)")
+        void closedConversationMustBlockMessaging() {
+            Conversation conversation = createTestConversation();
+            conversation.setStatus(ConversationStatus.CLOSED);
+
+            assertThat(conversation.isMessagingAllowed())
+                    .as("CLOSED conversations must be read-only — isMessagingAllowed() must return false")
+                    .isFalse();
+        }
+
+        @Test
+        @DisplayName("All ConversationStatus values are covered by isMessagingAllowed")
+        void allStatusesCovered() {
+            for (ConversationStatus status : ConversationStatus.values()) {
+                Conversation conv = createTestConversation();
+                conv.setStatus(status);
+                boolean result = conv.isMessagingAllowed();
+
+                if (status == ConversationStatus.PENDING || status == ConversationStatus.ACTIVE) {
+                    assertThat(result).as("Status %s should allow messaging", status).isTrue();
+                } else {
+                    assertThat(result).as("Status %s should block messaging", status).isFalse();
+                }
+            }
         }
     }
 

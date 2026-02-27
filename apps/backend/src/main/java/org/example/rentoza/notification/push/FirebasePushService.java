@@ -66,10 +66,15 @@ public class FirebasePushService {
     /**
      * Send push notification to a specific device.
      *
+     * <p>C1 FIX: Exceptions are re-thrown after handling/logging so they
+     * propagate to {@code FirebasePushNotificationChannel.send()} →
+     * {@code sendThroughChannels()} → outbox entry created for durable retry.</p>
+     *
      * @param deviceToken FCM device token
      * @param title Notification title
      * @param body Notification body
      * @param relatedEntityId Optional deep link data
+     * @throws RuntimeException wrapping the original FCM / unexpected error
      */
     public void sendNotification(String deviceToken, String title, String body, String relatedEntityId) {
         if (!initialized) {
@@ -104,9 +109,14 @@ public class FirebasePushService {
             log.debug("Successfully sent push notification: {}", response);
 
         } catch (FirebaseMessagingException e) {
+            // C1 FIX: Log/handle (token cleanup, categorisation) then re-throw
+            // so the outbox pattern can persist a retry entry.
             handleMessagingException(e, deviceToken);
+            throw new RuntimeException("Push delivery failed: " + e.getMessagingErrorCode(), e);
         } catch (Exception e) {
+            // C1 FIX: Log then re-throw for outbox durability.
             log.error("Unexpected error sending push notification: {}", e.getMessage(), e);
+            throw new RuntimeException("Push delivery failed: " + e.getMessage(), e);
         }
     }
 

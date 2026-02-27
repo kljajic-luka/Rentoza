@@ -23,7 +23,9 @@ import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Mono;
 
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -58,7 +60,8 @@ public class ChatService {
         if (isInternalService) {
             log.info("[Security] INTERNAL SERVICE {} creating conversation for booking {} on behalf of users",
                     authenticatedUserId, request.getBookingId());
-            return createConversation(request);
+            // A3 FIX: Call private method directly instead of deprecated public method
+            return createConversation(request, request.getRenterId());
         }
         
         // SECURITY: Verify the authenticated user is one of the participants in the request
@@ -112,17 +115,6 @@ public class ChatService {
         }
         
         return createConversation(request, authenticatedUserId);
-    }
-
-    /**
-     * @deprecated Use {@link #createConversationSecure(CreateConversationRequest, Long, boolean)} instead.
-     * This method lacks authorization checks and should only be used for internal/system operations.
-     */
-    @Deprecated
-    @Transactional
-    public ConversationDTO createConversation(CreateConversationRequest request) {
-        // For backward-compat: use renterId as sender if no authenticated user context
-        return createConversation(request, request.getRenterId());
     }
 
     /**
@@ -361,6 +353,29 @@ public class ChatService {
                 org.springframework.data.domain.Sort.by(
                         org.springframework.data.domain.Sort.Direction.DESC, "lastMessageAt"));
 
+        // P2 N+1 FIX: Batch pre-fetch user details for all conversations
+        Set<Long> uniqueUserIds = new HashSet<>();
+        for (Conversation conv : conversations) {
+            uniqueUserIds.add(conv.getRenterId());
+            uniqueUserIds.add(conv.getOwnerId());
+        }
+
+        log.info("[N+1 Fix] Admin: Pre-fetching {} unique user details for {} conversations",
+                uniqueUserIds.size(), conversations.size());
+
+        Map<Long, UserDetailsDTO> userCache = backendApiClient.getUserDetailsBatch(uniqueUserIds)
+                .onErrorResume(e -> {
+                    log.warn("[N+1 Fix] Admin batch user fetch failed, falling back to empty cache: {}", e.getMessage());
+                    return Mono.just(Map.of());
+                })
+                .block();
+
+        if (userCache == null) {
+            userCache = Map.of();
+        }
+
+        final Map<Long, UserDetailsDTO> finalUserCache = userCache;
+
         return conversations.stream()
                 .map(conv -> {
                     // Use renter as the "viewer" for DTO construction (admin sees neutral view)
@@ -376,7 +391,7 @@ public class ChatService {
                                 : content);
                     }
 
-                    return enrichDtoWithBackendData(dto, conv.getRenterId());
+                    return enrichDtoWithPreFetchedUsers(dto, conv.getRenterId(), finalUserCache);
                 })
                 .collect(Collectors.toList());
     }
@@ -396,48 +411,38 @@ public class ChatService {
      */
     @Transactional
     public void updateConversationStatusSecure(Long bookingId, ConversationStatus status, Long userId) {
+        updateConversationStatusSecure(bookingId, status, userId, false);
+    }
+
+    /**
+     * A3 FIX: Update conversation status with explicit internal-service bypass.
+     * Internal services (main backend) are trusted and skip participant checks.
+     *
+     * @param bookingId Booking ID
+     * @param status New status
+     * @param userId Authenticated user (ignored when isInternalService=true)
+     * @param isInternalService Whether this call comes from an authorized internal service
+     */
+    @Transactional
+    public void updateConversationStatusSecure(Long bookingId, ConversationStatus status, Long userId, boolean isInternalService) {
         Conversation conversation = conversationRepository.findByBookingId(bookingId)
                 .orElseThrow(() -> new ConversationNotFoundException("Conversation not found for booking: " + bookingId));
 
-        // SECURITY: Verify user is a participant before allowing status update
-        if (!conversation.isParticipant(userId)) {
+        // SECURITY: Skip participant check for internal services (already authorized via @PreAuthorize)
+        if (!isInternalService && !conversation.isParticipant(userId)) {
             log.warn("[Security] UNAUTHORIZED: User {} attempted to update status for conversation {} (booking {}). " +
                     "User is not a participant (renter={}, owner={})",
                     userId, conversation.getId(), bookingId, conversation.getRenterId(), conversation.getOwnerId());
             throw new ForbiddenException("You are not authorized to update this conversation's status");
         }
 
-        // Additional validation: prevent closing conversations with active disputes
-        // (future enhancement: check dispute status from main backend)
-        
         ConversationStatus previousStatus = conversation.getStatus();
         conversation.setStatus(status);
         conversationRepository.save(conversation);
 
-        log.info("[Security] Conversation {} status changed from {} to {} by authorized user {}", 
-                conversation.getId(), previousStatus, status, userId);
-
-        // Notify participants via WebSocket
-        messagingTemplate.convertAndSend(
-                "/topic/conversation/" + bookingId + "/status",
-                status.name()
-        );
-    }
-
-    /**
-     * @deprecated Use {@link #updateConversationStatusSecure(String, ConversationStatus, String)} instead.
-     * This method lacks authorization checks and should only be used for internal/system operations.
-     */
-    @Deprecated
-    @Transactional
-    public void updateConversationStatus(Long bookingId, ConversationStatus status) {
-        Conversation conversation = conversationRepository.findByBookingId(bookingId)
-                .orElseThrow(() -> new ConversationNotFoundException("Conversation not found for booking: " + bookingId));
-
-        conversation.setStatus(status);
-        conversationRepository.save(conversation);
-
-        log.info("Conversation {} status updated to {} (internal operation)", conversation.getId(), status);
+        String actor = isInternalService ? "INTERNAL_SERVICE" : String.valueOf(userId);
+        log.info("[Security] Conversation {} status changed from {} to {} by {}",
+                conversation.getId(), previousStatus, status, actor);
 
         // Notify participants via WebSocket
         messagingTemplate.convertAndSend(
@@ -449,22 +454,49 @@ public class ChatService {
     @Transactional(readOnly = true)
     public List<ConversationDTO> getUserConversations(Long userId) {
         List<Conversation> conversations = conversationRepository.findByParticipant(userId);
+
+        // P2 N+1 FIX: Collect all unique user IDs and batch-fetch details upfront.
+        // Without this, each conversation triggers 2 individual HTTP calls for user details
+        // (one for renter, one for owner), resulting in 2N calls for N conversations.
+        // With batch pre-fetching, we make at most K parallel calls for K unique users.
+        Set<Long> uniqueUserIds = new HashSet<>();
+        for (Conversation conv : conversations) {
+            uniqueUserIds.add(conv.getRenterId());
+            uniqueUserIds.add(conv.getOwnerId());
+        }
+
+        log.info("[N+1 Fix] Pre-fetching {} unique user details for {} conversations",
+                uniqueUserIds.size(), conversations.size());
+
+        Map<Long, UserDetailsDTO> userCache = backendApiClient.getUserDetailsBatch(uniqueUserIds)
+                .onErrorResume(e -> {
+                    log.warn("[N+1 Fix] Batch user fetch failed, falling back to empty cache: {}", e.getMessage());
+                    return Mono.just(Map.of());
+                })
+                .block();
+
+        if (userCache == null) {
+            userCache = Map.of();
+        }
+
+        final Map<Long, UserDetailsDTO> finalUserCache = userCache;
+
         return conversations.stream()
                 .map(conv -> {
                     ConversationDTO dto = toDTO(conv, userId);
                     dto.setUnreadCount(messageRepository.countUnreadMessages(conv.getId(), userId));
-                    
+
                     // Fetch last message for preview
                     Message lastMessage = messageRepository.findFirstByConversationIdOrderByTimestampDesc(conv.getId());
                     if (lastMessage != null) {
                         String content = lastMessage.getContent();
                         // Truncate to 100 chars for preview
-                        dto.setLastMessageContent(content != null && content.length() > 100 
-                                ? content.substring(0, 100) + "..." 
+                        dto.setLastMessageContent(content != null && content.length() > 100
+                                ? content.substring(0, 100) + "..."
                                 : content);
                     }
-                    
-                    return enrichDtoWithBackendData(dto, userId);
+
+                    return enrichDtoWithPreFetchedUsers(dto, userId, finalUserCache);
                 })
                 .collect(Collectors.toList());
     }
@@ -639,6 +671,168 @@ public class ChatService {
             if (dto.getCarYear() == null) dto.setCarYear(0);
             if (dto.getTripStatus() == null) dto.setTripStatus("Unknown");
             dto.setMessagingAllowed(false); // Safe default on error
+
+            return dto;
+        }
+    }
+
+    /**
+     * P2 N+1 FIX: Enrich conversation DTO with pre-fetched user details and booking data.
+     *
+     * This variant avoids individual HTTP calls for user details by using a pre-fetched
+     * user cache (populated via BackendApiClient.getUserDetailsBatch()). Booking enrichment
+     * still goes through ConversationEnrichmentService which has its own caching.
+     *
+     * For N conversations with K unique users, this reduces HTTP calls from 3N to K + N:
+     * - K parallel user detail fetches (batch, done once upfront)
+     * - N booking enrichment calls (cached by ConversationEnrichmentService)
+     *
+     * @param dto ConversationDTO to enrich
+     * @param userId Authenticated user ID (for RLS validation on Main API)
+     * @param userCache Pre-fetched map of userId -> UserDetailsDTO
+     */
+    private ConversationDTO enrichDtoWithPreFetchedUsers(ConversationDTO dto, Long userId,
+                                                         Map<Long, UserDetailsDTO> userCache) {
+        long startTime = System.currentTimeMillis();
+
+        try {
+            log.debug("[Enrichment] Starting (pre-fetched users) for conversation={}, bookingId={}",
+                    dto.getId(), dto.getBookingId());
+
+            String actAsUserId = String.valueOf(userId);
+
+            // Fetch booking conversation view (still per-conversation, cached by enrichmentService)
+            Mono<org.example.chatservice.dto.client.BookingConversationDTO> bookingConversationMono =
+                    enrichmentService.enrichConversation(String.valueOf(dto.getBookingId()), actAsUserId);
+
+            // Use pre-fetched user details from cache instead of individual HTTP calls
+            UserDetailsDTO renter = userCache.get(dto.getRenterId());
+            UserDetailsDTO owner = userCache.get(dto.getOwnerId());
+
+            org.example.chatservice.dto.client.BookingConversationDTO bookingConv =
+                    bookingConversationMono
+                            .onErrorResume(e -> {
+                                log.warn("[Enrichment] Booking fetch failed for bookingId={}: {}",
+                                        dto.getBookingId(), e.getMessage());
+                                return Mono.empty();
+                            })
+                            .block();
+
+            boolean isBookingFallback = bookingConv != null &&
+                    "UNAVAILABLE".equalsIgnoreCase(bookingConv.getTripStatus());
+
+            // Enrich with booking conversation data
+            if (bookingConv != null && !isBookingFallback) {
+                dto.setCarBrand(bookingConv.getCarBrand() != null
+                        ? bookingConv.getCarBrand() : "Unknown");
+                dto.setCarModel(bookingConv.getCarModel() != null
+                        ? bookingConv.getCarModel() : "Unknown");
+                dto.setCarYear(bookingConv.getCarYear() != null
+                        ? bookingConv.getCarYear() : 0);
+                dto.setCarImageUrl(bookingConv.getCarImageUrl());
+
+                if (bookingConv.getStartDate() != null) {
+                    dto.setStartDate(bookingConv.getStartDate().toString());
+                }
+                if (bookingConv.getEndDate() != null) {
+                    dto.setEndDate(bookingConv.getEndDate().toString());
+                }
+
+                dto.setTripStatus(bookingConv.getTripStatus() != null
+                        ? bookingConv.getTripStatus() : "Unknown");
+                dto.setMessagingAllowed(bookingConv.isMessagingAllowed());
+
+                if (bookingConv.getRenterProfilePicUrl() != null) {
+                    dto.setRenterProfilePicUrl(bookingConv.getRenterProfilePicUrl());
+                }
+                if (bookingConv.getOwnerProfilePicUrl() != null) {
+                    dto.setOwnerProfilePicUrl(bookingConv.getOwnerProfilePicUrl());
+                }
+                if (bookingConv.getRenterName() != null) {
+                    dto.setRenterName(bookingConv.getRenterName());
+                }
+                if (bookingConv.getOwnerName() != null) {
+                    dto.setOwnerName(bookingConv.getOwnerName());
+                }
+            } else {
+                dto.setCarBrand("Unknown");
+                dto.setCarModel("Unknown");
+                dto.setCarYear(0);
+                dto.setCarImageUrl(null);
+                dto.setTripStatus("UNAVAILABLE");
+                dto.setMessagingAllowed(false);
+
+                if (isBookingFallback) {
+                    log.warn("Enrichment fallback used for bookingId={} (not found or access denied)",
+                            dto.getBookingId());
+                }
+            }
+
+            // Enrich with user names only as fallback (same logic as enrichDtoWithBackendData)
+            boolean renterNameMissing = dto.getRenterName() == null
+                    || dto.getRenterName().isBlank()
+                    || "Renter".equals(dto.getRenterName());
+            if (renterNameMissing) {
+                if (renter != null && renter.getId() != null && renter.getId().equals(dto.getRenterId())
+                        && renter.getFirstName() != null) {
+                    String lastName = renter.getLastName() != null ? " " + renter.getLastName() : "";
+                    dto.setRenterName(renter.getFirstName() + lastName);
+                } else {
+                    dto.setRenterName("Renter");
+                }
+            } else if (renter != null && renter.getId() != null
+                    && !renter.getId().equals(dto.getRenterId())) {
+                log.warn("[Enrichment] Renter profile mismatch for booking {}: expected renterId={}, got id={}",
+                        dto.getBookingId(), dto.getRenterId(), renter.getId());
+            }
+
+            boolean ownerNameMissing = dto.getOwnerName() == null
+                    || dto.getOwnerName().isBlank()
+                    || "Owner".equals(dto.getOwnerName());
+            if (ownerNameMissing) {
+                if (owner != null && owner.getId() != null && owner.getId().equals(dto.getOwnerId())
+                        && owner.getFirstName() != null) {
+                    String lastName = owner.getLastName() != null ? " " + owner.getLastName() : "";
+                    dto.setOwnerName(owner.getFirstName() + lastName);
+                } else {
+                    dto.setOwnerName("Owner");
+                }
+            } else if (owner != null && owner.getId() != null
+                    && !owner.getId().equals(dto.getOwnerId())) {
+                log.warn("[Enrichment] Owner profile mismatch for booking {}: expected ownerId={}, got id={}",
+                        dto.getBookingId(), dto.getOwnerId(), owner.getId());
+            }
+
+            // Log enrichment result
+            long latency = System.currentTimeMillis() - startTime;
+            if (isBookingFallback) {
+                log.warn("Enriched conversation (pre-fetched) with fallback: conversationId={}, bookingId={}, latency={}ms",
+                        dto.getId(), dto.getBookingId(), latency);
+            } else {
+                log.info("Enriched conversation (pre-fetched): conversationId={}, bookingId={}, tripStatus={}, car={} {} {}, latency={}ms",
+                        dto.getId(),
+                        dto.getBookingId(),
+                        dto.getTripStatus(),
+                        dto.getCarYear() != null && dto.getCarYear() > 0 ? dto.getCarYear() : "",
+                        dto.getCarBrand(),
+                        dto.getCarModel(),
+                        latency);
+            }
+
+            return dto;
+
+        } catch (Exception e) {
+            long latency = System.currentTimeMillis() - startTime;
+            log.error("Error enriching conversation {} with pre-fetched users (latency={}ms): {}",
+                    dto.getId(), latency, e.getMessage(), e);
+
+            if (dto.getRenterName() == null) dto.setRenterName("Renter");
+            if (dto.getOwnerName() == null) dto.setOwnerName("Owner");
+            if (dto.getCarBrand() == null) dto.setCarBrand("Unknown");
+            if (dto.getCarModel() == null) dto.setCarModel("Unknown");
+            if (dto.getCarYear() == null) dto.setCarYear(0);
+            if (dto.getTripStatus() == null) dto.setTripStatus("Unknown");
+            dto.setMessagingAllowed(false);
 
             return dto;
         }

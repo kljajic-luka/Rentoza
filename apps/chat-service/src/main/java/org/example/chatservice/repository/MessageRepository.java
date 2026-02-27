@@ -28,15 +28,16 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
     long countUnreadMessages(@Param("conversationId") Long conversationId, @Param("userId") Long userId);
     
     /**
-     * Find messages with moderation flags (admin review queue).
-     * Returns messages where moderationFlags is not null/empty, newest first.
+     * Find messages with moderation flags pending review (admin review queue).
+     * D3 FIX: Excludes messages that have already been reviewed (reviewOutcome is not null).
      */
-    @Query("SELECT m FROM Message m WHERE m.moderationFlags IS NOT NULL AND m.moderationFlags != '' ORDER BY m.timestamp DESC")
+    @Query("SELECT m FROM Message m WHERE m.moderationFlags IS NOT NULL AND m.moderationFlags != '' AND m.reviewOutcome IS NULL ORDER BY m.timestamp DESC")
     Page<Message> findFlaggedMessages(Pageable pageable);
-    
+
     /**
-     * Count messages with moderation flags (for dashboard badge).
+     * Count messages with moderation flags pending review (for dashboard badge).
+     * D3 FIX: Only counts unreviewed flagged messages.
      */
-    @Query("SELECT COUNT(m) FROM Message m WHERE m.moderationFlags IS NOT NULL AND m.moderationFlags != ''")
+    @Query("SELECT COUNT(m) FROM Message m WHERE m.moderationFlags IS NOT NULL AND m.moderationFlags != '' AND m.reviewOutcome IS NULL")
     long countFlaggedMessages();
 }

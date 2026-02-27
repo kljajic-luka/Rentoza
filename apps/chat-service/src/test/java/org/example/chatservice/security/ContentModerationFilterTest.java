@@ -214,12 +214,232 @@ class ContentModerationFilterTest {
             ContentModerationResult result = filter.validateMessage(
                 "Call 555-0123 or visit https://example.com"
             );
-            
+
             // Phone is a blocker, URL would be a flag
             assertThat(result.isApproved()).isFalse();
             assertThat(result.getViolations()).contains("phone numbers");
             // Flags should also be present
             assertThat(result.getFlags()).contains("external link");
+        }
+    }
+
+    @Nested
+    @DisplayName("Unicode normalization bypass prevention")
+    class UnicodeNormalizationBypass {
+
+        @Test
+        @DisplayName("Should block fullwidth digits in phone numbers")
+        void fullwidthDigitsInPhoneNumber() {
+            // \uFF15 = fullwidth 5, \uFF10 = fullwidth 0, \uFF11 = fullwidth 1,
+            // \uFF12 = fullwidth 2, \uFF13 = fullwidth 3
+            ContentModerationResult result = filter.validateMessage(
+                "Call me at \uFF15\uFF15\uFF15-\uFF10\uFF11\uFF12\uFF13"
+            );
+
+            assertThat(result.isApproved()).isFalse();
+            assertThat(result.getViolations()).contains("phone numbers");
+        }
+
+        @Test
+        @DisplayName("Should block fullwidth digits in international phone numbers")
+        void fullwidthDigitsInInternationalPhone() {
+            // +1 with fullwidth digits for the rest
+            ContentModerationResult result = filter.validateMessage(
+                "Text me on +\uFF11 \uFF15\uFF15\uFF15 \uFF15\uFF15\uFF15 \uFF10\uFF11\uFF12\uFF13"
+            );
+
+            assertThat(result.isApproved()).isFalse();
+            assertThat(result.getViolations()).contains("phone numbers");
+        }
+
+        @Test
+        @DisplayName("Should block Cyrillic homoglyphs in payment keywords")
+        void cyrillicHomoglyphsInPaymentKeyword() {
+            // \u0440 = Cyrillic p, \u0430 = Cyrillic a, \u0443 = Cyrillic y
+            // "\u0440\u0430\u0443\u0440al" visually looks like "paypal"
+            ContentModerationResult result = filter.validateMessage(
+                "Send money via \u0440\u0430\u0443\u0440al"
+            );
+
+            assertThat(result.isApproved()).isFalse();
+            assertThat(result.getViolations()).contains("off-platform payment");
+        }
+
+        @Test
+        @DisplayName("Should block Cyrillic homoglyphs in venmo keyword")
+        void cyrillicHomoglyphsInVenmo() {
+            // \u0435 = Cyrillic e, \u043E = Cyrillic o
+            // "v\u0435nm\u043E" visually looks like "venmo"
+            ContentModerationResult result = filter.validateMessage(
+                "Just use v\u0435nm\u043E instead"
+            );
+
+            assertThat(result.isApproved()).isFalse();
+            assertThat(result.getViolations()).contains("off-platform payment");
+        }
+
+        @Test
+        @DisplayName("Should block zero-width characters inserted in payment keywords")
+        void zeroWidthCharactersInPaymentKeyword() {
+            // Zero-width space (\u200B) inserted inside "paypal"
+            ContentModerationResult result = filter.validateMessage(
+                "Let's use pay\u200Bpal to settle up"
+            );
+
+            assertThat(result.isApproved()).isFalse();
+            assertThat(result.getViolations()).contains("off-platform payment");
+        }
+
+        @Test
+        @DisplayName("Should block zero-width joiners inserted in email addresses")
+        void zeroWidthJoinerInEmail() {
+            // Zero-width joiner (\u200D) inserted inside the email
+            ContentModerationResult result = filter.validateMessage(
+                "Email me at john\u200D@example.com"
+            );
+
+            assertThat(result.isApproved()).isFalse();
+            assertThat(result.getViolations()).contains("email addresses");
+        }
+
+        @Test
+        @DisplayName("Should block dot-separated characters spelling payment keywords")
+        void dotSeparatedPaymentKeyword() {
+            ContentModerationResult result = filter.validateMessage(
+                "Send it through P.a.y.p.a.l please"
+            );
+
+            assertThat(result.isApproved()).isFalse();
+            assertThat(result.getViolations()).contains("off-platform payment");
+        }
+
+        @Test
+        @DisplayName("Should block dot-separated characters spelling venmo")
+        void dotSeparatedVenmo() {
+            ContentModerationResult result = filter.validateMessage(
+                "Use V.e.n.m.o to pay me"
+            );
+
+            assertThat(result.isApproved()).isFalse();
+            assertThat(result.getViolations()).contains("off-platform payment");
+        }
+
+        @Test
+        @DisplayName("Should block combined Cyrillic homoglyphs and zero-width characters")
+        void combinedCyrillicAndZeroWidth() {
+            // Cyrillic \u0440 for p, zero-width space in the middle
+            ContentModerationResult result = filter.validateMessage(
+                "Use \u0440ay\u200Bpal for payment"
+            );
+
+            assertThat(result.isApproved()).isFalse();
+            assertThat(result.getViolations()).contains("off-platform payment");
+        }
+    }
+
+    @Nested
+    @DisplayName("normalizeForModeration direct tests")
+    class NormalizeForModerationDirect {
+
+        @Test
+        @DisplayName("Should NFKC normalize fullwidth digits to ASCII")
+        void nfkcNormalizesFullwidthDigits() {
+            // \uFF15\uFF15\uFF15 = fullwidth "555"
+            String result = filter.normalizeForModeration("\uFF15\uFF15\uFF15");
+
+            assertThat(result).isEqualTo("555");
+        }
+
+        @Test
+        @DisplayName("Should NFKC normalize fullwidth letters to ASCII")
+        void nfkcNormalizesFullwidthLetters() {
+            // \uFF28\uFF45\uFF4C\uFF4C\uFF4F = fullwidth "Hello"
+            String result = filter.normalizeForModeration("\uFF28\uFF45\uFF4C\uFF4C\uFF4F");
+
+            assertThat(result).isEqualTo("Hello");
+        }
+
+        @Test
+        @DisplayName("Should replace Cyrillic homoglyphs with ASCII equivalents")
+        void replaceCyrillicHomoglyphs() {
+            // \u0440 = Cyrillic p, \u0430 = Cyrillic a, \u0443 = Cyrillic y
+            String result = filter.normalizeForModeration("\u0440\u0430\u0443");
+
+            assertThat(result).isEqualTo("pay");
+        }
+
+        @Test
+        @DisplayName("Should replace uppercase Cyrillic homoglyphs with ASCII equivalents")
+        void replaceUppercaseCyrillicHomoglyphs() {
+            // \u0420 = Cyrillic P, \u0410 = Cyrillic A, \u0422 = Cyrillic T
+            String result = filter.normalizeForModeration("\u0420\u0410\u0422");
+
+            assertThat(result).isEqualTo("PAT");
+        }
+
+        @Test
+        @DisplayName("Should strip zero-width space characters")
+        void stripZeroWidthSpace() {
+            String result = filter.normalizeForModeration("pay\u200Bpal");
+
+            assertThat(result).isEqualTo("paypal");
+        }
+
+        @Test
+        @DisplayName("Should strip zero-width joiner characters")
+        void stripZeroWidthJoiner() {
+            String result = filter.normalizeForModeration("ven\u200Dmo");
+
+            assertThat(result).isEqualTo("venmo");
+        }
+
+        @Test
+        @DisplayName("Should strip zero-width non-joiner characters")
+        void stripZeroWidthNonJoiner() {
+            String result = filter.normalizeForModeration("zel\u200Cle");
+
+            assertThat(result).isEqualTo("zelle");
+        }
+
+        @Test
+        @DisplayName("Should strip word joiner characters")
+        void stripWordJoiner() {
+            String result = filter.normalizeForModeration("bit\u2060coin");
+
+            assertThat(result).isEqualTo("bitcoin");
+        }
+
+        @Test
+        @DisplayName("Should strip soft hyphen characters")
+        void stripSoftHyphen() {
+            String result = filter.normalizeForModeration("cash\u00ADapp");
+
+            assertThat(result).isEqualTo("cashapp");
+        }
+
+        @Test
+        @DisplayName("Should collapse dot-separated single characters")
+        void collapseDotSeparatedChars() {
+            String result = filter.normalizeForModeration("P.a.y.p.a.l");
+
+            assertThat(result).isEqualTo("Paypal");
+        }
+
+        @Test
+        @DisplayName("Should handle null input gracefully")
+        void handleNullInput() {
+            String result = filter.normalizeForModeration(null);
+
+            assertThat(result).isNull();
+        }
+
+        @Test
+        @DisplayName("Should handle combined normalizations in one pass")
+        void combinedNormalization() {
+            // Cyrillic \u0440 for p, zero-width space, fullwidth \uFF15 for 5
+            String result = filter.normalizeForModeration("\u0440ay\u200Bpal \uFF15\uFF15\uFF15");
+
+            assertThat(result).isEqualTo("paypal 555");
         }
     }
 }

@@ -62,6 +62,11 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/ws/**").permitAll()
                         .requestMatchers("/api/health").permitAll()
+                        // Defense-in-depth: declarative admin authorization at URL-pattern level
+                        // Supplements @PreAuthorize annotations on individual controller methods
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                        // Internal service endpoints require INTERNAL_SERVICE role
+                        .requestMatchers("/api/internal/**").hasRole("INTERNAL_SERVICE")
                         .anyRequest().authenticated()
                 )
                 // Dual authentication filter chain

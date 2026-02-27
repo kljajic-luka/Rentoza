@@ -2,6 +2,7 @@ package org.example.chatservice.service;
 
 import lombok.extern.slf4j.Slf4j;
 import org.example.chatservice.exception.StorageUpstreamException;
+import org.example.chatservice.service.FileScanningService.ScanResult;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -81,14 +82,27 @@ public class FileStorageService {
     @Value("${chat.uploads.base-url:/api/attachments}")
     private String baseUrl;
 
+    /**
+     * B1 FIX: Quarantine policy for scan results.
+     * <ul>
+     *   <li>{@code reject} (default) — block upload and throw on any non-CLEAN verdict.</li>
+     *   <li>{@code quarantine} — log warning but allow upload for admin review.</li>
+     * </ul>
+     */
+    @Value("${chat.scanning.policy:reject}")
+    private String scanPolicy;
+
     // -------------------------------------------------------------------------
     // Dependencies
     // -------------------------------------------------------------------------
 
     private final SupabaseStorageClient supabaseStorageClient;
+    private final FileScanningService fileScanningService;
 
-    public FileStorageService(SupabaseStorageClient supabaseStorageClient) {
+    public FileStorageService(SupabaseStorageClient supabaseStorageClient,
+                              FileScanningService fileScanningService) {
         this.supabaseStorageClient = supabaseStorageClient;
+        this.fileScanningService = fileScanningService;
     }
 
     // -------------------------------------------------------------------------
@@ -118,7 +132,20 @@ public class FileStorageService {
         validateExtension(extension);
 
         try {
-            scanForMalware(file, contentType);
+            ScanResult result = fileScanningService.scan(file, contentType);
+            if (!result.isAllowed()) {
+                if ("quarantine".equalsIgnoreCase(scanPolicy)) {
+                    log.warn("[Quarantine] File flagged but allowed for admin review: "
+                                    + "user={} booking={} verdict={} reason={} scanner={}",
+                            userId, bookingId, result.verdict(), result.reason(), result.scannerName());
+                } else {
+                    // Default: reject
+                    String msg = result.reason() != null
+                            ? result.reason()
+                            : "File content does not match declared type. Possible disguised file.";
+                    throw new IllegalArgumentException(msg);
+                }
+            }
         } catch (IOException e) {
             log.error("[Upload] Scan I/O error for user {} booking {}: {}", userId, bookingId, e.getMessage());
             throw new IllegalArgumentException("File could not be validated. Please try again.");
@@ -245,69 +272,12 @@ public class FileStorageService {
     }
 
     // -------------------------------------------------------------------------
-    // Private — content scanning
-    // -------------------------------------------------------------------------
-
-    /**
-     * Magic-byte validation to ensure file content matches declared MIME type.
-     * <p>
-     * Production hardening: replace / augment with ClamAV or Google Cloud DLP.
-     *
-     * @throws IllegalArgumentException if magic bytes are inconsistent
-     * @throws IOException              if file bytes cannot be read
-     */
-    private void scanForMalware(MultipartFile file, String declaredContentType) throws IOException {
-        byte[] header = new byte[Math.min(12, (int) file.getSize())];
-        try (var is = file.getInputStream()) {
-            int read = is.read(header);
-            if (read < 4) {
-                throw new IllegalArgumentException("File too small to validate");
-            }
-        }
-
-        boolean valid = switch (declaredContentType.toLowerCase()) {
-            case "image/jpeg" ->
-                    header[0] == (byte) 0xFF && header[1] == (byte) 0xD8;
-            case "image/png" ->
-                    header[0] == (byte) 0x89 && header[1] == (byte) 0x50
-                            && header[2] == (byte) 0x4E && header[3] == (byte) 0x47;
-            case "image/gif" ->
-                    header[0] == (byte) 0x47 && header[1] == (byte) 0x49 && header[2] == (byte) 0x46;
-            case "image/webp" ->
-                    header.length >= 12
-                            && header[0] == (byte) 0x52 && header[1] == (byte) 0x49
-                            && header[8] == (byte) 0x57 && header[9] == (byte) 0x45;
-            case "application/pdf" ->
-                    header[0] == (byte) 0x25 && header[1] == (byte) 0x50
-                            && header[2] == (byte) 0x44 && header[3] == (byte) 0x46; // %PDF
-            default -> false;
-        };
-
-        if (!valid) {
-            log.warn("[Security] Magic-byte mismatch: declared={} header={}",
-                    declaredContentType, bytesToHex(header, 4));
-            throw new IllegalArgumentException(
-                    "File content does not match declared type. Possible disguised file.");
-        }
-
-        log.debug("[Upload] Scan passed: {} ({} bytes)", declaredContentType, file.getSize());
-    }
-
-    // -------------------------------------------------------------------------
     // Private — misc helpers
     // -------------------------------------------------------------------------
 
     private static String getFileExtension(String filename) {
         int dot = filename.lastIndexOf('.');
         return dot < 0 ? "" : filename.substring(dot);
-    }
-
-    private static String bytesToHex(byte[] bytes, int len) {
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < Math.min(len, bytes.length); i++) {
-            sb.append(String.format("%02X ", bytes[i]));
-        }
-        return sb.toString().trim();
     }
 
     // Exposed for tests / contract verification

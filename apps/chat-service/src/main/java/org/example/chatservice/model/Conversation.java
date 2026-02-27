@@ -55,10 +55,13 @@ public class Conversation {
         return Objects.equals(renterId, userId) || Objects.equals(ownerId, userId);
     }
 
-    // Check if conversation allows messaging
+    /**
+     * Check if conversation allows messaging.
+     * Only PENDING and ACTIVE conversations accept new messages.
+     * CLOSED conversations are read-only (frozen after booking completion/cancellation).
+     */
     public boolean isMessagingAllowed() {
         return status == ConversationStatus.PENDING
-                || status == ConversationStatus.ACTIVE
-                || status == ConversationStatus.CLOSED;
+                || status == ConversationStatus.ACTIVE;
     }
 }

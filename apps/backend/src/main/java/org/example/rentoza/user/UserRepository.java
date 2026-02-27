@@ -151,6 +151,25 @@ public interface UserRepository extends JpaRepository<User,Long> {
      */
     Optional<User> findByAuthUid(java.util.UUID authUid);
     
+    // ========== GDPR DELETION SCHEDULER QUERIES ==========
+
+    /**
+     * Find users whose deletion grace period has expired and have not yet been permanently deleted.
+     * Used by GdprDeletionScheduler to execute pending GDPR Article 17 erasure requests.
+     *
+     * @param now current timestamp — users with deletionScheduledAt before this are due
+     * @return list of users pending permanent deletion
+     */
+    @Query("""
+        SELECT u FROM User u
+        WHERE u.deletionScheduledAt < :now
+        AND u.deleted = false
+        ORDER BY u.deletionScheduledAt ASC
+        """)
+    java.util.List<User> findByDeletionScheduledAtBeforeAndDeletedFalse(
+        @org.springframework.data.repository.query.Param("now") java.time.LocalDateTime now
+    );
+
     // ========== LICENSE EXPIRY QUERIES ==========
     
     /**

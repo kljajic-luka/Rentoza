@@ -7,10 +7,12 @@ import org.example.rentoza.booking.BookingRepository;
 import org.example.rentoza.booking.BookingStatus;
 import org.example.rentoza.car.Car;
 import org.example.rentoza.car.CarRepository;
+import org.example.rentoza.chat.ChatServiceClient;
 import org.example.rentoza.review.Review;
 import org.example.rentoza.review.ReviewRepository;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,6 +44,9 @@ public class GdprService {
     private final CarRepository carRepository;
     private final ReviewRepository reviewRepository;
     private final ConsentRepository consentRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final DataAccessLogRepository dataAccessLogRepository;
+    private final ChatServiceClient chatServiceClient;
 
     // Rate limiting: track last export time per user
     private final Map<Long, LocalDateTime> lastExportTime = new ConcurrentHashMap<>();
@@ -81,6 +86,17 @@ public class GdprService {
 
         // Consent history
         export.setConsentHistory(exportConsentHistory(userId));
+
+        // GAP-3: Include chat data from chat-service
+        try {
+            Map<String, Object> chatData = chatServiceClient.exportUserChatData(userId);
+            if (!chatData.isEmpty()) {
+                export.setChatData(chatData);
+            }
+        } catch (Exception e) {
+            log.warn("GDPR: Failed to include chat data in export for user {} — " +
+                    "chat data excluded", userId, e);
+        }
 
         // Track export time
         lastExportTime.put(userId, LocalDateTime.now());
@@ -223,6 +239,10 @@ public class GdprService {
 
     /**
      * Permanently anonymize user data (called by scheduled job after grace period).
+     *
+     * <p>GAP-6 fix: clears pseudonymous hash columns (jmbgHash, pibHash, driverLicenseNumberHash)
+     * which are SHA-256 identifiers under GDPR Recital 26.
+     * <p>GAP-7 fix: sets password to a valid but unknowable BCrypt hash instead of plaintext "DELETED".
      */
     @Transactional
     public void permanentlyDeleteUser(Long userId) {
@@ -239,7 +259,16 @@ public class GdprService {
         user.setJmbg(null);
         user.setPib(null);
         user.setAvatarUrl(null);
-        user.setPassword("DELETED");
+
+        // GAP-6: Clear pseudonymous hash columns — SHA-256 hashes are still
+        // linkable identifiers under GDPR Recital 26 if the original value is known.
+        user.setJmbgHash(null);
+        user.setPibHash(null);
+        user.setDriverLicenseNumberHash(null);
+
+        // GAP-7: Set password to a valid BCrypt hash of a random UUID.
+        // Prevents authentication bypass risks from storing plaintext "DELETED".
+        user.setPassword(passwordEncoder.encode(UUID.randomUUID().toString()));
         user.setDeleted(true);
 
         userRepository.save(user);
@@ -247,7 +276,20 @@ public class GdprService {
         // Delete consent records (no longer needed)
         consentRepository.deleteByUserId(userId);
 
-        log.warn("GDPR: User {} permanently anonymized", userId);
+        // GAP-3: Propagate deletion to chat-service (anonymize messages)
+        // Non-blocking: chat-service unavailability must not prevent GDPR erasure
+        try {
+            boolean chatAnonymized = chatServiceClient.anonymizeUserChatData(userId);
+            if (!chatAnonymized) {
+                log.warn("GDPR: Chat data anonymization for user {} may be incomplete — " +
+                        "manual reconciliation required", userId);
+            }
+        } catch (Exception e) {
+            log.error("GDPR: Chat-service GDPR propagation failed for user {} — " +
+                    "ALERT: manual chat data anonymization required", userId, e);
+        }
+
+        log.warn("GDPR: User {} permanently anonymized (hash columns cleared)", userId);
     }
 
     // ==================== Consent Management ====================
@@ -267,27 +309,41 @@ public class GdprService {
         return preferences;
     }
 
+    /**
+     * Update consent preferences with real request provenance.
+     *
+     * <p>GAP-4 fix: captures actual client IP and User-Agent instead of hardcoded "0.0.0.0".
+     * GDPR Article 7(1) requires demonstrable evidence that consent was given.
+     *
+     * @param userId    the user updating their consent
+     * @param preferences the new consent settings
+     * @param ipAddress real client IP from HttpServletRequest
+     * @param userAgent User-Agent header from HttpServletRequest
+     * @return updated consent preferences
+     */
     @Transactional
-    public ConsentPreferencesDTO updateConsentPreferences(Long userId, ConsentPreferencesDTO preferences) {
+    public ConsentPreferencesDTO updateConsentPreferences(Long userId, ConsentPreferencesDTO preferences,
+                                                          String ipAddress, String userAgent) {
         LocalDateTime now = LocalDateTime.now();
-        String ipAddress = "0.0.0.0"; // Would come from request in real implementation
 
-        saveConsent(userId, "MARKETING_EMAILS", preferences.isMarketingEmails(), now, ipAddress);
-        saveConsent(userId, "SMS_NOTIFICATIONS", preferences.isSmsNotifications(), now, ipAddress);
-        saveConsent(userId, "ANALYTICS_TRACKING", preferences.isAnalyticsTracking(), now, ipAddress);
-        saveConsent(userId, "THIRD_PARTY_SHARING", preferences.isThirdPartySharing(), now, ipAddress);
+        saveConsent(userId, "MARKETING_EMAILS", preferences.isMarketingEmails(), now, ipAddress, userAgent);
+        saveConsent(userId, "SMS_NOTIFICATIONS", preferences.isSmsNotifications(), now, ipAddress, userAgent);
+        saveConsent(userId, "ANALYTICS_TRACKING", preferences.isAnalyticsTracking(), now, ipAddress, userAgent);
+        saveConsent(userId, "THIRD_PARTY_SHARING", preferences.isThirdPartySharing(), now, ipAddress, userAgent);
 
-        log.info("GDPR: Consent preferences updated for user {}", userId);
+        log.info("GDPR: Consent preferences updated for user {} from IP {}", userId, ipAddress);
         return getConsentPreferences(userId);
     }
 
-    private void saveConsent(Long userId, String type, boolean granted, LocalDateTime timestamp, String ip) {
+    private void saveConsent(Long userId, String type, boolean granted, LocalDateTime timestamp,
+                             String ip, String userAgent) {
         UserConsent consent = new UserConsent();
         consent.setUserId(userId);
         consent.setConsentType(type);
         consent.setGranted(granted);
         consent.setTimestamp(timestamp);
         consent.setIpAddress(ip);
+        consent.setUserAgent(userAgent);
         consentRepository.save(consent);
     }
 
@@ -308,24 +364,49 @@ public class GdprService {
 
     // ==================== Data Access Log ====================
 
+    /**
+     * Query real data access audit log entries for a user.
+     *
+     * <p>GAP-5 fix: replaces the previous hardcoded stub that returned fabricated
+     * sample data regardless of user. Now queries the persisted {@link DataAccessLog}
+     * table and returns factual user-specific access records.
+     *
+     * @param userId the user whose access log to retrieve
+     * @param days   number of days to look back
+     * @return real data access log entries, mapped to DTOs
+     */
     @Transactional(readOnly = true)
     public List<DataAccessLogEntry> getDataAccessLog(Long userId, int days) {
-        // In production, this would query an audit log table
-        // For now, return a sample structure
-        return List.of(
-                new DataAccessLogEntry(
-                        LocalDateTime.now().minusDays(1),
-                        "Profile viewed",
-                        "User logged in and viewed profile",
-                        "Web App"
-                ),
-                new DataAccessLogEntry(
-                        LocalDateTime.now().minusDays(3),
-                        "Booking created",
-                        "New booking request submitted",
-                        "Mobile App"
-                )
-        );
+        LocalDateTime since = LocalDateTime.now().minusDays(days);
+        List<DataAccessLog> logs = dataAccessLogRepository.findByUserIdAndTimestampAfter(userId, since);
+        return logs.stream()
+                .map(entry -> new DataAccessLogEntry(
+                        entry.getTimestamp(),
+                        entry.getAction(),
+                        entry.getDescription(),
+                        entry.getSource()
+                ))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Record a data access event for audit trail purposes.
+     *
+     * @param userId       the user whose data was accessed
+     * @param accessorId   who accessed it (null for system operations)
+     * @param accessorType USER, ADMIN, or SYSTEM
+     * @param action       e.g., VIEW_PROFILE, EXPORT_DATA, VIEW_DOCUMENT
+     * @param description  human-readable description
+     * @param source       e.g., Web App, Admin Panel, API
+     * @param ipAddress    accessor's IP (nullable)
+     */
+    @Transactional
+    public void logDataAccess(Long userId, Long accessorId, String accessorType,
+                              String action, String description, String source,
+                              String ipAddress) {
+        DataAccessLog entry = DataAccessLog.of(userId, accessorId, accessorType,
+                action, description, source, ipAddress);
+        dataAccessLogRepository.save(entry);
     }
 
     // ==================== Helpers ====================

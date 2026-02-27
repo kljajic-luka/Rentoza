@@ -53,6 +53,12 @@ public class SchedulerItemProcessor {
     private final NotificationService notificationService;
     private final PayoutLedgerRepository payoutLedgerRepository;
 
+    // H-15: Dedicated alerting counters for MANUAL_REVIEW escalations
+    private final io.micrometer.core.instrument.Counter captureManualReviewCounter;
+    private final io.micrometer.core.instrument.Counter refundManualReviewCounter;
+    private final io.micrometer.core.instrument.Counter payoutManualReviewCounter;
+    private final io.micrometer.core.instrument.Counter depositExpiryCounter;
+
     @Value("${app.payment.refund.retry-backoff-minutes:60}")
     private int refundRetryBackoffMinutes;
 
@@ -63,7 +69,8 @@ public class SchedulerItemProcessor {
             CancellationRecordRepository cancellationRecordRepository,
             DamageClaimRepository damageClaimRepository,
             NotificationService notificationService,
-            PayoutLedgerRepository payoutLedgerRepository) {
+            PayoutLedgerRepository payoutLedgerRepository,
+            io.micrometer.core.instrument.MeterRegistry meterRegistry) {
         this.bookingRepository = bookingRepository;
         this.paymentService = paymentService;
         this.paymentProvider = paymentProvider;
@@ -71,6 +78,29 @@ public class SchedulerItemProcessor {
         this.damageClaimRepository = damageClaimRepository;
         this.notificationService = notificationService;
         this.payoutLedgerRepository = payoutLedgerRepository;
+
+        // H-15: Alert-grade counters — configure alerting rules to fire on increment > 0
+        // Runbook: https://wiki.internal/runbooks/manual-review-escalation
+        this.captureManualReviewCounter = io.micrometer.core.instrument.Counter.builder(
+                "payment.alert.capture.manual_review")
+                .description("Capture escalations requiring manual review")
+                .tag("severity", "high")
+                .register(meterRegistry);
+        this.refundManualReviewCounter = io.micrometer.core.instrument.Counter.builder(
+                "payment.alert.refund.manual_review")
+                .description("Refund escalations requiring manual review")
+                .tag("severity", "high")
+                .register(meterRegistry);
+        this.payoutManualReviewCounter = io.micrometer.core.instrument.Counter.builder(
+                "payment.alert.payout.manual_review")
+                .description("Payout escalations requiring manual review")
+                .tag("severity", "high")
+                .register(meterRegistry);
+        this.depositExpiryCounter = io.micrometer.core.instrument.Counter.builder(
+                "payment.alert.deposit.auth_expiry")
+                .description("Deposit authorization expiry events")
+                .tag("severity", "high")
+                .register(meterRegistry);
     }
 
     // ── Capture ──────────────────────────────────────────────────────────────
@@ -224,8 +254,13 @@ public class SchedulerItemProcessor {
             fresh.setChargeLifecycleStatus(ChargeLifecycleStatus.MANUAL_REVIEW);
             fresh.setPaymentStatus("MANUAL_REVIEW");
             bookingRepository.save(fresh);
-            log.error("[SchedulerProcessor] Booking {} ESCALATED to MANUAL_REVIEW — {} capture attempts exhausted. "
-                    + "Last error: {} ({})", fresh.getId(), fresh.getCaptureAttempts(),
+
+            // H-15: Increment alerting metric and emit structured alert log
+            captureManualReviewCounter.increment();
+            log.error("[ALERT][MANUAL_REVIEW] Booking {} ESCALATED to MANUAL_REVIEW — {} capture attempts exhausted. "
+                    + "Last error: {} ({}). "
+                    + "Runbook: https://wiki.internal/runbooks/capture-manual-review",
+                    fresh.getId(), fresh.getCaptureAttempts(),
                     result.getErrorMessage(), result.getErrorCode());
 
             notificationService.createNotification(CreateNotificationRequestDTO.builder()
@@ -386,7 +421,9 @@ public class SchedulerItemProcessor {
             if (exhausted) {
                 record.setRefundStatus(RefundStatus.MANUAL_REVIEW);
                 record.setNextRetryAt(null);
-                log.error("[SchedulerProcessor] Refund ESCALATED to MANUAL_REVIEW for booking {} after {} attempts: {}",
+                refundManualReviewCounter.increment();
+                log.error("[ALERT][MANUAL_REVIEW] Refund ESCALATED to MANUAL_REVIEW for booking {} after {} attempts: {}. "
+                        + "Runbook: https://wiki.internal/runbooks/refund-manual-review",
                         bookingId, attempt, e.getMessage());
             } else {
                 record.setRefundStatus(RefundStatus.FAILED);
@@ -427,7 +464,9 @@ public class SchedulerItemProcessor {
             if (exhausted) {
                 record.setRefundStatus(RefundStatus.MANUAL_REVIEW);
                 record.setNextRetryAt(null);
-                log.error("[SchedulerProcessor] Refund ESCALATED to MANUAL_REVIEW for booking {} after {} attempts: {}",
+                refundManualReviewCounter.increment();
+                log.error("[ALERT][MANUAL_REVIEW] Refund ESCALATED to MANUAL_REVIEW for booking {} after {} attempts: {}. "
+                        + "Runbook: https://wiki.internal/runbooks/refund-manual-review",
                         bookingId, attempt, result.getErrorMessage());
             } else {
                 record.setRefundStatus(RefundStatus.FAILED);
@@ -456,6 +495,14 @@ public class SchedulerItemProcessor {
     public void markPayoutEligibleSafely(PayoutLedger ledger) {
         try {
             ledger.setStatus(PayoutLifecycleStatus.ELIGIBLE);
+            // P1-FIX: Clear currentAttemptKey when requeuing to ELIGIBLE.
+            // The stale PROCESSING record had no providerReference, meaning the
+            // provider call never returned successfully. The old key has no cached
+            // result to replay, so the next attempt must start fresh with a new key.
+            // Without this, executeHostPayout would enter the crash-recovery path
+            // (reusing the stale key) and skip setting status to PROCESSING,
+            // leaving the payout in ELIGIBLE where webhooks can't finalize it.
+            ledger.setCurrentAttemptKey(null);
             payoutLedgerRepository.save(ledger);
         } catch (Exception e) {
             log.error("[SchedulerProcessor] Failed to mark payout eligible for ledger {}: {}",
@@ -476,6 +523,57 @@ public class SchedulerItemProcessor {
             }
         } catch (Exception e) {
             log.error("[SchedulerProcessor] Exception executing payout for ledger {}: {}",
+                    ledger.getId(), e.getMessage(), e);
+        }
+    }
+
+    /**
+     * P1-FIX: Escalate async payouts stuck waiting for a webhook beyond the timeout.
+     * These payouts have a provider reference (bank accepted the transfer) but the
+     * PAYOUT.COMPLETED webhook never arrived. They must NOT be requeued to ELIGIBLE
+     * (would cause a duplicate bank transfer). Instead, escalate to MANUAL_REVIEW
+     * for operator investigation.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void escalateStaleAsyncPayoutSafely(PayoutLedger ledger) {
+        try {
+            ledger.setStatus(PayoutLifecycleStatus.MANUAL_REVIEW);
+            ledger.setCurrentAttemptKey(null);
+            ledger.setLastError("Async payout accepted by provider (ref: " + ledger.getProviderReference()
+                    + ") but PAYOUT.COMPLETED webhook never arrived within timeout");
+            payoutLedgerRepository.save(ledger);
+            // P2-FIX: Increment alerting counter so Prometheus/Grafana fires an alert
+            payoutManualReviewCounter.increment();
+            log.error("[ALERT][MANUAL_REVIEW] Async payout for booking {} ESCALATED — provider accepted (ref {}) "
+                    + "but no webhook confirmation received. "
+                    + "Runbook: https://wiki.internal/runbooks/payout-webhook-missing",
+                    ledger.getBookingId(), ledger.getProviderReference());
+        } catch (Exception e) {
+            log.error("[SchedulerProcessor] Failed to escalate stale async payout for ledger {}: {}",
+                    ledger.getId(), e.getMessage(), e);
+        }
+    }
+
+    /**
+     * P3-FIX: Escalate FAILED payouts that have exhausted all retry attempts.
+     * Unlike {@link #escalateStaleAsyncPayoutSafely}, this is for payouts that
+     * actively failed (via webhook PAYOUT.FAILED or provider error) and used up
+     * their retry budget — not for async payouts waiting on a missing webhook.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void escalateExhaustedPayoutSafely(PayoutLedger ledger) {
+        try {
+            ledger.setStatus(PayoutLifecycleStatus.MANUAL_REVIEW);
+            ledger.setCurrentAttemptKey(null);
+            ledger.setLastError("Payout FAILED after " + ledger.getAttemptCount() + "/" + ledger.getMaxAttempts()
+                    + " attempts exhausted. Last error: " + (ledger.getLastError() != null ? ledger.getLastError() : "unknown"));
+            payoutLedgerRepository.save(ledger);
+            payoutManualReviewCounter.increment();
+            log.error("[ALERT][MANUAL_REVIEW] Payout for booking {} ESCALATED — {} retry attempts exhausted. "
+                    + "Runbook: https://wiki.internal/runbooks/payout-failure",
+                    ledger.getBookingId(), ledger.getAttemptCount());
+        } catch (Exception e) {
+            log.error("[SchedulerProcessor] Failed to escalate exhausted payout for ledger {}: {}",
                     ledger.getId(), e.getMessage(), e);
         }
     }
@@ -513,6 +611,64 @@ public class SchedulerItemProcessor {
             }
         } catch (Exception e) {
             log.error("[SchedulerProcessor] Failed to mark booking {} as REAUTH_REQUIRED: {}",
+                    booking.getId(), e.getMessage(), e);
+        }
+    }
+
+    // ── Deposit auth expiry (H-11) ───────────────────────────────────────────
+
+    /**
+     * H-11: Mark bookings with expiring deposit authorizations.
+     *
+     * <p>For deposits that have actually expired ({@code depositAuthExpiresAt} is in the past),
+     * transitions the deposit lifecycle to EXPIRED. For deposits expiring soon but not yet
+     * expired, logs a high-severity warning without transitioning — this preserves the ability
+     * to capture or release the deposit until actual expiry.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void markDepositExpiryWarningSafely(Booking booking) {
+        try {
+            DepositLifecycleStatus currentDepositStatus = booking.getDepositLifecycleStatus();
+            if (currentDepositStatus != DepositLifecycleStatus.AUTHORIZED) {
+                log.debug("[SchedulerProcessor] Skipping deposit expiry for booking {} — deposit status is {}",
+                        booking.getId(), currentDepositStatus);
+                return;
+            }
+
+            Instant expiresAt = booking.getDepositAuthExpiresAt();
+            boolean actuallyExpired = expiresAt != null && expiresAt.isBefore(Instant.now());
+
+            if (actuallyExpired) {
+                // Deposit has actually expired — transition to EXPIRED
+                currentDepositStatus.transition(DepositLifecycleStatus.EXPIRED);
+                booking.setDepositLifecycleStatus(DepositLifecycleStatus.EXPIRED);
+                bookingRepository.save(booking);
+
+                depositExpiryCounter.increment();
+                log.error("[ALERT][DEPOSIT_EXPIRY] Booking {} deposit authorization EXPIRED at {} — "
+                        + "deposit lifecycle marked EXPIRED. Operator action required: re-authorize or settle deposit. "
+                        + "Runbook: https://wiki.internal/runbooks/deposit-auth-expiry",
+                        booking.getId(), expiresAt);
+            } else {
+                // Deposit expiring soon but not yet expired — warn only, don't transition
+                log.warn("[DEPOSIT_EXPIRY_WARNING] Booking {} deposit authorization expiring at {} — "
+                        + "capture/release still possible. Monitor and act before expiry.",
+                        booking.getId(), expiresAt);
+            }
+
+            if (booking.getRenter() != null) {
+                notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                        .recipientId(booking.getRenter().getId())
+                        .type(NotificationType.DEPOSIT_RELEASED)
+                        .message(String.format(
+                                "Autorizacija depozita za rezervaciju #%d %s. Kontaktirajte podršku.",
+                                booking.getId(),
+                                actuallyExpired ? "je istekla" : "uskoro ističe"))
+                        .relatedEntityId(String.valueOf(booking.getId()))
+                        .build());
+            }
+        } catch (Exception e) {
+            log.error("[SchedulerProcessor] Failed to process deposit auth expiry for booking {}: {}",
                     booking.getId(), e.getMessage(), e);
         }
     }

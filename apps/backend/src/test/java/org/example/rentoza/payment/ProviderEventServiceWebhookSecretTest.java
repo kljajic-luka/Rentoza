@@ -25,8 +25,11 @@ class ProviderEventServiceWebhookSecretTest {
     @Mock
     private BookingRepository bookingRepository;
 
+    @Mock
+    private PayoutLedgerRepository payoutLedgerRepository;
+
     private ProviderEventService createService(String webhookSecret, String activeProfile) {
-        ProviderEventService service = new ProviderEventService(eventRepository, txRepository, bookingRepository);
+        ProviderEventService service = new ProviderEventService(eventRepository, txRepository, bookingRepository, payoutLedgerRepository);
         ReflectionTestUtils.setField(service, "webhookSecret", webhookSecret);
         ReflectionTestUtils.setField(service, "activeProfile", activeProfile);
         return service;

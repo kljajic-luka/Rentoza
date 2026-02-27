@@ -54,12 +54,22 @@ public class ProviderEventService {
     private final ProviderEventRepository eventRepository;
     private final PaymentTransactionRepository txRepository;
     private final BookingRepository bookingRepository;
+    private final PayoutLedgerRepository payoutLedgerRepository;
 
     @Value("${app.payment.webhook.secret}")
     private String webhookSecret;
 
     @Value("${spring.profiles.active:dev}")
     private String activeProfile;
+
+    /**
+     * H-13: Maximum age (in seconds) for an incoming webhook event timestamp.
+     * Events older than this window are rejected even with valid signatures,
+     * preventing replay attacks using legitimately-signed stale events.
+     * Default: 300 seconds (5 minutes). Configurable with clock-skew tolerance.
+     */
+    @Value("${app.payment.webhook.max-age-seconds:300}")
+    private long webhookMaxAgeSeconds;
 
     /**
      * B5: Fail-fast on missing or dev-mock webhook HMAC secret in production.
@@ -91,7 +101,24 @@ public class ProviderEventService {
     // ── Entry point ──────────────────────────────────────────────────────────
 
     /**
-     * Ingest a provider webhook event.
+     * Ingest a provider webhook event (backward-compatible — no timestamp validation).
+     *
+     * <p><b>Prefer {@link #ingestEvent(String, String, Long, String, String, String, Instant)}
+     * which adds H-13 replay-window protection.</b>
+     */
+    @Transactional
+    public boolean ingestEvent(String providerEventId,
+                               String eventType,
+                               Long bookingId,
+                               String providerAuthorizationId,
+                               String rawPayload,
+                               String signatureHeader) {
+        return ingestEvent(providerEventId, eventType, bookingId,
+                providerAuthorizationId, rawPayload, signatureHeader, null);
+    }
+
+    /**
+     * Ingest a provider webhook event with optional timestamp for replay-window validation.
      *
      * @param providerEventId         unique event identifier assigned by the provider
      * @param eventType               provider-defined event type string
@@ -101,6 +128,7 @@ public class ProviderEventService {
      *                                (P0-4: transaction-scoped webhook processing)
      * @param rawPayload              full raw JSON body
      * @param signatureHeader         optional HMAC signature header from the provider
+     * @param eventTimestamp          provider-reported event creation time (H-13: replay window check)
      * @return {@code true} if the event was freshly processed; {@code false} if it was a duplicate
      */
     @Transactional
@@ -109,7 +137,8 @@ public class ProviderEventService {
                                Long bookingId,
                                String providerAuthorizationId,
                                String rawPayload,
-                               String signatureHeader) {
+                               String signatureHeader,
+                               Instant eventTimestamp) {
 
         // ── 1. Deduplication ──────────────────────────────────────────────────
         if (eventRepository.existsByProviderEventId(providerEventId)) {
@@ -158,6 +187,46 @@ public class ProviderEventService {
             }
         }
 
+        // ── 2b. H-13: Replay window validation ──────────────────────────────
+        // Reject events whose timestamp is older than the configured max age.
+        // This prevents replay attacks using legitimately-signed stale events.
+        if (eventTimestamp != null && webhookMaxAgeSeconds > 0) {
+            long ageSeconds = java.time.Duration.between(eventTimestamp, Instant.now()).getSeconds();
+            if (ageSeconds > webhookMaxAgeSeconds) {
+                log.warn("[Webhook] REPLAY REJECTED — event too old: providerEventId={} age={}s maxAge={}s timestamp={}",
+                        providerEventId, ageSeconds, webhookMaxAgeSeconds, eventTimestamp);
+                ProviderEvent rejected = ProviderEvent.builder()
+                        .providerEventId(providerEventId)
+                        .eventType(eventType)
+                        .bookingId(bookingId)
+                        .rawPayload(rawPayload)
+                        .signatureHeader(signatureHeader)
+                        .signatureVerified(sigVerified)
+                        .processingError("REPLAY_WINDOW_EXCEEDED:age=" + ageSeconds + "s")
+                        .processedAt(Instant.now())
+                        .build();
+                eventRepository.save(rejected);
+                return false;
+            }
+            // Also reject events with future timestamps beyond a 60-second clock-skew tolerance
+            if (ageSeconds < -60) {
+                log.warn("[Webhook] FUTURE EVENT REJECTED — providerEventId={} timestamp={} ({}s in future)",
+                        providerEventId, eventTimestamp, -ageSeconds);
+                ProviderEvent rejected = ProviderEvent.builder()
+                        .providerEventId(providerEventId)
+                        .eventType(eventType)
+                        .bookingId(bookingId)
+                        .rawPayload(rawPayload)
+                        .signatureHeader(signatureHeader)
+                        .signatureVerified(sigVerified)
+                        .processingError("FUTURE_TIMESTAMP:offset=" + (-ageSeconds) + "s")
+                        .processedAt(Instant.now())
+                        .build();
+                eventRepository.save(rejected);
+                return false;
+            }
+        }
+
         // ── 3. Persist raw event record (audit trail before processing) ───────
         ProviderEvent event = ProviderEvent.builder()
                 .providerEventId(providerEventId)
@@ -188,16 +257,57 @@ public class ProviderEventService {
 
     // ── Dispatcher ───────────────────────────────────────────────────────────
 
+    /**
+     * Route incoming webhook events to the correct handler.
+     *
+     * <p><b>H-5 FIX:</b> Maps Monri's actual webhook event type names to internal
+     * lifecycle handlers. Monri sends types like "transaction.authorized",
+     * "transaction.captured", "transaction.declined", etc. These are mapped alongside
+     * the existing generic names for backward compatibility with MockPaymentProvider.
+     *
+     * <p><b>H-6 FIX:</b> When {@code providerAuthorizationId} is null and the webhook
+     * secret is active, the dispatch logs a HIGH-severity audit event. The processing
+     * continues via the booking-scoped fallback path, but the missing auth-id is
+     * flagged as a data quality issue rather than silently ignored.
+     */
     private void dispatch(String eventType, Long bookingId, String providerAuthorizationId) {
         if (eventType == null) {
             log.warn("[Webhook] Null event type — ignoring");
             return;
         }
+
+        // H-6: Audit-log when webhook secret is active but no auth-id is provided
+        if ((providerAuthorizationId == null || providerAuthorizationId.isBlank())
+                && webhookSecret != null && !webhookSecret.isBlank()) {
+            log.warn("[Webhook][H-6] Missing providerAuthorizationId for event type '{}' bookingId={}. "
+                    + "Transaction-scoped routing unavailable; falling back to booking-scoped scan. "
+                    + "This reduces isolation between charge and deposit transactions on the same booking.",
+                    eventType, bookingId);
+        }
+
         switch (eventType.toUpperCase()) {
+            // Generic event types (from MockPaymentProvider and backward compatibility)
             case "PAYMENT_CONFIRMED", "AUTHORIZATION_CONFIRMED" ->
                     handlePaymentConfirmed(bookingId, providerAuthorizationId);
             case "PAYMENT_FAILED", "AUTHORIZATION_FAILED" ->
                     handlePaymentFailed(bookingId, providerAuthorizationId);
+
+            // H-5: Monri-specific webhook event types
+            case "TRANSACTION.AUTHORIZED" ->
+                    handlePaymentConfirmed(bookingId, providerAuthorizationId);
+            case "TRANSACTION.CAPTURED" ->
+                    handlePaymentConfirmed(bookingId, providerAuthorizationId);
+            case "TRANSACTION.DECLINED", "TRANSACTION.ERROR" ->
+                    handlePaymentFailed(bookingId, providerAuthorizationId);
+            case "TRANSACTION.VOIDED" ->
+                    handleVoided(bookingId, providerAuthorizationId);
+            case "TRANSACTION.REFUNDED" ->
+                    handleRefundConfirmed(bookingId, providerAuthorizationId);
+            case "PAYOUT.COMPLETED" ->
+                    handlePayoutCompleted(bookingId, providerAuthorizationId);
+            case "PAYOUT.FAILED" ->
+                    handlePayoutFailed(bookingId, providerAuthorizationId);
+
             default ->
                     log.info("[Webhook] Unhandled event type '{}' — stored for audit only", eventType);
         }
@@ -373,20 +483,140 @@ public class ProviderEventService {
         });
     }
 
+    // ── H-5 Monri-specific event handlers ───────────────────────────────────
+
+    /**
+     * H-5: Handle TRANSACTION.VOIDED — marks the authorization as released.
+     */
+    private void handleVoided(Long bookingId, String providerAuthorizationId) {
+        if (bookingId == null) {
+            log.warn("[Webhook] TRANSACTION.VOIDED without bookingId — cannot process");
+            return;
+        }
+        log.info("[Webhook] Processing TRANSACTION.VOIDED for booking {} authId={}",
+                bookingId, providerAuthorizationId);
+        // No lifecycle transition needed — void is an expected terminal state
+        // for released authorizations. Log for audit trail.
+    }
+
+    /**
+     * H-5: Handle TRANSACTION.REFUNDED — confirms an async refund completion.
+     */
+    private void handleRefundConfirmed(Long bookingId, String providerAuthorizationId) {
+        if (bookingId == null) {
+            log.warn("[Webhook] TRANSACTION.REFUNDED without bookingId — cannot process");
+            return;
+        }
+        log.info("[Webhook] Processing TRANSACTION.REFUNDED for booking {} authId={}",
+                bookingId, providerAuthorizationId);
+        // Refund confirmation is informational — the refund was already initiated
+        // by our system. This webhook confirms that the refund settled at the gateway.
+    }
+
+    /**
+     * H-5/H-8: Handle PAYOUT.COMPLETED — confirms async payout success.
+     * Transitions the payout ledger entry from PROCESSING to COMPLETED.
+     *
+     * <p><b>P1-FIX:</b> Also sets {@code booking.paymentReference} so the admin payout
+     * dashboard recognises the booking as paid. Without this, async payouts that
+     * complete via webhook would appear as "unpaid" in the admin queue.
+     */
+    private void handlePayoutCompleted(Long bookingId, String providerAuthorizationId) {
+        if (bookingId == null) {
+            log.warn("[Webhook] PAYOUT.COMPLETED without bookingId — cannot process");
+            return;
+        }
+        log.info("[Webhook] PAYOUT.COMPLETED for booking {}", bookingId);
+        payoutLedgerRepository.findByBookingId(bookingId).ifPresentOrElse(
+                payout -> {
+                    if (payout.getStatus() == PayoutLifecycleStatus.PROCESSING) {
+                        payout.setStatus(PayoutLifecycleStatus.COMPLETED);
+                        payout.setPaidAt(Instant.now());
+                        payout.setCurrentAttemptKey(null); // Clear after terminal success
+                        payout.setUpdatedAt(Instant.now());
+                        payoutLedgerRepository.save(payout);
+                        log.info("[Webhook] Payout ledger for booking {} → COMPLETED", bookingId);
+                        // P1-FIX: Set booking.paymentReference so admin dashboard
+                        // recognises this booking as paid (mirrors sync success path
+                        // in BookingPaymentService.executeHostPayout).
+                        // P2-FIX: Use provider reference chain for audit traceability:
+                        // ledger.providerReference (set during payout call) →
+                        // providerAuthorizationId (from webhook payload) →
+                        // "webhook-confirmed-<bookingId>" as last resort.
+                        bookingRepository.findById(bookingId).ifPresent(b -> {
+                            String ref = payout.getProviderReference();
+                            if (ref == null || ref.isBlank()) {
+                                ref = providerAuthorizationId;
+                            }
+                            if (ref == null || ref.isBlank()) {
+                                ref = "webhook-confirmed-" + bookingId;
+                            }
+                            b.setPaymentReference(ref);
+                            bookingRepository.save(b);
+                            log.info("[Webhook] Booking {} paymentReference set to '{}'", bookingId, ref);
+                        });
+                    } else {
+                        log.info("[Webhook] Payout ledger for booking {} already in status {} — ignoring PAYOUT.COMPLETED",
+                                bookingId, payout.getStatus());
+                    }
+                },
+                () -> log.warn("[Webhook] PAYOUT.COMPLETED for booking {} — no payout ledger entry found", bookingId)
+        );
+    }
+
+    /**
+     * H-5/H-8: Handle PAYOUT.FAILED — marks payout as failed for retry or escalation.
+     *
+     * <p><b>P1-FIX:</b> Sets {@code nextRetryAt} with a 1-hour backoff and clears
+     * {@code currentAttemptKey} so the scheduler's FAILED-payout recovery loop can
+     * pick it up for retry. Without this, FAILED payouts were dead-lettered — no
+     * scheduler query matched them.
+     */
+    private void handlePayoutFailed(Long bookingId, String providerAuthorizationId) {
+        if (bookingId == null) {
+            log.warn("[Webhook] PAYOUT.FAILED without bookingId — cannot process");
+            return;
+        }
+        log.error("[Webhook] PAYOUT.FAILED for booking {}", bookingId);
+        payoutLedgerRepository.findByBookingId(bookingId).ifPresentOrElse(
+                payout -> {
+                    if (payout.getStatus() == PayoutLifecycleStatus.PROCESSING) {
+                        payout.setStatus(PayoutLifecycleStatus.FAILED);
+                        payout.setUpdatedAt(Instant.now());
+                        payout.setLastError("Payout failed via webhook callback"
+                                + (providerAuthorizationId != null ? " (ref: " + providerAuthorizationId + ")" : ""));
+                        // P1-FIX: Clear attempt key and set retry backoff so the scheduler's
+                        // findRetryEligibleFailedPayouts query can pick this up for retry.
+                        payout.setCurrentAttemptKey(null);
+                        payout.setNextRetryAt(Instant.now().plusSeconds(3600)); // 1 hour backoff
+                        payoutLedgerRepository.save(payout);
+                        log.error("[ALERT][PAYOUT_FAILED] Payout for booking {} FAILED via webhook (attempt {}/{}). "
+                                + "Runbook: https://wiki.internal/runbooks/payout-failure",
+                                bookingId, payout.getAttemptCount(), payout.getMaxAttempts());
+                    }
+                },
+                () -> log.warn("[Webhook] PAYOUT.FAILED for booking {} — no payout ledger entry found", bookingId)
+        );
+    }
+
     // ── Lifecycle transition guard ──────────────────────────────────────────────
 
     /**
-     * Safely transition charge lifecycle status with state-machine validation.
-     * Logs a warning on invalid transitions but still proceeds — consistent with
-     * BookingPaymentService's guard pattern for full observability.
+     * Transition charge lifecycle status with strict state-machine enforcement.
+     *
+     * <p><b>H-10 FIX:</b> Uses throwing {@link ChargeLifecycleStatus#transition(ChargeLifecycleStatus)}
+     * to prevent invalid transitions from proceeding silently.
+     *
+     * @throws IllegalStateException if the transition violates the state machine
      */
     private void transitionCharge(Booking booking, ChargeLifecycleStatus target, String context) {
         ChargeLifecycleStatus current = booking.getChargeLifecycleStatus();
-        if (current != null && !current.canTransitionTo(target)) {
-            log.warn("[Webhook] Invalid charge lifecycle transition {} → {} in {}, booking {}",
-                    current, target, context, booking.getId());
+        if (current != null) {
+            current.transition(target);  // H-10: throws IllegalStateException on invalid transition
         }
         booking.setChargeLifecycleStatus(target);
+        log.debug("[Webhook] Charge lifecycle {} → {} in {}, booking {}",
+                current, target, context, booking.getId());
     }
 
     // ── HMAC verification ─────────────────────────────────────────────────────

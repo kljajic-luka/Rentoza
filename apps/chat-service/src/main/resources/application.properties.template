@@ -75,7 +75,7 @@ logging.level.org.hibernate.SQL=DEBUG
 # Actuator (Health & Metrics)
 # ============================================================================
 management.endpoints.web.exposure.include=health,info,prometheus,metrics
-management.endpoint.health.show-details=always
+management.endpoint.health.show-details=when_authorized
 
 # ============================================================================
 # Resilience4j (Circuit Breaker for Backend API calls)

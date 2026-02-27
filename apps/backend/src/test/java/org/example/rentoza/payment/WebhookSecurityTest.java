@@ -1,5 +1,6 @@
 package org.example.rentoza.payment;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ResponseEntity;
@@ -25,14 +26,16 @@ import static org.mockito.Mockito.*;
  */
 class WebhookSecurityTest {
 
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
     @Test
     @DisplayName("B3: POST to webhook without auth invokes providerEventService and returns 200")
     void givenPostToWebhookWithoutAuth_returns200() {
         ProviderEventService mockService = mock(ProviderEventService.class);
-        when(mockService.ingestEvent(anyString(), anyString(), any(), any(), anyString(), any()))
+        when(mockService.ingestEvent(anyString(), anyString(), any(), any(), anyString(), any(), any()))
                 .thenReturn(true);
 
-        WebhookPaymentController controller = new WebhookPaymentController(mockService);
+        WebhookPaymentController controller = new WebhookPaymentController(mockService, objectMapper);
 
         ResponseEntity<Map<String, Object>> response = controller.handleWebhook(
                 "evt-123",
@@ -46,18 +49,18 @@ class WebhookSecurityTest {
         assertThat(response.getStatusCode().value()).isEqualTo(200);
         assertThat(response.getBody()).containsEntry("status", "ok");
         assertThat(response.getBody()).containsEntry("processed", true);
-        verify(mockService).ingestEvent("evt-123", "PAYMENT_CONFIRMED", 42L, "auth-abc",
-                "{\"amount\":100}", "signature-xyz");
+        verify(mockService).ingestEvent(eq("evt-123"), eq("PAYMENT_CONFIRMED"), eq(42L), eq("auth-abc"),
+                eq("{\"amount\":100}"), eq("signature-xyz"), any());
     }
 
     @Test
     @DisplayName("B3: Missing event ID with blank webhook secret generates synthetic ID (dev mode)")
     void givenMissingEventIdInDevMode_syntheticIdIsGenerated() {
         ProviderEventService mockService = mock(ProviderEventService.class);
-        when(mockService.ingestEvent(anyString(), any(), any(), any(), anyString(), any()))
+        when(mockService.ingestEvent(anyString(), any(), any(), any(), anyString(), any(), any()))
                 .thenReturn(true);
 
-        WebhookPaymentController controller = new WebhookPaymentController(mockService);
+        WebhookPaymentController controller = new WebhookPaymentController(mockService, objectMapper);
 
         ResponseEntity<Map<String, Object>> response = controller.handleWebhook(
                 null, "PAYMENT_CONFIRMED", null, null, null, "{}"
@@ -67,17 +70,17 @@ class WebhookSecurityTest {
         assertThat(response.getBody()).containsEntry("status", "ok");
         // Verify ingestEvent was called with a synthetic event ID
         verify(mockService).ingestEvent(argThat(id -> id.startsWith("synthetic_")),
-                eq("PAYMENT_CONFIRMED"), isNull(), isNull(), eq("{}"), isNull());
+                eq("PAYMENT_CONFIRMED"), isNull(), isNull(), eq("{}"), isNull(), any());
     }
 
     @Test
     @DisplayName("B3: Processing error still returns 200 (prevent provider retries)")
     void givenProcessingError_returns200() {
         ProviderEventService mockService = mock(ProviderEventService.class);
-        when(mockService.ingestEvent(anyString(), any(), any(), any(), anyString(), any()))
+        when(mockService.ingestEvent(anyString(), any(), any(), any(), anyString(), any(), any()))
                 .thenThrow(new RuntimeException("DB down"));
 
-        WebhookPaymentController controller = new WebhookPaymentController(mockService);
+        WebhookPaymentController controller = new WebhookPaymentController(mockService, objectMapper);
 
         ResponseEntity<Map<String, Object>> response = controller.handleWebhook(
                 "evt-456", "PAYMENT_FAILED", null, null, null, "{}"

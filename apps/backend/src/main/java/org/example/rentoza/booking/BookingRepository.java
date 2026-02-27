@@ -1121,6 +1121,24 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
         @Param("status") ChargeLifecycleStatus status
     );
 
+    /**
+     * H-11: Find bookings with deposit authorization expiring before the given threshold.
+     * Only returns bookings where the deposit is AUTHORIZED (not yet released/captured)
+     * and where the trip is in-progress or pending.
+     */
+    @Query("""
+           SELECT b FROM Booking b
+           JOIN FETCH b.car c
+           JOIN FETCH c.owner
+           JOIN FETCH b.renter r
+           WHERE b.depositLifecycleStatus = org.example.rentoza.payment.DepositLifecycleStatus.AUTHORIZED
+             AND b.status IN ('IN_TRIP', 'CHECK_IN_COMPLETE', 'ACTIVE', 'APPROVED')
+             AND b.depositAuthExpiresAt IS NOT NULL
+             AND b.depositAuthExpiresAt <= :thresholdTime
+           ORDER BY b.depositAuthExpiresAt ASC
+           """)
+    List<Booking> findBookingsWithExpiringDepositAuth(@Param("thresholdTime") Instant thresholdTime);
+
     // ========== BATCH AVAILABILITY QUERIES (P2 N+1 fix) ==========
 
     /**

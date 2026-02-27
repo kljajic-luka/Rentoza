@@ -8,6 +8,7 @@ import org.example.rentoza.booking.cancellation.CancellationRecordRepository;
 import org.example.rentoza.booking.cancellation.CancelledBy;
 import org.example.rentoza.booking.cancellation.CancellationReason;
 import org.example.rentoza.booking.cancellation.RefundStatus;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.example.rentoza.booking.dispute.DamageClaimRepository;
 import org.example.rentoza.car.Car;
 import org.example.rentoza.notification.NotificationService;
@@ -83,7 +84,8 @@ class SchedulerRefundSettlementTest {
                 cancellationRecordRepository,
                 damageClaimRepository,
                 notificationService,
-                payoutLedgerRepository
+                payoutLedgerRepository,
+                new SimpleMeterRegistry()
         );
         ReflectionTestUtils.setField(processor, "refundRetryBackoffMinutes", 60);
     }

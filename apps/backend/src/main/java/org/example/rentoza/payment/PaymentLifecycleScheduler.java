@@ -63,6 +63,7 @@ public class PaymentLifecycleScheduler {
     private static final String LOCK_PAYOUT_SCHED = "payment.scheduler.payout.schedule";
     private static final String LOCK_PAYOUT_EXEC  = "payment.scheduler.payout.execute";
     private static final String LOCK_REAUTH        = "payment.scheduler.reauth";
+    private static final String LOCK_DEP_REAUTH    = "payment.scheduler.deposit.reauth";
 
     // Conservative TTL: must cover worst-case job duration; must leave gap before next tick
     private static final Duration LOCK_TTL_HOURLY  = Duration.ofMinutes(55);
@@ -71,6 +72,13 @@ public class PaymentLifecycleScheduler {
 
     /** Stale PROCESSING cutoff — records stuck longer than this are crash-recovery candidates. */
     private static final Duration STALE_PROCESSING_CUTOFF = Duration.ofMinutes(30);
+
+    /**
+     * Async payout cutoff — PROCESSING payouts with a provider reference older than this
+     * are escalated to MANUAL_REVIEW. Bank-accepted transfers that never received a webhook
+     * within 24 hours indicate a provider integration issue that needs human attention.
+     */
+    private static final Duration STALE_ASYNC_PAYOUT_CUTOFF = Duration.ofHours(24);
 
     private final BookingRepository bookingRepository;
     private final BookingPaymentService paymentService;
@@ -322,6 +330,13 @@ public class PaymentLifecycleScheduler {
     // ========== JOB 6: EXECUTE ELIGIBLE PAYOUTS ==========
 
     @Scheduled(cron = "0 30 * * * *") // Every hour at :30 past
+    // P2-FIX: NOT @Transactional. The outer method must not hold a transaction because:
+    // 1. findEligibleForPayout() uses FOR UPDATE SKIP LOCKED, which acquires row locks
+    // 2. executePayoutSafely() runs in REQUIRES_NEW, which suspends the outer tx
+    // 3. The inner tx tries to UPDATE the same rows locked by the suspended outer tx → self-deadlock
+    // Instead, the query runs in its own implicit read tx (locks released after query),
+    // and each item is processed in an isolated REQUIRES_NEW tx via SchedulerItemProcessor.
+    // The distributed lock + idempotency keys + @Version provide sufficient safety.
     public void executeEligiblePayouts() {
         if (!schedulerLockStore.tryAcquireLock(LOCK_PAYOUT_EXEC, LOCK_TTL_HOURLY)) {
             log.debug("[PaymentScheduler] executeEligiblePayouts — lock held, skipping");
@@ -345,13 +360,39 @@ public class PaymentLifecycleScheduler {
                 executePayoutSafely(ledger);
             }
 
-            // Recovery: check stale PROCESSING payouts
+            // Recovery: check stale PROCESSING payouts (crashed before provider responded)
             List<PayoutLedger> staleProcessing = payoutLedgerRepository.findStaleProcessing(
                     now.minus(STALE_PROCESSING_CUTOFF));
             for (PayoutLedger ledger : staleProcessing) {
-                log.warn("[PaymentScheduler] Stale payout PROCESSING for booking {} — re-queueing as ELIGIBLE",
+                log.warn("[PaymentScheduler] Stale payout PROCESSING for booking {} (no provider ref) — re-queueing as ELIGIBLE",
                         ledger.getBookingId());
                 markPayoutEligibleSafely(ledger);
+            }
+
+            // P1-FIX: Escalate async payouts stuck in PROCESSING with a provider reference
+            // for >24h. The bank accepted the transfer but the webhook never arrived.
+            // These must NOT be requeued (would cause duplicate transfers) — escalate to
+            // MANUAL_REVIEW for operator investigation.
+            List<PayoutLedger> staleAsync = payoutLedgerRepository.findStaleAsyncProcessing(
+                    now.minus(STALE_ASYNC_PAYOUT_CUTOFF));
+            for (PayoutLedger ledger : staleAsync) {
+                escalateStaleAsyncPayoutSafely(ledger);
+            }
+
+            // P1-FIX: Recover FAILED payouts (from PAYOUT.FAILED webhook).
+            // Without this, webhook-failed payouts were dead-lettered — no scheduler
+            // query matched the FAILED status. Retry-eligible ones are requeued to
+            // ELIGIBLE; exhausted ones are escalated to MANUAL_REVIEW.
+            List<PayoutLedger> retryableFailed = payoutLedgerRepository.findRetryEligibleFailedPayouts(now);
+            for (PayoutLedger ledger : retryableFailed) {
+                log.info("[PaymentScheduler] Retrying FAILED payout for booking {} (attempt {}/{})",
+                        ledger.getBookingId(), ledger.getAttemptCount(), ledger.getMaxAttempts());
+                markPayoutEligibleSafely(ledger);
+            }
+
+            List<PayoutLedger> exhaustedFailed = payoutLedgerRepository.findExhaustedFailedPayouts();
+            for (PayoutLedger ledger : exhaustedFailed) {
+                escalateExhaustedPayoutSafely(ledger);
             }
         } finally {
             schedulerLockStore.releaseLock(LOCK_PAYOUT_EXEC);
@@ -366,6 +407,16 @@ public class PaymentLifecycleScheduler {
     /** Delegates to {@link SchedulerItemProcessor#executePayoutSafely} for isolated transaction. */
     public void executePayoutSafely(PayoutLedger ledger) {
         itemProcessor.executePayoutSafely(ledger);
+    }
+
+    /** Delegates to {@link SchedulerItemProcessor#escalateStaleAsyncPayoutSafely} for isolated transaction. */
+    public void escalateStaleAsyncPayoutSafely(PayoutLedger ledger) {
+        itemProcessor.escalateStaleAsyncPayoutSafely(ledger);
+    }
+
+    /** Delegates to {@link SchedulerItemProcessor#escalateExhaustedPayoutSafely} for isolated transaction. */
+    public void escalateExhaustedPayoutSafely(PayoutLedger ledger) {
+        itemProcessor.escalateExhaustedPayoutSafely(ledger);
     }
 
     // ========== P0-6: AUTH EXPIRY REAUTH JOB ==========
@@ -397,6 +448,43 @@ public class PaymentLifecycleScheduler {
     /** Delegates to {@link SchedulerItemProcessor#markReauthRequiredSafely} for isolated transaction. */
     public void markReauthRequiredSafely(Booking booking) {
         itemProcessor.markReauthRequiredSafely(booking);
+    }
+
+    // ========== JOB 8: H-11 DEPOSIT AUTH EXPIRY MONITORING ==========
+
+    /**
+     * H-11 FIX: Deposit-specific auth expiry monitoring.
+     *
+     * <p>The existing {@link #reauthExpiredBookings()} only checks charge authorization
+     * expiry ({@code bookingAuthExpiresAt}). This job independently monitors deposit
+     * authorization expiry ({@code depositAuthExpiresAt}) so that expiring deposit
+     * holds are flagged before they silently lapse at the gateway.
+     *
+     * <p>Runs every 6 hours. Finds bookings whose deposit auth expires within 48h and
+     * marks the deposit lifecycle as EXPIRED with operator notification.
+     */
+    @Scheduled(cron = "0 15 */6 * * *") // Every 6 hours at :15 past
+    public void monitorDepositAuthExpiry() {
+        if (!schedulerLockStore.tryAcquireLock(LOCK_DEP_REAUTH, LOCK_TTL_SIXHRLY)) {
+            log.debug("[PaymentScheduler] monitorDepositAuthExpiry — lock held, skipping");
+            return;
+        }
+        try {
+            Instant thresholdTime = Instant.now().plus(48, ChronoUnit.HOURS);
+            List<Booking> expiring = bookingRepository.findBookingsWithExpiringDepositAuth(thresholdTime);
+            log.info("[PaymentScheduler] Deposit auth expiry check: {} booking(s) have deposit auth expiring before {}",
+                    expiring.size(), thresholdTime);
+            for (Booking booking : expiring) {
+                markDepositExpiryWarningSafely(booking);
+            }
+        } finally {
+            schedulerLockStore.releaseLock(LOCK_DEP_REAUTH);
+        }
+    }
+
+    /** Delegates to {@link SchedulerItemProcessor#markDepositExpiryWarningSafely} for isolated transaction. */
+    public void markDepositExpiryWarningSafely(Booking booking) {
+        itemProcessor.markDepositExpiryWarningSafely(booking);
     }
 
     // ========== HELPERS ==========

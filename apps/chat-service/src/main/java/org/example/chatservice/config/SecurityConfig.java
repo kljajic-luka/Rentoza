@@ -62,6 +62,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/ws/**").permitAll()
                         .requestMatchers("/api/health").permitAll()
+                        .requestMatchers("/actuator/health").permitAll()
                         // Defense-in-depth: declarative admin authorization at URL-pattern level
                         // Supplements @PreAuthorize annotations on individual controller methods
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")

@@ -119,7 +119,8 @@ public enum ChargeLifecycleStatus {
             case PENDING        -> next == AUTHORIZED || next == CAPTURE_FAILED || next == MANUAL_REVIEW;
             case AUTHORIZED     -> next == CAPTURED || next == RELEASED || next == CAPTURE_FAILED
                                    || next == REAUTH_REQUIRED || next == RELEASE_FAILED || next == MANUAL_REVIEW;
-            case REAUTH_REQUIRED -> next == AUTHORIZED || next == MANUAL_REVIEW;
+            case REAUTH_REQUIRED -> next == AUTHORIZED || next == RELEASED
+                                   || next == RELEASE_FAILED || next == MANUAL_REVIEW;
             case CAPTURED       -> next == REFUNDED || next == MANUAL_REVIEW;
             case CAPTURE_FAILED -> next == AUTHORIZED || next == CAPTURE_FAILED || next == MANUAL_REVIEW;
             case RELEASE_FAILED -> next == RELEASED || next == MANUAL_REVIEW;

@@ -97,6 +97,7 @@ class BookingPaymentServiceTest {
             owner.setId(200L);
             car.setOwner(owner);
             testBooking.setCar(car);
+            testBooking.setDepositLifecycleStatus(DepositLifecycleStatus.AUTHORIZED);
             when(bookingRepository.findByIdWithRelations(BOOKING_ID)).thenReturn(Optional.of(testBooking));
         }
 
@@ -266,6 +267,7 @@ class BookingPaymentServiceTest {
             testBooking.setDepositCaptureAttempts(0);
             testBooking.setSecurityDeposit(java.math.BigDecimal.valueOf(50000));
             testBooking.setDepositAuthorizationId("dep-auth-123");
+            testBooking.setDepositLifecycleStatus(DepositLifecycleStatus.AUTHORIZED);
             User renter = new User();
             renter.setId(99L);
             testBooking.setRenter(renter);

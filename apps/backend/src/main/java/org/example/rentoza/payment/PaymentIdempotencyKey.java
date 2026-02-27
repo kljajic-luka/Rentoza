@@ -1,5 +1,9 @@
 package org.example.rentoza.payment;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.util.UUID;
 
 /**
@@ -152,8 +156,15 @@ public final class PaymentIdempotencyKey {
 
     /**
      * Non-deterministic random key — for legacy callers only.
-     * Do NOT use for any production payment paths.
+     *
+     * <p><b>DEPRECATED:</b> Random keys violate idempotency guarantees. Every call
+     * to this method produces a new key, meaning retries will create duplicate
+     * provider-side operations instead of being deduplicated.
+     *
+     * @deprecated Use a deterministic {@code for*()} method instead. This method
+     *             will be removed in a future release.
      */
+    @Deprecated(forRemoval = true)
     public static String random() {
         return "pay_rnd_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
     }
@@ -166,10 +177,35 @@ public final class PaymentIdempotencyKey {
         return truncate(key);
     }
 
-    private static String truncate(String key) {
-        if (key.length() > MAX_LENGTH) {
-            key = key.substring(0, MAX_LENGTH);
+    /**
+     * H-7 FIX: Deterministic truncation using SHA-256 when key exceeds MAX_LENGTH.
+     *
+     * <p>Previous implementation used naive {@code substring(0, MAX_LENGTH)} which
+     * could cause collisions when two distinct keys shared a common prefix longer
+     * than 64 characters (e.g., payout keys with long host IDs and high attempt numbers).
+     *
+     * <p>New strategy: keeps a human-readable prefix (first 20 chars) + "_h_" + 40-char
+     * SHA-256 hex digest = 63 total characters. The full original key is hashed, so
+     * two keys differing only in their suffix still produce distinct results.
+     */
+    static String truncate(String key) {
+        if (key.length() <= MAX_LENGTH) {
+            return key;
         }
-        return key;
+        // Deterministic hash: prefix ensures human debuggability; hash ensures uniqueness
+        String hash = sha256Hex(key);
+        // 20 prefix + "_h_" (3) + 40 hex chars = 63 chars (fits in 64)
+        return key.substring(0, 20) + "_h_" + hash.substring(0, 40);
+    }
+
+    private static String sha256Hex(String input) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hashBytes = digest.digest(input.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(hashBytes);
+        } catch (NoSuchAlgorithmException e) {
+            // SHA-256 is required by JCA spec — this cannot happen on a compliant JVM
+            throw new AssertionError("SHA-256 not available", e);
+        }
     }
 }

@@ -66,6 +66,7 @@ public class BookingPaymentService {
     private final Counter paymentFailedCounter;
     private final Counter depositAuthorizedCounter;
     private final Counter depositReleasedCounter;
+    private final Counter payoutManualReviewCounter;
 
     @Value("${app.payment.deposit.amount-rsd:30000}")
     private int defaultDepositAmountRsd = 30000;
@@ -102,6 +103,10 @@ public class BookingPaymentService {
                 .register(meterRegistry);
         this.depositReleasedCounter = Counter.builder("payment.deposit.released")
                 .description("Deposits released")
+                .register(meterRegistry);
+        this.payoutManualReviewCounter = Counter.builder("payment.alert.payout.manual_review")
+                .tag("severity", "high")
+                .description("Payout escalations to MANUAL_REVIEW")
                 .register(meterRegistry);
     }
 
@@ -1215,6 +1220,16 @@ public class BookingPaymentService {
         if (ledger.getCurrentAttemptKey() != null && !ledger.getCurrentAttemptKey().isBlank()) {
             // Crash recovery: reuse the key established for this attempt.
             attemptKey = ledger.getCurrentAttemptKey();
+            // P1-FIX: Ensure status is PROCESSING before calling the provider.
+            // The crash-recovery path must mirror the new-attempt path's status transition.
+            // Without this, if a requeued payout still has a stale currentAttemptKey,
+            // the provider call would execute while status remains ELIGIBLE, and a PENDING
+            // result would leave the payout in a state where webhooks can't finalize it
+            // (webhook handler checks status == PROCESSING).
+            if (ledger.getStatus() != PayoutLifecycleStatus.PROCESSING) {
+                ledger.setStatus(PayoutLifecycleStatus.PROCESSING);
+                payoutLedgerRepository.save(ledger);
+            }
             log.info("[Payment] Recovering payout attempt for ledger {} with stable key {} (attempt {})",
                     payoutLedgerId, attemptKey, ledger.getAttemptCount());
         } else {
@@ -1254,13 +1269,26 @@ public class BookingPaymentService {
             });
             log.info("[Payment] Host payout completed for booking {}: {} RSD (ref {})",
                     ledger.getBookingId(), ledger.getHostPayoutAmount(), result.getProviderTransactionId());
+        } else if (result.getOutcome() == ProviderOutcome.PENDING) {
+            // P0-FIX: Async bank transfer accepted by provider — keep PROCESSING.
+            // The provider will send a PAYOUT.COMPLETED or PAYOUT.FAILED webhook
+            // to finalize the payout. Do NOT reset to ELIGIBLE or clear the attempt key,
+            // otherwise the webhook handler will miss the PROCESSING status check and
+            // the scheduler will re-fire a duplicate payout.
+            ledger.setProviderReference(result.getProviderTransactionId());
+            // Keep status as PROCESSING, keep currentAttemptKey for crash safety
+            log.info("[Payment] Host payout PENDING (async) for booking {}: {} RSD (provider ref {}). "
+                    + "Awaiting PAYOUT.COMPLETED webhook.",
+                    ledger.getBookingId(), ledger.getHostPayoutAmount(), result.getProviderTransactionId());
         } else {
             boolean terminal = result.getOutcome() == ProviderOutcome.TERMINAL_FAILURE
                     || ledger.getAttemptCount() >= ledger.getMaxAttempts();
             if (terminal) {
                 ledger.setStatus(PayoutLifecycleStatus.MANUAL_REVIEW);
                 ledger.setCurrentAttemptKey(null);  // P0-4: clear so next run starts fresh key
-                log.error("[Payment] Host payout ESCALATED to MANUAL_REVIEW for booking {} after {} attempts: {}",
+                payoutManualReviewCounter.increment();
+                log.error("[ALERT][MANUAL_REVIEW] Host payout ESCALATED to MANUAL_REVIEW for booking {} "
+                        + "after {} attempts: {}. Runbook: https://wiki.internal/runbooks/payout-manual-review",
                         ledger.getBookingId(), ledger.getAttemptCount(), result.getErrorMessage());
             } else {
                 // P0-5: Retryable failure — clear currentAttemptKey so the next run generates
@@ -1444,28 +1472,39 @@ public class BookingPaymentService {
     // ========== LIFECYCLE TRANSITION GUARDS ==========
 
     /**
-     * Safely transition charge lifecycle status with state-machine validation.
-     * Logs a warning on invalid transitions but still proceeds — this gives
-     * full observability without breaking legacy data or race-condition edge cases.
+     * Transition charge lifecycle status with strict state-machine enforcement.
+     *
+     * <p><b>H-10 FIX:</b> Previously used soft guards (log + proceed). Now uses the
+     * throwing {@link ChargeLifecycleStatus#transition(ChargeLifecycleStatus)} method
+     * which rejects invalid transitions with {@link IllegalStateException}. Null current
+     * state (initial booking) is allowed — transitions from null to any state are valid.
+     *
+     * @throws IllegalStateException if the transition violates the state machine
      */
     private void transitionCharge(Booking booking, ChargeLifecycleStatus target, String context) {
         ChargeLifecycleStatus current = booking.getChargeLifecycleStatus();
-        if (current != null && !current.canTransitionTo(target)) {
-            log.warn("[Payment] Invalid charge lifecycle transition {} → {} in {}, booking {}",
-                    current, target, context, booking.getId());
+        if (current != null) {
+            current.transition(target);  // H-10: throws IllegalStateException on invalid transition
         }
         booking.setChargeLifecycleStatus(target);
+        log.debug("[Payment] Charge lifecycle {} → {} in {}, booking {}",
+                current, target, context, booking.getId());
     }
 
     /**
-     * Safely transition deposit lifecycle status with state-machine validation.
+     * Transition deposit lifecycle status with strict state-machine enforcement.
+     *
+     * <p><b>H-10 FIX:</b> Uses throwing {@link DepositLifecycleStatus#transition(DepositLifecycleStatus)}.
+     *
+     * @throws IllegalStateException if the transition violates the state machine
      */
     private void transitionDeposit(Booking booking, DepositLifecycleStatus target, String context) {
         DepositLifecycleStatus current = booking.getDepositLifecycleStatus();
-        if (current != null && !current.canTransitionTo(target)) {
-            log.warn("[Payment] Invalid deposit lifecycle transition {} → {} in {}, booking {}",
-                    current, target, context, booking.getId());
+        if (current != null) {
+            current.transition(target);  // H-10: throws IllegalStateException on invalid transition
         }
         booking.setDepositLifecycleStatus(target);
+        log.debug("[Payment] Deposit lifecycle {} → {} in {}, booking {}",
+                current, target, context, booking.getId());
     }
 }

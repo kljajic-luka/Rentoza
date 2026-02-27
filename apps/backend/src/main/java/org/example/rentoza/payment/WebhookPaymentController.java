@@ -1,11 +1,14 @@
 package org.example.rentoza.payment;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 
@@ -38,6 +41,7 @@ import java.util.UUID;
 public class WebhookPaymentController {
 
     private final ProviderEventService providerEventService;
+    private final ObjectMapper objectMapper;
 
     /** Mirrors ProviderEventService config — used to enforce event-ID requirement when auth is active. */
     @Value("${app.payment.webhook.secret:}")
@@ -93,9 +97,23 @@ public class WebhookPaymentController {
 
         log.info("[Webhook] Received event={} type={} bookingId={} authId={}", eventId, eventType, bookingId, authId);
 
+        // H-13: Extract event timestamp from the JSON body for replay-window validation
+        Instant eventTimestamp = null;
+        try {
+            JsonNode bodyNode = objectMapper.readTree(rawBody);
+            if (bodyNode.has("created_at")) {
+                eventTimestamp = Instant.parse(bodyNode.get("created_at").asText());
+            } else if (bodyNode.has("timestamp")) {
+                eventTimestamp = Instant.parse(bodyNode.get("timestamp").asText());
+            }
+        } catch (Exception ex) {
+            log.debug("[Webhook] Could not extract event timestamp from body: {}", ex.getMessage());
+            // Not fatal — the ingestEvent method handles null timestamps gracefully
+        }
+
         try {
             boolean processed = providerEventService.ingestEvent(
-                    eventId, eventType, bookingId, authId, rawBody, signature);
+                    eventId, eventType, bookingId, authId, rawBody, signature, eventTimestamp);
 
             return ResponseEntity.ok(Map.of(
                     "status",    "ok",

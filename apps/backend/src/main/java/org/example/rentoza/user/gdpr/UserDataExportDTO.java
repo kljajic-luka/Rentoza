@@ -5,6 +5,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 /**
  * DTO for GDPR Article 15 data export.
@@ -12,16 +13,23 @@ import java.util.List;
  */
 @Data
 public class UserDataExportDTO {
-    
+
     private LocalDateTime exportDate;
     private Long dataSubjectId;
-    private String exportVersion = "1.0";
-    
+    private String exportVersion = "1.1";
+
     private ProfileData profile;
     private List<BookingData> bookings;
     private List<ReviewData> reviews;
     private List<CarData> cars;
     private List<ConsentRecord> consentHistory;
+
+    /**
+     * GAP-3: Chat messages and conversation data from the chat-service.
+     * Included via cross-service GDPR export call.
+     * Null if chat-service is unavailable or user has no chat data.
+     */
+    private Map<String, Object> chatData;
     
     @Data
     public static class ProfileData {

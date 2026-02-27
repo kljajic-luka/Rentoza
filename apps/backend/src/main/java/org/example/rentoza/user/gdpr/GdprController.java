@@ -9,6 +9,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.security.JwtUserPrincipal;
@@ -75,15 +76,23 @@ public class GdprController {
     })
     @GetMapping("/data-export")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<?> exportMyData(@AuthenticationPrincipal JwtUserPrincipal principal) {
+    public ResponseEntity<?> exportMyData(
+            @AuthenticationPrincipal JwtUserPrincipal principal,
+            HttpServletRequest request
+    ) {
         log.info("GDPR: Data export requested by user {}", principal.id());
-        
+
         try {
             UserDataExportDTO export = gdprService.exportUserData(principal.id());
-            
-            String filename = "rentoza-data-export-" + principal.id() + "-" + 
+
+            // GAP-5: Log the data export as a data access event
+            gdprService.logDataAccess(principal.id(), principal.id(), "USER",
+                    "EXPORT_DATA", "GDPR Article 15 data export",
+                    "Web App", extractClientIp(request));
+
+            String filename = "rentoza-data-export-" + principal.id() + "-" +
                     LocalDateTime.now().toLocalDate() + ".json";
-            
+
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
                     .contentType(MediaType.APPLICATION_JSON)
@@ -227,11 +236,17 @@ public class GdprController {
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ConsentPreferencesDTO> updateConsentPreferences(
             @AuthenticationPrincipal JwtUserPrincipal principal,
-            @RequestBody ConsentPreferencesDTO preferences
+            @RequestBody ConsentPreferencesDTO preferences,
+            HttpServletRequest request
     ) {
-        log.info("GDPR: Consent preferences updated by user {}", principal.id());
-        
-        ConsentPreferencesDTO updated = gdprService.updateConsentPreferences(principal.id(), preferences);
+        // GAP-4 fix: capture real client IP and User-Agent for consent provenance
+        String ipAddress = extractClientIp(request);
+        String userAgent = request.getHeader("User-Agent");
+
+        log.info("GDPR: Consent preferences updated by user {} from IP {}", principal.id(), ipAddress);
+
+        ConsentPreferencesDTO updated = gdprService.updateConsentPreferences(
+                principal.id(), preferences, ipAddress, userAgent);
         return ResponseEntity.ok(updated);
     }
 
@@ -250,5 +265,20 @@ public class GdprController {
     ) {
         var accessLog = gdprService.getDataAccessLog(principal.id(), days);
         return ResponseEntity.ok(accessLog);
+    }
+
+    // ==================== Helpers ====================
+
+    /**
+     * Extract real client IP, considering proxy headers (X-Forwarded-For).
+     * Cloud Run sets X-Forwarded-For with the real client IP.
+     */
+    private String extractClientIp(HttpServletRequest request) {
+        String xff = request.getHeader("X-Forwarded-For");
+        if (xff != null && !xff.isBlank()) {
+            // X-Forwarded-For may contain multiple IPs; first is the original client
+            return xff.split(",")[0].trim();
+        }
+        return request.getRemoteAddr();
     }
 }

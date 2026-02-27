@@ -5,6 +5,7 @@ import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.example.rentoza.chat.dto.ConversationResponse;
 import org.example.rentoza.chat.dto.CreateConversationRequest;
+import org.example.rentoza.security.InternalServiceJwtUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -37,6 +38,9 @@ class ChatServiceClientTest {
     @Mock
     private RestTemplate restTemplate;
 
+    @Mock
+    private InternalServiceJwtUtil internalServiceJwtUtil;
+
     private SimpleMeterRegistry meterRegistry;
     private ChatServiceClient chatServiceClient;
 
@@ -49,7 +53,7 @@ class ChatServiceClientTest {
     @BeforeEach
     void setUp() {
         meterRegistry = new SimpleMeterRegistry();
-        chatServiceClient = new ChatServiceClient(restTemplate, CHAT_SERVICE_URL, meterRegistry);
+        chatServiceClient = new ChatServiceClient(restTemplate, CHAT_SERVICE_URL, internalServiceJwtUtil, meterRegistry);
     }
 
     /**

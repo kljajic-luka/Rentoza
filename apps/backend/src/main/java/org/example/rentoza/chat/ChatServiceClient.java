@@ -6,13 +6,18 @@ import io.micrometer.core.instrument.Timer;
 import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.chat.dto.ConversationResponse;
 import org.example.rentoza.chat.dto.CreateConversationRequest;
+import org.example.rentoza.security.InternalServiceJwtUtil;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestTemplate;
 
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -30,6 +35,7 @@ public class ChatServiceClient {
 
     private final RestTemplate restTemplate;
     private final String chatServiceUrl;
+    private final InternalServiceJwtUtil internalServiceJwtUtil;
     private final ExecutorService chatExecutor;
     private final Counter asyncSuccessCounter;
     private final Counter asyncFailureCounter;
@@ -41,10 +47,12 @@ public class ChatServiceClient {
     public ChatServiceClient(
             RestTemplate restTemplate,
             @Value("${chat.service.url:http://localhost:8081}") String chatServiceUrl,
+            InternalServiceJwtUtil internalServiceJwtUtil,
             MeterRegistry meterRegistry
     ) {
         this.restTemplate = restTemplate;
         this.chatServiceUrl = chatServiceUrl;
+        this.internalServiceJwtUtil = internalServiceJwtUtil;
 
         // Bounded thread pool with virtual threads if available, else fixed pool
         this.chatExecutor = Executors.newFixedThreadPool(4, r -> {
@@ -179,5 +187,85 @@ public class ChatServiceClient {
                 sample.stop(asyncDuration);
             }
         }, chatExecutor);
+    }
+
+    // ==================== GDPR COMPLIANCE (GAP-3 REMEDIATION) ====================
+
+    /**
+     * Anonymize a user's chat data during GDPR Article 17 erasure.
+     * Called by GdprService.permanentlyDeleteUser to propagate deletion to chat-service.
+     *
+     * @param userId the user being permanently deleted
+     * @return true if anonymization succeeded (or chat-service is unavailable — non-blocking)
+     */
+    public boolean anonymizeUserChatData(Long userId) {
+        try {
+            String token = internalServiceJwtUtil.generateServiceToken("backend").trim();
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set("X-Internal-Service-Token", token);
+
+            HttpEntity<Void> entity = new HttpEntity<>(headers);
+
+            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
+                    chatServiceUrl + "/api/internal/gdpr/anonymize-user/" + userId,
+                    HttpMethod.POST,
+                    entity,
+                    new ParameterizedTypeReference<>() {}
+            );
+
+            if (response.getStatusCode().is2xxSuccessful()) {
+                log.info("[ChatServiceClient] GDPR: Anonymized chat data for user {}: {}",
+                        userId, response.getBody());
+                return true;
+            }
+
+            log.warn("[ChatServiceClient] GDPR: Unexpected response anonymizing user {}: {}",
+                    userId, response.getStatusCode());
+            return false;
+        } catch (Exception e) {
+            // Chat-service unavailability must not block GDPR deletion.
+            // Log for retry/manual investigation.
+            log.error("[ChatServiceClient] GDPR: Failed to anonymize chat data for user {} — " +
+                    "manual reconciliation may be required", userId, e);
+            return false;
+        }
+    }
+
+    /**
+     * Export a user's chat data for GDPR Article 15 data export.
+     *
+     * @param userId the user requesting data export
+     * @return chat export data map, or empty map if chat-service is unavailable
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> exportUserChatData(Long userId) {
+        try {
+            String token = internalServiceJwtUtil.generateServiceToken("backend").trim();
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("X-Internal-Service-Token", token);
+
+            HttpEntity<Void> entity = new HttpEntity<>(headers);
+
+            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
+                    chatServiceUrl + "/api/internal/gdpr/export-user-data/" + userId,
+                    HttpMethod.GET,
+                    entity,
+                    new ParameterizedTypeReference<>() {}
+            );
+
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                log.info("[ChatServiceClient] GDPR: Exported chat data for user {}", userId);
+                return response.getBody();
+            }
+
+            return Collections.emptyMap();
+        } catch (Exception e) {
+            log.warn("[ChatServiceClient] GDPR: Failed to export chat data for user {} — " +
+                    "chat data will be excluded from export", userId, e);
+            return Collections.emptyMap();
+        }
     }
 }

@@ -6,11 +6,15 @@ import lombok.extern.slf4j.Slf4j;
 import org.example.chatservice.dto.ConversationDTO;
 import org.example.chatservice.dto.CreateConversationRequest;
 import org.example.chatservice.model.ConversationStatus;
+import org.example.chatservice.model.Message;
+import org.example.chatservice.repository.ConversationRepository;
+import org.example.chatservice.repository.MessageRepository;
 import org.example.chatservice.service.ChatService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 /**
@@ -44,6 +48,8 @@ import org.springframework.web.bind.annotation.*;
 public class InternalChatController {
 
     private final ChatService chatService;
+    private final MessageRepository messageRepository;
+    private final ConversationRepository conversationRepository;
 
     /**
      * Create conversation (called by main backend when booking approved)
@@ -144,5 +150,89 @@ public class InternalChatController {
                 bookingId, status);
 
         return ResponseEntity.noContent().build();
+    }
+
+    // ==================== GDPR COMPLIANCE (GAP-3 REMEDIATION) ====================
+
+    /**
+     * Anonymize all chat data for a deleted user.
+     *
+     * <p>Called by the main backend's GDPR deletion flow to propagate
+     * Article 17 erasure to the chat service. Replaces message content
+     * and unlinks sender identity.</p>
+     *
+     * @param userId the user being deleted
+     * @return count of anonymized messages
+     */
+    @PostMapping("/gdpr/anonymize-user/{userId}")
+    @PreAuthorize("hasRole('INTERNAL_SERVICE')")
+    @Transactional
+    public ResponseEntity<?> anonymizeUserData(
+            @PathVariable Long userId,
+            Authentication authentication
+    ) {
+        String serviceName = authentication != null ? authentication.getName() : "UNKNOWN";
+        log.info("[GDPR] Anonymizing chat data for user {} (called by: {})", userId, serviceName);
+
+        int anonymizedMessages = messageRepository.anonymizeMessagesBySenderId(userId);
+
+        log.info("[GDPR] Anonymized {} messages for user {}", anonymizedMessages, userId);
+
+        return ResponseEntity.ok(java.util.Map.of(
+                "userId", userId,
+                "anonymizedMessages", anonymizedMessages
+        ));
+    }
+
+    /**
+     * Export chat data for GDPR Article 15 data export.
+     *
+     * <p>Returns all messages sent by the user and all conversations
+     * they participated in, for inclusion in the main backend's data
+     * export response.</p>
+     *
+     * @param userId the user requesting data export
+     * @return chat messages and conversation metadata
+     */
+    @GetMapping("/gdpr/export-user-data/{userId}")
+    @PreAuthorize("hasRole('INTERNAL_SERVICE')")
+    public ResponseEntity<?> exportUserChatData(
+            @PathVariable Long userId,
+            Authentication authentication
+    ) {
+        String serviceName = authentication != null ? authentication.getName() : "UNKNOWN";
+        log.info("[GDPR] Exporting chat data for user {} (called by: {})", userId, serviceName);
+
+        var messages = messageRepository.findBySenderIdOrderByTimestampAsc(userId);
+        var conversations = conversationRepository.findByParticipant(userId);
+
+        var messageExport = messages.stream()
+                .map(m -> java.util.Map.of(
+                        "messageId", m.getId(),
+                        "conversationId", m.getConversationId(),
+                        "content", m.getContent(),
+                        "timestamp", m.getTimestamp().toString(),
+                        "hasMedia", m.getMediaUrl() != null
+                ))
+                .toList();
+
+        var conversationExport = conversations.stream()
+                .map(c -> java.util.Map.of(
+                        "conversationId", c.getId(),
+                        "bookingId", c.getBookingId(),
+                        "role", c.getRenterId().equals(userId) ? "RENTER" : "OWNER",
+                        "status", c.getStatus().name(),
+                        "createdAt", c.getCreatedAt().toString()
+                ))
+                .toList();
+
+        log.info("[GDPR] Exported {} messages and {} conversations for user {}",
+                messages.size(), conversations.size(), userId);
+
+        return ResponseEntity.ok(java.util.Map.of(
+                "userId", userId,
+                "messages", messageExport,
+                "conversations", conversationExport
+        ));
     }
 }

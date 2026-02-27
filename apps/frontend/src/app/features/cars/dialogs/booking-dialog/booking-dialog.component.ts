@@ -54,6 +54,12 @@ import {
   DEFAULT_MIN_TRIP_HOURS,
   DEFAULT_MAX_TRIP_DAYS,
 } from '@core/utils/time-validation.util';
+import { PaymentFormComponent } from '@core/payment/payment-form/payment-form.component';
+import {
+  generateDeterministicIdempotencyKey,
+  BookingIntentParams,
+} from '@core/utils/idempotency-key.util';
+import { TokenizationError } from '@core/payment/payment-provider.adapter';
 
 export interface BookingDialogData {
   car: Car;
@@ -88,6 +94,7 @@ export interface BookingDialogData {
     MatSnackBarModule,
     MatSelectModule,
     PickupLocationSelectorComponent,
+    PaymentFormComponent,
   ],
   templateUrl: './booking-dialog.component.html',
   styleUrls: ['./booking-dialog.component.scss'],
@@ -105,6 +112,13 @@ export class BookingDialogComponent implements OnInit {
 
   // ViewChild for pickup location selector
   @ViewChild(PickupLocationSelectorComponent) pickupSelector?: PickupLocationSelectorComponent;
+
+  // ViewChild for payment form
+  @ViewChild(PaymentFormComponent) paymentForm?: PaymentFormComponent;
+
+  // Payment card validity
+  protected readonly cardValid = signal(false);
+  private currentUserId: string | number = '';
 
   // Booking constraints
   private readonly BUFFER_DAYS = 1;
@@ -201,6 +215,7 @@ export class BookingDialogComponent implements OnInit {
     // Prefill driver details from current user
     this.authService.currentUser$.pipe(take(1)).subscribe((user) => {
       if (user) {
+        this.currentUserId = user.id || user.email || '';
         this.bookingForm.patchValue({
           driverName: user.firstName || '',
           driverSurname: user.lastName || '',
@@ -448,6 +463,13 @@ export class BookingDialogComponent implements OnInit {
     this.pickupLocationValid.set(valid);
   }
 
+  /**
+   * Handle card input validity changes from PaymentFormComponent.
+   */
+  protected onCardValidityChanged(valid: boolean): void {
+    this.cardValid.set(valid);
+  }
+
   private getInsuranceMultiplier(type: string): number {
     switch (type?.toUpperCase()) {
       case 'STANDARD':
@@ -556,8 +578,56 @@ export class BookingDialogComponent implements OnInit {
 
     this.isSubmitting.set(true);
 
-    // Build payload with exact timestamps (reuse endDateTime from above)
-    // Include pickup location data if available (Phase 2.4)
+    // Tokenize card via Monri payment form, then submit booking
+    this.tokenizeAndSubmit(startDateTime, endDateTime, formValues);
+  }
+
+  /**
+   * Tokenize card input and submit booking with payment method ID.
+   *
+   * In mock mode: returns a test token (e.g. pm_card_visa).
+   * In Monri mode: returns a real PAN token from Monri SDK.
+   * No silent fallback — the payment form is always mounted via DI.
+   */
+  private async tokenizeAndSubmit(
+    startDateTime: string,
+    endDateTime: string,
+    formValues: ReturnType<typeof this.bookingForm.getRawValue>,
+  ): Promise<void> {
+    if (!this.paymentForm) {
+      this.snackBar.open('Greska: platni formular nije ucitan. Pokusajte ponovo.', 'Zatvori', {
+        duration: 6000,
+        panelClass: ['snackbar-error'],
+      });
+      this.isSubmitting.set(false);
+      return;
+    }
+
+    let paymentMethodId: string;
+    try {
+      const tokenResult = await this.paymentForm.requestToken();
+      paymentMethodId = tokenResult.token;
+    } catch (err) {
+      const tokenError = err as TokenizationError;
+      this.snackBar.open(
+        tokenError.message || 'Greska pri obradi kartice. Pokusajte ponovo.',
+        'Zatvori',
+        { duration: 6000, panelClass: ['snackbar-error'] },
+      );
+      this.isSubmitting.set(false);
+      return;
+    }
+
+    // Generate deterministic idempotency key from booking intent
+    const intentParams: BookingIntentParams = {
+      userId: this.currentUserId,
+      carId: this.data.car.id,
+      startTime: startDateTime,
+      endTime: endDateTime,
+    };
+    const idempotencyKey = await generateDeterministicIdempotencyKey(intentParams);
+
+    // Build payload with exact timestamps
     const pickup = this.pickupLocation();
     const payload: BookingRequest = {
       carId: this.data.car.id.toString(),
@@ -569,13 +639,8 @@ export class BookingDialogComponent implements OnInit {
       driverPhone: formValues.driverPhone,
       insuranceType: formValues.insuranceType || 'BASIC',
       prepaidRefuel: formValues.prepaidRefuel || false,
-      // P1 FIX: Payment method is now required by backend @NotBlank validation.
-      // Uses "mock_default" for development; real payment integration will supply
-      // the tokenized payment method ID from Stripe/Mori payment form.
-      paymentMethodId: 'mock_default',
-      // P1 FIX: Idempotency key prevents duplicate bookings on network retry.
-      // Generated once per submission attempt; re-used if the request is retried.
-      idempotencyKey: crypto.randomUUID(),
+      paymentMethodId,
+      idempotencyKey,
       // Pickup location fields (Phase 2.4) - matching backend BookingRequestDTO
       pickupLatitude: pickup?.latitude,
       pickupLongitude: pickup?.longitude,

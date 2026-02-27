@@ -81,7 +81,8 @@ Recommended trigger model:
 The script uses `--update-secrets` only (no plaintext secrets in env files):
 
 - Shared secrets for both services: DB/Supabase/JWT/Internal JWT
-- Backend-only secrets: Google OAuth, PII key, mail creds
+- Backend-only secrets: Google OAuth, PII key, mail creds, payment webhook secret
+- Payment secrets (conditional): Monri merchant key, authenticity token (only when `PAYMENT_PROVIDER != MOCK`)
 
 It supports both legacy and current secret IDs for two migrated names:
 
@@ -96,7 +97,62 @@ The script blocks accidental production deploys when:
 - `PAYMENT_PROVIDER=MOCK`
 - `--allow-prod-mock` is not present
 
-Set `PAYMENT_PROVIDER` in `prod.env` to your real provider before go-live.
+Set `PAYMENT_PROVIDER` in `prod.env` to `MONRI` before go-live.
+
+## Payment Provider Configuration
+
+The backend uses a provider-agnostic payment adapter pattern. The active provider is
+selected by `PAYMENT_PROVIDER` env var and wired via `@ConditionalOnProperty` in Spring.
+
+### Staging (MOCK mode — default)
+
+No payment credentials needed. `staging.env` sets:
+
+- `PAYMENT_PROVIDER=MOCK` — credentialless mock adapter
+- `SPRING_PROFILE=staging` — loads `application-staging.properties` (no `enforce-real-provider`)
+- `MONRI_API_URL=https://ipgtest.monri.com` — inert when MOCK, pre-configured for integration testing
+
+### Production (Monri mode)
+
+Before switching production to real payments:
+
+1. **Create GCP Secret Manager entries** (one-time):
+   ```bash
+   echo -n "<merchant-key>" | gcloud secrets create MONRI_MERCHANT_KEY --data-file=-
+   echo -n "<authenticity-token>" | gcloud secrets create MONRI_AUTHENTICITY_TOKEN --data-file=-
+   ```
+   Grant `roles/secretmanager.secretAccessor` to the Cloud Run service account.
+
+2. **Update `prod.env`**:
+   ```
+   PAYMENT_PROVIDER=MONRI
+   ```
+
+3. **Deploy**:
+   ```bash
+   ./deploy-backend-secure.sh prod
+   ```
+   The script will:
+   - Resolve `MONRI_MERCHANT_KEY` and `MONRI_AUTHENTICITY_TOKEN` from Secret Manager
+   - Bind them via `--update-secrets` (not plaintext env vars)
+   - Pass `MONRI_API_URL` (non-sensitive) via `--update-env-vars`
+
+4. **Verify**: `PaymentProviderStartupValidator` enforces `enforce-real-provider=true` in
+   the prod Spring profile — startup will crash if `PAYMENT_PROVIDER=MOCK` leaks into prod.
+
+### Webhook Secret
+
+`PAYMENT_WEBHOOK_SECRET` is already managed in Secret Manager. It is used by the
+`/api/webhooks/payment` endpoint to validate HMAC signatures from the payment gateway.
+
+### Switching staging to Monri (integration testing)
+
+To temporarily test real Monri in staging:
+
+1. Create the two secrets in Secret Manager (if not already present)
+2. Set `PAYMENT_PROVIDER=MONRI` in `staging.env` (or override via shell export)
+3. Deploy: `./deploy-backend-secure.sh staging`
+4. Revert `staging.env` back to `PAYMENT_PROVIDER=MOCK` when done
 
 ## Daily Staging Runbook
 
@@ -110,10 +166,10 @@ Set `PAYMENT_PROVIDER` in `prod.env` to your real provider before go-live.
 
 ## Production Runbook
 
-1. Confirm `prod.env` and payment provider are correct.
-2. Confirm Secret Manager values are rotated/current.
+1. Confirm `prod.env` has `PAYMENT_PROVIDER=MONRI` (or intended provider).
+2. Confirm Secret Manager has current values for `MONRI_MERCHANT_KEY`, `MONRI_AUTHENTICITY_TOKEN`, and `PAYMENT_WEBHOOK_SECRET`.
 3. Deploy stack: `./deploy-backend-secure.sh prod`
-4. Run production smoke checks (auth, booking flow, chat attachments, notifications).
+4. Run production smoke checks (auth, booking flow, payment charge, chat attachments, notifications).
 
 ## Rollback Strategy
 

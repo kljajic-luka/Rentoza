@@ -6,17 +6,24 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
 import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatDividerModule } from '@angular/material/divider';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { filter, take } from 'rxjs';
 
 import { AuthService } from '@core/auth/auth.service';
 import { environment } from '@environments/environment';
+import { BookingPayoutStatus, OwnerPayoutsResponse } from '@core/models/payout.model';
+import {
+  getPayoutStatusLabel,
+  getPayoutStatusIcon,
+  getPayoutStatusColor,
+} from '@core/payment/payment-status.mapper';
 
 interface BookingDetail {
   bookingId: number;
-  startTime: string;  // ISO-8601 datetime
-  endTime: string;    // ISO-8601 datetime
+  startTime: string; // ISO-8601 datetime
+  endTime: string; // ISO-8601 datetime
   totalPrice: number;
   status: string;
 }
@@ -50,6 +57,7 @@ interface EarningsData {
     MatSelectModule,
     MatFormFieldModule,
     MatSnackBarModule,
+    MatDividerModule,
   ],
   templateUrl: './earnings.component.html',
   styleUrls: ['./earnings.component.scss'],
@@ -69,10 +77,28 @@ export class EarningsComponent implements OnInit {
     carEarnings: [],
   });
 
+  // Payout status dashboard
+  protected readonly isLoadingPayouts = signal(false);
+  protected readonly payouts = signal<BookingPayoutStatus[]>([]);
+
   protected readonly periodControl = new FormControl('all');
 
   ngOnInit(): void {
     this.loadEarnings();
+    this.loadPayoutStatuses();
+  }
+
+  // Payout status mapper helpers exposed to template
+  protected getPayoutLabel(status: string): string {
+    return getPayoutStatusLabel(status as BookingPayoutStatus['payoutStatus']);
+  }
+
+  protected getPayoutIcon(status: string): string {
+    return getPayoutStatusIcon(status as BookingPayoutStatus['payoutStatus']);
+  }
+
+  protected getPayoutColor(status: string): string {
+    return getPayoutStatusColor(status as BookingPayoutStatus['payoutStatus']);
   }
 
   private loadEarnings(): void {
@@ -81,7 +107,7 @@ export class EarningsComponent implements OnInit {
     this.authService.currentUser$
       .pipe(
         filter((user): user is NonNullable<typeof user> => !!user && !!(user.email || user.id)),
-        take(1)
+        take(1),
       )
       .subscribe({
         next: (user) => {
@@ -93,14 +119,47 @@ export class EarningsComponent implements OnInit {
             },
             error: (error) => {
               console.error('Error loading earnings data:', error);
-              this.snackBar.open('Greška pri učitavanju zarade', 'Zatvori', { duration: 3000 });
+              this.snackBar.open('Greska pri ucitavanju zarade', 'Zatvori', { duration: 3000 });
               this.isLoading.set(false);
             },
           });
         },
         error: () => {
-          this.snackBar.open('Nije moguće pronaći korisnika', 'Zatvori', { duration: 3000 });
+          this.snackBar.open('Nije moguce pronaci korisnika', 'Zatvori', { duration: 3000 });
           this.isLoading.set(false);
+        },
+      });
+  }
+
+  /**
+   * Load payout statuses from GET /api/owner/payouts.
+   */
+  private loadPayoutStatuses(): void {
+    this.isLoadingPayouts.set(true);
+
+    this.authService.currentUser$
+      .pipe(
+        filter((user): user is NonNullable<typeof user> => !!user && !!(user.email || user.id)),
+        take(1),
+      )
+      .subscribe({
+        next: () => {
+          this.http.get<OwnerPayoutsResponse>(`${this.baseUrl}/payouts`).subscribe({
+            next: (data) => {
+              this.payouts.set(data.payouts ?? []);
+              this.isLoadingPayouts.set(false);
+            },
+            error: (error) => {
+              console.error('Error loading payout statuses:', error);
+              this.snackBar.open('Greska pri ucitavanju statusa isplata', 'Zatvori', {
+                duration: 3000,
+              });
+              this.isLoadingPayouts.set(false);
+            },
+          });
+        },
+        error: () => {
+          this.isLoadingPayouts.set(false);
         },
       });
   }

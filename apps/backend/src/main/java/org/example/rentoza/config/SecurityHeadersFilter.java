@@ -31,13 +31,15 @@ public class SecurityHeadersFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
 
         // Content Security Policy - restrict resource sources
+        // Monri IPG domains required for payment card tokenization SDK (script + iframe + XHR)
         response.setHeader("Content-Security-Policy",
                 "default-src 'self'; " +
-                "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://fonts.googleapis.com; " +
+                "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://fonts.googleapis.com https://ipg.monri.com https://ipgtest.monri.com; " +
                 "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
                 "font-src 'self' https://fonts.gstatic.com data:; " +
                 "img-src 'self' data: https: blob:; " +
-                "connect-src 'self'; " +
+                "connect-src 'self' https://ipg.monri.com https://ipgtest.monri.com; " +
+                "frame-src https://ipg.monri.com https://ipgtest.monri.com; " +
                 "frame-ancestors 'none'; " +
                 "base-uri 'self'; " +
                 "form-action 'self'");
@@ -59,9 +61,9 @@ public class SecurityHeadersFilter extends OncePerRequestFilter {
         // Referrer-Policy - control referrer information
         response.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
 
-        // Permissions-Policy - restrict browser features
+        // Permissions-Policy - restrict browser features (payment=(self) for Monri Payment Request API)
         response.setHeader("Permissions-Policy",
-                "geolocation=(), microphone=(), camera=(), payment=()");
+                "geolocation=(), microphone=(), camera=(), payment=(self)");
 
         // Vary header - proper caching with compression
         if (!response.containsHeader("Vary")) {

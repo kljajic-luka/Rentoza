@@ -5,6 +5,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.example.rentoza.booking.BookingStatus;
+import org.example.rentoza.payment.ChargeLifecycleStatus;
+import org.example.rentoza.payment.DepositLifecycleStatus;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -130,6 +132,32 @@ public class BookingDetailsDTO {
      * Null or 0 if no delivery required.
      */
     private BigDecimal deliveryFeeCalculated;
+
+    // ==================== PAYMENT LIFECYCLE ====================
+
+    /**
+     * Typed charge lifecycle status from the booking's payment state machine.
+     * PENDING → AUTHORIZED → CAPTURED → REFUNDED (or error/reauth paths).
+     */
+    private ChargeLifecycleStatus chargeLifecycleStatus;
+
+    /**
+     * Typed deposit lifecycle status from the booking's security deposit state machine.
+     * PENDING → AUTHORIZED → RELEASED/CAPTURED (or expiry/manual paths).
+     */
+    private DepositLifecycleStatus depositLifecycleStatus;
+
+    /**
+     * Security deposit amount in the booking currency (RSD).
+     * Null if no deposit was configured for this booking.
+     */
+    private BigDecimal securityDeposit;
+
+    /**
+     * Legacy payment status string for backward-compatible reads.
+     * Authoritative status is {@link #chargeLifecycleStatus}.
+     */
+    private String paymentStatus;
 
     /**
      * Location variance status for pickup location validation.

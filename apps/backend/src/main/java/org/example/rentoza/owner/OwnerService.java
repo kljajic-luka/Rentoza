@@ -11,7 +11,10 @@ import org.example.rentoza.car.Car;
 import org.example.rentoza.car.CarRepository;
 import org.example.rentoza.owner.dto.HostCancellationStatsDTO;
 import org.example.rentoza.owner.dto.OwnerEarningsDTO;
+import org.example.rentoza.owner.dto.OwnerPayoutsDTO;
 import org.example.rentoza.owner.dto.OwnerStatsDTO;
+import org.example.rentoza.payment.PayoutLedger;
+import org.example.rentoza.payment.PayoutLedgerRepository;
 import org.example.rentoza.review.Review;
 import org.example.rentoza.review.ReviewDirection;
 import org.example.rentoza.review.ReviewRepository;
@@ -36,6 +39,7 @@ public class OwnerService {
     private final BookingRepository bookingRepo;
     private final ReviewRepository reviewRepo;
     private final HostCancellationStatsRepository cancellationStatsRepo;
+    private final PayoutLedgerRepository payoutLedgerRepo;
 
     /**
      * Get comprehensive statistics for owner dashboard
@@ -224,5 +228,70 @@ public class OwnerService {
         return cancellationStatsRepo.findByHostId(hostId)
                 .map(HostCancellationStatsDTO::fromEntity)
                 .orElseGet(() -> HostCancellationStatsDTO.fromEntity(null));
+    }
+
+    /**
+     * Get payout statuses for the authenticated owner's bookings.
+     *
+     * <p>Returns all PayoutLedger entries for this host, enriched with
+     * car and guest details from associated bookings.
+     *
+     * @param hostId Authenticated owner's user ID
+     * @return OwnerPayoutsDTO with per-booking payout status list
+     */
+    @Transactional(readOnly = true)
+    public OwnerPayoutsDTO getOwnerPayouts(Long hostId) {
+        List<PayoutLedger> ledgers = payoutLedgerRepo.findByHostUserId(hostId);
+
+        if (ledgers.isEmpty()) {
+            return new OwnerPayoutsDTO(List.of());
+        }
+
+        // Batch-fetch bookings for all ledger entries
+        List<Long> bookingIds = ledgers.stream()
+                .map(PayoutLedger::getBookingId)
+                .toList();
+        List<Booking> bookings = bookingRepo.findAllById(bookingIds);
+        Map<Long, Booking> bookingMap = new HashMap<>();
+        for (Booking b : bookings) {
+            bookingMap.put(b.getId(), b);
+        }
+
+        List<OwnerPayoutsDTO.BookingPayoutStatusDTO> payoutDtos = new ArrayList<>();
+        for (PayoutLedger ledger : ledgers) {
+            Booking booking = bookingMap.get(ledger.getBookingId());
+            String carBrand = "";
+            String carModel = "";
+            String guestName = "";
+            String tripStart = "";
+            String tripEnd = "";
+
+            if (booking != null) {
+                Car car = booking.getCar();
+                if (car != null) {
+                    carBrand = car.getBrand() != null ? car.getBrand() : "";
+                    carModel = car.getModel() != null ? car.getModel() : "";
+                }
+                User renter = booking.getRenter();
+                if (renter != null) {
+                    guestName = (renter.getFirstName() != null ? renter.getFirstName() : "")
+                            + " "
+                            + (renter.getLastName() != null ? renter.getLastName() : "");
+                    guestName = guestName.trim();
+                }
+                if (booking.getStartTime() != null) {
+                    tripStart = booking.getStartTime().toString();
+                }
+                if (booking.getEndTime() != null) {
+                    tripEnd = booking.getEndTime().toString();
+                }
+            }
+
+            payoutDtos.add(OwnerPayoutsDTO.BookingPayoutStatusDTO.fromLedger(
+                    ledger, carBrand, carModel, guestName, tripStart, tripEnd
+            ));
+        }
+
+        return new OwnerPayoutsDTO(payoutDtos);
     }
 }

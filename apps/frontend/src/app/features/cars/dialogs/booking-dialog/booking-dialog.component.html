@@ -278,6 +278,23 @@
 
       <mat-divider></mat-divider>
 
+      <!-- Payment Card Section -->
+      <section class="form-section">
+        <h3 class="section-title">
+          <mat-icon>payment</mat-icon>
+          Podatci o kartici
+        </h3>
+
+        <app-payment-form (validityChange)="onCardValidityChanged($event)" />
+
+        <p class="payment-info-hint">
+          <mat-icon class="hint-icon">lock</mat-icon>
+          <span>Vasi podatci su zasticeni. Naplacivanje se vrsi tek nakon odobrenja domacina.</span>
+        </p>
+      </section>
+
+      <mat-divider></mat-divider>
+
       <!-- Price Summary Section -->
       <section class="form-section summary-section">
         <h3 class="section-title">
@@ -352,7 +369,8 @@
         rentalDays() === 0 ||
         durationTooShort() ||
         durationTooLong() ||
-        !pickupLocationValid()
+        !pickupLocationValid() ||
+        !cardValid()
       "
     >
       <ng-container matButtonIcon>

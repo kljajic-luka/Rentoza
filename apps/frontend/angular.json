@@ -66,6 +66,31 @@
               "optimization": false,
               "extractLicenses": false,
               "sourceMap": true
+            },
+            "staging": {
+              "optimization": true,
+              "outputHashing": "all",
+              "sourceMap": true,
+              "namedChunks": false,
+              "extractLicenses": true,
+              "fileReplacements": [
+                {
+                  "replace": "src/environments/environment.ts",
+                  "with": "src/environments/environment.staging.ts"
+                }
+              ],
+              "budgets": [
+                {
+                  "type": "initial",
+                  "maximumWarning": "1.1MB",
+                  "maximumError": "1.5MB"
+                },
+                {
+                  "type": "anyComponentStyle",
+                  "maximumWarning": "20kB",
+                  "maximumError": "30kB"
+                }
+              ]
             }
           },
           "defaultConfiguration": "production"
@@ -138,6 +163,10 @@
             },
             "development": {
               "buildTarget": "rentoza-frontend:build:development",
+              "proxyConfig": "proxy.conf.json"
+            },
+            "staging": {
+              "buildTarget": "rentoza-frontend:build:staging",
               "proxyConfig": "proxy.conf.json"
             }
           },

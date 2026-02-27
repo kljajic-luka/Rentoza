@@ -390,3 +390,199 @@
     font-size: var(--font-size-xl);
   }
 }
+
+// ─── Payout Status Dashboard ─────────────────────────────────────────
+
+.payout-dashboard {
+  border-radius: 16px !important;
+  margin-bottom: 2rem;
+
+  ::ng-deep {
+    .mat-mdc-card-header {
+      padding: 1.5rem 1.5rem 0 !important;
+    }
+
+    .mat-mdc-card-title {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--color-text-primary);
+
+      mat-icon {
+        font-size: var(--font-size-xl);
+        width: 1.5rem;
+        height: 1.5rem;
+      }
+    }
+
+    .mat-mdc-card-content {
+      padding: 1.5rem !important;
+    }
+  }
+}
+
+.payout-loading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.payout-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.payout-item {
+  background: var(--color-surface-elevated);
+  border-radius: 12px;
+  padding: var(--space-3);
+  transition: box-shadow 200ms ease;
+
+  &:hover {
+    box-shadow: var(--shadow-elevated);
+  }
+}
+
+.payout-item__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-2);
+}
+
+.payout-item__car {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-weight: 600;
+  color: var(--color-text-primary);
+
+  .payout-car-icon {
+    font-size: var(--font-size-base);
+    width: 1rem;
+    height: 1rem;
+    color: var(--color-primary);
+  }
+}
+
+.payout-status-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+
+  mat-icon {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+  }
+}
+
+.payout-status--success {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.payout-status--info {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+
+.payout-status--warn {
+  background: #fff3e0;
+  color: #e65100;
+}
+
+.payout-status--error {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.payout-status--neutral {
+  background: #f5f5f5;
+  color: #616161;
+}
+
+.payout-item__details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+
+  mat-divider {
+    margin: var(--space-1) 0;
+  }
+}
+
+.payout-detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.payout-detail-label {
+  color: var(--color-text-muted);
+}
+
+.payout-fee {
+  color: var(--color-error-text);
+}
+
+.payout-net {
+  color: var(--color-success);
+  font-size: var(--font-size-base);
+}
+
+.payout-eta,
+.payout-retry {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: flex-start;
+  margin-top: var(--space-1);
+  padding: 6px 8px;
+  background: #e3f2fd;
+  border-radius: 6px;
+  font-size: var(--font-size-sm);
+  color: #1565c0;
+
+  mat-icon {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+  }
+}
+
+.payout-retry {
+  background: #fff3e0;
+  color: #e65100;
+}
+
+.payout-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: flex-start;
+  margin-top: var(--space-1);
+  padding: 6px 8px;
+  background: #ffebee;
+  border-radius: 6px;
+  font-size: var(--font-size-sm);
+  color: #c62828;
+
+  mat-icon {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+  }
+}

@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.example.rentoza.booking.dto.BookingResponseDTO;
 import org.example.rentoza.owner.dto.HostCancellationStatsDTO;
 import org.example.rentoza.owner.dto.OwnerEarningsDTO;
+import org.example.rentoza.owner.dto.OwnerPayoutsDTO;
 import org.example.rentoza.owner.dto.OwnerStatsDTO;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -114,11 +115,39 @@ public class OwnerController {
     @GetMapping("/cancellation-stats")
     @PreAuthorize("hasAnyRole('OWNER', 'ADMIN')")
     public ResponseEntity<HostCancellationStatsDTO> getCancellationStats(
-            @org.springframework.security.core.annotation.AuthenticationPrincipal 
+            @org.springframework.security.core.annotation.AuthenticationPrincipal
             org.example.rentoza.security.JwtUserPrincipal principal
     ) {
         HostCancellationStatsDTO stats = ownerService.getHostCancellationStats(principal.getId());
         return ResponseEntity.ok(stats);
+    }
+
+    /**
+     * Get payout statuses for the authenticated owner's bookings.
+     *
+     * <p>Returns per-booking payout lifecycle information including:
+     * <ul>
+     *   <li>Payout status (PENDING, ELIGIBLE, PROCESSING, COMPLETED, FAILED, etc.)</li>
+     *   <li>Fee breakdown (trip amount, platform fee, host net payout)</li>
+     *   <li>Eligibility date (after dispute hold window)</li>
+     *   <li>Retry metadata (attempt count, next retry, last error)</li>
+     * </ul>
+     *
+     * <p><b>Security:</b> Returns only the authenticated owner's payouts.
+     *
+     * GET /api/owner/payouts
+     *
+     * @param principal Authenticated owner
+     * @return OwnerPayoutsDTO with per-booking payout status list
+     */
+    @GetMapping("/payouts")
+    @PreAuthorize("hasAnyRole('OWNER', 'ADMIN')")
+    public ResponseEntity<OwnerPayoutsDTO> getOwnerPayouts(
+            @org.springframework.security.core.annotation.AuthenticationPrincipal
+            org.example.rentoza.security.JwtUserPrincipal principal
+    ) {
+        OwnerPayoutsDTO payouts = ownerService.getOwnerPayouts(principal.getId());
+        return ResponseEntity.ok(payouts);
     }
 
 

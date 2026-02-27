@@ -1454,6 +1454,12 @@ public class BookingService {
                 // Delivery Info
                 .deliveryDistanceKm(booking.getDeliveryDistanceKm())
                 .deliveryFeeCalculated(booking.getDeliveryFeeCalculated())
+
+                // Payment Lifecycle
+                .chargeLifecycleStatus(booking.getChargeLifecycleStatus())
+                .depositLifecycleStatus(booking.getDepositLifecycleStatus())
+                .securityDeposit(booking.getSecurityDeposit())
+                .paymentStatus(booking.getPaymentStatus())
                 .build();
     }
 

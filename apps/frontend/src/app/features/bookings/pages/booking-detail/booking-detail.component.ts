@@ -24,6 +24,17 @@ import { MatChipsModule } from '@angular/material/chips';
 import { BookingService } from '../../../../core/services/booking.service';
 import { BookingDetails, PickupLocationData } from '../../../../core/models/booking-details.model';
 import { ReadOnlyPickupLocationComponent } from '../../components/readonly-pickup-location';
+import {
+  ChargeLifecycleStatus,
+  DepositLifecycleStatus,
+  getGuestPaymentSummary,
+  getGuestDepositSummary,
+  getChargeStatusIcon,
+  getChargeStatusColor,
+  getDepositStatusIcon,
+  getDepositStatusColor,
+  isChargeStatusActionRequired,
+} from '../../../../core/payment/payment-status.mapper';
 
 @Component({
   selector: 'app-booking-detail',
@@ -142,6 +153,38 @@ import { ReadOnlyPickupLocationComponent } from '../../components/readonly-picku
             </div>
           </mat-card-content>
         </mat-card>
+
+        <!-- Payment Status -->
+        @if (paymentSummary()) {
+          <mat-card class="payment-status-card">
+            <mat-card-content>
+              <h4>Status placanja</h4>
+              <div class="status-row" [class]="'status-color--' + chargeStatusColor()">
+                <mat-icon>{{ chargeStatusIcon() }}</mat-icon>
+                <span>{{ paymentSummary() }}</span>
+              </div>
+              @if (isPaymentActionRequired()) {
+                <p class="status-action-hint">
+                  <mat-icon>info</mat-icon>
+                  Potrebna je vasa akcija — kontaktirajte podrsku
+                </p>
+              }
+            </mat-card-content>
+          </mat-card>
+        }
+
+        <!-- Deposit Status -->
+        @if (depositSummary()) {
+          <mat-card class="deposit-status-card">
+            <mat-card-content>
+              <h4>Sigurnosni depozit</h4>
+              <div class="status-row" [class]="'status-color--' + depositStatusColor()">
+                <mat-icon>{{ depositStatusIcon() }}</mat-icon>
+                <span>{{ depositSummary() }}</span>
+              </div>
+            </mat-card-content>
+          </mat-card>
+        }
 
         <!-- Actions -->
         <div class="actions">
@@ -353,6 +396,75 @@ import { ReadOnlyPickupLocationComponent } from '../../components/readonly-picku
       .check-in-button {
         height: 48px;
       }
+
+      .payment-status-card,
+      .deposit-status-card {
+        margin-bottom: 16px;
+      }
+
+      .payment-status-card h4,
+      .deposit-status-card h4 {
+        margin: 0 0 12px;
+        font-size: 14px;
+        font-weight: 500;
+        color: rgba(0, 0, 0, 0.6);
+      }
+
+      .status-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 12px;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 500;
+      }
+
+      .status-row mat-icon {
+        font-size: 20px;
+        width: 20px;
+        height: 20px;
+      }
+
+      .status-color--success {
+        background: #e8f5e9;
+        color: #2e7d32;
+      }
+
+      .status-color--info {
+        background: #e3f2fd;
+        color: #1565c0;
+      }
+
+      .status-color--warn {
+        background: #fff3e0;
+        color: #e65100;
+      }
+
+      .status-color--error {
+        background: #ffebee;
+        color: #c62828;
+      }
+
+      .status-color--neutral {
+        background: #f5f5f5;
+        color: #616161;
+      }
+
+      .status-action-hint {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin: 10px 0 0;
+        font-size: 12px;
+        color: #e65100;
+      }
+
+      .status-action-hint mat-icon {
+        font-size: 16px;
+        width: 16px;
+        height: 16px;
+      }
     `,
   ],
 })
@@ -404,6 +516,52 @@ export class BookingDetailComponent implements OnInit {
       b.deliveryDistanceKm !== undefined &&
       b.deliveryDistanceKm > 0
     );
+  });
+
+  // ========== PAYMENT LIFECYCLE COMPUTEDS ==========
+
+  /** Guest-friendly payment summary text */
+  paymentSummary = computed((): string | null => {
+    const b = this.booking();
+    if (!b?.chargeLifecycleStatus) return null;
+    return getGuestPaymentSummary(b.chargeLifecycleStatus);
+  });
+
+  /** Guest-friendly deposit summary text */
+  depositSummary = computed((): string | null => {
+    const b = this.booking();
+    if (!b?.depositLifecycleStatus) return null;
+    return getGuestDepositSummary(b.depositLifecycleStatus, b.securityDeposit ?? 30000);
+  });
+
+  /** Icon for charge status display */
+  chargeStatusIcon = computed((): string => {
+    const status = this.booking()?.chargeLifecycleStatus;
+    return status ? getChargeStatusIcon(status) : 'help_outline';
+  });
+
+  /** Color class for charge status */
+  chargeStatusColor = computed((): string => {
+    const status = this.booking()?.chargeLifecycleStatus;
+    return status ? getChargeStatusColor(status) : 'neutral';
+  });
+
+  /** Icon for deposit status display */
+  depositStatusIcon = computed((): string => {
+    const status = this.booking()?.depositLifecycleStatus;
+    return status ? getDepositStatusIcon(status) : 'help_outline';
+  });
+
+  /** Color class for deposit status */
+  depositStatusColor = computed((): string => {
+    const status = this.booking()?.depositLifecycleStatus;
+    return status ? getDepositStatusColor(status) : 'neutral';
+  });
+
+  /** Whether the payment status requires guest action */
+  isPaymentActionRequired = computed((): boolean => {
+    const status = this.booking()?.chargeLifecycleStatus;
+    return status ? isChargeStatusActionRequired(status) : false;
   });
 
   ngOnInit(): void {

@@ -130,6 +130,23 @@ public class CheckInPhoto {
     @Column(name = "image_height")
     private Integer imageHeight;
 
+    // ========== IMAGE INTEGRITY ==========
+
+    /**
+     * SHA-256 hash of the original uploaded image bytes (before EXIF stripping).
+     * Used for:
+     * <ul>
+     *   <li>Duplicate/recycled photo fraud detection across bookings</li>
+     *   <li>Verifying audit bucket integrity (DB hash must match stored blob)</li>
+     *   <li>Chain-of-custody evidence linking DB record to storage artifact</li>
+     * </ul>
+     *
+     * @since V61 - Pre-production hardening (column added)
+     * @since R1/R2 - Trust & evidence audit remediation (application code populated)
+     */
+    @Column(name = "image_hash", length = 128)
+    private String imageHash;
+
     // ========== EXIF VALIDATION ==========
 
     /**

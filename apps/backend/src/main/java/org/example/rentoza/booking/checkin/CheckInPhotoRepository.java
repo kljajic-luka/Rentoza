@@ -144,6 +144,42 @@ public interface CheckInPhotoRepository extends JpaRepository<CheckInPhoto, Long
             @Param("startTime") Instant startTime, 
             @Param("endTime") Instant endTime);
 
+    // ========== IMAGE HASH FRAUD DETECTION (R1/R2 Remediation) ==========
+
+    /**
+     * Check if a photo with this hash exists on a different booking (fraud indicator).
+     * Same-booking duplicates are excluded (retakes of the same slot are expected).
+     *
+     * @param imageHash SHA-256 hash of image bytes
+     * @param excludeBookingId Current booking ID to exclude
+     * @return true if duplicate found on another booking
+     * @since R1 - Trust & evidence audit remediation
+     */
+    @Query("SELECT CASE WHEN COUNT(p) > 0 THEN true ELSE false END FROM CheckInPhoto p " +
+           "WHERE p.imageHash = :imageHash " +
+           "AND p.booking.id != :excludeBookingId " +
+           "AND p.deletedAt IS NULL")
+    boolean existsByImageHashOnOtherBooking(
+            @Param("imageHash") String imageHash,
+            @Param("excludeBookingId") Long excludeBookingId);
+
+    /**
+     * Find all photos with a matching image hash from other bookings.
+     * Used for fraud investigation — returns the cross-booking duplicates.
+     *
+     * @param imageHash SHA-256 hash of image bytes
+     * @param excludeBookingId Booking to exclude
+     * @return List of matching photos from other bookings
+     * @since R1 - Trust & evidence audit remediation
+     */
+    @Query("SELECT p FROM CheckInPhoto p " +
+           "WHERE p.imageHash = :imageHash " +
+           "AND p.booking.id != :excludeBookingId " +
+           "AND p.deletedAt IS NULL")
+    List<CheckInPhoto> findByImageHashExcludingBooking(
+            @Param("imageHash") String imageHash,
+            @Param("excludeBookingId") Long excludeBookingId);
+
     // ========== CHECKOUT PHOTO QUERIES ==========
 
     /**

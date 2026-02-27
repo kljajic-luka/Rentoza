@@ -399,10 +399,21 @@ public class CheckInService {
     public CheckInStatusDTO acknowledgeCondition(GuestConditionAcknowledgmentDTO dto, Long userId) {
         Booking booking = bookingRepository.findByIdWithRelations(dto.getBookingId())
                 .orElseThrow(() -> new ResourceNotFoundException("Rezervacija nije pronađena"));
-        
+
         // Validate guest access (delegated to validation service)
         validationService.validateGuestAccess(booking, userId);
-        
+
+        // ========== R5: IDEMPOTENCY GUARD ==========
+        // If the guest already completed acknowledgment, return the current state.
+        // This mirrors the handshake idempotency check at confirmHandshake():614-618.
+        // Prevents duplicate event creation and state corruption on retry/double-click.
+        if (booking.getGuestCheckInCompletedAt() != null
+                && (booking.getStatus() == BookingStatus.CHECK_IN_COMPLETE
+                    || booking.getStatus() == BookingStatus.IN_TRIP)) {
+            log.info("[R5] Guest acknowledgment already completed for booking {} - idempotent return", dto.getBookingId());
+            return mapToStatusDTO(booking, userId);
+        }
+
         // Validate status - allow CHECK_IN_HOST_COMPLETE or CHECK_IN_DISPUTE (for re-submission after dispute declined)
         if (booking.getStatus() != BookingStatus.CHECK_IN_HOST_COMPLETE &&
             booking.getStatus() != BookingStatus.CHECK_IN_DISPUTE) {

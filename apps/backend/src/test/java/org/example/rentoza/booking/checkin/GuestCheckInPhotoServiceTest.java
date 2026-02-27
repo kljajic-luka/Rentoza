@@ -87,11 +87,9 @@ class GuestCheckInPhotoServiceTest {
         );
         
         // Inject @Value properties that Spring would normally inject
-        ReflectionTestUtils.setField(guestPhotoService, "storageMode", "local");
         ReflectionTestUtils.setField(guestPhotoService, "maxSizeMb", 3);
         ReflectionTestUtils.setField(guestPhotoService, "maxWidthPixels", 2560);
         ReflectionTestUtils.setField(guestPhotoService, "maxHeightPixels", 2560);
-        ReflectionTestUtils.setField(guestPhotoService, "uploadDir", "uploads/test");
         
         // Initialize test fixtures
         bookingId = 1L;
@@ -192,27 +190,20 @@ class GuestCheckInPhotoServiceTest {
         }
 
         @Test
-        @DisplayName("Should allow upload when status is CHECK_IN_OPEN")
-        void shouldAllowUploadWhenCheckInOpen() {
-            // Arrange
+        @DisplayName("Should reject upload when status is CHECK_IN_OPEN (host not yet complete)")
+        void shouldRejectUploadWhenCheckInOpen() {
+            // Arrange - CHECK_IN_OPEN means host hasn't finished their photos yet
             testBooking.setStatus(BookingStatus.CHECK_IN_OPEN);
             GuestCheckInPhotoSubmissionDTO submission = createValidSubmission();
-            
+
             when(bookingRepository.findByIdWithRelations(bookingId))
                 .thenReturn(Optional.of(testBooking));
-            when(userRepository.findById(renterId))
-                .thenReturn(Optional.of(testRenter));
-            when(guestPhotoRepository.countRequiredGuestPhotoTypes(bookingId))
-                .thenReturn(0L);
-            when(exifValidationService.validate(any(), any()))
-                .thenReturn(createValidExifResult());
-            when(photoRejectionService.shouldReject(any()))
-                .thenReturn(true);
-            
-            // Act - should not throw
-            assertThatCode(() -> 
+
+            // Act & Assert - guest cannot upload before host completes
+            assertThatThrownBy(() ->
                 guestPhotoService.uploadGuestPhotos(bookingId, renterId, submission))
-                .doesNotThrowAnyException();
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("CHECK_IN_OPEN");
         }
 
         @Test

@@ -158,7 +158,7 @@ public class SupabaseStorageService {
         String storagePath = String.format("bookings/%d/%s/%s/%s", 
                 bookingId, party.toLowerCase(), photoType, filename);
         
-        uploadToSupabase(BUCKET_CHECK_IN_PHOTOS, storagePath, file.getBytes(), file.getContentType());
+        uploadToSupabase(BUCKET_CHECK_IN_PHOTOS, storagePath, file.getBytes(), file.getContentType(), false); // R6: write-once evidence
         
         return storagePath;
     }
@@ -223,7 +223,7 @@ public class SupabaseStorageService {
         log.info("[Storage-PII] Uploading ID photo: path={}, size={}KB, checksum={}",
             storageKey, fileBytes.length / 1024, checksum.substring(0, 16) + "...");
         
-        uploadToSupabase(BUCKET_CHECK_IN_PII, storageKey, fileBytes, contentType);
+        uploadToSupabase(BUCKET_CHECK_IN_PII, storageKey, fileBytes, contentType, false); // R6: write-once PII evidence
         
         log.info("[Storage-PII] Upload successful: path={}", storageKey);
         
@@ -264,7 +264,7 @@ public class SupabaseStorageService {
         String storagePath = String.format("bookings/%d/%s/%s/%s", 
                 bookingId, party.toLowerCase(), photoType, filename);
         
-        uploadToSupabase(BUCKET_CHECK_IN_PHOTOS, storagePath, photoBytes, contentType);
+        uploadToSupabase(BUCKET_CHECK_IN_PHOTOS, storagePath, photoBytes, contentType, false); // R6: write-once evidence
         
         return storagePath;
     }
@@ -311,7 +311,7 @@ public class SupabaseStorageService {
         String storagePath = String.format("bookings/%d/%s/%s/%s", 
                 bookingId, party.toLowerCase(), photoType, filename);
         
-        uploadToSupabase(BUCKET_CHECK_IN_AUDIT, storagePath, photoBytes, contentType);
+        uploadToSupabase(BUCKET_CHECK_IN_AUDIT, storagePath, photoBytes, contentType, false); // R6: write-once evidence
         
         log.info("[Storage] Uploaded audit photo with EXIF: bucket={}, path={}, size={} bytes",
                 BUCKET_CHECK_IN_AUDIT, storagePath, photoBytes.length);
@@ -474,34 +474,52 @@ public class SupabaseStorageService {
 
     /**
      * Upload file to Supabase Storage bucket.
-     * 
+     *
      * @param bucket Bucket name
      * @param path Storage path within bucket
      * @param data File bytes
      * @param contentType MIME type
      */
     private void uploadToSupabase(String bucket, String path, byte[] data, String contentType) {
+        uploadToSupabase(bucket, path, data, contentType, true);
+    }
+
+    /**
+     * Upload file to Supabase Storage bucket with explicit upsert control.
+     *
+     * <p><b>R6 Remediation:</b> Evidence buckets (checkin-audit, check-in-photos, check-out-photos)
+     * should use {@code allowUpsert=false} to prevent silent evidence replacement.
+     * When upsert is disabled, attempting to overwrite an existing object returns HTTP 409,
+     * which surfaces as a RuntimeException — preserving write-once semantics.
+     *
+     * @param bucket Bucket name
+     * @param path Storage path within bucket
+     * @param data File bytes
+     * @param contentType MIME type
+     * @param allowUpsert true to overwrite existing files, false for write-once semantics
+     */
+    private void uploadToSupabase(String bucket, String path, byte[] data, String contentType, boolean allowUpsert) {
         String url = String.format("%s/storage/v1/object/%s/%s", supabaseUrl, bucket, path);
-        
+
         HttpHeaders headers = new HttpHeaders();
         headers.set("Authorization", "Bearer " + serviceRoleKey);
         headers.set("Content-Type", contentType);
-        headers.set("x-upsert", "true"); // Overwrite if exists
-        
+        headers.set("x-upsert", String.valueOf(allowUpsert)); // R6: evidence buckets use false
+
         HttpEntity<byte[]> request = new HttpEntity<>(data, headers);
-        
+
         try {
             ResponseEntity<String> response = restTemplate.exchange(
                     url, HttpMethod.POST, request, String.class);
-            
+
             if (!response.getStatusCode().is2xxSuccessful()) {
                 throw new RuntimeException("Upload failed: " + response.getBody());
             }
-            
-            log.debug("✅ Uploaded to Supabase: {}/{}", bucket, path);
-            
+
+            log.debug("Uploaded to Supabase: {}/{} (upsert={})", bucket, path, allowUpsert);
+
         } catch (HttpClientErrorException e) {
-            log.error("❌ Supabase upload failed: {} - {}", e.getStatusCode(), e.getResponseBodyAsString());
+            log.error("Supabase upload failed: {} - {} (upsert={})", e.getStatusCode(), e.getResponseBodyAsString(), allowUpsert);
             throw new RuntimeException("Failed to upload file to Supabase Storage: " + e.getMessage(), e);
         }
     }

@@ -151,6 +151,9 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
      * @return Booking with pessimistic write lock acquired
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @QueryHints({
+        @QueryHint(name = "jakarta.persistence.lock.timeout", value = "5000") // R4: 5s timeout prevents thread starvation
+    })
     @Query("SELECT b FROM Booking b " +
            "JOIN FETCH b.car c " +
            "JOIN FETCH b.renter r " +

@@ -370,6 +370,12 @@ public class CheckInPhotoService {
         String auditStorageKey = null;
         String party = booking.getCar().getOwner().getId().equals(user.getId()) ? "host" : "guest";
         
+        // ========== R1/R2: SHA-256 IMAGE HASH (Trust & Evidence Audit) ==========
+        // Compute hash of ORIGINAL bytes BEFORE any storage writes.
+        // This creates a verifiable link: DB record ↔ audit bucket blob ↔ public bucket blob.
+        // Hash is of the original (pre-EXIF-strip) bytes for chain-of-custody integrity.
+        String imageHash = computeSha256(photoBytes);
+
         // ========== STORAGE: Supabase Storage ==========
         try {
             // Step 1: Upload original to audit bucket (if enabled)
@@ -385,9 +391,30 @@ public class CheckInPhotoService {
                     log.info("[VAL-001] Audit backup uploaded: booking={}, type={}, key={}",
                         booking.getId(), photoType, auditStorageKey);
                 } catch (Exception e) {
-                    // Fail-open: Don't block upload if audit backup fails
-                    log.warn("[VAL-001] Audit backup failed (continuing): booking={}, error={}",
-                        booking.getId(), e.getMessage());
+                    // ========== R3: AUDIT FAIL-OPEN REMEDIATION ==========
+                    // Record explicit integrity-gap sentinel so ops can detect evidence gaps.
+                    // The photo upload continues (availability > strict consistency for UX),
+                    // but the gap is surfaced via sentinel value + structured log + metric.
+                    auditStorageKey = "AUDIT_UPLOAD_FAILED";
+                    log.error("[R3-INTEGRITY-GAP] Audit backup FAILED — evidence integrity gap recorded. " +
+                            "booking={}, type={}, error={}, imageHash={}",
+                        booking.getId(), photoType, e.getMessage(), imageHash);
+
+                    // Record structured event for the integrity gap
+                    eventService.recordEvent(
+                        booking,
+                        sessionId != null ? sessionId : (booking.getCheckInSessionId() != null ? booking.getCheckInSessionId() : "unknown"),
+                        CheckInEventType.HOST_PHOTO_UPLOADED,
+                        user.getId(),
+                        CheckInActorRole.SYSTEM,
+                        Map.of(
+                            "auditIntegrityGap", true,
+                            "photoType", photoType.name(),
+                            "imageHash", imageHash != null ? imageHash : "HASH_FAILED",
+                            "errorMessage", e.getMessage() != null ? e.getMessage() : "unknown",
+                            "auditStorageKey", "AUDIT_UPLOAD_FAILED"
+                        )
+                    );
                 }
             }
             
@@ -419,7 +446,8 @@ public class CheckInPhotoService {
                 .photoType(photoType)
                 .storageBucket(bucket)
                 .storageKey(storageKey)
-                .auditStorageKey(auditStorageKey)  // VAL-001: Original with EXIF
+                .auditStorageKey(auditStorageKey)  // VAL-001: Original with EXIF (or "AUDIT_UPLOAD_FAILED" sentinel per R3)
+                .imageHash(imageHash)              // R1/R2: SHA-256 of original bytes for chain-of-custody
                 .originalFilename(file.getOriginalFilename())
                 .mimeType(contentType)
                 .fileSizeBytes((int) file.getSize())
@@ -486,7 +514,70 @@ public class CheckInPhotoService {
         }
 
         photo = photoRepository.save(photo);
-        
+
+        // ========== R1: FRAUD DETECTION — Cross-booking duplicate hash check ==========
+        if (imageHash != null
+                && photoRepository.existsByImageHashOnOtherBooking(imageHash, booking.getId())) {
+            log.warn("[R1-FRAUD-ALERT] Duplicate image hash detected on check-in! " +
+                    "booking={}, photoId={}, hash={} — same image exists on another booking",
+                    booking.getId(), photo.getId(), imageHash);
+
+            eventService.recordEvent(
+                booking,
+                sessionId,
+                CheckInEventType.HOST_PHOTO_UPLOADED,
+                user.getId(),
+                CheckInActorRole.SYSTEM,
+                Map.of(
+                    "fraudAlert", "DUPLICATE_IMAGE_HASH",
+                    "photoId", photo.getId(),
+                    "photoType", photoType.name(),
+                    "imageHash", imageHash
+                )
+            );
+        }
+
+        // ========== R9 (P2): GPS CROSS-VALIDATION against car listing location ==========
+        // Check if the photo's GPS (EXIF or client fallback) is plausible relative to
+        // the car's registered/listing location. This catches GPS spoofing more precisely
+        // than the Serbia-wide bounding box in ExifValidationService.
+        if (finalLatitude != null && finalLongitude != null
+                && booking.getCar().hasGeoLocation()) {
+            BigDecimal carLat = booking.getCar().getLocationGeoPoint().getLatitude();
+            BigDecimal carLon = booking.getCar().getLocationGeoPoint().getLongitude();
+            if (carLat != null && carLon != null) {
+                double distanceMeters = geofenceService.haversineDistance(
+                    finalLatitude.doubleValue(), finalLongitude.doubleValue(),
+                    carLat.doubleValue(), carLon.doubleValue()
+                );
+                // 10 km threshold: cars can be at slightly different spots, but >10km is suspicious
+                if (distanceMeters > 10_000) {
+                    log.warn("[R9-GPS-ANOMALY] Photo GPS far from car listing location: " +
+                            "booking={}, photoType={}, distance={}m, photoGps=({},{}), carGps=({},{}), usedClientGps={}",
+                        booking.getId(), photoType, (int) distanceMeters,
+                        finalLatitude, finalLongitude, carLat, carLon, usedClientGps);
+
+                    eventService.recordEvent(
+                        booking,
+                        sessionId,
+                        CheckInEventType.HOST_PHOTO_UPLOADED,
+                        user.getId(),
+                        CheckInActorRole.SYSTEM,
+                        Map.of(
+                            "gpsAnomaly", true,
+                            "photoType", photoType.name(),
+                            "distanceMeters", (int) distanceMeters,
+                            "usedClientGps", usedClientGps,
+                            "photoLat", finalLatitude.doubleValue(),
+                            "photoLon", finalLongitude.doubleValue(),
+                            "carLat", carLat.doubleValue(),
+                            "carLon", carLon.doubleValue()
+                        )
+                    );
+                }
+            }
+        }
+
         // Determine event type and actor role based on photo type
         CheckInEventType eventType;
         CheckInActorRole actorRole;
@@ -518,7 +609,9 @@ public class CheckInPhotoService {
                 "exifValid", exifResult.isAccepted(),
                 "exifStatus", exifResult.getStatus().name(),
                 "fileSize", file.getSize(),
-                "usedClientGps", usedClientGps
+                "usedClientGps", usedClientGps,
+                "imageHash", imageHash != null ? imageHash : "HASH_FAILED",
+                "auditIntegrityGap", "AUDIT_UPLOAD_FAILED".equals(auditStorageKey)
             )
         );
         
@@ -1067,4 +1160,32 @@ public class CheckInPhotoService {
      * @param reason Reason for SECONDARY weight (null if PRIMARY)
      */
     private record EvidenceWeightResult(EvidenceWeight weight, boolean isLate, String reason) {}
+
+    // ========== R1/R2: SHA-256 HASH COMPUTATION ==========
+
+    /**
+     * Compute SHA-256 hash of image bytes for duplicate detection and chain-of-custody.
+     * Returns lowercase hex string (64 characters), or null on failure.
+     *
+     * <p>Mirrors the implementation in {@code HostCheckoutPhotoService.computeSha256()}
+     * for cross-stage hash consistency.
+     *
+     * @param data Raw image bytes (original, pre-EXIF-strip)
+     * @return Lowercase hex SHA-256 hash, or null if hashing fails
+     * @since R1 - Trust & evidence audit remediation
+     */
+    private String computeSha256(byte[] data) {
+        try {
+            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(data);
+            StringBuilder sb = new StringBuilder(64);
+            for (byte b : hash) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (java.security.NoSuchAlgorithmException e) {
+            log.error("[R1] SHA-256 not available for image hash computation", e);
+            return null;
+        }
+    }
 }

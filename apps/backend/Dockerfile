@@ -65,11 +65,13 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:${PORT}/actuator/health || exit 1
 
 # JVM optimization for containers
+# NOTE: Do NOT set -Dspring.profiles.active here — it overrides the
+# SPRING_PROFILES_ACTIVE env var set by Cloud Run. Profile selection
+# is controlled by the deploy script via staging.env / prod.env.
 ENV JAVA_OPTS="-XX:+UseContainerSupport \
     -XX:MaxRAMPercentage=75.0 \
     -XX:InitialRAMPercentage=50.0 \
-    -Djava.security.egd=file:/dev/./urandom \
-    -Dspring.profiles.active=prod"
+    -Djava.security.egd=file:/dev/./urandom"
 
 # Use Spring Boot launcher for layered JAR
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS org.springframework.boot.loader.launch.JarLauncher"]

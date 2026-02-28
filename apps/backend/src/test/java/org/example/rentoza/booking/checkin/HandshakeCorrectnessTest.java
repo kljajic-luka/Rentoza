@@ -28,6 +28,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -72,6 +73,7 @@ class HandshakeCorrectnessTest {
         // Disable @Value-injected license verification so trip-start tests don't require it
         ReflectionTestUtils.setField(checkInService, "licenseVerificationEnabled", false);
         ReflectionTestUtils.setField(checkInService, "licenseVerificationRequired", false);
+        ReflectionTestUtils.setField(checkInService, "noShowGraceMinutes", 30);
 
         host = new User(); host.setId(100L);
         renter = new User(); renter.setId(200L);
@@ -81,7 +83,7 @@ class HandshakeCorrectnessTest {
         booking.setId(1L);
         booking.setCar(car);
         booking.setRenter(renter);
-        booking.setCheckInSessionId("session-abc");
+        booking.setCheckInSessionId("session-1");
         booking.setCheckInEvents(new ArrayList<>());
         booking.setCheckInPhotos(new ArrayList<>());
         booking.setStatus(BookingStatus.CHECK_IN_COMPLETE);
@@ -143,6 +145,8 @@ class HandshakeCorrectnessTest {
         verify(eventService, never()).recordEvent(
                 any(), any(), eq(CheckInEventType.HANDSHAKE_HOST_CONFIRMED),
                 any(), any(), any());
+        verify(eventService, never()).recordEvent(
+            any(), any(), eq(CheckInEventType.TRIP_STARTED), any(), any(), any(Map.class));
     }
 
     // ---- T3: host already confirmed → guest confirms → trip starts exactly once ----

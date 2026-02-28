@@ -24,7 +24,7 @@
     "predeploy": "npm run build",
     "deploy": "firebase deploy --only hosting",
     "predeploy:staging": "npm run build:staging",
-    "deploy:staging": "firebase deploy --only hosting"
+    "deploy:staging": "firebase hosting:channel:deploy staging --expires 7d"
   },
   "prettier": {
     "printWidth": 100,

@@ -59,7 +59,7 @@ cd apps/chat-service
 # Deploy frontend to Firebase
 cd apps/frontend && firebase deploy --only hosting
 
-# Deploy STAGING frontend (credentialless mock payments)
+# Deploy STAGING frontend preview (credentialless mock payments)
 cd apps/frontend && npm run deploy:staging
 ```
 

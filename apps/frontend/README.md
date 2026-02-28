@@ -30,7 +30,7 @@ Navigate to `http://localhost:4200/`. The app reloads automatically when you cha
 | `npm run build` | Production build (outputs to `dist/`). |
 | `npm run build:staging` | Staging build + payment-mode guard (`mock` enforced). |
 | `npm run serve:staging` | Serve the app with staging environment settings. |
-| `npm run deploy:staging` | Build staging + deploy hosting (do not use generic deploy for staging). |
+| `npm run deploy:staging` | Build staging + deploy to Firebase preview channel (`staging`, expires in 7 days). |
 | `npm test` | Run unit tests with Karma/Jasmine. |
 | `npm run lint` | Lint TypeScript & templates via ESLint. |
 

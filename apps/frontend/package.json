@@ -4,9 +4,12 @@
   "scripts": {
     "ng": "ng",
     "start": "ng serve --host 0.0.0.0 --configuration development",
+    "serve:staging": "ng serve --host 0.0.0.0 --configuration staging",
     "build": "ng build --configuration=production && node scripts/remove-console-logs.js dist/rentoza-frontend/browser",
     "build:dev": "ng build --configuration=development",
+    "build:staging": "ng build --configuration=staging && npm run verify:staging-payment-mode",
     "build:prod": "npm run build",
+    "verify:staging-payment-mode": "node scripts/verify-staging-payment-mode.js",
     "build:webpack": "ng run rentoza-frontend:build-webpack:production && node scripts/remove-console-logs.js dist/rentoza-frontend/browser",
     "build:webpack:dev": "ng run rentoza-frontend:build-webpack:development",
     "watch": "ng build --watch --configuration development",
@@ -19,7 +22,9 @@
     "lint": "ng lint",
     "generate-icons": "node generate-icons.js",
     "predeploy": "npm run build",
-    "deploy": "firebase deploy --only hosting"
+    "deploy": "firebase deploy --only hosting",
+    "predeploy:staging": "npm run build:staging",
+    "deploy:staging": "firebase deploy --only hosting"
   },
   "prettier": {
     "printWidth": 100,

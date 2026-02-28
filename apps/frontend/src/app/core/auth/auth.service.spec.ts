@@ -74,12 +74,12 @@ describe('AuthService (cookie-mode session)', () => {
       emitted = token;
     });
 
-    const request = httpMock.expectOne('/api/auth/refresh');
+    const request = httpMock.expectOne((req) => req.url.includes('/auth/supabase/refresh'));
     expect(request.request.method).toBe('POST');
     expect(request.request.withCredentials).toBeTrue();
 
     request.flush({
-      accessToken: 'signed.jwt.token',
+      authenticated: true,
       user: {
         id: '7',
         email: 'cookie@example.com',
@@ -89,10 +89,10 @@ describe('AuthService (cookie-mode session)', () => {
       } satisfies Partial<UserProfile>,
     });
 
+    // Token is now in an HttpOnly cookie — not accessible from JS
+    // The observable emits a sentinel string to signal success
     expect(emitted).not.toBeNull();
-    const token = emitted!;
-    expect(token).toBe('signed.jwt.token');
-    expect(service.getAccessToken()).toBe('signed.jwt.token');
+    expect(emitted!).toBe('session-refreshed');
     expect(service.getCurrentUser()?.email).toBe('cookie@example.com');
   });
 
@@ -112,9 +112,9 @@ describe('AuthService (cookie-mode session)', () => {
     // Trigger a login flow (simulated via refresh with user data)
     service.refreshAccessToken().subscribe();
 
-    const request = httpMock.expectOne('/api/auth/refresh');
+    const request = httpMock.expectOne((req) => req.url.includes('/auth/supabase/refresh'));
     request.flush({
-      accessToken: 'test.jwt.token',
+      authenticated: true,
       user: {
         id: '123',
         email: 'secure@example.com',
@@ -131,25 +131,24 @@ describe('AuthService (cookie-mode session)', () => {
 
     expect(authRelatedCalls.length).toBe(
       0,
-      'localStorage.setItem should NOT be called for access_token or current_user in cookie mode'
+      'localStorage.setItem should NOT be called for access_token or current_user in cookie mode',
     );
 
     // Also verify the values are not actually in localStorage
     expect(localStorage.getItem('access_token')).toBeNull(
-      'access_token should not be in localStorage'
+      'access_token should not be in localStorage',
     );
     expect(localStorage.getItem('current_user')).toBeNull(
-      'current_user should not be in localStorage'
+      'current_user should not be in localStorage',
     );
 
-    // But verify in-memory state IS updated
-    expect(service.getAccessToken()).toBe(
-      'test.jwt.token',
-      'Token should still be available in memory'
+    // In cookie-only mode the JS-accessible token is null (token lives in HttpOnly cookie)
+    expect(service.getAccessToken()).toBeNull(
+      'JS-accessible token must be null — the real token is in an HttpOnly cookie',
     );
     expect(service.getCurrentUser()?.email).toBe(
       'secure@example.com',
-      'User should still be available in memory'
+      'User should still be available in memory',
     );
   });
 

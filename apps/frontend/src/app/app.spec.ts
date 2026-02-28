@@ -1,6 +1,7 @@
 import { HttpClientTestingModule } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { RouterTestingModule } from '@angular/router/testing';
+import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { JwtHelperService } from '@auth0/angular-jwt';
 import { ToastrService } from 'ngx-toastr';
 
@@ -21,6 +22,7 @@ describe('App', () => {
     await TestBed.configureTestingModule({
       imports: [App, RouterTestingModule, HttpClientTestingModule],
       providers: [
+        provideNoopAnimations(),
         { provide: JwtHelperService, useClass: JwtHelperServiceStub },
         {
           provide: ToastrService,
@@ -28,10 +30,10 @@ describe('App', () => {
             success: () => undefined,
             error: () => undefined,
             info: () => undefined,
-            warning: () => undefined
-          }
-        }
-      ]
+            warning: () => undefined,
+          },
+        },
+      ],
     }).compileComponents();
   });
 

@@ -967,6 +967,11 @@ export class AuthService {
 
     this.favoritesLoadedForSession = false;
 
+    // Defense-in-depth: remove any legacy localStorage tokens written by
+    // older versions of the app or tampered by external scripts.
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('current_user');
+
     // Stop token watcher when session is cleared
     this.stopTokenWatcher();
 

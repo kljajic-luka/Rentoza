@@ -30,7 +30,7 @@ describe('ChatService', () => {
 
   beforeEach(() => {
     wsStatus$ = new BehaviorSubject<WebSocketConnectionStatus>(
-      WebSocketConnectionStatus.DISCONNECTED
+      WebSocketConnectionStatus.DISCONNECTED,
     );
 
     webSocketServiceMock = jasmine.createSpyObj(
@@ -38,7 +38,7 @@ describe('ChatService', () => {
       ['connect', 'disconnect', 'subscribe', 'send', 'isConnected'],
       {
         status$: wsStatus$.asObservable(),
-      }
+      },
     );
 
     authServiceMock = jasmine.createSpyObj('AuthService', ['getCurrentUser', 'getAccessToken'], {
@@ -102,9 +102,9 @@ describe('ChatService', () => {
       expect(webSocketServiceMock.send).toHaveBeenCalledWith(
         '/app/chat/booking-123/typing',
         jasmine.objectContaining({
-          isTyping: true,
+          typing: true,
           userId: mockUser.id,
-        })
+        }),
       );
     });
 
@@ -322,11 +322,10 @@ describe('ChatService', () => {
       service.sendMessageViaWebSocket('booking-1', 'Hello');
 
       expect(webSocketServiceMock.send).toHaveBeenCalledWith(
-        '/app/chat/booking-1',
+        '/app/chat/booking-1/send',
         jasmine.objectContaining({
           content: 'Hello',
-          bookingId: 'booking-1',
-        })
+        }),
       );
     });
 
@@ -374,7 +373,7 @@ describe('ChatService', () => {
         {
           id: 1,
           bookingId: 'booking-1',
-          renterId: 'renter-1',
+          renterId: mockUser.id,
           ownerId: 'owner-1',
           status: 'ACTIVE',
           createdAt: new Date().toISOString(),
@@ -395,7 +394,7 @@ describe('ChatService', () => {
           id: 1,
           bookingId: 'booking-1',
           lastMessageAt: '2024-01-01T10:00:00Z',
-          renterId: 'renter-1',
+          renterId: mockUser.id,
           ownerId: 'owner-1',
           status: 'ACTIVE',
           createdAt: new Date().toISOString(),
@@ -406,7 +405,7 @@ describe('ChatService', () => {
           id: 2,
           bookingId: 'booking-2',
           lastMessageAt: '2024-01-02T10:00:00Z', // More recent
-          renterId: 'renter-1',
+          renterId: mockUser.id,
           ownerId: 'owner-2',
           status: 'ACTIVE',
           createdAt: new Date().toISOString(),

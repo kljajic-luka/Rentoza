@@ -285,7 +285,19 @@
           Podatci o kartici
         </h3>
 
-        <app-payment-form (validityChange)="onCardValidityChanged($event)" />
+        <div
+          class="payment-mode-badge"
+          [class.payment-mode-badge--mock]="paymentMode() === 'MOCK'"
+          [class.payment-mode-badge--monri]="paymentMode() === 'MONRI'"
+        >
+          <mat-icon>{{ paymentMode() === 'MOCK' ? 'science' : 'verified' }}</mat-icon>
+          <span>Payment mode: {{ paymentMode() }}</span>
+        </div>
+
+        <app-payment-form
+          (validityChange)="onCardValidityChanged($event)"
+          (providerModeResolved)="onPaymentModeResolved($event)"
+        />
 
         <p class="payment-info-hint">
           <mat-icon class="hint-icon">lock</mat-icon>

@@ -52,14 +52,16 @@ public class CachingConfig implements WebMvcConfigurer {
             
             // Booking data caches
             new ConcurrentMapCache("bookings"),
-            
+            new ConcurrentMapCache("bookingAvailability"), // Public calendar slots per car
+
             // Review data caches
             new ConcurrentMapCache("reviews"),
-            
+            new ConcurrentMapCache("userRatings"),       // Aggregate rating per user
+
             // Admin data caches
             new ConcurrentMapCache("adminMetrics"),   // Dashboard KPIs (5min TTL)
             new ConcurrentMapCache("adminSettings"),  // Admin settings singleton
-            
+
             // Photo signed URLs (fallback when Redis is disabled)
             new ConcurrentMapCache("photoSignedUrls"),
 
@@ -68,7 +70,11 @@ public class CachingConfig implements WebMvcConfigurer {
             new ConcurrentMapCache("checkin-photos"),
             new ConcurrentMapCache("checkin-status-minimal"),
             new ConcurrentMapCache("checkin-dashboard"),
-            
+
+            // Rate limiting & idempotency (gracefully degrade to no-op in local dev)
+            new ConcurrentMapCache("rate-limits"),
+            new ConcurrentMapCache("idempotency"),
+
             // Geocoding caches (Phase 2.4)
             new ConcurrentMapCache("geocodeCache"),
             new ConcurrentMapCache("reverseGeocodeCache"),

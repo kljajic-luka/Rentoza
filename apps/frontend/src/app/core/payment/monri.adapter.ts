@@ -219,13 +219,30 @@ export class MonriAdapter implements PaymentProviderAdapter {
       const script = document.createElement('script');
       script.src = monriConfig.sdkUrl;
       script.async = true;
+
+      // Reject if the SDK hasn't loaded within 15 s (CDN outage, network stall).
+      const timeoutId = setTimeout(() => {
+        reject(this.createError('SDK_TIMEOUT', 'Monri SDK failed to load within 15 seconds'));
+      }, 15_000);
+
       script.onload = () => {
-        this.createMonriInstance();
-        resolve();
+        clearTimeout(timeoutId);
+        // createMonriInstance() can throw (missing authenticityToken, window.Monri absent).
+        // Without try/catch the throw escapes the onload callback, resolve() is never reached,
+        // reject() is never called, and the Promise hangs forever — causing the endless spinner.
+        try {
+          this.createMonriInstance();
+          resolve();
+        } catch (err) {
+          reject(err);
+        }
       };
+
       script.onerror = () => {
+        clearTimeout(timeoutId);
         reject(this.createError('SDK_LOAD_FAILED', 'Failed to load Monri SDK script'));
       };
+
       document.head.appendChild(script);
     });
   }

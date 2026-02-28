@@ -20,7 +20,19 @@ export const PAYMENT_ADAPTER = new InjectionToken<PaymentProviderAdapter>('PAYME
 type PaymentConfig = {
   providerMode: 'mock' | 'monri';
   allowMockInThisEnv: boolean;
+  modeLabel?: 'MOCK' | 'MONRI';
 };
+
+function hasMonriAuthToken(): boolean {
+  const monriConfig = (environment as Record<string, unknown>)['monri'] as
+    | { authenticityToken?: string }
+    | undefined;
+
+  return (
+    typeof monriConfig?.authenticityToken === 'string' &&
+    monriConfig.authenticityToken.trim().length > 0
+  );
+}
 
 /**
  * Resolves the active payment provider mode with safety checks.
@@ -28,7 +40,7 @@ type PaymentConfig = {
  * Throws at bootstrap time if production attempts to use mock mode.
  * Logs clear warnings for misconfiguration.
  */
-function resolveProviderMode(): 'mock' | 'monri' {
+export function resolveProviderMode(): 'mock' | 'monri' {
   const paymentConfig = (environment as Record<string, unknown>)['payment'] as
     | PaymentConfig
     | undefined;
@@ -59,6 +71,23 @@ function resolveProviderMode(): 'mock' | 'monri' {
     console.warn(
       '[PAYMENT] Running in MOCK payment mode. ' +
         'No real card data will be collected. Tokens are simulated test scenarios.',
+    );
+    return 'mock';
+  }
+
+  // Non-prod fallback: monri configured without a token can safely use mock mode
+  // as long as this environment explicitly allows mock payments.
+  if (providerMode === 'monri' && !hasMonriAuthToken()) {
+    if (allowMockInThisEnv) {
+      console.warn(
+        '[PAYMENT] Monri mode requested but authenticity token is missing. ' +
+          'Falling back to MOCK mode for this non-production environment.',
+      );
+      return 'mock';
+    }
+
+    throw new Error(
+      '[PAYMENT] FATAL: Monri mode requires environment.monri.authenticityToken in this environment.',
     );
   }
 

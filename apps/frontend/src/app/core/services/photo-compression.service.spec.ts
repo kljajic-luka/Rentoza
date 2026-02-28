@@ -82,7 +82,7 @@ describe('PhotoCompressionService', () => {
             resolve(blob!);
           },
           'image/jpeg',
-          0.95
+          0.95,
         );
       });
     }
@@ -129,8 +129,8 @@ describe('PhotoCompressionService', () => {
 
       const compressionPromise = service.compressImage(file, { targetSizeKB: 500 });
 
-      // Give signal a moment to update
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      // _isCompressing.set(true) runs synchronously before the first await inside
+      // compressImage; no delay needed to observe the signal change.
       expect(service.isCompressing()).toBe(true);
 
       await compressionPromise;

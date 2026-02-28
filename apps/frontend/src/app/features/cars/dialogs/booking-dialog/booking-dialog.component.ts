@@ -60,11 +60,29 @@ import {
   BookingIntentParams,
 } from '@core/utils/idempotency-key.util';
 import { TokenizationError } from '@core/payment/payment-provider.adapter';
+import { environment } from '@environments/environment';
 
 export interface BookingDialogData {
   car: Car;
   bookings: Booking[];
   blockedDates: BlockedDate[];
+}
+
+type RuntimePaymentMode = 'MOCK' | 'MONRI';
+
+function resolveConfiguredPaymentMode(): RuntimePaymentMode {
+  const payment = (environment as Record<string, unknown>)['payment'] as
+    | {
+        providerMode?: 'mock' | 'monri';
+        modeLabel?: RuntimePaymentMode;
+      }
+    | undefined;
+
+  if (payment?.modeLabel === 'MONRI' || payment?.modeLabel === 'MOCK') {
+    return payment.modeLabel;
+  }
+
+  return payment?.providerMode === 'monri' ? 'MONRI' : 'MOCK';
 }
 
 /**
@@ -118,6 +136,7 @@ export class BookingDialogComponent implements OnInit {
 
   // Payment card validity
   protected readonly cardValid = signal(false);
+  protected readonly paymentMode = signal<RuntimePaymentMode>(resolveConfiguredPaymentMode());
   private currentUserId: string | number = '';
 
   // Booking constraints
@@ -468,6 +487,10 @@ export class BookingDialogComponent implements OnInit {
    */
   protected onCardValidityChanged(valid: boolean): void {
     this.cardValid.set(valid);
+  }
+
+  protected onPaymentModeResolved(mode: RuntimePaymentMode): void {
+    this.paymentMode.set(mode);
   }
 
   private getInsuranceMultiplier(type: string): number {

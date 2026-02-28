@@ -73,6 +73,7 @@
               "sourceMap": true,
               "namedChunks": false,
               "extractLicenses": true,
+              "serviceWorker": false,
               "fileReplacements": [
                 {
                   "replace": "src/environments/environment.ts",

@@ -22,6 +22,8 @@ import {
 } from '../payment-provider.adapter';
 import { PAYMENT_ADAPTER, providePaymentAdapter } from '../payment-adapter.token';
 
+type RuntimePaymentMode = 'MOCK' | 'MONRI';
+
 /**
  * Secure card input form component.
  *
@@ -180,13 +182,19 @@ export class PaymentFormComponent implements OnInit, AfterViewInit, OnDestroy {
   /** Emits tokenization errors. */
   readonly tokenError = output<TokenizationError>();
 
+  /** Emits resolved runtime payment mode (MOCK/MONRI). */
+  readonly providerModeResolved = output<RuntimePaymentMode>();
+
   protected readonly isLoading = signal(true);
   protected readonly cardError = signal<string | null>(null);
   protected readonly initError = signal<string | null>(null);
 
   private subs: Subscription[] = [];
+  private mountTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
   ngOnInit(): void {
+    this.providerModeResolved.emit(this.resolveRuntimeMode());
+
     // Subscribe to card validity and error streams
     this.subs.push(
       this.adapter.cardValid$.subscribe((valid) => {
@@ -199,16 +207,33 @@ export class PaymentFormComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   async ngAfterViewInit(): Promise<void> {
+    // Guard against an adapter that hangs forever (e.g. Monri SDK pending a network
+    // call that never completes). Without this race, isLoading stays true indefinitely.
+    const MOUNT_TIMEOUT_MS = 15_000;
     try {
-      await this.adapter.mountCardForm({
-        container: this.cardElementRef.nativeElement,
-        locale: 'sr',
-      });
+      await Promise.race([
+        this.adapter.mountCardForm({
+          container: this.cardElementRef.nativeElement,
+          locale: 'sr',
+        }),
+        new Promise<never>((_, reject) => {
+          this.mountTimeoutId = setTimeout(
+            () =>
+              reject({
+                code: 'MOUNT_TIMEOUT',
+                message: 'Plaćanje se nije učitalo. Pokušajte ponovo.',
+              }),
+            MOUNT_TIMEOUT_MS,
+          );
+        }),
+      ]);
+      this.clearMountTimeout();
       this.isLoading.set(false);
     } catch (err) {
+      this.clearMountTimeout();
       const error = err as TokenizationError;
       this.isLoading.set(false);
-      this.initError.set(error.message || 'Greska pri ucitavanju platnog formulara');
+      this.initError.set(error.message || 'Greška pri učitavanju platnog formulara');
     }
   }
 
@@ -223,7 +248,19 @@ export class PaymentFormComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.clearMountTimeout();
     this.subs.forEach((s) => s.unsubscribe());
     this.adapter.unmount();
+  }
+
+  private clearMountTimeout(): void {
+    if (this.mountTimeoutId !== null) {
+      clearTimeout(this.mountTimeoutId);
+      this.mountTimeoutId = null;
+    }
+  }
+
+  private resolveRuntimeMode(): RuntimePaymentMode {
+    return this.adapter.providerName.toLowerCase().includes('monri') ? 'MONRI' : 'MOCK';
   }
 }

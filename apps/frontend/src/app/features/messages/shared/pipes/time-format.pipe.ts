@@ -9,11 +9,15 @@ import { Pipe, PipeTransform } from '@angular/core';
   standalone: true,
 })
 export class TimeFormatPipe implements PipeTransform {
-  transform(timestamp: string | Date | undefined, format: 'relative' | 'time' | 'full' | 'short' = 'relative'): string {
+  transform(
+    timestamp: string | Date | undefined,
+    format: 'relative' | 'time' | 'full' | 'short' = 'relative',
+  ): string {
     if (!timestamp) return '';
 
     try {
       const date = timestamp instanceof Date ? timestamp : new Date(timestamp);
+      if (isNaN(date.getTime())) return '';
       const now = new Date();
 
       switch (format) {
@@ -65,11 +69,15 @@ export class TimeFormatPipe implements PipeTransform {
     } else if (isYesterday) {
       return `Yesterday ${this.formatTime(date)}`;
     } else {
-      return date.toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
-      }) + ' ' + this.formatTime(date);
+      return (
+        date.toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
+        }) +
+        ' ' +
+        this.formatTime(date)
+      );
     }
   }
 }

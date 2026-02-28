@@ -25,6 +25,10 @@ jobs:
         working-directory: apps/frontend
         run: npm ci
 
+      - name: Build staging and verify mock payment mode
+        working-directory: apps/frontend
+        run: npm run build:staging
+
       - name: Build production
         working-directory: apps/frontend
         run: npm run build -- --configuration production

@@ -471,8 +471,7 @@ public class CheckInCommandService {
      */
     @Transactional
     public HandshakeResult confirmHandshake(HandshakeConfirmationDTO dto, Long userId) {
-        // Acquire pessimistic lock via repository (lock mode set in query)
-        Booking booking = bookingRepository.findById(dto.getBookingId())
+        Booking booking = bookingRepository.findByIdWithLock(dto.getBookingId())
                 .orElseThrow(() -> new ResourceNotFoundException("Rezervacija nije pronađena"));
 
         // Idempotency check - if already in trip, return success
@@ -523,7 +522,7 @@ public class CheckInCommandService {
     }
 
     private void processHostHandshake(Booking booking, HandshakeConfirmationDTO dto, Long userId) {
-        if (booking.getHandshakeCompletedAt() != null && isHostHandshakeConfirmed(booking)) {
+        if (isHostHandshakeConfirmed(booking)) {
             log.debug("[CheckIn-Command] Host already confirmed handshake for booking {}", booking.getId());
             return;
         }

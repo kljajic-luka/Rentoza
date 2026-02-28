@@ -1,5 +1,6 @@
 package org.example.rentoza.booking.checkin;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.example.rentoza.booking.checkin.dto.PhotoUploadResponse;
 import org.example.rentoza.idempotency.IdempotencyService;
@@ -40,7 +41,7 @@ class CheckInControllerTimingBlockedTest {
     void setUp() {
         controller = new CheckInController(
                 checkInService, photoService, idempotencyService,
-                currentUser, responseOptimizer, new SimpleMeterRegistry());
+                currentUser, responseOptimizer, new ObjectMapper(), new SimpleMeterRegistry());
     }
 
     @Test

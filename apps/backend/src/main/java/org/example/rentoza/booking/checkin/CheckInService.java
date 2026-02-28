@@ -647,7 +647,7 @@ public class CheckInService {
         
         // Process host confirmation
         if (isHost) {
-            if (booking.getHandshakeCompletedAt() != null && isHostHandshakeConfirmed(booking)) {
+            if (isHostHandshakeConfirmed(booking)) {
                 log.debug("[CheckIn] Host already confirmed handshake for booking {}", dto.getBookingId());
             } else {
                 eventService.recordEvent(
@@ -862,7 +862,8 @@ public class CheckInService {
         // Check if both parties have confirmed
         boolean hostConfirmed = isHostHandshakeConfirmed(booking);
         boolean guestConfirmed = isGuestHandshakeConfirmed(booking);
-        
+        CheckInActorRole actorRole = isHost ? CheckInActorRole.HOST : CheckInActorRole.GUEST;
+
         if (hostConfirmed && guestConfirmed) {
             // ====================================================================
             // PHASE 4B: VALIDATE LICENSE VERIFICATION FOR IN-PERSON HANDSHAKES
@@ -918,6 +919,15 @@ public class CheckInService {
                 log.warn("[CheckIn] Capture at trip start was not successful for booking {} — " +
                         "scheduler will retry: {}", captureBookingId, capEx.getMessage());
             }
+            log.info(
+                "[CheckIn] Handshake decision: bookingId={}, actorRole={}, hostConfirmed={}, guestConfirmed={}, resultingStatus={}",
+                booking.getId(), actorRole, hostConfirmed, guestConfirmed, booking.getStatus()
+            );
+        } else {
+            log.info(
+                "[CheckIn] Handshake decision: bookingId={}, actorRole={}, hostConfirmed={}, guestConfirmed={}, resultingStatus={}",
+                booking.getId(), actorRole, hostConfirmed, guestConfirmed, booking.getStatus()
+            );
         }
         
         bookingRepository.save(booking);
@@ -1316,6 +1326,13 @@ public class CheckInService {
     private CheckInStatusDTO mapToStatusDTO(Booking booking, Long userId) {
         boolean isHost = isHost(booking, userId);
         boolean isGuest = isGuest(booking, userId);
+        boolean hostConfirmedHandshake = isHostHandshakeConfirmed(booking);
+        boolean guestConfirmedHandshake = isGuestHandshakeConfirmed(booking);
+        boolean handshakeComplete = booking.getStatus() == BookingStatus.IN_TRIP;
+        boolean canStartTrip = booking.getStatus() == BookingStatus.CHECK_IN_COMPLETE;
+        String handoffType = booking.getLockboxCodeEncrypted() != null ? "REMOTE" : "IN_PERSON";
+        String geofenceStatus = determineGeofenceStatus(booking);
+        LocalDateTime lastUpdated = determineLastUpdated(booking);
         
         // DIAGNOSTIC: Log role calculation inputs and outputs
         log.info("[CheckIn] DIAGNOSTIC: mapToStatusDTO - bookingId={}, userId={}, ownerId={}, renterId={}, isHost={}, isGuest={}",
@@ -1364,13 +1381,21 @@ public class CheckInService {
                 .hostCheckInComplete(booking.getHostCheckInCompletedAt() != null)
                 .guestCheckInComplete(booking.getGuestCheckInCompletedAt() != null)
                 .handshakeReady(booking.getStatus() == BookingStatus.CHECK_IN_COMPLETE)
+                .guestConditionAcknowledged(booking.getGuestCheckInCompletedAt() != null)
+                .handshakeComplete(handshakeComplete)
+                .hostConfirmedHandshake(hostConfirmedHandshake)
+                .guestConfirmedHandshake(guestConfirmedHandshake)
                 .checkInOpenedAt(toLocalDateTime(booking.getCheckInOpenedAt()))
                 .hostCompletedAt(toLocalDateTime(booking.getHostCheckInCompletedAt()))
                 .guestCompletedAt(toLocalDateTime(booking.getGuestCheckInCompletedAt()))
                 .handshakeCompletedAt(toLocalDateTime(booking.getHandshakeCompletedAt()))
+                .lastUpdated(lastUpdated)
                 .vehiclePhotos(photos)
                 .odometerReading(booking.getStartOdometer())
                 .fuelLevelPercent(booking.getStartFuelLevel())
+                .hostCheckInPhotoCount(photos != null ? photos.size() : 0)
+                .odometerStart(booking.getStartOdometer())
+                .fuelLevelStart(booking.getStartFuelLevel())
                 .lockboxAvailable(booking.getLockboxCodeEncrypted() != null)
                 .geofenceValid(
                     // No lockbox = no geofence needed (in-person handoff)
@@ -1381,11 +1406,16 @@ public class CheckInService {
                     booking.getGeofenceDistanceMeters() <= geofenceService.getDefaultRadiusMeters()
                 )
                 .geofenceDistanceMeters(booking.getGeofenceDistanceMeters())
+                .handoffType(handoffType)
+                .geofenceStatus(geofenceStatus)
                 .tripStartScheduled(booking.getStartTime())
                 .noShowDeadline(noShowDeadline)
                 .minutesUntilNoShow(minutesUntilNoShow)
                 .isHost(isHost)
                 .isGuest(isGuest)
+                .canHostComplete(booking.getStatus() == BookingStatus.CHECK_IN_OPEN)
+                .canGuestAcknowledge(booking.getStatus() == BookingStatus.CHECK_IN_HOST_COMPLETE)
+                .canStartTrip(canStartTrip)
                 // Pickup location fields
                 .pickupLatitude(pickupLocation != null ? pickupLocation.getLatitude().doubleValue() : null)
                 .pickupLongitude(pickupLocation != null ? pickupLocation.getLongitude().doubleValue() : null)
@@ -1418,6 +1448,34 @@ public class CheckInService {
                         .imageUrl(booking.getCar().getImageUrl())
                         .build())
                 .build();
+    }
+
+    private String determineGeofenceStatus(Booking booking) {
+        if (booking.getLockboxCodeEncrypted() == null) {
+            return "NOT_REQUIRED";
+        }
+        if (booking.getGeofenceDistanceMeters() == null) {
+            return "NOT_CHECKED";
+        }
+        return booking.getGeofenceDistanceMeters() <= geofenceService.getDefaultRadiusMeters()
+                ? "VALID" : "INVALID";
+    }
+
+    private LocalDateTime determineLastUpdated(Booking booking) {
+        LocalDateTime latest = null;
+        latest = max(latest, toLocalDateTime(booking.getCheckInOpenedAt()));
+        latest = max(latest, toLocalDateTime(booking.getHostCheckInCompletedAt()));
+        latest = max(latest, toLocalDateTime(booking.getGuestCheckInCompletedAt()));
+        latest = max(latest, toLocalDateTime(booking.getHandshakeCompletedAt()));
+        latest = max(latest, toLocalDateTime(booking.getTripStartedAt()));
+        latest = max(latest, toLocalDateTime(booking.getUpdatedAt()));
+        return latest != null ? latest : LocalDateTime.now(SERBIA_ZONE);
+    }
+
+    private LocalDateTime max(LocalDateTime a, LocalDateTime b) {
+        if (a == null) return b;
+        if (b == null) return a;
+        return a.isAfter(b) ? a : b;
     }
 
     private CheckInPhotoDTO mapToPhotoDTO(CheckInPhoto photo) {

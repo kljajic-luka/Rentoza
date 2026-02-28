@@ -1,5 +1,6 @@
 package org.example.rentoza.booking.checkin;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.validation.Valid;
@@ -59,6 +60,7 @@ public class CheckInController {
     private final IdempotencyService idempotencyService;
     private final CurrentUser currentUser;
     private final CheckInResponseOptimizer responseOptimizer;
+    private final ObjectMapper objectMapper;
     private final Counter photoUploadCounter;
 
     public CheckInController(
@@ -67,12 +69,14 @@ public class CheckInController {
             IdempotencyService idempotencyService,
             CurrentUser currentUser,
             CheckInResponseOptimizer responseOptimizer,
+            ObjectMapper objectMapper,
             MeterRegistry meterRegistry) {
         this.checkInService = checkInService;
         this.photoService = photoService;
         this.idempotencyService = idempotencyService;
         this.currentUser = currentUser;
         this.responseOptimizer = responseOptimizer;
+        this.objectMapper = objectMapper;
         
         this.photoUploadCounter = Counter.builder("checkin.photo.upload")
                 .description("Check-in photo uploads")
@@ -239,7 +243,7 @@ public class CheckInController {
             // Return cached successful response
             log.info("[CheckIn] Returning cached host-complete response for key: {}", 
                     idempotencyKey != null ? idempotencyKey.substring(0, 8) + "..." : "N/A");
-            return ResponseEntity.status(result.getHttpStatus()).build();
+            return buildCachedStatusResponse(result);
         }
         
         // Mark as processing
@@ -321,7 +325,7 @@ public class CheckInController {
             }
             log.info("[CheckIn] Returning cached license-verification response for key: {}", 
                     idempotencyKey != null ? idempotencyKey.substring(0, 8) + "..." : "N/A");
-            return ResponseEntity.status(result.getHttpStatus()).build();
+            return buildCachedStatusResponse(result);
         }
         
         // Mark as processing
@@ -370,7 +374,7 @@ public class CheckInController {
             }
             log.info("[CheckIn] Returning cached condition-ack response for key: {}", 
                     idempotencyKey != null ? idempotencyKey.substring(0, 8) + "..." : "N/A");
-            return ResponseEntity.status(result.getHttpStatus()).build();
+            return buildCachedStatusResponse(result);
         }
         
         // Mark as processing
@@ -429,7 +433,7 @@ public class CheckInController {
             }
             log.info("[CheckIn] Returning cached handshake response for key: {}", 
                     idempotencyKey != null ? idempotencyKey.substring(0, 8) + "..." : "N/A");
-            return ResponseEntity.status(result.getHttpStatus()).build();
+            return buildCachedStatusResponse(result);
         }
         
         // Mark as processing
@@ -580,7 +584,32 @@ public class CheckInController {
         
         return ResponseEntity.badRequest().body(Map.of(
             "error", "INVALID_ARGUMENT",
-            "message", ex.getMessage()
+                "message", ex.getMessage()
         ));
+    }
+
+    private ResponseEntity<CheckInStatusDTO> buildCachedStatusResponse(IdempotencyResult result) {
+        HttpStatus status = HttpStatus.resolve(result.getHttpStatus());
+        if (status == null) {
+            status = HttpStatus.OK;
+        }
+
+        CheckInStatusDTO cachedBody = deserializeCachedStatus(result.getResponseBody());
+        if (cachedBody != null) {
+            return ResponseEntity.status(status).body(cachedBody);
+        }
+        return ResponseEntity.status(status).build();
+    }
+
+    private CheckInStatusDTO deserializeCachedStatus(String responseBody) {
+        if (responseBody == null || responseBody.isBlank()) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(responseBody, CheckInStatusDTO.class);
+        } catch (Exception ex) {
+            log.warn("[CheckIn] Failed to deserialize cached idempotency body: {}", ex.getMessage());
+            return null;
+        }
     }
 }

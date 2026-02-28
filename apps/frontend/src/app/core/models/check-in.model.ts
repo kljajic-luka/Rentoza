@@ -130,9 +130,12 @@ export interface CheckInStatusDTO {
   hostCheckInComplete: boolean;
   guestCheckInComplete: boolean;
   guestAcknowledged: boolean;
+  guestConditionAcknowledged?: boolean;
   handshakeReady: boolean;
   hostCheckedIn: boolean;
   handshakeComplete: boolean;
+  hostConfirmedHandshake?: boolean;
+  guestConfirmedHandshake?: boolean;
 
   // Timestamps (ISO strings from backend)
   checkInOpenedAt: string | null;
@@ -155,6 +158,7 @@ export interface CheckInStatusDTO {
   tripStartScheduled: string;
   noShowDeadline: string | null;
   minutesUntilNoShow: number | null;
+  canStartTrip?: boolean;
 
   // Role-specific flags (NOTE: Jackson serializes isHost/isGuest as host/guest)
   host: boolean;

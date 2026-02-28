@@ -84,25 +84,21 @@ import { CheckInStatusDTO } from '../../../core/models/check-in.model';
       <!-- Status indicators -->
       <mat-card class="status-card">
         <mat-card-content>
-          <div class="status-item" [class.completed]="status?.hostCheckInComplete">
-            <mat-icon>{{ status?.hostCheckInComplete ? 'check_circle' : 'pending' }}</mat-icon>
+          <div class="status-item" [class.completed]="hostHandshakeConfirmed()">
+            <mat-icon>{{ hostHandshakeConfirmed() ? 'check_circle' : 'pending' }}</mat-icon>
             <div>
               <span class="status-label">Domaćin</span>
-              <span class="status-text">{{
-                status?.hostCheckInComplete ? 'Završio' : 'Čeka potvrdu'
-              }}</span>
+              <span class="status-text">{{ hostHandshakeConfirmed() ? 'Potvrdio rukovanje' : 'Čeka potvrdu rukovanja' }}</span>
             </div>
           </div>
 
           <mat-divider vertical></mat-divider>
 
-          <div class="status-item" [class.completed]="status?.guestCheckInComplete">
-            <mat-icon>{{ status?.guestCheckInComplete ? 'check_circle' : 'pending' }}</mat-icon>
+          <div class="status-item" [class.completed]="guestHandshakeConfirmed()">
+            <mat-icon>{{ guestHandshakeConfirmed() ? 'check_circle' : 'pending' }}</mat-icon>
             <div>
               <span class="status-label">Gost</span>
-              <span class="status-text">{{
-                status?.guestCheckInComplete ? 'Potvrdio' : 'Čeka potvrdu'
-              }}</span>
+              <span class="status-text">{{ guestHandshakeConfirmed() ? 'Potvrdio rukovanje' : 'Čeka potvrdu rukovanja' }}</span>
             </div>
           </div>
         </mat-card-content>
@@ -666,18 +662,46 @@ export class HandshakeComponent implements OnInit, OnDestroy {
 
   // Computed
   roleInstructions = computed(() => {
+    if (this.isCurrentActorConfirmed()) {
+      return 'Vaša potvrda je zabeležena. Čekamo drugu stranu.';
+    }
     if (this.status?.host) {
       return 'Kada predate ključeve gostu, prevucite za potvrdu';
     }
     return 'Kada primite ključeve, prevucite za potvrdu';
   });
 
+  hostHandshakeConfirmed = computed(() => {
+    return (
+      this.status?.hostConfirmedHandshake === true ||
+      this.status?.handshakeComplete === true ||
+      this.status?.status === 'IN_TRIP'
+    );
+  });
+
+  guestHandshakeConfirmed = computed(() => {
+    return (
+      this.status?.guestConfirmedHandshake === true ||
+      this.status?.handshakeComplete === true ||
+      this.status?.status === 'IN_TRIP'
+    );
+  });
+
+  isCurrentActorConfirmed = computed(() => {
+    if (!this.status) return false;
+    return this.status.host ? this.hostHandshakeConfirmed() : this.guestHandshakeConfirmed();
+  });
+
   isWaitingForOther = computed(() => {
     if (!this.status) return false;
-    if (this.status.host) {
-      return this._isConfirmed() && !this.status.guestCheckInComplete;
+    if (this.status.handshakeComplete || this.status.handshakeCompletedAt || this.status.status === 'IN_TRIP') {
+      return false;
     }
-    return this._isConfirmed() && !this.status.hostCheckInComplete;
+
+    if (this.status.host) {
+      return this.hostHandshakeConfirmed() && !this.guestHandshakeConfirmed();
+    }
+    return this.guestHandshakeConfirmed() && !this.hostHandshakeConfirmed();
   });
 
   waitingMessage = computed(() => {
@@ -696,6 +720,15 @@ export class HandshakeComponent implements OnInit, OnDestroy {
     ) {
       return false;
     }
+
+    if (this.status?.handshakeComplete || this.status?.status === 'IN_TRIP') {
+      return false;
+    }
+
+    if (this.isCurrentActorConfirmed()) {
+      return false;
+    }
+
     return !this._isConfirmed() && !this.checkInService.isLoading();
   });
 
@@ -895,15 +928,29 @@ export class HandshakeComponent implements OnInit, OnDestroy {
       .confirmHandshake(this.bookingId, this.status?.host ? this.verifyPhysicalId : undefined)
       .subscribe({
         next: (status) => {
-          if (status.handshakeCompletedAt) {
+          const handshakeComplete =
+            status.handshakeCompletedAt !== null ||
+            status.handshakeComplete === true ||
+            status.status === 'IN_TRIP';
+
+          if (handshakeComplete) {
             this.snackBar.open('Primopredaja uspešno završena! 🎉', 'Odlično', {
               duration: 5000,
               panelClass: 'success-snackbar',
             });
             this.completed.emit();
-          } else {
-            // Other party hasn't confirmed yet
+            return;
+          }
+
+          if (this.isActorConfirmedInStatus(status)) {
+            this._isConfirmed.set(true);
             this.snackBar.open('Vaša potvrda je zabeležena. Čekamo drugu stranu.', '', {
+              duration: 3000,
+            });
+          } else {
+            this._isConfirmed.set(false);
+            this._swipeProgress.set(0);
+            this.snackBar.open('Potvrda nije sačuvana. Pokušajte ponovo.', 'OK', {
               duration: 3000,
             });
           }
@@ -915,6 +962,13 @@ export class HandshakeComponent implements OnInit, OnDestroy {
           this.snackBar.open(message, 'OK', { duration: 5000 });
         },
       });
+  }
+
+  private isActorConfirmedInStatus(status: CheckInStatusDTO): boolean {
+    if (status.host) {
+      return status.hostConfirmedHandshake === true || status.handshakeComplete === true;
+    }
+    return status.guestConfirmedHandshake === true || status.handshakeComplete === true;
   }
 
   ngOnInit(): void {

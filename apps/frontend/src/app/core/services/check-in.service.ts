@@ -769,18 +769,6 @@ export class CheckInService implements OnDestroy {
     // Store previous state for rollback
     const previousStatus = this._status();
 
-    // Optimistic update: if both parties ready, show trip as started
-    if (previousStatus && previousStatus.handshakeReady) {
-      const optimisticStatus: CheckInStatusDTO = {
-        ...previousStatus,
-        status: 'IN_TRIP',
-        handshakeCompletedAt: new Date().toISOString() as any,
-      };
-      this._status.set(optimisticStatus);
-      this.updateStepFromStatus(optimisticStatus);
-      this.updatePhaseFromStatus(optimisticStatus);
-    }
-
     const position = this.geolocationService.position();
 
     const payload: HandshakeConfirmationDTO = {
@@ -802,9 +790,10 @@ export class CheckInService implements OnDestroy {
       })
       .pipe(
         tap((status) => {
-          // Server response overwrites optimistic state
+          // Server response is the source of truth.
           this._status.set(status);
           this.updateStepFromStatus(status);
+          this.updatePhaseFromStatus(status);
         }),
         catchError((error) => {
           // Rollback on error
@@ -1236,7 +1225,7 @@ export class CheckInService implements OnDestroy {
   }
 
   private updateStepFromStatus(status: CheckInStatusDTO): void {
-    if (status.handshakeCompletedAt) {
+    if (status.handshakeCompletedAt || status.handshakeComplete || status.status === 'IN_TRIP') {
       this._currentStep.set('complete');
     } else if (status.guestCheckInComplete) {
       this._currentStep.set('handshake');
@@ -1256,7 +1245,7 @@ export class CheckInService implements OnDestroy {
     // Note: The wizard template handles role-based display (host vs guest)
     // This method sets the phase based on workflow state, not viewer role
 
-    if (status.handshakeCompletedAt) {
+    if (status.handshakeCompletedAt || status.handshakeComplete || status.status === 'IN_TRIP') {
       this._currentPhase.set('COMPLETE');
     } else if (
       status.guestCheckInComplete ||

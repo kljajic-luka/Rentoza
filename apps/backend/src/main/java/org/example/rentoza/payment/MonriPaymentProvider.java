@@ -590,9 +590,16 @@ public class MonriPaymentProvider implements PaymentProvider {
     // UTILITY
     // =========================================================================
 
-    /** Convert BigDecimal amount to cents (Monri expects integer amounts in minor units). */
-    private static int toCents(BigDecimal amount) {
-        return amount.multiply(BigDecimal.valueOf(100)).intValueExact();
+    /**
+     * Convert BigDecimal amount to cents (Monri expects integer amounts in minor units).
+     *
+     * <p>Uses {@code long} to avoid integer overflow for amounts > ~21.4M RSD.
+     * Rounds HALF_UP to handle amounts with more than 2 decimal places gracefully.
+     */
+    private static long toCents(BigDecimal amount) {
+        return amount.multiply(BigDecimal.valueOf(100))
+                .setScale(0, java.math.RoundingMode.HALF_UP)
+                .longValueExact();
     }
 
     private static String defaultCurrency(String currency) {

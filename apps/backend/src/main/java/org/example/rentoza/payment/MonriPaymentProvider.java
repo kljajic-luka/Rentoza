@@ -121,15 +121,18 @@ public class MonriPaymentProvider implements PaymentProvider {
                 request.getBookingId(), request.getAmount(), request.getCurrency(), idempotencyKey);
 
         try {
+            Map<String, Object> txn = new java.util.HashMap<>();
+            txn.put("amount", toCents(request.getAmount()));
+            txn.put("currency", defaultCurrency(request.getCurrency()));
+            txn.put("order_number", orderNumber(request, idempotencyKey));
+            txn.put("transaction_type", "authorize");
+            txn.put("token", nullSafe(request.getPaymentMethodId()));
+            if (request.getClientIp() != null && !request.getClientIp().isBlank()) {
+                txn.put("ip", request.getClientIp());
+            }
+
             Map<String, Object> body = Map.of(
-                    "transaction", Map.of(
-                            "amount", toCents(request.getAmount()),
-                            "currency", defaultCurrency(request.getCurrency()),
-                            "order_number", orderNumber(request, idempotencyKey),
-                            "transaction_type", "authorize",
-                            "token", nullSafe(request.getPaymentMethodId()),
-                            "ip", nullSafe(request.getClientIp())
-                    ),
+                    "transaction", txn,
                     "authenticity_token", authenticityToken
             );
 
@@ -191,15 +194,18 @@ public class MonriPaymentProvider implements PaymentProvider {
                 request.getBookingId(), request.getAmount(), idempotencyKey);
 
         try {
+            Map<String, Object> txn = new java.util.HashMap<>();
+            txn.put("amount", toCents(request.getAmount()));
+            txn.put("currency", defaultCurrency(request.getCurrency()));
+            txn.put("order_number", orderNumber(request, idempotencyKey));
+            txn.put("transaction_type", "purchase");
+            txn.put("token", nullSafe(request.getPaymentMethodId()));
+            if (request.getClientIp() != null && !request.getClientIp().isBlank()) {
+                txn.put("ip", request.getClientIp());
+            }
+
             Map<String, Object> body = Map.of(
-                    "transaction", Map.of(
-                            "amount", toCents(request.getAmount()),
-                            "currency", defaultCurrency(request.getCurrency()),
-                            "order_number", orderNumber(request, idempotencyKey),
-                            "transaction_type", "purchase",
-                            "token", nullSafe(request.getPaymentMethodId()),
-                            "ip", nullSafe(request.getClientIp())
-                    ),
+                    "transaction", txn,
                     "authenticity_token", authenticityToken
             );
 

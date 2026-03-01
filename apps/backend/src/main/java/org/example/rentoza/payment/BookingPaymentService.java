@@ -1391,8 +1391,12 @@ public class BookingPaymentService {
                 tx.setStatus(PaymentTransactionStatus.REDIRECT_REQUIRED);
                 tx.setRedirectUrl(result.getRedirectUrl());
                 tx.setSessionToken(result.getSessionToken());
+                tx.setProviderAuthId(result.getProviderAuthorizationId());
             }
-            case PENDING -> tx.setStatus(PaymentTransactionStatus.PENDING_CONFIRMATION);
+            case PENDING -> {
+                tx.setStatus(PaymentTransactionStatus.PENDING_CONFIRMATION);
+                tx.setProviderAuthId(result.getProviderAuthorizationId());
+            }
             case RETRYABLE_FAILURE -> {
                 tx.setStatus(PaymentTransactionStatus.FAILED_RETRYABLE);
                 tx.setErrorCode(result.getErrorCode());

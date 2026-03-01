@@ -43,6 +43,12 @@ interface MockStateStore {
      */
     ProviderResult computeIdempotent(String key, Supplier<ProviderResult> computation);
 
+    // ── SCA sessions ──
+
+    void saveScaSession(String token, MockScaSession session);
+
+    MockScaSession loadScaSession(String token);
+
     // ── Locking ──
 
     /**

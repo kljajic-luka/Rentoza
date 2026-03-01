@@ -7,11 +7,16 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Component;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.HexFormat;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
@@ -87,6 +92,20 @@ public class MockPaymentProvider implements PaymentProvider {
     @Value("${app.payment.mock.redis-ttl-hours:168}")
     private int redisTtlHours = 168;
 
+    // ── Async / 3DS completion dependencies (optional — not available in unit tests) ──
+
+    @Autowired(required = false)
+    private TaskScheduler taskScheduler;
+
+    @Autowired(required = false)
+    private ProviderEventService providerEventService;
+
+    @Value("${app.payment.webhook.secret:}")
+    private String webhookSecret = "";
+
+    @Value("${app.payment.mock.async-confirm-delay-seconds:5}")
+    private int asyncConfirmDelaySeconds = 5;
+
     // ── Test card sets ─────────────────────────────────────────────────────
 
     private static final Set<String> DECLINED_CARDS      = Set.of("pm_card_declined",        "4000000000000002");
@@ -158,7 +177,15 @@ public class MockPaymentProvider implements PaymentProvider {
             simulateDelay();
 
             ProviderResult cardResult = checkTestCard(request.getPaymentMethodId(), request.getAmount());
-            if (cardResult != null) return cardResult;
+            if (cardResult != null) {
+                if (cardResult.isRedirectRequired()) {
+                    return handleScaRequired(request);
+                }
+                if (cardResult.isPending()) {
+                    return handleAsyncPending(request);
+                }
+                return cardResult;
+            }
             if (shouldFail()) return retryableOrTerminal(request.getAmount());
 
             String authId = "mock_auth_" + shortUuid();
@@ -256,7 +283,15 @@ public class MockPaymentProvider implements PaymentProvider {
             simulateDelay();
 
             ProviderResult cardResult = checkTestCard(request.getPaymentMethodId(), request.getAmount());
-            if (cardResult != null) return cardResult;
+            if (cardResult != null) {
+                if (cardResult.isRedirectRequired()) {
+                    return handleScaRequired(request);
+                }
+                if (cardResult.isPending()) {
+                    return handleAsyncPending(request);
+                }
+                return cardResult;
+            }
             if (shouldFail()) return retryableOrTerminal(request.getAmount());
 
             String txnId = "mock_txn_" + shortUuid();
@@ -438,9 +473,116 @@ public class MockPaymentProvider implements PaymentProvider {
         return auth.expiresAt != null && Instant.now().isAfter(auth.expiresAt);
     }
 
+    /**
+     * Load an SCA session by token. Used by {@link MockAcsController}
+     * to resolve the challenge page context.
+     */
+    MockScaSession loadScaSession(String token) {
+        return store.loadScaSession(token);
+    }
+
     // =========================================================================
     // Private helpers
     // =========================================================================
+
+    /**
+     * Handle an SCA-required test card: create a real authorization and an SCA session,
+     * then return REDIRECT_REQUIRED pointing to the mock ACS challenge page.
+     */
+    private ProviderResult handleScaRequired(PaymentRequest request) {
+        String authId = "mock_auth_" + shortUuid();
+        String token = shortUuid();
+        Instant expiresAt = Instant.now().plus(Duration.ofMinutes(authExpiryMinutes));
+
+        store.saveAuthorization(authId, new MockAuthorization(
+                authId, request.getAmount(), request.getCurrency(),
+                MockAuthorizationStatus.AUTHORIZED, request.getBookingId(), expiresAt));
+
+        store.saveScaSession(token, new MockScaSession(token, request.getBookingId(), authId));
+
+        ProviderResult result = ProviderResult.builder()
+                .outcome(ProviderOutcome.REDIRECT_REQUIRED)
+                .redirectUrl("/mock/acs/challenge?token=" + token)
+                .sessionToken("sca_session_" + token)
+                .providerAuthorizationId(authId)
+                .amount(request.getAmount())
+                .expiresAt(Instant.now().plus(Duration.ofMinutes(15)))
+                .build();
+        log.info("[Mock] SCA required → REDIRECT authId={} token={} booking={}",
+                authId, token, request.getBookingId());
+        return result;
+    }
+
+    /**
+     * Handle an async test card: create a real authorization, return PENDING,
+     * and schedule a delayed synthetic webhook to confirm the payment.
+     */
+    private ProviderResult handleAsyncPending(PaymentRequest request) {
+        String authId = "mock_auth_" + shortUuid();
+        Instant expiresAt = Instant.now().plus(Duration.ofMinutes(authExpiryMinutes));
+
+        store.saveAuthorization(authId, new MockAuthorization(
+                authId, request.getAmount(), request.getCurrency(),
+                MockAuthorizationStatus.AUTHORIZED, request.getBookingId(), expiresAt));
+
+        scheduleAsyncConfirmation(request.getBookingId(), authId);
+
+        ProviderResult result = ProviderResult.builder()
+                .outcome(ProviderOutcome.PENDING)
+                .providerAuthorizationId(authId)
+                .amount(request.getAmount())
+                .rawProviderStatus("ASYNC_PROCESSING")
+                .build();
+        log.info("[Mock] ASYNC → PENDING authId={} booking={} (confirmation in {}s)",
+                authId, request.getBookingId(), asyncConfirmDelaySeconds);
+        return result;
+    }
+
+    /**
+     * Schedule a delayed synthetic webhook via {@link TaskScheduler} to confirm
+     * an async payment. If TaskScheduler or ProviderEventService are not available
+     * (unit tests without Spring), the webhook is skipped with a log warning.
+     */
+    private void scheduleAsyncConfirmation(Long bookingId, String authId) {
+        if (taskScheduler == null || providerEventService == null) {
+            log.warn("[Mock] TaskScheduler or ProviderEventService not available — "
+                    + "async confirmation webhook will not fire for booking={}", bookingId);
+            return;
+        }
+        taskScheduler.schedule(() -> {
+            try {
+                String eventId = "mock_async_" + shortUuid();
+                String payload = String.format(
+                        "{\"type\":\"PAYMENT_CONFIRMED\",\"booking_id\":%d,"
+                        + "\"auth_id\":\"%s\",\"timestamp\":\"%s\"}",
+                        bookingId, authId, Instant.now().toString());
+                String signature = computeHmac(payload);
+                providerEventService.ingestEvent(
+                        eventId, "PAYMENT_CONFIRMED", bookingId, authId, payload, signature);
+                log.info("[Mock] Async confirmation fired for booking={} authId={}", bookingId, authId);
+            } catch (Exception e) {
+                log.error("[Mock] Async confirmation failed for booking={}: {}", bookingId, e.getMessage(), e);
+            }
+        }, Instant.now().plusSeconds(asyncConfirmDelaySeconds));
+    }
+
+    /**
+     * Compute HMAC-SHA256 signature matching {@link ProviderEventService}'s verification.
+     * Returns {@code null} if no webhook secret is configured.
+     */
+    String computeHmac(String payload) {
+        if (webhookSecret == null || webhookSecret.isBlank()) return null;
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(
+                    webhookSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            byte[] hash = mac.doFinal(payload.getBytes(StandardCharsets.UTF_8));
+            return "sha256=" + HexFormat.of().formatHex(hash);
+        } catch (Exception e) {
+            log.error("[Mock] Failed to compute HMAC for webhook", e);
+            return null;
+        }
+    }
 
     /**
      * Check the payment method ID against known test-card tokens.

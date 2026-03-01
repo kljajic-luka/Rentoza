@@ -102,6 +102,25 @@ class RedisMockStateStore implements MockStateStore {
                 current.add(amount).toPlainString(), ttl);
     }
 
+    // ── SCA Sessions ──────────────────────────────────────────────────────────
+
+    @Override
+    public void saveScaSession(String token, MockScaSession session) {
+        redis.opsForValue().set(key("sca:" + token), serialize(session), ttl);
+    }
+
+    @Override
+    public MockScaSession loadScaSession(String token) {
+        String json = redis.opsForValue().get(key("sca:" + token));
+        if (json == null) return null;
+        try {
+            return objectMapper.readValue(json, MockScaSession.class);
+        } catch (JsonProcessingException e) {
+            log.error("[Mock-Redis] Failed to deserialize SCA session {}", token, e);
+            return null;
+        }
+    }
+
     // ── Idempotency ────────────────────────────────────────────────────────────
 
     @Override

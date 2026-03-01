@@ -20,6 +20,7 @@ class InMemoryMockStateStore implements MockStateStore {
     private final Map<String, BigDecimal> refundedAmounts = new ConcurrentHashMap<>();
     private final Map<String, Object> locks = new ConcurrentHashMap<>();
     private final Map<String, ProviderResult> idempotencyStore = new ConcurrentHashMap<>();
+    private final Map<String, MockScaSession> scaSessions = new ConcurrentHashMap<>();
 
     @Override
     public void saveAuthorization(String authId, MockAuthorization auth) {
@@ -54,6 +55,16 @@ class InMemoryMockStateStore implements MockStateStore {
     @Override
     public ProviderResult computeIdempotent(String key, Supplier<ProviderResult> computation) {
         return idempotencyStore.computeIfAbsent(key, k -> computation.get());
+    }
+
+    @Override
+    public void saveScaSession(String token, MockScaSession session) {
+        scaSessions.put(token, session);
+    }
+
+    @Override
+    public MockScaSession loadScaSession(String token) {
+        return scaSessions.get(token);
     }
 
     @Override

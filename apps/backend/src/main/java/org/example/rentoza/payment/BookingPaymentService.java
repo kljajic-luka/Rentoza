@@ -613,6 +613,15 @@ public class BookingPaymentService {
                         .errorMessage("Deposit release already in progress; wait and retry")
                         .status(PaymentStatus.FAILED).build();
             }
+            // H6-FIX: Handle REDIRECT_REQUIRED / PENDING_CONFIRMATION — same pattern
+            // as captureBookingPayment, captureSecurityDeposit, and other idempotency guards.
+            if (ex.getStatus() == PaymentTransactionStatus.REDIRECT_REQUIRED
+                    || ex.getStatus() == PaymentTransactionStatus.PENDING_CONFIRMATION) {
+                log.warn("[Payment] Deposit release for booking {} awaiting async confirmation", bookingId);
+                return PaymentResult.builder().success(false).errorCode("IN_PROGRESS")
+                        .errorMessage("Deposit release awaiting async confirmation; wait and retry")
+                        .status(PaymentStatus.FAILED).build();
+            }
             // FAILED_RETRYABLE: reuse row to prevent unique-key violation on new insert
             ex.setStatus(PaymentTransactionStatus.PROCESSING);
             tx = txRepository.save(ex);

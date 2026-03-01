@@ -511,7 +511,12 @@ public class BookingPaymentService {
     public PaymentResult authorizeDeposit(Long bookingId, String paymentMethodId) {
         Booking booking = getBooking(bookingId);
 
-        BigDecimal depositAmount = BigDecimal.valueOf(defaultDepositAmountRsd);
+        // M1: Use the per-booking deposit snapshot (which reflects the per-listing amount
+        // at booking creation), falling back to the platform default.
+        // This matches the pattern used in captureSecurityDeposit() and releaseDeposit().
+        BigDecimal depositAmount = booking.getSecurityDeposit() != null
+                ? booking.getSecurityDeposit()
+                : BigDecimal.valueOf(defaultDepositAmountRsd);
         String ikey = PaymentIdempotencyKey.forDepositAuthorize(bookingId);
 
         // P0-3: Handle all settled states to avoid unique-key collision on FAILED_RETRYABLE row.

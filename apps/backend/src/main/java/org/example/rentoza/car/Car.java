@@ -341,6 +341,20 @@ public class Car {
     @Min(1)
     private Integer maxRentalDays = 30;
 
+    // ========== SECURITY DEPOSIT (Host-configurable per listing) ==========
+
+    /**
+     * Host-configurable security deposit amount in RSD for this listing.
+     *
+     * <p>{@code null} means "use the platform default" (configured via
+     * {@code app.payment.deposit.amount-rsd}, currently 30,000 RSD).
+     * When set, this value is copied to {@link Booking#getSecurityDeposit()}
+     * at booking creation time, providing a per-booking audit snapshot.
+     */
+    @Column(name = "security_deposit_rsd", precision = 19, scale = 2)
+    @Min(0)
+    private BigDecimal securityDepositRsd;
+
     // ========== BOOKING SETTINGS (Phase 2 - Turo-style Host Control) ==========
 
     /**

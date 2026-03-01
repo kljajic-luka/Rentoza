@@ -4,7 +4,6 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
-import java.util.UUID;
 
 /**
  * Deterministic idempotency key generator for all payment provider calls.
@@ -150,23 +149,6 @@ public final class PaymentIdempotencyKey {
      */
     public static String forExtension(Long bookingId, Long extensionId) {
         return truncate("pay_ext_" + bookingId + "_e" + extensionId);
-    }
-
-    // ── Fallback ─────────────────────────────────────────────────────────────
-
-    /**
-     * Non-deterministic random key — for legacy callers only.
-     *
-     * <p><b>DEPRECATED:</b> Random keys violate idempotency guarantees. Every call
-     * to this method produces a new key, meaning retries will create duplicate
-     * provider-side operations instead of being deduplicated.
-     *
-     * @deprecated Use a deterministic {@code for*()} method instead. This method
-     *             will be removed in a future release.
-     */
-    @Deprecated(forRemoval = true)
-    public static String random() {
-        return "pay_rnd_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
     }
 
     // ── Private builder ──────────────────────────────────────────────────────

@@ -119,7 +119,7 @@ class BookingPaymentServiceTest {
                 .hasMessageContaining("nerešene prijave štete");
 
             // Verify payment provider was never called
-            verify(paymentProvider, never()).releaseAuthorization(any());
+            verify(paymentProvider, never()).releaseAuthorization(any(), any());
         }
 
         @Test
@@ -132,7 +132,7 @@ class BookingPaymentServiceTest {
             assertThatThrownBy(() -> paymentService.releaseDeposit(BOOKING_ID, "auth-456"))
                 .isInstanceOf(IllegalStateException.class);
 
-            verify(paymentProvider, never()).releaseAuthorization(any());
+            verify(paymentProvider, never()).releaseAuthorization(any(), any());
         }
 
         @Test

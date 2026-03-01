@@ -102,13 +102,10 @@ class FinancialAuditRemediationTest {
         }
 
         @Test
-        @DisplayName("Random key is deprecated")
-        void randomKeyDeprecated() throws NoSuchMethodException {
-            Deprecated annotation = PaymentIdempotencyKey.class
-                    .getMethod("random")
-                    .getAnnotation(Deprecated.class);
-            assertThat(annotation).isNotNull();
-            assertThat(annotation.forRemoval()).isTrue();
+        @DisplayName("Random key method has been removed")
+        void randomKeyRemoved() {
+            assertThatThrownBy(() -> PaymentIdempotencyKey.class.getMethod("random"))
+                    .isInstanceOf(NoSuchMethodException.class);
         }
 
         @Test

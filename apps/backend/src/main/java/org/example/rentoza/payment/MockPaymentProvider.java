@@ -434,9 +434,9 @@ public class MockPaymentProvider implements PaymentProvider {
 
     /**
      * Simulate expiring an authorization (for testing reauth path).
-     * TEST USE ONLY.
+     * L1: Package-private — test-only, must not be called from production code.
      */
-    public void expireAuthorization(String authorizationId) {
+    void expireAuthorization(String authorizationId) {
         MockAuthorization auth = store.loadAuthorization(authorizationId);
         if (auth != null) {
             auth.expiresAt = Instant.now().minusSeconds(1);
@@ -448,26 +448,26 @@ public class MockPaymentProvider implements PaymentProvider {
     /**
      * Returns true if the authorization exists AND is still active (not released or expired).
      * Released or expired authorizations are treated as absent for test assertion purposes.
-     * TEST USE ONLY.
+     * L1: Package-private — test-only.
      */
-    public boolean hasAuthorization(String authorizationId) {
+    boolean hasAuthorization(String authorizationId) {
         MockAuthorization auth = store.loadAuthorization(authorizationId);
         return auth != null && auth.status != MockAuthorizationStatus.RELEASED;
     }
 
     /**
      * Inject a captured transaction (for testing refund paths).
-     * TEST USE ONLY.
+     * L1: Package-private — test-only.
      */
-    public void injectCapturedTransaction(String txnId, BigDecimal amount) {
+    void injectCapturedTransaction(String txnId, BigDecimal amount) {
         store.saveCapturedTransaction(txnId, amount);
     }
 
     /**
      * Return whether an authorization is expired per this provider's clock.
-     * TEST USE ONLY.
+     * L1: Package-private — test-only.
      */
-    public boolean isAuthorizationExpired(String authorizationId) {
+    boolean isAuthorizationExpired(String authorizationId) {
         MockAuthorization auth = store.loadAuthorization(authorizationId);
         if (auth == null) return false;
         return auth.expiresAt != null && Instant.now().isAfter(auth.expiresAt);

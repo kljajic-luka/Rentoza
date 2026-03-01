@@ -1025,10 +1025,13 @@ public class BookingPaymentService {
                     .build();
         }
 
-        BigDecimal maxRefundable = booking.getTotalPrice();
+        // M5: Track cumulative refunds — subtract already-succeeded refund amounts
+        // from the captured total to prevent over-refunding across multiple partial refunds.
+        BigDecimal alreadyRefunded = txRepository.sumSucceededRefundAmounts(bookingId);
+        BigDecimal maxRefundable = booking.getTotalPrice().subtract(alreadyRefunded);
         if (amount.compareTo(maxRefundable) > 0) {
-            log.warn("[Payment] REJECTED: Refund {} exceeds captured amount {} for booking {}",
-                    amount, maxRefundable, bookingId);
+            log.warn("[Payment] REJECTED: Refund {} exceeds refundable {} (captured={}, alreadyRefunded={}) for booking {}",
+                    amount, maxRefundable, booking.getTotalPrice(), alreadyRefunded, bookingId);
             return PaymentResult.builder()
                     .success(false)
                     .errorCode("REFUND_EXCEEDS_CAPTURED")
@@ -1101,6 +1104,18 @@ public class BookingPaymentService {
         String paymentRef = booking.getPaymentVerificationRef();
         if (paymentRef == null) {
             return PaymentResult.builder().success(false).errorMessage("Nema uplate za povraćaj")
+                    .status(PaymentStatus.FAILED).build();
+        }
+
+        // M5: Cumulative refund guard — same as 3-arg overload.
+        BigDecimal alreadyRefunded = txRepository.sumSucceededRefundAmounts(bookingId);
+        BigDecimal maxRefundable = booking.getTotalPrice().subtract(alreadyRefunded);
+        if (amount.compareTo(maxRefundable) > 0) {
+            log.warn("[Payment] REJECTED: Refund {} exceeds refundable {} (captured={}, alreadyRefunded={}) for booking {} attempt {}",
+                    amount, maxRefundable, booking.getTotalPrice(), alreadyRefunded, bookingId, attempt);
+            return PaymentResult.builder()
+                    .success(false).errorCode("REFUND_EXCEEDS_CAPTURED")
+                    .errorMessage(String.format("Iznos povraćaja (%s RSD) premašuje preostali iznos (%s RSD)", amount, maxRefundable))
                     .status(PaymentStatus.FAILED).build();
         }
 

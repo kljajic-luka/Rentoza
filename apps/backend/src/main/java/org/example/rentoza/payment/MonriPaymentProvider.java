@@ -402,15 +402,23 @@ public class MonriPaymentProvider implements PaymentProvider {
         String responseCode = safeText(body, "response_code");
 
         // 3DS2 redirect required
+        // H6-FIX: Extract the transaction id even for redirect responses so
+        // updateTx() stores providerAuthId. Without it the 3DS2 completion
+        // webhook cannot locate the PaymentTransaction via findByProviderAuthId().
         if ("action_required".equals(status) || body.has("acs_url")) {
             String redirectUrl = safeText(body, "acs_url");
             String sessionToken = safeText(body, "authenticity_token");
             if (redirectUrl == null || redirectUrl.isBlank()) {
                 redirectUrl = safeText(body, "redirect_url");
             }
-            return ProviderResult.redirectRequired(
-                    redirectUrl, sessionToken,
-                    Instant.now().plus(15, ChronoUnit.MINUTES));
+            String txnId = safeText(body, "id");
+            return ProviderResult.builder()
+                    .outcome(ProviderOutcome.REDIRECT_REQUIRED)
+                    .redirectUrl(redirectUrl)
+                    .sessionToken(sessionToken)
+                    .providerAuthorizationId(txnId)
+                    .expiresAt(Instant.now().plus(15, ChronoUnit.MINUTES))
+                    .build();
         }
 
         if ("approved".equals(status)) {
@@ -447,15 +455,21 @@ public class MonriPaymentProvider implements PaymentProvider {
         String status = safeText(body, "status");
 
         // 3DS2 redirect
+        // H6-FIX: Include transaction id so updateTx() stores providerAuthId for webhook lookup.
         if ("action_required".equals(status) || body.has("acs_url")) {
             String redirectUrl = safeText(body, "acs_url");
             if (redirectUrl == null || redirectUrl.isBlank()) {
                 redirectUrl = safeText(body, "redirect_url");
             }
             String sessionToken = safeText(body, "authenticity_token");
-            return ProviderResult.redirectRequired(
-                    redirectUrl, sessionToken,
-                    Instant.now().plus(15, ChronoUnit.MINUTES));
+            String txnId = safeText(body, "id");
+            return ProviderResult.builder()
+                    .outcome(ProviderOutcome.REDIRECT_REQUIRED)
+                    .redirectUrl(redirectUrl)
+                    .sessionToken(sessionToken)
+                    .providerAuthorizationId(txnId)
+                    .expiresAt(Instant.now().plus(15, ChronoUnit.MINUTES))
+                    .build();
         }
 
         if ("approved".equals(status)) {

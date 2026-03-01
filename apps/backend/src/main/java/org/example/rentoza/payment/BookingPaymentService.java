@@ -13,6 +13,8 @@ import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.payment.PaymentProvider.*;
 import org.example.rentoza.payment.PaymentTransaction.PaymentOperation;
 import org.example.rentoza.payment.PaymentTransaction.PaymentTransactionStatus;
+import org.example.rentoza.user.User;
+import org.example.rentoza.user.UserRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -60,6 +62,7 @@ public class BookingPaymentService {
     private final TripExtensionRepository extensionRepository;
     private final PaymentTransactionRepository txRepository;
     private final PayoutLedgerRepository payoutLedgerRepository;
+    private final UserRepository userRepository;
 
     // Metrics
     private final Counter paymentSuccessCounter;
@@ -84,6 +87,7 @@ public class BookingPaymentService {
             TripExtensionRepository extensionRepository,
             PaymentTransactionRepository txRepository,
             PayoutLedgerRepository payoutLedgerRepository,
+            UserRepository userRepository,
             MeterRegistry meterRegistry) {
         this.paymentProvider = paymentProvider;
         this.bookingRepository = bookingRepository;
@@ -91,6 +95,7 @@ public class BookingPaymentService {
         this.extensionRepository = extensionRepository;
         this.txRepository = txRepository;
         this.payoutLedgerRepository = payoutLedgerRepository;
+        this.userRepository = userRepository;
 
         this.paymentSuccessCounter = Counter.builder("payment.success")
                 .description("Successful payments")
@@ -188,6 +193,11 @@ public class BookingPaymentService {
             booking.setPaymentStatus("REDIRECT_REQUIRED");
             bookingRepository.save(booking);
             log.info("[Payment] Booking {} requires 3DS redirect: {}", bookingId, result.getRedirectUrl());
+        } else if (result.getOutcome() == ProviderOutcome.PENDING) {
+            booking.setPaymentStatus("PENDING_CONFIRMATION");
+            bookingRepository.save(booking);
+            log.info("[Payment] Booking {} authorization PENDING async confirmation (authId={})",
+                    bookingId, result.getProviderAuthorizationId());
         } else {
             paymentFailedCounter.increment();
             log.warn("[Payment] Booking {} authorization failed: {} ({})",
@@ -271,6 +281,10 @@ public class BookingPaymentService {
         } else if (result.getOutcome() == ProviderOutcome.REDIRECT_REQUIRED) {
             booking.setPaymentStatus("REDIRECT_REQUIRED");
             log.info("[Payment] Booking {} reauth requires 3DS redirect: {}", bookingId, result.getRedirectUrl());
+        } else if (result.getOutcome() == ProviderOutcome.PENDING) {
+            booking.setPaymentStatus("PENDING_CONFIRMATION");
+            log.info("[Payment] Booking {} reauth PENDING async confirmation (authId={})",
+                    bookingId, result.getProviderAuthorizationId());
         } else {
             paymentFailedCounter.increment();
             log.warn("[Payment] Booking {} reauth failed: {} ({})",
@@ -402,6 +416,12 @@ public class BookingPaymentService {
             log.info("[Payment] Booking {} already captured (ALREADY_CAPTURED) — treating as success", bookingId);
             return PaymentResult.builder().success(true).status(PaymentStatus.SUCCESS)
                     .amount(booking.getTotalPrice()).build();
+        } else if (result.getOutcome() == ProviderOutcome.PENDING) {
+            // Async capture confirmation pending — do NOT mark as CAPTURE_FAILED.
+            // Webhook (PAYMENT_CONFIRMED) will finalize.
+            booking.setPaymentStatus("PENDING_CONFIRMATION");
+            bookingRepository.save(booking);
+            log.info("[Payment] Booking {} capture PENDING async confirmation", bookingId);
         } else {
             transitionCharge(booking, ChargeLifecycleStatus.CAPTURE_FAILED, "captureBookingPayment");
             bookingRepository.save(booking);
@@ -1243,6 +1263,12 @@ public class BookingPaymentService {
             payoutLedgerRepository.save(ledger);
         }
 
+        // C3: Look up host's Monri recipient ID for payout routing.
+        // If absent, the provider will return TERMINAL_FAILURE preventing silent misrouting.
+        String recipientId = userRepository.findById(ledger.getHostUserId())
+                .map(User::getMonriRecipientId)
+                .orElse(null);
+
         PaymentRequest request = PaymentRequest.builder()
                 .bookingId(ledger.getBookingId())
                 .userId(ledger.getHostUserId())
@@ -1250,6 +1276,7 @@ public class BookingPaymentService {
                 .currency(DEFAULT_CURRENCY)
                 .description("Isplata domaćinu za rezervaciju #" + ledger.getBookingId())
                 .type(PaymentType.PAYOUT)
+                .recipientId(recipientId)
                 .build();
 
         ProviderResult result = paymentProvider.payout(request, attemptKey);

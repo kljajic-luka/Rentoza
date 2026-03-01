@@ -108,6 +108,8 @@ public interface PaymentProvider {
         private String clientIp;
         /** Optional: order reference for provider reconciliation. */
         private String orderReference;
+        /** Provider-assigned recipient ID for payout disbursements (e.g. Monri onboarded host). */
+        private String recipientId;
     }
 
     // =========================================================================
@@ -206,6 +208,14 @@ public interface PaymentProvider {
             return ProviderResult.builder()
                     .outcome(ProviderOutcome.SUCCESS)
                     .providerRefundId(refundId)
+                    .amount(amount)
+                    .build();
+        }
+
+        public static ProviderResult payoutSuccess(String txnId, BigDecimal amount) {
+            return ProviderResult.builder()
+                    .outcome(ProviderOutcome.SUCCESS)
+                    .providerTransactionId(txnId)
                     .amount(amount)
                     .build();
         }

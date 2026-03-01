@@ -8,6 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.*;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
@@ -19,6 +20,8 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
 import java.util.Set;
+
+import jakarta.annotation.PostConstruct;
 
 /**
  * H-1/H-2: Production Monri payment provider implementation.
@@ -83,9 +86,24 @@ public class MonriPaymentProvider implements PaymentProvider {
     @Value("${app.payment.monri.auth-expiry-hours:120}")
     private int authExpiryHours;
 
+    @Value("${app.payment.monri.connect-timeout-ms:5000}")
+    private int connectTimeoutMs;
+
+    @Value("${app.payment.monri.read-timeout-ms:30000}")
+    private int readTimeoutMs;
+
     public MonriPaymentProvider(RestTemplate restTemplate, ObjectMapper objectMapper) {
         this.restTemplate = restTemplate;
         this.objectMapper = objectMapper;
+    }
+
+    @PostConstruct
+    void applyTimeouts() {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(connectTimeoutMs);
+        factory.setReadTimeout(readTimeoutMs);
+        restTemplate.setRequestFactory(factory);
+        log.info("[Monri] HTTP timeouts configured: connect={}ms read={}ms", connectTimeoutMs, readTimeoutMs);
     }
 
     @Override
@@ -296,12 +314,23 @@ public class MonriPaymentProvider implements PaymentProvider {
         log.info("[Monri] Payout: userId={} amount={} {} ikey={}",
                 request.getUserId(), request.getAmount(), request.getCurrency(), idempotencyKey);
 
+        // C3: Validate Monri recipient ID — using our internal userId would route money
+        // to the wrong Monri sub-account or fail with a cryptic 404.
+        String recipientId = request.getRecipientId();
+        if (recipientId == null || recipientId.isBlank()) {
+            log.error("[Monri] REJECTED payout: no Monri recipientId for userId={} booking={}. "
+                    + "Host must complete Monri onboarding before payouts are possible.",
+                    request.getUserId(), request.getBookingId());
+            return ProviderResult.terminalFailure("RECIPIENT_NOT_ONBOARDED",
+                    "Host has not completed Monri onboarding — monriRecipientId is missing");
+        }
+
         try {
             Map<String, Object> body = Map.of(
                     "payout", Map.of(
                             "amount", toCents(request.getAmount()),
                             "currency", defaultCurrency(request.getCurrency()),
-                            "recipient_id", String.valueOf(request.getUserId()),
+                            "recipient_id", recipientId,
                             "order_number", "payout_" + request.getBookingId(),
                             "description", nullSafe(request.getDescription())
                     ),

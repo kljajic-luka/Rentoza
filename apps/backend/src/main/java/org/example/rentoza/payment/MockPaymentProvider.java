@@ -421,7 +421,7 @@ public class MockPaymentProvider implements PaymentProvider {
             }
 
             String txnId = "mock_payout_" + shortUuid();
-            ProviderResult result = ProviderResult.captureSuccess(txnId, request.getAmount());
+            ProviderResult result = ProviderResult.payoutSuccess(txnId, request.getAmount());
             log.info("[Mock] Payout SUCCESS host={} booking={} txn={} amount={}",
                     request.getUserId(), request.getBookingId(), txnId, request.getAmount());
             return result;

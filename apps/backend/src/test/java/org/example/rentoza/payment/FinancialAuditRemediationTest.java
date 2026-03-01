@@ -11,6 +11,7 @@ import org.example.rentoza.booking.dispute.DamageClaimRepository;
 import org.example.rentoza.booking.extension.TripExtensionRepository;
 import org.example.rentoza.notification.NotificationService;
 import org.example.rentoza.scheduler.SchedulerLockStore;
+import org.example.rentoza.user.UserRepository;
 import org.example.rentoza.payment.PaymentProvider.PaymentRequest;
 import org.example.rentoza.payment.PaymentProvider.ProviderOutcome;
 import org.example.rentoza.payment.PaymentProvider.ProviderResult;
@@ -677,6 +678,7 @@ class FinancialAuditRemediationTest {
         @Mock PaymentProvider paymentProvider;
         @Mock DamageClaimRepository damageClaimRepository;
         @Mock TripExtensionRepository extensionRepository;
+        @Mock UserRepository userRepository;
 
         BookingPaymentService paymentService;
 
@@ -685,7 +687,7 @@ class FinancialAuditRemediationTest {
             paymentService = new BookingPaymentService(
                     paymentProvider, bookingRepository, damageClaimRepository,
                     extensionRepository, txRepository, payoutLedgerRepository,
-                    new SimpleMeterRegistry());
+                    userRepository, new SimpleMeterRegistry());
         }
 
         @Test
@@ -874,6 +876,7 @@ class FinancialAuditRemediationTest {
         @Mock PaymentProvider paymentProvider;
         @Mock DamageClaimRepository damageClaimRepository;
         @Mock TripExtensionRepository extensionRepository;
+        @Mock UserRepository userRepository;
 
         BookingPaymentService paymentService;
 
@@ -882,7 +885,7 @@ class FinancialAuditRemediationTest {
             paymentService = new BookingPaymentService(
                     paymentProvider, bookingRepository, damageClaimRepository,
                     extensionRepository, txRepository, payoutLedgerRepository,
-                    new SimpleMeterRegistry());
+                    userRepository, new SimpleMeterRegistry());
         }
 
         @Test

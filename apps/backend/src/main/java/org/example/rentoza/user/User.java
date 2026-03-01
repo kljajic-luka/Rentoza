@@ -310,6 +310,15 @@ public class User {
     private String bankAccountNumber;
 
     /**
+     * Monri-assigned recipient ID for marketplace disbursements.
+     * Populated after the host completes Monri's onboarding/KYC flow.
+     * Used by {@code MonriPaymentProvider.payout()} as the {@code recipient_id}
+     * parameter. {@code null} until onboarding is complete.
+     */
+    @Column(name = "monri_recipient_id", length = 150)
+    private String monriRecipientId;
+
+    /**
      * When the owner submitted identity verification for admin review.
      * Used for admin queue ordering (newest first).
      */

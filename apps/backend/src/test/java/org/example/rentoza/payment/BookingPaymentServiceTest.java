@@ -14,6 +14,7 @@ import org.example.rentoza.payment.PaymentProvider.ProviderOutcome;
 import org.example.rentoza.payment.PaymentProvider.ProviderResult;
 import org.example.rentoza.payment.PaymentTransaction.PaymentTransactionStatus;
 import org.example.rentoza.user.User;
+import org.example.rentoza.user.UserRepository;
 
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -60,6 +61,9 @@ class BookingPaymentServiceTest {
     @Mock
     private PayoutLedgerRepository payoutLedgerRepository;
 
+    @Mock
+    private UserRepository userRepository;
+
     private BookingPaymentService paymentService;
     private MeterRegistry meterRegistry;
 
@@ -74,6 +78,7 @@ class BookingPaymentServiceTest {
             extensionRepository,
             txRepository,
             payoutLedgerRepository,
+            userRepository,
             meterRegistry
         );
     }

@@ -175,7 +175,8 @@ class MonriPaymentProviderTest {
 
         ProviderResult result = provider.payout(
                 PaymentRequest.builder().bookingId(1L).userId(42L)
-                        .amount(BigDecimal.valueOf(4250)).currency("RSD").build(),
+                        .amount(BigDecimal.valueOf(4250)).currency("RSD")
+                        .recipientId("monri_rcpt_test").build(),
                 "pay_payout_42_1_host_r1");
 
         assertThat(result.isPending()).isTrue();
@@ -194,7 +195,8 @@ class MonriPaymentProviderTest {
 
         ProviderResult result = provider.payout(
                 PaymentRequest.builder().bookingId(1L).userId(42L)
-                        .amount(BigDecimal.valueOf(4250)).build(),
+                        .amount(BigDecimal.valueOf(4250))
+                        .recipientId("monri_rcpt_test").build(),
                 "pay_payout_42_1_host_r1");
 
         assertThat(result.isSuccess()).isTrue();

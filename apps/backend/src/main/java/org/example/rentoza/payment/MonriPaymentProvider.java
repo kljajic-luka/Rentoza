@@ -8,6 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.*;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
@@ -15,10 +16,16 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.HexFormat;
 import java.util.Map;
 import java.util.Set;
+
+import jakarta.annotation.PostConstruct;
 
 /**
  * H-1/H-2: Production Monri payment provider implementation.
@@ -83,9 +90,24 @@ public class MonriPaymentProvider implements PaymentProvider {
     @Value("${app.payment.monri.auth-expiry-hours:120}")
     private int authExpiryHours;
 
+    @Value("${app.payment.monri.connect-timeout-ms:5000}")
+    private int connectTimeoutMs;
+
+    @Value("${app.payment.monri.read-timeout-ms:30000}")
+    private int readTimeoutMs;
+
     public MonriPaymentProvider(RestTemplate restTemplate, ObjectMapper objectMapper) {
         this.restTemplate = restTemplate;
         this.objectMapper = objectMapper;
+    }
+
+    @PostConstruct
+    void applyTimeouts() {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(connectTimeoutMs);
+        factory.setReadTimeout(readTimeoutMs);
+        restTemplate.setRequestFactory(factory);
+        log.info("[Monri] HTTP timeouts configured: connect={}ms read={}ms", connectTimeoutMs, readTimeoutMs);
     }
 
     @Override
@@ -103,16 +125,18 @@ public class MonriPaymentProvider implements PaymentProvider {
                 request.getBookingId(), request.getAmount(), request.getCurrency(), idempotencyKey);
 
         try {
+            Map<String, Object> txn = new java.util.HashMap<>();
+            txn.put("amount", toCents(request.getAmount()));
+            txn.put("currency", defaultCurrency(request.getCurrency()));
+            txn.put("order_number", orderNumber(request, idempotencyKey));
+            txn.put("transaction_type", "authorize");
+            txn.put("token", nullSafe(request.getPaymentMethodId()));
+            if (request.getClientIp() != null && !request.getClientIp().isBlank()) {
+                txn.put("ip", request.getClientIp());
+            }
+
             Map<String, Object> body = Map.of(
-                    "transaction", Map.of(
-                            "amount", toCents(request.getAmount()),
-                            "currency", defaultCurrency(request.getCurrency()),
-                            "order_number", orderNumber(request, idempotencyKey),
-                            "transaction_type", "authorize",
-                            "token", nullSafe(request.getPaymentMethodId()),
-                            "ip", nullSafe(request.getClientIp())
-                    ),
-                    "authenticity_token", authenticityToken
+                    "transaction", txn
             );
 
             ResponseEntity<JsonNode> response = post("/v2/payment/new", body, idempotencyKey);
@@ -143,8 +167,7 @@ public class MonriPaymentProvider implements PaymentProvider {
                     "transaction", Map.of(
                             "amount", toCents(amount),
                             "currency", "RSD"
-                    ),
-                    "authenticity_token", authenticityToken
+                    )
             );
 
             ResponseEntity<JsonNode> response = post(
@@ -173,16 +196,18 @@ public class MonriPaymentProvider implements PaymentProvider {
                 request.getBookingId(), request.getAmount(), idempotencyKey);
 
         try {
+            Map<String, Object> txn = new java.util.HashMap<>();
+            txn.put("amount", toCents(request.getAmount()));
+            txn.put("currency", defaultCurrency(request.getCurrency()));
+            txn.put("order_number", orderNumber(request, idempotencyKey));
+            txn.put("transaction_type", "purchase");
+            txn.put("token", nullSafe(request.getPaymentMethodId()));
+            if (request.getClientIp() != null && !request.getClientIp().isBlank()) {
+                txn.put("ip", request.getClientIp());
+            }
+
             Map<String, Object> body = Map.of(
-                    "transaction", Map.of(
-                            "amount", toCents(request.getAmount()),
-                            "currency", defaultCurrency(request.getCurrency()),
-                            "order_number", orderNumber(request, idempotencyKey),
-                            "transaction_type", "purchase",
-                            "token", nullSafe(request.getPaymentMethodId()),
-                            "ip", nullSafe(request.getClientIp())
-                    ),
-                    "authenticity_token", authenticityToken
+                    "transaction", txn
             );
 
             ResponseEntity<JsonNode> response = post("/v2/payment/new", body, idempotencyKey);
@@ -215,8 +240,7 @@ public class MonriPaymentProvider implements PaymentProvider {
                     "transaction", Map.of(
                             "amount", toCents(amount),
                             "currency", "RSD"
-                    ),
-                    "authenticity_token", authenticityToken
+                    )
             );
 
             ResponseEntity<JsonNode> response = post(
@@ -244,9 +268,7 @@ public class MonriPaymentProvider implements PaymentProvider {
         log.info("[Monri] Void/Release: authId={} ikey={}", authorizationId, idempotencyKey);
 
         try {
-            Map<String, Object> body = Map.of(
-                    "authenticity_token", authenticityToken
-            );
+            Map<String, Object> body = Map.of();
 
             ResponseEntity<JsonNode> response = post(
                     "/v2/transactions/" + authorizationId + "/void", body, idempotencyKey);
@@ -296,16 +318,26 @@ public class MonriPaymentProvider implements PaymentProvider {
         log.info("[Monri] Payout: userId={} amount={} {} ikey={}",
                 request.getUserId(), request.getAmount(), request.getCurrency(), idempotencyKey);
 
+        // C3: Validate Monri recipient ID — using our internal userId would route money
+        // to the wrong Monri sub-account or fail with a cryptic 404.
+        String recipientId = request.getRecipientId();
+        if (recipientId == null || recipientId.isBlank()) {
+            log.error("[Monri] REJECTED payout: no Monri recipientId for userId={} booking={}. "
+                    + "Host must complete Monri onboarding before payouts are possible.",
+                    request.getUserId(), request.getBookingId());
+            return ProviderResult.terminalFailure("RECIPIENT_NOT_ONBOARDED",
+                    "Host has not completed Monri onboarding — monriRecipientId is missing");
+        }
+
         try {
             Map<String, Object> body = Map.of(
                     "payout", Map.of(
                             "amount", toCents(request.getAmount()),
                             "currency", defaultCurrency(request.getCurrency()),
-                            "recipient_id", String.valueOf(request.getUserId()),
+                            "recipient_id", recipientId,
                             "order_number", "payout_" + request.getBookingId(),
                             "description", nullSafe(request.getDescription())
-                    ),
-                    "authenticity_token", authenticityToken
+                    )
             );
 
             ResponseEntity<JsonNode> response = post("/v2/payouts", body, idempotencyKey);
@@ -367,15 +399,23 @@ public class MonriPaymentProvider implements PaymentProvider {
         String responseCode = safeText(body, "response_code");
 
         // 3DS2 redirect required
+        // H6-FIX: Extract the transaction id even for redirect responses so
+        // updateTx() stores providerAuthId. Without it the 3DS2 completion
+        // webhook cannot locate the PaymentTransaction via findByProviderAuthId().
         if ("action_required".equals(status) || body.has("acs_url")) {
             String redirectUrl = safeText(body, "acs_url");
             String sessionToken = safeText(body, "authenticity_token");
             if (redirectUrl == null || redirectUrl.isBlank()) {
                 redirectUrl = safeText(body, "redirect_url");
             }
-            return ProviderResult.redirectRequired(
-                    redirectUrl, sessionToken,
-                    Instant.now().plus(15, ChronoUnit.MINUTES));
+            String txnId = safeText(body, "id");
+            return ProviderResult.builder()
+                    .outcome(ProviderOutcome.REDIRECT_REQUIRED)
+                    .redirectUrl(redirectUrl)
+                    .sessionToken(sessionToken)
+                    .providerAuthorizationId(txnId)
+                    .expiresAt(Instant.now().plus(15, ChronoUnit.MINUTES))
+                    .build();
         }
 
         if ("approved".equals(status)) {
@@ -412,15 +452,21 @@ public class MonriPaymentProvider implements PaymentProvider {
         String status = safeText(body, "status");
 
         // 3DS2 redirect
+        // H6-FIX: Include transaction id so updateTx() stores providerAuthId for webhook lookup.
         if ("action_required".equals(status) || body.has("acs_url")) {
             String redirectUrl = safeText(body, "acs_url");
             if (redirectUrl == null || redirectUrl.isBlank()) {
                 redirectUrl = safeText(body, "redirect_url");
             }
             String sessionToken = safeText(body, "authenticity_token");
-            return ProviderResult.redirectRequired(
-                    redirectUrl, sessionToken,
-                    Instant.now().plus(15, ChronoUnit.MINUTES));
+            String txnId = safeText(body, "id");
+            return ProviderResult.builder()
+                    .outcome(ProviderOutcome.REDIRECT_REQUIRED)
+                    .redirectUrl(redirectUrl)
+                    .sessionToken(sessionToken)
+                    .providerAuthorizationId(txnId)
+                    .expiresAt(Instant.now().plus(15, ChronoUnit.MINUTES))
+                    .build();
         }
 
         if ("approved".equals(status)) {
@@ -547,23 +593,65 @@ public class MonriPaymentProvider implements PaymentProvider {
     // HTTP HELPERS
     // =========================================================================
 
+    /**
+     * H7-FIX: Monri requires WP3-v2.1 signature-based authorization, not plain WP3-v2.
+     *
+     * <p>Format: {@code WP3-v2.1 <authenticityToken> <timestamp> <digest>}
+     * <p>Digest: SHA-512 hex of {@code merchantKey + timestamp + authenticityToken + fullPath + jsonBody}
+     *
+     * @see <a href="https://ipg.monri.com/en/documentation/payment_api">Monri Payment API Docs</a>
+     */
     private ResponseEntity<JsonNode> post(String path, Map<String, Object> body, String idempotencyKey) {
+        String jsonBody;
+        try {
+            jsonBody = objectMapper.writeValueAsString(body);
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to serialize request body for Monri digest", e);
+        }
+
+        String timestamp = String.valueOf(Instant.now().getEpochSecond());
+        String digest = computeDigest(merchantKey, timestamp, authenticityToken, path, jsonBody);
+
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.set("Authorization", "WP3-v2 " + merchantKey);
+        headers.set("Authorization", "WP3-v2.1 " + authenticityToken + " " + timestamp + " " + digest);
         headers.set("X-Idempotency-Key", idempotencyKey);
 
-        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
+        HttpEntity<String> entity = new HttpEntity<>(jsonBody, headers);
         return restTemplate.exchange(apiUrl + path, HttpMethod.POST, entity, JsonNode.class);
+    }
+
+    /**
+     * Compute the SHA-512 digest for Monri WP3-v2.1 authorization.
+     *
+     * @return lowercase hex SHA-512 of {@code merchantKey + timestamp + authenticityToken + fullPath + body}
+     */
+    private static String computeDigest(String merchantKey, String timestamp,
+                                         String authenticityToken, String fullPath, String body) {
+        String input = merchantKey + timestamp + authenticityToken + fullPath + body;
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-512");
+            byte[] hash = md.digest(input.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(hash);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-512 not available", e);
+        }
     }
 
     // =========================================================================
     // UTILITY
     // =========================================================================
 
-    /** Convert BigDecimal amount to cents (Monri expects integer amounts in minor units). */
-    private static int toCents(BigDecimal amount) {
-        return amount.multiply(BigDecimal.valueOf(100)).intValueExact();
+    /**
+     * Convert BigDecimal amount to cents (Monri expects integer amounts in minor units).
+     *
+     * <p>Uses {@code long} to avoid integer overflow for amounts > ~21.4M RSD.
+     * Rounds HALF_UP to handle amounts with more than 2 decimal places gracefully.
+     */
+    private static long toCents(BigDecimal amount) {
+        return amount.multiply(BigDecimal.valueOf(100))
+                .setScale(0, java.math.RoundingMode.HALF_UP)
+                .longValueExact();
     }
 
     private static String defaultCurrency(String currency) {

@@ -8,6 +8,7 @@ import org.example.rentoza.booking.BookingRepository;
 import org.example.rentoza.payment.PaymentTransaction.PaymentOperation;
 import org.example.rentoza.payment.PaymentTransaction.PaymentTransactionStatus;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -228,6 +229,9 @@ public class ProviderEventService {
         }
 
         // ── 3. Persist raw event record (audit trail before processing) ───────
+        // H5-FIX: The UNIQUE constraint on provider_event_id enforces deduplication
+        // at the DB level. If a concurrent thread already inserted this event between
+        // our existsBy check (step 1) and this save, the DB rejects the duplicate.
         ProviderEvent event = ProviderEvent.builder()
                 .providerEventId(providerEventId)
                 .eventType(eventType)
@@ -236,7 +240,15 @@ public class ProviderEventService {
                 .signatureHeader(signatureHeader)
                 .signatureVerified(sigVerified)
                 .build();
-        event = eventRepository.save(event);
+        try {
+            event = eventRepository.save(event);
+        } catch (DataIntegrityViolationException e) {
+            // H5-FIX: Concurrent duplicate — another thread inserted first.
+            // Treat as idempotent duplicate: log and return false (same as step 1).
+            log.info("[Webhook] Concurrent duplicate detected on save — skipping providerEventId={} type={}",
+                    providerEventId, eventType);
+            return false;
+        }
 
         // ── 4. Process ────────────────────────────────────────────────────────
         String error = null;

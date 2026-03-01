@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -45,4 +46,18 @@ public interface PaymentTransactionRepository extends JpaRepository<PaymentTrans
      * callback refers to (P0-4: transaction-scoped webhook processing).
      */
     Optional<PaymentTransaction> findByProviderAuthId(String providerAuthId);
+
+    /**
+     * Sum the amounts of all SUCCEEDED REFUND transactions for a booking.
+     * Used by processRefund() to enforce cumulative refund cap (M5).
+     * Returns {@code null} when no succeeded refunds exist.
+     */
+    @Query("""
+        SELECT COALESCE(SUM(t.amount), 0)
+        FROM PaymentTransaction t
+        WHERE t.bookingId = :bookingId
+          AND t.operation = 'REFUND'
+          AND t.status = 'SUCCEEDED'
+        """)
+    BigDecimal sumSucceededRefundAmounts(@Param("bookingId") Long bookingId);
 }

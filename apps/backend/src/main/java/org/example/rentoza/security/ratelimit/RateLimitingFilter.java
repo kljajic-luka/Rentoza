@@ -174,6 +174,10 @@ public class RateLimitingFilter extends OncePerRequestFilter {
         if (path.startsWith("/api/payments/")) {
             return RateLimitTier.CRITICAL;
         }
+        // M4: Webhook endpoints are critical — public, unauthenticated DoS vector
+        if (path.startsWith("/api/webhooks/")) {
+            return RateLimitTier.CRITICAL;
+        }
         // Booking creation and reauthorization are critical
         if (path.startsWith("/api/bookings") && "POST".equalsIgnoreCase(method)) {
             return RateLimitTier.CRITICAL;

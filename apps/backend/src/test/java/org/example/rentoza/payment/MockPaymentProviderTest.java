@@ -1,8 +1,8 @@
 package org.example.rentoza.payment;
 
 import org.example.rentoza.payment.PaymentProvider.PaymentRequest;
-import org.example.rentoza.payment.PaymentProvider.PaymentResult;
-import org.example.rentoza.payment.PaymentProvider.PaymentStatus;
+import org.example.rentoza.payment.PaymentProvider.ProviderOutcome;
+import org.example.rentoza.payment.PaymentProvider.ProviderResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -15,7 +15,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Unit tests for MockPaymentProvider failure modes.
- * 
+ *
  * <p>Verifies that the configurable failure modes work correctly
  * for testing error handling in the payment flow.
  */
@@ -48,11 +48,10 @@ class MockPaymentProviderTest {
                     .bookingId(123L)
                     .build();
 
-            PaymentResult result = provider.charge(request);
+            ProviderResult result = provider.charge(request, "test_charge_ikey");
 
-            assertThat(result.isSuccess()).isTrue();
-            assertThat(result.getStatus()).isEqualTo(PaymentStatus.CAPTURED);
-            assertThat(result.getTransactionId()).startsWith("mock_txn_");
+            assertThat(result.getOutcome()).isEqualTo(ProviderOutcome.SUCCESS);
+            assertThat(result.getProviderTransactionId()).startsWith("mock_txn_");
             assertThat(result.getAmount()).isEqualByComparingTo(BigDecimal.valueOf(5000));
         }
 
@@ -65,11 +64,10 @@ class MockPaymentProviderTest {
                     .bookingId(456L)
                     .build();
 
-            PaymentResult result = provider.authorize(request);
+            ProviderResult result = provider.authorize(request, "test_auth_ikey");
 
-            assertThat(result.isSuccess()).isTrue();
-            assertThat(result.getStatus()).isEqualTo(PaymentStatus.AUTHORIZED);
-            assertThat(result.getAuthorizationId()).startsWith("mock_auth_");
+            assertThat(result.getOutcome()).isEqualTo(ProviderOutcome.SUCCESS);
+            assertThat(result.getProviderAuthorizationId()).startsWith("mock_auth_");
         }
 
         @Test
@@ -81,15 +79,14 @@ class MockPaymentProviderTest {
                     .currency("RSD")
                     .bookingId(789L)
                     .build();
-            PaymentResult authorized = provider.authorize(authRequest);
-            assertThat(authorized.isSuccess()).isTrue();
-            String authId = authorized.getAuthorizationId();
+            ProviderResult authorized = provider.authorize(authRequest, "test_auth_ikey_2");
+            assertThat(authorized.getOutcome()).isEqualTo(ProviderOutcome.SUCCESS);
+            String authId = authorized.getProviderAuthorizationId();
 
-            PaymentResult result = provider.capture(authId, BigDecimal.valueOf(7500));
+            ProviderResult result = provider.capture(authId, BigDecimal.valueOf(7500), "test_cap_ikey");
 
-            assertThat(result.isSuccess()).isTrue();
-            assertThat(result.getStatus()).isEqualTo(PaymentStatus.CAPTURED);
-            assertThat(result.getTransactionId()).startsWith("mock_txn_");
+            assertThat(result.getOutcome()).isEqualTo(ProviderOutcome.SUCCESS);
+            assertThat(result.getProviderTransactionId()).startsWith("mock_txn_");
         }
 
         @Test
@@ -101,14 +98,13 @@ class MockPaymentProviderTest {
                     .currency("RSD")
                     .bookingId(111L)
                     .build();
-            String authId = provider.authorize(authRequest).getAuthorizationId();
-            String txnId = provider.capture(authId, BigDecimal.valueOf(3000)).getTransactionId();
+            String authId = provider.authorize(authRequest, "test_auth_ikey_3").getProviderAuthorizationId();
+            String txnId = provider.capture(authId, BigDecimal.valueOf(3000), "test_cap_ikey_2").getProviderTransactionId();
 
-            PaymentResult result = provider.refund(txnId, BigDecimal.valueOf(3000), "Customer request");
+            ProviderResult result = provider.refund(txnId, BigDecimal.valueOf(3000), "Customer request", "test_ref_ikey");
 
-            assertThat(result.isSuccess()).isTrue();
-            assertThat(result.getStatus()).isEqualTo(PaymentStatus.REFUNDED);
-            assertThat(result.getTransactionId()).startsWith("mock_ref_");
+            assertThat(result.getOutcome()).isEqualTo(ProviderOutcome.SUCCESS);
+            assertThat(result.getProviderRefundId()).startsWith("mock_ref_");
         }
 
         @Test
@@ -120,12 +116,11 @@ class MockPaymentProviderTest {
                     .currency("RSD")
                     .bookingId(222L)
                     .build();
-            String authId = provider.authorize(authRequest).getAuthorizationId();
+            String authId = provider.authorize(authRequest, "test_auth_ikey_4").getProviderAuthorizationId();
 
-            PaymentResult result = provider.releaseAuthorization(authId);
+            ProviderResult result = provider.releaseAuthorization(authId, "test_release_ikey");
 
-            assertThat(result.isSuccess()).isTrue();
-            assertThat(result.getStatus()).isEqualTo(PaymentStatus.CANCELLED);
+            assertThat(result.getOutcome()).isEqualTo(ProviderOutcome.SUCCESS);
         }
     }
 
@@ -147,10 +142,9 @@ class MockPaymentProviderTest {
                     .bookingId(123L)
                     .build();
 
-            PaymentResult result = provider.charge(request);
+            ProviderResult result = provider.charge(request, "test_charge_fail_ikey");
 
-            assertThat(result.isSuccess()).isFalse();
-            assertThat(result.getStatus()).isEqualTo(PaymentStatus.FAILED);
+            assertThat(result.getOutcome()).isNotEqualTo(ProviderOutcome.SUCCESS);
             assertThat(result.getErrorCode()).isEqualTo("CARD_DECLINED");
             assertThat(result.getErrorMessage()).contains("odbijena");
         }
@@ -164,19 +158,17 @@ class MockPaymentProviderTest {
                     .bookingId(456L)
                     .build();
 
-            PaymentResult result = provider.authorize(request);
+            ProviderResult result = provider.authorize(request, "test_auth_fail_ikey");
 
-            assertThat(result.isSuccess()).isFalse();
-            assertThat(result.getStatus()).isEqualTo(PaymentStatus.FAILED);
+            assertThat(result.getOutcome()).isNotEqualTo(ProviderOutcome.SUCCESS);
         }
 
         @Test
         @DisplayName("refund() fails when forceFailure=true")
         void refundFailsWhenForced() {
-            PaymentResult result = provider.refund("txn_12345678", BigDecimal.valueOf(3000), "Test");
+            ProviderResult result = provider.refund("txn_12345678", BigDecimal.valueOf(3000), "Test", "test_ref_fail_ikey");
 
-            assertThat(result.isSuccess()).isFalse();
-            assertThat(result.getStatus()).isEqualTo(PaymentStatus.FAILED);
+            assertThat(result.getOutcome()).isNotEqualTo(ProviderOutcome.SUCCESS);
         }
     }
 
@@ -200,9 +192,9 @@ class MockPaymentProviderTest {
                     .bookingId(789L)
                     .build();
 
-            PaymentResult result = provider.charge(request);
+            ProviderResult result = provider.charge(request, "test_insuff_ikey");
 
-            assertThat(result.isSuccess()).isFalse();
+            assertThat(result.getOutcome()).isNotEqualTo(ProviderOutcome.SUCCESS);
             assertThat(result.getErrorCode()).isEqualTo("INSUFFICIENT_FUNDS");
             assertThat(result.getErrorMessage()).contains("Nedovoljno sredstava");
         }
@@ -218,7 +210,7 @@ class MockPaymentProviderTest {
                     .bookingId(101L)
                     .build();
 
-            PaymentResult result = provider.charge(request);
+            ProviderResult result = provider.charge(request, "test_expired_ikey");
 
             assertThat(result.getErrorCode()).isEqualTo("EXPIRED_CARD");
             assertThat(result.getErrorMessage()).contains("istekla");
@@ -235,7 +227,7 @@ class MockPaymentProviderTest {
                     .bookingId(102L)
                     .build();
 
-            PaymentResult result = provider.charge(request);
+            ProviderResult result = provider.charge(request, "test_fraud_ikey");
 
             assertThat(result.getErrorCode()).isEqualTo("FRAUD_SUSPECTED");
             assertThat(result.getErrorMessage()).contains("sigurnosnih razloga");
@@ -259,8 +251,8 @@ class MockPaymentProviderTest {
 
             // Run multiple times to ensure consistency
             for (int i = 0; i < 10; i++) {
-                PaymentResult result = provider.charge(request);
-                assertThat(result.isSuccess()).isFalse();
+                ProviderResult result = provider.charge(request, "test_rate100_ikey_" + i);
+                assertThat(result.getOutcome()).isNotEqualTo(ProviderOutcome.SUCCESS);
             }
         }
 
@@ -277,8 +269,8 @@ class MockPaymentProviderTest {
 
             // Run multiple times to ensure consistency
             for (int i = 0; i < 10; i++) {
-                PaymentResult result = provider.charge(request);
-                assertThat(result.isSuccess()).isTrue();
+                ProviderResult result = provider.charge(request, "test_rate0_ikey_" + i);
+                assertThat(result.getOutcome()).isEqualTo(ProviderOutcome.SUCCESS);
             }
         }
 
@@ -295,11 +287,11 @@ class MockPaymentProviderTest {
 
             int successes = 0;
             int failures = 0;
-            
+
             // Run 100 times and check distribution
             for (int i = 0; i < 100; i++) {
-                PaymentResult result = provider.charge(request);
-                if (result.isSuccess()) {
+                ProviderResult result = provider.charge(request, "test_rate50_ikey_" + i);
+                if (result.getOutcome() == ProviderOutcome.SUCCESS) {
                     successes++;
                 } else {
                     failures++;

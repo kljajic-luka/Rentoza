@@ -17,6 +17,7 @@ import org.example.rentoza.payment.PaymentTransaction.PaymentTransactionStatus;
 import org.example.rentoza.scheduler.InMemorySchedulerLockStore;
 import org.example.rentoza.scheduler.SchedulerLockStore;
 import org.example.rentoza.user.User;
+import org.example.rentoza.user.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -70,6 +71,7 @@ class PaymentIntegrationTest {
     @Mock private PayoutLedgerRepository payoutLedgerRepository;
     @Mock private CancellationRecordRepository cancellationRecordRepository;
     @Mock private NotificationService notificationService;
+    @Mock private UserRepository userRepository;
 
     // ── Test data ──────────────────────────────────────────────────────────
     private Booking booking;
@@ -90,6 +92,7 @@ class PaymentIntegrationTest {
                 extensionRepository,
                 txRepository,
                 payoutLedgerRepository,
+                userRepository,
                 new SimpleMeterRegistry()
         );
         ReflectionTestUtils.setField(paymentService, "authExpiryHours", 168);    // 7 days

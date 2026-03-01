@@ -602,7 +602,7 @@ public class SchedulerItemProcessor {
             if (booking.getRenter() != null) {
                 notificationService.createNotification(CreateNotificationRequestDTO.builder()
                         .recipientId(booking.getRenter().getId())
-                        .type(NotificationType.PAYMENT_CAPTURED)
+                        .type(NotificationType.PAYMENT_AUTH_EXPIRING)
                         .message(String.format(
                                 "Autorizacija plaćanja za rezervaciju #%d ističe. Kontaktirajte podršku ako trip još nije počeo.",
                                 booking.getId()))
@@ -659,7 +659,7 @@ public class SchedulerItemProcessor {
             if (booking.getRenter() != null) {
                 notificationService.createNotification(CreateNotificationRequestDTO.builder()
                         .recipientId(booking.getRenter().getId())
-                        .type(NotificationType.DEPOSIT_RELEASED)
+                        .type(NotificationType.DEPOSIT_AUTH_EXPIRING)
                         .message(String.format(
                                 "Autorizacija depozita za rezervaciju #%d %s. Kontaktirajte podršku.",
                                 booking.getId(),

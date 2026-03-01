@@ -75,6 +75,10 @@ public class PayoutLedger {
     @Column(name = "platform_fee", nullable = false, precision = 19, scale = 2)
     private BigDecimal platformFee;
 
+    /** PDV (Serbian VAT) on platform fee = platformFee × PDV rate (20%). */
+    @Column(name = "platform_fee_pdv", precision = 19, scale = 2)
+    private BigDecimal platformFeePdv;
+
     /** Net amount to pay host = tripAmount − platformFee. */
     @Column(name = "host_payout_amount", nullable = false, precision = 19, scale = 2)
     private BigDecimal hostPayoutAmount;

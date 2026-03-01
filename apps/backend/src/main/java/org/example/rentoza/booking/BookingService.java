@@ -558,8 +558,11 @@ public class BookingService {
                     .setScale(2, RoundingMode.HALF_UP);
         }
 
-        // Security deposit amount (held, not charged)
-        BigDecimal depositAmount = BigDecimal.valueOf(defaultDepositAmountRsd);
+        // Security deposit amount (held, not charged).
+        // M1: Prefer per-listing deposit if the host configured one; fall back to platform default.
+        BigDecimal depositAmount = car.getSecurityDepositRsd() != null
+                ? car.getSecurityDepositRsd()
+                : BigDecimal.valueOf(defaultDepositAmountRsd);
 
         // Final calculation with proper rounding (includes all components)
         // Total = basePrice + insuranceCost + serviceFee + refuelCost + deliveryFee

@@ -13,6 +13,8 @@ import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.payment.PaymentProvider.*;
 import org.example.rentoza.payment.PaymentTransaction.PaymentOperation;
 import org.example.rentoza.payment.PaymentTransaction.PaymentTransactionStatus;
+import org.example.rentoza.user.User;
+import org.example.rentoza.user.UserRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -54,12 +56,16 @@ public class BookingPaymentService {
     /** Platform fee rate — 15 %. Captured as snapshot in PayoutLedger. */
     private static final BigDecimal PLATFORM_FEE_RATE = new BigDecimal("0.15");
 
+    /** Serbian PDV (VAT) rate — 20 %. Applied to the platform fee component. */
+    private static final BigDecimal PDV_RATE = new BigDecimal("0.20");
+
     private final PaymentProvider paymentProvider;
     private final BookingRepository bookingRepository;
     private final DamageClaimRepository damageClaimRepository;
     private final TripExtensionRepository extensionRepository;
     private final PaymentTransactionRepository txRepository;
     private final PayoutLedgerRepository payoutLedgerRepository;
+    private final UserRepository userRepository;
 
     // Metrics
     private final Counter paymentSuccessCounter;
@@ -84,6 +90,7 @@ public class BookingPaymentService {
             TripExtensionRepository extensionRepository,
             PaymentTransactionRepository txRepository,
             PayoutLedgerRepository payoutLedgerRepository,
+            UserRepository userRepository,
             MeterRegistry meterRegistry) {
         this.paymentProvider = paymentProvider;
         this.bookingRepository = bookingRepository;
@@ -91,6 +98,7 @@ public class BookingPaymentService {
         this.extensionRepository = extensionRepository;
         this.txRepository = txRepository;
         this.payoutLedgerRepository = payoutLedgerRepository;
+        this.userRepository = userRepository;
 
         this.paymentSuccessCounter = Counter.builder("payment.success")
                 .description("Successful payments")
@@ -188,6 +196,11 @@ public class BookingPaymentService {
             booking.setPaymentStatus("REDIRECT_REQUIRED");
             bookingRepository.save(booking);
             log.info("[Payment] Booking {} requires 3DS redirect: {}", bookingId, result.getRedirectUrl());
+        } else if (result.getOutcome() == ProviderOutcome.PENDING) {
+            booking.setPaymentStatus("PENDING_CONFIRMATION");
+            bookingRepository.save(booking);
+            log.info("[Payment] Booking {} authorization PENDING async confirmation (authId={})",
+                    bookingId, result.getProviderAuthorizationId());
         } else {
             paymentFailedCounter.increment();
             log.warn("[Payment] Booking {} authorization failed: {} ({})",
@@ -271,6 +284,10 @@ public class BookingPaymentService {
         } else if (result.getOutcome() == ProviderOutcome.REDIRECT_REQUIRED) {
             booking.setPaymentStatus("REDIRECT_REQUIRED");
             log.info("[Payment] Booking {} reauth requires 3DS redirect: {}", bookingId, result.getRedirectUrl());
+        } else if (result.getOutcome() == ProviderOutcome.PENDING) {
+            booking.setPaymentStatus("PENDING_CONFIRMATION");
+            log.info("[Payment] Booking {} reauth PENDING async confirmation (authId={})",
+                    bookingId, result.getProviderAuthorizationId());
         } else {
             paymentFailedCounter.increment();
             log.warn("[Payment] Booking {} reauth failed: {} ({})",
@@ -402,6 +419,12 @@ public class BookingPaymentService {
             log.info("[Payment] Booking {} already captured (ALREADY_CAPTURED) — treating as success", bookingId);
             return PaymentResult.builder().success(true).status(PaymentStatus.SUCCESS)
                     .amount(booking.getTotalPrice()).build();
+        } else if (result.getOutcome() == ProviderOutcome.PENDING) {
+            // Async capture confirmation pending — do NOT mark as CAPTURE_FAILED.
+            // Webhook (PAYMENT_CONFIRMED) will finalize.
+            booking.setPaymentStatus("PENDING_CONFIRMATION");
+            bookingRepository.save(booking);
+            log.info("[Payment] Booking {} capture PENDING async confirmation", bookingId);
         } else {
             transitionCharge(booking, ChargeLifecycleStatus.CAPTURE_FAILED, "captureBookingPayment");
             bookingRepository.save(booking);
@@ -488,7 +511,12 @@ public class BookingPaymentService {
     public PaymentResult authorizeDeposit(Long bookingId, String paymentMethodId) {
         Booking booking = getBooking(bookingId);
 
-        BigDecimal depositAmount = BigDecimal.valueOf(defaultDepositAmountRsd);
+        // M1: Use the per-booking deposit snapshot (which reflects the per-listing amount
+        // at booking creation), falling back to the platform default.
+        // This matches the pattern used in captureSecurityDeposit() and releaseDeposit().
+        BigDecimal depositAmount = booking.getSecurityDeposit() != null
+                ? booking.getSecurityDeposit()
+                : BigDecimal.valueOf(defaultDepositAmountRsd);
         String ikey = PaymentIdempotencyKey.forDepositAuthorize(bookingId);
 
         // P0-3: Handle all settled states to avoid unique-key collision on FAILED_RETRYABLE row.
@@ -528,7 +556,11 @@ public class BookingPaymentService {
             booking.setPaymentStatus("DEPOSIT_AUTHORIZED");
             transitionDeposit(booking, DepositLifecycleStatus.AUTHORIZED, "authorizeDeposit");
             booking.setDepositAuthorizationId(result.getProviderAuthorizationId());
-            booking.setDepositAuthExpiresAt(Instant.now().plusSeconds(authExpiryHours * 3600L));
+            // M2: Use provider-supplied expiry if available; fall back to local constant.
+            // Matches the pattern already used in processBookingPayment().
+            booking.setDepositAuthExpiresAt(result.getExpiresAt() != null
+                    ? result.getExpiresAt()
+                    : Instant.now().plusSeconds(authExpiryHours * 3600L));
             bookingRepository.save(booking);
             depositAuthorizedCounter.increment();
             log.info("[Payment] Deposit authorized for booking {}: {}", bookingId, result.getProviderAuthorizationId());
@@ -579,6 +611,15 @@ public class BookingPaymentService {
                 log.warn("[Payment] Deposit release in progress for booking {}", bookingId);
                 return PaymentResult.builder().success(false).errorCode("IN_PROGRESS")
                         .errorMessage("Deposit release already in progress; wait and retry")
+                        .status(PaymentStatus.FAILED).build();
+            }
+            // H6-FIX: Handle REDIRECT_REQUIRED / PENDING_CONFIRMATION — same pattern
+            // as captureBookingPayment, captureSecurityDeposit, and other idempotency guards.
+            if (ex.getStatus() == PaymentTransactionStatus.REDIRECT_REQUIRED
+                    || ex.getStatus() == PaymentTransactionStatus.PENDING_CONFIRMATION) {
+                log.warn("[Payment] Deposit release for booking {} awaiting async confirmation", bookingId);
+                return PaymentResult.builder().success(false).errorCode("IN_PROGRESS")
+                        .errorMessage("Deposit release awaiting async confirmation; wait and retry")
                         .status(PaymentStatus.FAILED).build();
             }
             // FAILED_RETRYABLE: reuse row to prevent unique-key violation on new insert
@@ -969,82 +1010,15 @@ public class BookingPaymentService {
     /**
      * Process refund for cancellation or other reasons.
      *
-     * <p>If payment is still AUTHORIZED (not captured), releases the auth hold
-     * instead of issuing a refund (no money was moved).
+     * <p>M6: Delegates to the 4-arg overload with {@code attempt = 1}.
+     * Previously duplicated all refund logic with a hardcoded attempt number,
+     * meaning the idempotency key never varied on retry and lifecycle guards
+     * (AUTHORIZED→release, RELEASED/REFUNDED early return) were inconsistent
+     * between the two overloads.
      */
     @Transactional
     public PaymentResult processRefund(Long bookingId, BigDecimal amount, String reason) {
-        Booking booking = getBooking(bookingId);
-
-        ChargeLifecycleStatus lifecycle = booking.getChargeLifecycleStatus();
-
-        // Release instead of refund if auth was never captured
-        if (lifecycle == ChargeLifecycleStatus.AUTHORIZED || lifecycle == ChargeLifecycleStatus.REAUTH_REQUIRED) {
-            log.info("[Payment] Booking {} authorized-only — releasing hold instead of refunding", bookingId);
-            return releaseBookingPayment(bookingId);
-        }
-
-        String paymentRef = booking.getPaymentVerificationRef();
-        if (paymentRef == null) {
-            return PaymentResult.builder()
-                    .success(false)
-                    .errorMessage("Nema uplate za povraćaj")
-                    .status(PaymentStatus.FAILED)
-                    .build();
-        }
-
-        BigDecimal maxRefundable = booking.getTotalPrice();
-        if (amount.compareTo(maxRefundable) > 0) {
-            log.warn("[Payment] REJECTED: Refund {} exceeds captured amount {} for booking {}",
-                    amount, maxRefundable, bookingId);
-            return PaymentResult.builder()
-                    .success(false)
-                    .errorCode("REFUND_EXCEEDS_CAPTURED")
-                    .errorMessage(String.format(
-                        "Iznos povraćaja (%s RSD) premašuje naplaćeni iznos (%s RSD)", amount, maxRefundable))
-                    .status(PaymentStatus.FAILED)
-                    .build();
-        }
-
-        int attempt = 1; // caller responsible for tracking attempts via CancellationRecord
-        String ikey = PaymentIdempotencyKey.forRefund(bookingId, reason, attempt);
-
-        // P0-3: Handle all settled states to avoid unique-key collision on FAILED_RETRYABLE row.
-        Optional<PaymentTransaction> existing = txRepository.findByIdempotencyKey(ikey);
-        final PaymentTransaction tx;
-        if (existing.isPresent()) {
-            PaymentTransaction ex = existing.get();
-            if (ex.getStatus() == PaymentTransactionStatus.SUCCEEDED) {
-                log.info("[Payment] Idempotent hit for booking {} refund", bookingId);
-                return toSuccess(ex);
-            }
-            if (ex.getStatus() == PaymentTransactionStatus.FAILED_TERMINAL) {
-                log.warn("[Payment] Terminal refund failure for booking {} — not retrying with same key", bookingId);
-                return toLegacyResult(ex);
-            }
-            // FAILED_RETRYABLE or PROCESSING: reuse row
-            ex.setStatus(PaymentTransactionStatus.PROCESSING);
-            tx = txRepository.save(ex);
-        } else {
-            tx = createTx(bookingId, booking.getRenter().getId(),
-                    PaymentOperation.REFUND, ikey, amount);
-        }
-
-        ProviderResult result = paymentProvider.refund(paymentRef, amount, reason, ikey);
-        updateTx(tx, result);
-
-        if (result.getOutcome() == ProviderOutcome.SUCCESS) {
-            booking.setPaymentStatus("REFUNDED");
-            transitionCharge(booking, ChargeLifecycleStatus.REFUNDED, "processRefund");
-            bookingRepository.save(booking);
-            paymentSuccessCounter.increment();
-            log.info("[Payment] Refund processed for booking {}: {} RSD", bookingId, amount);
-        } else {
-            paymentFailedCounter.increment();
-            log.warn("[Payment] Refund failed for booking {}: {}", bookingId, result.getErrorMessage());
-        }
-
-        return toLegacyResult(result);
+        return processRefund(bookingId, amount, reason, 1);
     }
 
     /** Process refund by attempt number (for scheduler retry logic). */
@@ -1069,6 +1043,18 @@ public class BookingPaymentService {
         String paymentRef = booking.getPaymentVerificationRef();
         if (paymentRef == null) {
             return PaymentResult.builder().success(false).errorMessage("Nema uplate za povraćaj")
+                    .status(PaymentStatus.FAILED).build();
+        }
+
+        // M5: Cumulative refund guard — same as 3-arg overload.
+        BigDecimal alreadyRefunded = txRepository.sumSucceededRefundAmounts(bookingId);
+        BigDecimal maxRefundable = booking.getTotalPrice().subtract(alreadyRefunded);
+        if (amount.compareTo(maxRefundable) > 0) {
+            log.warn("[Payment] REJECTED: Refund {} exceeds refundable {} (captured={}, alreadyRefunded={}) for booking {} attempt {}",
+                    amount, maxRefundable, booking.getTotalPrice(), alreadyRefunded, bookingId, attempt);
+            return PaymentResult.builder()
+                    .success(false).errorCode("REFUND_EXCEEDS_CAPTURED")
+                    .errorMessage(String.format("Iznos povraćaja (%s RSD) premašuje preostali iznos (%s RSD)", amount, maxRefundable))
                     .status(PaymentStatus.FAILED).build();
         }
 
@@ -1169,6 +1155,7 @@ public class BookingPaymentService {
         return payoutLedgerRepository.findByIdempotencyKey(ikey).orElseGet(() -> {
             BigDecimal trip = booking.getTotalAmount();
             BigDecimal fee = trip.multiply(PLATFORM_FEE_RATE).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal pdv = fee.multiply(PDV_RATE).setScale(2, RoundingMode.HALF_UP);
             BigDecimal hostAmt = trip.subtract(fee);
 
             PayoutLedger ledger = PayoutLedger.builder()
@@ -1177,6 +1164,7 @@ public class BookingPaymentService {
                     .tripAmount(trip)
                     .platformFeeRate(PLATFORM_FEE_RATE)
                     .platformFee(fee)
+                    .platformFeePdv(pdv)
                     .hostPayoutAmount(hostAmt)
                     .currency(DEFAULT_CURRENCY)
                     .idempotencyKey(ikey)
@@ -1184,8 +1172,8 @@ public class BookingPaymentService {
                     .eligibleAt(Instant.now().plusSeconds(payoutDisputeHoldHours * 3600L))
                     .build();
 
-            log.info("[Payment] Payout scheduled for booking {} → host {}: {} RSD (fee {})",
-                    booking.getId(), booking.getCar().getOwner().getId(), hostAmt, fee);
+            log.info("[Payment] Payout scheduled for booking {} → host {}: {} RSD (fee {} + PDV {})",
+                    booking.getId(), booking.getCar().getOwner().getId(), hostAmt, fee, pdv);
             return payoutLedgerRepository.save(ledger);
         });
     }
@@ -1243,6 +1231,12 @@ public class BookingPaymentService {
             payoutLedgerRepository.save(ledger);
         }
 
+        // C3: Look up host's Monri recipient ID for payout routing.
+        // If absent, the provider will return TERMINAL_FAILURE preventing silent misrouting.
+        String recipientId = userRepository.findById(ledger.getHostUserId())
+                .map(User::getMonriRecipientId)
+                .orElse(null);
+
         PaymentRequest request = PaymentRequest.builder()
                 .bookingId(ledger.getBookingId())
                 .userId(ledger.getHostUserId())
@@ -1250,6 +1244,7 @@ public class BookingPaymentService {
                 .currency(DEFAULT_CURRENCY)
                 .description("Isplata domaćinu za rezervaciju #" + ledger.getBookingId())
                 .type(PaymentType.PAYOUT)
+                .recipientId(recipientId)
                 .build();
 
         ProviderResult result = paymentProvider.payout(request, attemptKey);
@@ -1391,8 +1386,12 @@ public class BookingPaymentService {
                 tx.setStatus(PaymentTransactionStatus.REDIRECT_REQUIRED);
                 tx.setRedirectUrl(result.getRedirectUrl());
                 tx.setSessionToken(result.getSessionToken());
+                tx.setProviderAuthId(result.getProviderAuthorizationId());
             }
-            case PENDING -> tx.setStatus(PaymentTransactionStatus.PENDING_CONFIRMATION);
+            case PENDING -> {
+                tx.setStatus(PaymentTransactionStatus.PENDING_CONFIRMATION);
+                tx.setProviderAuthId(result.getProviderAuthorizationId());
+            }
             case RETRYABLE_FAILURE -> {
                 tx.setStatus(PaymentTransactionStatus.FAILED_RETRYABLE);
                 tx.setErrorCode(result.getErrorCode());

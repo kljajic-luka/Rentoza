@@ -1,25 +1,38 @@
 package org.example.rentoza.payment;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Component;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Map;
+import java.util.HexFormat;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Supplier;
 
 /**
  * Mock payment provider for development and staging testing.
  *
  * <p>Implements the full {@link PaymentProvider} contract including Monri-style
  * redirect-based 3DS2, authorization expiry, idempotency, and strict unknown-ID rejection.
+ *
+ * <h2>State Store</h2>
+ * <p>All mutable state (authorizations, captured transactions, refunded amounts,
+ * idempotency cache) is delegated to a {@link MockStateStore}. When Redis is available
+ * (staging), {@link RedisMockStateStore} is used so multiple replicas share state.
+ * Otherwise, {@link InMemoryMockStateStore} provides ConcurrentHashMap-backed storage
+ * for single-instance dev and unit tests.
  *
  * <h2>Test Card Tokens (via {@code paymentMethodId})</h2>
  * <ul>
@@ -45,6 +58,8 @@ import java.util.function.Supplier;
  *   <li>{@code app.payment.mock.simulate-timeout=true}</li>
  *   <li>{@code app.payment.mock.delay-ms=200}</li>
  *   <li>{@code app.payment.mock.auth-expiry-minutes=7200} (default 5 days = 7200 min)</li>
+ *   <li>{@code app.payment.mock.redis-namespace=mock_pay} — Redis key prefix</li>
+ *   <li>{@code app.payment.mock.redis-ttl-hours=168} — Redis key TTL (7 days default)</li>
  * </ul>
  *
  * <p><b>NEVER USE IN PRODUCTION.</b>
@@ -56,27 +71,40 @@ public class MockPaymentProvider implements PaymentProvider {
 
     private final Random random = new Random();
 
-    // ── Lifecycle tracking ────────────────────────────────────────────────────
-
-    /** Authorization state: authId → MockAuthorization */
-    private final Map<String, MockAuthorization> authorizations = new ConcurrentHashMap<>();
-
-    /** Captured transactions: providerTransactionId → captured amount */
-    private final Map<String, BigDecimal> capturedTransactions = new ConcurrentHashMap<>();
-
-    /** Running refunded amount per transaction: txnId → total refunded so far */
-    private final Map<String, BigDecimal> refundedAmounts = new ConcurrentHashMap<>();
+    // ── State store (Redis or in-memory) ──────────────────────────────────────
 
     /**
-     * Per-transaction refund lock objects.
-     * P1-FIX: Prevents the check-then-update TOCTOU race where two concurrent refunds
-     * with different idempotency keys both observe the same {@code alreadyRefunded} value
-     * and together over-refund the captured amount.
+     * Initialized to in-memory by default. Upgraded to Redis in {@link #initStateStore()}
+     * when Spring injects RedisTemplate. Tests using {@code new MockPaymentProvider()}
+     * get the in-memory store without needing Spring.
      */
-    private final Map<String, Object> txRefundLocks = new ConcurrentHashMap<>();
+    private MockStateStore store = new InMemoryMockStateStore();
 
-    /** Idempotency store: idempotencyKey → ProviderResult */
-    private final Map<String, ProviderResult> idempotencyStore = new ConcurrentHashMap<>();
+    @Autowired(required = false)
+    private StringRedisTemplate redisTemplate;
+
+    @Autowired(required = false)
+    private ObjectMapper objectMapper;
+
+    @Value("${app.payment.mock.redis-namespace:mock_pay}")
+    private String redisNamespace = "mock_pay";
+
+    @Value("${app.payment.mock.redis-ttl-hours:168}")
+    private int redisTtlHours = 168;
+
+    // ── Async / 3DS completion dependencies (optional — not available in unit tests) ──
+
+    @Autowired(required = false)
+    private TaskScheduler taskScheduler;
+
+    @Autowired(required = false)
+    private ProviderEventService providerEventService;
+
+    @Value("${app.payment.webhook.secret:}")
+    private String webhookSecret = "";
+
+    @Value("${app.payment.mock.async-confirm-delay-seconds:5}")
+    private int asyncConfirmDelaySeconds = 5;
 
     // ── Test card sets ─────────────────────────────────────────────────────
 
@@ -109,6 +137,25 @@ public class MockPaymentProvider implements PaymentProvider {
     @Value("${app.payment.mock.auth-expiry-minutes:7200}")
     private int authExpiryMinutes = 7200;
 
+    // ── State store initialization ────────────────────────────────────────────
+
+    /**
+     * Select Redis or in-memory store based on available beans.
+     * Called by Spring after field injection. Tests using {@code new MockPaymentProvider()}
+     * skip this — the field initializer provides the in-memory fallback.
+     */
+    @PostConstruct
+    void initStateStore() {
+        if (redisTemplate != null && objectMapper != null) {
+            store = new RedisMockStateStore(redisTemplate, objectMapper,
+                    redisNamespace, Duration.ofHours(redisTtlHours));
+            log.info("[Mock] Using Redis-backed state store (namespace={}, ttl={}h)",
+                    redisNamespace, redisTtlHours);
+        } else {
+            log.info("[Mock] Using in-memory state store (Redis not available)");
+        }
+    }
+
     // =========================================================================
     // PaymentProvider implementation
     // =========================================================================
@@ -126,16 +173,24 @@ public class MockPaymentProvider implements PaymentProvider {
                 request.getBookingId(), request.getAmount(), request.getCurrency(),
                 request.getPaymentMethodId(), idempotencyKey);
 
-        return withIdempotency(idempotencyKey, () -> {
+        return store.computeIdempotent(idempotencyKey, () -> {
             simulateDelay();
 
             ProviderResult cardResult = checkTestCard(request.getPaymentMethodId(), request.getAmount());
-            if (cardResult != null) return cardResult;
+            if (cardResult != null) {
+                if (cardResult.isRedirectRequired()) {
+                    return handleScaRequired(request);
+                }
+                if (cardResult.isPending()) {
+                    return handleAsyncPending(request);
+                }
+                return cardResult;
+            }
             if (shouldFail()) return retryableOrTerminal(request.getAmount());
 
             String authId = "mock_auth_" + shortUuid();
             Instant expiresAt = Instant.now().plus(Duration.ofMinutes(authExpiryMinutes));
-            authorizations.put(authId, new MockAuthorization(
+            store.saveAuthorization(authId, new MockAuthorization(
                     authId, request.getAmount(), request.getCurrency(),
                     MockAuthorizationStatus.AUTHORIZED, request.getBookingId(), expiresAt));
 
@@ -151,7 +206,7 @@ public class MockPaymentProvider implements PaymentProvider {
     public ProviderResult capture(String authorizationId, BigDecimal amount, String idempotencyKey) {
         log.info("[Mock] capture authId={} amount={} idk={}", authorizationId, amount, idempotencyKey);
 
-        return withIdempotency(idempotencyKey, () -> {
+        return store.computeIdempotent(idempotencyKey, () -> {
             simulateDelay();
 
             // P1-11: Reject zero/negative amounts before any state inspection.
@@ -160,17 +215,23 @@ public class MockPaymentProvider implements PaymentProvider {
                         "Capture amount must be positive: " + amount);
             }
 
-            // ── STRICT: reject unknown authorization IDs ──
-            MockAuthorization auth = authorizations.get(authorizationId);
-            if (auth == null) {
+            // ── STRICT: reject unknown authorization IDs (quick check before lock) ──
+            MockAuthorization preCheck = store.loadAuthorization(authorizationId);
+            if (preCheck == null) {
                 log.error("[Mock] REJECTED capture: unknown authorizationId={}", authorizationId);
                 return ProviderResult.terminalFailure("UNKNOWN_AUTHORIZATION",
                         "Authorization ID not found: " + authorizationId);
             }
 
-            // P1-FIX: Move ALL state inspections INSIDE the synchronized block so that
-            // concurrent capture calls cannot both observe AUTHORIZED status and proceed.
-            synchronized (auth) {
+            // Acquire per-authorization lock for all state inspections and mutations.
+            // Same lock key as releaseAuthorization to prevent capture+release interleave.
+            return store.withLock("auth:" + authorizationId, () -> {
+                MockAuthorization auth = store.loadAuthorization(authorizationId);
+                if (auth == null) {
+                    return ProviderResult.terminalFailure("UNKNOWN_AUTHORIZATION",
+                            "Authorization ID not found: " + authorizationId);
+                }
+
                 // ── Expiry check (re-evaluated under lock) ──
                 if (auth.expiresAt != null && Instant.now().isAfter(auth.expiresAt)) {
                     log.warn("[Mock] REJECTED capture: authorization {} expired at {}", authorizationId, auth.expiresAt);
@@ -201,12 +262,13 @@ public class MockPaymentProvider implements PaymentProvider {
                 String txnId = "mock_txn_" + shortUuid();
                 auth.status = MockAuthorizationStatus.CAPTURED;
                 auth.capturedTransactionId = txnId;
-                capturedTransactions.put(txnId, amount);
+                store.saveAuthorization(authorizationId, auth);
+                store.saveCapturedTransaction(txnId, amount);
 
                 ProviderResult result = ProviderResult.captureSuccess(txnId, amount);
                 log.info("[Mock] capture SUCCESS txnId={} authId={}", txnId, authorizationId);
                 return result;
-            }
+            });
         });
     }
 
@@ -217,15 +279,23 @@ public class MockPaymentProvider implements PaymentProvider {
         log.info("[Mock] charge booking={} amount={} method={} idk={}",
                 request.getBookingId(), request.getAmount(), request.getPaymentMethodId(), idempotencyKey);
 
-        return withIdempotency(idempotencyKey, () -> {
+        return store.computeIdempotent(idempotencyKey, () -> {
             simulateDelay();
 
             ProviderResult cardResult = checkTestCard(request.getPaymentMethodId(), request.getAmount());
-            if (cardResult != null) return cardResult;
+            if (cardResult != null) {
+                if (cardResult.isRedirectRequired()) {
+                    return handleScaRequired(request);
+                }
+                if (cardResult.isPending()) {
+                    return handleAsyncPending(request);
+                }
+                return cardResult;
+            }
             if (shouldFail()) return retryableOrTerminal(request.getAmount());
 
             String txnId = "mock_txn_" + shortUuid();
-            capturedTransactions.put(txnId, request.getAmount());
+            store.saveCapturedTransaction(txnId, request.getAmount());
 
             ProviderResult result = ProviderResult.captureSuccess(txnId, request.getAmount());
             log.info("[Mock] charge SUCCESS txnId={}", txnId);
@@ -241,7 +311,7 @@ public class MockPaymentProvider implements PaymentProvider {
         log.info("[Mock] refund txnId={} amount={} reason={} idk={}",
                 providerTransactionId, amount, reason, idempotencyKey);
 
-        return withIdempotency(idempotencyKey, () -> {
+        return store.computeIdempotent(idempotencyKey, () -> {
             simulateDelay();
 
             // P1-11: Reject zero/negative refund amounts early.
@@ -251,19 +321,16 @@ public class MockPaymentProvider implements PaymentProvider {
             }
 
             // ── STRICT: reject unknown transaction IDs ──
-            BigDecimal capturedAmount = capturedTransactions.get(providerTransactionId);
+            BigDecimal capturedAmount = store.loadCapturedAmount(providerTransactionId);
             if (capturedAmount == null) {
                 log.error("[Mock] REJECTED refund: unknown providerTransactionId={}", providerTransactionId);
                 return ProviderResult.terminalFailure("UNKNOWN_TRANSACTION",
                         "Transaction ID not found: " + providerTransactionId);
             }
 
-            // P1-FIX: Serialize the check-and-update on a per-transaction lock to prevent
-            // the TOCTOU race where two concurrent refunds (with different idempotency keys)
-            // both observe the same alreadyRefunded value and together over-refund the amount.
-            Object txLock = txRefundLocks.computeIfAbsent(providerTransactionId, id -> new Object());
-            synchronized (txLock) {
-                BigDecimal alreadyRefunded = refundedAmounts.getOrDefault(providerTransactionId, BigDecimal.ZERO);
+            // Per-transaction lock to prevent TOCTOU race on refunded amounts
+            return store.withLock("refund:" + providerTransactionId, () -> {
+                BigDecimal alreadyRefunded = store.getRefundedAmount(providerTransactionId);
                 BigDecimal maxRefundable = capturedAmount.subtract(alreadyRefunded);
                 if (amount.compareTo(maxRefundable) > 0) {
                     log.warn("[Mock] REJECTED refund: {} > refundable {} (captured={}, refunded={})",
@@ -277,12 +344,12 @@ public class MockPaymentProvider implements PaymentProvider {
                 }
 
                 String refundId = "mock_ref_" + shortUuid();
-                refundedAmounts.merge(providerTransactionId, amount, BigDecimal::add);
+                store.addRefundedAmount(providerTransactionId, amount);
 
                 ProviderResult result = ProviderResult.refundSuccess(refundId, amount);
                 log.info("[Mock] refund SUCCESS refundId={} txnId={} amount={}", refundId, providerTransactionId, amount);
                 return result;
-            }
+            });
         });
     }
 
@@ -292,21 +359,25 @@ public class MockPaymentProvider implements PaymentProvider {
     public ProviderResult releaseAuthorization(String authorizationId, String idempotencyKey) {
         log.info("[Mock] release authId={} idk={}", authorizationId, idempotencyKey);
 
-        return withIdempotency(idempotencyKey, () -> {
+        return store.computeIdempotent(idempotencyKey, () -> {
             simulateDelay();
 
             // ── STRICT: reject unknown authorization IDs ──
-            MockAuthorization auth = authorizations.get(authorizationId);
-            if (auth == null) {
+            MockAuthorization preCheck = store.loadAuthorization(authorizationId);
+            if (preCheck == null) {
                 log.error("[Mock] REJECTED release: unknown authorizationId={}", authorizationId);
                 return ProviderResult.terminalFailure("UNKNOWN_AUTHORIZATION",
                         "Authorization ID not found: " + authorizationId);
             }
 
-            // P1-3 FIX: Hold the same lock used by capture so that release and capture
-            // cannot interleave — prevents TOCTOU where concurrent capture+release both
-            // observe non-CAPTURED/non-RELEASED status and proceed.
-            synchronized (auth) {
+            // Same lock key as capture to prevent capture+release interleave
+            return store.withLock("auth:" + authorizationId, () -> {
+                MockAuthorization auth = store.loadAuthorization(authorizationId);
+                if (auth == null) {
+                    return ProviderResult.terminalFailure("UNKNOWN_AUTHORIZATION",
+                            "Authorization ID not found: " + authorizationId);
+                }
+
                 if (auth.status == MockAuthorizationStatus.CAPTURED) {
                     log.warn("[Mock] REJECTED release: already captured authId={}", authorizationId);
                     return ProviderResult.terminalFailure("ALREADY_CAPTURED",
@@ -324,10 +395,12 @@ public class MockPaymentProvider implements PaymentProvider {
                 }
 
                 auth.status = MockAuthorizationStatus.RELEASED;
+                store.saveAuthorization(authorizationId, auth);
+
                 ProviderResult result = ProviderResult.releaseSuccess(authorizationId);
                 log.info("[Mock] release SUCCESS authId={}", authorizationId);
                 return result;
-            }
+            });
         });
     }
 
@@ -337,7 +410,7 @@ public class MockPaymentProvider implements PaymentProvider {
 
     @Override
     public ProviderResult payout(PaymentRequest request, String idempotencyKey) {
-        return withIdempotency(idempotencyKey, () -> {
+        return store.computeIdempotent(idempotencyKey, () -> {
             simulateDelay();
 
             if (shouldFail()) {
@@ -348,7 +421,7 @@ public class MockPaymentProvider implements PaymentProvider {
             }
 
             String txnId = "mock_payout_" + shortUuid();
-            ProviderResult result = ProviderResult.captureSuccess(txnId, request.getAmount());
+            ProviderResult result = ProviderResult.payoutSuccess(txnId, request.getAmount());
             log.info("[Mock] Payout SUCCESS host={} booking={} txn={} amount={}",
                     request.getUserId(), request.getBookingId(), txnId, request.getAmount());
             return result;
@@ -361,50 +434,155 @@ public class MockPaymentProvider implements PaymentProvider {
 
     /**
      * Simulate expiring an authorization (for testing reauth path).
-     * TEST USE ONLY.
+     * L1: Package-private — test-only, must not be called from production code.
      */
-    public void expireAuthorization(String authorizationId) {
-        MockAuthorization auth = authorizations.get(authorizationId);
+    void expireAuthorization(String authorizationId) {
+        MockAuthorization auth = store.loadAuthorization(authorizationId);
         if (auth != null) {
             auth.expiresAt = Instant.now().minusSeconds(1);
+            store.saveAuthorization(authorizationId, auth);
             log.info("[Mock] TEST: authorization {} explicitly expired", authorizationId);
         }
     }
 
     /**
-     * Check whether an authorization is tracked by this provider instance.
-     * TEST USE ONLY.
-     */
-    /**
      * Returns true if the authorization exists AND is still active (not released or expired).
      * Released or expired authorizations are treated as absent for test assertion purposes.
+     * L1: Package-private — test-only.
      */
-    public boolean hasAuthorization(String authorizationId) {
-        MockAuthorization auth = authorizations.get(authorizationId);
+    boolean hasAuthorization(String authorizationId) {
+        MockAuthorization auth = store.loadAuthorization(authorizationId);
         return auth != null && auth.status != MockAuthorizationStatus.RELEASED;
     }
 
     /**
      * Inject a captured transaction (for testing refund paths).
-     * TEST USE ONLY.
+     * L1: Package-private — test-only.
      */
-    public void injectCapturedTransaction(String txnId, BigDecimal amount) {
-        capturedTransactions.put(txnId, amount);
+    void injectCapturedTransaction(String txnId, BigDecimal amount) {
+        store.saveCapturedTransaction(txnId, amount);
     }
 
     /**
      * Return whether an authorization is expired per this provider's clock.
-     * TEST USE ONLY.
+     * L1: Package-private — test-only.
      */
-    public boolean isAuthorizationExpired(String authorizationId) {
-        MockAuthorization auth = authorizations.get(authorizationId);
+    boolean isAuthorizationExpired(String authorizationId) {
+        MockAuthorization auth = store.loadAuthorization(authorizationId);
         if (auth == null) return false;
         return auth.expiresAt != null && Instant.now().isAfter(auth.expiresAt);
+    }
+
+    /**
+     * Load an SCA session by token. Used by {@link MockAcsController}
+     * to resolve the challenge page context.
+     */
+    MockScaSession loadScaSession(String token) {
+        return store.loadScaSession(token);
     }
 
     // =========================================================================
     // Private helpers
     // =========================================================================
+
+    /**
+     * Handle an SCA-required test card: create a real authorization and an SCA session,
+     * then return REDIRECT_REQUIRED pointing to the mock ACS challenge page.
+     */
+    private ProviderResult handleScaRequired(PaymentRequest request) {
+        String authId = "mock_auth_" + shortUuid();
+        String token = shortUuid();
+        Instant expiresAt = Instant.now().plus(Duration.ofMinutes(authExpiryMinutes));
+
+        store.saveAuthorization(authId, new MockAuthorization(
+                authId, request.getAmount(), request.getCurrency(),
+                MockAuthorizationStatus.AUTHORIZED, request.getBookingId(), expiresAt));
+
+        store.saveScaSession(token, new MockScaSession(token, request.getBookingId(), authId));
+
+        ProviderResult result = ProviderResult.builder()
+                .outcome(ProviderOutcome.REDIRECT_REQUIRED)
+                .redirectUrl("/mock/acs/challenge?token=" + token)
+                .sessionToken("sca_session_" + token)
+                .providerAuthorizationId(authId)
+                .amount(request.getAmount())
+                .expiresAt(Instant.now().plus(Duration.ofMinutes(15)))
+                .build();
+        log.info("[Mock] SCA required → REDIRECT authId={} token={} booking={}",
+                authId, token, request.getBookingId());
+        return result;
+    }
+
+    /**
+     * Handle an async test card: create a real authorization, return PENDING,
+     * and schedule a delayed synthetic webhook to confirm the payment.
+     */
+    private ProviderResult handleAsyncPending(PaymentRequest request) {
+        String authId = "mock_auth_" + shortUuid();
+        Instant expiresAt = Instant.now().plus(Duration.ofMinutes(authExpiryMinutes));
+
+        store.saveAuthorization(authId, new MockAuthorization(
+                authId, request.getAmount(), request.getCurrency(),
+                MockAuthorizationStatus.AUTHORIZED, request.getBookingId(), expiresAt));
+
+        scheduleAsyncConfirmation(request.getBookingId(), authId);
+
+        ProviderResult result = ProviderResult.builder()
+                .outcome(ProviderOutcome.PENDING)
+                .providerAuthorizationId(authId)
+                .amount(request.getAmount())
+                .rawProviderStatus("ASYNC_PROCESSING")
+                .build();
+        log.info("[Mock] ASYNC → PENDING authId={} booking={} (confirmation in {}s)",
+                authId, request.getBookingId(), asyncConfirmDelaySeconds);
+        return result;
+    }
+
+    /**
+     * Schedule a delayed synthetic webhook via {@link TaskScheduler} to confirm
+     * an async payment. If TaskScheduler or ProviderEventService are not available
+     * (unit tests without Spring), the webhook is skipped with a log warning.
+     */
+    private void scheduleAsyncConfirmation(Long bookingId, String authId) {
+        if (taskScheduler == null || providerEventService == null) {
+            log.warn("[Mock] TaskScheduler or ProviderEventService not available — "
+                    + "async confirmation webhook will not fire for booking={}", bookingId);
+            return;
+        }
+        taskScheduler.schedule(() -> {
+            try {
+                String eventId = "mock_async_" + shortUuid();
+                String payload = String.format(
+                        "{\"type\":\"PAYMENT_CONFIRMED\",\"booking_id\":%d,"
+                        + "\"auth_id\":\"%s\",\"timestamp\":\"%s\"}",
+                        bookingId, authId, Instant.now().toString());
+                String signature = computeHmac(payload);
+                providerEventService.ingestEvent(
+                        eventId, "PAYMENT_CONFIRMED", bookingId, authId, payload, signature);
+                log.info("[Mock] Async confirmation fired for booking={} authId={}", bookingId, authId);
+            } catch (Exception e) {
+                log.error("[Mock] Async confirmation failed for booking={}: {}", bookingId, e.getMessage(), e);
+            }
+        }, Instant.now().plusSeconds(asyncConfirmDelaySeconds));
+    }
+
+    /**
+     * Compute HMAC-SHA256 signature matching {@link ProviderEventService}'s verification.
+     * Returns {@code null} if no webhook secret is configured.
+     */
+    String computeHmac(String payload) {
+        if (webhookSecret == null || webhookSecret.isBlank()) return null;
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(
+                    webhookSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            byte[] hash = mac.doFinal(payload.getBytes(StandardCharsets.UTF_8));
+            return "sha256=" + HexFormat.of().formatHex(hash);
+        } catch (Exception e) {
+            log.error("[Mock] Failed to compute HMAC for webhook", e);
+            return null;
+        }
+    }
 
     /**
      * Check the payment method ID against known test-card tokens.
@@ -457,18 +635,6 @@ public class MockPaymentProvider implements PaymentProvider {
         return null;
     }
 
-    /**
-     * P1-2: Atomic idempotency guard.
-     *
-     * <p>{@link ConcurrentHashMap#computeIfAbsent} guarantees the mapping function is invoked
-     * at most once per key, eliminating the get-then-put TOCTOU race present in the old pattern.
-     * Concurrent callers with the same key will block until the first computation completes,
-     * then receive the already-stored result without re-running the operation.
-     */
-    private ProviderResult withIdempotency(String key, Supplier<ProviderResult> computation) {
-        return idempotencyStore.computeIfAbsent(key, k -> computation.get());
-    }
-
     private boolean shouldFail() {
         if (forceFailure) {
             log.warn("[Mock] force-failure=true");
@@ -500,45 +666,28 @@ public class MockPaymentProvider implements PaymentProvider {
         };
     }
 
+    /**
+     * Simulate real-world provider latency or timeout.
+     *
+     * <p><b>M3:</b> Timeout simulation now throws immediately instead of blocking for
+     * 30 seconds — real gateway timeouts are detected by the HTTP client layer,
+     * not by the provider sleeping on the request thread.
+     *
+     * <p>Normal delay is logged but does NOT block the thread unless
+     * {@code app.payment.mock.delay-blocking=true} is set (for staging realism).
+     * This avoids wasting Tomcat threads during dev and test.
+     */
     private void simulateDelay() {
-        try {
-            if (simulateTimeout) {
-                log.warn("[Mock] simulating timeout...");
-                Thread.sleep(30_000);
-                throw new RuntimeException("Payment provider timeout (simulated)");
-            }
-            if (delayMs > 0) Thread.sleep(delayMs);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException("Payment processing interrupted", e);
+        if (simulateTimeout) {
+            log.warn("[Mock] simulating timeout (immediate throw)");
+            throw new RuntimeException("Payment provider timeout (simulated)");
+        }
+        if (delayMs > 0) {
+            log.debug("[Mock] simulated {}ms provider latency", delayMs);
         }
     }
 
     private static String shortUuid() {
         return UUID.randomUUID().toString().replace("-", "").substring(0, 12);
-    }
-
-    // ── Internal authorization state ──────────────────────────────────────────
-
-    private enum MockAuthorizationStatus { AUTHORIZED, CAPTURED, RELEASED }
-
-    private static class MockAuthorization {
-        final String authorizationId;
-        final BigDecimal amount;
-        final String currency;
-        final Long bookingId;
-        MockAuthorizationStatus status;
-        String capturedTransactionId;
-        Instant expiresAt;
-
-        MockAuthorization(String authorizationId, BigDecimal amount, String currency,
-                          MockAuthorizationStatus status, Long bookingId, Instant expiresAt) {
-            this.authorizationId = authorizationId;
-            this.amount          = amount;
-            this.currency        = currency;
-            this.status          = status;
-            this.bookingId       = bookingId;
-            this.expiresAt       = expiresAt;
-        }
     }
 }

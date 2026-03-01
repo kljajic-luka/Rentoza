@@ -14,6 +14,7 @@ import org.example.rentoza.payment.PaymentProvider.ProviderOutcome;
 import org.example.rentoza.payment.PaymentProvider.ProviderResult;
 import org.example.rentoza.payment.PaymentTransaction.PaymentTransactionStatus;
 import org.example.rentoza.user.User;
+import org.example.rentoza.user.UserRepository;
 
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -60,6 +61,9 @@ class BookingPaymentServiceTest {
     @Mock
     private PayoutLedgerRepository payoutLedgerRepository;
 
+    @Mock
+    private UserRepository userRepository;
+
     private BookingPaymentService paymentService;
     private MeterRegistry meterRegistry;
 
@@ -74,6 +78,7 @@ class BookingPaymentServiceTest {
             extensionRepository,
             txRepository,
             payoutLedgerRepository,
+            userRepository,
             meterRegistry
         );
     }
@@ -114,7 +119,7 @@ class BookingPaymentServiceTest {
                 .hasMessageContaining("nerešene prijave štete");
 
             // Verify payment provider was never called
-            verify(paymentProvider, never()).releaseAuthorization(any());
+            verify(paymentProvider, never()).releaseAuthorization(any(), any());
         }
 
         @Test
@@ -127,7 +132,7 @@ class BookingPaymentServiceTest {
             assertThatThrownBy(() -> paymentService.releaseDeposit(BOOKING_ID, "auth-456"))
                 .isInstanceOf(IllegalStateException.class);
 
-            verify(paymentProvider, never()).releaseAuthorization(any());
+            verify(paymentProvider, never()).releaseAuthorization(any(), any());
         }
 
         @Test

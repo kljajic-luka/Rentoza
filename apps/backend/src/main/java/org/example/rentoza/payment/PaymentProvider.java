@@ -7,7 +7,6 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.util.UUID;
 
 /**
  * Payment provider contract — Monri/Mori-ready.
@@ -108,6 +107,8 @@ public interface PaymentProvider {
         private String clientIp;
         /** Optional: order reference for provider reconciliation. */
         private String orderReference;
+        /** Provider-assigned recipient ID for payout disbursements (e.g. Monri onboarded host). */
+        private String recipientId;
     }
 
     // =========================================================================
@@ -210,6 +211,14 @@ public interface PaymentProvider {
                     .build();
         }
 
+        public static ProviderResult payoutSuccess(String txnId, BigDecimal amount) {
+            return ProviderResult.builder()
+                    .outcome(ProviderOutcome.SUCCESS)
+                    .providerTransactionId(txnId)
+                    .amount(amount)
+                    .build();
+        }
+
         public static ProviderResult releaseSuccess(String authId) {
             return ProviderResult.builder()
                     .outcome(ProviderOutcome.SUCCESS)
@@ -273,83 +282,6 @@ public interface PaymentProvider {
         EXTENSION_PAYMENT,
         REFUND,
         PAYOUT
-    }
-
-    // =========================================================================
-    // LEGACY COMPAT — deprecated shims for callers not yet migrated
-    // =========================================================================
-
-    /**
-     * @deprecated Use {@link #authorize(PaymentRequest, String)} with an explicit idempotency key.
-     */
-    @Deprecated(forRemoval = true)
-    default PaymentResult authorize(PaymentRequest request) {
-        return toLegacy(authorize(request, PaymentIdempotencyKey.random()));
-    }
-
-    /**
-     * @deprecated Use {@link #capture(String, BigDecimal, String)}.
-     */
-    @Deprecated(forRemoval = true)
-    default PaymentResult capture(String authorizationId, BigDecimal amount) {
-        return toLegacy(capture(authorizationId, amount, PaymentIdempotencyKey.random()));
-    }
-
-    /**
-     * @deprecated Use {@link #charge(PaymentRequest, String)}.
-     */
-    @Deprecated(forRemoval = true)
-    default PaymentResult charge(PaymentRequest request) {
-        return toLegacy(charge(request, PaymentIdempotencyKey.random()));
-    }
-
-    /**
-     * @deprecated Use {@link #refund(String, BigDecimal, String, String)}.
-     */
-    @Deprecated(forRemoval = true)
-    default PaymentResult refund(String chargeId, BigDecimal amount, String reason) {
-        return toLegacy(refund(chargeId, amount, reason, PaymentIdempotencyKey.random()));
-    }
-
-    /**
-     * @deprecated Use {@link #releaseAuthorization(String, String)}.
-     */
-    @Deprecated(forRemoval = true)
-    default PaymentResult releaseAuthorization(String authorizationId) {
-        return toLegacy(releaseAuthorization(authorizationId, PaymentIdempotencyKey.random()));
-    }
-
-    /** Bridge: ProviderResult → legacy PaymentResult. */
-    private static PaymentResult toLegacy(ProviderResult r) {
-        String txnId  = r.getProviderTransactionId() != null
-                ? r.getProviderTransactionId() : r.getProviderRefundId();
-        String authId = r.getProviderAuthorizationId();
-        PaymentStatus status;
-        if (r.isSuccess()) {
-            if (txnId == null && authId == null && r.getProviderRefundId() == null) {
-                // Release or void operation — no transaction or auth ID produced
-                status = PaymentStatus.CANCELLED;
-            } else if (r.getProviderRefundId() != null) {
-                status = PaymentStatus.REFUNDED;
-            } else {
-                status = authId != null && txnId == null ? PaymentStatus.AUTHORIZED : PaymentStatus.CAPTURED;
-            }
-        } else if (r.isRedirectRequired()) {
-            status = PaymentStatus.REDIRECT_REQUIRED;
-        } else {
-            status = PaymentStatus.FAILED;
-        }
-        return PaymentResult.builder()
-                .success(r.isSuccess())
-                .transactionId(txnId)
-                .authorizationId(authId)
-                .amount(r.getAmount())
-                .currency(r.getCurrency())
-                .errorCode(r.getErrorCode())
-                .errorMessage(r.getErrorMessage())
-                .status(status)
-                .redirectUrl(r.getRedirectUrl())
-                .build();
     }
 
     // Legacy result — kept until full migration

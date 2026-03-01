@@ -149,7 +149,7 @@ export class MockPaymentAdapter implements PaymentProviderAdapter {
 
   unmount(): void {
     if (this.containerEl) {
-      this.containerEl.innerHTML = '';
+      this.containerEl.replaceChildren();
       this.containerEl = null;
     }
     this.mounted = false;
@@ -159,72 +159,92 @@ export class MockPaymentAdapter implements PaymentProviderAdapter {
 
   // ──────────────────────────────────────────────────────────────────────
 
+  /**
+   * M7: Replaced innerHTML template-literal injection with DOM API construction
+   * to eliminate XSS risk from interpolated card data.
+   */
   private renderMockForm(): void {
     if (!this.containerEl) return;
 
     const wrapper = document.createElement('div');
     wrapper.className = 'mock-payment-form';
-    wrapper.innerHTML = `
-      <div style="
-        background: #fffde7;
-        border: 1px dashed #f9a825;
-        border-radius: 8px;
-        padding: 12px 16px;
-        margin-bottom: 8px;
-        font-size: 13px;
-        color: #5d4037;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      ">
-        <span style="font-size: 18px;">&#9888;</span>
-        <span><strong>STAGING REZIM</strong> — Simulacija placanja bez pravih karticnih podataka</span>
-      </div>
-      <label style="
-        display: block;
-        font-size: 13px;
-        font-weight: 500;
-        color: rgba(0,0,0,0.6);
-        margin-bottom: 6px;
-      ">Izaberite test scenario:</label>
-      <select id="mock-card-select" style="
-        width: 100%;
-        padding: 10px 12px;
-        font-size: 14px;
-        border: 1px solid rgba(0,0,0,0.23);
-        border-radius: 4px;
-        background: white;
-        cursor: pointer;
-        font-family: inherit;
-      ">
-        ${MOCK_TEST_CARDS.map(
-          (card, i) =>
-            `<option value="${i}" ${i === 0 ? 'selected' : ''}>${card.label} — ${card.description}</option>`,
-        ).join('')}
-      </select>
-      <div id="mock-card-token" style="
-        margin-top: 6px;
-        font-size: 11px;
-        color: rgba(0,0,0,0.38);
-        font-family: monospace;
-      ">Token: ${this.selectedCard.token}</div>
-    `;
 
-    this.containerEl.innerHTML = '';
-    this.containerEl.appendChild(wrapper);
+    // Banner
+    const banner = document.createElement('div');
+    Object.assign(banner.style, {
+      background: '#fffde7',
+      border: '1px dashed #f9a825',
+      borderRadius: '8px',
+      padding: '12px 16px',
+      marginBottom: '8px',
+      fontSize: '13px',
+      color: '#5d4037',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px',
+    });
+    const iconSpan = document.createElement('span');
+    iconSpan.style.fontSize = '18px';
+    iconSpan.textContent = '\u26A0';
+    const textSpan = document.createElement('span');
+    const strong = document.createElement('strong');
+    strong.textContent = 'STAGING REZIM';
+    textSpan.append(strong, ' \u2014 Simulacija placanja bez pravih karticnih podataka');
+    banner.append(iconSpan, textSpan);
+
+    // Label
+    const label = document.createElement('label');
+    Object.assign(label.style, {
+      display: 'block',
+      fontSize: '13px',
+      fontWeight: '500',
+      color: 'rgba(0,0,0,0.6)',
+      marginBottom: '6px',
+    });
+    label.textContent = 'Izaberite test scenario:';
+
+    // Select
+    const select = document.createElement('select');
+    select.id = 'mock-card-select';
+    Object.assign(select.style, {
+      width: '100%',
+      padding: '10px 12px',
+      fontSize: '14px',
+      border: '1px solid rgba(0,0,0,0.23)',
+      borderRadius: '4px',
+      background: 'white',
+      cursor: 'pointer',
+      fontFamily: 'inherit',
+    });
+    MOCK_TEST_CARDS.forEach((card, i) => {
+      const option = document.createElement('option');
+      option.value = String(i);
+      option.selected = i === 0;
+      option.textContent = `${card.label} \u2014 ${card.description}`;
+      select.appendChild(option);
+    });
+
+    // Token display
+    const tokenDisplay = document.createElement('div');
+    tokenDisplay.id = 'mock-card-token';
+    Object.assign(tokenDisplay.style, {
+      marginTop: '6px',
+      fontSize: '11px',
+      color: 'rgba(0,0,0,0.38)',
+      fontFamily: 'monospace',
+    });
+    tokenDisplay.textContent = `Token: ${this.selectedCard.token}`;
+
+    wrapper.append(banner, label, select, tokenDisplay);
+    this.containerEl.replaceChildren(wrapper);
 
     // Bind select handler
-    const select = wrapper.querySelector('#mock-card-select') as HTMLSelectElement;
-    const tokenDisplay = wrapper.querySelector('#mock-card-token') as HTMLElement;
-
-    select?.addEventListener('change', () => {
+    select.addEventListener('change', () => {
       const idx = parseInt(select.value, 10);
       this.selectedCard = MOCK_TEST_CARDS[idx];
       this._cardValid$.next(true);
       this._cardError$.next(null);
-      if (tokenDisplay) {
-        tokenDisplay.textContent = `Token: ${this.selectedCard.token}`;
-      }
+      tokenDisplay.textContent = `Token: ${this.selectedCard.token}`;
     });
   }
 

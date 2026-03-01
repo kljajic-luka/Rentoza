@@ -246,5 +246,19 @@ public enum NotificationType {
      * Triggered when a payment charge fails (e.g., remainder charge exceeding deposit).
      * Sent to host/admin for manual follow-up on outstanding balance.
      */
-    PAYMENT_FAILED
+    PAYMENT_FAILED,
+
+    /**
+     * L2: Triggered when a booking payment authorization is expiring or has expired.
+     * Sent to guest advising reauthorization. Previously PAYMENT_CAPTURED was
+     * incorrectly used for this scenario.
+     */
+    PAYMENT_AUTH_EXPIRING,
+
+    /**
+     * L2: Triggered when a security deposit authorization is expiring or has expired.
+     * Sent to guest advising contact with support. Previously DEPOSIT_RELEASED was
+     * incorrectly used for this scenario.
+     */
+    DEPOSIT_AUTH_EXPIRING
 }

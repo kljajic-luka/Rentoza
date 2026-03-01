@@ -556,7 +556,11 @@ public class BookingPaymentService {
             booking.setPaymentStatus("DEPOSIT_AUTHORIZED");
             transitionDeposit(booking, DepositLifecycleStatus.AUTHORIZED, "authorizeDeposit");
             booking.setDepositAuthorizationId(result.getProviderAuthorizationId());
-            booking.setDepositAuthExpiresAt(Instant.now().plusSeconds(authExpiryHours * 3600L));
+            // M2: Use provider-supplied expiry if available; fall back to local constant.
+            // Matches the pattern already used in processBookingPayment().
+            booking.setDepositAuthExpiresAt(result.getExpiresAt() != null
+                    ? result.getExpiresAt()
+                    : Instant.now().plusSeconds(authExpiryHours * 3600L));
             bookingRepository.save(booking);
             depositAuthorizedCounter.increment();
             log.info("[Payment] Deposit authorized for booking {}: {}", bookingId, result.getProviderAuthorizationId());

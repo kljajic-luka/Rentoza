@@ -199,13 +199,18 @@ export class PhotoCompressionService implements OnDestroy {
    */
   async compressImage(
     file: File,
-    options: Partial<CompressionOptions> = {}
+    options: Partial<CompressionOptions> = {},
   ): Promise<CompressionResult> {
     const opts = { ...DEFAULT_OPTIONS, ...options };
 
     // Validate file type
     if (!this.isValidImageType(file)) {
       throw new Error('Nevažeći format slike. Podržani formati: JPEG, PNG, HEIC, WebP');
+    }
+
+    const signatureValid = await this.validateFileSignature(file);
+    if (!signatureValid) {
+      throw new Error('Datoteka nije validna slika. Podržani formati: JPEG, PNG, HEIC, WebP');
     }
 
     this._isCompressing.set(true);
@@ -257,10 +262,10 @@ export class PhotoCompressionService implements OnDestroy {
 
       console.log(
         `[Compression] ${file.name}: ${this.formatSize(file.size)} → ${this.formatSize(
-          result.compressedSize
+          result.compressedSize,
         )} (${result.compressionRatio.toFixed(1)}x) | EXIF: ${
           exifPreserved ? '✓' : '✗'
-        } | Worker: ${this.workerSupported ? '✓' : '✗'}`
+        } | Worker: ${this.workerSupported ? '✓' : '✗'}`,
       );
 
       return { ...result, exifPreserved };
@@ -276,7 +281,7 @@ export class PhotoCompressionService implements OnDestroy {
    */
   private async compressWithWorker(
     file: File,
-    options: CompressionOptions
+    options: CompressionOptions,
   ): Promise<CompressionResult> {
     const requestId = generateUUID();
     const arrayBuffer = await file.arrayBuffer();
@@ -314,7 +319,7 @@ export class PhotoCompressionService implements OnDestroy {
             outputMimeType: options.mimeType,
           },
         },
-        [arrayBuffer]
+        [arrayBuffer],
       );
 
       // Timeout after 30 seconds
@@ -333,7 +338,7 @@ export class PhotoCompressionService implements OnDestroy {
    */
   private async compressOnMainThread(
     file: File,
-    options: CompressionOptions
+    options: CompressionOptions,
   ): Promise<CompressionResult> {
     // Load image
     const img = await this.loadImage(file);
@@ -344,7 +349,7 @@ export class PhotoCompressionService implements OnDestroy {
       img.width,
       img.height,
       options.maxWidth,
-      options.maxHeight
+      options.maxHeight,
     );
     this._compressionProgress.set(40);
 
@@ -361,7 +366,7 @@ export class PhotoCompressionService implements OnDestroy {
    */
   async compressMultiple(
     files: File[],
-    options: Partial<CompressionOptions> = {}
+    options: Partial<CompressionOptions> = {},
   ): Promise<CompressionResult[]> {
     const results: CompressionResult[] = [];
 
@@ -386,6 +391,38 @@ export class PhotoCompressionService implements OnDestroy {
       file.name.toLowerCase().endsWith('.heic') ||
       file.name.toLowerCase().endsWith('.heif')
     );
+  }
+
+  /**
+   * Validate file by reading magic bytes (first 12 bytes).
+   * Matches backend FileSignatureValidator signatures.
+   */
+  async validateFileSignature(file: File): Promise<boolean> {
+    const header = await file.slice(0, 12).arrayBuffer();
+    const bytes = new Uint8Array(header);
+
+    // JPEG: FF D8 FF
+    if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return true;
+    // PNG: 89 50 4E 47
+    if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47)
+      return true;
+    // WebP: RIFF....WEBP
+    if (
+      bytes[0] === 0x52 &&
+      bytes[1] === 0x49 &&
+      bytes[2] === 0x46 &&
+      bytes[3] === 0x46 &&
+      bytes[8] === 0x57 &&
+      bytes[9] === 0x45 &&
+      bytes[10] === 0x42 &&
+      bytes[11] === 0x50
+    )
+      return true;
+    // HEIC/HEIF: ....ftyp (bytes 4-7)
+    if (bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70)
+      return true;
+
+    return false;
   }
 
   /**
@@ -442,7 +479,7 @@ export class PhotoCompressionService implements OnDestroy {
     originalWidth: number,
     originalHeight: number,
     maxWidth: number,
-    maxHeight: number
+    maxHeight: number,
   ): { width: number; height: number } {
     let width = originalWidth;
     let height = originalHeight;
@@ -465,7 +502,7 @@ export class PhotoCompressionService implements OnDestroy {
     img: HTMLImageElement,
     width: number,
     height: number,
-    options: CompressionOptions
+    options: CompressionOptions,
   ): Promise<CompressionResult> {
     const canvas = document.createElement('canvas');
     canvas.width = width;
@@ -496,7 +533,7 @@ export class PhotoCompressionService implements OnDestroy {
 
       quality -= qualityStep;
       this._compressionProgress.set(
-        60 + Math.round(((options.quality - quality) / options.quality) * 30)
+        60 + Math.round(((options.quality - quality) / options.quality) * 30),
       );
     }
 
@@ -531,7 +568,7 @@ export class PhotoCompressionService implements OnDestroy {
   private canvasToBlob(
     canvas: HTMLCanvasElement,
     mimeType: string,
-    quality: number
+    quality: number,
   ): Promise<Blob> {
     return new Promise((resolve, reject) => {
       canvas.toBlob(
@@ -543,7 +580,7 @@ export class PhotoCompressionService implements OnDestroy {
           }
         },
         mimeType,
-        quality
+        quality,
       );
     });
   }
@@ -595,7 +632,7 @@ export class PhotoCompressionService implements OnDestroy {
               const originalOrientation = exifObj['0th'][piexif.ImageIFD.Orientation];
               exifObj['0th'][piexif.ImageIFD.Orientation] = 1; // Normal orientation
               console.log(
-                `[EXIF] Reset Orientation from ${originalOrientation} to 1 (Normal) to prevent double rotation`
+                `[EXIF] Reset Orientation from ${originalOrientation} to 1 (Normal) to prevent double rotation`,
               );
             }
 
@@ -658,8 +695,8 @@ export class PhotoCompressionService implements OnDestroy {
           const blobWithExif = new Blob([ab], { type: mimeString });
           console.log(
             `[EXIF] Injected EXIF into compressed image (${this.formatSize(
-              blob.size
-            )} → ${this.formatSize(blobWithExif.size)})`
+              blob.size,
+            )} → ${this.formatSize(blobWithExif.size)})`,
           );
           resolve(blobWithExif);
         } catch (error) {

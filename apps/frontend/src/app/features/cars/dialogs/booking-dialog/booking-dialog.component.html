@@ -1,10 +1,10 @@
 <div class="booking-dialog">
-  <h2 mat-dialog-title>
+  <h2 mat-dialog-title id="booking-dialog-title">
     <mat-icon>event_available</mat-icon>
     Rezervišite vozilo
   </h2>
 
-  <mat-dialog-content>
+  <mat-dialog-content aria-labelledby="booking-dialog-title">
     <form [formGroup]="bookingForm" class="booking-form">
       <!-- Trip Details Section - Start -->
       <section class="form-section">
@@ -308,7 +308,7 @@
       <mat-divider></mat-divider>
 
       <!-- Price Summary Section -->
-      <section class="form-section summary-section">
+      <section class="form-section summary-section" aria-live="polite" aria-atomic="true">
         <h3 class="section-title">
           <mat-icon>receipt</mat-icon>
           Rezime cene

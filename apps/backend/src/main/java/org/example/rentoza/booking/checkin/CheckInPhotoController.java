@@ -3,6 +3,7 @@ package org.example.rentoza.booking.checkin;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.booking.photo.*;
+import org.example.rentoza.booking.util.ClientIpResolver;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
@@ -16,6 +17,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
+import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -78,12 +80,13 @@ public class CheckInPhotoController {
     @ResponseBody
     public ResponseEntity<Resource> servePhoto(
             @PathVariable String sessionId,
-            @PathVariable String filename) {
-        
+            @PathVariable String filename,
+            HttpServletRequest request) {
+
         // Extract user ID from JWT token
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         Long currentUserId = null;
-        
+
         if (auth != null && auth.getPrincipal() instanceof Jwt) {
             Jwt jwt = (Jwt) auth.getPrincipal();
             try {
@@ -96,85 +99,86 @@ public class CheckInPhotoController {
             log.warn("[CheckIn-P0-1] No JWT authentication found");
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
-        
-        String clientIp = getClientIp();
-        
+
+        String clientIp = ClientIpResolver.resolve(request);
+        String userAgent = extractUserAgent(request);
+
         // Sanitize inputs to prevent directory traversal
         if (containsPathTraversal(sessionId) || containsPathTraversal(filename)) {
-            log.warn("[CheckIn-P0-1] Rejected directory traversal attempt: session={}, file={}, user={}", 
+            log.warn("[CheckIn-P0-1] Rejected directory traversal attempt: session={}, file={}, user={}",
                 sessionId, filename, currentUserId);
-            accessLogService.logPhotoAccessDenied(currentUserId, null, null, 400, "TRAVERSAL_ATTEMPT");
+            accessLogService.logPhotoAccessDenied(currentUserId, null, null, 400, "TRAVERSAL_ATTEMPT", clientIp, userAgent);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
         }
-        
+
         try {
             // P0-3: Apply rate limiting
             if (!rateLimitService.allowPhotoAccess(currentUserId, clientIp)) {
                 log.warn("[CheckIn-P0-3] Rate limit exceeded for user: {} from IP: {}", currentUserId, clientIp);
-                accessLogService.logRateLimitViolation(currentUserId, null);
-                
+                accessLogService.logRateLimitViolation(currentUserId, null, clientIp, userAgent);
+
                 return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
                         .header("Retry-After", "600")
                         .body(null);
             }
-            
+
             // Construct the file path
             Path filePath = Paths.get(uploadDir, sessionId, filename).normalize();
-            
+
             // Verify the path is within uploadDir (extra security)
             Path uploadDirPath = Paths.get(uploadDir).toAbsolutePath().normalize();
             Path absoluteFilePath = filePath.toAbsolutePath().normalize();
-            
+
             if (!absoluteFilePath.startsWith(uploadDirPath)) {
                 log.warn("[CheckIn-P0-1] Path escape attempt: {}, user={}", filePath, currentUserId);
-                accessLogService.logPhotoAccessDenied(currentUserId, null, null, 403, "PATH_ESCAPE");
+                accessLogService.logPhotoAccessDenied(currentUserId, null, null, 403, "PATH_ESCAPE", clientIp, userAgent);
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
             }
-            
+
             // Check file exists
             if (!Files.exists(filePath) || !Files.isReadable(filePath)) {
                 log.debug("[CheckIn] Photo not found: {}, user={}", filePath, currentUserId);
-                accessLogService.logPhotoAccessDenied(currentUserId, null, null, 404, "NOT_FOUND");
+                accessLogService.logPhotoAccessDenied(currentUserId, null, null, 404, "NOT_FOUND", clientIp, userAgent);
                 return ResponseEntity.notFound().build();
             }
-            
+
             // P0-1: Verify user has access to this photo
             // Extract booking ID from session ID lookup (you may need to add a query method)
             Long photoId = extractPhotoIdFromPath(filePath);
             Long bookingId = extractBookingIdFromSessionId(sessionId);
-            
+
             if (!photoAccessService.canUserAccessBooking(bookingId, currentUserId)) {
-                log.warn("[CheckIn-P0-1] Unauthorized photo access attempt: user={}, booking={}, session={}", 
+                log.warn("[CheckIn-P0-1] Unauthorized photo access attempt: user={}, booking={}, session={}",
                     currentUserId, bookingId, sessionId);
-                accessLogService.logPhotoAccessDenied(currentUserId, bookingId, photoId, 403, "NOT_PARTICIPANT");
+                accessLogService.logPhotoAccessDenied(currentUserId, bookingId, photoId, 403, "NOT_PARTICIPANT", clientIp, userAgent);
                 return ResponseEntity.status(HttpStatus.FORBIDDEN)
                         .body(null);
             }
-            
+
             // Load file as resource
             Resource resource = new FileSystemResource(filePath);
-            
+
             // Determine content type
             String contentType = Files.probeContentType(filePath);
             if (contentType == null) {
                 contentType = "image/jpeg";
             }
-            
-            log.debug("[CheckIn-P0-1] Serving photo: {}, user: {}, booking: {}", 
+
+            log.debug("[CheckIn-P0-1] Serving photo: {}, user: {}, booking: {}",
                 filePath, currentUserId, bookingId);
-            
+
             // Log access for audit trail
-            accessLogService.logPhotoAccess(currentUserId, bookingId, photoId, "GET_SINGLE");
-            
+            accessLogService.logPhotoAccess(currentUserId, bookingId, photoId, "GET_SINGLE", clientIp, userAgent);
+
             return ResponseEntity.ok()
                     .contentType(MediaType.parseMediaType(contentType))
                     .header(HttpHeaders.CACHE_CONTROL, "max-age=3600, public")
                     .body(resource);
-                    
+
         } catch (Exception e) {
-            log.error("[CheckIn-P0-1] Error serving photo: session={}, file={}, user={}", 
+            log.error("[CheckIn-P0-1] Error serving photo: session={}, file={}, user={}",
                 sessionId, filename, currentUserId, e);
-            accessLogService.logPhotoAccessDenied(currentUserId, null, null, 500, "INTERNAL_ERROR");
+            accessLogService.logPhotoAccessDenied(currentUserId, null, null, 500, "INTERNAL_ERROR", clientIp, userAgent);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
@@ -218,38 +222,17 @@ public class CheckInPhotoController {
     }
 
     /**
-     * Get client IP address from request context.
-     * Handles proxies and load balancers via X-Forwarded-For.
+     * Get client IP address using trusted proxy-aware resolver.
      */
-    private String getClientIp() {
-        try {
-            org.springframework.web.context.request.ServletRequestAttributes attributes =
-                    (org.springframework.web.context.request.ServletRequestAttributes) 
-                    org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
-            
-            if (attributes == null) {
-                return "UNKNOWN";
-            }
-            
-            jakarta.servlet.http.HttpServletRequest request = attributes.getRequest();
-            
-            // Check X-Forwarded-For header (load balancer / proxy)
-            String xfForwardedFor = request.getHeader("X-Forwarded-For");
-            if (xfForwardedFor != null && !xfForwardedFor.isEmpty()) {
-                return xfForwardedFor.split(",")[0].trim();
-            }
-            
-            // Check X-Client-IP header
-            String xClientIp = request.getHeader("X-Client-IP");
-            if (xClientIp != null && !xClientIp.isEmpty()) {
-                return xClientIp;
-            }
-            
-            // Fall back to direct remote address
-            return request.getRemoteAddr() != null ? request.getRemoteAddr() : "UNKNOWN";
-        } catch (Exception e) {
-            log.debug("[CheckIn] Error extracting client IP", e);
-            return "UNKNOWN";
+    private String getClientIp(HttpServletRequest request) {
+        return ClientIpResolver.resolve(request);
+    }
+
+    private String extractUserAgent(HttpServletRequest request) {
+        if (request == null) {
+            return null;
         }
+        String ua = request.getHeader("User-Agent");
+        return ua != null && ua.length() <= 500 ? ua : null;
     }
 }

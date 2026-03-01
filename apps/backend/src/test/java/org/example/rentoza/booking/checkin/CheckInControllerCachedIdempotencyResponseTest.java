@@ -36,6 +36,7 @@ class CheckInControllerCachedIdempotencyResponseTest {
     @Mock private IdempotencyService idempotencyService;
     @Mock private CurrentUser currentUser;
     @Mock private CheckInResponseOptimizer responseOptimizer;
+    @Mock private org.example.rentoza.booking.photo.PhotoRateLimitService photoRateLimitService;
 
     private ObjectMapper objectMapper;
     private CheckInController controller;
@@ -45,7 +46,8 @@ class CheckInControllerCachedIdempotencyResponseTest {
         objectMapper = new ObjectMapper();
         controller = new CheckInController(
                 checkInService, photoService, idempotencyService,
-                currentUser, responseOptimizer, objectMapper, new SimpleMeterRegistry());
+                currentUser, responseOptimizer, objectMapper, new SimpleMeterRegistry(),
+                photoRateLimitService);
     }
 
     @Test

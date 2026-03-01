@@ -9,12 +9,14 @@
  */
 import { Injectable, inject, signal, computed } from '@angular/core';
 import { HttpClient, HttpEvent, HttpEventType } from '@angular/common/http';
-import { Observable, BehaviorSubject, interval, of, throwError } from 'rxjs';
-import { map, tap, catchError, takeWhile, switchMap, filter } from 'rxjs/operators';
+import { Observable, BehaviorSubject, interval, timer, of, throwError } from 'rxjs';
+import { map, tap, catchError, switchMap, filter } from 'rxjs/operators';
 
 import { environment } from '@environments/environment';
 import { PhotoCompressionService } from './photo-compression.service';
 import { GeolocationService } from './geolocation.service';
+import { LoggerService } from './logger.service';
+import { AnalyticsService } from './analytics.service';
 import {
   CheckOutStatusDTO,
   GuestCheckOutSubmissionDTO,
@@ -41,6 +43,8 @@ export class CheckoutService {
   private http = inject(HttpClient);
   private compressionService = inject(PhotoCompressionService);
   private geolocationService = inject(GeolocationService);
+  private logger = inject(LoggerService);
+  private analytics = inject(AnalyticsService);
 
   private readonly apiUrl = `${environment.baseApiUrl}/bookings`;
 
@@ -67,36 +71,36 @@ export class CheckoutService {
    */
   renderDecision = computed((): CheckoutRenderDecision => {
     const status = this._currentStatus();
-    console.log('[CheckoutService] renderDecision - status:', status);
+    this.logger.log('[CheckoutService] renderDecision - status:', status);
 
     if (this._isLoading() && !status) return 'LOADING';
     if (!status) {
-      console.log('[CheckoutService] renderDecision -> NOT_READY (no status)');
+      this.logger.log('[CheckoutService] renderDecision -> NOT_READY (no status)');
       return 'NOT_READY';
     }
 
     const bookingStatus = status.status;
-    console.log('[CheckoutService] bookingStatus:', bookingStatus);
+    this.logger.log('[CheckoutService] bookingStatus:', bookingStatus);
 
     // Determine role
     const isHost = status.isHost;
     const isGuest = status.isGuest;
-    console.log('[CheckoutService] isHost:', isHost, 'isGuest:', isGuest);
+    this.logger.log('[CheckoutService] isHost:', isHost, 'isGuest:', isGuest);
 
     // Trip not yet at checkout
     if (bookingStatus === 'IN_TRIP') {
-      console.log('[CheckoutService] renderDecision -> IN_TRIP');
+      this.logger.log('[CheckoutService] renderDecision -> IN_TRIP');
       return 'IN_TRIP';
     }
 
     // Checkout open - guest can submit
     if (bookingStatus === 'CHECKOUT_OPEN') {
       if (isGuest) {
-        console.log('[CheckoutService] renderDecision -> GUEST_EDIT');
+        this.logger.log('[CheckoutService] renderDecision -> GUEST_EDIT');
         return 'GUEST_EDIT';
       }
       if (isHost) {
-        console.log('[CheckoutService] renderDecision -> HOST_WAITING');
+        this.logger.log('[CheckoutService] renderDecision -> HOST_WAITING');
         return 'HOST_WAITING';
       }
     }
@@ -104,35 +108,35 @@ export class CheckoutService {
     // Guest completed - waiting for host
     if (bookingStatus === 'CHECKOUT_GUEST_COMPLETE') {
       if (isGuest) {
-        console.log('[CheckoutService] renderDecision -> GUEST_WAITING');
+        this.logger.log('[CheckoutService] renderDecision -> GUEST_WAITING');
         return 'GUEST_WAITING';
       }
       if (isHost) {
-        console.log('[CheckoutService] renderDecision -> HOST_CONFIRM');
+        this.logger.log('[CheckoutService] renderDecision -> HOST_CONFIRM');
         return 'HOST_CONFIRM';
       }
     }
 
     // Host completed or fully completed
     if (bookingStatus === 'CHECKOUT_HOST_COMPLETE' || bookingStatus === 'COMPLETED') {
-      console.log('[CheckoutService] renderDecision -> COMPLETE');
+      this.logger.log('[CheckoutService] renderDecision -> COMPLETE');
       return 'COMPLETE';
     }
 
     // P1 FIX: Handle CHECKOUT_DAMAGE_DISPUTE status
     if (bookingStatus === 'CHECKOUT_DAMAGE_DISPUTE') {
       if (isGuest) {
-        console.log('[CheckoutService] renderDecision -> DAMAGE_DISPUTE_GUEST');
+        this.logger.log('[CheckoutService] renderDecision -> DAMAGE_DISPUTE_GUEST');
         return 'DAMAGE_DISPUTE_GUEST';
       }
       if (isHost) {
-        console.log('[CheckoutService] renderDecision -> DAMAGE_DISPUTE_HOST');
+        this.logger.log('[CheckoutService] renderDecision -> DAMAGE_DISPUTE_HOST');
         return 'DAMAGE_DISPUTE_HOST';
       }
     }
 
-    console.log('[CheckoutService] renderDecision -> NOT_READY (no matching condition)');
-    console.log(
+    this.logger.log('[CheckoutService] renderDecision -> NOT_READY (no matching condition)');
+    this.logger.log(
       '[CheckoutService] Unhandled status:',
       bookingStatus,
       'isHost:',
@@ -168,19 +172,32 @@ export class CheckoutService {
   /**
    * Start polling for status updates.
    */
-  startPolling(bookingId: number, intervalMs: number = 10000): void {
+  startPolling(bookingId: number): void {
     this.stopPolling();
 
-    this.pollingSubscription = interval(intervalMs)
-      .pipe(
-        takeWhile(() => {
+    let pollCount = 0;
+    const getInterval = () => {
+      // First 6 polls: 5s (first 30 seconds — user is actively waiting)
+      // Next 12 polls: 10s (next 2 minutes)
+      // After that: 30s (long-running checkout)
+      if (pollCount < 6) return 5000;
+      if (pollCount < 18) return 10000;
+      return 30000;
+    };
+
+    const poll = () => {
+      this.pollingSubscription = timer(getInterval())
+        .pipe(switchMap(() => this.loadStatus(bookingId).pipe(catchError(() => of(null)))))
+        .subscribe(() => {
+          pollCount++;
           const status = this._currentStatus();
-          // Stop polling when checkout is complete
-          return !status || status.status !== 'COMPLETED';
-        }),
-        switchMap(() => this.loadStatus(bookingId).pipe(catchError(() => of(null)))),
-      )
-      .subscribe();
+          if (!status || status.status !== 'COMPLETED') {
+            poll(); // Schedule next poll
+          }
+        });
+    };
+
+    poll();
   }
 
   /**
@@ -244,7 +261,7 @@ export class CheckoutService {
         this.performUpload(bookingId, compressed.blob, slotId, photoType);
       },
       (err: Error) => {
-        console.error('[CheckoutService] Compression failed:', err);
+        this.logger.error('[CheckoutService] Compression failed:', err);
         this.updateProgress(slotId, {
           state: 'error',
           progress: 0,
@@ -291,7 +308,7 @@ export class CheckoutService {
           }
         },
         error: (err) => {
-          console.error('[CheckoutService] Upload failed:', err);
+          this.logger.error('[CheckoutService] Upload failed:', err);
           this.updateProgress(slotId, {
             state: 'error',
             progress: 0,
@@ -362,6 +379,7 @@ export class CheckoutService {
         tap((status) => {
           this._currentStatus.set(status);
           this._isLoading.set(false);
+          this.analytics.track('checkout.guest_complete', { bookingId });
         }),
         catchError((err) => {
           this._isLoading.set(false);
@@ -492,6 +510,7 @@ export class CheckoutService {
         tap((status) => {
           this._currentStatus.set(status);
           this._isLoading.set(false);
+          this.analytics.track('checkout.completed', { bookingId, conditionAccepted });
         }),
         catchError((err) => {
           this._isLoading.set(false);

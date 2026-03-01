@@ -42,7 +42,12 @@ import { CheckoutDamageDisputeComponent } from './checkout-damage-dispute.compon
     <div class="checkout-wizard">
       <!-- Header -->
       <div class="wizard-header">
-        <button mat-icon-button (click)="goBack()" class="back-button">
+        <button
+          mat-icon-button
+          (click)="goBack()"
+          class="back-button"
+          aria-label="Nazad na rezervacije"
+        >
           <mat-icon>arrow_back</mat-icon>
         </button>
         <h1>Checkout - Vraćanje vozila</h1>
@@ -50,7 +55,7 @@ import { CheckoutDamageDisputeComponent } from './checkout-damage-dispute.compon
 
       <!-- Loading State -->
       @if (checkoutService.renderDecision() === 'LOADING') {
-        <div class="loading-container">
+        <div class="loading-container" role="status" aria-live="polite">
           <mat-spinner diameter="48"></mat-spinner>
           <p>Učitavanje statusa checkout-a...</p>
         </div>
@@ -58,7 +63,7 @@ import { CheckoutDamageDisputeComponent } from './checkout-damage-dispute.compon
 
       <!-- Error State -->
       @if (checkoutService.error()) {
-        <mat-card class="error-card">
+        <mat-card class="error-card" role="alert">
           <mat-card-content>
             <mat-icon color="warn">error</mat-icon>
             <p>{{ checkoutService.error() }}</p>
@@ -292,7 +297,7 @@ export class CheckoutWizardComponent implements OnInit, OnDestroy {
     this.loadStatus();
 
     // Start polling
-    this.checkoutService.startPolling(this.bookingId, 15000);
+    this.checkoutService.startPolling(this.bookingId);
   }
 
   ngOnDestroy(): void {

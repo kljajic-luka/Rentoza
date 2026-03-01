@@ -999,23 +999,25 @@ public class CheckInPhotoService {
     private void validateFileSignature(MultipartFile file) throws IOException {
         byte[] header = new byte[12];
         int bytesRead;
-        
+
         try (var inputStream = file.getInputStream()) {
             bytesRead = inputStream.read(header);
         }
-        
+
         if (bytesRead < 12) {
             throw new IllegalArgumentException("Datoteka je prekratka da bi bila validna slika");
         }
-        
-        if (isJpeg(header) || isPng(header) || isHeic(header) || isWebP(header)) {
-            return; // Valid image signature
+
+        // WI-7: Delegate to shared FileSignatureValidator utility
+        try {
+            org.example.rentoza.booking.util.FileSignatureValidator.validateImageSignature(
+                    header, file.getContentType());
+        } catch (IllegalArgumentException e) {
+            log.warn("[Security] Invalid file signature detected. First 12 bytes: {}",
+                bytesToHex(header));
+            throw new IllegalArgumentException(
+                "Nevalidna datoteka. Dozvoljen format: JPEG, PNG, HEIC, WebP");
         }
-        
-        log.warn("[Security] Invalid file signature detected. First 12 bytes: {}", 
-            bytesToHex(header));
-        throw new IllegalArgumentException(
-            "Nevalidna datoteka. Dozvoljen format: JPEG, PNG, HEIC, WebP");
     }
 
     /**

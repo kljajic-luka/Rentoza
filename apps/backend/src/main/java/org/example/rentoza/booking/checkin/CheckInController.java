@@ -62,6 +62,7 @@ public class CheckInController {
     private final CheckInResponseOptimizer responseOptimizer;
     private final ObjectMapper objectMapper;
     private final Counter photoUploadCounter;
+    private final org.example.rentoza.booking.photo.PhotoRateLimitService photoRateLimitService;
 
     public CheckInController(
             CheckInService checkInService,
@@ -70,14 +71,16 @@ public class CheckInController {
             CurrentUser currentUser,
             CheckInResponseOptimizer responseOptimizer,
             ObjectMapper objectMapper,
-            MeterRegistry meterRegistry) {
+            MeterRegistry meterRegistry,
+            org.example.rentoza.booking.photo.PhotoRateLimitService photoRateLimitService) {
         this.checkInService = checkInService;
         this.photoService = photoService;
         this.idempotencyService = idempotencyService;
         this.currentUser = currentUser;
         this.responseOptimizer = responseOptimizer;
         this.objectMapper = objectMapper;
-        
+        this.photoRateLimitService = photoRateLimitService;
+
         this.photoUploadCounter = Counter.builder("checkin.photo.upload")
                 .description("Check-in photo uploads")
                 .register(meterRegistry);
@@ -161,6 +164,16 @@ public class CheckInController {
             @RequestParam(value = "clientLongitude", required = false) BigDecimal clientLongitude) throws IOException {
 
         Long userId = currentUser.id();
+
+        // WI-12: Rate limit photo uploads
+        String clientIp = getClientIp();
+        if (!photoRateLimitService.allowPhotoUpload(userId, clientIp)) {
+            log.warn("[CheckIn] Upload rate limit exceeded: userId={}, ip={}", userId, clientIp);
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                    .header("Retry-After", "600")
+                    .build();
+        }
+
         log.info("[CheckIn] RAW UPLOAD REQUEST: bookingId={}, photoType={}", bookingId, photoType);
         log.info("[CheckIn] RAW PARAM: clientTimestampStr='{}'", clientTimestampStr);
         log.info("[CheckIn] RAW PARAM: clientLatitude={}", clientLatitude);
@@ -610,6 +623,29 @@ public class CheckInController {
         } catch (Exception ex) {
             log.warn("[CheckIn] Failed to deserialize cached idempotency body: {}", ex.getMessage());
             return null;
+        }
+    }
+
+    /**
+     * Get client IP address from request context.
+     * Handles proxies and load balancers via X-Forwarded-For.
+     */
+    private String getClientIp() {
+        try {
+            org.springframework.web.context.request.ServletRequestAttributes attributes =
+                    (org.springframework.web.context.request.ServletRequestAttributes)
+                    org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+            if (attributes == null) {
+                return "UNKNOWN";
+            }
+            jakarta.servlet.http.HttpServletRequest request = attributes.getRequest();
+            String xff = request.getHeader("X-Forwarded-For");
+            if (xff != null && !xff.isEmpty()) {
+                return xff.split(",")[0].trim();
+            }
+            return request.getRemoteAddr() != null ? request.getRemoteAddr() : "UNKNOWN";
+        } catch (Exception e) {
+            return "UNKNOWN";
         }
     }
 }

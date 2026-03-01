@@ -46,6 +46,8 @@ import { PhotoCompressionService } from './photo-compression.service';
 import { GeolocationService } from './geolocation.service';
 import { OfflineQueueService } from './offline-queue.service';
 import { WebSocketService, WebSocketConnectionStatus } from './websocket.service';
+import { LoggerService } from './logger.service';
+import { AnalyticsService } from './analytics.service';
 
 /**
  * Custom error class for photo rejection (EXIF validation failure).
@@ -100,6 +102,8 @@ export class CheckInService implements OnDestroy {
   private readonly geolocationService = inject(GeolocationService);
   private readonly offlineQueueService = inject(OfflineQueueService);
   private readonly webSocketService = inject(WebSocketService);
+  private readonly logger = inject(LoggerService);
+  private readonly analytics = inject(AnalyticsService);
 
   private readonly baseUrl = `${environment.baseApiUrl}/bookings`;
   private readonly destroy$ = new Subject<void>();
@@ -304,13 +308,13 @@ export class CheckInService implements OnDestroy {
       ) {
         // WebSocket down - start polling as fallback
         if (!this.pollingInterval && this.currentBookingId) {
-          console.log('[CheckIn] WebSocket disconnected, starting polling fallback');
+          this.logger.log('[CheckIn] WebSocket disconnected, starting polling fallback');
           this.startPolling(this.currentBookingId, pollingIntervalMs);
         }
       } else if (status === WebSocketConnectionStatus.CONNECTED) {
         // WebSocket connected - stop polling
         if (this.pollingInterval) {
-          console.log('[CheckIn] WebSocket connected, stopping polling');
+          this.logger.log('[CheckIn] WebSocket connected, stopping polling');
           this.stopPolling();
         }
         // Re-subscribe if needed
@@ -336,7 +340,7 @@ export class CheckInService implements OnDestroy {
     this.webSocketService.subscribe(destination, (message) => {
       try {
         const status = JSON.parse(message.body) as CheckInStatusDTO;
-        console.log('[CheckIn] WebSocket update received:', status.status);
+        this.logger.log('[CheckIn] WebSocket update received:', status.status);
 
         // Update state with fresh status from WebSocket
         this._status.set(status);
@@ -371,11 +375,11 @@ export class CheckInService implements OnDestroy {
           this._uploadProgress.set(progress);
         }
       } catch (error) {
-        console.error('[CheckIn] Error processing WebSocket message:', error);
+        this.logger.error('[CheckIn] Error processing WebSocket message:', error);
       }
     });
 
-    console.log('[CheckIn] Subscribed to WebSocket:', destination);
+    this.logger.log('[CheckIn] Subscribed to WebSocket:', destination);
   }
 
   /**
@@ -548,7 +552,7 @@ export class CheckInService implements OnDestroy {
             );
 
             // Log rejection for debugging
-            console.warn(
+            this.logger.warn(
               `[CheckIn] Photo REJECTED: ${photoType}, code=${rejectionError.errorCode}, attempt=${retryCount}`,
             );
           } else {
@@ -623,6 +627,7 @@ export class CheckInService implements OnDestroy {
           // Server response overwrites optimistic state
           this._status.set(status);
           this.updateStepFromStatus(status);
+          this.analytics.track('checkin.host_complete', { bookingId });
         }),
         catchError((error) => {
           // Rollback on error
@@ -698,11 +703,13 @@ export class CheckInService implements OnDestroy {
       conditionComment,
       hotspots: hotspots as any,
       // VAL-004: Include dispute fields when guest is reporting damage
-      ...(disputeFields?.disputePreExistingDamage ? {
-        disputePreExistingDamage: true,
-        damageDisputeDescription: disputeFields.damageDisputeDescription,
-        disputedPhotoIds: disputeFields.disputedPhotoIds,
-      } : {}),
+      ...(disputeFields?.disputePreExistingDamage
+        ? {
+            disputePreExistingDamage: true,
+            damageDisputeDescription: disputeFields.damageDisputeDescription,
+            disputedPhotoIds: disputeFields.disputedPhotoIds,
+          }
+        : {}),
     };
 
     return this.http
@@ -794,6 +801,7 @@ export class CheckInService implements OnDestroy {
           this._status.set(status);
           this.updateStepFromStatus(status);
           this.updatePhaseFromStatus(status);
+          this.analytics.track('checkin.handshake_complete', { bookingId });
         }),
         catchError((error) => {
           // Rollback on error

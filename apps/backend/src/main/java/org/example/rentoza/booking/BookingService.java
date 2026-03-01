@@ -6,6 +6,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.booking.cancellation.CancellationPolicyService;
 import org.example.rentoza.booking.cancellation.CancellationReason;
+import org.example.rentoza.booking.validation.BookingEdgeCaseValidator;
 import org.example.rentoza.booking.dto.BookingRequestDTO;
 import org.example.rentoza.booking.dto.BookingResponseDTO;
 import org.example.rentoza.booking.dto.CancellationPreviewDTO;
@@ -92,6 +93,7 @@ public class BookingService {
     private final RenterVerificationService renterVerificationService;
     private final org.example.rentoza.payment.BookingPaymentService bookingPaymentService;
     private final SchedulerIdempotencyService lockService;
+    private final BookingEdgeCaseValidator edgeCaseValidator;
 
     @org.springframework.beans.factory.annotation.Value("${app.booking.host-approval.enabled:false}")
     private boolean approvalEnabled;
@@ -121,7 +123,8 @@ public class BookingService {
                           DeliveryFeeCalculator deliveryFeeCalculator,
                           RenterVerificationService renterVerificationService,
                           org.example.rentoza.payment.BookingPaymentService bookingPaymentService,
-                          SchedulerIdempotencyService lockService) {
+                          SchedulerIdempotencyService lockService,
+                          BookingEdgeCaseValidator edgeCaseValidator) {
         this.repo = repo;
         this.carRepo = carRepo;
         this.userRepo = userRepo;
@@ -134,6 +137,7 @@ public class BookingService {
         this.renterVerificationService = renterVerificationService;
         this.bookingPaymentService = bookingPaymentService;
         this.lockService = lockService;
+        this.edgeCaseValidator = edgeCaseValidator;
     }
 
     @Transactional
@@ -187,6 +191,15 @@ public class BookingService {
         if (!car.isAvailable()) {
             throw new org.example.rentoza.exception.ValidationException("This car is currently unavailable for booking.");
         }
+
+        // ========================================================================
+        // EDGE CASE VALIDATION: Fail-fast on bad temporal input
+        // ========================================================================
+        // Validates DST gap safety, leap year correctness, midnight boundaries,
+        // chronological order, and duration limits BEFORE acquiring the pessimistic
+        // overlap lock. This avoids holding row locks for requests that would fail
+        // validation anyway.
+        edgeCaseValidator.validateBookingTimes(dto.getStartTime(), dto.getEndTime());
 
         // ========================================================================
         // CONCURRENCY HARDENING: Pessimistic Lock Before Booking Creation
@@ -1120,15 +1133,83 @@ public class BookingService {
     }
 
     /**
+     * Paginated version of getMyBookings for scalable access.
+     *
+     * @param userEmail Authenticated user's email
+     * @param page Zero-based page index
+     * @param size Page size (max entries per page)
+     * @return Page of UserBookingResponseDTO
+     */
+    @Transactional(readOnly = true)
+    public org.springframework.data.domain.Page<UserBookingResponseDTO> getMyBookingsPaged(String userEmail, int page, int size) {
+
+        User user = userRepo.findByEmail(userEmail)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page, size);
+        org.springframework.data.domain.Page<Booking> bookingPage = repo.findByRenterIdWithDetailsPaged(user.getId(), pageable);
+
+        if (bookingPage.isEmpty()) {
+            return bookingPage.map(b -> null); // empty page with correct metadata
+        }
+
+        // Fetch reviews for this page of bookings
+        List<Long> bookingIds = bookingPage.getContent().stream()
+                .map(Booking::getId)
+                .collect(Collectors.toList());
+
+        Map<Long, Review> reviewsByBookingId = reviewRepo
+                .findByBookingIdInAndDirection(bookingIds, ReviewDirection.FROM_USER)
+                .stream()
+                .collect(Collectors.toMap(
+                        r -> r.getBooking().getId(),
+                        r -> r,
+                        (existing, replacement) -> existing
+                ));
+
+        return bookingPage.map(booking -> {
+            Car car = booking.getCar();
+            Review review = reviewsByBookingId.get(booking.getId());
+
+            return new UserBookingResponseDTO(
+                    booking.getId(),
+                    car.getId(),
+                    car.getBrand(),
+                    car.getModel(),
+                    car.getYear(),
+                    car.getImageUrl(),
+                    car.getLocation(),
+                    car.getPricePerDay(),
+                    booking.getStartTime(),
+                    booking.getEndTime(),
+                    booking.getTotalPrice(),
+                    booking.getStatus().name(),
+                    booking.getDecisionDeadlineAt(),
+                    booking.getApprovedAt(),
+                    booking.getDeclinedAt(),
+                    booking.getDeclineReason(),
+                    review != null,
+                    review != null ? review.getRating() : null,
+                    review != null ? review.getComment() : null
+            );
+        });
+    }
+
+    /**
      * Scheduled task to automatically mark overdue ACTIVE bookings as COMPLETED.
      * Runs every hour to clean up orphaned bookings where the trip window elapsed
      * without check-in ever opening (e.g., host never approved, scheduler timing gap).
      *
      * <p><b>F-AC-1 FIX:</b> IN_TRIP bookings are deliberately NOT handled here.
-     * They must go through the checkout saga (CheckOutScheduler → CheckoutSagaOrchestrator)
+     * They must go through the checkout saga (CheckOutScheduler -> CheckoutSagaOrchestrator)
      * to ensure security deposit settlement, damage assessment, and late fee calculation.
      * Without this exclusion, this hourly scheduler races the 6-hourly ghost trip handler
      * and would mark bookings COMPLETED before deposit capture, causing deposit loss.</p>
+     *
+     * <p><b>WI-14 Dispute safety:</b> Safe by state machine design. The repository query
+     * ({@code findOverdueBookings}) targets ACTIVE-only, so disputed bookings
+     * ({@code CHECK_IN_DISPUTE}, {@code CHECKOUT_DAMAGE_DISPUTE}) are never returned
+     * and therefore never auto-completed.</p>
      *
      * <p>G6-ext: Uses distributed locking to prevent duplicate completions
      * and notification noise in multi-instance deployments.</p>
@@ -1146,18 +1227,27 @@ public class BookingService {
             // Europe/Belgrade local timestamps. Using system default (e.g. UTC) would cause
             // bookings to be auto-completed 1-2 hours early depending on DST offset.
             LocalDateTime now = LocalDateTime.now(SERBIA_ZONE);
-            List<Booking> overdueBookings = repo.findOverdueBookings(now);
+            int totalCompleted = 0;
+            org.springframework.data.domain.Page<Booking> page;
 
-            if (!overdueBookings.isEmpty()) {
-                log.info("Auto-completing {} overdue bookings", overdueBookings.size());
+            do {
+                page = repo.findOverdueBookingsPaged(
+                        BookingStatus.ACTIVE, now,
+                        org.springframework.data.domain.PageRequest.of(0, 50));
 
-                for (Booking booking : overdueBookings) {
+                for (Booking booking : page.getContent()) {
                     booking.setStatus(BookingStatus.COMPLETED);
                     log.debug("Auto-completed booking ID {} (end time: {})", booking.getId(), booking.getEndTime());
                 }
 
-                repo.saveAll(overdueBookings);
-                log.info("Successfully auto-completed {} bookings", overdueBookings.size());
+                if (!page.isEmpty()) {
+                    repo.saveAll(page.getContent());
+                    totalCompleted += page.getNumberOfElements();
+                }
+            } while (!page.isEmpty());
+
+            if (totalCompleted > 0) {
+                log.info("Successfully auto-completed {} bookings", totalCompleted);
             }
         } catch (Exception e) {
             log.error("Error during auto-completion of overdue bookings", e);

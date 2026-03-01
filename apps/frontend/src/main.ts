@@ -1,5 +1,6 @@
 import {
   APP_INITIALIZER,
+  ErrorHandler,
   importProvidersFrom,
   provideZoneChangeDetection,
   isDevMode,
@@ -25,6 +26,7 @@ import { AuthService } from '@core/auth/auth.service';
 import { PerformanceMonitoringService } from '@core/services/performance-monitoring.service';
 import { OverlayThemeService } from '@core/services/overlay-theme.service';
 import { environment } from '@environments/environment';
+import { GlobalErrorHandler } from '@core/error/global-error-handler';
 
 function initializeAuth(authService: AuthService): () => Promise<void> {
   return async () => {
@@ -51,6 +53,7 @@ function initializeOverlayTheme(overlayThemeService: OverlayThemeService): () =>
 
 bootstrapApplication(App, {
   providers: [
+    { provide: ErrorHandler, useClass: GlobalErrorHandler },
     provideZoneChangeDetection({ eventCoalescing: true }),
     provideRouter(routes),
     {

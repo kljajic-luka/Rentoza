@@ -8,6 +8,8 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 
+import org.example.rentoza.booking.util.FileSignatureValidator;
+
 /**
  * P0-2 FIX: Dedicated service for storing PII photos securely.
  * 
@@ -53,9 +55,12 @@ public class PiiPhotoStorageService {
      * @throws IllegalStateException if Supabase is not enabled
      * @throws IOException if storage fails
      */
-    public void storePiiPhoto(String bucketName, String storageKey, byte[] photoBytes, String mimeType) 
+    public void storePiiPhoto(String bucketName, String storageKey, byte[] photoBytes, String mimeType)
             throws IOException {
-        
+
+        // WI-7: Validate magic bytes before upload to prevent malicious file injection
+        FileSignatureValidator.validateImageSignature(photoBytes, mimeType);
+
         // Validate configuration
         if (!supabaseEnabled) {
             log.error("[PII-Storage] CRITICAL: Supabase is not enabled. Cannot store PII. bucketName={}", bucketName);

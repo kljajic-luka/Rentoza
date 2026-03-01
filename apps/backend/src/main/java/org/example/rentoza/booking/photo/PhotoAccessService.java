@@ -9,7 +9,9 @@ import org.example.rentoza.booking.checkin.CheckInPhoto;
 import org.example.rentoza.booking.checkin.GuestCheckInPhoto;
 import org.example.rentoza.booking.checkout.HostCheckoutPhoto;
 import org.example.rentoza.exception.ResourceNotFoundException;
+import org.example.rentoza.user.Role;
 import org.example.rentoza.user.User;
+import org.example.rentoza.user.UserRepository;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import java.util.Optional;
@@ -36,21 +38,29 @@ import java.util.Optional;
 public class PhotoAccessService {
 
     private final BookingRepository bookingRepository;
+    private final UserRepository userRepository;
     private final PhotoVisibilityMatrix visibilityMatrix;
 
     /**
      * Simplified version: check if user can access any photo in a booking.
      * Full authorization is handled by PhotoVisibilityMatrix.
-     * 
+     *
      * @param bookingId Booking ID
      * @param userId Current user ID
      * @throws AccessDeniedException if user cannot access this booking
      * @throws ResourceNotFoundException if booking not found
      */
     public void authorizePhotoAccess(Long bookingId, Long userId) {
+        if (isAdmin(userId)) {
+            log.info("[PhotoAccess] Admin bypass for photo access: userId={}, bookingId={}", userId, bookingId);
+            bookingRepository.findById(bookingId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Rezervacija nije pronađena"));
+            return;
+        }
+
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Rezervacija nije pronađena"));
-        
+
         // Verify user is a participant
         if (!canUserAccessBooking(bookingId, userId)) {
             throw new AccessDeniedException("Niste učesnik u ovoj rezervaciji");
@@ -62,20 +72,31 @@ public class PhotoAccessService {
     /**
      * Check if a user can access any photo in a given booking.
      * Generic check for batch operations.
-     * 
+     *
      * @param bookingId Booking ID
      * @param userId Current user ID
-     * @return true if user is a participant in the booking
+     * @return true if user is an admin or a participant in the booking
      */
     public boolean canUserAccessBooking(Long bookingId, Long userId) {
+        if (isAdmin(userId)) {
+            log.info("[PhotoAccess] Admin bypass for booking access check: userId={}, bookingId={}", userId, bookingId);
+            return true;
+        }
+
         Optional<Booking> booking = bookingRepository.findById(bookingId);
         if (booking.isEmpty()) {
             return false;
         }
-        
+
         Long hostId = booking.get().getCar().getOwner().getId();
         Long guestId = booking.get().getRenter().getId();
-        
+
         return userId.equals(hostId) || userId.equals(guestId);
+    }
+
+    private boolean isAdmin(Long userId) {
+        return userRepository.findById(userId)
+                .map(user -> Role.ADMIN.equals(user.getRole()))
+                .orElse(false);
     }
 }

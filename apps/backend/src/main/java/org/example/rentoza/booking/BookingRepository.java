@@ -199,13 +199,21 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
      * - NO_SHOW_HOST, NO_SHOW_GUEST: No-show scenarios (times freed)
      */
     @Query("SELECT COUNT(b) > 0 FROM Booking b WHERE b.car.id = :carId " +
-           "AND b.status IN ('PENDING_APPROVAL', 'ACTIVE', 'CHECK_IN_OPEN', 'CHECK_IN_HOST_COMPLETE', 'CHECK_IN_COMPLETE', 'IN_TRIP') " +
+           "AND b.status IN :statuses " +
            "AND b.startTime < :endTime AND b.endTime > :startTime")
     boolean existsOverlappingBookings(
             @Param("carId") Long carId,
             @Param("startTime") LocalDateTime startTime,
-            @Param("endTime") LocalDateTime endTime
+            @Param("endTime") LocalDateTime endTime,
+            @Param("statuses") Collection<BookingStatus> statuses
     );
+
+    /**
+     * Convenience overload using the canonical blocking status set.
+     */
+    default boolean existsOverlappingBookings(Long carId, LocalDateTime startTime, LocalDateTime endTime) {
+        return existsOverlappingBookings(carId, startTime, endTime, BookingStatus.BLOCKING_STATUSES);
+    }
 
     /**
      * CONCURRENCY HARDENING: Pessimistic locking query for booking creation.
@@ -241,13 +249,21 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
         @QueryHint(name = "jakarta.persistence.lock.timeout", value = "5000") // 5 second timeout
     })
     @Query("SELECT b FROM Booking b WHERE b.car.id = :carId " +
-           "AND b.status IN ('PENDING_APPROVAL', 'ACTIVE', 'CHECK_IN_OPEN', 'CHECK_IN_HOST_COMPLETE', 'CHECK_IN_COMPLETE', 'IN_TRIP') " +
+           "AND b.status IN :statuses " +
            "AND b.startTime < :endTime AND b.endTime > :startTime")
     List<Booking> findOverlappingBookingsWithLock(
             @Param("carId") Long carId,
             @Param("startTime") LocalDateTime startTime,
-            @Param("endTime") LocalDateTime endTime
+            @Param("endTime") LocalDateTime endTime,
+            @Param("statuses") Collection<BookingStatus> statuses
     );
+
+    /**
+     * Convenience overload using the canonical blocking status set.
+     */
+    default List<Booking> findOverlappingBookingsWithLock(Long carId, LocalDateTime startTime, LocalDateTime endTime) {
+        return findOverlappingBookingsWithLock(carId, startTime, endTime, BookingStatus.BLOCKING_STATUSES);
+    }
 
     /**
      * Acquire a PostgreSQL advisory lock for a car.
@@ -280,15 +296,63 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
      *
      * F-AC-1 FIX: Targets ONLY ACTIVE bookings (pre-check-in orphans where trip time
      * fully elapsed without check-in opening). IN_TRIP bookings are deliberately EXCLUDED
-     * because they must go through the checkout saga (CheckOutScheduler → CheckoutSagaOrchestrator)
+     * because they must go through the checkout saga (CheckOutScheduler -> CheckoutSagaOrchestrator)
      * to ensure deposit settlement, damage assessment, and late fee calculation.
      * Without this exclusion, the hourly auto-complete would race ahead of the 6-hourly
      * ghost trip handler, marking IN_TRIP bookings as COMPLETED before deposit capture.
+     *
+     * <p><b>WI-14 Dispute safety (by design):</b> The ACTIVE-only filter inherently protects
+     * disputed bookings from accidental auto-completion:
+     * <ul>
+     *   <li>{@code CHECK_IN_DISPUTE} -- booking is in dispute resolution, not ACTIVE</li>
+     *   <li>{@code CHECKOUT_DAMAGE_DISPUTE} -- booking is in damage claim flow, not ACTIVE</li>
+     *   <li>{@code IN_TRIP} -- must go through checkout saga, not auto-completed here</li>
+     * </ul>
+     * This is by design, not accidental -- the state machine ensures only pre-check-in
+     * orphaned bookings are eligible for the simple auto-complete path.
      */
     @Query("SELECT b FROM Booking b " +
-           "WHERE b.status = 'ACTIVE' " +
+           "WHERE b.status = :status " +
            "AND b.endTime < :currentTime")
-    List<Booking> findOverdueBookings(@Param("currentTime") LocalDateTime currentTime);
+    List<Booking> findOverdueBookings(
+            @Param("status") BookingStatus status,
+            @Param("currentTime") LocalDateTime currentTime
+    );
+
+    /**
+     * Convenience overload targeting ACTIVE bookings only (canonical usage).
+     */
+    default List<Booking> findOverdueBookings(LocalDateTime currentTime) {
+        return findOverdueBookings(BookingStatus.ACTIVE, currentTime);
+    }
+
+    /**
+     * Paginated version of findOverdueBookings for batch processing.
+     * Prevents loading all overdue bookings at once on a growing platform.
+     *
+     * @param status Booking status to filter (typically ACTIVE)
+     * @param currentTime Current time for overdue comparison
+     * @param pageable Page request (e.g., PageRequest.of(0, 50))
+     * @return Page of overdue bookings
+     */
+    @Query("SELECT b FROM Booking b WHERE b.status = :status AND b.endTime < :currentTime")
+    Page<Booking> findOverdueBookingsPaged(@Param("status") BookingStatus status, @Param("currentTime") LocalDateTime currentTime, Pageable pageable);
+
+    /**
+     * Paginated query for user bookings with full details.
+     * Used by the /api/bookings/me/paged endpoint for scalable pagination.
+     *
+     * @param userId Renter's user ID
+     * @param pageable Page request
+     * @return Page of bookings with car and renter details eagerly loaded
+     */
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.car c " +
+           "JOIN FETCH b.renter r " +
+           "LEFT JOIN FETCH c.owner " +
+           "WHERE r.id = :userId " +
+           "ORDER BY b.startTime DESC")
+    Page<Booking> findByRenterIdWithDetailsPaged(@Param("userId") Long userId, Pageable pageable);
 
     /**
      * Find all blocking bookings for a car that overlap with the given time range.
@@ -300,13 +364,21 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
      * CANCELLED, DECLINED, COMPLETED, EXPIRED, NO_SHOW bookings are excluded.
      */
     @Query("SELECT b FROM Booking b WHERE b.car.id = :carId " +
-           "AND b.status IN ('PENDING_APPROVAL', 'ACTIVE', 'CHECK_IN_OPEN', 'CHECK_IN_HOST_COMPLETE', 'CHECK_IN_COMPLETE', 'IN_TRIP') " +
+           "AND b.status IN :statuses " +
            "AND b.startTime < :endTime AND b.endTime > :startTime")
     List<Booking> findByCarIdAndTimeRangeBlocking(
             @Param("carId") Long carId,
             @Param("startTime") LocalDateTime startTime,
-            @Param("endTime") LocalDateTime endTime
+            @Param("endTime") LocalDateTime endTime,
+            @Param("statuses") Collection<BookingStatus> statuses
     );
+
+    /**
+     * Convenience overload using the canonical blocking status set.
+     */
+    default List<Booking> findByCarIdAndTimeRangeBlocking(Long carId, LocalDateTime startTime, LocalDateTime endTime) {
+        return findByCarIdAndTimeRangeBlocking(carId, startTime, endTime, BookingStatus.BLOCKING_STATUSES);
+    }
 
     // ========== RLS-ENFORCED QUERIES (Enterprise Security Enhancement) ==========
 
@@ -518,14 +590,22 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
      */
     @Query("SELECT COUNT(b) > 0 FROM Booking b " +
            "WHERE b.renter.id = :userId " +
-           "AND b.status IN ('PENDING_APPROVAL', 'ACTIVE', 'CHECK_IN_OPEN', 'CHECK_IN_HOST_COMPLETE', 'CHECK_IN_COMPLETE', 'IN_TRIP') " +
+           "AND b.status IN :statuses " +
            "AND b.startTime < :endTime " +
            "AND b.endTime > :startTime")
     boolean existsOverlappingUserBooking(
             @Param("userId") Long userId,
             @Param("startTime") LocalDateTime startTime,
-            @Param("endTime") LocalDateTime endTime
+            @Param("endTime") LocalDateTime endTime,
+            @Param("statuses") Collection<BookingStatus> statuses
     );
+
+    /**
+     * Convenience overload using the canonical blocking status set.
+     */
+    default boolean existsOverlappingUserBooking(Long userId, LocalDateTime startTime, LocalDateTime endTime) {
+        return existsOverlappingUserBooking(userId, startTime, endTime, BookingStatus.BLOCKING_STATUSES);
+    }
 
     /**
      * Find all overlapping user bookings for detailed error messaging.
@@ -540,14 +620,22 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
     @Query("SELECT b FROM Booking b " +
            "JOIN FETCH b.car c " +
            "WHERE b.renter.id = :userId " +
-           "AND b.status IN ('PENDING_APPROVAL', 'ACTIVE', 'CHECK_IN_OPEN', 'CHECK_IN_HOST_COMPLETE', 'CHECK_IN_COMPLETE', 'IN_TRIP') " +
+           "AND b.status IN :statuses " +
            "AND b.startTime < :endTime " +
            "AND b.endTime > :startTime")
     List<Booking> findOverlappingUserBookings(
             @Param("userId") Long userId,
             @Param("startTime") LocalDateTime startTime,
-            @Param("endTime") LocalDateTime endTime
+            @Param("endTime") LocalDateTime endTime,
+            @Param("statuses") Collection<BookingStatus> statuses
     );
+
+    /**
+     * Convenience overload using the canonical blocking status set.
+     */
+    default List<Booking> findOverlappingUserBookings(Long userId, LocalDateTime startTime, LocalDateTime endTime) {
+        return findOverlappingUserBookings(userId, startTime, endTime, BookingStatus.BLOCKING_STATUSES);
+    }
 
     // ========== CHECK-IN WORKFLOW QUERIES ==========
 

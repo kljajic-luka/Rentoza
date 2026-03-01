@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.jsontype.BasicPolymorphicTypeValidator;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.CachingConfigurer;
@@ -54,27 +55,33 @@ import java.util.Map;
 public class RedisCacheConfig implements CachingConfigurer {
 
     // ========== TTL CONSTANTS ==========
-    
+
     /** Short TTL for frequently changing data (check-in status) */
     private static final Duration TTL_SHORT = Duration.ofSeconds(30);
-    
+
     /** Medium TTL for moderately stable data (photos, minimal status) */
     private static final Duration TTL_MEDIUM = Duration.ofSeconds(60);
-    
+
     /** Standard TTL for user dashboards */
     private static final Duration TTL_STANDARD = Duration.ofMinutes(2);
-    
+
     /** Long TTL for rarely changing data (car makes, features) */
     private static final Duration TTL_LONG = Duration.ofHours(1);
-    
+
     /** Extended TTL for static reference data */
     private static final Duration TTL_STATIC = Duration.ofHours(24);
 
-        /** Signed URL cache TTL (refresh 1 minute before 15-min expiry) */
-        private static final Duration TTL_PHOTO_SIGNED = Duration.ofMinutes(14);
-    
     /** Default TTL for unlisted caches */
     private static final Duration TTL_DEFAULT = Duration.ofMinutes(5);
+
+    /**
+     * Signed URL cache TTL sourced from shared property {@code app.photo.cache-ttl-seconds}.
+     * Must be strictly less than the signed URL expiry ({@code app.photo.signed-url-expiry-seconds})
+     * to guarantee URLs are refreshed before they become invalid.
+     * Default: 840s (14 minutes) — leaves a 60-second safety margin before the 15-minute expiry.
+     */
+    @Value("${app.photo.cache-ttl-seconds:840}")
+    private int photoCacheTtlSeconds;
 
     /**
      * Primary Redis Cache Manager with JSON serialization.
@@ -212,8 +219,8 @@ public class RedisCacheConfig implements CachingConfigurer {
         // Alias used by @Cacheable annotation in OsrmRoutingService
         configs.put("osrm-routes", defaultConfig.entryTtl(TTL_LONG));
 
-                // Photo signed URLs (short-lived, refreshed often)
-                configs.put("photoSignedUrls", defaultConfig.entryTtl(TTL_PHOTO_SIGNED));
+                // Photo signed URLs — TTL from shared property app.photo.cache-ttl-seconds
+                configs.put("photoSignedUrls", defaultConfig.entryTtl(Duration.ofSeconds(photoCacheTtlSeconds)));
         
         return configs;
     }

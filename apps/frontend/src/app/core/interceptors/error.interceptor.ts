@@ -4,6 +4,7 @@ import { catchError, throwError } from 'rxjs';
 
 import { AuthService } from '@core/auth/auth.service';
 import { ToastService } from '@core/services/toast.service';
+import { LoggerService } from '@core/services/logger.service';
 
 /**
  * List of API endpoints that should NOT show error toasts to users.
@@ -27,6 +28,7 @@ const SILENT_ERROR_CODES = [401, 403];
 export const errorResponseInterceptor: HttpInterceptorFn = (req, next) => {
   const toast = inject(ToastService);
   const authService = inject(AuthService);
+  const logger = inject(LoggerService);
 
   return next(req).pipe(
     catchError((error: HttpErrorResponse) => {
@@ -44,17 +46,17 @@ export const errorResponseInterceptor: HttpInterceptorFn = (req, next) => {
         // CRITICAL FIX: Only clear session if critical auth endpoints fail
         // This prevents auto-logout when a single business endpoint fails (e.g. /bookings/pending)
         if (req.url.includes('/users/me') || req.url.includes('/auth/')) {
-          console.log('🔒 401 Unauthorized on critical endpoint - clearing session');
+          logger.log('🔒 401 Unauthorized on critical endpoint - clearing session');
           authService.clearSession();
         } else {
-          console.warn('🔒 401 Unauthorized on business endpoint - preserving session state');
+          logger.warn('🔒 401 Unauthorized on business endpoint - preserving session state');
         }
         // Don't show toast - token interceptor handles refresh
       }
 
       // ✅ Handle 403 (Forbidden) - insufficient permissions or RLS violation
       if (error.status === 403 && !isSilentEndpoint(req.url)) {
-        console.log('🚫 403 Forbidden - RLS enforcement triggered');
+        logger.log('🚫 403 Forbidden - RLS enforcement triggered');
 
         // Show user-friendly message for permission denials
         if (shouldShowToast) {
@@ -64,7 +66,7 @@ export const errorResponseInterceptor: HttpInterceptorFn = (req, next) => {
         // Clear session if 403 indicates invalid authentication state
         // (e.g., user role changed, account disabled)
         if (req.url.includes('/users/me') || req.url.includes('/auth/')) {
-          console.log('🔒 403 on auth endpoint - clearing session');
+          logger.log('🔒 403 on auth endpoint - clearing session');
           authService.clearSession();
         }
       }
@@ -129,6 +131,8 @@ function extractUserFriendlyMessage(error: HttpErrorResponse): string {
         return 'Ovaj automobil je već rezervisan za izabrane datume. Molimo izaberite druge datume.';
       case 'STALE_DATA':
         return 'Podaci su izmenjeni od strane drugog korisnika. Molimo osvežite stranicu i pokušajte ponovo.';
+      case 'OPTIMISTIC_LOCK_CONFLICT':
+        return 'Podaci su promenjeni od strane drugog korisnika. Osvežavam...';
       case 'DB_DEADLOCK':
         return 'Server je privremeno zauzet. Molimo pokušajte ponovo.';
       default:

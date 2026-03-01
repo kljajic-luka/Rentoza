@@ -14,8 +14,10 @@ import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.exception.UserOverlapException;
 import org.example.rentoza.exception.ValidationException;
 import org.example.rentoza.notification.NotificationService;
+import org.example.rentoza.booking.validation.BookingEdgeCaseValidator;
 import org.example.rentoza.payment.BookingPaymentService;
 import org.example.rentoza.payment.PaymentProvider.PaymentResult;
+import org.example.rentoza.scheduler.SchedulerIdempotencyService;
 import org.example.rentoza.review.ReviewRepository;
 import org.example.rentoza.security.CurrentUser;
 import org.example.rentoza.user.DriverLicenseStatus;
@@ -76,6 +78,8 @@ class BookingServiceTest {
     @Mock private DeliveryFeeCalculator deliveryFeeCalculator;
     @Mock private RenterVerificationService renterVerificationService;
     @Mock private BookingPaymentService bookingPaymentService;
+    @Mock private SchedulerIdempotencyService lockService;
+    @Mock private BookingEdgeCaseValidator edgeCaseValidator;
 
     @InjectMocks
     private BookingService bookingService;

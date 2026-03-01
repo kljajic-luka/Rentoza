@@ -34,14 +34,17 @@ class CheckInControllerTimingBlockedTest {
     @Mock private IdempotencyService idempotencyService;
     @Mock private CurrentUser currentUser;
     @Mock private CheckInResponseOptimizer responseOptimizer;
+    @Mock private org.example.rentoza.booking.photo.PhotoRateLimitService photoRateLimitService;
 
     private CheckInController controller;
 
     @BeforeEach
     void setUp() {
+        when(photoRateLimitService.allowPhotoUpload(anyLong(), any())).thenReturn(true);
         controller = new CheckInController(
                 checkInService, photoService, idempotencyService,
-                currentUser, responseOptimizer, new ObjectMapper(), new SimpleMeterRegistry());
+                currentUser, responseOptimizer, new ObjectMapper(), new SimpleMeterRegistry(),
+                photoRateLimitService);
     }
 
     @Test

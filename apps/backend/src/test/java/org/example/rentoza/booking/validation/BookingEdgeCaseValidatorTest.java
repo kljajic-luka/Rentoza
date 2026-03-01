@@ -5,6 +5,7 @@ import org.example.rentoza.config.timezone.SerbiaTimeZone;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.*;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -40,6 +41,9 @@ class BookingEdgeCaseValidatorTest {
     @BeforeEach
     void setUp() {
         validator = new BookingEdgeCaseValidator();
+        ReflectionTestUtils.setField(validator, "minDailyPrice", new BigDecimal("500.00"));
+        ReflectionTestUtils.setField(validator, "maxDailyPrice", new BigDecimal("50000.00"));
+        ReflectionTestUtils.setField(validator, "maxTotalPrice", new BigDecimal("1500000.00"));
     }
 
     // ==================== CATEGORY 1: TEMPORAL EDGE CASES (#1-50) ====================
@@ -50,14 +54,17 @@ class BookingEdgeCaseValidatorTest {
 
         // #1-5: Past Date Validation
         @Test
-        @DisplayName("#1: Booking 1 minute in the past should fail")
+        @DisplayName("#1: Booking 1 minute in the past should fail (within grace window, caught by advance notice)")
         void bookingOneMinuteInPastFails() {
+            // 1 minute in the past is within the 5-minute clock-drift grace window,
+            // so BOOKING_IN_PAST does not fire. Instead, the advance notice check
+            // (requires start >= now + 2 hours) catches it.
             LocalDateTime start = SerbiaTimeZone.now().minusMinutes(1);
             LocalDateTime end = start.plusHours(4);
-            
+
             assertThatThrownBy(() -> validator.validateBookingTimes(start, end))
                 .isInstanceOf(BookingValidationException.class)
-                .hasFieldOrPropertyWithValue("errorCode", "BOOKING_IN_PAST");
+                .hasFieldOrPropertyWithValue("errorCode", "BOOKING_INSUFFICIENT_ADVANCE_NOTICE");
         }
 
         @Test

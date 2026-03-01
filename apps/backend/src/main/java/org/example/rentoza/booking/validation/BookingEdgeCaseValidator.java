@@ -1,9 +1,11 @@
 package org.example.rentoza.booking.validation;
 
+import jakarta.annotation.PostConstruct;
 import org.example.rentoza.booking.exception.*;
 import org.example.rentoza.config.timezone.SerbiaTimeZone;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -71,16 +73,19 @@ public class BookingEdgeCaseValidator {
     /** Grace period in minutes for minor clock drift */
     public static final int CLOCK_DRIFT_GRACE_MINUTES = 5;
 
-    // ==================== PRICING CONSTANTS ====================
-    
-    /** Minimum daily price in RSD (Serbian Dinar) */
-    public static final BigDecimal MIN_DAILY_PRICE = new BigDecimal("500.00");
-    
-    /** Maximum daily price in RSD */
-    public static final BigDecimal MAX_DAILY_PRICE = new BigDecimal("50000.00");
-    
-    /** Maximum total booking price in RSD */
-    public static final BigDecimal MAX_TOTAL_PRICE = new BigDecimal("1500000.00");
+    // ==================== PRICING CONFIGURATION ====================
+
+    /** Minimum daily price in RSD (Serbian Dinar) — configurable via properties */
+    @Value("${app.booking.validation.min-daily-price:500.00}")
+    private BigDecimal minDailyPrice;
+
+    /** Maximum daily price in RSD — configurable via properties */
+    @Value("${app.booking.validation.max-daily-price:50000.00}")
+    private BigDecimal maxDailyPrice;
+
+    /** Maximum total booking price in RSD — configurable via properties */
+    @Value("${app.booking.validation.max-total-price:1500000.00}")
+    private BigDecimal maxTotalPrice;
     
     /** Standard scale for monetary values */
     public static final int MONETARY_SCALE = 2;
@@ -96,6 +101,41 @@ public class BookingEdgeCaseValidator {
      * and last Sunday of October (to CET).
      */
     private static final ZoneId SERBIA_ZONE = SerbiaTimeZone.ZONE_ID;
+
+    // ==================== STARTUP VALIDATION ====================
+
+    /**
+     * Validates price guardrail configuration at startup.
+     * Ensures min < max and all values are positive to prevent
+     * misconfigured environments from silently accepting bad data.
+     */
+    @PostConstruct
+    void validatePriceConfiguration() {
+        if (minDailyPrice.compareTo(BigDecimal.ZERO) <= 0) {
+            log.error("Invalid price configuration: min-daily-price must be positive, got {}", minDailyPrice);
+            throw new IllegalStateException(
+                "Invalid price configuration: app.booking.validation.min-daily-price must be positive, got " + minDailyPrice);
+        }
+        if (maxDailyPrice.compareTo(BigDecimal.ZERO) <= 0) {
+            log.error("Invalid price configuration: max-daily-price must be positive, got {}", maxDailyPrice);
+            throw new IllegalStateException(
+                "Invalid price configuration: app.booking.validation.max-daily-price must be positive, got " + maxDailyPrice);
+        }
+        if (maxTotalPrice.compareTo(BigDecimal.ZERO) <= 0) {
+            log.error("Invalid price configuration: max-total-price must be positive, got {}", maxTotalPrice);
+            throw new IllegalStateException(
+                "Invalid price configuration: app.booking.validation.max-total-price must be positive, got " + maxTotalPrice);
+        }
+        if (minDailyPrice.compareTo(maxDailyPrice) >= 0) {
+            log.error("Invalid price configuration: min-daily-price ({}) must be less than max-daily-price ({})",
+                minDailyPrice, maxDailyPrice);
+            throw new IllegalStateException(
+                "Invalid price configuration: min-daily-price (" + minDailyPrice +
+                ") must be less than max-daily-price (" + maxDailyPrice + ")");
+        }
+        log.info("Price guardrails validated: minDaily={}, maxDaily={}, maxTotal={}",
+            minDailyPrice, maxDailyPrice, maxTotalPrice);
+    }
 
     // ==================== TEMPORAL VALIDATION ====================
 
@@ -209,11 +249,15 @@ public class BookingEdgeCaseValidator {
 
     /**
      * Ensures maximum booking duration (30 days).
+     * Uses minutes comparison to catch any overage beyond 30 exact days
+     * that coarser truncation (days/hours) would miss.
      */
     private void validateMaximumDuration(LocalDateTime startTime, LocalDateTime endTime) {
-        long days = ChronoUnit.DAYS.between(startTime, endTime);
-        
-        if (days > MAX_BOOKING_DAYS) {
+        long minutes = ChronoUnit.MINUTES.between(startTime, endTime);
+        long maxMinutes = (long) MAX_BOOKING_DAYS * 24 * 60;
+
+        if (minutes > maxMinutes) {
+            long days = ChronoUnit.DAYS.between(startTime, endTime);
             throw new BookingValidationException(
                 "BOOKING_DURATION_TOO_LONG",
                 "Maximum booking duration is " + MAX_BOOKING_DAYS + " days",
@@ -253,30 +297,33 @@ public class BookingEdgeCaseValidator {
      */
     private void validateDstTransitionSafety(LocalDateTime startTime, LocalDateTime endTime) {
         // Check if start time falls in a DST gap
-        try {
-            ZonedDateTime zonedStart = startTime.atZone(SERBIA_ZONE);
-            // If the local time doesn't match after zoning, it was adjusted (gap)
-            if (!zonedStart.toLocalDateTime().equals(startTime)) {
-                log.warn("Booking start time {} falls in DST gap, adjusted to {}", 
-                    startTime, zonedStart.toLocalDateTime());
-                throw new BookingValidationException(
-                    "BOOKING_DST_GAP",
-                    "Booking start time falls in a DST transition gap. Please choose a different time.",
-                    "startTime",
-                    "Original: " + startTime + ", Adjusted: " + zonedStart.toLocalDateTime()
-                );
-            }
-        } catch (DateTimeException e) {
+        ZonedDateTime zonedStart = startTime.atZone(SERBIA_ZONE);
+        // If the local time doesn't match after zoning, it was adjusted (gap)
+        if (!zonedStart.toLocalDateTime().equals(startTime)) {
+            log.warn("Booking start time {} falls in DST gap, adjusted to {}",
+                startTime, zonedStart.toLocalDateTime());
             throw new BookingValidationException(
-                "BOOKING_INVALID_DATETIME",
-                "Invalid booking datetime: " + e.getMessage(),
-                "startTime"
+                "BOOKING_DST_GAP",
+                "Booking start time falls in a DST transition gap. Please choose a different time.",
+                "startTime",
+                "Original: " + startTime + ", Adjusted: " + zonedStart.toLocalDateTime()
+            );
+        }
+
+        // Check if end time falls in a DST gap
+        ZonedDateTime zonedEnd = endTime.atZone(SERBIA_ZONE);
+        if (!zonedEnd.toLocalDateTime().equals(endTime)) {
+            log.warn("Booking end time {} falls in DST gap, adjusted to {}",
+                endTime, zonedEnd.toLocalDateTime());
+            throw new BookingValidationException(
+                "BOOKING_DST_GAP",
+                "Booking end time falls in a DST transition gap. Please choose a different time.",
+                "endTime",
+                "Original: " + endTime + ", Adjusted: " + zonedEnd.toLocalDateTime()
             );
         }
 
         // Check for bookings that span DST transitions
-        ZonedDateTime zonedStart = startTime.atZone(SERBIA_ZONE);
-        ZonedDateTime zonedEnd = endTime.atZone(SERBIA_ZONE);
         
         // Calculate if there's an offset change during the booking period
         ZoneOffset startOffset = zonedStart.getOffset();
@@ -299,11 +346,6 @@ public class BookingEdgeCaseValidator {
     private void validateLeapYearSafety(LocalDateTime startTime, LocalDateTime endTime) {
         // If booking involves Feb 29, ensure it's a leap year
         if (involvesFeb29(startTime, endTime)) {
-            int year = startTime.getYear();
-            if (endTime.getYear() != year) {
-                year = endTime.getYear();
-            }
-            
             // Find the Feb 29 date
             if (startTime.getMonthValue() == 2 && startTime.getDayOfMonth() == 29) {
                 if (!Year.isLeap(startTime.getYear())) {
@@ -390,9 +432,14 @@ public class BookingEdgeCaseValidator {
 
     /**
      * Validates all pricing aspects of a booking.
-     * 
+     *
+     * <p><strong>Scope:</strong> This method validates the base rental calculation only
+     * (dailyPrice * durationDays = totalPrice). It does NOT validate the grand total
+     * computed by {@code BookingService}, which includes additional fees such as
+     * insurance, service fee, prepaid refuel, and delivery charges.
+     *
      * @param dailyPrice Daily rate for the car
-     * @param totalPrice Calculated total price
+     * @param totalPrice Calculated total price (base rental only)
      * @param durationDays Number of days in the booking
      * @throws BookingValidationException if any pricing validation fails
      */
@@ -429,21 +476,21 @@ public class BookingEdgeCaseValidator {
             );
         }
         
-        if (dailyPrice.compareTo(MIN_DAILY_PRICE) < 0) {
+        if (dailyPrice.compareTo(minDailyPrice) < 0) {
             throw new BookingValidationException(
                 "DAILY_PRICE_TOO_LOW",
-                "Daily price must be at least " + MIN_DAILY_PRICE + " RSD",
+                "Daily price must be at least " + minDailyPrice + " RSD",
                 "dailyPrice",
-                "Value: " + dailyPrice + ", Minimum: " + MIN_DAILY_PRICE
+                "Value: " + dailyPrice + ", Minimum: " + minDailyPrice
             );
         }
-        
-        if (dailyPrice.compareTo(MAX_DAILY_PRICE) > 0) {
+
+        if (dailyPrice.compareTo(maxDailyPrice) > 0) {
             throw new BookingValidationException(
                 "DAILY_PRICE_TOO_HIGH",
-                "Daily price cannot exceed " + MAX_DAILY_PRICE + " RSD",
+                "Daily price cannot exceed " + maxDailyPrice + " RSD",
                 "dailyPrice",
-                "Value: " + dailyPrice + ", Maximum: " + MAX_DAILY_PRICE
+                "Value: " + dailyPrice + ", Maximum: " + maxDailyPrice
             );
         }
     }
@@ -469,12 +516,12 @@ public class BookingEdgeCaseValidator {
             );
         }
         
-        if (totalPrice.compareTo(MAX_TOTAL_PRICE) > 0) {
+        if (totalPrice.compareTo(maxTotalPrice) > 0) {
             throw new BookingValidationException(
                 "TOTAL_PRICE_TOO_HIGH",
-                "Total booking price cannot exceed " + MAX_TOTAL_PRICE + " RSD",
+                "Total booking price cannot exceed " + maxTotalPrice + " RSD",
                 "totalPrice",
-                "Value: " + totalPrice + ", Maximum: " + MAX_TOTAL_PRICE
+                "Value: " + totalPrice + ", Maximum: " + maxTotalPrice
             );
         }
     }

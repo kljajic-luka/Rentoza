@@ -99,7 +99,7 @@ import { environment } from '@environments/environment';
 
       <!-- Loading state (derived from renderDecision signal) -->
       @if (checkInService.renderDecision() === 'LOADING') {
-        <div class="loading-container">
+        <div class="loading-container" role="status" aria-live="polite">
           <mat-progress-bar mode="indeterminate"></mat-progress-bar>
           <p>Učitavanje check-in statusa...</p>
         </div>
@@ -107,7 +107,7 @@ import { environment } from '@environments/environment';
 
       <!-- Error state -->
       @if (checkInService.error()) {
-        <div class="error-container">
+        <div class="error-container" role="alert">
           <mat-icon>error</mat-icon>
           <h2>Greška</h2>
           <p>{{ checkInService.error() }}</p>
@@ -120,7 +120,7 @@ import { environment } from '@environments/environment';
 
       <!-- Main content - Role-Aware State Machine via renderDecision -->
       @if (checkInService.renderDecision() !== 'LOADING' && !checkInService.error()) {
-        <div class="wizard-content">
+        <div class="wizard-content" aria-live="polite">
           <!-- Progress indicator -->
           <div class="progress-steps">
             <div

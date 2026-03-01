@@ -32,10 +32,10 @@ public interface PhotoAccessLogRepository extends JpaRepository<PhotoAccessLog, 
     Page<PhotoAccessLog> findByBookingIdOrderByAccessedAtDesc(Long bookingId, Pageable pageable);
 
     /**
-     * Find denied access attempts (security audit).
+     * Find denied access attempts (security audit) within a time window.
      */
-    @Query("SELECT log FROM PhotoAccessLog log WHERE log.accessGranted = false ORDER BY log.accessedAt DESC")
-    Page<PhotoAccessLog> findDeniedAccess(Pageable pageable);
+    @Query("SELECT log FROM PhotoAccessLog log WHERE log.accessGranted = false AND log.accessedAt >= :since ORDER BY log.accessedAt DESC")
+    Page<PhotoAccessLog> findDeniedAccess(@Param("since") Instant since, Pageable pageable);
 
     /**
      * Find suspicious access patterns: many requests from single IP in short time.
@@ -59,12 +59,13 @@ public interface PhotoAccessLogRepository extends JpaRepository<PhotoAccessLog, 
                                             @Param("since") Instant since);
 
     /**
-     * Find all rate limit violations.
+     * Find all rate limit violations within a time window.
      */
     @Query("SELECT log FROM PhotoAccessLog log " +
            "WHERE log.httpStatusCode = 429 " +
+           "AND log.accessedAt >= :since " +
            "ORDER BY log.accessedAt DESC")
-    Page<PhotoAccessLog> findRateLimitViolations(Pageable pageable);
+    Page<PhotoAccessLog> findRateLimitViolations(@Param("since") Instant since, Pageable pageable);
 
     /**
      * Count access attempts in time window (for rate limit analysis).

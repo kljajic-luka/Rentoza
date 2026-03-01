@@ -53,6 +53,7 @@ class BookingServiceApprovalDeadlinePolicyTest {
     @Mock private RenterVerificationService renterVerificationService;
     @Mock private org.example.rentoza.payment.BookingPaymentService bookingPaymentService;
     @Mock private org.example.rentoza.scheduler.SchedulerIdempotencyService lockService;
+    @Mock private org.example.rentoza.booking.validation.BookingEdgeCaseValidator edgeCaseValidator;
 
     private BookingService bookingService;
 
@@ -70,7 +71,8 @@ class BookingServiceApprovalDeadlinePolicyTest {
                 deliveryFeeCalculator,
                 renterVerificationService,
                 bookingPaymentService,
-                lockService
+                lockService,
+                edgeCaseValidator
         );
 
         ReflectionTestUtils.setField(bookingService, "approvalSlaHours", 48);

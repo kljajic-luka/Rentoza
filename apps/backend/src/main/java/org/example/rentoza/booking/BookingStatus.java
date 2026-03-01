@@ -1,5 +1,8 @@
 package org.example.rentoza.booking;
 
+import java.util.EnumSet;
+import java.util.Set;
+
 /**
  * Booking lifecycle states for the Rentoza rental workflow.
  * 
@@ -161,7 +164,29 @@ public enum BookingStatus {
     
     /** System auto-expired due to host inactivity (48h or trip-start buffer) */
     EXPIRED_SYSTEM;
-    
+
+    // ========== SHARED STATUS SETS ==========
+
+    /**
+     * Statuses that block a car's availability for new bookings.
+     *
+     * <p>Used by overlap-detection queries, calendar availability, and conflict checks.
+     * Any booking in one of these statuses occupies the car for the booked time range
+     * and prevents new overlapping bookings from being created.
+     *
+     * <p>Excludes terminal states where the time range is freed:
+     * CANCELLED, DECLINED, COMPLETED, EXPIRED, EXPIRED_SYSTEM, NO_SHOW_HOST, NO_SHOW_GUEST.
+     */
+    public static final Set<BookingStatus> BLOCKING_STATUSES = EnumSet.of(
+            PENDING_APPROVAL,
+            ACTIVE,
+            CHECK_IN_OPEN,
+            CHECK_IN_HOST_COMPLETE,
+            CHECK_IN_COMPLETE,
+            CHECK_IN_DISPUTE,
+            IN_TRIP
+    );
+
     // ========== HELPER METHODS ==========
     
     /**

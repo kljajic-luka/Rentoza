@@ -77,6 +77,35 @@ public class BookingController {
     }
 
     /**
+     * Get current user's bookings with pagination.
+     * RLS-ENFORCED: User can only see their own bookings.
+     */
+    @Operation(
+            summary = "Get my bookings (paged)",
+            description = "Retrieve bookings for the currently authenticated user with pagination support."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Bookings page retrieved successfully"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized - valid JWT required"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    @GetMapping("/me/paged")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<org.springframework.data.domain.Page<UserBookingResponseDTO>> getMyBookingsPaged(
+            @org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "20") int size) {
+        try {
+            org.springframework.data.domain.Page<UserBookingResponseDTO> bookings =
+                    service.getMyBookingsPaged(principal.getUsername(), page, size);
+            return ResponseEntity.ok(bookings);
+        } catch (RuntimeException e) {
+            log.error("Error fetching paged user bookings", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    /**
      * Create a new booking.
      * RLS-ENFORCED: Authenticated users can create bookings (renter extracted from JWT).
      */
@@ -351,10 +380,12 @@ public class BookingController {
     }
 
     /**
-     * Debug endpoint - list all booking IDs (for development/testing)
-     * Accessible with INTERNAL_SERVICE authority
+     * Debug endpoint - list all booking IDs.
+     * WI-13: Defense-in-depth — service layer checks isAdmin(), but @PreAuthorize
+     * provides an additional method-level security gate at the controller boundary.
      */
     @GetMapping("/debug/ids")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Map<String, Object>> getAllBookingIds() {
         List<Long> ids = service.getAllBookingIds();
         return ResponseEntity.ok(Map.of(

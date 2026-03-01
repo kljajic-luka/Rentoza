@@ -38,10 +38,22 @@ public class PhotoRateLimitService {
     @Value("${app.photo.rate-limit.alert-threshold:80}")
     private int alertThreshold;
 
+    @Value("${app.photo.rate-limit.upload-max-per-window:30}")
+    private int uploadMaxPerWindow;
+
+    @Value("${app.photo.rate-limit.upload-window-minutes:10}")
+    private int uploadWindowMinutes;
+
     // Cache: key = "{userId}:{windowStart}", value = request count
     private final Cache<String, AtomicInteger> rateLimitCache = CacheBuilder.newBuilder()
             .expireAfterWrite(15, TimeUnit.MINUTES)  // Slightly longer than window to avoid edge cases
             .maximumSize(10000)  // Up to 10k active users
+            .build();
+
+    // Separate cache for upload rate limiting (stricter thresholds)
+    private final Cache<String, AtomicInteger> uploadRateLimitCache = CacheBuilder.newBuilder()
+            .expireAfterWrite(15, TimeUnit.MINUTES)
+            .maximumSize(10000)
             .build();
 
     /**
@@ -74,6 +86,40 @@ public class PhotoRateLimitService {
                 userId, ipAddress, currentCount, maxRequestsPerWindow);
         }
         
+        return true;
+    }
+
+    /**
+     * Check if a user is allowed to upload a photo. Uses stricter limits than access.
+     *
+     * @param userId    The uploading user
+     * @param ipAddress Client IP (for logging)
+     * @return true if upload is allowed
+     */
+    public boolean allowPhotoUpload(Long userId, String ipAddress) {
+        String cacheKey = generateUploadCacheKey(userId);
+
+        AtomicInteger requestCount = uploadRateLimitCache.getIfPresent(cacheKey);
+        if (requestCount == null) {
+            requestCount = new AtomicInteger(0);
+            uploadRateLimitCache.put(cacheKey, requestCount);
+        }
+
+        int currentCount = requestCount.incrementAndGet();
+
+        if (currentCount > uploadMaxPerWindow) {
+            log.warn("[RateLimit] User exceeded photo UPLOAD limit: userId={}, ip={}, count={}/{}",
+                userId, ipAddress, currentCount, uploadMaxPerWindow);
+            return false;
+        }
+
+        // Alert if approaching limit (80%+)
+        int uploadAlertThreshold = (int) (uploadMaxPerWindow * 0.8);
+        if (currentCount >= uploadAlertThreshold && currentCount <= uploadAlertThreshold + 3) {
+            log.warn("[RateLimit] User approaching photo UPLOAD limit: userId={}, ip={}, count={}/{}",
+                userId, ipAddress, currentCount, uploadMaxPerWindow);
+        }
+
         return true;
     }
 
@@ -113,6 +159,18 @@ public class PhotoRateLimitService {
         long windowStart = (currentTimeMinutes / rateLimitWindowMinutes) * rateLimitWindowMinutes;
         
         return userId + ":" + windowStart;
+    }
+
+    /**
+     * Generate cache key for upload rate limiting using the upload window.
+     *
+     * @param userId The user ID
+     * @return Cache key like "upload:12345:42840"
+     */
+    private String generateUploadCacheKey(Long userId) {
+        long currentTimeMinutes = System.currentTimeMillis() / 60000;
+        long windowStart = (currentTimeMinutes / uploadWindowMinutes) * uploadWindowMinutes;
+        return "upload:" + userId + ":" + windowStart;
     }
 
     /**

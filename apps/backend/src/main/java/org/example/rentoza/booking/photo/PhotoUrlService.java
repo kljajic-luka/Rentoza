@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
+import jakarta.annotation.PostConstruct;
 import java.time.Instant;
 import java.util.Objects;
 
@@ -41,6 +42,43 @@ public class PhotoUrlService {
 
     @Value("${app.photo.signed-url-expiry-seconds:900}")  // 15 minutes default
     private int signedUrlExpirySeconds;
+
+    @Value("${app.photo.cache-ttl-seconds:840}")  // 14 minutes default — shared with RedisCacheConfig
+    private int cacheTtlSeconds;
+
+    @Value("${app.redis.enabled:false}")
+    private boolean redisEnabled;
+
+    /**
+     * WI-10: Validate cache-TTL vs signed-URL-expiry invariant at startup.
+     *
+     * <ul>
+     *   <li><b>Redis enabled:</b> cacheTtlSeconds MUST be strictly less than
+     *       signedUrlExpirySeconds, otherwise cached URLs could be served after
+     *       they expire. Violation is a fatal misconfiguration.</li>
+     *   <li><b>Redis disabled (ConcurrentMapCache fallback):</b> there is no TTL
+     *       enforcement whatsoever; cached signed URLs may outlive their expiry
+     *       window. This is a known limitation logged as a warning.</li>
+     * </ul>
+     */
+    @PostConstruct
+    void validateCacheTtlConsistency() {
+        if (redisEnabled) {
+            if (cacheTtlSeconds >= signedUrlExpirySeconds) {
+                throw new IllegalStateException(
+                        String.format("Cache TTL (%ds) must be strictly less than signed URL expiry (%ds). " +
+                                "Cached URLs would be served after they expire. " +
+                                "Fix: set app.photo.cache-ttl-seconds < app.photo.signed-url-expiry-seconds",
+                                cacheTtlSeconds, signedUrlExpirySeconds));
+            }
+            log.info("[PhotoURL] Cache TTL validated: cacheTtl={}s < signedUrlExpiry={}s (margin={}s)",
+                    cacheTtlSeconds, signedUrlExpirySeconds, signedUrlExpirySeconds - cacheTtlSeconds);
+        } else {
+            log.warn("[PhotoURL] Redis is disabled — photoSignedUrls cache uses ConcurrentMapCache " +
+                    "with NO TTL enforcement. Expired signed URLs may be served from cache until " +
+                    "application restart. Enable Redis (app.redis.enabled=true) for production use.");
+        }
+    }
 
     /**
      * Generate a signed URL for a photo that expires in 15 minutes.

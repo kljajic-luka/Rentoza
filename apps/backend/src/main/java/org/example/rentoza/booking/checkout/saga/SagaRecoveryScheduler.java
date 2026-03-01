@@ -1,5 +1,7 @@
 package org.example.rentoza.booking.checkout.saga;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.scheduler.SchedulerIdempotencyService;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -39,15 +41,31 @@ public class SagaRecoveryScheduler {
     private final CheckoutSagaOrchestrator sagaOrchestrator;
     private final SchedulerIdempotencyService lockService;
 
+    // Recovery metrics
+    private final Counter recoveryAttemptedCounter;
+    private final Counter recoverySucceededCounter;
+    private final Counter recoveryFailedCounter;
+
     private static final int STUCK_THRESHOLD_MINUTES = 30;
     private static final int MAX_RETRY_BATCH_SIZE = 10;
 
     public SagaRecoveryScheduler(CheckoutSagaStateRepository sagaRepository,
                                   CheckoutSagaOrchestrator sagaOrchestrator,
-                                  SchedulerIdempotencyService lockService) {
+                                  SchedulerIdempotencyService lockService,
+                                  MeterRegistry meterRegistry) {
         this.sagaRepository = sagaRepository;
         this.sagaOrchestrator = sagaOrchestrator;
         this.lockService = lockService;
+
+        this.recoveryAttemptedCounter = Counter.builder("checkout.saga.recovery.attempted")
+                .description("Recovery attempts on stuck/failed sagas")
+                .register(meterRegistry);
+        this.recoverySucceededCounter = Counter.builder("checkout.saga.recovery.succeeded")
+                .description("Successful saga recoveries")
+                .register(meterRegistry);
+        this.recoveryFailedCounter = Counter.builder("checkout.saga.recovery.failed")
+                .description("Failed saga recoveries")
+                .register(meterRegistry);
     }
 
     /**
@@ -77,6 +95,8 @@ public class SagaRecoveryScheduler {
 
             for (CheckoutSagaState saga : stuckSagas) {
                 try {
+                    recoveryAttemptedCounter.increment();
+
                     log.info("[Saga-Recovery] Recovering stuck saga {} (stuck since {})",
                             saga.getSagaId(), saga.getUpdatedAt());
 
@@ -87,10 +107,18 @@ public class SagaRecoveryScheduler {
 
                     // Attempt retry if eligible
                     if (saga.canRetry()) {
-                        sagaOrchestrator.retrySaga(saga.getSagaId());
+                        CheckoutSagaState result = sagaOrchestrator.retrySaga(saga.getSagaId());
+                        if (result.getStatus() == CheckoutSagaState.SagaStatus.COMPLETED) {
+                            recoverySucceededCounter.increment();
+                        } else {
+                            recoveryFailedCounter.increment();
+                        }
+                    } else {
+                        recoveryFailedCounter.increment();
                     }
 
                 } catch (Exception e) {
+                    recoveryFailedCounter.increment();
                     log.error("[Saga-Recovery] Failed to recover saga {}: {}",
                             saga.getSagaId(), e.getMessage());
                 }
@@ -128,12 +156,20 @@ public class SagaRecoveryScheduler {
 
             for (CheckoutSagaState saga : retryableSagas) {
                 try {
+                    recoveryAttemptedCounter.increment();
+
                     log.info("[Saga-Recovery] Retrying saga {} (attempt {})",
                             saga.getSagaId(), saga.getRetryCount() + 1);
 
-                    sagaOrchestrator.retrySaga(saga.getSagaId());
+                    CheckoutSagaState result = sagaOrchestrator.retrySaga(saga.getSagaId());
+                    if (result.getStatus() == CheckoutSagaState.SagaStatus.COMPLETED) {
+                        recoverySucceededCounter.increment();
+                    } else {
+                        recoveryFailedCounter.increment();
+                    }
 
                 } catch (Exception e) {
+                    recoveryFailedCounter.increment();
                     log.error("[Saga-Recovery] Retry failed for saga {}: {}",
                             saga.getSagaId(), e.getMessage());
                 }
@@ -166,11 +202,20 @@ public class SagaRecoveryScheduler {
 
             for (CheckoutSagaState saga : compensatingSagas) {
                 try {
+                    recoveryAttemptedCounter.increment();
+
                     log.info("[Saga-Recovery] Resuming compensation for saga {}", saga.getSagaId());
 
                     sagaOrchestrator.startCompensation(saga);
 
+                    if (saga.getStatus() == CheckoutSagaState.SagaStatus.COMPENSATED) {
+                        recoverySucceededCounter.increment();
+                    } else {
+                        recoveryFailedCounter.increment();
+                    }
+
                 } catch (Exception e) {
+                    recoveryFailedCounter.increment();
                     log.error("[Saga-Recovery] Compensation failed for saga {}: {}",
                             saga.getSagaId(), e.getMessage());
                 }

@@ -51,6 +51,7 @@ public class GuestCheckInPhotoController {
 
     private final GuestCheckInPhotoService guestPhotoService;
     private final CurrentUser currentUser;
+    private final org.example.rentoza.booking.photo.PhotoRateLimitService photoRateLimitService;
 
     @Value("${app.checkin.photo.upload-dir:uploads/checkin}")
     private String uploadDir;
@@ -89,8 +90,18 @@ public class GuestCheckInPhotoController {
     public ResponseEntity<GuestCheckInPhotoResponseDTO> uploadGuestPhotos(
             @Parameter(description = "Booking ID") @PathVariable Long bookingId,
             @Valid @RequestBody GuestCheckInPhotoSubmissionDTO submission) {
-        
+
         Long userId = currentUser.id();
+
+        // WI-12: Rate limit photo uploads
+        String clientIp = getClientIp();
+        if (!photoRateLimitService.allowPhotoUpload(userId, clientIp)) {
+            log.warn("[GuestCheckIn] Upload rate limit exceeded: userId={}, ip={}", userId, clientIp);
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                    .header("Retry-After", "600")
+                    .build();
+        }
+
         log.info("[GuestCheckIn] Uploading photos: booking={}, user={}, photoCount={}",
             bookingId, userId, submission.getPhotos().size());
         
@@ -190,12 +201,34 @@ public class GuestCheckInPhotoController {
      * Check if a string contains path traversal characters.
      */
     private boolean containsPathTraversal(String input) {
-        return input == null || 
-               input.contains("..") || 
+        return input == null ||
+               input.contains("..") ||
                input.contains("/") ||
                input.contains("\\") ||
                input.contains("%2e") ||
                input.contains("%2f") ||
                input.contains("%5c");
+    }
+
+    /**
+     * Get client IP address from request context.
+     */
+    private String getClientIp() {
+        try {
+            org.springframework.web.context.request.ServletRequestAttributes attributes =
+                    (org.springframework.web.context.request.ServletRequestAttributes)
+                    org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+            if (attributes == null) {
+                return "UNKNOWN";
+            }
+            jakarta.servlet.http.HttpServletRequest request = attributes.getRequest();
+            String xff = request.getHeader("X-Forwarded-For");
+            if (xff != null && !xff.isEmpty()) {
+                return xff.split(",")[0].trim();
+            }
+            return request.getRemoteAddr() != null ? request.getRemoteAddr() : "UNKNOWN";
+        } catch (Exception e) {
+            return "UNKNOWN";
+        }
     }
 }

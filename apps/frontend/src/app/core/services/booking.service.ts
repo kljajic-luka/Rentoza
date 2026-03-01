@@ -1,6 +1,7 @@
-import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { Injectable, inject } from '@angular/core';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { tap } from 'rxjs/operators';
 
 import { environment } from '@environments/environment';
 import {
@@ -11,10 +12,12 @@ import {
   BookingSlotDto,
 } from '@core/models/booking.model';
 import { GuestBookingPreview } from '@core/models/guest-preview.model';
+import { AnalyticsService } from './analytics.service';
 
 @Injectable({ providedIn: 'root' })
 export class BookingService {
   private readonly baseUrl = `${environment.baseApiUrl}/bookings`;
+  private readonly analytics = inject(AnalyticsService);
 
   constructor(private readonly http: HttpClient) {}
 
@@ -92,9 +95,18 @@ export class BookingService {
   }
 
   createBooking(payload: BookingRequest): Observable<BookingCreateResponse> {
-    return this.http.post<BookingCreateResponse>(this.baseUrl, payload, {
-      withCredentials: true,
-    });
+    return this.http
+      .post<BookingCreateResponse>(this.baseUrl, payload, {
+        withCredentials: true,
+      })
+      .pipe(
+        tap((response) =>
+          this.analytics.track('booking.created', {
+            bookingId: 'id' in response ? response.id : undefined,
+            carId: payload.carId,
+          }),
+        ),
+      );
   }
 
   /**
@@ -144,13 +156,15 @@ export class BookingService {
    * @returns Observable<Booking> with updated status ACTIVE
    */
   approveBooking(id: number): Observable<Booking> {
-    return this.http.put<Booking>(
-      `${this.baseUrl}/${id}/approve`,
-      {},
-      {
-        withCredentials: true,
-      },
-    );
+    return this.http
+      .put<Booking>(
+        `${this.baseUrl}/${id}/approve`,
+        {},
+        {
+          withCredentials: true,
+        },
+      )
+      .pipe(tap(() => this.analytics.track('booking.approved', { bookingId: id })));
   }
 
   /**
@@ -177,17 +191,21 @@ export class BookingService {
    * @returns Observable<Booking> with updated status DECLINED
    */
   declineBooking(id: number, reason?: string): Observable<Booking> {
-    const url = reason
-      ? `${this.baseUrl}/${id}/decline?reason=${encodeURIComponent(reason)}`
-      : `${this.baseUrl}/${id}/decline`;
+    let params = new HttpParams();
+    if (reason) {
+      params = params.set('reason', reason);
+    }
 
-    return this.http.put<Booking>(
-      url,
-      {},
-      {
-        withCredentials: true,
-      },
-    );
+    return this.http
+      .put<Booking>(
+        `${this.baseUrl}/${id}/decline`,
+        {},
+        {
+          params,
+          withCredentials: true,
+        },
+      )
+      .pipe(tap(() => this.analytics.track('booking.declined', { bookingId: id })));
   }
 
   /**

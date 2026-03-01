@@ -4,6 +4,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.booking.Booking;
+import org.example.rentoza.booking.util.ClientIpResolver;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.context.request.RequestContextHolder;
@@ -73,7 +74,7 @@ public class CheckInEventService {
             ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
             if (attrs != null) {
                 HttpServletRequest request = attrs.getRequest();
-                ipAddress = getClientIpAddress(request);
+                ipAddress = ClientIpResolver.resolve(request);
                 userAgent = request.getHeader("User-Agent");
                 if (userAgent != null && userAgent.length() > 500) {
                     userAgent = userAgent.substring(0, 500);
@@ -199,36 +200,4 @@ public class CheckInEventService {
     }
 
     // ========== HELPER METHODS ==========
-
-    /**
-     * Extract client IP address, handling proxies.
-     */
-    private String getClientIpAddress(HttpServletRequest request) {
-        String[] headerNames = {
-            "X-Forwarded-For",
-            "X-Real-IP",
-            "Proxy-Client-IP",
-            "WL-Proxy-Client-IP",
-            "HTTP_X_FORWARDED_FOR",
-            "HTTP_X_FORWARDED",
-            "HTTP_X_CLUSTER_CLIENT_IP",
-            "HTTP_CLIENT_IP",
-            "HTTP_FORWARDED_FOR",
-            "HTTP_FORWARDED"
-        };
-        
-        for (String header : headerNames) {
-            String ip = request.getHeader(header);
-            if (ip != null && !ip.isEmpty() && !"unknown".equalsIgnoreCase(ip)) {
-                // X-Forwarded-For may contain multiple IPs, take the first one
-                int commaIndex = ip.indexOf(',');
-                if (commaIndex > 0) {
-                    ip = ip.substring(0, commaIndex);
-                }
-                return ip.trim();
-            }
-        }
-        
-        return request.getRemoteAddr();
-    }
 }

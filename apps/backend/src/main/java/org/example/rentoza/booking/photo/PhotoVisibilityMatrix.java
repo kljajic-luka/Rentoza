@@ -26,18 +26,23 @@ public class PhotoVisibilityMatrix {
 
     /**
      * Check if a user can view a specific photo based on booking status and photo metadata.
-     * 
+     *
      * @param status Current booking status
      * @param userId ID of user requesting access
      * @param hostId ID of booking host
      * @param guestId ID of booking guest
      * @param phase "CHECK_IN" or "CHECK_OUT"
      * @param capturedBy "HOST" or "GUEST"
+     * @param isAdmin true if the requesting user has the ADMIN role
      * @return true if access is permitted
      */
     public boolean canViewPhoto(BookingStatus status, Long userId, Long hostId, Long guestId,
-                                String phase, String capturedBy) {
-        
+                                String phase, String capturedBy, boolean isAdmin) {
+
+        if (isAdmin) {
+            return true;
+        }
+
         // Determine if requesting user is host or guest
         boolean isHost = userId.equals(hostId);
         boolean isGuest = userId.equals(guestId);
@@ -122,14 +127,19 @@ public class PhotoVisibilityMatrix {
     /**
      * Check if a user can see the full list of photos for a booking.
      * Used for batch endpoints like /api/bookings/{id}/photos
-     * 
+     *
      * @param status Booking status
      * @param userId User ID
      * @param hostId Host ID
      * @param guestId Guest ID
+     * @param isAdmin true if the requesting user has the ADMIN role
      * @return true if user can list photos for this booking
      */
-    public boolean canListPhotos(BookingStatus status, Long userId, Long hostId, Long guestId) {
+    public boolean canListPhotos(BookingStatus status, Long userId, Long hostId, Long guestId, boolean isAdmin) {
+        if (isAdmin) {
+            return true;
+        }
+
         boolean isHost = userId.equals(hostId);
         boolean isGuest = userId.equals(guestId);
         

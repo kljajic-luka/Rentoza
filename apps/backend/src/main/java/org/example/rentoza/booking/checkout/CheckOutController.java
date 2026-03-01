@@ -50,16 +50,19 @@ public class CheckOutController {
     private final CheckInPhotoService photoService;
     private final CurrentUser currentUser;
     private final Counter photoUploadCounter;
+    private final org.example.rentoza.booking.photo.PhotoRateLimitService photoRateLimitService;
 
     public CheckOutController(
             CheckOutService checkOutService,
             CheckInPhotoService photoService,
             CurrentUser currentUser,
-            MeterRegistry meterRegistry) {
+            MeterRegistry meterRegistry,
+            org.example.rentoza.booking.photo.PhotoRateLimitService photoRateLimitService) {
         this.checkOutService = checkOutService;
         this.photoService = photoService;
         this.currentUser = currentUser;
-        
+        this.photoRateLimitService = photoRateLimitService;
+
         this.photoUploadCounter = Counter.builder("checkout.photo.upload")
                 .description("Checkout photo uploads")
                 .register(meterRegistry);
@@ -133,8 +136,18 @@ public class CheckOutController {
         if (!photoType.isCheckoutPhoto() || photoType.isHostCheckoutPhoto()) {
             throw new IllegalArgumentException("Nevažeći tip fotografije za guest checkout: " + photoType);
         }
-        
+
         Long userId = currentUser.id();
+
+        // WI-12: Rate limit photo uploads
+        String clientIp = getClientIp();
+        if (!photoRateLimitService.allowPhotoUpload(userId, clientIp)) {
+            log.warn("[CheckOut] Guest upload rate limit exceeded: userId={}, ip={}", userId, clientIp);
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                    .header("Retry-After", "600")
+                    .build();
+        }
+
         log.debug("[CheckOut] Guest photo upload for booking {} by user {}, type: {}",
             bookingId, userId, photoType);
         
@@ -199,8 +212,18 @@ public class CheckOutController {
         if (!photoType.isHostCheckoutPhoto()) {
             throw new IllegalArgumentException("Nevažeći tip fotografije za host checkout: " + photoType);
         }
-        
+
         Long userId = currentUser.id();
+
+        // WI-12: Rate limit photo uploads
+        String hostClientIp = getClientIp();
+        if (!photoRateLimitService.allowPhotoUpload(userId, hostClientIp)) {
+            log.warn("[CheckOut] Host upload rate limit exceeded: userId={}, ip={}", userId, hostClientIp);
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                    .header("Retry-After", "600")
+                    .build();
+        }
+
         log.debug("[CheckOut] Host photo upload for booking {} by user {}, type: {}",
             bookingId, userId, photoType);
         
@@ -339,11 +362,34 @@ public class CheckOutController {
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, Object>> handleIllegalArgument(IllegalArgumentException ex) {
         log.warn("[CheckOut] Illegal argument: {}", ex.getMessage());
-        
+
         return ResponseEntity.badRequest().body(Map.of(
             "error", "INVALID_ARGUMENT",
             "message", ex.getMessage()
         ));
+    }
+
+    /**
+     * Get client IP address from request context.
+     * Handles proxies and load balancers via X-Forwarded-For.
+     */
+    private String getClientIp() {
+        try {
+            org.springframework.web.context.request.ServletRequestAttributes attributes =
+                    (org.springframework.web.context.request.ServletRequestAttributes)
+                    org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+            if (attributes == null) {
+                return "UNKNOWN";
+            }
+            jakarta.servlet.http.HttpServletRequest request = attributes.getRequest();
+            String xff = request.getHeader("X-Forwarded-For");
+            if (xff != null && !xff.isEmpty()) {
+                return xff.split(",")[0].trim();
+            }
+            return request.getRemoteAddr() != null ? request.getRemoteAddr() : "UNKNOWN";
+        } catch (Exception e) {
+            return "UNKNOWN";
+        }
     }
 }
 

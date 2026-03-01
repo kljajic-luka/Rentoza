@@ -1001,85 +1001,15 @@ public class BookingPaymentService {
     /**
      * Process refund for cancellation or other reasons.
      *
-     * <p>If payment is still AUTHORIZED (not captured), releases the auth hold
-     * instead of issuing a refund (no money was moved).
+     * <p>M6: Delegates to the 4-arg overload with {@code attempt = 1}.
+     * Previously duplicated all refund logic with a hardcoded attempt number,
+     * meaning the idempotency key never varied on retry and lifecycle guards
+     * (AUTHORIZED→release, RELEASED/REFUNDED early return) were inconsistent
+     * between the two overloads.
      */
     @Transactional
     public PaymentResult processRefund(Long bookingId, BigDecimal amount, String reason) {
-        Booking booking = getBooking(bookingId);
-
-        ChargeLifecycleStatus lifecycle = booking.getChargeLifecycleStatus();
-
-        // Release instead of refund if auth was never captured
-        if (lifecycle == ChargeLifecycleStatus.AUTHORIZED || lifecycle == ChargeLifecycleStatus.REAUTH_REQUIRED) {
-            log.info("[Payment] Booking {} authorized-only — releasing hold instead of refunding", bookingId);
-            return releaseBookingPayment(bookingId);
-        }
-
-        String paymentRef = booking.getPaymentVerificationRef();
-        if (paymentRef == null) {
-            return PaymentResult.builder()
-                    .success(false)
-                    .errorMessage("Nema uplate za povraćaj")
-                    .status(PaymentStatus.FAILED)
-                    .build();
-        }
-
-        // M5: Track cumulative refunds — subtract already-succeeded refund amounts
-        // from the captured total to prevent over-refunding across multiple partial refunds.
-        BigDecimal alreadyRefunded = txRepository.sumSucceededRefundAmounts(bookingId);
-        BigDecimal maxRefundable = booking.getTotalPrice().subtract(alreadyRefunded);
-        if (amount.compareTo(maxRefundable) > 0) {
-            log.warn("[Payment] REJECTED: Refund {} exceeds refundable {} (captured={}, alreadyRefunded={}) for booking {}",
-                    amount, maxRefundable, booking.getTotalPrice(), alreadyRefunded, bookingId);
-            return PaymentResult.builder()
-                    .success(false)
-                    .errorCode("REFUND_EXCEEDS_CAPTURED")
-                    .errorMessage(String.format(
-                        "Iznos povraćaja (%s RSD) premašuje naplaćeni iznos (%s RSD)", amount, maxRefundable))
-                    .status(PaymentStatus.FAILED)
-                    .build();
-        }
-
-        int attempt = 1; // caller responsible for tracking attempts via CancellationRecord
-        String ikey = PaymentIdempotencyKey.forRefund(bookingId, reason, attempt);
-
-        // P0-3: Handle all settled states to avoid unique-key collision on FAILED_RETRYABLE row.
-        Optional<PaymentTransaction> existing = txRepository.findByIdempotencyKey(ikey);
-        final PaymentTransaction tx;
-        if (existing.isPresent()) {
-            PaymentTransaction ex = existing.get();
-            if (ex.getStatus() == PaymentTransactionStatus.SUCCEEDED) {
-                log.info("[Payment] Idempotent hit for booking {} refund", bookingId);
-                return toSuccess(ex);
-            }
-            if (ex.getStatus() == PaymentTransactionStatus.FAILED_TERMINAL) {
-                log.warn("[Payment] Terminal refund failure for booking {} — not retrying with same key", bookingId);
-                return toLegacyResult(ex);
-            }
-            // FAILED_RETRYABLE or PROCESSING: reuse row
-            ex.setStatus(PaymentTransactionStatus.PROCESSING);
-            tx = txRepository.save(ex);
-        } else {
-            tx = createTx(bookingId, booking.getRenter().getId(),
-                    PaymentOperation.REFUND, ikey, amount);
-        }
-
-        ProviderResult result = paymentProvider.refund(paymentRef, amount, reason, ikey);
-        updateTx(tx, result);
-
-        if (result.getOutcome() == ProviderOutcome.SUCCESS) {
-            booking.setPaymentStatus("REFUNDED");
-            transitionCharge(booking, ChargeLifecycleStatus.REFUNDED, "processRefund");
-            bookingRepository.save(booking);
-            paymentSuccessCounter.increment();
-            log.info("[Payment] Refund processed for booking {}: {} RSD", bookingId, amount);
-        } else {
-            paymentFailedCounter.increment();
-            log.warn("[Payment] Refund failed for booking {}: {}", bookingId, result.getErrorMessage());
-        }
-
-        return toLegacyResult(result);
+        return processRefund(bookingId, amount, reason, 1);
     }
 
     /** Process refund by attempt number (for scheduler retry logic). */

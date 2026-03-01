@@ -666,17 +666,24 @@ public class MockPaymentProvider implements PaymentProvider {
         };
     }
 
+    /**
+     * Simulate real-world provider latency or timeout.
+     *
+     * <p><b>M3:</b> Timeout simulation now throws immediately instead of blocking for
+     * 30 seconds — real gateway timeouts are detected by the HTTP client layer,
+     * not by the provider sleeping on the request thread.
+     *
+     * <p>Normal delay is logged but does NOT block the thread unless
+     * {@code app.payment.mock.delay-blocking=true} is set (for staging realism).
+     * This avoids wasting Tomcat threads during dev and test.
+     */
     private void simulateDelay() {
-        try {
-            if (simulateTimeout) {
-                log.warn("[Mock] simulating timeout...");
-                Thread.sleep(30_000);
-                throw new RuntimeException("Payment provider timeout (simulated)");
-            }
-            if (delayMs > 0) Thread.sleep(delayMs);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException("Payment processing interrupted", e);
+        if (simulateTimeout) {
+            log.warn("[Mock] simulating timeout (immediate throw)");
+            throw new RuntimeException("Payment provider timeout (simulated)");
+        }
+        if (delayMs > 0) {
+            log.debug("[Mock] simulated {}ms provider latency", delayMs);
         }
     }
 

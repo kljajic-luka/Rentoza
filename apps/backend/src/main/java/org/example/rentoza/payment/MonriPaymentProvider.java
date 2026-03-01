@@ -16,8 +16,12 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.HexFormat;
 import java.util.Map;
 import java.util.Set;
 
@@ -132,8 +136,7 @@ public class MonriPaymentProvider implements PaymentProvider {
             }
 
             Map<String, Object> body = Map.of(
-                    "transaction", txn,
-                    "authenticity_token", authenticityToken
+                    "transaction", txn
             );
 
             ResponseEntity<JsonNode> response = post("/v2/payment/new", body, idempotencyKey);
@@ -164,8 +167,7 @@ public class MonriPaymentProvider implements PaymentProvider {
                     "transaction", Map.of(
                             "amount", toCents(amount),
                             "currency", "RSD"
-                    ),
-                    "authenticity_token", authenticityToken
+                    )
             );
 
             ResponseEntity<JsonNode> response = post(
@@ -205,8 +207,7 @@ public class MonriPaymentProvider implements PaymentProvider {
             }
 
             Map<String, Object> body = Map.of(
-                    "transaction", txn,
-                    "authenticity_token", authenticityToken
+                    "transaction", txn
             );
 
             ResponseEntity<JsonNode> response = post("/v2/payment/new", body, idempotencyKey);
@@ -239,8 +240,7 @@ public class MonriPaymentProvider implements PaymentProvider {
                     "transaction", Map.of(
                             "amount", toCents(amount),
                             "currency", "RSD"
-                    ),
-                    "authenticity_token", authenticityToken
+                    )
             );
 
             ResponseEntity<JsonNode> response = post(
@@ -268,9 +268,7 @@ public class MonriPaymentProvider implements PaymentProvider {
         log.info("[Monri] Void/Release: authId={} ikey={}", authorizationId, idempotencyKey);
 
         try {
-            Map<String, Object> body = Map.of(
-                    "authenticity_token", authenticityToken
-            );
+            Map<String, Object> body = Map.of();
 
             ResponseEntity<JsonNode> response = post(
                     "/v2/transactions/" + authorizationId + "/void", body, idempotencyKey);
@@ -339,8 +337,7 @@ public class MonriPaymentProvider implements PaymentProvider {
                             "recipient_id", recipientId,
                             "order_number", "payout_" + request.getBookingId(),
                             "description", nullSafe(request.getDescription())
-                    ),
-                    "authenticity_token", authenticityToken
+                    )
             );
 
             ResponseEntity<JsonNode> response = post("/v2/payouts", body, idempotencyKey);
@@ -596,14 +593,49 @@ public class MonriPaymentProvider implements PaymentProvider {
     // HTTP HELPERS
     // =========================================================================
 
+    /**
+     * H7-FIX: Monri requires WP3-v2.1 signature-based authorization, not plain WP3-v2.
+     *
+     * <p>Format: {@code WP3-v2.1 <authenticityToken> <timestamp> <digest>}
+     * <p>Digest: SHA-512 hex of {@code merchantKey + timestamp + authenticityToken + fullPath + jsonBody}
+     *
+     * @see <a href="https://ipg.monri.com/en/documentation/payment_api">Monri Payment API Docs</a>
+     */
     private ResponseEntity<JsonNode> post(String path, Map<String, Object> body, String idempotencyKey) {
+        String jsonBody;
+        try {
+            jsonBody = objectMapper.writeValueAsString(body);
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to serialize request body for Monri digest", e);
+        }
+
+        String timestamp = String.valueOf(Instant.now().getEpochSecond());
+        String digest = computeDigest(merchantKey, timestamp, authenticityToken, path, jsonBody);
+
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.set("Authorization", "WP3-v2 " + merchantKey);
+        headers.set("Authorization", "WP3-v2.1 " + authenticityToken + " " + timestamp + " " + digest);
         headers.set("X-Idempotency-Key", idempotencyKey);
 
-        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
+        HttpEntity<String> entity = new HttpEntity<>(jsonBody, headers);
         return restTemplate.exchange(apiUrl + path, HttpMethod.POST, entity, JsonNode.class);
+    }
+
+    /**
+     * Compute the SHA-512 digest for Monri WP3-v2.1 authorization.
+     *
+     * @return lowercase hex SHA-512 of {@code merchantKey + timestamp + authenticityToken + fullPath + body}
+     */
+    private static String computeDigest(String merchantKey, String timestamp,
+                                         String authenticityToken, String fullPath, String body) {
+        String input = merchantKey + timestamp + authenticityToken + fullPath + body;
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-512");
+            byte[] hash = md.digest(input.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(hash);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-512 not available", e);
+        }
     }
 
     // =========================================================================

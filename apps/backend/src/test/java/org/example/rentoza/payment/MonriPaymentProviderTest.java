@@ -73,12 +73,13 @@ class MonriPaymentProviderTest {
     }
 
     @Test
-    @DisplayName("Authorize with 3DS2 redirect returns REDIRECT_REQUIRED")
+    @DisplayName("Authorize with 3DS2 redirect returns REDIRECT_REQUIRED with providerAuthorizationId (H6)")
     void authorizeRedirectRequired() {
         ObjectNode body = objectMapper.createObjectNode();
         body.put("status", "action_required");
         body.put("acs_url", "https://bank.example.com/3ds2");
         body.put("authenticity_token", "session_abc");
+        body.put("id", "pending_auth_777");
 
         when(restTemplate.exchange(anyString(), eq(HttpMethod.POST), any(), eq(JsonNode.class)))
                 .thenReturn(ResponseEntity.ok(body));
@@ -89,6 +90,7 @@ class MonriPaymentProviderTest {
 
         assertThat(result.getOutcome()).isEqualTo(ProviderOutcome.REDIRECT_REQUIRED);
         assertThat(result.getRedirectUrl()).isEqualTo("https://bank.example.com/3ds2");
+        assertThat(result.getProviderAuthorizationId()).isEqualTo("pending_auth_777");
     }
 
     @Test
@@ -298,6 +300,32 @@ class MonriPaymentProviderTest {
                 argThat(entity -> {
                     HttpHeaders headers = entity.getHeaders();
                     return "my_idem_key".equals(headers.getFirst("X-Idempotency-Key"));
+                }),
+                eq(JsonNode.class));
+    }
+
+    @Test
+    @DisplayName("H7: Authorization header uses WP3-v2.1 with digest (not plain WP3-v2)")
+    void authorizationHeaderUsesV21WithDigest() {
+        ObjectNode body = objectMapper.createObjectNode();
+        body.put("status", "approved");
+        body.put("id", "auth_1");
+
+        when(restTemplate.exchange(anyString(), eq(HttpMethod.POST), any(), eq(JsonNode.class)))
+                .thenReturn(ResponseEntity.ok(body));
+
+        provider.authorize(
+                PaymentRequest.builder().bookingId(1L).amount(BigDecimal.valueOf(5000)).build(),
+                "test_key");
+
+        verify(restTemplate).exchange(anyString(), eq(HttpMethod.POST),
+                argThat(entity -> {
+                    String auth = entity.getHeaders().getFirst("Authorization");
+                    // Must start with WP3-v2.1, include authenticityToken, timestamp, and hex digest
+                    return auth != null
+                            && auth.startsWith("WP3-v2.1 test-auth-token ")
+                            && auth.split(" ").length == 4
+                            && auth.split(" ")[3].matches("[0-9a-f]{128}"); // SHA-512 hex = 128 chars
                 }),
                 eq(JsonNode.class));
     }

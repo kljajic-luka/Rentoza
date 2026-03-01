@@ -56,6 +56,9 @@ public class BookingPaymentService {
     /** Platform fee rate — 15 %. Captured as snapshot in PayoutLedger. */
     private static final BigDecimal PLATFORM_FEE_RATE = new BigDecimal("0.15");
 
+    /** Serbian PDV (VAT) rate — 20 %. Applied to the platform fee component. */
+    private static final BigDecimal PDV_RATE = new BigDecimal("0.20");
+
     private final PaymentProvider paymentProvider;
     private final BookingRepository bookingRepository;
     private final DamageClaimRepository damageClaimRepository;
@@ -1189,6 +1192,7 @@ public class BookingPaymentService {
         return payoutLedgerRepository.findByIdempotencyKey(ikey).orElseGet(() -> {
             BigDecimal trip = booking.getTotalAmount();
             BigDecimal fee = trip.multiply(PLATFORM_FEE_RATE).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal pdv = fee.multiply(PDV_RATE).setScale(2, RoundingMode.HALF_UP);
             BigDecimal hostAmt = trip.subtract(fee);
 
             PayoutLedger ledger = PayoutLedger.builder()
@@ -1197,6 +1201,7 @@ public class BookingPaymentService {
                     .tripAmount(trip)
                     .platformFeeRate(PLATFORM_FEE_RATE)
                     .platformFee(fee)
+                    .platformFeePdv(pdv)
                     .hostPayoutAmount(hostAmt)
                     .currency(DEFAULT_CURRENCY)
                     .idempotencyKey(ikey)
@@ -1204,8 +1209,8 @@ public class BookingPaymentService {
                     .eligibleAt(Instant.now().plusSeconds(payoutDisputeHoldHours * 3600L))
                     .build();
 
-            log.info("[Payment] Payout scheduled for booking {} → host {}: {} RSD (fee {})",
-                    booking.getId(), booking.getCar().getOwner().getId(), hostAmt, fee);
+            log.info("[Payment] Payout scheduled for booking {} → host {}: {} RSD (fee {} + PDV {})",
+                    booking.getId(), booking.getCar().getOwner().getId(), hostAmt, fee, pdv);
             return payoutLedgerRepository.save(ledger);
         });
     }

@@ -91,6 +91,17 @@ import { CheckoutService } from '@core/services/checkout.service';
         </mat-card-content>
       </mat-card>
 
+      <!-- C-6: Admin Review Required Banner -->
+      @if (status && status.damageClaimAmount && status.damageClaimAmount > 50000) {
+        <div class="admin-review-banner">
+          <mat-icon>admin_panel_settings</mat-icon>
+          <div>
+            <h4>Potreban pregled administratora</h4>
+            <p>Prijava štete preko 50.000 RSD zahteva pregled administratora pre odobravanja.</p>
+          </div>
+        </div>
+      }
+
       <!-- Guest Actions -->
       @if (role === 'GUEST') {
         @if (!showDisputeForm()) {
@@ -409,12 +420,44 @@ import { CheckoutService } from '@core/services/checkout.service';
         }
       }
 
+      .admin-review-banner {
+        display: flex;
+        gap: 16px;
+        padding: 16px 20px;
+        background: #e3f2fd;
+        border-left: 4px solid #1565c0;
+        border-radius: 8px;
+        align-items: flex-start;
+
+        mat-icon {
+          color: #1565c0;
+          font-size: 28px;
+          width: 28px;
+          height: 28px;
+          flex-shrink: 0;
+        }
+
+        h4 {
+          margin: 0 0 4px;
+          font-size: 1rem;
+          color: #1565c0;
+        }
+        p {
+          margin: 0;
+          color: #666;
+          font-size: 0.85rem;
+        }
+      }
+
       :host-context(.dark-theme) {
         .alert-banner {
           background: #3e2723;
         }
         .detail-row {
           border-bottom-color: #333;
+        }
+        .admin-review-banner {
+          background: #0d2137;
         }
       }
     `,
@@ -487,9 +530,15 @@ export class CheckoutDamageDisputeComponent {
         });
         this.resolved.emit();
       },
-      error: () => {
+      error: (err) => {
         this.isProcessing.set(false);
-        this.snackBar.open('Greška pri prihvatanju prijave.', 'Zatvori', { duration: 4000 });
+        const message = err?.error?.message || '';
+        // C-6: Show specific error when admin review is required for high-value claims
+        this.snackBar.open(
+          message || 'Greška pri prihvatanju prijave.',
+          'Zatvori',
+          { duration: message.includes('administrator') ? 7000 : 4000 },
+        );
       },
     });
   }
@@ -513,9 +562,13 @@ export class CheckoutDamageDisputeComponent {
           });
           this.resolved.emit();
         },
-        error: () => {
+        error: (err) => {
           this.isProcessing.set(false);
-          this.snackBar.open('Greška pri slanju osporavanja.', 'Zatvori', { duration: 4000 });
+          this.snackBar.open(
+            err?.error?.message || 'Greška pri slanju osporavanja.',
+            'Zatvori',
+            { duration: 5000 },
+          );
         },
       });
   }

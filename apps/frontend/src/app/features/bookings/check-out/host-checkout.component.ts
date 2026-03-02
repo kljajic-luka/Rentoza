@@ -219,6 +219,7 @@ import { environment } from '@environments/environment';
                     <mat-label>Procenjena šteta (RSD)</mat-label>
                     <input matInput type="number" formControlName="estimatedCost" min="0" />
                     <span matSuffix>RSD</span>
+                    <mat-hint>Iznos ne može biti veći od depozita. Prijave preko 50.000 RSD zahtevaju pregled administratora.</mat-hint>
                   </mat-form-field>
 
                   <!-- Damage Photo Upload -->
@@ -668,8 +669,10 @@ export class HostCheckoutComponent {
         },
         error: (err) => {
           this._isSubmitting.set(false);
-          this.snackBar.open(err?.error?.message || 'Greška pri prijavi oštećenja', 'OK', {
-            duration: 5000,
+          const message = err?.error?.message || '';
+          // H-4/C-5: Show specific validation errors (deposit cap, admin review threshold)
+          this.snackBar.open(message || 'Greška pri prijavi oštećenja', 'OK', {
+            duration: message.includes('depozit') || message.includes('administrator') ? 7000 : 5000,
           });
         },
       });

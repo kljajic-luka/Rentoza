@@ -1108,9 +1108,19 @@ export class GuestCheckoutComponent implements OnInit {
         },
         error: (err) => {
           this._isSubmitting.set(false);
-          this.snackBar.open(err?.error?.message || 'Greška pri slanju checkout-a', 'OK', {
-            duration: 5000,
-          });
+          const message = err?.error?.message || '';
+          // C-2: Backend photo validation gate - inform user about missing photos
+          if (message.toLowerCase().includes('fotografij') || message.toLowerCase().includes('photo')) {
+            this.snackBar.open(
+              message || 'Nedovoljno fotografija za završetak checkout-a. Molimo dodajte sve obavezne fotografije.',
+              'OK',
+              { duration: 7000 },
+            );
+          } else {
+            this.snackBar.open(message || 'Greška pri slanju checkout-a', 'OK', {
+              duration: 5000,
+            });
+          }
         },
       });
   }

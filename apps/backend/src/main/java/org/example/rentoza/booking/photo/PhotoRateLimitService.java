@@ -44,6 +44,10 @@ public class PhotoRateLimitService {
     @Value("${app.photo.rate-limit.upload-window-minutes:10}")
     private int uploadWindowMinutes;
 
+    // H-9 FIX: Per-user-per-minute upload limit (prompt requires default 10)
+    @Value("${app.photo.rate-limit.upload-max-per-minute:10}")
+    private int uploadMaxPerMinute;
+
     // Cache: key = "{userId}:{windowStart}", value = request count
     private final Cache<String, AtomicInteger> rateLimitCache = CacheBuilder.newBuilder()
             .expireAfterWrite(15, TimeUnit.MINUTES)  // Slightly longer than window to avoid edge cases
@@ -53,6 +57,12 @@ public class PhotoRateLimitService {
     // Separate cache for upload rate limiting (stricter thresholds)
     private final Cache<String, AtomicInteger> uploadRateLimitCache = CacheBuilder.newBuilder()
             .expireAfterWrite(15, TimeUnit.MINUTES)
+            .maximumSize(10000)
+            .build();
+
+    // H-9 FIX: Per-minute upload rate limit cache
+    private final Cache<String, AtomicInteger> uploadPerMinuteCache = CacheBuilder.newBuilder()
+            .expireAfterWrite(2, TimeUnit.MINUTES)
             .maximumSize(10000)
             .build();
 
@@ -97,6 +107,20 @@ public class PhotoRateLimitService {
      * @return true if upload is allowed
      */
     public boolean allowPhotoUpload(Long userId, String ipAddress) {
+        // H-9 FIX: Per-minute rate limit (prompt requires default 10 per user per minute)
+        String perMinuteKey = "upload-min:" + userId + ":" + (System.currentTimeMillis() / 60000);
+        AtomicInteger perMinuteCount = uploadPerMinuteCache.getIfPresent(perMinuteKey);
+        if (perMinuteCount == null) {
+            perMinuteCount = new AtomicInteger(0);
+            uploadPerMinuteCache.put(perMinuteKey, perMinuteCount);
+        }
+        if (perMinuteCount.incrementAndGet() > uploadMaxPerMinute) {
+            log.warn("[RateLimit] User exceeded per-MINUTE upload limit: userId={}, ip={}, count={}/{}",
+                userId, ipAddress, perMinuteCount.get(), uploadMaxPerMinute);
+            return false;
+        }
+
+        // Existing per-window rate limit
         String cacheKey = generateUploadCacheKey(userId);
 
         AtomicInteger requestCount = uploadRateLimitCache.getIfPresent(cacheKey);

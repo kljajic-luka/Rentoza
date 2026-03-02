@@ -535,10 +535,23 @@ public class HostCheckoutPhotoService {
             
             // Get URLs for comparison (future: AI comparison)
             CheckInPhoto checkInPhoto = checkInPhotos.get(0);
-            
+
+            // H-6 FIX: Generate signed URL for check-in photo (never expose raw storage key)
+            String checkInBucket = (checkInPhoto.getStorageBucket() == CheckInPhoto.StorageBucket.CHECKIN_PII)
+                    ? "check-in-pii" : "check-in-photos";
+            String checkInSignedUrl;
+            try {
+                checkInSignedUrl = photoUrlService.generateSignedUrl(
+                        checkInBucket, checkInPhoto.getStorageKey(), checkInPhoto.getId());
+            } catch (Exception e) {
+                log.error("[HostCheckout] Failed to generate signed URL for check-in photo {}: key={}",
+                        checkInPhoto.getId(), checkInPhoto.getStorageKey(), e);
+                checkInSignedUrl = "";
+            }
+
             return HostCheckoutPhotoResponseDTO.ConditionComparisonDTO.builder()
                 .photoType(checkInType.name().replace("HOST_", ""))
-                .checkInPhotoUrl(checkInPhoto.getStorageKey())
+                .checkInPhotoUrl(checkInSignedUrl)
                 .checkOutPhotoUrl(null) // Set by caller
                 .changeDetected(false) // Future: AI detection
                 .changeSeverity("NONE")

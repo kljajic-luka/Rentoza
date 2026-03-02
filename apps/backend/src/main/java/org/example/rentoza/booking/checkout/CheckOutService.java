@@ -106,6 +106,10 @@ public class CheckOutService {
     @Value("${app.checkout.damage-dispute.hold-days:7}")
     private int damageDisputeHoldDays;
 
+    // C-6 FIX: Configurable admin review threshold (shared with DamageClaimService)
+    @Value("${app.damage-claim.admin-review-threshold-rsd:50000}")
+    private long adminReviewThresholdRsd;
+
     public CheckOutService(
             BookingRepository bookingRepository,
             CheckInEventService eventService,
@@ -1178,9 +1182,9 @@ public class CheckOutService {
             }
         }
         
-        // Flag high-value claims (>50,000 RSD ~= €500) for mandatory admin review
-        boolean adminReviewRequired = dto.getEstimatedDamageCostRsd() != null 
-                && dto.getEstimatedDamageCostRsd().compareTo(new java.math.BigDecimal("50000")) > 0;
+        // C-6 FIX: Flag high-value claims for mandatory admin review (configurable threshold)
+        boolean adminReviewRequired = dto.getEstimatedDamageCostRsd() != null
+                && dto.getEstimatedDamageCostRsd().compareTo(java.math.BigDecimal.valueOf(adminReviewThresholdRsd)) > 0;
         
         DamageClaim claim = DamageClaim.builder()
                 .booking(booking)

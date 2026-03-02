@@ -51,6 +51,10 @@ public class DamageClaimService {
     @Value("${app.damage-claim.response-hours:72}")
     private int responseHours;
 
+    // C-6 FIX: Configurable admin review threshold (prompt requires configurable, not hardcoded)
+    @Value("${app.damage-claim.admin-review-threshold-rsd:50000}")
+    private long adminReviewThresholdRsd;
+
     public DamageClaimService(
             DamageClaimRepository claimRepository,
             BookingRepository bookingRepository,
@@ -143,10 +147,9 @@ public class DamageClaimService {
                     claimedAmount.doubleValue(), depositAmount.doubleValue()));
         }
 
-        // C-6 FIX: Flag high-value claims for mandatory admin review
-        // Matches threshold used in CheckOutService.createCheckoutDamageClaim()
+        // C-6 FIX: Flag high-value claims for mandatory admin review (configurable threshold)
         boolean adminReviewRequired = claimedAmount != null
-                && claimedAmount.compareTo(new BigDecimal("50000")) > 0;
+                && claimedAmount.compareTo(BigDecimal.valueOf(adminReviewThresholdRsd)) > 0;
 
         DamageClaim claim = DamageClaim.builder()
                 .booking(booking)

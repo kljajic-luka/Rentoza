@@ -23,6 +23,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.validation.FieldError;
 
 import java.time.Instant;
@@ -475,8 +476,31 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Handle path variable type conversion failures (e.g., string where Long expected).
+     *
+     * <p>When a route like {@code GET /api/bookings/{id}} receives a non-numeric segment
+     * such as {@code /api/bookings/my-renter-bookings}, Spring fails to convert the string
+     * to {@code Long} and throws {@link MethodArgumentTypeMismatchException}. Without this
+     * handler the exception propagates to the catch-all and returns 500.
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<Map<String, Object>> handleMethodArgumentTypeMismatch(
+            MethodArgumentTypeMismatchException ex) {
+        log.warn("Path variable type mismatch: param='{}' value='{}' required='{}'",
+                ex.getName(), ex.getValue(),
+                ex.getRequiredType() != null ? ex.getRequiredType().getSimpleName() : "unknown");
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", Instant.now().toString());
+        body.put("error", "Bad Request");
+        body.put("message", "Neispravan parametar zahteva: '" + ex.getName() + "'");
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
+    /**
      * Handle authentication failures (invalid credentials).
-     * 
+     *
      * SECURITY: Generic error message prevents email enumeration attacks.
      * Returns HTTP 401 Unauthorized with clean JSON response.
      * 

@@ -1,7 +1,11 @@
 package org.example.rentoza.booking.checkout.saga;
 
+import jakarta.persistence.LockModeType;
+import jakarta.persistence.QueryHint;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.QueryHints;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
@@ -45,7 +49,10 @@ public interface CheckoutSagaStateRepository extends JpaRepository<CheckoutSagaS
 
     /**
      * Find stuck sagas (running for too long).
+     * C-4 FIX: PESSIMISTIC_WRITE + SKIP LOCKED prevents contention with active saga execution.
      */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @QueryHints(@QueryHint(name = "jakarta.persistence.lock.timeout", value = "-2"))
     @Query("""
         SELECT s FROM CheckoutSagaState s
         WHERE s.status = 'RUNNING'
@@ -56,7 +63,10 @@ public interface CheckoutSagaStateRepository extends JpaRepository<CheckoutSagaS
 
     /**
      * Find failed sagas eligible for retry.
+     * C-4 FIX: PESSIMISTIC_WRITE + SKIP LOCKED prevents contention with active saga execution.
      */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @QueryHints(@QueryHint(name = "jakarta.persistence.lock.timeout", value = "-2"))
     @Query("""
         SELECT s FROM CheckoutSagaState s
         WHERE s.status = 'FAILED'
@@ -67,7 +77,10 @@ public interface CheckoutSagaStateRepository extends JpaRepository<CheckoutSagaS
 
     /**
      * Find sagas needing compensation.
+     * C-4 FIX: PESSIMISTIC_WRITE + SKIP LOCKED prevents contention with active saga execution.
      */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @QueryHints(@QueryHint(name = "jakarta.persistence.lock.timeout", value = "-2"))
     @Query("""
         SELECT s FROM CheckoutSagaState s
         WHERE s.status = 'COMPENSATING'

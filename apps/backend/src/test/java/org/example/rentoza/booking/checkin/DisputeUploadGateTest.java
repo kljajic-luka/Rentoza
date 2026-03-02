@@ -7,6 +7,7 @@ import org.example.rentoza.booking.checkin.ExifValidationService.ExifValidationR
 import org.example.rentoza.booking.photo.PiiPhotoStorageService;
 import org.example.rentoza.car.Car;
 import org.example.rentoza.security.LockboxEncryptionService;
+import org.example.rentoza.booking.photo.PhotoUrlService;
 import org.example.rentoza.storage.SupabaseStorageService;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
@@ -61,6 +62,7 @@ class DisputeUploadGateTest {
     @Mock private PiiPhotoStorageService piiPhotoStorageService;
     @Mock private ExifStrippingService exifStrippingService;
     @Mock private CheckInValidationService validationService;
+    @Mock private PhotoUrlService photoUrlService;
 
     private CheckInPhotoService service;
 
@@ -92,7 +94,8 @@ class DisputeUploadGateTest {
                 supabaseStorageService,
                 piiPhotoStorageService,
                 exifStrippingService,
-                validationService
+                validationService,
+                photoUrlService
         );
         ReflectionTestUtils.setField(service, "maxSizeMb", 10);
 

@@ -101,7 +101,7 @@ public class CheckoutSagaState {
     /**
      * Extra mileage charge amount.
      */
-    @Column(name = "extra_mileage_charge", precision = 10, scale = 2)
+    @Column(name = "extra_mileage_charge", precision = 19, scale = 2)
     private BigDecimal extraMileageCharge;
 
     /**
@@ -113,7 +113,7 @@ public class CheckoutSagaState {
     /**
      * Fuel charge amount.
      */
-    @Column(name = "fuel_charge", precision = 10, scale = 2)
+    @Column(name = "fuel_charge", precision = 19, scale = 2)
     private BigDecimal fuelCharge;
 
     /**
@@ -125,37 +125,37 @@ public class CheckoutSagaState {
     /**
      * Late fee amount.
      */
-    @Column(name = "late_fee", precision = 10, scale = 2)
+    @Column(name = "late_fee", precision = 19, scale = 2)
     private BigDecimal lateFee;
 
     /**
      * Damage claim charge amount (approved damage from checkout dispute).
      */
-    @Column(name = "damage_claim_charge", precision = 10, scale = 2)
+    @Column(name = "damage_claim_charge", precision = 19, scale = 2)
     private BigDecimal damageClaimCharge;
 
     /**
      * Total charges to deduct from deposit.
      */
-    @Column(name = "total_charges", precision = 10, scale = 2)
+    @Column(name = "total_charges", precision = 19, scale = 2)
     private BigDecimal totalCharges;
 
     /**
      * Amount captured from deposit.
      */
-    @Column(name = "captured_amount", precision = 10, scale = 2)
+    @Column(name = "captured_amount", precision = 19, scale = 2)
     private BigDecimal capturedAmount;
 
     /**
      * Amount released back to guest.
      */
-    @Column(name = "released_amount", precision = 10, scale = 2)
+    @Column(name = "released_amount", precision = 19, scale = 2)
     private BigDecimal releasedAmount;
 
     /**
      * Remainder amount that exceeded deposit and was direct-charged to guest.
      */
-    @Column(name = "remainder_amount", precision = 10, scale = 2)
+    @Column(name = "remainder_amount", precision = 19, scale = 2)
     private BigDecimal remainderAmount;
 
     // ========== PAYMENT REFERENCES ==========

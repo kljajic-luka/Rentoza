@@ -10,6 +10,7 @@ import org.example.rentoza.booking.BookingStatus;
 import org.example.rentoza.booking.checkin.CheckInActorRole;
 import org.example.rentoza.booking.checkin.CheckInEventService;
 import org.example.rentoza.booking.checkin.CheckInEventType;
+import org.example.rentoza.booking.checkin.CheckInPhotoRepository;
 import org.example.rentoza.booking.dispute.DamageClaim;
 import org.example.rentoza.booking.checkout.cqrs.CheckoutDomainEvent;
 import org.example.rentoza.booking.checkout.saga.CheckoutSagaState.SagaStatus;
@@ -74,6 +75,7 @@ public class CheckoutSagaOrchestrator {
 
     private final CheckoutSagaStateRepository sagaRepository;
     private final BookingRepository bookingRepository;
+    private final CheckInPhotoRepository checkInPhotoRepository;
     private final NotificationService notificationService;
     private final CheckInEventService eventService;
     private final ApplicationEventPublisher eventPublisher;
@@ -121,6 +123,7 @@ public class CheckoutSagaOrchestrator {
     public CheckoutSagaOrchestrator(
             CheckoutSagaStateRepository sagaRepository,
             BookingRepository bookingRepository,
+            CheckInPhotoRepository checkInPhotoRepository,
             NotificationService notificationService,
             CheckInEventService eventService,
             ApplicationEventPublisher eventPublisher,
@@ -129,6 +132,7 @@ public class CheckoutSagaOrchestrator {
             MeterRegistry meterRegistry) {
         this.sagaRepository = sagaRepository;
         this.bookingRepository = bookingRepository;
+        this.checkInPhotoRepository = checkInPhotoRepository;
         this.notificationService = notificationService;
         this.eventService = eventService;
         this.eventPublisher = eventPublisher;
@@ -382,7 +386,13 @@ public class CheckoutSagaOrchestrator {
             throw new IllegalStateException("Završni nivo goriva nije unesen");
         }
 
-        // TODO: Validate checkout photos exist
+        // C-2 FIX: Validate guest checkout photos exist (minimum 6 required type slots)
+        long guestCheckoutPhotoTypeCount = checkInPhotoRepository.countCheckoutPhotoTypes(booking.getId());
+        if (guestCheckoutPhotoTypeCount < 6) {
+            throw new IllegalStateException(
+                    String.format("Nedovoljno fotografija za checkout. Potrebno: 6 vrsta, pronađeno: %d",
+                            guestCheckoutPhotoTypeCount));
+        }
 
         log.debug("[Saga] Validation passed for booking {}", saga.getBookingId());
     }
@@ -788,7 +798,10 @@ public class CheckoutSagaOrchestrator {
             Instant releaseScheduledAt = Instant.now().plus(48, ChronoUnit.HOURS);
             booking.setSecurityDepositReleased(false); // NOT released yet
             booking.setSecurityDepositHoldUntil(releaseScheduledAt);
-            booking.setSecurityDepositHoldReason("48h post-checkout hold period (standard policy)");
+            // H-2 FIX: Don't overwrite admin-set hold reason
+            if (booking.getSecurityDepositHoldReason() == null) {
+                booking.setSecurityDepositHoldReason("48h post-checkout hold period (standard policy)");
+            }
             bookingRepository.save(booking);
             
             saga.setReleasedAmount(BigDecimal.ZERO); // Nothing released in saga
@@ -933,20 +946,25 @@ public class CheckoutSagaOrchestrator {
                     log.error("[Saga] CRITICAL: Failed to refund deposit capture for booking {}. " +
                             "Manual intervention required. Error: {}",
                             saga.getBookingId(), refundResult.getErrorMessage());
+                    // C-7 FIX: Fail the compensation so saga doesn't mark as COMPENSATED
+                    throw new RuntimeException("Compensation refund refused by payment provider for booking "
+                            + saga.getBookingId() + ": " + refundResult.getErrorMessage());
                 }
             } catch (Exception e) {
                 log.error("[Saga] CRITICAL: Exception during deposit capture compensation for booking {}: {}",
                         saga.getBookingId(), e.getMessage(), e);
+                // C-7 FIX: Re-throw so saga transitions to FAILED, not COMPENSATED
+                throw new RuntimeException("Compensation refund failed for booking " + saga.getBookingId(), e);
             }
         }
     }
 
     private void compensateCompleteBooking(CheckoutSagaState saga) {
         Booking booking = loadBooking(saga.getBookingId());
-        booking.setStatus(BookingStatus.COMPLETED);  // Revert to previous status
+        booking.setStatus(BookingStatus.CHECKOUT_HOST_COMPLETE);  // Revert to pre-saga status
         bookingRepository.save(booking);
 
-        log.info("[Saga] Reverted booking {} status to COMPLETED", saga.getBookingId());
+        log.info("[Saga] Reverted booking {} status to CHECKOUT_HOST_COMPLETE", saga.getBookingId());
     }
 
     // ========== HELPER METHODS ==========

@@ -22,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import org.example.rentoza.storage.SupabaseStorageService;
 import org.example.rentoza.booking.photo.PiiPhotoStorageService;
+import org.example.rentoza.booking.photo.PhotoUrlService;
 import org.example.rentoza.util.ExifStrippingService;
 
 import java.io.IOException;
@@ -76,6 +77,7 @@ public class CheckInPhotoService {
     private final PiiPhotoStorageService piiPhotoStorageService;  // P0-2: PII enforcement
     private final ExifStrippingService exifStrippingService;      // VAL-001: EXIF privacy
     private final CheckInValidationService validationService;     // Upload timing gate
+    private final PhotoUrlService photoUrlService;                // H-6: Signed URL generation
 
     @Value("${app.checkin.photo.max-size-mb:10}")
     private int maxSizeMb;
@@ -950,10 +952,15 @@ public class CheckInPhotoService {
     }
 
     private CheckInPhotoDTO mapToDTO(CheckInPhoto photo) {
+        // H-6 FIX: Generate signed URL instead of returning raw storage key
+        String bucketName = (photo.getStorageBucket() == CheckInPhoto.StorageBucket.CHECKIN_PII)
+                ? "check-in-pii" : "check-in-photos";
+        String signedUrl = resolveSignedUrl(bucketName, photo.getStorageKey(), photo.getId());
+
         return CheckInPhotoDTO.builder()
                 .photoId(photo.getId())
                 .photoType(photo.getPhotoType())
-                .url(photo.getStorageKey())
+                .url(signedUrl)
                 .uploadedAt(toLocalDateTime(photo.getUploadedAt()))
                 .exifValidationStatus(photo.getExifValidationStatus())
                 .exifValidationMessage(photo.getExifValidationMessage())
@@ -965,6 +972,21 @@ public class CheckInPhotoService {
                 .exifLongitude(photo.getExifLongitude() != null ? photo.getExifLongitude().doubleValue() : null)
                 .deviceModel(photo.getExifDeviceModel())
                 .build();
+    }
+
+    private String resolveSignedUrl(String bucketName, String storageKey, Long photoId) {
+        if (storageKey == null || storageKey.isEmpty()) {
+            return "";
+        }
+        if (storageKey.startsWith("http://") || storageKey.startsWith("https://")) {
+            return storageKey;
+        }
+        try {
+            return photoUrlService.generateSignedUrl(bucketName, storageKey, photoId);
+        } catch (Exception e) {
+            log.error("[CheckIn] Failed to generate signed URL for photo {}: key={}", photoId, storageKey, e);
+            return "";
+        }
     }
 
     private LocalDateTime toLocalDateTime(Instant instant) {

@@ -200,6 +200,7 @@ class CheckoutSagaIntegrationTest {
         CheckoutSagaOrchestrator orchestrator = new CheckoutSagaOrchestrator(
             sagaRepository,
             bookingRepository,
+            photoRepository,
             notificationService,
             eventService,
             eventPublisher,
@@ -264,6 +265,7 @@ class CheckoutSagaIntegrationTest {
         CheckoutSagaOrchestrator orchestrator = new CheckoutSagaOrchestrator(
             sagaRepository,
             bookingRepository,
+            photoRepository,
             notificationService,
             eventService,
             eventPublisher,

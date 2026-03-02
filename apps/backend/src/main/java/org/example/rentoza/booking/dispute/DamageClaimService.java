@@ -12,6 +12,7 @@ import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.notification.NotificationService;
 import org.example.rentoza.notification.NotificationType;
 import org.example.rentoza.notification.dto.CreateNotificationRequestDTO;
+import org.example.rentoza.user.Role;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
 import org.springframework.beans.factory.annotation.Value;
@@ -134,6 +135,19 @@ public class DamageClaimService {
             throw new IllegalStateException("Za ovu rezervaciju već postoji aktivna prijava štete od strane vlasnika");
         }
 
+        // H-4 FIX: Validate claimed amount does not exceed security deposit
+        BigDecimal depositAmount = booking.getSecurityDeposit();
+        if (depositAmount != null && claimedAmount.compareTo(depositAmount) > 0) {
+            throw new IllegalArgumentException(String.format(
+                    "Iznos prijave (%.0f RSD) ne može biti veći od depozita (%.0f RSD)",
+                    claimedAmount.doubleValue(), depositAmount.doubleValue()));
+        }
+
+        // C-6 FIX: Flag high-value claims for mandatory admin review
+        // Matches threshold used in CheckOutService.createCheckoutDamageClaim()
+        boolean adminReviewRequired = claimedAmount != null
+                && claimedAmount.compareTo(new BigDecimal("50000")) > 0;
+
         DamageClaim claim = DamageClaim.builder()
                 .booking(booking)
                 .host(booking.getCar().getOwner())
@@ -146,6 +160,7 @@ public class DamageClaimService {
                 .initiator(ClaimInitiator.OWNER)
                 .disputeStage(DisputeStage.CHECKOUT)
                 .reportedBy(booking.getCar().getOwner())
+                .adminReviewRequired(adminReviewRequired)
                 .build();
 
         claim = claimRepository.save(claim);
@@ -344,6 +359,11 @@ public class DamageClaimService {
         User admin = userRepository.findById(adminUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("Admin korisnik nije pronađen"));
 
+        // H-7 FIX: Validate admin role (defense-in-depth — controller @PreAuthorize is first layer)
+        if (admin.getRole() != Role.ADMIN) {
+            throw new AccessDeniedException("Samo administratori mogu odobriti prijave štete");
+        }
+
         claim.approveByAdmin(admin, approvedAmount, notes);
         claim = claimRepository.save(claim);
 
@@ -383,6 +403,11 @@ public class DamageClaimService {
         User admin = userRepository.findById(adminUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("Admin korisnik nije pronađen"));
 
+        // H-7 FIX: Validate admin role (defense-in-depth)
+        if (admin.getRole() != Role.ADMIN) {
+            throw new AccessDeniedException("Samo administratori mogu odbiti prijave štete");
+        }
+
         claim.rejectByAdmin(admin, notes);
         claim = claimRepository.save(claim);
 
@@ -419,7 +444,16 @@ public class DamageClaimService {
 
         for (DamageClaim claim : expired) {
             claim.setStatus(DamageClaimStatus.AUTO_APPROVED);
-            claim.setApprovedAmount(claim.getClaimedAmount());
+
+            // C-5 FIX: Cap approved amount at security deposit (never approve more than guest paid)
+            BigDecimal depositAmount = claim.getBooking().getSecurityDeposit();
+            BigDecimal cappedAmount = claim.getClaimedAmount();
+            if (depositAmount != null && cappedAmount.compareTo(depositAmount) > 0) {
+                cappedAmount = depositAmount;
+                log.warn("[DamageClaim] Auto-approved claim {} capped at deposit: claimed={} RSD, deposit={} RSD",
+                        claim.getId(), claim.getClaimedAmount(), depositAmount);
+            }
+            claim.setApprovedAmount(cappedAmount);
             claimRepository.save(claim);
 
             log.info("[DamageClaim] Claim {} auto-approved due to guest non-response", claim.getId());

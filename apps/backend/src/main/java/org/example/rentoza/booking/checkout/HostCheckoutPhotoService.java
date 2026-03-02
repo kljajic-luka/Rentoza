@@ -11,6 +11,7 @@ import org.example.rentoza.booking.checkin.dto.CheckInPhotoDTO;
 import org.example.rentoza.booking.checkin.dto.PhotoRejectionInfo;
 import org.example.rentoza.booking.checkout.dto.HostCheckoutPhotoResponseDTO;
 import org.example.rentoza.booking.checkout.dto.HostCheckoutPhotoSubmissionDTO;
+import org.example.rentoza.booking.photo.PhotoUrlService;
 import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
@@ -62,6 +63,7 @@ public class HostCheckoutPhotoService {
     private final ExifValidationService exifValidationService;
     private final PhotoRejectionService photoRejectionService;
     private final org.example.rentoza.storage.SupabaseStorageService supabaseStorageService;
+    private final PhotoUrlService photoUrlService;  // H-6: Signed URL generation
 
     @Value("${app.checkout.photo.max-size-mb:10}")
     private int maxSizeMb;
@@ -422,10 +424,12 @@ public class HostCheckoutPhotoService {
             booking.getId(), photoItem.getPhotoType(), photo.getId());
         
         // Build response DTO
+        // H-6 FIX: Generate signed URL instead of returning raw storage key
+        String signedUrl = resolveCheckoutSignedUrl(storageKey, photo.getId());
         return CheckInPhotoDTO.builder()
             .photoId(photo.getId())
             .photoType(photo.getPhotoType())
-            .url(storageKey)
+            .url(signedUrl)
             .uploadedAt(LocalDateTime.ofInstant(photo.getUploadedAt(), SERBIA_ZONE))
             .exifValidationStatus(photo.getExifValidationStatus())
             .exifValidationMessage(photo.getExifValidationMessage())
@@ -609,25 +613,42 @@ public class HostCheckoutPhotoService {
     }
 
     private CheckInPhotoDTO toDTO(HostCheckoutPhoto photo) {
+        // H-6 FIX: Generate signed URL instead of returning raw storage key
+        String signedUrl = resolveCheckoutSignedUrl(photo.getStorageKey(), photo.getId());
         return CheckInPhotoDTO.builder()
             .photoId(photo.getId())
             .photoType(photo.getPhotoType())
-            .url(photo.getStorageKey())
+            .url(signedUrl)
             .uploadedAt(LocalDateTime.ofInstant(photo.getUploadedAt(), SERBIA_ZONE))
             .exifValidationStatus(photo.getExifValidationStatus())
             .exifValidationMessage(photo.getExifValidationMessage())
             .mimeType(photo.getMimeType())
             .width(photo.getImageWidth())
             .height(photo.getImageHeight())
-            .exifTimestamp(photo.getExifTimestamp() != null 
+            .exifTimestamp(photo.getExifTimestamp() != null
                 ? LocalDateTime.ofInstant(photo.getExifTimestamp(), SERBIA_ZONE) : null)
-            .exifLatitude(photo.getExifLatitude() != null 
+            .exifLatitude(photo.getExifLatitude() != null
                 ? photo.getExifLatitude().doubleValue() : null)
-            .exifLongitude(photo.getExifLongitude() != null 
+            .exifLongitude(photo.getExifLongitude() != null
                 ? photo.getExifLongitude().doubleValue() : null)
             .deviceModel(photo.getExifDeviceModel())
             .accepted(true)
             .build();
+    }
+
+    private String resolveCheckoutSignedUrl(String storageKey, Long photoId) {
+        if (storageKey == null || storageKey.isEmpty()) {
+            return "";
+        }
+        if (storageKey.startsWith("http://") || storageKey.startsWith("https://")) {
+            return storageKey;
+        }
+        try {
+            return photoUrlService.generateSignedUrl("check-out-photos", storageKey, photoId);
+        } catch (Exception e) {
+            log.error("[HostCheckout] Failed to generate signed URL for photo {}: key={}", photoId, storageKey, e);
+            return "";
+        }
     }
 
     /**

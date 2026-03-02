@@ -399,6 +399,7 @@ public class DamageClaim {
      */
     public void rejectByAdmin(User admin, String notes) {
         this.status = DamageClaimStatus.ADMIN_REJECTED;
+        this.approvedAmount = null;  // H-3 FIX: Clear stale approved amount on rejection
         this.reviewedBy = admin;
         this.reviewedAt = Instant.now();
         this.adminNotes = notes;

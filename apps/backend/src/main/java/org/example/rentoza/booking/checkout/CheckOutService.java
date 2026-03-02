@@ -188,14 +188,15 @@ public class CheckOutService {
      */
     @Transactional
     public CheckOutStatusDTO initiateCheckout(Long bookingId, Long userId, boolean isEarlyReturn) {
-        Booking booking = bookingRepository.findByIdWithRelations(bookingId)
+        // H-1 FIX: Use pessimistic lock to prevent concurrent checkout initiation
+        Booking booking = bookingRepository.findByIdWithLock(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Rezervacija nije pronađena"));
-        
+
         // Validate access
         if (!isGuest(booking, userId) && !isHost(booking, userId)) {
             throw new AccessDeniedException("Nemate pristup ovoj rezervaciji");
         }
-        
+
         // Validate status - must be IN_TRIP
         if (booking.getStatus() != BookingStatus.IN_TRIP) {
             throw new IllegalStateException("Checkout nije moguć. Trenutni status: " + booking.getStatus());
@@ -273,14 +274,17 @@ public class CheckOutService {
             return;
         }
         
-        booking.setCheckoutSessionId(UUID.randomUUID().toString());
+        // H-5 FIX: Don't overwrite existing session ID
+        if (booking.getCheckoutSessionId() == null) {
+            booking.setCheckoutSessionId(UUID.randomUUID().toString());
+        }
         booking.setCheckoutOpenedAt(Instant.now());
         booking.setStatus(BookingStatus.CHECKOUT_OPEN);
-        
+
         // Set scheduled return time from exact endTime
         LocalDateTime scheduledReturn = booking.getEndTime();
         booking.setScheduledReturnTime(scheduledReturn.atZone(SERBIA_ZONE).toInstant());
-        
+
         eventService.recordSystemEvent(
             booking,
             booking.getCheckoutSessionId(),

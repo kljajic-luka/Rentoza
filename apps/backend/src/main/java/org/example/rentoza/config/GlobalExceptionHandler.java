@@ -19,6 +19,7 @@ import jakarta.persistence.OptimisticLockException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authorization.AuthorizationDeniedException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -429,6 +430,30 @@ public class GlobalExceptionHandler {
                 .status(HttpStatus.TOO_MANY_REQUESTS)
                 .header("Retry-After", String.valueOf(ex.getRetryAfterSeconds()))
                 .body(body);
+    }
+
+    /**
+     * Handle malformed JSON request bodies.
+     *
+     * <p>Jackson throws {@link HttpMessageNotReadableException} when the request body
+     * contains invalid JSON (e.g., illegal escape sequences like {@code \!}, truncated
+     * payloads, or wrong Content-Type). Without this handler, these errors fall through
+     * to the generic {@code Exception.class} handler and log at ERROR with a full stack
+     * trace — polluting production logs with noise from bots and scanners.
+     *
+     * <p><b>SECURITY:</b> The response does not echo back the malformed input or any
+     * Jackson internals. Only a generic "malformed request body" message is returned.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String, Object>> handleHttpMessageNotReadable(HttpMessageNotReadableException ex) {
+        log.warn("Malformed request body: {}", ex.getMessage());
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", Instant.now().toString());
+        body.put("error", "Bad Request");
+        body.put("message", "Neispravan format zahteva. Proverite poslate podatke.");
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

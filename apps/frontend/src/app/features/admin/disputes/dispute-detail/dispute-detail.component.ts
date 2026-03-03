@@ -20,7 +20,6 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatDialogModule, MatDialog } from '@angular/material/dialog';
-import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
 import {
@@ -29,6 +28,7 @@ import {
   DisputeResolutionRequest,
   EscalateDisputeRequest,
 } from '../../../../core/services/admin-api.service';
+import { AdminNotificationService } from '../../../../core/services/admin-notification.service';
 
 /**
  * Dispute Detail Component - Admin view for resolving damage claim disputes.
@@ -57,7 +57,6 @@ import {
     MatInputModule,
     MatSelectModule,
     MatDialogModule,
-    MatSnackBarModule,
     MatTooltipModule,
   ],
   templateUrl: './dispute-detail.component.html',
@@ -68,7 +67,7 @@ export class DisputeDetailComponent implements OnInit {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private fb = inject(FormBuilder);
-  private snackBar = inject(MatSnackBar);
+  private snackBar = inject(AdminNotificationService);
 
   // State
   dispute = signal<AdminDisputeDetailDto | null>(null);
@@ -147,7 +146,7 @@ export class DisputeDetailComponent implements OnInit {
       },
       error: (error) => {
         console.error('Failed to load dispute:', error);
-        this.snackBar.open('Failed to load dispute', 'Close', { duration: 3000 });
+        this.snackBar.showError('Failed to load dispute');
         this.loading.set(false);
       },
     });
@@ -204,18 +203,14 @@ export class DisputeDetailComponent implements OnInit {
       };
       this.adminApi.resolveCheckoutDispute(this.disputeId(), checkoutRequest as any).subscribe({
         next: () => {
-          this.snackBar.open('Checkout dispute resolved successfully', 'Close', { duration: 3000 });
+          this.snackBar.showSuccess('Checkout dispute resolved successfully');
           this.submitting.set(false);
           this.router.navigate(['/admin/disputes']);
         },
         error: (error: any) => {
           console.error('Failed to resolve checkout dispute:', error);
-          this.snackBar.open(
+          this.snackBar.showError(
             'Failed to resolve dispute: ' + (error?.error?.message || error.message),
-            'Close',
-            {
-              duration: 5000,
-            },
           );
           this.submitting.set(false);
         },
@@ -224,15 +219,13 @@ export class DisputeDetailComponent implements OnInit {
       const request: DisputeResolutionRequest = this.resolutionForm.value;
       this.adminApi.resolveDispute(this.disputeId(), request).subscribe({
         next: () => {
-          this.snackBar.open('Dispute resolved successfully', 'Close', { duration: 3000 });
+          this.snackBar.showSuccess('Dispute resolved successfully');
           this.submitting.set(false);
           this.router.navigate(['/admin/disputes']);
         },
         error: (error) => {
           console.error('Failed to resolve dispute:', error);
-          this.snackBar.open('Failed to resolve dispute: ' + error.message, 'Close', {
-            duration: 5000,
-          });
+          this.snackBar.showError('Failed to resolve dispute: ' + error.message);
           this.submitting.set(false);
         },
       });
@@ -250,16 +243,14 @@ export class DisputeDetailComponent implements OnInit {
 
     this.adminApi.escalateDispute(this.disputeId(), request).subscribe({
       next: () => {
-        this.snackBar.open('Dispute escalated successfully', 'Close', { duration: 3000 });
+        this.snackBar.showSuccess('Dispute escalated successfully');
         this.submitting.set(false);
         this.loadDispute();
         this.showEscalateForm.set(false);
       },
       error: (error) => {
         console.error('Failed to escalate dispute:', error);
-        this.snackBar.open('Failed to escalate dispute: ' + error.message, 'Close', {
-          duration: 5000,
-        });
+        this.snackBar.showError('Failed to escalate dispute: ' + error.message);
         this.submitting.set(false);
       },
     });

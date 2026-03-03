@@ -11,7 +11,6 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatCheckboxModule } from '@angular/material/checkbox';
-import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatDividerModule } from '@angular/material/divider';
 import { SelectionModel } from '@angular/cdk/collections';
@@ -22,6 +21,7 @@ import {
   EscrowBalanceDto,
   BatchPayoutRequest,
 } from '../../../../core/services/admin-api.service';
+import { AdminNotificationService } from '../../../../core/services/admin-notification.service';
 
 @Component({
   selector: 'app-financial-dashboard',
@@ -37,7 +37,6 @@ import {
     MatChipsModule,
     MatProgressSpinnerModule,
     MatCheckboxModule,
-    MatSnackBarModule,
     MatTooltipModule,
     MatDividerModule,
   ],
@@ -46,7 +45,7 @@ import {
 })
 export class FinancialDashboardComponent implements OnInit {
   private adminApi = inject(AdminApiService);
-  private snackBar = inject(MatSnackBar);
+  private notification = inject(AdminNotificationService);
 
   // State
   escrowBalance = signal<EscrowBalanceDto | null>(null);
@@ -125,7 +124,7 @@ export class FinancialDashboardComponent implements OnInit {
 
   processBatchPayouts(dryRun: boolean = false): void {
     if (this.selection.selected.length === 0) {
-      this.snackBar.open('Please select at least one payout', 'Close', { duration: 3000 });
+      this.notification.showWarning('Please select at least one payout');
       return;
     }
 
@@ -142,7 +141,7 @@ export class FinancialDashboardComponent implements OnInit {
           ? `Validation complete: ${result.successCount} valid, ${result.failureCount} invalid`
           : `Processed: ${result.successCount} success, ${result.failureCount} failed`;
 
-        this.snackBar.open(message, 'Close', { duration: 5000 });
+        this.notification.showSuccess(message);
         this.processing.set(false);
 
         if (!dryRun) {
@@ -151,9 +150,7 @@ export class FinancialDashboardComponent implements OnInit {
         }
       },
       error: (error) => {
-        this.snackBar.open('Batch processing failed: ' + error.message, 'Close', {
-          duration: 5000,
-        });
+        this.notification.showError('Batch processing failed: ' + error.message);
         this.processing.set(false);
       },
     });
@@ -162,11 +159,11 @@ export class FinancialDashboardComponent implements OnInit {
   retryPayout(payout: PayoutQueueDto): void {
     this.adminApi.retryPayout(payout.bookingId).subscribe({
       next: () => {
-        this.snackBar.open('Payout retry successful', 'Close', { duration: 3000 });
+        this.notification.showSuccess('Payout retry successful');
         this.loadPayouts();
       },
       error: (error) => {
-        this.snackBar.open('Retry failed: ' + error.message, 'Close', { duration: 5000 });
+        this.notification.showError('Retry failed: ' + error.message);
       },
     });
   }

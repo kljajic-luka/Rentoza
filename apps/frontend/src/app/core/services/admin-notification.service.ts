@@ -33,4 +33,13 @@ export class AdminNotificationService {
       verticalPosition: 'top'
     });
   }
+
+  showWarning(message: string) {
+    this.snackBar.open(message, 'Dismiss', {
+      duration: 6000,
+      panelClass: ['warning-snackbar'],
+      horizontalPosition: 'end',
+      verticalPosition: 'top'
+    });
+  }
 }

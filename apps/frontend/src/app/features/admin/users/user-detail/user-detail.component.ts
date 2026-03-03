@@ -7,7 +7,6 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatTabsModule } from '@angular/material/tabs';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatDialogModule, MatDialog } from '@angular/material/dialog';
-import { MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { AdminNotificationService } from '../../../../core/services/admin-notification.service';
 import { BanUserDialogComponent } from '../../shared/dialogs/ban-user-dialog/ban-user-dialog.component';
@@ -36,7 +35,6 @@ import { RenterDocumentDto, RenterVerificationProfileDto } from '../../../../cor
     MatTabsModule,
     MatChipsModule,
     MatDialogModule,
-    MatSnackBarModule,
     MatProgressSpinnerModule,
     RiskScoreCardComponent,
     RenterVerificationCardComponent,

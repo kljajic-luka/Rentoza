@@ -224,6 +224,15 @@
                 }
 
                 <mat-form-field appearance="outline" class="full-width">
+                  <mat-label>Quick template</mat-label>
+                  <mat-select (selectionChange)="applyTemplate($event.value)">
+                    @for (t of resolutionTemplates; track t.label) {
+                      <mat-option [value]="t">{{ t.label }}</mat-option>
+                    }
+                  </mat-select>
+                </mat-form-field>
+
+                <mat-form-field appearance="outline" class="full-width">
                   <mat-label>Notes (explain your decision)</mat-label>
                   <textarea
                     matInput

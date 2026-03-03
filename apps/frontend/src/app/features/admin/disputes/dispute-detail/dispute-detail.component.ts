@@ -88,6 +88,26 @@ export class DisputeDetailComponent implements OnInit {
   showResolutionForm = signal(false);
   showEscalateForm = signal(false);
 
+  // Resolution templates
+  readonly resolutionTemplates = [
+    {
+      label: 'Full refund — guest fault not established',
+      text: 'After reviewing the evidence, damage could not be attributed to the guest. Full deposit refund issued to {guestName}.',
+    },
+    {
+      label: 'Partial deduction — minor damage confirmed',
+      text: 'Evidence confirms minor damage during the rental period. A deduction of {amount} RSD has been applied from the deposit. Remaining balance refunded to {guestName}.',
+    },
+    {
+      label: 'Full deduction — significant damage confirmed',
+      text: 'Evidence clearly shows significant damage during the rental period. The full claimed amount of {amount} RSD has been retained and disbursed to {hostName} for repairs.',
+    },
+    {
+      label: 'Dispute rejected — pre-existing damage',
+      text: 'Check-in photos confirm the reported damage existed prior to this rental. No deduction applied. Full deposit refunded to {guestName}.',
+    },
+  ];
+
   // Computed
   canResolve = computed(() => {
     const d = this.dispute();
@@ -165,6 +185,17 @@ export class DisputeDetailComponent implements OnInit {
   toggleEscalateForm(): void {
     this.showEscalateForm.update((v) => !v);
     this.showResolutionForm.set(false);
+  }
+
+  applyTemplate(template: { label: string; text: string }): void {
+    const d = this.dispute();
+    if (!d) return;
+    const amount = this.resolutionForm.get('approvedAmount')?.value;
+    let text = template.text;
+    text = text.replace('{guestName}', d.guestName || 'the guest');
+    text = text.replace('{hostName}', d.hostName || 'the host');
+    text = text.replace('{amount}', amount != null ? amount.toLocaleString('sr-RS') : '___');
+    this.resolutionForm.get('notes')?.setValue(text);
   }
 
   /** Check if this is a checkout-stage dispute (uses different resolution endpoint). */

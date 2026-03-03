@@ -1,14 +1,17 @@
 import { Component, Input } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { RouterModule } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 
 @Component({
   selector: 'app-kpi-card',
   standalone: true,
-  imports: [CommonModule, MatCardModule, MatIconModule],
+  imports: [CommonModule, RouterModule, MatCardModule, MatIconModule],
   template: `
-    <mat-card class="surface-card surface-roomy kpi-card">
+    <mat-card class="surface-card surface-roomy kpi-card"
+              [class.clickable]="routerLink"
+              [routerLink]="routerLink">
       <mat-card-content class="metric-card">
         <div class="metric-icon" [ngClass]="iconTintClass">
           <mat-icon>{{ icon }}</mat-icon>
@@ -33,6 +36,7 @@ export class KpiCardComponent {
   @Input() iconTint: 'info' | 'success' | 'warn' | 'accent' | 'neutral' = 'info';
   @Input() trend?: string;
   @Input() trendDirection: 'up' | 'down' | 'neutral' = 'neutral';
+  @Input() routerLink: string | null = null;
 
   get trendClass(): string {
     return this.trendDirection === 'up'

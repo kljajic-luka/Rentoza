@@ -36,6 +36,7 @@
       iconTint="success"
       [trend]="kpis.revenueGrowthPercent + '% vs last month'"
       [trendDirection]="kpis.revenueGrowthPercent >= 0 ? 'up' : 'down'"
+      routerLink="/admin/financial"
     >
     </app-kpi-card>
 
@@ -46,6 +47,7 @@
       iconTint="info"
       trend="Live rentals"
       trendDirection="neutral"
+      routerLink="/admin/bookings"
     >
     </app-kpi-card>
 
@@ -56,6 +58,7 @@
       iconTint="warn"
       trend="Requires attention"
       trendDirection="neutral"
+      routerLink="/admin/cars"
     >
     </app-kpi-card>
 

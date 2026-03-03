@@ -15,6 +15,7 @@ import { MatDialogModule, MatDialog } from '@angular/material/dialog';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AdminApiService, AdminBookingDto } from '../../../../core/services/admin-api.service';
 import { AdminNotificationService } from '../../../../core/services/admin-notification.service';
+import { ConfirmDialogComponent } from '../../shared/dialogs/confirm-dialog/confirm-dialog.component';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Subject, debounceTime, distinctUntilChanged } from 'rxjs';
 
@@ -156,6 +157,7 @@ export class BookingListComponent implements OnInit {
   private adminApi = inject(AdminApiService);
   private notification = inject(AdminNotificationService);
   private router = inject(Router);
+  private dialog = inject(MatDialog);
   private destroyRef = inject(DestroyRef);
   private searchSubject = new Subject<string>();
 
@@ -242,24 +244,34 @@ export class BookingListComponent implements OnInit {
   }
 
   forceComplete(booking: AdminBookingDto) {
-    const reason = prompt('Enter reason for force-completion (min 10 chars):');
-    if (!reason || reason.length < 10) {
-      this.notification.showError('Reason must be at least 10 characters');
-      return;
-    }
-    this.adminApi
-      .forceCompleteBooking(booking.id, reason)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: () => {
-          this.notification.showSuccess(`Booking #${booking.id} force-completed`);
-          this.loadBookings();
-        },
-        error: (err) => {
-          const msg = err.error?.message || 'Failed to force-complete booking';
-          this.notification.showError(msg);
-        },
-      });
+    const dialogRef = this.dialog.open(ConfirmDialogComponent, {
+      data: {
+        title: 'Force Complete Booking',
+        message: `Force-complete booking #${booking.id}? This action cannot be undone.`,
+        confirmText: 'Force Complete',
+        confirmColor: 'warn',
+        requireReason: true,
+        reasonLabel: 'Reason for force-completion',
+        reasonMinLength: 10,
+      },
+    });
+    dialogRef.afterClosed().subscribe((reason) => {
+      if (reason) {
+        this.adminApi
+          .forceCompleteBooking(booking.id, reason)
+          .pipe(takeUntilDestroyed(this.destroyRef))
+          .subscribe({
+            next: () => {
+              this.notification.showSuccess(`Booking #${booking.id} force-completed`);
+              this.loadBookings();
+            },
+            error: (err) => {
+              const msg = err.error?.message || 'Failed to force-complete booking';
+              this.notification.showError(msg);
+            },
+          });
+      }
+    });
   }
 
   isTerminal(status: string): boolean {

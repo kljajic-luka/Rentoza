@@ -21,6 +21,7 @@ import { MatDialogModule, MatDialog } from '@angular/material/dialog';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ApprovalStatus } from '@core/models/car.model';
 import { CarApprovalDialogComponent } from '../dialogs/car-approval-dialog.component';
+import { ConfirmDialogComponent } from '../../shared/dialogs/confirm-dialog/confirm-dialog.component';
 
 @Component({
   selector: 'app-car-list',
@@ -425,17 +426,27 @@ export class CarListComponent implements OnInit, OnDestroy {
 
   approveCar(car: AdminCarDto, event: Event): void {
     event.stopPropagation();
-    if (confirm(`Odobrite vozilo ${car.brand} ${car.model}?`)) {
-      this.adminApi.approveCar(car.id).subscribe({
-        next: () => {
-          this.notification.showSuccess('Vozilo odobreno');
-          this.refreshView();
-        },
-        error: () => {
-          this.notification.showError('Greška pri odobravanju');
-        },
-      });
-    }
+    const dialogRef = this.dialog.open(ConfirmDialogComponent, {
+      data: {
+        title: 'Odobrenje vozila',
+        message: `Odobrite vozilo ${car.brand} ${car.model}?`,
+        confirmText: 'Odobri',
+        confirmColor: 'primary',
+      },
+    });
+    dialogRef.afterClosed().subscribe((result) => {
+      if (result) {
+        this.adminApi.approveCar(car.id).subscribe({
+          next: () => {
+            this.notification.showSuccess('Vozilo odobreno');
+            this.refreshView();
+          },
+          error: () => {
+            this.notification.showError('Greška pri odobravanju');
+          },
+        });
+      }
+    });
   }
 
   viewCar(carId: number) {

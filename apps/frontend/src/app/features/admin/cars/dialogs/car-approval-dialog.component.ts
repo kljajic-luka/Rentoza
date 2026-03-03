@@ -1,7 +1,7 @@
 import { Component, Inject, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { MAT_DIALOG_DATA, MatDialogRef, MatDialogModule } from '@angular/material/dialog';
+import { MAT_DIALOG_DATA, MatDialogRef, MatDialogModule, MatDialog } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -9,6 +9,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatSelectModule } from '@angular/material/select';
 import { AdminCarDto, AdminApiService } from '@core/services/admin-api.service';
 import { ApprovalStatus } from '@core/models/car.model';
+import { ConfirmDialogComponent } from '../../shared/dialogs/confirm-dialog/confirm-dialog.component';
 
 @Component({
   selector: 'app-car-approval-dialog',
@@ -134,6 +135,7 @@ export class CarApprovalDialogComponent {
   private fb = inject(FormBuilder);
   private adminApi = inject(AdminApiService);
   private dialogRef = inject(MatDialogRef<CarApprovalDialogComponent>);
+  private nestedDialog = inject(MatDialog);
 
   loading = false;
 
@@ -195,11 +197,26 @@ export class CarApprovalDialogComponent {
           ? 'Da li ste sigurni da želite da odbijete ovo vozilo? Vlasnik će biti obavešten.'
           : 'Da li ste sigurni da želite da suspendujete ovo vozilo? Vozilo će biti uklonjeno iz pretrage.';
 
-      if (!confirm(confirmMsg)) {
-        return;
-      }
+      const confirmRef = this.nestedDialog.open(ConfirmDialogComponent, {
+        data: {
+          title: action === 'REJECT' ? 'Odbij vozilo' : 'Suspenduj vozilo',
+          message: confirmMsg,
+          confirmText: action === 'REJECT' ? 'Odbij' : 'Suspenduj',
+          confirmColor: 'warn' as const,
+        },
+      });
+      confirmRef.afterClosed().subscribe((result) => {
+        if (result) {
+          this.executeAction(action, reason);
+        }
+      });
+      return;
     }
 
+    this.executeAction(action, reason);
+  }
+
+  private executeAction(action: string | null | undefined, reason: string | null | undefined): void {
     this.loading = true;
     const carId = this.data.car.id;
     let request;

@@ -13,6 +13,7 @@ import { MatDividerModule } from '@angular/material/divider';
 
 import { AdminRenterVerificationService } from '@core/services/admin-renter-verification.service';
 import { AdminNotificationService } from '@core/services/admin-notification.service';
+import { ConfirmDialogComponent } from '../../shared/dialogs/confirm-dialog/confirm-dialog.component';
 import {
   AdminVerificationDetails,
   VerificationAuditEvent,
@@ -193,23 +194,31 @@ export class RenterVerificationDetailComponent implements OnInit {
   onApprove(): void {
     if (!this.userId || !this.canApprove()) return;
 
-    if (!confirm('Da li ste sigurni da želite da odobrite ovu verifikaciju?')) {
-      return;
-    }
-
-    this.actionLoading.set(true);
-
-    this.adminService.approve(this.userId, { notes: 'Approved via admin panel' }).subscribe({
-      next: () => {
-        this.notification.showSuccess('Verifikacija je odobrena');
-        this.loadDetails();
-        this.actionLoading.set(false);
+    const dialogRef = this.dialog.open(ConfirmDialogComponent, {
+      data: {
+        title: 'Odobri verifikaciju',
+        message: 'Da li ste sigurni da želite da odobrite ovu verifikaciju?',
+        confirmText: 'Odobri',
+        confirmColor: 'primary',
       },
-      error: (err) => {
-        this.notification.showError('Greška pri odobravanju verifikacije');
-        this.actionLoading.set(false);
-        console.error('Failed to approve:', err);
-      },
+    });
+    dialogRef.afterClosed().subscribe((result) => {
+      if (!result) return;
+
+      this.actionLoading.set(true);
+
+      this.adminService.approve(this.userId!, { notes: 'Approved via admin panel' }).subscribe({
+        next: () => {
+          this.notification.showSuccess('Verifikacija je odobrena');
+          this.loadDetails();
+          this.actionLoading.set(false);
+        },
+        error: (err) => {
+          this.notification.showError('Greška pri odobravanju verifikacije');
+          this.actionLoading.set(false);
+          console.error('Failed to approve:', err);
+        },
+      });
     });
   }
 
@@ -264,22 +273,33 @@ export class RenterVerificationDetailComponent implements OnInit {
   onSuspend(): void {
     if (!this.userId || !this.canSuspend()) return;
 
-    const reason = prompt('Unesite razlog suspenzije:');
-    if (!reason) return;
-
-    this.actionLoading.set(true);
-
-    this.adminService.suspend(this.userId, { reason }).subscribe({
-      next: () => {
-        this.notification.showSuccess('Korisnik je suspendovan');
-        this.loadDetails();
-        this.actionLoading.set(false);
+    const dialogRef = this.dialog.open(ConfirmDialogComponent, {
+      data: {
+        title: 'Suspenzija korisnika',
+        message: 'Unesite razlog suspenzije korisnika.',
+        confirmText: 'Suspenduj',
+        confirmColor: 'warn',
+        requireReason: true,
+        reasonLabel: 'Razlog suspenzije',
       },
-      error: (err) => {
-        this.notification.showError('Greška pri suspenziji korisnika');
-        this.actionLoading.set(false);
-        console.error('Failed to suspend:', err);
-      },
+    });
+    dialogRef.afterClosed().subscribe((reason) => {
+      if (!reason) return;
+
+      this.actionLoading.set(true);
+
+      this.adminService.suspend(this.userId!, { reason }).subscribe({
+        next: () => {
+          this.notification.showSuccess('Korisnik je suspendovan');
+          this.loadDetails();
+          this.actionLoading.set(false);
+        },
+        error: (err) => {
+          this.notification.showError('Greška pri suspenziji korisnika');
+          this.actionLoading.set(false);
+          console.error('Failed to suspend:', err);
+        },
+      });
     });
   }
 

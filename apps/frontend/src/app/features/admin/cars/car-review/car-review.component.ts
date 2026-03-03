@@ -40,6 +40,7 @@ import {
 } from '../../../../core/services/admin-api.service';
 import { AdminNotificationService } from '../../../../core/services/admin-notification.service';
 import { normalizeMediaUrlArray } from '@shared/utils/media-url.util';
+import { ConfirmDialogComponent } from '../../shared/dialogs/confirm-dialog/confirm-dialog.component';
 
 /**
  * Car review page for admin document verification workflow.
@@ -727,42 +728,52 @@ export class CarReviewComponent implements OnInit, OnDestroy {
   verifyDocument(doc: DocumentReviewDto) {
     if (!this.carId || this.isProcessing) return;
 
-    const confirmed = confirm(`Verify ${this.getDocumentName(doc.type)}?`);
-    if (!confirmed) return;
-
-    this.isProcessing = true;
-    this.adminApi
-      .verifyDocument(doc.id, true)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe({
-        next: () => {
-          this.notification.showSuccess('Document verified');
-          this.loadCarReviewDetail();
-          this.isProcessing = false;
-        },
-        error: (err) => {
-          console.error('Failed to verify document', err);
-          this.notification.showError('Failed to verify document');
-          this.isProcessing = false;
-        },
-      });
+    const dialogRef = this.dialog.open(ConfirmDialogComponent, {
+      data: {
+        title: 'Verify Document',
+        message: `Verify ${this.getDocumentName(doc.type)}?`,
+        confirmText: 'Verify',
+        confirmColor: 'primary',
+      },
+    });
+    dialogRef.afterClosed().subscribe((result) => {
+      if (!result) return;
+      this.isProcessing = true;
+      this.adminApi
+        .verifyDocument(doc.id, true)
+        .pipe(takeUntil(this.destroy$))
+        .subscribe({
+          next: () => {
+            this.notification.showSuccess('Document verified');
+            this.loadCarReviewDetail();
+            this.isProcessing = false;
+          },
+          error: (err) => {
+            console.error('Failed to verify document', err);
+            this.notification.showError('Failed to verify document');
+            this.isProcessing = false;
+          },
+        });
+    });
   }
 
   openRejectDialog(doc: DocumentReviewDto) {
-    // Open a simple dialog to collect rejection reason
-    const reason = prompt(
-      `Reject ${this.getDocumentName(doc.type)}?\n\nEnter rejection reason (min 20 chars):`,
-      ''
-    );
-
-    if (!reason) return;
-
-    if (reason.length < 20) {
-      this.notification.showError('Rejection reason must be at least 20 characters');
-      return;
-    }
-
-    this.rejectDocumentWithReason(doc, reason);
+    const dialogRef = this.dialog.open(ConfirmDialogComponent, {
+      data: {
+        title: 'Reject Document',
+        message: `Reject ${this.getDocumentName(doc.type)}?`,
+        confirmText: 'Reject',
+        confirmColor: 'warn',
+        requireReason: true,
+        reasonLabel: 'Rejection reason',
+        reasonMinLength: 20,
+      },
+    });
+    dialogRef.afterClosed().subscribe((reason) => {
+      if (reason) {
+        this.rejectDocumentWithReason(doc, reason);
+      }
+    });
   }
 
   private rejectDocumentWithReason(doc: DocumentReviewDto, reason: string) {
@@ -789,26 +800,32 @@ export class CarReviewComponent implements OnInit, OnDestroy {
   approveCar() {
     if (!this.carId || this.isProcessing || !this.carData?.approvalState.canApprove) return;
 
-    const confirmed = confirm(
-      `Approve ${this.carData.brand} ${this.carData.model} for rental?\n\nAll documents are verified and compliance dates are valid.`
-    );
-    if (!confirmed) return;
-
-    this.isProcessing = true;
-    this.adminApi
-      .approveCar(this.carId)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe({
-        next: () => {
-          this.notification.showSuccess('Car approved for rental');
-          this.router.navigate(['/admin/cars']);
-        },
-        error: (err) => {
-          console.error('Failed to approve car', err);
-          this.notification.showError('Failed to approve car');
-          this.isProcessing = false;
-        },
-      });
+    const dialogRef = this.dialog.open(ConfirmDialogComponent, {
+      data: {
+        title: 'Approve Car',
+        message: `Approve ${this.carData.brand} ${this.carData.model} for rental?\n\nAll documents are verified and compliance dates are valid.`,
+        confirmText: 'Approve',
+        confirmColor: 'primary',
+      },
+    });
+    dialogRef.afterClosed().subscribe((result) => {
+      if (!result) return;
+      this.isProcessing = true;
+      this.adminApi
+        .approveCar(this.carId!)
+        .pipe(takeUntil(this.destroy$))
+        .subscribe({
+          next: () => {
+            this.notification.showSuccess('Car approved for rental');
+            this.router.navigate(['/admin/cars']);
+          },
+          error: (err) => {
+            console.error('Failed to approve car', err);
+            this.notification.showError('Failed to approve car');
+            this.isProcessing = false;
+          },
+        });
+    });
   }
 
   rejectCar() {
@@ -819,25 +836,31 @@ export class CarReviewComponent implements OnInit, OnDestroy {
       return;
     }
 
-    const confirmed = confirm(
-      `Reject ${this.carData?.brand} ${this.carData?.model}?\n\nOwner will be notified of rejection reason.`
-    );
-    if (!confirmed) return;
-
-    this.isProcessing = true;
-    this.adminApi
-      .rejectCar(this.carId, this.rejectionReason)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe({
-        next: () => {
-          this.notification.showSuccess('Car rejected');
-          this.router.navigate(['/admin/cars']);
-        },
-        error: (err) => {
-          console.error('Failed to reject car', err);
-          this.notification.showError('Failed to reject car');
-          this.isProcessing = false;
-        },
-      });
+    const dialogRef = this.dialog.open(ConfirmDialogComponent, {
+      data: {
+        title: 'Reject Car',
+        message: `Reject ${this.carData?.brand} ${this.carData?.model}?\n\nOwner will be notified of rejection reason.`,
+        confirmText: 'Reject',
+        confirmColor: 'warn',
+      },
+    });
+    dialogRef.afterClosed().subscribe((result) => {
+      if (!result) return;
+      this.isProcessing = true;
+      this.adminApi
+        .rejectCar(this.carId!, this.rejectionReason!)
+        .pipe(takeUntil(this.destroy$))
+        .subscribe({
+          next: () => {
+            this.notification.showSuccess('Car rejected');
+            this.router.navigate(['/admin/cars']);
+          },
+          error: (err) => {
+            console.error('Failed to reject car', err);
+            this.notification.showError('Failed to reject car');
+            this.isProcessing = false;
+          },
+        });
+    });
   }
 }

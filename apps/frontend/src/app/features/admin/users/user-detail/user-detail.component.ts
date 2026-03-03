@@ -12,6 +12,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { AdminNotificationService } from '../../../../core/services/admin-notification.service';
 import { BanUserDialogComponent } from '../../shared/dialogs/ban-user-dialog/ban-user-dialog.component';
 import { RejectOwnerVerificationDialogComponent } from '../../shared/dialogs/reject-owner-verification-dialog/reject-owner-verification-dialog.component';
+import { ConfirmDialogComponent } from '../../shared/dialogs/confirm-dialog/confirm-dialog.component';
 import { AdminStateService } from '../../../../core/services/admin-state.service';
 import { AdminApiService, AdminUserDetailDto } from '../../../../core/services/admin-api.service';
 import { Observable, take } from 'rxjs';
@@ -106,15 +107,25 @@ export class UserDetailComponent implements OnInit {
 
     this.user$.pipe(take(1)).subscribe((user) => {
       if (!user) return;
-      if (confirm(`Are you sure you want to unban ${user.email}?`)) {
-        this.adminState.unbanUser(this.userId!).subscribe({
-          next: () => {
-            this.notification.showSuccess('User unbanned successfully');
-            this.loadUserDetail();
-          },
-          error: () => this.notification.showError('Failed to unban user'),
-        });
-      }
+      const dialogRef = this.dialog.open(ConfirmDialogComponent, {
+        data: {
+          title: 'Unban User',
+          message: `Are you sure you want to unban ${user.email}?`,
+          confirmText: 'Unban',
+          confirmColor: 'primary',
+        },
+      });
+      dialogRef.afterClosed().subscribe((result) => {
+        if (result) {
+          this.adminState.unbanUser(this.userId!).subscribe({
+            next: () => {
+              this.notification.showSuccess('User unbanned successfully');
+              this.loadUserDetail();
+            },
+            error: () => this.notification.showError('Failed to unban user'),
+          });
+        }
+      });
     });
   }
 

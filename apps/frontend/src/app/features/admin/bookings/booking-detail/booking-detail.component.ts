@@ -7,8 +7,10 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatDividerModule } from '@angular/material/divider';
+import { MatDialogModule, MatDialog } from '@angular/material/dialog';
 import { AdminApiService, AdminBookingDto } from '../../../../core/services/admin-api.service';
 import { AdminNotificationService } from '../../../../core/services/admin-notification.service';
+import { ConfirmDialogComponent } from '../../shared/dialogs/confirm-dialog/confirm-dialog.component';
 
 @Component({
   selector: 'app-booking-detail',
@@ -22,6 +24,7 @@ import { AdminNotificationService } from '../../../../core/services/admin-notifi
     MatChipsModule,
     MatProgressSpinnerModule,
     MatDividerModule,
+    MatDialogModule,
   ],
   styleUrls: ['../../admin-shared.styles.scss'],
   template: `
@@ -196,6 +199,7 @@ export class BookingDetailComponent implements OnInit {
   private router = inject(Router);
   private adminApi = inject(AdminApiService);
   private notification = inject(AdminNotificationService);
+  private dialog = inject(MatDialog);
 
   bookingId = 0;
   booking = signal<AdminBookingDto | null>(null);
@@ -227,19 +231,29 @@ export class BookingDetailComponent implements OnInit {
   }
 
   forceComplete(b: AdminBookingDto) {
-    const reason = prompt('Enter reason for force-completion (min 10 chars):');
-    if (!reason || reason.length < 10) {
-      this.notification.showError('Reason must be at least 10 characters');
-      return;
-    }
-    this.adminApi.forceCompleteBooking(b.id, reason).subscribe({
-      next: () => {
-        this.notification.showSuccess(`Booking #${b.id} force-completed`);
-        this.loadBooking();
+    const dialogRef = this.dialog.open(ConfirmDialogComponent, {
+      data: {
+        title: 'Force Complete Booking',
+        message: `Force-complete booking #${b.id}? This action cannot be undone.`,
+        confirmText: 'Force Complete',
+        confirmColor: 'warn',
+        requireReason: true,
+        reasonLabel: 'Reason for force-completion',
+        reasonMinLength: 10,
       },
-      error: (err) => {
-        this.notification.showError(err.error?.message || 'Failed to force-complete booking');
-      },
+    });
+    dialogRef.afterClosed().subscribe((reason) => {
+      if (reason) {
+        this.adminApi.forceCompleteBooking(b.id, reason).subscribe({
+          next: () => {
+            this.notification.showSuccess(`Booking #${b.id} force-completed`);
+            this.loadBooking();
+          },
+          error: (err) => {
+            this.notification.showError(err.error?.message || 'Failed to force-complete booking');
+          },
+        });
+      }
     });
   }
 

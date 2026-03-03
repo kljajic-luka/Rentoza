@@ -23,6 +23,14 @@ export interface TripActivityData {
 }
 
 /**
+ * Data structure for payout history chart
+ */
+export interface PayoutHistoryData {
+  labels: string[];
+  amounts: number[];
+}
+
+/**
  * Service for fetching admin dashboard chart data
  *
  * P1-5 FIX: Now uses real backend API instead of mock data.
@@ -71,8 +79,20 @@ export class AdminChartsService {
       .pipe(
         catchError((error) => {
           console.error('Failed to fetch trip activity data:', error);
-          // Return empty data on error to prevent UI crash
           return of({ labels: [], completedTrips: [], canceledTrips: [] });
+        }),
+      );
+  }
+
+  getPayoutHistory(days: number = 90): Observable<PayoutHistoryData> {
+    return this.http
+      .get<PayoutHistoryData>(`${this.apiUrl}/admin/charts/payout-history`, {
+        params: { days: days.toString() },
+      })
+      .pipe(
+        catchError((error) => {
+          console.error('Failed to fetch payout history data:', error);
+          return of({ labels: [], amounts: [] });
         }),
       );
   }

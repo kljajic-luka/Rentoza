@@ -15,6 +15,10 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatDividerModule } from '@angular/material/divider';
 import { SelectionModel } from '@angular/cdk/collections';
 
+// Charts
+import { BaseChartDirective, provideCharts, withDefaultRegisterables } from 'ng2-charts';
+import { ChartConfiguration, ChartOptions } from 'chart.js';
+
 import {
   AdminApiService,
   PayoutQueueDto,
@@ -22,10 +26,15 @@ import {
   BatchPayoutRequest,
 } from '../../../../core/services/admin-api.service';
 import { AdminNotificationService } from '../../../../core/services/admin-notification.service';
+import {
+  AdminChartsService,
+  PayoutHistoryData,
+} from '../../shared/services/admin-charts.service';
 
 @Component({
   selector: 'app-financial-dashboard',
   standalone: true,
+  providers: [provideCharts(withDefaultRegisterables())],
   imports: [
     CommonModule,
     FormsModule,
@@ -39,6 +48,7 @@ import { AdminNotificationService } from '../../../../core/services/admin-notifi
     MatCheckboxModule,
     MatTooltipModule,
     MatDividerModule,
+    BaseChartDirective,
   ],
   templateUrl: './financial-dashboard.component.html',
   styleUrls: ['./financial-dashboard.component.scss'],
@@ -46,6 +56,7 @@ import { AdminNotificationService } from '../../../../core/services/admin-notifi
 export class FinancialDashboardComponent implements OnInit {
   private adminApi = inject(AdminApiService);
   private notification = inject(AdminNotificationService);
+  private chartsService = inject(AdminChartsService);
 
   // State
   escrowBalance = signal<EscrowBalanceDto | null>(null);
@@ -55,6 +66,36 @@ export class FinancialDashboardComponent implements OnInit {
   totalElements = signal(0);
   pageSize = signal(20);
   pageIndex = signal(0);
+
+  // Payout chart
+  payoutChartLoading = signal(false);
+  payoutChartError = signal<string | null>(null);
+  payoutChartData: ChartConfiguration<'line'>['data'] = { labels: [], datasets: [] };
+  payoutChartOptions: ChartOptions<'line'> = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: 'rgba(15, 23, 42, 0.9)',
+        padding: 12,
+        titleFont: { size: 14, weight: 'bold' },
+        bodyFont: { size: 13 },
+        cornerRadius: 8,
+      },
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+        grid: { display: false },
+        ticks: { color: '#94a3b8' },
+      },
+      x: {
+        grid: { display: false },
+        ticks: { color: '#94a3b8' },
+      },
+    },
+  };
 
   // Selection
   selection = new SelectionModel<PayoutQueueDto>(true, []);
@@ -79,6 +120,7 @@ export class FinancialDashboardComponent implements OnInit {
   ngOnInit(): void {
     this.loadEscrowBalance();
     this.loadPayouts();
+    this.loadPayoutHistory();
   }
 
   loadEscrowBalance(): void {
@@ -100,6 +142,39 @@ export class FinancialDashboardComponent implements OnInit {
       error: (error) => {
         console.error('Failed to load payouts:', error);
         this.loading.set(false);
+      },
+    });
+  }
+
+  loadPayoutHistory(): void {
+    this.payoutChartLoading.set(true);
+    this.payoutChartError.set(null);
+    this.chartsService.getPayoutHistory(90).subscribe({
+      next: (data: PayoutHistoryData) => {
+        this.payoutChartData = {
+          labels: data.labels,
+          datasets: [
+            {
+              data: data.amounts,
+              label: 'Payouts (RSD)',
+              borderColor: '#4caf50',
+              backgroundColor: 'rgba(76, 175, 80, 0.1)',
+              fill: true,
+              tension: 0.3,
+              borderWidth: 2,
+              pointRadius: 4,
+              pointHoverRadius: 6,
+              pointBackgroundColor: '#4caf50',
+              pointBorderColor: '#fff',
+              pointBorderWidth: 2,
+            },
+          ],
+        };
+        this.payoutChartLoading.set(false);
+      },
+      error: () => {
+        this.payoutChartError.set('Failed to load payout trend data.');
+        this.payoutChartLoading.set(false);
       },
     });
   }

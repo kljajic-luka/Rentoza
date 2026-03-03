@@ -72,6 +72,72 @@
   }
 }
 
+// Payout Trend Chart
+.payout-chart-card {
+  margin-bottom: 24px;
+
+  mat-card-header {
+    mat-card-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 20px;
+      color: #1a237e;
+    }
+  }
+
+  mat-card-content {
+    padding-top: 20px;
+  }
+
+  .chart-container {
+    height: 280px;
+    position: relative;
+
+    canvas {
+      max-height: 280px;
+    }
+  }
+
+  .chart-loading {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-height: 200px;
+    gap: 16px;
+    color: #94a3b8;
+
+    span {
+      font-size: var(--font-size-sm);
+      font-weight: 500;
+    }
+  }
+
+  .chart-error {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-height: 200px;
+    gap: 12px;
+    padding: 20px;
+    text-align: center;
+    color: #ef4444;
+
+    mat-icon {
+      font-size: 32px;
+      width: 32px;
+      height: 32px;
+      opacity: 0.7;
+    }
+
+    span {
+      font-size: var(--font-size-sm);
+    }
+  }
+}
+
 // Payout Queue Card
 .payout-queue-card {
   mat-card-header {

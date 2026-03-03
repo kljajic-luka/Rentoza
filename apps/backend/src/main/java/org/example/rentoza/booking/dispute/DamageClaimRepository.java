@@ -1,7 +1,11 @@
 package org.example.rentoza.booking.dispute;
 
+import jakarta.persistence.LockModeType;
+import jakarta.persistence.QueryHint;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.QueryHints;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
@@ -12,6 +16,20 @@ import java.util.Optional;
  * Repository for damage claims.
  */
 public interface DamageClaimRepository extends JpaRepository<DamageClaim, Long>, org.springframework.data.jpa.repository.JpaSpecificationExecutor<DamageClaim> {
+
+    /**
+     * C-4 FIX: Find damage claim by ID with PESSIMISTIC_WRITE lock.
+     * Prevents two admins from resolving the same dispute simultaneously.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @QueryHints({
+        @QueryHint(name = "jakarta.persistence.lock.timeout", value = "5000")
+    })
+    @Query("SELECT c FROM DamageClaim c " +
+           "JOIN FETCH c.booking b " +
+           "LEFT JOIN FETCH b.car " +
+           "WHERE c.id = :id")
+    Optional<DamageClaim> findByIdWithLock(@Param("id") Long id);
 
     /**
      * Find claim by booking ID (legacy single-claim lookup).

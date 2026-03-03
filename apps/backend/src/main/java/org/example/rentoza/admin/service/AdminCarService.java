@@ -116,15 +116,21 @@ public class AdminCarService {
      */
     public AdminCarDto approveCar(Long carId, User admin) {
         Timer.Sample timer = Timer.start(meterRegistry);
-        
+
         // Set MDC context for structured logging
         MDC.put("carId", carId.toString());
         MDC.put("adminId", admin.getId().toString());
         MDC.put("action", "CAR_APPROVED");
-        
+
         try {
-            Car car = carRepo.findWithDetailsById(carId)
+            Car car = carRepo.findByIdForUpdate(carId)
                 .orElseThrow(() -> new ResourceNotFoundException("Car not found: " + carId));
+
+            // H-3 FIX: State machine guard
+            if (car.getApprovalStatus() != org.example.rentoza.car.ApprovalStatus.PENDING) {
+                throw new IllegalStateException(
+                    "Cannot approve car in state " + car.getApprovalStatus() + ". Only PENDING cars can be approved.");
+            }
             
             // Capture before state
             String beforeState = auditService.toJson(AdminCarDto.fromEntity(car));
@@ -180,9 +186,15 @@ public class AdminCarService {
      * @return Updated car DTO
      */
     public AdminCarDto rejectCar(Long carId, String reason, User admin) {
-        Car car = carRepo.findWithDetailsById(carId)
+        Car car = carRepo.findByIdForUpdate(carId)
             .orElseThrow(() -> new ResourceNotFoundException("Car not found: " + carId));
-        
+
+        // H-3 FIX: State machine guard
+        if (car.getApprovalStatus() != org.example.rentoza.car.ApprovalStatus.PENDING) {
+            throw new IllegalStateException(
+                "Cannot reject car in state " + car.getApprovalStatus() + ". Only PENDING cars can be rejected.");
+        }
+
         if (reason == null || reason.trim().isEmpty()) {
             throw new IllegalArgumentException("Rejection reason is required");
         }
@@ -230,9 +242,15 @@ public class AdminCarService {
      * @return Updated car DTO
      */
     public AdminCarDto suspendCar(Long carId, String reason, User admin) {
-        Car car = carRepo.findWithDetailsById(carId)
+        Car car = carRepo.findByIdForUpdate(carId)
             .orElseThrow(() -> new ResourceNotFoundException("Car not found: " + carId));
-        
+
+        // H-3 FIX: State machine guard
+        if (car.getApprovalStatus() != org.example.rentoza.car.ApprovalStatus.APPROVED) {
+            throw new IllegalStateException(
+                "Cannot suspend car in state " + car.getApprovalStatus() + ". Only APPROVED cars can be suspended.");
+        }
+
         if (reason == null || reason.trim().isEmpty()) {
             throw new IllegalArgumentException("Suspension reason is required");
         }
@@ -274,8 +292,14 @@ public class AdminCarService {
      * @return Updated car DTO
      */
     public AdminCarDto reactivateCar(Long carId, User admin) {
-        Car car = carRepo.findWithDetailsById(carId)
+        Car car = carRepo.findByIdForUpdate(carId)
             .orElseThrow(() -> new ResourceNotFoundException("Car not found: " + carId));
+
+        // H-3 FIX: State machine guard
+        if (car.getApprovalStatus() != org.example.rentoza.car.ApprovalStatus.SUSPENDED) {
+            throw new IllegalStateException(
+                "Cannot reactivate car in state " + car.getApprovalStatus() + ". Only SUSPENDED cars can be reactivated.");
+        }
         
         // Capture before state
         String beforeState = auditService.toJson(AdminCarDto.fromEntity(car));

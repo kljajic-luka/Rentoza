@@ -330,8 +330,8 @@ public class SupabaseJwtUtil {
 
             PublicKey publicKey = getPublicKey(kid);
             if (publicKey == null) {
-                log.warn("No public key found for claims extraction");
-                return parseClaimsWithoutVerification(token);
+                log.error("SECURITY: No public key found for kid={}. Rejecting token.", kid);
+                return null;
             }
 
             return Jwts.parserBuilder()
@@ -340,43 +340,14 @@ public class SupabaseJwtUtil {
                     .parseClaimsJws(token)
                     .getBody();
         } catch (ExpiredJwtException e) {
-            // For expired tokens, we can still extract claims
-            return e.getClaims();
+            log.debug("Supabase JWT expired at {}", e.getClaims().getExpiration());
+            return null;
         } catch (Exception e) {
             log.warn("Unable to parse Supabase JWT: {}", e.getMessage());
-            return parseClaimsWithoutVerification(token);
-        }
-    }
-    
-    /**
-     * Parse claims without signature verification (for expired or problematic tokens).
-     * Used only for extracting user info, NOT for authentication decisions.
-     */
-    private Claims parseClaimsWithoutVerification(String token) {
-        try {
-            String[] parts = token.split("\\.");
-            if (parts.length < 2) return null;
-            
-            String payloadJson = new String(Base64.getUrlDecoder().decode(parts[1]));
-            JsonNode payload = objectMapper.readTree(payloadJson);
-            
-            // Use Jwts.claims() builder to create Claims object (public API)
-            Map<String, Object> claimsMap = new HashMap<>();
-            Iterator<Map.Entry<String, JsonNode>> fields = payload.fields();
-            while (fields.hasNext()) {
-                Map.Entry<String, JsonNode> entry = fields.next();
-                if (entry.getValue().isTextual()) {
-                    claimsMap.put(entry.getKey(), entry.getValue().asText());
-                } else if (entry.getValue().isNumber()) {
-                    claimsMap.put(entry.getKey(), entry.getValue().asLong());
-                }
-            }
-            return Jwts.claims(claimsMap);
-        } catch (Exception e) {
-            log.warn("Failed to parse claims without verification: {}", e.getMessage());
             return null;
         }
     }
+    
 
     // =====================================================
     // 🔧 UTILITY METHODS

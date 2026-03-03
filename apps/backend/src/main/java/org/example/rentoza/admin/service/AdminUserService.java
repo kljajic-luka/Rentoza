@@ -20,6 +20,7 @@ import org.example.rentoza.user.Role;
 import org.example.rentoza.user.User;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -152,6 +153,7 @@ public class AdminUserService {
      * @param admin Admin performing the action
      * @throws ResourceNotFoundException if user not found
      */
+    @PreAuthorize("hasRole('ADMIN')")
     public void banUser(Long userId, String reason, User admin) {
         User targetUser = userRepo.findById(userId)
             .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userId));
@@ -232,6 +234,7 @@ public class AdminUserService {
      * @throws ResourceNotFoundException if user not found
      * @throws IllegalArgumentException if trying to delete admin
      */
+    @PreAuthorize("hasRole('ADMIN')")
     public void deleteUser(Long userId, String reason, User admin) {
         User targetUser = userRepo.findById(userId)
             .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userId));
@@ -249,22 +252,10 @@ public class AdminUserService {
         // Capture before state for audit
         String beforeState = auditService.toJson(AdminUserDetailDto.fromEntity(targetUser));
         
-        log.info("Admin {} deleting user {} ({}). Reason: {}", 
+        log.info("Admin {} deleting user {} ({}). Reason: {}",
             admin.getEmail(), userId, targetUser.getEmail(), reason);
-        
-        // Step 1: Cancel pending bookings
-        cancelUserBookings(targetUser);
-        
-        // Step 2: Deactivate user's cars (for owners)
-        deactivateUserCars(targetUser);
-        
-        // Step 3: Anonymize reviews
-        anonymizeUserReviews(targetUser);
-        
-        // Step 4: Delete user
-        userRepo.delete(targetUser);
-        
-        // Step 5: Create audit log
+
+        // H-7 FIX: Audit FIRST — even if cascade fails, the intent is logged
         auditService.logAction(
             admin,
             AdminAction.USER_DELETED,
@@ -274,7 +265,13 @@ public class AdminUserService {
             null,  // afterState is null for deletes
             reason
         );
-        
+
+        // Then cascade
+        cancelUserBookings(targetUser);
+        deactivateUserCars(targetUser);
+        anonymizeUserReviews(targetUser);
+        userRepo.delete(targetUser);
+
         log.info("User {} successfully deleted by admin {}", userId, admin.getId());
     }
     

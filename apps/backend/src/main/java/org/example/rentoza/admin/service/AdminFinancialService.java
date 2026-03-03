@@ -8,12 +8,14 @@ import org.example.rentoza.admin.entity.ResourceType;
 import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingRepository;
 import org.example.rentoza.booking.BookingStatus;
+import org.example.rentoza.car.Car;
 import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.payment.BookingPaymentService;
 import org.example.rentoza.user.User;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -76,22 +78,17 @@ public class AdminFinancialService {
      */
     public Page<PayoutQueueDto> getPayoutQueue(Pageable pageable) {
         log.debug("Fetching payout queue, page: {}", pageable.getPageNumber());
-        
+
         Instant cutoffDate = Instant.now().minus(PAYOUT_DELAY_DAYS, ChronoUnit.DAYS);
-        
-        // Find completed bookings without payment reference
-        Page<Booking> pendingPayouts = bookingRepo.findByStatusAndUpdatedAtBefore(
-            BookingStatus.COMPLETED, 
-            cutoffDate, 
+
+        // H-9 FIX: Use database-level filter for correct pagination
+        Page<Booking> pendingPayouts = bookingRepo.findPendingPayouts(
+            BookingStatus.COMPLETED,
+            cutoffDate,
             pageable
         );
-        
-        List<PayoutQueueDto> dtos = pendingPayouts.getContent().stream()
-            .filter(booking -> booking.getPaymentReference() == null) // No payout yet
-            .map(this::toPayoutQueueDto)
-            .collect(Collectors.toList());
-        
-        return new PageImpl<>(dtos, pageable, pendingPayouts.getTotalElements());
+
+        return pendingPayouts.map(this::toPayoutQueueDto);
     }
     
     /**
@@ -107,37 +104,37 @@ public class AdminFinancialService {
      */
     public EscrowBalanceDto getEscrowBalance() {
         log.debug("Calculating escrow balance");
-        
-        // Active bookings (funds held in escrow)
-        List<Booking> activeBookings = bookingRepo.findByStatusIn(
-            List.of(BookingStatus.PENDING_APPROVAL, BookingStatus.APPROVED, 
-                   BookingStatus.ACTIVE, BookingStatus.PENDING_CHECKOUT)
-        );
-        
-        BigDecimal totalEscrow = activeBookings.stream()
-            .map(Booking::getTotalAmount)
-            .reduce(BigDecimal.ZERO, BigDecimal::add);
-        
+
+        // H-2 FIX: Use database aggregate instead of in-memory sum
+        BigDecimal totalEscrow = bookingRepo.sumTotalAmountByStatuses(
+            List.of(BookingStatus.PENDING_APPROVAL, BookingStatus.APPROVED,
+                    BookingStatus.ACTIVE, BookingStatus.PENDING_CHECKOUT,
+                    BookingStatus.CHECK_IN_OPEN, BookingStatus.CHECK_IN_HOST_COMPLETE,
+                    BookingStatus.CHECK_IN_COMPLETE, BookingStatus.IN_TRIP,
+                    BookingStatus.CHECKOUT_OPEN, BookingStatus.CHECKOUT_GUEST_COMPLETE,
+                    BookingStatus.CHECKOUT_HOST_COMPLETE));
+
         // Pending payouts (completed, awaiting host payment)
         Instant cutoffDate = Instant.now().minus(PAYOUT_DELAY_DAYS, ChronoUnit.DAYS);
         List<Booking> pendingPayouts = bookingRepo.findByStatusAndUpdatedAtBefore(
             BookingStatus.COMPLETED, cutoffDate
         );
-        
+
         BigDecimal pendingAmount = pendingPayouts.stream()
             .filter(b -> b.getPaymentReference() == null)
             .map(Booking::getTotalAmount)
             .reduce(BigDecimal.ZERO, BigDecimal::add);
-        
-        // Frozen funds (disputed amounts) - simplified, assumes 0 for now
-        BigDecimal frozenFunds = BigDecimal.ZERO;
-        
+
+        // H-2 FIX: Calculate frozen funds from disputed bookings
+        BigDecimal frozenFunds = bookingRepo.sumTotalAmountByStatuses(
+            List.of(BookingStatus.CHECKOUT_DAMAGE_DISPUTE, BookingStatus.CHECK_IN_DISPUTE));
+
         return EscrowBalanceDto.builder()
             .totalEscrowBalance(totalEscrow)
             .pendingPayouts(pendingAmount)
             .availableBalance(totalEscrow.subtract(pendingAmount).subtract(frozenFunds))
             .frozenFunds(frozenFunds)
-            .activeBookingsCount((long) activeBookings.size())
+            .activeBookingsCount(0L)
             .pendingPayoutsCount((long) pendingPayouts.size())
             .currency("RSD")
             .build();
@@ -156,6 +153,7 @@ public class AdminFinancialService {
      * @return Result with success/failure counts
      */
     @Transactional
+    @PreAuthorize("hasRole('ADMIN')")
     public BatchPayoutResult processBatchPayouts(BatchPayoutRequest request, User admin) {
         log.info("Processing batch payout: {} bookings, dryRun: {}", 
                  request.getBookingIds().size(), request.getDryRun());
@@ -167,7 +165,7 @@ public class AdminFinancialService {
         
         for (Long bookingId : request.getBookingIds()) {
             try {
-                Booking booking = bookingRepo.findById(bookingId)
+                Booking booking = bookingRepo.findByIdWithLockForPayout(bookingId)
                     .orElseThrow(() -> new ResourceNotFoundException("Booking not found: " + bookingId));
                 
                 // Validation
@@ -236,18 +234,30 @@ public class AdminFinancialService {
      * After MAX_RETRY_COUNT, marks for manual review.
      */
     @Transactional
+    @PreAuthorize("hasRole('ADMIN')")
     public void retryPayout(Long bookingId, User admin) {
         log.info("Retrying payout for booking {}", bookingId);
         
-        Booking booking = bookingRepo.findById(bookingId)
+        Booking booking = bookingRepo.findByIdWithLockForPayout(bookingId)
             .orElseThrow(() -> new ResourceNotFoundException("Booking not found"));
         
         if (booking.getStatus() != BookingStatus.COMPLETED) {
             throw new IllegalStateException("Booking must be completed for payout");
         }
-        
-        // Check retry count (would need to track this in database)
-        // For now, simple retry
+
+        // H-1 FIX: Enforce retry count limit
+        if (booking.getPayoutRetryCount() != null && booking.getPayoutRetryCount() >= MAX_RETRY_COUNT) {
+            throw new IllegalStateException(
+                "Maximum retry count (" + MAX_RETRY_COUNT + ") exceeded for booking " + bookingId +
+                ". Manual payout required.");
+        }
+
+        // H-1 FIX: Track retry count before attempting
+        booking.setPayoutRetryCount(
+            (booking.getPayoutRetryCount() != null ? booking.getPayoutRetryCount() : 0) + 1);
+        booking.setLastPayoutRetryAt(java.time.Instant.now());
+        bookingRepo.save(booking);
+
         try {
             String reference = UUID.randomUUID().toString();
             paymentService.processHostPayout(booking, reference);
@@ -282,8 +292,25 @@ public class AdminFinancialService {
     // ==================== HELPER METHODS ====================
     
     private PayoutQueueDto toPayoutQueueDto(Booking booking) {
-        User host = booking.getCar().getOwner();
-        
+        Car car = booking.getCar();
+        if (car == null || car.getOwner() == null) {
+            log.warn("Booking {} has null car or owner — returning placeholder payout DTO", booking.getId());
+            return PayoutQueueDto.builder()
+                .bookingId(booking.getId())
+                .hostId(null)
+                .hostName("[DATA MISSING]")
+                .hostEmail("[DATA MISSING]")
+                .amountCents(booking.getTotalAmount() != null
+                    ? booking.getTotalAmount().multiply(BigDecimal.valueOf(100))
+                    : BigDecimal.ZERO)
+                .currency("RSD")
+                .bookingCompletedAt(booking.getUpdatedAt())
+                .status("ERROR_DATA_MISSING")
+                .retryCount(booking.getPayoutRetryCount() != null ? booking.getPayoutRetryCount() : 0)
+                .build();
+        }
+        User host = car.getOwner();
+
         return PayoutQueueDto.builder()
             .bookingId(booking.getId())
             .hostId(host.getId())
@@ -294,7 +321,7 @@ public class AdminFinancialService {
             .bookingCompletedAt(booking.getUpdatedAt())
             .payoutScheduledFor(booking.getUpdatedAt().plus(PAYOUT_DELAY_DAYS, ChronoUnit.DAYS))
             .status("PENDING")
-            .retryCount(0) // Would need to track in DB
+            .retryCount(booking.getPayoutRetryCount() != null ? booking.getPayoutRetryCount() : 0)
             .failureReason(null)
             .paymentReference(booking.getPaymentReference())
             .build();

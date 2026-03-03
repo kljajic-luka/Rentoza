@@ -122,6 +122,12 @@ public class Booking {
     @Column(name = "payment_reference", length = 100)
     private String paymentReference;
 
+    @Column(name = "payout_retry_count")
+    private Integer payoutRetryCount = 0;
+
+    @Column(name = "last_payout_retry_at")
+    private Instant lastPayoutRetryAt;
+
     /**
      * Legacy free-form payment status string — kept for read-only backward compatibility.
      * All runtime logic MUST use {@link #chargeLifecycleStatus} and {@link #depositLifecycleStatus}.

@@ -813,6 +813,55 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
     // ========== ADMIN MANAGEMENT QUERIES ==========
 
     /**
+     * M-2 FIX: Fetch recent bookings with all relations eagerly loaded (N+1 prevention).
+     * Used for admin dashboard recent bookings widget.
+     */
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.car c " +
+           "JOIN FETCH b.renter " +
+           "LEFT JOIN FETCH c.owner " +
+           "ORDER BY b.createdAt DESC")
+    List<Booking> findRecentBookingsWithRelations(Pageable pageable);
+
+    /**
+     * C-3 FIX: Find booking by ID with PESSIMISTIC_WRITE lock for payout processing.
+     * Prevents double-payout when two concurrent batch requests include the same booking.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @QueryHints({
+        @QueryHint(name = "jakarta.persistence.lock.timeout", value = "5000")
+    })
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.car c " +
+           "LEFT JOIN FETCH c.owner " +
+           "WHERE b.id = :id")
+    java.util.Optional<Booking> findByIdWithLockForPayout(@Param("id") Long id);
+
+    /**
+     * H-2 FIX: Aggregate sum of totalAmount by booking statuses.
+     * Used for escrow balance and frozen funds calculations.
+     */
+    @Query("SELECT COALESCE(SUM(b.totalAmount), 0) FROM Booking b " +
+           "WHERE b.status IN :statuses")
+    java.math.BigDecimal sumTotalAmountByStatuses(@Param("statuses") java.util.Collection<BookingStatus> statuses);
+
+    /**
+     * H-9 FIX: Database-level payout queue query with paymentReference IS NULL filter.
+     * Returns correct pagination totals.
+     */
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.car c " +
+           "LEFT JOIN FETCH c.owner " +
+           "WHERE b.status = :status " +
+           "AND b.updatedAt < :cutoff " +
+           "AND b.paymentReference IS NULL " +
+           "ORDER BY b.updatedAt ASC")
+    Page<Booking> findPendingPayouts(
+        @Param("status") BookingStatus status,
+        @Param("cutoff") Instant cutoff,
+        Pageable pageable);
+
+    /**
      * Find all bookings for a renter by user ID.
      * Used by admin for user profile view and cascade delete.
      * 

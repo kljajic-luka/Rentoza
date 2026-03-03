@@ -20,9 +20,11 @@ import org.springframework.hateoas.EntityModel;
 import org.springframework.hateoas.PagedModel;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Positive;
 import java.time.LocalDateTime;
 
 import static org.springframework.data.domain.Sort.Direction.DESC;
@@ -32,6 +34,7 @@ import static org.springframework.data.domain.Sort.Direction.DESC;
 @PreAuthorize("hasRole('ADMIN')")
 @RequiredArgsConstructor
 @Slf4j
+@Validated
 public class AdminDisputeController {
 
     private final AdminDisputeService disputeService;
@@ -67,7 +70,7 @@ public class AdminDisputeController {
      * Get full dispute detail with evidence and history.
      */
     @GetMapping("/{id}")
-    public ResponseEntity<AdminDisputeDetailDto> getDispute(@PathVariable Long id) {
+    public ResponseEntity<AdminDisputeDetailDto> getDispute(@PathVariable @Positive Long id) {
         return ResponseEntity.ok(disputeService.getDisputeDetail(id));
     }
 
@@ -77,7 +80,7 @@ public class AdminDisputeController {
      */
     @PostMapping("/{id}/resolve")
     public ResponseEntity<Void> resolveDispute(
-            @PathVariable Long id,
+            @PathVariable @Positive Long id,
             @RequestBody @Valid DisputeResolutionRequest request) {
 
         User admin = userRepository.findById(currentUser.id())
@@ -93,7 +96,7 @@ public class AdminDisputeController {
      */
     @PostMapping("/{id}/escalate")
     public ResponseEntity<Void> escalateDispute(
-            @PathVariable Long id,
+            @PathVariable @Positive Long id,
             @RequestBody @Valid EscalateDisputeRequest request) {
 
         User admin = userRepository.findById(currentUser.id())
@@ -126,7 +129,7 @@ public class AdminDisputeController {
      */
     @PostMapping("/check-in/{id}/resolve")
     public ResponseEntity<Void> resolveCheckInDispute(
-            @PathVariable Long id,
+            @PathVariable @Positive Long id,
             @RequestBody @Valid CheckInDisputeResolutionDTO request) {
 
         User admin = userRepository.findById(currentUser.id())
@@ -167,7 +170,7 @@ public class AdminDisputeController {
      */
     @PostMapping("/checkout/{id}/resolve")
     public ResponseEntity<CheckoutDisputeResolutionResponseDTO> resolveCheckoutDispute(
-            @PathVariable Long id,
+            @PathVariable @Positive Long id,
             @RequestBody @Valid CheckoutDisputeResolutionDTO request) {
 
         User admin = userRepository.findById(currentUser.id())
@@ -187,7 +190,7 @@ public class AdminDisputeController {
      */
     @GetMapping("/checkout/{bookingId}/timeline")
     public ResponseEntity<CheckoutDisputeTimelineDTO> getCheckoutDisputeTimeline(
-            @PathVariable Long bookingId) {
+            @PathVariable @Positive Long bookingId) {
         
         return ResponseEntity.ok(disputeService.getCheckoutDisputeTimeline(bookingId));
     }

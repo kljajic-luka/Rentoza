@@ -1,7 +1,9 @@
 package org.example.rentoza.admin.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.admin.dto.AdminCarDto;
@@ -24,9 +26,12 @@ import org.springframework.hateoas.PagedModel;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 /**
  * Admin Car Management Controller.
@@ -46,6 +51,7 @@ import java.util.List;
 @RequiredArgsConstructor
 @Slf4j
 @PreAuthorize("hasRole('ADMIN')")
+@Validated
 public class AdminCarController {
     
     private final AdminCarService carService;
@@ -53,6 +59,7 @@ public class AdminCarController {
     private final CurrentUser currentUser;
     private final HateoasAssembler hateoasAssembler;
     private final IdempotencyService idempotencyService;
+    private final ObjectMapper objectMapper;
     
     /**
      * List all cars with pagination.
@@ -80,7 +87,7 @@ public class AdminCarController {
      * @return Car detail with owner info
      */
     @GetMapping("/{id}")
-    public ResponseEntity<AdminCarDto> getCarDetail(@PathVariable Long id) {
+    public ResponseEntity<AdminCarDto> getCarDetail(@PathVariable @Positive Long id) {
         AdminCarDto car = carService.getCarDetail(id);
         
         log.debug("Admin {} viewed car detail for carId={}", currentUser.id(), id);
@@ -101,7 +108,7 @@ public class AdminCarController {
      * @return Car review details with documents
      */
     @GetMapping("/{id}/review-detail")
-    public ResponseEntity<AdminCarReviewDetailDto> getCarReviewDetail(@PathVariable Long id) {
+    public ResponseEntity<AdminCarReviewDetailDto> getCarReviewDetail(@PathVariable @Positive Long id) {
         AdminCarReviewDetailDto car = carService.getCarReviewDetail(id);
         
         log.debug("Admin {} requested car review details for carId={}", currentUser.id(), id);
@@ -139,7 +146,7 @@ public class AdminCarController {
     @PostMapping("/{id}/approve")
     @RateLimiter(name = "admin-approval")
     public ResponseEntity<AdminCarDto> approveCar(
-            @PathVariable Long id,
+            @PathVariable @Positive Long id,
             @RequestHeader(value = "X-Idempotency-Key", required = false) String idempotencyKey) {
         
         Long adminId = currentUser.id();
@@ -147,11 +154,34 @@ public class AdminCarController {
         // Check idempotency - return cached response if already processed
         if (idempotencyKey != null) {
             var cached = idempotencyService.checkIdempotency(idempotencyKey, adminId);
-            if (cached.isPresent() && cached.get().getStatus() == IdempotencyService.IdempotencyStatus.COMPLETED) {
-                log.info("Returning cached approval response for key={}", idempotencyKey.substring(0, 8));
-                return ResponseEntity.ok().build();
+
+            // M-10 FIX: Filter by operation type
+            if (cached.isPresent() && !"CAR_APPROVE".equals(cached.get().getOperationType())) {
+                log.warn("Idempotency key {} was used for a different operation: {}",
+                         idempotencyKey.substring(0, 8), cached.get().getOperationType());
+                cached = Optional.empty();
             }
-            
+
+            if (cached.isPresent()) {
+                var result = cached.get();
+                if (result.getStatus() == IdempotencyService.IdempotencyStatus.COMPLETED) {
+                    log.info("Returning cached approval response for key={}", idempotencyKey.substring(0, 8));
+                    if (result.getResponseBody() != null) {
+                        try {
+                            return ResponseEntity.status(result.getHttpStatus())
+                                .body(objectMapper.readValue(result.getResponseBody(), AdminCarDto.class));
+                        } catch (Exception e) {
+                            log.warn("Failed to deserialize cached response body, returning 200 OK", e);
+                        }
+                    }
+                    return ResponseEntity.ok().build();
+                }
+                if (result.getStatus() == IdempotencyService.IdempotencyStatus.PROCESSING) {
+                    return ResponseEntity.status(HttpStatus.CONFLICT)
+                        .body(null);
+                }
+            }
+
             // Try to acquire lock for processing
             if (!idempotencyService.markProcessing(idempotencyKey, adminId, "CAR_APPROVE")) {
                 return ResponseEntity.status(HttpStatus.CONFLICT).build();
@@ -193,7 +223,7 @@ public class AdminCarController {
     @PostMapping("/{id}/reject")
     @RateLimiter(name = "admin-approval")
     public ResponseEntity<AdminCarDto> rejectCar(
-            @PathVariable Long id,
+            @PathVariable @Positive Long id,
             @Valid @RequestBody CarApprovalRequestDto request) {
         
         // Explicit null check (defense in depth - in addition to DTO validation)
@@ -223,7 +253,7 @@ public class AdminCarController {
     @PostMapping("/{id}/suspend")
     @RateLimiter(name = "admin-approval")
     public ResponseEntity<AdminCarDto> suspendCar(
-            @PathVariable Long id,
+            @PathVariable @Positive Long id,
             @Valid @RequestBody CarSuspensionRequestDto request) {
         
         User admin = getAdmin();
@@ -240,7 +270,7 @@ public class AdminCarController {
      */
     @PostMapping("/{id}/reactivate")
     @RateLimiter(name = "admin-approval")
-    public ResponseEntity<AdminCarDto> reactivateCar(@PathVariable Long id) {
+    public ResponseEntity<AdminCarDto> reactivateCar(@PathVariable @Positive Long id) {
         User admin = getAdmin();
         
         AdminCarDto car = carService.reactivateCar(id, admin);

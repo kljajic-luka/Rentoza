@@ -5,8 +5,8 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.example.rentoza.config.AppProperties;
-import org.example.rentoza.deprecated.jwt.JwtUtil;
 import org.example.rentoza.security.InternalServiceJwtUtil;
+import org.example.rentoza.security.supabase.SupabaseJwtUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.lang.NonNull;
@@ -56,7 +56,7 @@ public class RateLimitingFilter extends OncePerRequestFilter {
 
     private final RateLimitService rateLimitService;
     private final AppProperties appProperties;
-    private final JwtUtil jwtUtil;
+    private final SupabaseJwtUtil supabaseJwtUtil;
     private final InternalServiceJwtUtil internalServiceJwtUtil;
 
     /**
@@ -88,11 +88,11 @@ public class RateLimitingFilter extends OncePerRequestFilter {
 
     public RateLimitingFilter(RateLimitService rateLimitService,
                               AppProperties appProperties,
-                              JwtUtil jwtUtil,
+                              SupabaseJwtUtil supabaseJwtUtil,
                               InternalServiceJwtUtil internalServiceJwtUtil) {
         this.rateLimitService = rateLimitService;
         this.appProperties = appProperties;
-        this.jwtUtil = jwtUtil;
+        this.supabaseJwtUtil = supabaseJwtUtil;
         this.internalServiceJwtUtil = internalServiceJwtUtil;
     }
 
@@ -291,7 +291,7 @@ public class RateLimitingFilter extends OncePerRequestFilter {
 
         if (token != null) {
             try {
-                String email = jwtUtil.getEmailFromToken(token);
+                String email = supabaseJwtUtil.getEmailFromToken(token);
                 if (email != null && !email.isEmpty()) {
                     return "user:" + email;
                 }

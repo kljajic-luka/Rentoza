@@ -163,7 +163,13 @@ public enum BookingStatus {
     EXPIRED,
     
     /** System auto-expired due to host inactivity (48h or trip-start buffer) */
-    EXPIRED_SYSTEM;
+    EXPIRED_SYSTEM,
+
+    /**
+     * C-6 FIX: Booking was cancelled but refund processing failed.
+     * Requires manual retry via admin endpoint.
+     */
+    REFUND_FAILED;
 
     // ========== SHARED STATUS SETS ==========
 

@@ -85,7 +85,7 @@ public class AdminDashboardService {
         LocalDateTime startOfLastMonth = startOfMonth.minusMonths(1);
         LocalDateTime endOfLastMonthExclusive = startOfMonth;
         
-        Instant nowInstant = Instant.now();
+        Instant nowInstant = SerbiaTimeZone.toInstant(now);
         Instant startOfMonthInstant = SerbiaTimeZone.toInstant(startOfMonth);
         Instant startOfLastMonthInstant = SerbiaTimeZone.toInstant(startOfLastMonth);
         Instant endOfLastMonthExclusiveInstant = SerbiaTimeZone.toInstant(endOfLastMonthExclusive);
@@ -191,7 +191,9 @@ public class AdminDashboardService {
             AdminMetrics snapshot = AdminMetrics.builder()
                 .activeTripsCount(kpis.getActiveTripsCount().intValue())
                 .totalRevenueCents(kpis.getTotalRevenueThisMonth()
-                    .multiply(BigDecimal.valueOf(100)).longValue())
+                    .multiply(BigDecimal.valueOf(100))
+                    .setScale(0, RoundingMode.HALF_UP)
+                    .longValue())
                 .pendingApprovalsCount(kpis.getPendingApprovalsCount().intValue())
                 .openDisputesCount(kpis.getOpenDisputesCount().intValue())
                 .suspendedUsersCount(kpis.getSuspendedUsersCount().intValue())
@@ -360,10 +362,9 @@ public class AdminDashboardService {
      * @return List of recent bookings with basic info
      */
     public List<RecentBookingDto> getRecentBookings(int limit) {
-        PageRequest pageRequest = PageRequest.of(0, limit, Sort.by(Sort.Direction.DESC, "createdAt"));
-        
-        List<Booking> bookings = bookingRepo.findAll(pageRequest).getContent();
-        
+        List<Booking> bookings = bookingRepo.findRecentBookingsWithRelations(
+            PageRequest.of(0, Math.min(limit, 20)));
+
         return bookings.stream()
             .map(RecentBookingDto::fromEntity)
             .collect(Collectors.toList());

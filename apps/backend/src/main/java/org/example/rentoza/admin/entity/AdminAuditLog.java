@@ -40,8 +40,9 @@ import java.time.LocalDateTime;
     }
 )
 @Getter
-@NoArgsConstructor
-@AllArgsConstructor
+@Setter(AccessLevel.NONE)
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 @Builder
 public class AdminAuditLog {
     

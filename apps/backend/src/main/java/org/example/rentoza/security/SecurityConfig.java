@@ -14,7 +14,6 @@ import org.example.rentoza.security.supabase.SupabaseJwtUtil;
 import org.example.rentoza.security.supabase.SupabaseUserMappingRepository;
 import org.example.rentoza.security.token.TokenDenylistService;
 import org.example.rentoza.deprecated.jwt.JwtAuthenticationEntryPoint;
-import org.example.rentoza.deprecated.jwt.JwtUtil;
 import org.example.rentoza.user.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -80,7 +79,7 @@ public class SecurityConfig {
      *
      * @param rateLimitService Rate limiting service (Redis or In-Memory)
      * @param appProperties Configuration for rate limits
-     * @param jwtUtil JWT parser for extracting user email from tokens
+     * @param supabaseJwtUtil JWT parser for extracting user email from tokens
      * @param internalServiceJwtUtil Validator for internal service tokens (rate-limit bypass guard)
      * @return Configured RateLimitingFilter instance
      */
@@ -88,9 +87,9 @@ public class SecurityConfig {
     public RateLimitingFilter rateLimitingFilter(
             RateLimitService rateLimitService,
             AppProperties appProperties,
-            JwtUtil jwtUtil,
+            SupabaseJwtUtil supabaseJwtUtil,
             InternalServiceJwtUtil internalServiceJwtUtil) {
-        return new RateLimitingFilter(rateLimitService, appProperties, jwtUtil, internalServiceJwtUtil);
+        return new RateLimitingFilter(rateLimitService, appProperties, supabaseJwtUtil, internalServiceJwtUtil);
     }
 
     /**

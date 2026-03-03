@@ -2,7 +2,7 @@ package org.example.rentoza.security.ratelimit;
 
 import jakarta.servlet.ServletException;
 import org.example.rentoza.config.AppProperties;
-import org.example.rentoza.deprecated.jwt.JwtUtil;
+import org.example.rentoza.security.supabase.SupabaseJwtUtil;
 import org.example.rentoza.security.InternalServiceJwtUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -26,7 +26,7 @@ import static org.mockito.Mockito.*;
 class RateLimitingFilterTierTest {
 
     private RateLimitService rateLimitService;
-    private JwtUtil jwtUtil;
+    private SupabaseJwtUtil supabaseJwtUtil;
     private InternalServiceJwtUtil internalServiceJwtUtil;
     private AppProperties appProperties;
     private RateLimitingFilter filter;
@@ -34,7 +34,7 @@ class RateLimitingFilterTierTest {
     @BeforeEach
     void setUp() {
         rateLimitService = mock(RateLimitService.class);
-        jwtUtil = mock(JwtUtil.class);
+        supabaseJwtUtil = mock(SupabaseJwtUtil.class);
         internalServiceJwtUtil = mock(InternalServiceJwtUtil.class);
 
         appProperties = new AppProperties();
@@ -42,7 +42,7 @@ class RateLimitingFilterTierTest {
         appProperties.getRateLimit().setDefaultLimit(100);
         appProperties.getRateLimit().setDefaultWindowSeconds(60);
 
-        filter = new RateLimitingFilter(rateLimitService, appProperties, jwtUtil, internalServiceJwtUtil);
+        filter = new RateLimitingFilter(rateLimitService, appProperties, supabaseJwtUtil, internalServiceJwtUtil);
     }
 
     // ── Tier classification tests ─────────────────────────────────────────

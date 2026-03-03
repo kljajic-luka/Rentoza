@@ -1,5 +1,7 @@
 package org.example.rentoza.admin.controller;
 
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.admin.dto.*;
@@ -12,6 +14,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 /**
@@ -32,6 +35,7 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 @Slf4j
 @PreAuthorize("hasRole('ADMIN')")
+@Validated
 public class AdminFinancialController {
     
     private final AdminFinancialService financialService;
@@ -45,8 +49,8 @@ public class AdminFinancialController {
      */
     @GetMapping("/payouts")
     public ResponseEntity<Page<PayoutQueueDto>> getPayoutQueue(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) int size) {
         
         log.debug("Admin {} requesting payout queue, page: {}", currentUser.id(), page);
         
@@ -98,7 +102,7 @@ public class AdminFinancialController {
      * Retry failed payout for specific booking.
      */
     @PostMapping("/payouts/{bookingId}/retry")
-    public ResponseEntity<?> retryPayout(@PathVariable Long bookingId) {
+    public ResponseEntity<?> retryPayout(@PathVariable @Positive Long bookingId) {
         log.info("Admin {} retrying payout for booking {}", currentUser.id(), bookingId);
         
         User admin = userRepo.findById(currentUser.id())

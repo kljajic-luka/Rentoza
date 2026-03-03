@@ -4,6 +4,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
@@ -34,10 +36,16 @@ public class AdminAuditInterceptor implements HandlerInterceptor {
         String requestId = UUID.randomUUID().toString().substring(0, 8);
         MDC.put("requestId", requestId);
         MDC.put("path", request.getRequestURI());
-        
+
+        // Add admin identity to MDC for structured logging
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.isAuthenticated()) {
+            MDC.put("adminUser", auth.getName());
+        }
+
         // Add request ID to response header for client correlation
         response.setHeader("X-Request-ID", requestId);
-        
+
         return true;
     }
     

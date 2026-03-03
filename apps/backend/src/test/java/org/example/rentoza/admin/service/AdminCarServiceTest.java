@@ -87,7 +87,7 @@ class AdminCarServiceTest {
         @Test
         @DisplayName("Should approve car and update status to APPROVED")
         void shouldApproveCarSuccessfully() {
-            when(carRepo.findWithDetailsById(100L)).thenReturn(Optional.of(testCar));
+            when(carRepo.findByIdForUpdate(100L)).thenReturn(Optional.of(testCar));
             when(carRepo.save(any(Car.class))).thenAnswer(inv -> inv.getArgument(0));
 
             AdminCarDto result = adminCarService.approveCar(100L, testAdmin);
@@ -103,7 +103,7 @@ class AdminCarServiceTest {
         @Test
         @DisplayName("Should log audit action on approval")
         void shouldLogAuditActionOnApproval() {
-            when(carRepo.findWithDetailsById(100L)).thenReturn(Optional.of(testCar));
+            when(carRepo.findByIdForUpdate(100L)).thenReturn(Optional.of(testCar));
             when(carRepo.save(any(Car.class))).thenAnswer(inv -> inv.getArgument(0));
 
             adminCarService.approveCar(100L, testAdmin);
@@ -124,7 +124,7 @@ class AdminCarServiceTest {
         @Test
         @DisplayName("Should increment success counter metric")
         void shouldIncrementSuccessCounterMetric() {
-            when(carRepo.findWithDetailsById(100L)).thenReturn(Optional.of(testCar));
+            when(carRepo.findByIdForUpdate(100L)).thenReturn(Optional.of(testCar));
             when(carRepo.save(any(Car.class))).thenAnswer(inv -> inv.getArgument(0));
 
             adminCarService.approveCar(100L, testAdmin);
@@ -139,7 +139,7 @@ class AdminCarServiceTest {
         @Test
         @DisplayName("Should record approval duration timer")
         void shouldRecordApprovalDurationTimer() {
-            when(carRepo.findWithDetailsById(100L)).thenReturn(Optional.of(testCar));
+            when(carRepo.findByIdForUpdate(100L)).thenReturn(Optional.of(testCar));
             when(carRepo.save(any(Car.class))).thenAnswer(inv -> inv.getArgument(0));
 
             adminCarService.approveCar(100L, testAdmin);
@@ -152,9 +152,20 @@ class AdminCarServiceTest {
         }
 
         @Test
+        @DisplayName("Should throw IllegalStateException when approving non-PENDING car")
+        void shouldThrowWhenApprovingNonPendingCar() {
+            testCar.setApprovalStatus(ApprovalStatus.APPROVED);
+            when(carRepo.findByIdForUpdate(100L)).thenReturn(Optional.of(testCar));
+
+            assertThatThrownBy(() -> adminCarService.approveCar(100L, testAdmin))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("Cannot approve car in state APPROVED");
+        }
+
+        @Test
         @DisplayName("Should throw ResourceNotFoundException when car not found")
         void shouldThrowWhenCarNotFound() {
-            when(carRepo.findWithDetailsById(999L)).thenReturn(Optional.empty());
+            when(carRepo.findByIdForUpdate(999L)).thenReturn(Optional.empty());
 
             assertThatThrownBy(() -> adminCarService.approveCar(999L, testAdmin))
                     .isInstanceOf(ResourceNotFoundException.class)
@@ -164,7 +175,7 @@ class AdminCarServiceTest {
         @Test
         @DisplayName("Should increment failed counter on exception")
         void shouldIncrementFailedCounterOnException() {
-            when(carRepo.findWithDetailsById(100L)).thenReturn(Optional.empty());
+            when(carRepo.findByIdForUpdate(100L)).thenReturn(Optional.empty());
 
             try {
                 adminCarService.approveCar(100L, testAdmin);
@@ -186,7 +197,7 @@ class AdminCarServiceTest {
         @Test
         @DisplayName("Should reject car with reason")
         void shouldRejectCarWithReason() {
-            when(carRepo.findWithDetailsById(100L)).thenReturn(Optional.of(testCar));
+            when(carRepo.findByIdForUpdate(100L)).thenReturn(Optional.of(testCar));
             when(carRepo.save(any(Car.class))).thenAnswer(inv -> inv.getArgument(0));
 
             AdminCarDto result = adminCarService.rejectCar(100L, "Vehicle photos are too blurry", testAdmin);
@@ -198,9 +209,20 @@ class AdminCarServiceTest {
         }
 
         @Test
+        @DisplayName("Should throw IllegalStateException when rejecting non-PENDING car")
+        void shouldThrowWhenRejectingNonPendingCar() {
+            testCar.setApprovalStatus(ApprovalStatus.APPROVED);
+            when(carRepo.findByIdForUpdate(100L)).thenReturn(Optional.of(testCar));
+
+            assertThatThrownBy(() -> adminCarService.rejectCar(100L, "Some reason", testAdmin))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("Cannot reject car in state APPROVED");
+        }
+
+        @Test
         @DisplayName("Should throw exception when reason is null")
         void shouldThrowWhenReasonIsNull() {
-            when(carRepo.findWithDetailsById(100L)).thenReturn(Optional.of(testCar));
+            when(carRepo.findByIdForUpdate(100L)).thenReturn(Optional.of(testCar));
 
             assertThatThrownBy(() -> adminCarService.rejectCar(100L, null, testAdmin))
                     .isInstanceOf(IllegalArgumentException.class)
@@ -210,7 +232,7 @@ class AdminCarServiceTest {
         @Test
         @DisplayName("Should throw exception when reason is blank")
         void shouldThrowWhenReasonIsBlank() {
-            when(carRepo.findWithDetailsById(100L)).thenReturn(Optional.of(testCar));
+            when(carRepo.findByIdForUpdate(100L)).thenReturn(Optional.of(testCar));
 
             assertThatThrownBy(() -> adminCarService.rejectCar(100L, "   ", testAdmin))
                     .isInstanceOf(IllegalArgumentException.class)
@@ -220,7 +242,7 @@ class AdminCarServiceTest {
         @Test
         @DisplayName("Should log audit action with rejection reason")
         void shouldLogAuditActionWithReason() {
-            when(carRepo.findWithDetailsById(100L)).thenReturn(Optional.of(testCar));
+            when(carRepo.findByIdForUpdate(100L)).thenReturn(Optional.of(testCar));
             when(carRepo.save(any(Car.class))).thenAnswer(inv -> inv.getArgument(0));
 
             adminCarService.rejectCar(100L, "Incomplete listing", testAdmin);
@@ -247,7 +269,7 @@ class AdminCarServiceTest {
             testCar.setApprovalStatus(ApprovalStatus.APPROVED);
             testCar.setAvailable(true);
             
-            when(carRepo.findWithDetailsById(100L)).thenReturn(Optional.of(testCar));
+            when(carRepo.findByIdForUpdate(100L)).thenReturn(Optional.of(testCar));
             when(carRepo.save(any(Car.class))).thenAnswer(inv -> inv.getArgument(0));
 
             AdminCarDto result = adminCarService.suspendCar(100L, "Policy violation detected", testAdmin);
@@ -261,7 +283,8 @@ class AdminCarServiceTest {
         @Test
         @DisplayName("Should throw exception when suspension reason is null")
         void shouldThrowWhenSuspensionReasonIsNull() {
-            when(carRepo.findWithDetailsById(100L)).thenReturn(Optional.of(testCar));
+            testCar.setApprovalStatus(ApprovalStatus.APPROVED);
+            when(carRepo.findByIdForUpdate(100L)).thenReturn(Optional.of(testCar));
 
             assertThatThrownBy(() -> adminCarService.suspendCar(100L, null, testAdmin))
                     .isInstanceOf(IllegalArgumentException.class)
@@ -280,7 +303,7 @@ class AdminCarServiceTest {
             testCar.setAvailable(false);
             testCar.setRejectionReason("Previous violation");
 
-            when(carRepo.findWithDetailsById(100L)).thenReturn(Optional.of(testCar));
+            when(carRepo.findByIdForUpdate(100L)).thenReturn(Optional.of(testCar));
             when(carRepo.save(any(Car.class))).thenAnswer(inv -> inv.getArgument(0));
 
             AdminCarDto result = adminCarService.reactivateCar(100L, testAdmin);

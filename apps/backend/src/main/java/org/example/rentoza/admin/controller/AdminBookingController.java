@@ -1,6 +1,9 @@
 package org.example.rentoza.admin.controller;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.admin.dto.AdminBookingDto;
@@ -24,6 +27,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.persistence.criteria.Predicate;
@@ -47,6 +51,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 @Slf4j
 @PreAuthorize("hasRole('ADMIN')")
+@Validated
 public class AdminBookingController {
     
     private final BookingRepository bookingRepo;
@@ -70,8 +75,8 @@ public class AdminBookingController {
     public ResponseEntity<Page<AdminBookingDto>> listBookings(
             @RequestParam(required = false) BookingStatus status,
             @RequestParam(required = false) String search,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
         
         log.debug("Admin {} listing bookings: status={}, search={}, page={}", 
                   currentUser.id(), status, search, page);
@@ -94,7 +99,7 @@ public class AdminBookingController {
      */
     @GetMapping("/{id}")
     @Transactional(readOnly = true)
-    public ResponseEntity<AdminBookingDto> getBookingDetail(@PathVariable Long id) {
+    public ResponseEntity<AdminBookingDto> getBookingDetail(@PathVariable @Positive Long id) {
         Booking booking = bookingRepo.findByIdWithRelations(id)
             .orElseThrow(() -> new ResourceNotFoundException("Booking not found: " + id));
         return ResponseEntity.ok(AdminBookingDto.fromEntity(booking));
@@ -113,9 +118,9 @@ public class AdminBookingController {
     @PostMapping("/{id}/force-complete")
     @Transactional
     public ResponseEntity<?> forceComplete(
-            @PathVariable Long id,
+            @PathVariable @Positive Long id,
             @Valid @RequestBody ForceCompleteBookingRequest request) {
-        
+
         log.info("Admin {} force-completing booking {}: {}", currentUser.id(), id, request.getReason());
         
         User admin = userRepo.findById(currentUser.id())
@@ -134,13 +139,14 @@ public class AdminBookingController {
             ));
         }
         
-        // Guard: payment authorization still held by provider (P1-5: use typed lifecycle status)
+        // Guard: payment authorization still held by provider — use isTerminal() for all states
         ChargeLifecycleStatus chargeStatus = booking.getChargeLifecycleStatus();
-        if (chargeStatus == ChargeLifecycleStatus.AUTHORIZED
-                || chargeStatus == ChargeLifecycleStatus.REAUTH_REQUIRED) {
+        if (chargeStatus != null && !chargeStatus.isTerminal()) {
             return ResponseEntity.badRequest().body(Map.of(
-                "error", "PAYMENT_HOLD_ACTIVE",
-                "message", "Cannot force-complete while payment is in AUTHORIZED state. Release or capture the payment first."
+                "error", "PAYMENT_IN_PROGRESS",
+                "message", "Cannot force-complete: payment is in non-terminal state " + chargeStatus +
+                           ". Wait for payment to settle or resolve manually.",
+                "chargeLifecycleStatus", chargeStatus.name()
             ));
         }
         
@@ -176,7 +182,7 @@ public class AdminBookingController {
             }
             
             if (search != null && !search.isBlank()) {
-                String pattern = "%" + search.toLowerCase() + "%";
+                String pattern = "%" + escapeLikePattern(search.toLowerCase()) + "%";
                 Predicate renterName = cb.like(
                     cb.lower(cb.concat(root.join("renter").get("firstName"), 
                         cb.concat(cb.literal(" "), root.join("renter").get("lastName")))), pattern);
@@ -186,5 +192,11 @@ public class AdminBookingController {
             
             return cb.and(predicates.toArray(new Predicate[0]));
         };
+    }
+
+    private String escapeLikePattern(String input) {
+        return input.replace("\\", "\\\\")
+                    .replace("%", "\\%")
+                    .replace("_", "\\_");
     }
 }

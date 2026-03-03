@@ -22,9 +22,12 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.persistence.criteria.Predicate;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Positive;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -62,6 +65,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Slf4j
 @PreAuthorize("hasRole('ADMIN')")
+@Validated
 public class AdminAuditController {
     
     private final AdminAuditLogRepository auditRepo;
@@ -99,10 +103,10 @@ public class AdminAuditController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant endDate,
             @RequestParam(required = false) String searchTerm,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        
-        log.debug("Admin {} searching audit logs: resourceType={}, action={}, page={}", 
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) int size) {
+
+        log.debug("Admin {} searching audit logs: resourceType={}, action={}, page={}",
                   currentUser.id(), resourceType, action, page);
         
         // Enforce max page size
@@ -130,7 +134,7 @@ public class AdminAuditController {
      * Get single audit log entry by ID.
      */
     @GetMapping("/{id}")
-    public ResponseEntity<AdminAuditLogDto> getAuditLogById(@PathVariable Long id) {
+    public ResponseEntity<AdminAuditLogDto> getAuditLogById(@PathVariable @Positive Long id) {
         log.debug("Admin {} requesting audit log {}", currentUser.id(), id);
         
         return auditRepo.findById(id)
@@ -148,9 +152,9 @@ public class AdminAuditController {
     @GetMapping("/resource/{type}/{id}")
     public ResponseEntity<Page<AdminAuditLogDto>> getAuditLogsForResource(
             @PathVariable ResourceType type,
-            @PathVariable Long id,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @PathVariable @Positive Long id,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) int size) {
         
         log.debug("Admin {} requesting audit logs for {} {}", currentUser.id(), type, id);
         
@@ -295,7 +299,7 @@ public class AdminAuditController {
             }
             
             if (searchTerm != null && !searchTerm.isBlank()) {
-                String pattern = "%" + searchTerm.toLowerCase() + "%";
+                String pattern = "%" + escapeLikePattern(searchTerm.toLowerCase()) + "%";
                 Predicate reasonMatch = cb.like(cb.lower(root.get("reason")), pattern);
                 Predicate beforeMatch = cb.like(cb.lower(root.get("beforeState")), pattern);
                 Predicate afterMatch = cb.like(cb.lower(root.get("afterState")), pattern);
@@ -350,5 +354,11 @@ public class AdminAuditController {
             return "\"" + value.replace("\"", "\"\"") + "\"";
         }
         return value;
+    }
+
+    private String escapeLikePattern(String input) {
+        return input.replace("\\", "\\\\")
+                    .replace("%", "\\%")
+                    .replace("_", "\\_");
     }
 }

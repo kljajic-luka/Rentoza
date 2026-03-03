@@ -6,7 +6,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.admin.dto.*;
 import org.example.rentoza.admin.dto.enums.DisputeDecision;
 import org.example.rentoza.admin.entity.AdminAction;
-import org.example.rentoza.admin.entity.AdminAction;
 import org.example.rentoza.admin.entity.DisputeResolution;
 import org.example.rentoza.admin.entity.ResourceType;
 import org.example.rentoza.admin.repository.DisputeResolutionRepository;
@@ -27,6 +26,7 @@ import org.example.rentoza.user.User;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -162,7 +162,7 @@ public class AdminDisputeService {
     // ==================== DISPUTE RESOLUTION ====================
 
     public void resolveDispute(Long disputeId, DisputeResolutionRequest resolution, User admin) {
-        DamageClaim claim = damageClaimRepo.findById(disputeId)
+        DamageClaim claim = damageClaimRepo.findByIdWithLock(disputeId)
                 .orElseThrow(() -> new ResourceNotFoundException("Dispute not found"));
 
         // Validate state transition before making changes
@@ -261,7 +261,7 @@ public class AdminDisputeService {
     }
 
     public void escalateDispute(Long disputeId, String reason, User admin) {
-        DamageClaim claim = damageClaimRepo.findById(disputeId)
+        DamageClaim claim = damageClaimRepo.findByIdWithLock(disputeId)
                 .orElseThrow(() -> new ResourceNotFoundException("Dispute not found"));
 
         claim.setStatus(DamageClaimStatus.ESCALATED);
@@ -344,8 +344,9 @@ public class AdminDisputeService {
      * @param resolution The resolution decision and notes
      * @param admin The admin making the decision
      */
+    @PreAuthorize("hasRole('ADMIN')")
     public void resolveCheckInDispute(Long disputeId, CheckInDisputeResolutionDTO resolution, User admin) {
-        DamageClaim dispute = damageClaimRepo.findById(disputeId)
+        DamageClaim dispute = damageClaimRepo.findByIdWithLock(disputeId)
                 .orElseThrow(() -> new ResourceNotFoundException("Prijava nije pronađena"));
         
         // Validate this is a check-in dispute
@@ -417,9 +418,22 @@ public class AdminDisputeService {
         try {
             paymentService.processFullRefund(booking.getId(), "Check-in dispute: " + resolution.getCancellationReason());
         } catch (Exception e) {
-            log.error("Failed to process refund for booking {} after check-in dispute cancellation", 
-                    booking.getId(), e);
-            // Continue - manual refund will be needed
+            log.error("CRITICAL: Refund failed for booking {} after check-in dispute cancellation. " +
+                    "Marking as REFUND_FAILED for manual retry.", booking.getId(), e);
+            booking.setStatus(BookingStatus.REFUND_FAILED);
+
+            auditService.logAction(
+                admin,
+                AdminAction.DISPUTE_RESOLUTION_FAILED,
+                ResourceType.BOOKING,
+                booking.getId(),
+                null,
+                "REFUND_FAILED",
+                "Check-in cancel refund failed: " + e.getMessage()
+            );
+
+            throw new RuntimeException("Refund failed for booking " + booking.getId() +
+                    " — marked REFUND_FAILED for manual retry", e);
         }
         
         // Notify both parties
@@ -543,19 +557,20 @@ public class AdminDisputeService {
      * <p>The booking is transitioned back to CHECKOUT_HOST_COMPLETE 
      * and the checkout saga is resumed.
      */
+    @PreAuthorize("hasRole('ADMIN')")
     public CheckoutDisputeResolutionResponseDTO resolveCheckoutDispute(
             Long damageClaimId, 
             CheckoutDisputeResolutionDTO request, 
             User admin) {
         
-        DamageClaim claim = damageClaimRepo.findById(damageClaimId)
+        DamageClaim claim = damageClaimRepo.findByIdWithLock(damageClaimId)
                 .orElseThrow(() -> new ResourceNotFoundException("Damage claim not found: " + damageClaimId));
-        
+
         // Validate this is a checkout dispute
         if (claim.getDisputeStage() != DisputeStage.CHECKOUT) {
             throw new IllegalStateException("This is not a checkout damage dispute");
         }
-        
+
         // Validate dispute is in resolvable state
         if (!claim.getStatus().isCheckoutDispute() || claim.getStatus().isResolved()) {
             throw new IllegalStateException("Dispute cannot be resolved in current state: " + claim.getStatus());
@@ -572,39 +587,73 @@ public class AdminDisputeService {
         
         switch (request.getDecision()) {
             case APPROVE -> {
-                approvedAmount = request.getApprovedAmountRsd() != null 
-                    ? request.getApprovedAmountRsd() 
+                approvedAmount = request.getApprovedAmountRsd() != null
+                    ? request.getApprovedAmountRsd()
                     : originalClaimAmount;
+
+                // C-5 FIX: Bound by claim amount
+                if (approvedAmount.compareTo(originalClaimAmount) > 0) {
+                    throw new IllegalArgumentException(
+                        "Approved amount (" + approvedAmount + " RSD) cannot exceed claimed amount ("
+                        + originalClaimAmount + " RSD)");
+                }
+
+                // C-5 FIX: Bound by deposit amount
+                java.math.BigDecimal depositAmountCheck = booking.getSecurityDeposit() != null
+                    ? booking.getSecurityDeposit() : java.math.BigDecimal.ZERO;
+                if (approvedAmount.compareTo(depositAmountCheck) > 0) {
+                    throw new IllegalArgumentException(
+                        "Approved amount (" + approvedAmount + " RSD) cannot exceed security deposit ("
+                        + depositAmountCheck + " RSD)");
+                }
+
                 claim.setApprovedAmount(approvedAmount);
                 claim.setStatus(DamageClaimStatus.CHECKOUT_ADMIN_APPROVED);
-                
+
                 // Capture deposit for damage payment
                 depositCaptured = processDepositCapture(booking, approvedAmount);
-                java.math.BigDecimal depositAmount = booking.getSecurityDeposit() != null 
+                java.math.BigDecimal depositAmount = booking.getSecurityDeposit() != null
                     ? booking.getSecurityDeposit() : java.math.BigDecimal.ZERO;
                 depositReleased = depositAmount.subtract(depositCaptured);
             }
-            
+
             case REJECT -> {
                 claim.setApprovedAmount(java.math.BigDecimal.ZERO);
                 claim.setStatus(DamageClaimStatus.CHECKOUT_ADMIN_REJECTED);
-                
+
                 // Release full deposit
                 depositReleased = processDepositRelease(booking);
             }
-            
+
             case PARTIAL -> {
-                if (request.getApprovedAmountRsd() == null || 
+                if (request.getApprovedAmountRsd() == null ||
                         request.getApprovedAmountRsd().compareTo(java.math.BigDecimal.ZERO) <= 0) {
                     throw new IllegalArgumentException("Approved amount is required for PARTIAL decision");
                 }
                 approvedAmount = request.getApprovedAmountRsd();
+
+                // C-5 FIX: Bound by claim amount
+                if (approvedAmount.compareTo(originalClaimAmount) > 0) {
+                    throw new IllegalArgumentException(
+                        "Approved amount (" + approvedAmount + " RSD) cannot exceed claimed amount ("
+                        + originalClaimAmount + " RSD)");
+                }
+
+                // C-5 FIX: Bound by deposit amount
+                java.math.BigDecimal depositAmountCheck2 = booking.getSecurityDeposit() != null
+                    ? booking.getSecurityDeposit() : java.math.BigDecimal.ZERO;
+                if (approvedAmount.compareTo(depositAmountCheck2) > 0) {
+                    throw new IllegalArgumentException(
+                        "Approved amount (" + approvedAmount + " RSD) cannot exceed security deposit ("
+                        + depositAmountCheck2 + " RSD)");
+                }
+
                 claim.setApprovedAmount(approvedAmount);
                 claim.setStatus(DamageClaimStatus.CHECKOUT_ADMIN_APPROVED);
-                
+
                 // Capture partial deposit
                 depositCaptured = processDepositCapture(booking, approvedAmount);
-                java.math.BigDecimal depositAmt = booking.getSecurityDeposit() != null 
+                java.math.BigDecimal depositAmt = booking.getSecurityDeposit() != null
                     ? booking.getSecurityDeposit() : java.math.BigDecimal.ZERO;
                 depositReleased = depositAmt.subtract(depositCaptured);
             }

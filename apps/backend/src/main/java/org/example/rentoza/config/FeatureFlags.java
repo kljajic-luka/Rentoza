@@ -11,6 +11,9 @@ public class FeatureFlags {
     public static final String RENTER_VERIFICATION_STRICT_CHECKIN = "feature.renter-verification.strict-checkin";
     public static final String RENTER_VERIFICATION_ROLLOUT_PERCENT = "feature.renter-verification.rollout-percent";
     
+    // Rental Agreement Compliance Feature Flags
+    public static final String RENTAL_AGREEMENT_CHECKIN_ENFORCED = "app.compliance.rental-agreement.checkin-enforced";
+
     // Dual-Party Photo Verification Feature Flags
     public static final String DUAL_PARTY_PHOTOS_ENABLED = "feature.dual-party-photos.enabled";
     public static final String DUAL_PARTY_PHOTOS_ROLLOUT_PERCENT = "feature.dual-party-photos.rollout-percent";
@@ -37,6 +40,10 @@ public class FeatureFlags {
     
     @Value("${" + DUAL_PARTY_PHOTOS_REQUIRED_FOR_HANDSHAKE + ":false}")
     private boolean dualPartyPhotosRequiredForHandshake;
+
+    // Rental Agreement Enforcement
+    @Value("${" + RENTAL_AGREEMENT_CHECKIN_ENFORCED + ":false}")
+    private boolean rentalAgreementCheckinEnforced;
 
     public boolean isRenterVerificationEnabled() {
         return renterVerificationEnabled;
@@ -97,5 +104,13 @@ public class FeatureFlags {
         // Simple modulo-based rollout
         // If rolloutPercent is 10, users 0-9, 100-109 etc. get the feature
         return (userId % 100) < rolloutPercent;
+    }
+
+    /**
+     * Whether rental agreement acceptance is required before handshake.
+     * When false, only warning logs are emitted for missing agreements.
+     */
+    public boolean isRentalAgreementCheckinEnforced() {
+        return rentalAgreementCheckinEnforced;
     }
 }

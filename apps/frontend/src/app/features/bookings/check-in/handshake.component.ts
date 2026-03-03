@@ -5,7 +5,7 @@
  * Features:
  * - Swipe-to-confirm gesture for physical handoff
  * - Optional physical ID verification (host verifies guest's ID)
- * - Digital signatures captured
+ * - Confirmation evidence captured (timestamp, geolocation, device context)
  * - **Geofence Distance Indicator** (Phase 2: Trust UI)
  */
 import {

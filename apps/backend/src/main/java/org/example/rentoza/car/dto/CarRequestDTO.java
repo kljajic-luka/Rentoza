@@ -99,4 +99,12 @@ public class CarRequestDTO {
      * Whether instant booking is enabled (vs request-to-book).
      */
     private Boolean instantBookEnabled;
+
+    /**
+     * Per-vehicle security deposit in RSD.
+     * Snapshotted into bookings.security_deposit at booking creation.
+     */
+    @DecimalMin(value = "10000", message = "Security deposit must be at least 10,000 RSD")
+    @DecimalMax(value = "200000", message = "Security deposit must be at most 200,000 RSD")
+    private BigDecimal securityDepositRsd;
 }

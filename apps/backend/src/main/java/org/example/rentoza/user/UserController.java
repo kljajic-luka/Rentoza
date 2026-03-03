@@ -204,13 +204,15 @@ public class UserController {
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<?> completeProfile(
             @org.springframework.security.core.annotation.AuthenticationPrincipal JwtUserPrincipal principal,
-            @Valid @RequestBody CompleteProfileRequestDTO request
+            @Valid @RequestBody CompleteProfileRequestDTO request,
+            jakarta.servlet.http.HttpServletRequest httpRequest
     ) {
         try {
             Long userId = principal.id();
             log.info("Profile completion request for userId={}", userId);
 
-            CompleteProfileResponseDTO response = profileCompletionService.completeProfile(userId, request);
+            CompleteProfileResponseDTO response = profileCompletionService.completeProfile(
+                    userId, request, httpRequest);
             
             log.info("Profile completed successfully for userId={}, role={}", 
                     userId, response.getRole());

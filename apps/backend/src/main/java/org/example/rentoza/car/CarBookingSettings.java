@@ -42,8 +42,8 @@ public class CarBookingSettings {
     /** System-wide maximum trip duration (days) */
     public static final int DEFAULT_MAX_TRIP_DAYS = 30;
     
-    /** System-wide advance notice (hours) */
-    public static final int DEFAULT_ADVANCE_NOTICE_HOURS = 1;
+    /** System-wide advance notice (hours). Aligned with ToS (2h minimum). */
+    public static final int DEFAULT_ADVANCE_NOTICE_HOURS = 2;
     
     /** System-wide buffer between trips (hours) */
     public static final int DEFAULT_PREP_BUFFER_HOURS = 3;

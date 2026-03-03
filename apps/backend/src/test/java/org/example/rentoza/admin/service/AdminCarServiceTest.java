@@ -11,6 +11,7 @@ import org.example.rentoza.car.ApprovalStatus;
 import org.example.rentoza.car.Car;
 import org.example.rentoza.car.CarDocumentService;
 import org.example.rentoza.car.CarRepository;
+import org.example.rentoza.car.ListingStatus;
 import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.user.User;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,11 +25,14 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.Mockito.*;
 
 /**
@@ -77,7 +81,21 @@ class AdminCarServiceTest {
         testCar.setModel("X5");
         testCar.setYear(2023);
         testCar.setApprovalStatus(ApprovalStatus.PENDING);
+        testCar.setListingStatus(ListingStatus.PENDING_APPROVAL);
         testCar.setAvailable(false);
+
+        // Owner with verified identity (required by compliance gate)
+        User testOwner = new User();
+        testOwner.setId(50L);
+        testOwner.setIsIdentityVerified(true);
+        testCar.setOwner(testOwner);
+
+        // Set up compliant document state (required for approval gate)
+        testCar.setRegistrationExpiryDate(LocalDate.now().plusMonths(6));
+        testCar.setInsuranceExpiryDate(LocalDate.now().plusMonths(6));
+        testCar.setTechnicalInspectionExpiryDate(LocalDate.now().plusMonths(3));
+        testCar.setDocumentsVerifiedAt(LocalDateTime.now().minusDays(1));
+        testCar.setDocumentsVerifiedBy(testAdmin);
     }
 
     @Nested
@@ -94,6 +112,7 @@ class AdminCarServiceTest {
 
             assertThat(result.getApprovalStatus()).isEqualTo("APPROVED");
             assertThat(testCar.getApprovalStatus()).isEqualTo(ApprovalStatus.APPROVED);
+            assertThat(testCar.getListingStatus()).isEqualTo(ListingStatus.APPROVED);
             assertThat(testCar.isAvailable()).isTrue();
             assertThat(testCar.getApprovedBy()).isEqualTo(testAdmin);
             assertThat(testCar.getApprovedAt()).isNotNull();
@@ -115,7 +134,7 @@ class AdminCarServiceTest {
                     eq(100L),
                     any(),
                     any(),
-                    eq("Car listing approved")
+                    contains("compliance verified")
             );
 
             assertThat(actionCaptor.getValue()).isEqualTo(AdminAction.CAR_APPROVED);
@@ -152,9 +171,10 @@ class AdminCarServiceTest {
         }
 
         @Test
-        @DisplayName("Should throw IllegalStateException when approving non-PENDING car")
+        @DisplayName("Should throw IllegalStateException when approving non-PENDING_APPROVAL car")
         void shouldThrowWhenApprovingNonPendingCar() {
             testCar.setApprovalStatus(ApprovalStatus.APPROVED);
+            testCar.setListingStatus(ListingStatus.APPROVED);
             when(carRepo.findByIdForUpdate(100L)).thenReturn(Optional.of(testCar));
 
             assertThatThrownBy(() -> adminCarService.approveCar(100L, testAdmin))
@@ -188,6 +208,109 @@ class AdminCarServiceTest {
             assertThat(counter).isNotNull();
             assertThat(counter.count()).isEqualTo(1.0);
         }
+
+        @Test
+        @DisplayName("Should block approval when registration is expired")
+        void shouldBlockApprovalWhenRegistrationExpired() {
+            testCar.setRegistrationExpiryDate(LocalDate.now().minusDays(1));
+            when(carRepo.findByIdForUpdate(100L)).thenReturn(Optional.of(testCar));
+
+            assertThatThrownBy(() -> adminCarService.approveCar(100L, testAdmin))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("compliance requirements not met")
+                    .hasMessageContaining("Registration expired");
+
+            verify(carRepo, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Should block approval when insurance is expired")
+        void shouldBlockApprovalWhenInsuranceExpired() {
+            testCar.setInsuranceExpiryDate(LocalDate.now().minusDays(1));
+            when(carRepo.findByIdForUpdate(100L)).thenReturn(Optional.of(testCar));
+
+            assertThatThrownBy(() -> adminCarService.approveCar(100L, testAdmin))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("Insurance expired");
+
+            verify(carRepo, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Should block approval when technical inspection is expired")
+        void shouldBlockApprovalWhenTechInspectionExpired() {
+            testCar.setTechnicalInspectionExpiryDate(LocalDate.now().minusDays(1));
+            when(carRepo.findByIdForUpdate(100L)).thenReturn(Optional.of(testCar));
+
+            assertThatThrownBy(() -> adminCarService.approveCar(100L, testAdmin))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("Technical inspection expired");
+
+            verify(carRepo, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Should block approval when documents not verified")
+        void shouldBlockApprovalWhenDocumentsNotVerified() {
+            testCar.setDocumentsVerifiedAt(null);
+            testCar.setDocumentsVerifiedBy(null);
+            when(carRepo.findByIdForUpdate(100L)).thenReturn(Optional.of(testCar));
+
+            assertThatThrownBy(() -> adminCarService.approveCar(100L, testAdmin))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("Documents not yet verified");
+
+            verify(carRepo, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Should block approval when registration date is missing")
+        void shouldBlockApprovalWhenRegistrationDateMissing() {
+            testCar.setRegistrationExpiryDate(null);
+            when(carRepo.findByIdForUpdate(100L)).thenReturn(Optional.of(testCar));
+
+            assertThatThrownBy(() -> adminCarService.approveCar(100L, testAdmin))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("Registration expiry date not set");
+
+            verify(carRepo, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Should report all compliance issues together")
+        void shouldReportAllComplianceIssuesTogether() {
+            testCar.setRegistrationExpiryDate(null);
+            testCar.setInsuranceExpiryDate(null);
+            testCar.setTechnicalInspectionExpiryDate(null);
+            testCar.setDocumentsVerifiedAt(null);
+            testCar.setDocumentsVerifiedBy(null);
+            when(carRepo.findByIdForUpdate(100L)).thenReturn(Optional.of(testCar));
+
+            assertThatThrownBy(() -> adminCarService.approveCar(100L, testAdmin))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("Registration expiry date not set")
+                    .hasMessageContaining("Insurance expiry date not set")
+                    .hasMessageContaining("Technical inspection expiry date not set")
+                    .hasMessageContaining("Documents not yet verified");
+        }
+
+        @Test
+        @DisplayName("Should increment compliance_blocked counter when blocked")
+        void shouldIncrementComplianceBlockedCounter() {
+            testCar.setRegistrationExpiryDate(null);
+            when(carRepo.findByIdForUpdate(100L)).thenReturn(Optional.of(testCar));
+
+            try {
+                adminCarService.approveCar(100L, testAdmin);
+            } catch (Exception ignored) {
+            }
+
+            Counter counter = meterRegistry.find("car.approvals")
+                    .tag("status", "compliance_blocked")
+                    .counter();
+            assertThat(counter).isNotNull();
+            assertThat(counter.count()).isEqualTo(1.0);
+        }
     }
 
     @Nested
@@ -204,14 +327,16 @@ class AdminCarServiceTest {
 
             assertThat(result.getApprovalStatus()).isEqualTo("REJECTED");
             assertThat(testCar.getApprovalStatus()).isEqualTo(ApprovalStatus.REJECTED);
+            assertThat(testCar.getListingStatus()).isEqualTo(ListingStatus.REJECTED);
             assertThat(testCar.isAvailable()).isFalse();
             assertThat(testCar.getRejectionReason()).isEqualTo("Vehicle photos are too blurry");
         }
 
         @Test
-        @DisplayName("Should throw IllegalStateException when rejecting non-PENDING car")
+        @DisplayName("Should throw IllegalStateException when rejecting non-PENDING_APPROVAL car")
         void shouldThrowWhenRejectingNonPendingCar() {
             testCar.setApprovalStatus(ApprovalStatus.APPROVED);
+            testCar.setListingStatus(ListingStatus.APPROVED);
             when(carRepo.findByIdForUpdate(100L)).thenReturn(Optional.of(testCar));
 
             assertThatThrownBy(() -> adminCarService.rejectCar(100L, "Some reason", testAdmin))
@@ -267,8 +392,9 @@ class AdminCarServiceTest {
         @DisplayName("Should suspend car with reason")
         void shouldSuspendCarWithReason() {
             testCar.setApprovalStatus(ApprovalStatus.APPROVED);
+            testCar.setListingStatus(ListingStatus.APPROVED);
             testCar.setAvailable(true);
-            
+
             when(carRepo.findByIdForUpdate(100L)).thenReturn(Optional.of(testCar));
             when(carRepo.save(any(Car.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -276,6 +402,7 @@ class AdminCarServiceTest {
 
             assertThat(result.getApprovalStatus()).isEqualTo("SUSPENDED");
             assertThat(testCar.getApprovalStatus()).isEqualTo(ApprovalStatus.SUSPENDED);
+            assertThat(testCar.getListingStatus()).isEqualTo(ListingStatus.SUSPENDED);
             assertThat(testCar.isAvailable()).isFalse();
             assertThat(testCar.getRejectionReason()).isEqualTo("Policy violation detected");
         }
@@ -284,6 +411,7 @@ class AdminCarServiceTest {
         @DisplayName("Should throw exception when suspension reason is null")
         void shouldThrowWhenSuspensionReasonIsNull() {
             testCar.setApprovalStatus(ApprovalStatus.APPROVED);
+            testCar.setListingStatus(ListingStatus.APPROVED);
             when(carRepo.findByIdForUpdate(100L)).thenReturn(Optional.of(testCar));
 
             assertThatThrownBy(() -> adminCarService.suspendCar(100L, null, testAdmin))
@@ -300,6 +428,7 @@ class AdminCarServiceTest {
         @DisplayName("Should reactivate suspended car")
         void shouldReactivateSuspendedCar() {
             testCar.setApprovalStatus(ApprovalStatus.SUSPENDED);
+            testCar.setListingStatus(ListingStatus.SUSPENDED);
             testCar.setAvailable(false);
             testCar.setRejectionReason("Previous violation");
 
@@ -310,6 +439,7 @@ class AdminCarServiceTest {
 
             assertThat(result.getApprovalStatus()).isEqualTo("APPROVED");
             assertThat(testCar.getApprovalStatus()).isEqualTo(ApprovalStatus.APPROVED);
+            assertThat(testCar.getListingStatus()).isEqualTo(ListingStatus.APPROVED);
             assertThat(testCar.isAvailable()).isTrue();
             assertThat(testCar.getRejectionReason()).isNull();
         }

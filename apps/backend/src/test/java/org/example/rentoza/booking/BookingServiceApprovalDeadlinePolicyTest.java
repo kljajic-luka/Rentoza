@@ -54,6 +54,7 @@ class BookingServiceApprovalDeadlinePolicyTest {
     @Mock private org.example.rentoza.payment.BookingPaymentService bookingPaymentService;
     @Mock private org.example.rentoza.scheduler.SchedulerIdempotencyService lockService;
     @Mock private org.example.rentoza.booking.validation.BookingEdgeCaseValidator edgeCaseValidator;
+    @Mock private RentalAgreementService rentalAgreementService;
 
     private BookingService bookingService;
 
@@ -72,7 +73,8 @@ class BookingServiceApprovalDeadlinePolicyTest {
                 renterVerificationService,
                 bookingPaymentService,
                 lockService,
-                edgeCaseValidator
+                edgeCaseValidator,
+                rentalAgreementService
         );
 
         ReflectionTestUtils.setField(bookingService, "approvalSlaHours", 48);
@@ -125,6 +127,7 @@ class BookingServiceApprovalDeadlinePolicyTest {
         car.setPricePerDay(new BigDecimal("5000.00"));
         car.setBookingSettings(settings);
         car.setApprovalStatus(org.example.rentoza.car.ApprovalStatus.APPROVED);
+        car.setListingStatus(org.example.rentoza.car.ListingStatus.APPROVED);
         car.setAvailable(true);
 
         LocalDateTime now = LocalDateTime.now(SERBIA_ZONE);

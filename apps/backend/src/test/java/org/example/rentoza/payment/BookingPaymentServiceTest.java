@@ -64,6 +64,9 @@ class BookingPaymentServiceTest {
     @Mock
     private UserRepository userRepository;
 
+    @Mock
+    private TaxWithholdingService taxWithholdingService;
+
     private BookingPaymentService paymentService;
     private MeterRegistry meterRegistry;
 
@@ -79,6 +82,7 @@ class BookingPaymentServiceTest {
             txRepository,
             payoutLedgerRepository,
             userRepository,
+            taxWithholdingService,
             meterRegistry
         );
     }

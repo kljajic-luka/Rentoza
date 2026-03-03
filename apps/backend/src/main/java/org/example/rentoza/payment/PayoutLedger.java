@@ -165,4 +165,45 @@ public class PayoutLedger {
 
     @Column(name = "paid_at")
     private Instant paidAt;
+
+    // ── Tax Withholding (Phase 3) ──────────────────────────────────────────
+
+    /** Owner gross income = tripAmount - platformFee. */
+    @Column(name = "gross_owner_income", precision = 19, scale = 2)
+    private BigDecimal grossOwnerIncome;
+
+    /** Serbian normalized expenses rate (default 20%). */
+    @Column(name = "normalized_expenses_rate", precision = 5, scale = 4)
+    @Builder.Default
+    private BigDecimal normalizedExpensesRate = new BigDecimal("0.2000");
+
+    /** Taxable base = grossOwnerIncome - (grossOwnerIncome * normalizedExpensesRate). */
+    @Column(name = "taxable_base", precision = 19, scale = 2)
+    private BigDecimal taxableBase;
+
+    /** Serbian income tax rate on taxable base (default 20%). */
+    @Column(name = "income_tax_rate", precision = 5, scale = 4)
+    @Builder.Default
+    private BigDecimal incomeTaxRate = new BigDecimal("0.2000");
+
+    /** Income tax withheld = taxableBase * incomeTaxRate. */
+    @Column(name = "income_tax_withheld", precision = 19, scale = 2)
+    private BigDecimal incomeTaxWithheld;
+
+    /** Net owner payout = grossOwnerIncome - incomeTaxWithheld (actual transfer amount). */
+    @Column(name = "net_owner_payout", precision = 19, scale = 2)
+    private BigDecimal netOwnerPayout;
+
+    /** Tax withholding status: CALCULATED, EXEMPT, REMITTED, REPORTED. */
+    @Column(name = "tax_withholding_status", length = 30)
+    @Builder.Default
+    private String taxWithholdingStatus = "CALCULATED";
+
+    /** Owner tax type: INDIVIDUAL (withholding applies) or LEGAL_ENTITY (exempt). */
+    @Column(name = "owner_tax_type", length = 20)
+    private String ownerTaxType;
+
+    /** Tax remittance payment reference for PPPPD filing. */
+    @Column(name = "remittance_reference", length = 100)
+    private String remittanceReference;
 }

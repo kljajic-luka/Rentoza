@@ -87,6 +87,7 @@ public class CheckInService {
     private final UserRepository userRepository;
     private final PhotoUrlService photoUrlService;
     private final BookingPaymentService bookingPaymentService;
+    private final org.example.rentoza.booking.RentalAgreementService rentalAgreementService;
     
     private static final int REQUIRED_GUEST_PHOTO_TYPES = 8;
     
@@ -141,7 +142,8 @@ public class CheckInService {
             UserRepository userRepository,
             MeterRegistry meterRegistry,
             PhotoUrlService photoUrlService,
-            BookingPaymentService bookingPaymentService) {
+            BookingPaymentService bookingPaymentService,
+            org.example.rentoza.booking.RentalAgreementService rentalAgreementService) {
         this.bookingRepository = bookingRepository;
         this.eventService = eventService;
         this.photoRepository = photoRepository;
@@ -156,6 +158,7 @@ public class CheckInService {
         this.userRepository = userRepository;
         this.photoUrlService = photoUrlService;
         this.bookingPaymentService = bookingPaymentService;
+        this.rentalAgreementService = rentalAgreementService;
         
         this.hostCompletedCounter = Counter.builder("checkin.host.completed")
                 .description("Host check-in completions")
@@ -865,6 +868,22 @@ public class CheckInService {
         CheckInActorRole actorRole = isHost ? CheckInActorRole.HOST : CheckInActorRole.GUEST;
 
         if (hostConfirmed && guestConfirmed) {
+            // ====================================================================
+            // COMPLIANCE: RENTAL AGREEMENT ACCEPTANCE GATE
+            // ====================================================================
+            // Both parties must accept the rental agreement before the trip can start.
+            // Controlled by feature flag to prevent breaking active legacy trips.
+            boolean agreementAccepted = rentalAgreementService.isFullyAccepted(booking.getId());
+            if (!agreementAccepted) {
+                if (featureFlags.isRentalAgreementCheckinEnforced()) {
+                    throw new IllegalStateException(
+                        "Rental agreement must be accepted by both parties before starting the trip.");
+                } else {
+                    log.warn("[CheckIn] Rental agreement not fully accepted for booking {} — " +
+                            "enforcement disabled, proceeding with trip start", booking.getId());
+                }
+            }
+
             // ====================================================================
             // PHASE 4B: VALIDATE LICENSE VERIFICATION FOR IN-PERSON HANDSHAKES
             // ====================================================================

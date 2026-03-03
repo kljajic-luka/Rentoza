@@ -43,10 +43,13 @@ public class BookingController {
 
     private final BookingService service;
     private final BookingApprovalService approvalService;
+    private final RentalAgreementService rentalAgreementService;
 
-    public BookingController(BookingService service, BookingApprovalService approvalService) {
+    public BookingController(BookingService service, BookingApprovalService approvalService,
+                             RentalAgreementService rentalAgreementService) {
         this.service = service;
         this.approvalService = approvalService;
+        this.rentalAgreementService = rentalAgreementService;
     }
 
     /**
@@ -654,6 +657,83 @@ public class BookingController {
                 .header("Pragma", "no-cache")
                 .header("Expires", "0")
                 .body(preview);
+    }
+
+    // ========== RENTAL AGREEMENT ENDPOINTS ==========
+
+    /**
+     * Get the rental agreement for a booking.
+     * Accessible by booking renter, booking owner, or admin.
+     */
+    @GetMapping("/{bookingId}/agreement")
+    @PreAuthorize("isAuthenticated() and @bookingSecurity.canAccessBooking(#bookingId, authentication?.principal?.id)")
+    public ResponseEntity<?> getAgreement(@PathVariable Long bookingId) {
+        try {
+            var agreement = rentalAgreementService.getAgreementForBooking(bookingId);
+            if (agreement.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(Map.of("error", "No rental agreement found for this booking"));
+            }
+            return ResponseEntity.ok(org.example.rentoza.booking.dto.RentalAgreementDTO.from(agreement.get()));
+        } catch (Exception e) {
+            log.error("Error fetching agreement for booking {}", bookingId, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "An unexpected error occurred"));
+        }
+    }
+
+    /**
+     * Accept the rental agreement for a booking.
+     * Only the booking renter or owner can accept (each for their own role).
+     */
+    @PostMapping("/{bookingId}/agreement/accept")
+    @PreAuthorize("isAuthenticated() and @bookingSecurity.canAccessBooking(#bookingId, authentication?.principal?.id)")
+    public ResponseEntity<?> acceptAgreement(
+            @PathVariable Long bookingId,
+            jakarta.servlet.http.HttpServletRequest request) {
+        try {
+            Long userId = getAuthenticatedUserId();
+            String ip = resolveClientIp(request);
+            String userAgent = request.getHeader("User-Agent");
+
+            // Determine if user is owner or renter and route accordingly
+            var agreement = rentalAgreementService.getAgreementForBooking(bookingId);
+            if (agreement.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(Map.of("error", "No rental agreement found for this booking"));
+            }
+
+            RentalAgreement updated;
+            if (agreement.get().getOwnerUserId().equals(userId)) {
+                updated = rentalAgreementService.acceptAsOwner(bookingId, userId, ip, userAgent);
+            } else if (agreement.get().getRenterUserId().equals(userId)) {
+                updated = rentalAgreementService.acceptAsRenter(bookingId, userId, ip, userAgent);
+            } else {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(Map.of("error", "Only booking parties can accept the agreement"));
+            }
+
+            return ResponseEntity.ok(org.example.rentoza.booking.dto.RentalAgreementDTO.from(updated));
+
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", e.getMessage()));
+        } catch (org.example.rentoza.exception.ResourceNotFoundException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error accepting agreement for booking {}", bookingId, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "An unexpected error occurred"));
+        }
+    }
+
+    private String resolveClientIp(jakarta.servlet.http.HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            return forwarded.split(",")[0].trim();
+        }
+        return request.getRemoteAddr();
     }
 
     /**

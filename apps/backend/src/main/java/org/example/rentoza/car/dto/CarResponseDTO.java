@@ -62,6 +62,7 @@ public class CarResponseDTO {
     private boolean instantBookEnabled;
     private List<String> imageUrls;
     private ApprovalStatus approvalStatus;
+    private BigDecimal securityDepositRsd;
 
     public CarResponseDTO(Car car) {
         this(car, false, null); // Default: no exact location access
@@ -142,9 +143,20 @@ public class CarResponseDTO {
         this.currentMileageKm = car.getCurrentMileageKm();
         this.instantBookEnabled = car.getBookingSettings() != null && car.getBookingSettings().isInstantBookEnabled();
         this.imageUrls = car.getImageUrls() != null ? List.copyOf(car.getImageUrls()) : List.of();
+        this.securityDepositRsd = car.getSecurityDepositRsd();
 
         if (isOwner) {
-            this.approvalStatus = car.getApprovalStatus();
+            // Phase 5: listingStatus is source of truth — map to ApprovalStatus for API compat
+            if (car.getListingStatus() != null) {
+                this.approvalStatus = switch (car.getListingStatus()) {
+                    case APPROVED -> ApprovalStatus.APPROVED;
+                    case PENDING_APPROVAL, DRAFT -> ApprovalStatus.PENDING;
+                    case REJECTED -> ApprovalStatus.REJECTED;
+                    case SUSPENDED -> ApprovalStatus.SUSPENDED;
+                };
+            } else {
+                this.approvalStatus = car.getApprovalStatus();
+            }
         }
 
         if (car.getOwner() != null) {

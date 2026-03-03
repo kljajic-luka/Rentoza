@@ -26,11 +26,21 @@ public interface CarRepository extends JpaRepository<Car, Long>, JpaSpecificatio
     @Query("SELECT c FROM Car c WHERE c.id = :id")
     Optional<Car> findByIdForUpdate(@Param("id") Long id);
 
+    /** @deprecated Phase 5: use {@link #findByListingStatus} instead. */
+    @Deprecated(since = "2025-03", forRemoval = true)
     @Query(value = "SELECT * FROM cars WHERE approval_status::text = :status", nativeQuery = true)
     List<Car> findByApprovalStatus(@Param("status") String status);
-    
+
+    @Query(value = "SELECT * FROM cars WHERE listing_status::text = :status", nativeQuery = true)
+    List<Car> findByListingStatus(@Param("status") String status);
+
+    /** @deprecated Phase 5: use {@link #findApprovedAvailableCarsByListingStatus} instead. */
+    @Deprecated(since = "2025-03", forRemoval = true)
     @Query("SELECT c FROM Car c WHERE c.available = true AND CAST(c.approvalStatus AS String) = 'APPROVED'")
     Page<Car> findApprovedAvailableCars(Pageable pageable);
+
+    @Query("SELECT c FROM Car c WHERE c.available = true AND c.listingStatus = org.example.rentoza.car.ListingStatus.APPROVED")
+    Page<Car> findApprovedAvailableCarsByListingStatus(Pageable pageable);
     
     // ========== LIST VIEWS (NO features/addOns - Performance Optimized) ==========
     // These methods only load owner, keeping list views lightweight
@@ -49,11 +59,21 @@ public interface CarRepository extends JpaRepository<Car, Long>, JpaSpecificatio
     List<Car> findAll();
 
     // Public listings - only available AND approved cars
+    /** @deprecated Phase 5: use {@link #findByAvailableTrueAndListingStatus} instead. */
+    @Deprecated(since = "2025-03", forRemoval = true)
     @EntityGraph(attributePaths = {"owner"})
     List<Car> findByAvailableTrueAndApprovalStatus(ApprovalStatus approvalStatus);
 
     @EntityGraph(attributePaths = {"owner"})
+    List<Car> findByAvailableTrueAndListingStatus(ListingStatus listingStatus);
+
+    /** @deprecated Phase 5: use location + listingStatus query. */
+    @Deprecated(since = "2025-03", forRemoval = true)
+    @EntityGraph(attributePaths = {"owner"})
     List<Car> findByLocationIgnoreCaseAndAvailableTrueAndApprovalStatus(String location, ApprovalStatus approvalStatus);
+
+    @EntityGraph(attributePaths = {"owner"})
+    List<Car> findByLocationIgnoreCaseAndAvailableTrueAndListingStatus(String location, ListingStatus listingStatus);
 
     // Internal use - available regardless of approval (e.g. admin views)
     @EntityGraph(attributePaths = {"owner"})
@@ -162,9 +182,14 @@ public interface CarRepository extends JpaRepository<Car, Long>, JpaSpecificatio
      * Find public APPROVED cars for a specific owner.
      * P1 FIX: Prevents exposing unapproved available cars on public owner profile.
      * Used for Owner Public Profile.
+     * @deprecated Phase 5: use {@link #findByOwnerIdAndAvailableTrueAndListingStatus} instead.
      */
+    @Deprecated(since = "2025-03", forRemoval = true)
     @EntityGraph(attributePaths = {"owner"})
     List<Car> findByOwnerIdAndAvailableTrueAndApprovalStatus(Long ownerId, ApprovalStatus approvalStatus);
+
+    @EntityGraph(attributePaths = {"owner"})
+    List<Car> findByOwnerIdAndAvailableTrueAndListingStatus(Long ownerId, ListingStatus listingStatus);
 
     // ========== GEOSPATIAL QUERIES (PostGIS) ==========
     // These methods use PostGIS for efficient proximity searches

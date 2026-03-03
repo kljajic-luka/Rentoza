@@ -29,6 +29,8 @@ public enum AdminAction {
     CAR_APPROVED,
     /** Car listing rejected with reason */
     CAR_REJECTED,
+    /** Car approval blocked by compliance gate (not an admin rejection) */
+    CAR_APPROVAL_BLOCKED,
     /** Car flagged for manual review */
     CAR_FLAGGED,
     /** Car removed from platform */

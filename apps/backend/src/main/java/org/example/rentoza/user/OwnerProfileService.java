@@ -60,11 +60,11 @@ public class OwnerProfileService {
         if (start != null && end != null) {
             cars = availabilityService.getAvailableCarsForOwner(ownerId, start, end)
                     .stream()
-                    .filter(c -> c.getApprovalStatus() == org.example.rentoza.car.ApprovalStatus.APPROVED)
+                    .filter(c -> c.getListingStatus() == org.example.rentoza.car.ListingStatus.APPROVED)
                     .collect(java.util.stream.Collectors.toList());
         } else {
-            cars = carRepository.findByOwnerIdAndAvailableTrueAndApprovalStatus(
-                    ownerId, org.example.rentoza.car.ApprovalStatus.APPROVED);
+            cars = carRepository.findByOwnerIdAndAvailableTrueAndListingStatus(
+                    ownerId, org.example.rentoza.car.ListingStatus.APPROVED);
         }
 
         // If user has no cars and is not explicitly an owner role (optional check), maybe 404?

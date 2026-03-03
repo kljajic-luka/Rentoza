@@ -29,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Map;
@@ -218,6 +219,14 @@ public class EnhancedAuthController {
                 user.setBankAccountNumber(dto.getBankAccountNumber());
             }
 
+            // PHASE 4: Persist owner consent provenance
+            Instant now = Instant.now();
+            user.setHostAgreementAcceptedAt(now);
+            user.setVehicleInsuranceConfirmedAt(now);
+            user.setVehicleRegistrationConfirmedAt(now);
+            user.setConsentIp(extractIp(request));
+            user.setConsentUserAgent(truncate(request.getHeader("User-Agent"), 500));
+
             user = userRepository.save(user);
 
             // Auto-submit to owner verification queue
@@ -296,6 +305,14 @@ public class EnhancedAuthController {
                     user.setPibHash(hashUtil.hash(dto.getPib()));
                     user.setBankAccountNumber(dto.getBankAccountNumber());
                 }
+
+                // PHASE 4: Persist owner consent provenance
+                Instant now = Instant.now();
+                user.setHostAgreementAcceptedAt(now);
+                user.setVehicleInsuranceConfirmedAt(now);
+                user.setVehicleRegistrationConfirmedAt(now);
+                user.setConsentIp(extractIp(request));
+                user.setConsentUserAgent(truncate(request.getHeader("User-Agent"), 500));
             } else {
                 // USER (Renter) registration now collects only basic profile metadata here.
                 // Driver license data is captured via /verify-license document flow.
@@ -378,6 +395,17 @@ public class EnhancedAuthController {
     }
 
     private void validateOwnerCompletion(GoogleOAuthCompletionDTO dto) {
+        // PHASE 4: Enforce same agreement checks as direct owner registration
+        if (!Boolean.TRUE.equals(dto.getAgreesToHostAgreement())) {
+            throw new ValidationException("You must agree to the host agreement");
+        }
+        if (!Boolean.TRUE.equals(dto.getConfirmsVehicleInsurance())) {
+            throw new ValidationException("You must confirm vehicle insurance");
+        }
+        if (!Boolean.TRUE.equals(dto.getConfirmsVehicleRegistration())) {
+            throw new ValidationException("You must confirm vehicle registration");
+        }
+
         if (dto.getOwnerType() == OwnerType.INDIVIDUAL) {
             if (dto.getJmbg() == null || dto.getJmbg().isBlank()) {
                 throw new ValidationException("JMBG is required for individual owners");
@@ -486,5 +514,20 @@ public class EnhancedAuthController {
             token = csrfTokenRepository.generateToken(request);
         }
         csrfTokenRepository.saveToken(token, request, response);
+    }
+
+    // ==================== CONSENT PROVENANCE HELPERS ====================
+
+    private static String extractIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            return forwarded.split(",")[0].trim();
+        }
+        return request.getRemoteAddr();
+    }
+
+    private static String truncate(String value, int max) {
+        if (value == null) return null;
+        return value.length() <= max ? value : value.substring(0, max);
     }
 }

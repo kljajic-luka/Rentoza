@@ -832,6 +832,20 @@ public class Booking {
     @Column(name = "security_deposit", precision = 19, scale = 2)
     private BigDecimal securityDeposit;
 
+    // ========== LEGAL-ROLE METADATA (Phase 6 Compliance) ==========
+
+    @Column(name = "platform_role", length = 30)
+    private String platformRole = "INTERMEDIARY";
+
+    @Column(name = "contract_type", length = 30)
+    private String contractType = "OWNER_RENTER_DIRECT";
+
+    @Column(name = "terms_version", length = 20)
+    private String termsVersion;
+
+    @Column(name = "terms_content_hash", length = 128)
+    private String termsContentHash;
+
     // ========== CHECK-IN RELATIONSHIPS ==========
 
     /**

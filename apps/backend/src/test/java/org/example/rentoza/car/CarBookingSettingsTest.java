@@ -46,7 +46,7 @@ class CarBookingSettingsTest {
 
             assertThat(settings.getMinTripHours()).isEqualTo(24);
             assertThat(settings.getMaxTripDays()).isEqualTo(30);
-            assertThat(settings.getAdvanceNoticeHours()).isEqualTo(1);
+            assertThat(settings.getAdvanceNoticeHours()).isEqualTo(2);
             assertThat(settings.getPrepBufferHours()).isEqualTo(3);
             assertThat(settings.getInstantBookEnabled()).isFalse();
         }
@@ -59,7 +59,7 @@ class CarBookingSettingsTest {
             // Fields have default values assigned in the class
             assertThat(settings.getMinTripHours()).isEqualTo(24);
             assertThat(settings.getMaxTripDays()).isEqualTo(30);
-            assertThat(settings.getAdvanceNoticeHours()).isEqualTo(1);
+            assertThat(settings.getAdvanceNoticeHours()).isEqualTo(2);
             assertThat(settings.getPrepBufferHours()).isEqualTo(3);
             assertThat(settings.getInstantBookEnabled()).isFalse();
         }
@@ -112,7 +112,7 @@ class CarBookingSettingsTest {
         void getEffectiveAdvanceNoticeHoursShouldReturnDefaultWhenNull() {
             CarBookingSettings settings = new CarBookingSettings();
 
-            assertThat(settings.getEffectiveAdvanceNoticeHours()).isEqualTo(1);
+            assertThat(settings.getEffectiveAdvanceNoticeHours()).isEqualTo(2);
         }
 
         @Test
@@ -373,7 +373,7 @@ class CarBookingSettingsTest {
             assertThat(effectiveSettings).isNotNull();
             assertThat(effectiveSettings.getEffectiveMinTripHours()).isEqualTo(24);
             assertThat(effectiveSettings.getEffectiveMaxTripDays()).isEqualTo(30);
-            assertThat(effectiveSettings.getEffectiveAdvanceNoticeHours()).isEqualTo(1);
+            assertThat(effectiveSettings.getEffectiveAdvanceNoticeHours()).isEqualTo(2);
             assertThat(effectiveSettings.getEffectivePrepBufferHours()).isEqualTo(3);
         }
 

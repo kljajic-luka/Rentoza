@@ -66,6 +66,7 @@ public class BookingPaymentService {
     private final PaymentTransactionRepository txRepository;
     private final PayoutLedgerRepository payoutLedgerRepository;
     private final UserRepository userRepository;
+    private final TaxWithholdingService taxWithholdingService;
 
     // Metrics
     private final Counter paymentSuccessCounter;
@@ -91,6 +92,7 @@ public class BookingPaymentService {
             PaymentTransactionRepository txRepository,
             PayoutLedgerRepository payoutLedgerRepository,
             UserRepository userRepository,
+            TaxWithholdingService taxWithholdingService,
             MeterRegistry meterRegistry) {
         this.paymentProvider = paymentProvider;
         this.bookingRepository = bookingRepository;
@@ -99,6 +101,7 @@ public class BookingPaymentService {
         this.txRepository = txRepository;
         this.payoutLedgerRepository = payoutLedgerRepository;
         this.userRepository = userRepository;
+        this.taxWithholdingService = taxWithholdingService;
 
         this.paymentSuccessCounter = Counter.builder("payment.success")
                 .description("Successful payments")
@@ -1172,8 +1175,13 @@ public class BookingPaymentService {
                     .eligibleAt(Instant.now().plusSeconds(payoutDisputeHoldHours * 3600L))
                     .build();
 
-            log.info("[Payment] Payout scheduled for booking {} → host {}: {} RSD (fee {} + PDV {})",
-                    booking.getId(), booking.getCar().getOwner().getId(), hostAmt, fee, pdv);
+            // Phase 3: Calculate tax withholding before persisting
+            User owner = booking.getCar().getOwner();
+            taxWithholdingService.calculateWithholding(ledger, owner);
+
+            log.info("[Payment] Payout scheduled for booking {} → host {}: gross={} RSD, tax={}, net={} (fee {} + PDV {})",
+                    booking.getId(), owner.getId(), ledger.getGrossOwnerIncome(),
+                    ledger.getIncomeTaxWithheld(), ledger.getNetOwnerPayout(), fee, pdv);
             return payoutLedgerRepository.save(ledger);
         });
     }
@@ -1237,10 +1245,16 @@ public class BookingPaymentService {
                 .map(User::getMonriRecipientId)
                 .orElse(null);
 
+        // Phase 3: Transfer the net amount (after tax withholding) to the host.
+        // Falls back to hostPayoutAmount for legacy rows without withholding data.
+        BigDecimal transferAmount = ledger.getNetOwnerPayout() != null
+                ? ledger.getNetOwnerPayout()
+                : ledger.getHostPayoutAmount();
+
         PaymentRequest request = PaymentRequest.builder()
                 .bookingId(ledger.getBookingId())
                 .userId(ledger.getHostUserId())
-                .amount(ledger.getHostPayoutAmount())
+                .amount(transferAmount)
                 .currency(DEFAULT_CURRENCY)
                 .description("Isplata domaćinu za rezervaciju #" + ledger.getBookingId())
                 .type(PaymentType.PAYOUT)

@@ -128,6 +128,7 @@ class DocumentReviewLazyInitializationRegressionTest {
         car.setTransmissionType(TransmissionType.MANUAL);
         car.setOwner(owner);
         car.setApprovalStatus(ApprovalStatus.PENDING);
+        car.setListingStatus(org.example.rentoza.car.ListingStatus.PENDING_APPROVAL);
         car.setAvailable(false);
         car = carRepository.save(car);
 

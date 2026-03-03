@@ -93,6 +93,9 @@ class CheckInStrictModeTest {
     @Mock
     private org.example.rentoza.payment.BookingPaymentService bookingPaymentService;
 
+    @Mock
+    private org.example.rentoza.booking.RentalAgreementService rentalAgreementService;
+
     private MeterRegistry meterRegistry;
     private CheckInService checkInService;
 
@@ -123,7 +126,8 @@ class CheckInStrictModeTest {
             userRepository,
             meterRegistry,
             photoUrlService,
-            bookingPaymentService
+            bookingPaymentService,
+            rentalAgreementService
         );
 
         // Setup common test fixtures
@@ -171,7 +175,7 @@ class CheckInStrictModeTest {
         @DisplayName("Should block handshake when license expired")
         void confirmHandshake_BlocksWhenLicenseExpired() {
             // Arrange
-            when(bookingRepository.findById(booking.getId())).thenReturn(Optional.of(booking));
+            when(bookingRepository.findByIdWithLock(booking.getId())).thenReturn(Optional.of(booking));
 
             BookingEligibilityDTO ineligible = BookingEligibilityDTO.builder()
                 .eligible(false)
@@ -194,7 +198,7 @@ class CheckInStrictModeTest {
         @DisplayName("Should block handshake when license expires during trip")
         void confirmHandshake_BlocksWhenLicenseExpiresDuringTrip() {
             // Arrange
-            when(bookingRepository.findById(booking.getId())).thenReturn(Optional.of(booking));
+            when(bookingRepository.findByIdWithLock(booking.getId())).thenReturn(Optional.of(booking));
 
             BookingEligibilityDTO ineligible = BookingEligibilityDTO.builder()
                 .eligible(false)
@@ -215,7 +219,7 @@ class CheckInStrictModeTest {
         @DisplayName("Should allow handshake when license is valid")
         void confirmHandshake_AllowsWhenLicenseValid() {
             // Arrange
-            when(bookingRepository.findById(booking.getId())).thenReturn(Optional.of(booking));
+            when(bookingRepository.findByIdWithLock(booking.getId())).thenReturn(Optional.of(booking));
 
             BookingEligibilityDTO eligible = BookingEligibilityDTO.builder()
                 .eligible(true)
@@ -243,7 +247,7 @@ class CheckInStrictModeTest {
         @DisplayName("Should block handshake when age requirement not met")
         void confirmHandshake_BlocksWhenUnderAge() {
             // Arrange
-            when(bookingRepository.findById(booking.getId())).thenReturn(Optional.of(booking));
+            when(bookingRepository.findByIdWithLock(booking.getId())).thenReturn(Optional.of(booking));
 
             BookingEligibilityDTO ineligible = BookingEligibilityDTO.builder()
                 .eligible(false)
@@ -272,7 +276,7 @@ class CheckInStrictModeTest {
         @DisplayName("Should not call verification service when disabled")
         void confirmHandshake_SkipsVerificationWhenDisabled() {
             // Arrange
-            when(bookingRepository.findById(booking.getId())).thenReturn(Optional.of(booking));
+            when(bookingRepository.findByIdWithLock(booking.getId())).thenReturn(Optional.of(booking));
 
             // Act
             try {
@@ -294,7 +298,7 @@ class CheckInStrictModeTest {
         @DisplayName("Should throw ResourceNotFoundException when booking not found")
         void confirmHandshake_ThrowsWhenBookingNotFound() {
             // Arrange
-            when(bookingRepository.findById(anyLong())).thenReturn(Optional.empty());
+            when(bookingRepository.findByIdWithLock(anyLong())).thenReturn(Optional.empty());
 
             // Act & Assert
             assertThatThrownBy(() -> checkInService.confirmHandshake(handshakeDto, renter.getId()))
@@ -306,7 +310,7 @@ class CheckInStrictModeTest {
         void confirmHandshake_ThrowsWhenWrongStatus() {
             // Arrange
             booking.setStatus(BookingStatus.ACTIVE); // Wrong status for handshake
-            when(bookingRepository.findById(booking.getId())).thenReturn(Optional.of(booking));
+            when(bookingRepository.findByIdWithLock(booking.getId())).thenReturn(Optional.of(booking));
 
             // Act & Assert
             assertThatThrownBy(() -> checkInService.confirmHandshake(handshakeDto, renter.getId()))
@@ -317,7 +321,7 @@ class CheckInStrictModeTest {
         @DisplayName("Should throw AccessDeniedException when user not participant")
         void confirmHandshake_ThrowsWhenUserNotParticipant() {
             // Arrange
-            when(bookingRepository.findById(booking.getId())).thenReturn(Optional.of(booking));
+            when(bookingRepository.findByIdWithLock(booking.getId())).thenReturn(Optional.of(booking));
             Long unauthorizedUserId = 999L; // Not renter or owner
 
             // Act & Assert
@@ -335,7 +339,7 @@ class CheckInStrictModeTest {
         void confirmHandshake_RecordsMetrics() {
             // Arrange
             when(featureFlags.isStrictCheckinEnabled()).thenReturn(true);
-            when(bookingRepository.findById(booking.getId())).thenReturn(Optional.of(booking));
+            when(bookingRepository.findByIdWithLock(booking.getId())).thenReturn(Optional.of(booking));
             
             BookingEligibilityDTO eligible = BookingEligibilityDTO.builder()
                 .eligible(true)

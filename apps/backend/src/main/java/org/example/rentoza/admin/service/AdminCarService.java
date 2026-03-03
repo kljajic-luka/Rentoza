@@ -14,6 +14,7 @@ import org.example.rentoza.car.Car;
 import org.example.rentoza.car.CarRepository;
 import org.example.rentoza.car.CarDocument;
 import org.example.rentoza.car.CarDocumentService;
+import org.example.rentoza.car.DocumentVerificationStatus;
 import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.user.User;
 import org.slf4j.MDC;
@@ -22,7 +23,11 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.LinkedHashMap;
 
 /**
  * Admin Car Management Service.
@@ -98,7 +103,7 @@ public class AdminCarService {
      */
     @Transactional(readOnly = true)
     public List<AdminCarDto> getPendingCars() {
-        List<Car> pendingCars = carRepo.findByApprovalStatus(org.example.rentoza.car.ApprovalStatus.PENDING.name());
+        List<Car> pendingCars = carRepo.findByListingStatus(org.example.rentoza.car.ListingStatus.PENDING_APPROVAL.name());
         return pendingCars.stream()
                 .map(AdminCarDto::fromEntity)
                 .toList();
@@ -126,17 +131,43 @@ public class AdminCarService {
             Car car = carRepo.findByIdForUpdate(carId)
                 .orElseThrow(() -> new ResourceNotFoundException("Car not found: " + carId));
 
-            // H-3 FIX: State machine guard
-            if (car.getApprovalStatus() != org.example.rentoza.car.ApprovalStatus.PENDING) {
+            // H-3 FIX: State machine guard (Phase 5: uses listingStatus)
+            if (car.getListingStatus() != org.example.rentoza.car.ListingStatus.PENDING_APPROVAL) {
                 throw new IllegalStateException(
-                    "Cannot approve car in state " + car.getApprovalStatus() + ". Only PENDING cars can be approved.");
+                    "Cannot approve car in state " + car.getListingStatus() + ". Only PENDING_APPROVAL cars can be approved.");
+            }
+
+            // PHASE 2: Compliance hard gate — verify documents before approval
+            List<String> complianceIssues = buildComplianceIssues(car);
+            boolean canApprove = complianceIssues.isEmpty();
+
+            if (!canApprove) {
+                String summary = String.join("; ", complianceIssues);
+                log.warn("Car {} approval blocked by compliance gate: {}", carId, summary);
+
+                // Audit the blocked attempt
+                auditService.logAction(
+                    admin,
+                    AdminAction.CAR_APPROVAL_BLOCKED,
+                    ResourceType.CAR,
+                    carId,
+                    auditService.toJson(buildComplianceSnapshot(car, complianceIssues, false)),
+                    null,
+                    "Approval blocked by compliance gate: " + summary
+                );
+
+                meterRegistry.counter("car.approvals", "status", "compliance_blocked").increment();
+
+                throw new IllegalStateException(
+                    "Cannot approve car: compliance requirements not met. Issues: " + summary);
             }
             
             // Capture before state
             String beforeState = auditService.toJson(AdminCarDto.fromEntity(car));
             
-            // Approve (make available)
-            car.setApprovalStatus(org.example.rentoza.car.ApprovalStatus.APPROVED);
+            // Approve (make available) — Phase 5: listingStatus is source of truth
+            car.setListingStatus(org.example.rentoza.car.ListingStatus.APPROVED);
+            car.setApprovalStatus(org.example.rentoza.car.ApprovalStatus.APPROVED); // legacy compat
             car.setApprovedBy(admin);
             car.setApprovedAt(java.time.Instant.now());
             car.setAvailable(true);
@@ -147,7 +178,8 @@ public class AdminCarService {
             // Capture after state
             String afterState = auditService.toJson(AdminCarDto.fromEntity(saved));
             
-            // Audit log
+            // Audit log with compliance snapshot
+            Map<String, Object> complianceSnapshot = buildComplianceSnapshot(car, List.of(), true);
             auditService.logAction(
                 admin,
                 AdminAction.CAR_APPROVED,
@@ -155,7 +187,7 @@ public class AdminCarService {
                 carId,
                 beforeState,
                 afterState,
-                "Car listing approved"
+                "Car listing approved — compliance verified: " + auditService.toJson(complianceSnapshot)
             );
             
             // Increment success counter
@@ -189,10 +221,10 @@ public class AdminCarService {
         Car car = carRepo.findByIdForUpdate(carId)
             .orElseThrow(() -> new ResourceNotFoundException("Car not found: " + carId));
 
-        // H-3 FIX: State machine guard
-        if (car.getApprovalStatus() != org.example.rentoza.car.ApprovalStatus.PENDING) {
+        // H-3 FIX: State machine guard (Phase 5: uses listingStatus)
+        if (car.getListingStatus() != org.example.rentoza.car.ListingStatus.PENDING_APPROVAL) {
             throw new IllegalStateException(
-                "Cannot reject car in state " + car.getApprovalStatus() + ". Only PENDING cars can be rejected.");
+                "Cannot reject car in state " + car.getListingStatus() + ". Only PENDING_APPROVAL cars can be rejected.");
         }
 
         if (reason == null || reason.trim().isEmpty()) {
@@ -202,8 +234,9 @@ public class AdminCarService {
         // Capture before state
         String beforeState = auditService.toJson(AdminCarDto.fromEntity(car));
         
-        // Reject (keep unavailable)
-        car.setApprovalStatus(org.example.rentoza.car.ApprovalStatus.REJECTED);
+        // Reject (keep unavailable) — Phase 5: listingStatus is source of truth
+        car.setListingStatus(org.example.rentoza.car.ListingStatus.REJECTED);
+        car.setApprovalStatus(org.example.rentoza.car.ApprovalStatus.REJECTED); // legacy compat
         car.setApprovedBy(admin);
         car.setApprovedAt(java.time.Instant.now());
         car.setRejectionReason(reason.trim());
@@ -245,10 +278,10 @@ public class AdminCarService {
         Car car = carRepo.findByIdForUpdate(carId)
             .orElseThrow(() -> new ResourceNotFoundException("Car not found: " + carId));
 
-        // H-3 FIX: State machine guard
-        if (car.getApprovalStatus() != org.example.rentoza.car.ApprovalStatus.APPROVED) {
+        // H-3 FIX: State machine guard (Phase 5: uses listingStatus)
+        if (car.getListingStatus() != org.example.rentoza.car.ListingStatus.APPROVED) {
             throw new IllegalStateException(
-                "Cannot suspend car in state " + car.getApprovalStatus() + ". Only APPROVED cars can be suspended.");
+                "Cannot suspend car in state " + car.getListingStatus() + ". Only APPROVED cars can be suspended.");
         }
 
         if (reason == null || reason.trim().isEmpty()) {
@@ -258,8 +291,9 @@ public class AdminCarService {
         // Capture before state
         String beforeState = auditService.toJson(AdminCarDto.fromEntity(car));
         
-        // Suspend (make unavailable)
-        car.setApprovalStatus(org.example.rentoza.car.ApprovalStatus.SUSPENDED);
+        // Suspend (make unavailable) — Phase 5: listingStatus is source of truth
+        car.setListingStatus(org.example.rentoza.car.ListingStatus.SUSPENDED);
+        car.setApprovalStatus(org.example.rentoza.car.ApprovalStatus.SUSPENDED); // legacy compat
         car.setRejectionReason(reason.trim());
         car.setAvailable(false);
         
@@ -295,17 +329,18 @@ public class AdminCarService {
         Car car = carRepo.findByIdForUpdate(carId)
             .orElseThrow(() -> new ResourceNotFoundException("Car not found: " + carId));
 
-        // H-3 FIX: State machine guard
-        if (car.getApprovalStatus() != org.example.rentoza.car.ApprovalStatus.SUSPENDED) {
+        // H-3 FIX: State machine guard (Phase 5: uses listingStatus)
+        if (car.getListingStatus() != org.example.rentoza.car.ListingStatus.SUSPENDED) {
             throw new IllegalStateException(
-                "Cannot reactivate car in state " + car.getApprovalStatus() + ". Only SUSPENDED cars can be reactivated.");
+                "Cannot reactivate car in state " + car.getListingStatus() + ". Only SUSPENDED cars can be reactivated.");
         }
         
         // Capture before state
         String beforeState = auditService.toJson(AdminCarDto.fromEntity(car));
         
-        // Reactivate
-        car.setApprovalStatus(org.example.rentoza.car.ApprovalStatus.APPROVED);
+        // Reactivate — Phase 5: listingStatus is source of truth
+        car.setListingStatus(org.example.rentoza.car.ListingStatus.APPROVED);
+        car.setApprovalStatus(org.example.rentoza.car.ApprovalStatus.APPROVED); // legacy compat
         car.setRejectionReason(null);
         car.setAvailable(true);
         
@@ -365,5 +400,102 @@ public class AdminCarService {
             .toList();
 
         return AdminCarReviewDetailDto.fromEntity(car, docDtos);
+    }
+
+    // ==================== COMPLIANCE GATE HELPERS ====================
+
+    /**
+     * Build list of compliance issues that block car approval.
+     * Empty list = car is compliant and can be approved.
+     *
+     * <p>Checks performed:
+     * <ol>
+     *   <li>Owner identity verification (C1)</li>
+     *   <li>Car-level registration/insurance/tech inspection expiry dates</li>
+     *   <li>Per-document verification status (must not be PENDING or REJECTED)</li>
+     *   <li>Per-document expiry dates</li>
+     *   <li>Global document verification timestamp</li>
+     * </ol>
+     *
+     * <p><b>Date boundary (I1 fix):</b> Uses {@code !date.isAfter(today)} instead of
+     * {@code date.isBefore(today)} so that documents expiring today are treated as
+     * expired, consistent with the DTO-side {@code isAfter(today)} check.
+     */
+    private List<String> buildComplianceIssues(Car car) {
+        List<String> issues = new ArrayList<>();
+        LocalDate today = LocalDate.now();
+
+        // 1. Owner identity must be verified (C1)
+        if (car.getOwner() == null || !Boolean.TRUE.equals(car.getOwner().getIsIdentityVerified())) {
+            issues.add("Owner identity not verified");
+        }
+
+        // 2. Registration must exist and not be expired (I1: !isAfter for boundary)
+        if (car.getRegistrationExpiryDate() == null) {
+            issues.add("Registration expiry date not set");
+        } else if (!car.getRegistrationExpiryDate().isAfter(today)) {
+            issues.add("Registration expired on " + car.getRegistrationExpiryDate());
+        }
+
+        // 3. Insurance must exist and not be expired (I1: !isAfter for boundary)
+        if (car.getInsuranceExpiryDate() == null) {
+            issues.add("Insurance expiry date not set");
+        } else if (!car.getInsuranceExpiryDate().isAfter(today)) {
+            issues.add("Insurance expired on " + car.getInsuranceExpiryDate());
+        }
+
+        // 4. Technical inspection must exist and not be expired (I1: !isAfter for boundary)
+        if (car.getTechnicalInspectionExpiryDate() == null) {
+            issues.add("Technical inspection expiry date not set");
+        } else if (!car.getTechnicalInspectionExpiryDate().isAfter(today)) {
+            issues.add("Technical inspection expired on " + car.getTechnicalInspectionExpiryDate());
+        }
+
+        // 5. Per-document verification status and expiry checks
+        List<CarDocument> documents = documentService.getDocumentsForCar(car.getId());
+        for (CarDocument doc : documents) {
+            String docLabel = doc.getType().name();
+
+            // 5a. Each document must be VERIFIED (not PENDING or REJECTED)
+            if (doc.getStatus() != DocumentVerificationStatus.VERIFIED) {
+                issues.add(docLabel + " document not verified (status: " + doc.getStatus() + ")");
+            }
+
+            // 5b. Per-document expiry date must not be expired (I1: !isAfter for boundary)
+            if (doc.getExpiryDate() != null && !doc.getExpiryDate().isAfter(today)) {
+                issues.add(docLabel + " document expired on " + doc.getExpiryDate());
+            }
+        }
+
+        // 6. Global document verification timestamp must be present
+        if (car.getDocumentsVerifiedAt() == null || car.getDocumentsVerifiedBy() == null) {
+            issues.add("Documents not yet verified by admin");
+        }
+
+        return issues;
+    }
+
+    /**
+     * Build a compliance snapshot map for audit logging.
+     */
+    private Map<String, Object> buildComplianceSnapshot(Car car, List<String> issues, boolean canApprove) {
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        snapshot.put("canApprove", canApprove);
+        snapshot.put("ownerIdentityVerified",
+                car.getOwner() != null && Boolean.TRUE.equals(car.getOwner().getIsIdentityVerified()));
+        snapshot.put("registrationExpiryDate",
+                car.getRegistrationExpiryDate() != null ? car.getRegistrationExpiryDate().toString() : null);
+        snapshot.put("insuranceExpiryDate",
+                car.getInsuranceExpiryDate() != null ? car.getInsuranceExpiryDate().toString() : null);
+        snapshot.put("technicalInspectionExpiryDate",
+                car.getTechnicalInspectionExpiryDate() != null ? car.getTechnicalInspectionExpiryDate().toString() : null);
+        snapshot.put("documentsVerifiedAt",
+                car.getDocumentsVerifiedAt() != null ? car.getDocumentsVerifiedAt().toString() : null);
+        snapshot.put("documentsVerifiedBy",
+                car.getDocumentsVerifiedBy() != null ? car.getDocumentsVerifiedBy().getId() : null);
+        if (!issues.isEmpty()) {
+            snapshot.put("issues", issues);
+        }
+        return snapshot;
     }
 }

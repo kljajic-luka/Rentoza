@@ -325,6 +325,23 @@ public class User {
     @Column(name = "owner_verification_submitted_at")
     private LocalDateTime ownerVerificationSubmittedAt;
 
+    // ========== OWNER CONSENT PROVENANCE FIELDS (Phase 4 Compliance) ==========
+
+    @Column(name = "host_agreement_accepted_at")
+    private Instant hostAgreementAcceptedAt;
+
+    @Column(name = "vehicle_insurance_confirmed_at")
+    private Instant vehicleInsuranceConfirmedAt;
+
+    @Column(name = "vehicle_registration_confirmed_at")
+    private Instant vehicleRegistrationConfirmedAt;
+
+    @Column(name = "consent_ip", length = 45)
+    private String consentIp;
+
+    @Column(name = "consent_user_agent", length = 500)
+    private String consentUserAgent;
+
     // ========== RENTER DRIVER LICENSE VERIFICATION FIELDS ==========
     
     /**

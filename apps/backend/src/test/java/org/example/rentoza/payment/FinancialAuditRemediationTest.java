@@ -676,6 +676,7 @@ class FinancialAuditRemediationTest {
         @Mock DamageClaimRepository damageClaimRepository;
         @Mock TripExtensionRepository extensionRepository;
         @Mock UserRepository userRepository;
+        @Mock TaxWithholdingService taxWithholdingService;
 
         BookingPaymentService paymentService;
 
@@ -684,7 +685,7 @@ class FinancialAuditRemediationTest {
             paymentService = new BookingPaymentService(
                     paymentProvider, bookingRepository, damageClaimRepository,
                     extensionRepository, txRepository, payoutLedgerRepository,
-                    userRepository, new SimpleMeterRegistry());
+                    userRepository, taxWithholdingService, new SimpleMeterRegistry());
         }
 
         @Test
@@ -874,6 +875,7 @@ class FinancialAuditRemediationTest {
         @Mock DamageClaimRepository damageClaimRepository;
         @Mock TripExtensionRepository extensionRepository;
         @Mock UserRepository userRepository;
+        @Mock TaxWithholdingService taxWithholdingService;
 
         BookingPaymentService paymentService;
 
@@ -882,7 +884,7 @@ class FinancialAuditRemediationTest {
             paymentService = new BookingPaymentService(
                     paymentProvider, bookingRepository, damageClaimRepository,
                     extensionRepository, txRepository, payoutLedgerRepository,
-                    userRepository, new SimpleMeterRegistry());
+                    userRepository, taxWithholdingService, new SimpleMeterRegistry());
         }
 
         @Test

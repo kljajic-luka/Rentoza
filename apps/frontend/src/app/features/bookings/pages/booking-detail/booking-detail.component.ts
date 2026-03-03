@@ -21,8 +21,9 @@ import { MatDividerModule } from '@angular/material/divider';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatChipsModule } from '@angular/material/chips';
 
-import { BookingService } from '../../../../core/services/booking.service';
+import { BookingService, RentalAgreementDTO } from '../../../../core/services/booking.service';
 import { BookingDetails, PickupLocationData } from '../../../../core/models/booking-details.model';
+import { AuthService } from '../../../../core/auth/auth.service';
 import { ReadOnlyPickupLocationComponent } from '../../components/readonly-pickup-location';
 import {
   ChargeLifecycleStatus,
@@ -182,6 +183,51 @@ import {
                 <mat-icon>{{ depositStatusIcon() }}</mat-icon>
                 <span>{{ depositSummary() }}</span>
               </div>
+            </mat-card-content>
+          </mat-card>
+        }
+
+        <!-- Rental Agreement -->
+        @if (agreement()) {
+          <mat-card class="agreement-card">
+            <mat-card-content>
+              <h4>Ugovor o iznajmljivanju</h4>
+              <div class="agreement-status">
+                <div class="agreement-party">
+                  <mat-icon [class.accepted]="agreement()?.ownerAccepted">
+                    {{ agreement()?.ownerAccepted ? 'check_circle' : 'radio_button_unchecked' }}
+                  </mat-icon>
+                  <span>Vlasnik: {{ agreement()?.ownerAccepted ? 'Prihvatio' : 'Čeka' }}</span>
+                </div>
+                <div class="agreement-party">
+                  <mat-icon [class.accepted]="agreement()?.renterAccepted">
+                    {{ agreement()?.renterAccepted ? 'check_circle' : 'radio_button_unchecked' }}
+                  </mat-icon>
+                  <span>Gost: {{ agreement()?.renterAccepted ? 'Prihvatio' : 'Čeka' }}</span>
+                </div>
+              </div>
+              @if (canAcceptAgreement()) {
+                <button
+                  mat-raised-button
+                  color="primary"
+                  (click)="acceptAgreement()"
+                  [disabled]="isAcceptingAgreement()"
+                  class="accept-agreement-btn"
+                >
+                  @if (isAcceptingAgreement()) {
+                    <mat-spinner diameter="20"></mat-spinner>
+                  } @else {
+                    <mat-icon>gavel</mat-icon>
+                    Prihvatam uslove ugovora
+                  }
+                </button>
+              }
+              @if (agreement()?.status === 'FULLY_ACCEPTED') {
+                <div class="agreement-accepted-banner">
+                  <mat-icon>verified</mat-icon>
+                  <span>Ugovor prihvaćen od obe strane</span>
+                </div>
+              }
             </mat-card-content>
           </mat-card>
         }
@@ -465,6 +511,66 @@ import {
         width: 16px;
         height: 16px;
       }
+
+      .agreement-card {
+        margin-bottom: 16px;
+      }
+
+      .agreement-card h4 {
+        margin: 0 0 12px;
+        font-size: 14px;
+        font-weight: 500;
+        color: rgba(0, 0, 0, 0.6);
+      }
+
+      .agreement-status {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+
+      .agreement-party {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 14px;
+      }
+
+      .agreement-party mat-icon {
+        font-size: 20px;
+        width: 20px;
+        height: 20px;
+        color: #bdbdbd;
+      }
+
+      .agreement-party mat-icon.accepted {
+        color: #2e7d32;
+      }
+
+      .accept-agreement-btn {
+        width: 100%;
+        margin-top: 8px;
+      }
+
+      .agreement-accepted-banner {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 14px;
+        border-radius: 8px;
+        background: #e8f5e9;
+        color: #2e7d32;
+        font-size: 14px;
+        font-weight: 500;
+        margin-top: 8px;
+      }
+
+      .agreement-accepted-banner mat-icon {
+        font-size: 20px;
+        width: 20px;
+        height: 20px;
+      }
     `,
   ],
 })
@@ -472,11 +578,16 @@ export class BookingDetailComponent implements OnInit {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private bookingService = inject(BookingService);
+  private authService = inject(AuthService);
   private destroyRef = inject(DestroyRef);
 
   booking = signal<BookingDetails | null>(null);
   isLoading = signal(false);
   error = signal<string | null>(null);
+
+  // Rental agreement state
+  agreement = signal<RentalAgreementDTO | null>(null);
+  isAcceptingAgreement = signal(false);
 
   /** Live ticker — bumps every 60s for countdown reactivity */
   private tick = signal(0);
@@ -589,10 +700,54 @@ export class BookingDetailComponent implements OnInit {
       next: (booking) => {
         this.booking.set(booking);
         this.isLoading.set(false);
+        this.loadAgreement(booking.id);
       },
       error: (err) => {
         this.error.set(err.error?.message || 'Nije moguće učitati rezervaciju');
         this.isLoading.set(false);
+      },
+    });
+  }
+
+  loadAgreement(bookingId: number): void {
+    this.bookingService.getAgreement(bookingId).subscribe({
+      next: (agreement) => this.agreement.set(agreement),
+      error: () => {
+        // Agreement may not exist yet for legacy bookings — ignore
+        this.agreement.set(null);
+      },
+    });
+  }
+
+  canAcceptAgreement(): boolean {
+    const a = this.agreement();
+    if (!a || a.status === 'FULLY_ACCEPTED') return false;
+
+    const currentUser = this.authService.getCurrentUser();
+    if (!currentUser) return false;
+
+    const currentUserId = Number(currentUser.id);
+
+    // Only show accept if the current user hasn't already accepted
+    if (a.ownerUserId === currentUserId) return !a.ownerAccepted;
+    if (a.renterUserId === currentUserId) return !a.renterAccepted;
+
+    return false;
+  }
+
+  acceptAgreement(): void {
+    const bookingId = this.booking()?.id;
+    if (!bookingId) return;
+
+    this.isAcceptingAgreement.set(true);
+    this.bookingService.acceptAgreement(bookingId).subscribe({
+      next: (updated) => {
+        this.agreement.set(updated);
+        this.isAcceptingAgreement.set(false);
+      },
+      error: (err) => {
+        this.isAcceptingAgreement.set(false);
+        this.error.set(err.error?.message || 'Prihvatanje ugovora nije uspelo. Pokušajte ponovo.');
       },
     });
   }
@@ -629,9 +784,17 @@ export class BookingDetailComponent implements OnInit {
 
   canCheckIn(): boolean {
     const status = this.booking()?.status;
-    return status
+    const bookingStatusOk = status
       ? ['CONFIRMED', 'CHECK_IN_OPEN', 'HOST_SUBMITTED', 'GUEST_ACKNOWLEDGED'].includes(status)
       : false;
+    if (!bookingStatusOk) return false;
+
+    // Gate on agreement acceptance — both parties must accept before check-in
+    const agreement = this.agreement();
+    if (agreement && agreement.status !== 'FULLY_ACCEPTED') {
+      return false;
+    }
+    return true;
   }
 
   canReview(): boolean {

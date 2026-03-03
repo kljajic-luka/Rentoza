@@ -260,4 +260,48 @@ export class BookingService {
       withCredentials: true,
     });
   }
+
+  // ========== RENTAL AGREEMENT ==========
+
+  /**
+   * Get the rental agreement for a booking.
+   * Accessible by booking renter, owner, or admin.
+   */
+  getAgreement(bookingId: number | string): Observable<RentalAgreementDTO> {
+    return this.http.get<RentalAgreementDTO>(`${this.baseUrl}/${bookingId}/agreement`, {
+      withCredentials: true,
+    });
+  }
+
+  /**
+   * Accept the rental agreement for a booking.
+   * Auto-determines role (owner/renter) based on authenticated user.
+   */
+  acceptAgreement(bookingId: number | string): Observable<RentalAgreementDTO> {
+    return this.http
+      .post<RentalAgreementDTO>(
+        `${this.baseUrl}/${bookingId}/agreement/accept`,
+        {},
+        { withCredentials: true },
+      )
+      .pipe(tap(() => this.analytics.track('agreement.accepted', { bookingId })));
+  }
+}
+
+export interface RentalAgreementDTO {
+  id: number;
+  bookingId: number;
+  agreementVersion: string;
+  agreementType: string;
+  contentHash: string;
+  generatedAt: string;
+  status: 'PENDING' | 'OWNER_ACCEPTED' | 'RENTER_ACCEPTED' | 'FULLY_ACCEPTED' | 'EXPIRED' | 'VOIDED';
+  ownerAccepted: boolean;
+  ownerAcceptedAt: string | null;
+  renterAccepted: boolean;
+  renterAcceptedAt: string | null;
+  ownerUserId: number;
+  renterUserId: number;
+  vehicleSnapshot: Record<string, unknown>;
+  termsSnapshot: Record<string, unknown>;
 }

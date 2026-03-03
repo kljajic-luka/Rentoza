@@ -1,6 +1,7 @@
 package org.example.rentoza.user;
 
 import jakarta.persistence.EntityNotFoundException;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.user.dto.CompleteProfileRequestDTO;
@@ -9,6 +10,7 @@ import org.example.rentoza.util.HashUtil;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.Period;
 import java.util.ArrayList;
@@ -54,7 +56,8 @@ public class ProfileCompletionService {
      * @throws ProfileCompletionException if validation fails or duplicate ID detected
      */
     @Transactional
-    public CompleteProfileResponseDTO completeProfile(Long userId, CompleteProfileRequestDTO request) {
+    public CompleteProfileResponseDTO completeProfile(Long userId, CompleteProfileRequestDTO request,
+                                                       HttpServletRequest httpRequest) {
         log.info("Profile completion requested for userId={}", userId);
 
         // 1. Find user
@@ -85,6 +88,19 @@ public class ProfileCompletionService {
         // 5. If validation errors, throw with details
         if (!validationErrors.isEmpty()) {
             throw new ValidationException(validationErrors);
+        }
+
+        // 5b. PHASE 4: Persist owner consent provenance after successful validation
+        if (user.getRole() == Role.OWNER) {
+            Instant now = Instant.now();
+            user.setHostAgreementAcceptedAt(now);
+            user.setVehicleInsuranceConfirmedAt(now);
+            user.setVehicleRegistrationConfirmedAt(now);
+            if (httpRequest != null) {
+                user.setConsentIp(extractIp(httpRequest));
+                String ua = httpRequest.getHeader("User-Agent");
+                user.setConsentUserAgent(ua != null && ua.length() > 500 ? ua.substring(0, 500) : ua);
+            }
         }
 
         // 6. Set common fields
@@ -257,6 +273,14 @@ public class ProfileCompletionService {
      */
     private boolean isBlank(String str) {
         return str == null || str.isBlank();
+    }
+
+    private static String extractIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            return forwarded.split(",")[0].trim();
+        }
+        return request.getRemoteAddr();
     }
 
     /**

@@ -167,6 +167,7 @@ public class CarService {
         car.setLocation(dto.getLocation().trim().toLowerCase());
         car.setOwner(owner);
         car.setApprovalStatus(ApprovalStatus.PENDING);
+        car.setListingStatus(ListingStatus.PENDING_APPROVAL);
         car.setAvailable(false);
 
         // Set geospatial location (Phase 2.4 - REQUIRED)
@@ -244,6 +245,10 @@ public class CarService {
             settings.setInstantBookEnabled(dto.getInstantBookEnabled());
             car.setBookingSettings(settings);
         }
+        // Map per-vehicle security deposit
+        if (dto.getSecurityDepositRsd() != null) {
+            car.setSecurityDepositRsd(dto.getSecurityDepositRsd());
+        }
 
         Car savedCar = repo.save(car);
 
@@ -264,7 +269,7 @@ public class CarService {
         // Public listing - only show available cars to users
         // Privacy: Use fuzzy locations for non-owners
         Long currentUserId = currentUser.idOrNull();
-        return repo.findByAvailableTrueAndApprovalStatus(ApprovalStatus.APPROVED)
+        return repo.findByAvailableTrueAndListingStatus(ListingStatus.APPROVED)
                 .stream()
                 .map(car -> mapToResponseWithPrivacy(car, currentUserId))
                 .collect(Collectors.toList());
@@ -275,7 +280,7 @@ public class CarService {
         // Public listing - only show available cars to users
         // Privacy: Use fuzzy locations for non-owners
         Long currentUserId = currentUser.idOrNull();
-        return repo.findByLocationIgnoreCaseAndAvailableTrueAndApprovalStatus(location, ApprovalStatus.APPROVED)
+        return repo.findByLocationIgnoreCaseAndAvailableTrueAndListingStatus(location, ListingStatus.APPROVED)
                 .stream()
                 .map(car -> mapToResponseWithPrivacy(car, currentUserId))
                 .collect(Collectors.toList());
@@ -338,8 +343,8 @@ public class CarService {
                 && car.getOwner().getId().equals(currentUserId);
         boolean isAdmin = currentUser.isAdmin();
 
-        if (car.getApprovalStatus() != ApprovalStatus.APPROVED && !isOwner && !isAdmin) {
-            log.warn("[CarService] Blocked access to unapproved car ID={} (status={})", id, car.getApprovalStatus());
+        if (car.getListingStatus() != ListingStatus.APPROVED && !isOwner && !isAdmin) {
+            log.warn("[CarService] Blocked access to unapproved car ID={} (status={})", id, car.getListingStatus());
             throw new ResourceNotFoundException("Car not found with ID: " + id);
         }
 
@@ -528,6 +533,9 @@ public class CarService {
             settings.setInstantBookEnabled(dto.getInstantBookEnabled());
             car.setBookingSettings(settings);
         }
+        if (dto.getSecurityDepositRsd() != null) {
+            car.setSecurityDepositRsd(dto.getSecurityDepositRsd());
+        }
 
         Car savedCar = repo.save(car);
         // Return DTO with exact location for owner
@@ -545,8 +553,8 @@ public class CarService {
         }
 
         // CRITICAL: Prevent activation if car is not approved
-        if (available && car.getApprovalStatus() != ApprovalStatus.APPROVED) {
-            throw new RuntimeException("Cannot activate car that is not approved by admin. Current status: " + car.getApprovalStatus());
+        if (available && car.getListingStatus() != ListingStatus.APPROVED) {
+            throw new RuntimeException("Cannot activate car that is not approved by admin. Current status: " + car.getListingStatus());
         }
 
         car.setAvailable(available);
@@ -699,7 +707,7 @@ public class CarService {
      *
      * Base conditions (always applied):
      * - available = true
-     * - approvalStatus = APPROVED
+     * - listingStatus = APPROVED
      *
      * Optional filters delegated to {@link CarFilterEngine#buildSpecification}
      * to ensure consistency with the availability-search in-memory path.
@@ -712,7 +720,7 @@ public class CarService {
         Specification<Car> spec = Specification.where(
                 (root, query, cb) -> cb.equal(root.get("available"), true));
         spec = spec.and((root, query, cb) ->
-                cb.equal(root.get("approvalStatus"), ApprovalStatus.APPROVED));
+                cb.equal(root.get("listingStatus"), ListingStatus.APPROVED));
 
         // Location filter (CarService-specific — not in CarFilterEngine)
         if (criteria.getLocation() != null && !criteria.getLocation().isBlank()) {

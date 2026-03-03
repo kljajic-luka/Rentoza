@@ -131,6 +131,7 @@ class BookingServiceTest {
         car.setOwner(carOwner);
         car.setPricePerDay(BigDecimal.valueOf(5000));
         car.setApprovalStatus(ApprovalStatus.APPROVED);
+        car.setListingStatus(org.example.rentoza.car.ListingStatus.APPROVED);
         car.setAvailable(true);
 
         CarBookingSettings settings = new CarBookingSettings();

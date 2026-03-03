@@ -94,6 +94,7 @@ public class BookingService {
     private final org.example.rentoza.payment.BookingPaymentService bookingPaymentService;
     private final SchedulerIdempotencyService lockService;
     private final BookingEdgeCaseValidator edgeCaseValidator;
+    private final RentalAgreementService rentalAgreementService;
 
     @org.springframework.beans.factory.annotation.Value("${app.booking.host-approval.enabled:false}")
     private boolean approvalEnabled;
@@ -124,7 +125,8 @@ public class BookingService {
                           RenterVerificationService renterVerificationService,
                           org.example.rentoza.payment.BookingPaymentService bookingPaymentService,
                           SchedulerIdempotencyService lockService,
-                          BookingEdgeCaseValidator edgeCaseValidator) {
+                          BookingEdgeCaseValidator edgeCaseValidator,
+                          RentalAgreementService rentalAgreementService) {
         this.repo = repo;
         this.carRepo = carRepo;
         this.userRepo = userRepo;
@@ -138,6 +140,7 @@ public class BookingService {
         this.bookingPaymentService = bookingPaymentService;
         this.lockService = lockService;
         this.edgeCaseValidator = edgeCaseValidator;
+        this.rentalAgreementService = rentalAgreementService;
     }
 
     @Transactional
@@ -185,7 +188,7 @@ public class BookingService {
         // Prevent booking of unapproved or unavailable cars.
         // Unapproved listings must not be bookable even if accessed by direct ID.
         // ========================================================================
-        if (car.getApprovalStatus() != org.example.rentoza.car.ApprovalStatus.APPROVED) {
+        if (car.getListingStatus() != org.example.rentoza.car.ListingStatus.APPROVED) {
             throw new org.example.rentoza.exception.ValidationException("This car listing is not yet approved and cannot be booked.");
         }
         if (!car.isAvailable()) {
@@ -429,6 +432,11 @@ public class BookingService {
         // Set insurance type and prepaid refuel
         booking.setInsuranceType(dto.getInsuranceType() != null ? dto.getInsuranceType() : "BASIC");
         booking.setPrepaidRefuel(dto.isPrepaidRefuel());
+
+        // Phase 6: Legal-role metadata (marketplace-intermediary compliance)
+        booking.setPlatformRole("INTERMEDIARY");
+        booking.setContractType("OWNER_RENTER_DIRECT");
+        booking.setTermsVersion("1.0.0");
 
         // ========================================================================
         // GEOSPATIAL PICKUP LOCATION SNAPSHOT (Phase 2.4)
@@ -677,10 +685,19 @@ public class BookingService {
         // Handle post-creation logic based on booking status
         if (savedBooking.getStatus() == BookingStatus.PENDING_APPROVAL) {
             // Approval workflow: Send request notifications, DO NOT create chat
+            // Agreement will be generated when host approves (BookingApprovalService)
             sendPendingApprovalNotifications(savedBooking, renter, car);
             log.info("Booking request submitted: bookingId={}, renterId={}, carId={}, decisionDeadline={}",
                     savedBooking.getId(), renter.getId(), car.getId(), savedBooking.getDecisionDeadlineAt());
         } else {
+            // Instant booking: generate rental agreement immediately
+            try {
+                rentalAgreementService.generateAgreement(savedBooking);
+            } catch (Exception e) {
+                log.error("Failed to generate rental agreement for instant booking {}: {}",
+                        savedBooking.getId(), e.getMessage(), e);
+                // Non-blocking: agreement can be generated later via backfill
+            }
             // Legacy instant booking: Create chat and send confirmed notifications
             createChatConversationForInstantBooking(savedBooking, renter, car);
             sendInstantBookingNotifications(savedBooking, renter, car);

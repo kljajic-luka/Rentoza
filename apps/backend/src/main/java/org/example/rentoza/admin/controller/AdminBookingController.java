@@ -58,6 +58,7 @@ public class AdminBookingController {
     private final UserRepository userRepo;
     private final CurrentUser currentUser;
     private final AdminAuditService auditService;
+    private final org.example.rentoza.booking.RentalAgreementBackfillService agreementBackfillService;
     
     private static final int MAX_PAGE_SIZE = 100;
     
@@ -198,5 +199,19 @@ public class AdminBookingController {
         return input.replace("\\", "\\\\")
                     .replace("%", "\\%")
                     .replace("_", "\\_");
+    }
+
+    /**
+     * Backfill rental agreements for existing bookings that lack one.
+     * Safe to call multiple times — never overwrites existing agreements.
+     */
+    @PostMapping("/agreements/backfill")
+    public ResponseEntity<Map<String, Object>> backfillAgreements() {
+        var result = agreementBackfillService.backfillAgreements();
+        return ResponseEntity.ok(Map.of(
+                "created", result.created(),
+                "skipped", result.skipped(),
+                "errors", result.errors()
+        ));
     }
 }

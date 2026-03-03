@@ -55,6 +55,7 @@ public class BookingApprovalService {
     private final InternalServiceJwtUtil internalServiceJwtUtil;
     private final ApplicationEventPublisher eventPublisher;
     private final org.example.rentoza.payment.BookingPaymentService bookingPaymentService;
+    private final RentalAgreementService rentalAgreementService;
 
     // P2 FIX: Default 24h to match dev/prod properties (was 48h, inconsistent)
     @Value("${app.booking.host-approval.approval-sla-hours:24}")
@@ -163,6 +164,15 @@ public class BookingApprovalService {
 
             // Send notification to guest (renter)
             sendApprovalNotification(savedBooking);
+
+            // Generate rental agreement for the approved booking
+            try {
+                rentalAgreementService.generateAgreement(savedBooking);
+            } catch (Exception e) {
+                log.error("[ApprovalService] Failed to generate rental agreement for booking {}: {}",
+                        bookingId, e.getMessage(), e);
+                // Non-blocking: agreement can be generated later via backfill
+            }
 
             // Create chat conversation (delayed until approval)
             createChatConversation(savedBooking);

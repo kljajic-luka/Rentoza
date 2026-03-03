@@ -112,4 +112,34 @@ public interface PayoutLedgerRepository extends JpaRepository<PayoutLedger, Long
              AND p.attemptCount >= p.maxAttempts
            """)
     List<PayoutLedger> findExhaustedFailedPayouts();
+
+    // ── Tax withholding queries ────────────────────────────────────────────
+
+    /**
+     * Find all completed payouts for a host within a date range (for monthly tax aggregation).
+     */
+    @Query("""
+           SELECT p FROM PayoutLedger p
+           WHERE p.hostUserId = :hostUserId
+             AND p.paidAt >= :start
+             AND p.paidAt < :end
+             AND p.status = 'COMPLETED'
+           """)
+    List<PayoutLedger> findByHostUserIdAndPaidAtBetween(
+            @Param("hostUserId") Long hostUserId,
+            @Param("start") Instant start,
+            @Param("end") Instant end);
+
+    /**
+     * Find distinct host user IDs with completed payouts in a date range.
+     */
+    @Query("""
+           SELECT DISTINCT p.hostUserId FROM PayoutLedger p
+           WHERE p.paidAt >= :start
+             AND p.paidAt < :end
+             AND p.status = 'COMPLETED'
+           """)
+    List<Long> findDistinctHostUserIdsByPaidAtBetween(
+            @Param("start") Instant start,
+            @Param("end") Instant end);
 }

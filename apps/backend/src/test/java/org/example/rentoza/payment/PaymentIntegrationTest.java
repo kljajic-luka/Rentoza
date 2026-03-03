@@ -72,6 +72,7 @@ class PaymentIntegrationTest {
     @Mock private CancellationRecordRepository cancellationRecordRepository;
     @Mock private NotificationService notificationService;
     @Mock private UserRepository userRepository;
+    @Mock private TaxWithholdingService taxWithholdingService;
 
     // ── Test data ──────────────────────────────────────────────────────────
     private Booking booking;
@@ -93,6 +94,7 @@ class PaymentIntegrationTest {
                 txRepository,
                 payoutLedgerRepository,
                 userRepository,
+                taxWithholdingService,
                 new SimpleMeterRegistry()
         );
         ReflectionTestUtils.setField(paymentService, "authExpiryHours", 168);    // 7 days

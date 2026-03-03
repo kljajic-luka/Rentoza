@@ -105,7 +105,7 @@ public class AvailabilityService {
 
         // CRITICAL: Filter out non-approved cars (e.g. legacy data or pending approval)
         candidateCars = candidateCars.stream()
-            .filter(car -> car.getApprovalStatus() == org.example.rentoza.car.ApprovalStatus.APPROVED)
+            .filter(car -> car.getListingStatus() == org.example.rentoza.car.ListingStatus.APPROVED)
             .collect(Collectors.toList());
 
         // Step 2: Batch availability filtering (P2 fix — eliminates N+1)
@@ -533,7 +533,7 @@ public class AvailabilityService {
                 .orElseThrow(() -> new ResourceNotFoundException("Car not found with ID: " + carId));
 
         // Block availability probing for unapproved listings
-        if (car.getApprovalStatus() != ApprovalStatus.APPROVED) {
+        if (car.getListingStatus() != ListingStatus.APPROVED) {
             throw new ResourceNotFoundException("Car not found with ID: " + carId);
         }
 

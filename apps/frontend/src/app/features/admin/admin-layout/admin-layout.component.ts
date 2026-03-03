@@ -1,4 +1,4 @@
-import { Component, OnDestroy, OnInit } from '@angular/core';
+import { Component, HostListener, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterModule, NavigationEnd } from '@angular/router';
 import { filter, map, Subject, takeUntil, Observable, BehaviorSubject } from 'rxjs';
@@ -27,6 +27,7 @@ import {
   SearchResults,
   SearchResultItem,
 } from '../shared/services/admin-search.service';
+import { AdminKeyboardService } from '../shared/services/admin-keyboard.service';
 
 @Component({
   selector: 'app-admin-layout',
@@ -369,6 +370,7 @@ export class AdminLayoutComponent implements OnInit, OnDestroy {
     private breakpointObserver: BreakpointObserver,
     public themeService: ThemeService,
     private searchService: AdminSearchService,
+    private keyboardService: AdminKeyboardService,
   ) {
     this.kpis$ = this.adminState.dashboardKpi$;
 
@@ -414,8 +416,14 @@ export class AdminLayoutComponent implements OnInit, OnDestroy {
       });
   }
 
+  @HostListener('document:keydown', ['$event'])
+  onKeydown(event: KeyboardEvent): void {
+    this.keyboardService.handleKeydown(event);
+  }
+
   ngOnInit(): void {
     this.adminState.loadDashboardKpis();
+    this.keyboardService.enable();
   }
 
   onSidenavClosed(): void {
@@ -471,6 +479,7 @@ export class AdminLayoutComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.keyboardService.disable();
     this.destroy$.next();
     this.destroy$.complete();
   }

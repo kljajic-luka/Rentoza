@@ -1,5 +1,6 @@
 package org.example.rentoza.admin.controller;
 
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
@@ -50,7 +51,7 @@ public class AdminFinancialController {
     @GetMapping("/payouts")
     public ResponseEntity<Page<PayoutQueueDto>> getPayoutQueue(
             @RequestParam(defaultValue = "0") @Min(0) int page,
-            @RequestParam(defaultValue = "20") @Min(1) int size) {
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
         
         log.debug("Admin {} requesting payout queue, page: {}", currentUser.id(), page);
         

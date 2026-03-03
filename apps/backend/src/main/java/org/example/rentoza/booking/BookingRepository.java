@@ -833,6 +833,7 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
     })
     @Query("SELECT b FROM Booking b " +
            "JOIN FETCH b.car c " +
+           "JOIN FETCH b.renter " +
            "LEFT JOIN FETCH c.owner " +
            "WHERE b.id = :id")
     java.util.Optional<Booking> findByIdWithLockForPayout(@Param("id") Long id);
@@ -851,6 +852,7 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
      */
     @Query("SELECT b FROM Booking b " +
            "JOIN FETCH b.car c " +
+           "JOIN FETCH b.renter " +
            "LEFT JOIN FETCH c.owner " +
            "WHERE b.status = :status " +
            "AND b.updatedAt < :cutoff " +

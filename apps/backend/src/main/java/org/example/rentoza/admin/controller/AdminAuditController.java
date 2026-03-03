@@ -26,6 +26,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.persistence.criteria.Predicate;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Positive;
 import java.time.Instant;
@@ -73,7 +74,7 @@ public class AdminAuditController {
     private final AdminAuditService auditService;
     private final UserRepository userRepo;
     
-    private static final int MAX_PAGE_SIZE = 100;
+
     private static final int MAX_EXPORT_SIZE = 10000;
     
     /**
@@ -104,15 +105,10 @@ public class AdminAuditController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant endDate,
             @RequestParam(required = false) String searchTerm,
             @RequestParam(defaultValue = "0") @Min(0) int page,
-            @RequestParam(defaultValue = "20") @Min(1) int size) {
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
 
         log.debug("Admin {} searching audit logs: resourceType={}, action={}, page={}",
                   currentUser.id(), resourceType, action, page);
-        
-        // Enforce max page size
-        if (size > MAX_PAGE_SIZE) {
-            size = MAX_PAGE_SIZE;
-        }
         
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
         
@@ -154,13 +150,9 @@ public class AdminAuditController {
             @PathVariable ResourceType type,
             @PathVariable @Positive Long id,
             @RequestParam(defaultValue = "0") @Min(0) int page,
-            @RequestParam(defaultValue = "20") @Min(1) int size) {
-        
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
+
         log.debug("Admin {} requesting audit logs for {} {}", currentUser.id(), type, id);
-        
-        if (size > MAX_PAGE_SIZE) {
-            size = MAX_PAGE_SIZE;
-        }
         
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
         

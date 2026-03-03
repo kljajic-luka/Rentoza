@@ -6,6 +6,8 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,6 +30,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -53,6 +56,7 @@ import java.util.stream.Collectors;
 @RequestMapping("/api/admin/renter-verifications")
 @Tag(name = "Admin - Renter Verification", description = "Admin management of renter license verification")
 @PreAuthorize("hasRole('ADMIN')")
+@Validated
 @Slf4j
 @RequiredArgsConstructor
 public class AdminRenterVerificationController {
@@ -80,8 +84,8 @@ public class AdminRenterVerificationController {
     @GetMapping("/pending")
     @Transactional(readOnly = true)
     public ResponseEntity<PagedVerificationResponse> getPendingQueue(
-            @Parameter(description = "Page number (0-based)") @RequestParam(defaultValue = "0") int page,
-            @Parameter(description = "Page size") @RequestParam(defaultValue = "20") int size,
+            @Parameter(description = "Page number (0-based)") @RequestParam(defaultValue = "0") @Min(0) int page,
+            @Parameter(description = "Page size") @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
             @Parameter(description = "Filter by status (default: PENDING_REVIEW)") 
             @RequestParam(required = false) DriverLicenseStatus status,
             @Parameter(description = "Filter by risk level") 

@@ -97,7 +97,11 @@
                   <div class="photo-group">
                     <h4>Check-in Photos</h4>
                     <div class="evidence-thumbs">
-                      @for (id of parsePhotoIds(dispute()!.checkinPhotoIds); track id; let i = $index) {
+                      @for (
+                        id of parsePhotoIds(dispute()!.checkinPhotoIds);
+                        track id;
+                        let i = $index
+                      ) {
                         <img
                           [src]="getPhotoUrl(dispute()!.bookingId, 'checkin', id)"
                           class="evidence-thumb"
@@ -116,7 +120,11 @@
                   <div class="photo-group">
                     <h4>Check-out Photos (Damage)</h4>
                     <div class="evidence-thumbs">
-                      @for (id of parsePhotoIds(dispute()!.checkoutPhotoIds); track id; let i = $index) {
+                      @for (
+                        id of parsePhotoIds(dispute()!.checkoutPhotoIds);
+                        track id;
+                        let i = $index
+                      ) {
                         <img
                           [src]="getPhotoUrl(dispute()!.bookingId, 'checkout', id)"
                           class="evidence-thumb"
@@ -135,7 +143,11 @@
                   <div class="photo-group">
                     <h4>Additional Evidence</h4>
                     <div class="evidence-thumbs">
-                      @for (id of parsePhotoIds(dispute()!.evidencePhotoIds); track id; let i = $index) {
+                      @for (
+                        id of parsePhotoIds(dispute()!.evidencePhotoIds);
+                        track id;
+                        let i = $index
+                      ) {
                         <img
                           [src]="getPhotoUrl(dispute()!.bookingId, 'evidence', id)"
                           class="evidence-thumb"

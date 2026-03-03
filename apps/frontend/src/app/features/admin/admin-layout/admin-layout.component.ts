@@ -439,12 +439,10 @@ export class AdminLayoutComponent implements OnInit, OnDestroy {
       });
 
     // Wire up "/" keyboard shortcut to focus the search bar
-    this.keyboardService.focusSearch$
-      .pipe(takeUntil(this.destroy$))
-      .subscribe(() => {
-        this.expandSearch();
-        setTimeout(() => this.searchInput?.nativeElement?.focus());
-      });
+    this.keyboardService.focusSearch$.pipe(takeUntil(this.destroy$)).subscribe(() => {
+      this.expandSearch();
+      setTimeout(() => this.searchInput?.nativeElement?.focus());
+    });
   }
 
   @HostListener('document:keydown', ['$event'])

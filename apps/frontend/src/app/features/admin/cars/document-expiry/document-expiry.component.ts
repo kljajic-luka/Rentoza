@@ -51,7 +51,14 @@ export class DocumentExpiryComponent implements OnInit {
   urgencyFilter = signal<UrgencyLevel | null>(null);
 
   // Table columns
-  readonly displayedColumns = ['car', 'owner', 'documentType', 'expiryDate', 'daysRemaining', 'actions'] as const;
+  readonly displayedColumns = [
+    'car',
+    'owner',
+    'documentType',
+    'expiryDate',
+    'daysRemaining',
+    'actions',
+  ] as const;
 
   // Computed
   filteredDocuments = computed(() => {
@@ -90,17 +97,20 @@ export class DocumentExpiryComponent implements OnInit {
 
   loadDocuments(): void {
     this.loading.set(true);
-    this.adminApi.getExpiringDocuments(this.daysFilter()).pipe(
-      takeUntilDestroyed(this.destroyRef),
-      finalize(() => this.loading.set(false)),
-    ).subscribe({
-      next: (docs) => {
-        this.documents.set(docs);
-      },
-      error: () => {
-        this.notification.showError('Failed to load expiring documents');
-      },
-    });
+    this.adminApi
+      .getExpiringDocuments(this.daysFilter())
+      .pipe(
+        takeUntilDestroyed(this.destroyRef),
+        finalize(() => this.loading.set(false)),
+      )
+      .subscribe({
+        next: (docs) => {
+          this.documents.set(docs);
+        },
+        error: () => {
+          this.notification.showError('Failed to load expiring documents');
+        },
+      });
   }
 
   onDaysFilterChange(days: number): void {

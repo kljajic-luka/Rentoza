@@ -103,24 +103,17 @@ export class UserListComponent implements OnInit {
     this.loadUsers();
 
     // Debounce search input
-    this.searchSubject.pipe(
-      debounceTime(400),
-      distinctUntilChanged(),
-      takeUntilDestroyed(this.destroyRef),
-    ).subscribe((term) => {
-      this.pageIndex = 0; // Reset to first page on search
-      this.loadUsers(term);
-    });
+    this.searchSubject
+      .pipe(debounceTime(400), distinctUntilChanged(), takeUntilDestroyed(this.destroyRef))
+      .subscribe((term) => {
+        this.pageIndex = 0; // Reset to first page on search
+        this.loadUsers(term);
+      });
   }
 
   loadUsers(search?: string) {
     this.selection.clear();
-    this.adminState.loadUsers(
-      this.pageIndex,
-      this.pageSize,
-      search,
-      this.sortParam,
-    );
+    this.adminState.loadUsers(this.pageIndex, this.pageSize, search, this.sortParam);
   }
 
   onSearch(term: string) {
@@ -196,9 +189,7 @@ export class UserListComponent implements OnInit {
       if (reason) {
         this.bulkProcessing = true;
         const actions = selected.map((u) =>
-          this.adminState.banUser(u.id, reason).pipe(
-            catchError(() => of('FAILED' as const)),
-          ),
+          this.adminState.banUser(u.id, reason).pipe(catchError(() => of('FAILED' as const))),
         );
         forkJoin(actions).subscribe({
           next: (results) => {
@@ -237,9 +228,7 @@ export class UserListComponent implements OnInit {
       if (confirmed) {
         this.bulkProcessing = true;
         const actions = selected.map((u) =>
-          this.adminState.unbanUser(u.id).pipe(
-            catchError(() => of('FAILED' as const)),
-          ),
+          this.adminState.unbanUser(u.id).pipe(catchError(() => of('FAILED' as const))),
         );
         forkJoin(actions).subscribe({
           next: (results) => {

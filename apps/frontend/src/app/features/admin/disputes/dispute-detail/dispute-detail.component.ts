@@ -150,36 +150,40 @@ export class DisputeDetailComponent implements OnInit {
     });
 
     // Set approvedAmount based on decision
-    this.resolutionForm.get('decision')?.valueChanges.pipe(
-      takeUntilDestroyed(this.destroyRef),
-    ).subscribe((decision) => {
-      const amountControl = this.resolutionForm.get('approvedAmount');
-      if (decision === 'APPROVED' || decision === 'PARTIAL') {
-        amountControl?.setValidators([Validators.required, Validators.min(0)]);
-        if (decision === 'APPROVED' && this.dispute()) {
-          amountControl?.setValue(this.dispute()!.claimedAmount);
+    this.resolutionForm
+      .get('decision')
+      ?.valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((decision) => {
+        const amountControl = this.resolutionForm.get('approvedAmount');
+        if (decision === 'APPROVED' || decision === 'PARTIAL') {
+          amountControl?.setValidators([Validators.required, Validators.min(0)]);
+          if (decision === 'APPROVED' && this.dispute()) {
+            amountControl?.setValue(this.dispute()!.claimedAmount);
+          }
+        } else {
+          amountControl?.clearValidators();
+          amountControl?.setValue(null);
         }
-      } else {
-        amountControl?.clearValidators();
-        amountControl?.setValue(null);
-      }
-      amountControl?.updateValueAndValidity();
-    });
+        amountControl?.updateValueAndValidity();
+      });
   }
 
   loadDispute(): void {
     this.loading.set(true);
-    this.adminApi.getDisputeDetail(this.disputeId()).pipe(
-      takeUntilDestroyed(this.destroyRef),
-      finalize(() => this.loading.set(false)),
-    ).subscribe({
-      next: (dispute) => {
-        this.dispute.set(dispute);
-      },
-      error: () => {
-        this.snackBar.showError('Failed to load dispute');
-      },
-    });
+    this.adminApi
+      .getDisputeDetail(this.disputeId())
+      .pipe(
+        takeUntilDestroyed(this.destroyRef),
+        finalize(() => this.loading.set(false)),
+      )
+      .subscribe({
+        next: (dispute) => {
+          this.dispute.set(dispute);
+        },
+        error: () => {
+          this.snackBar.showError('Failed to load dispute');
+        },
+      });
   }
 
   toggleResolutionForm(): void {
@@ -242,34 +246,40 @@ export class DisputeDetailComponent implements OnInit {
         resolutionNotes: formVal.notes,
         notifyParties: true,
       };
-      this.adminApi.resolveCheckoutDispute(this.disputeId(), checkoutRequest).pipe(
-        takeUntilDestroyed(this.destroyRef),
-        finalize(() => this.submitting.set(false)),
-      ).subscribe({
-        next: () => {
-          this.snackBar.showSuccess('Checkout dispute resolved successfully');
-          this.router.navigate(['/admin/disputes']);
-        },
-        error: (error: { error?: { message?: string }; message?: string }) => {
-          this.snackBar.showError(
-            'Failed to resolve dispute: ' + (error?.error?.message || error.message),
-          );
-        },
-      });
+      this.adminApi
+        .resolveCheckoutDispute(this.disputeId(), checkoutRequest)
+        .pipe(
+          takeUntilDestroyed(this.destroyRef),
+          finalize(() => this.submitting.set(false)),
+        )
+        .subscribe({
+          next: () => {
+            this.snackBar.showSuccess('Checkout dispute resolved successfully');
+            this.router.navigate(['/admin/disputes']);
+          },
+          error: (error: { error?: { message?: string }; message?: string }) => {
+            this.snackBar.showError(
+              'Failed to resolve dispute: ' + (error?.error?.message || error.message),
+            );
+          },
+        });
     } else {
       const request: DisputeResolutionRequest = this.resolutionForm.value;
-      this.adminApi.resolveDispute(this.disputeId(), request).pipe(
-        takeUntilDestroyed(this.destroyRef),
-        finalize(() => this.submitting.set(false)),
-      ).subscribe({
-        next: () => {
-          this.snackBar.showSuccess('Dispute resolved successfully');
-          this.router.navigate(['/admin/disputes']);
-        },
-        error: (error) => {
-          this.snackBar.showError('Failed to resolve dispute: ' + error.message);
-        },
-      });
+      this.adminApi
+        .resolveDispute(this.disputeId(), request)
+        .pipe(
+          takeUntilDestroyed(this.destroyRef),
+          finalize(() => this.submitting.set(false)),
+        )
+        .subscribe({
+          next: () => {
+            this.snackBar.showSuccess('Dispute resolved successfully');
+            this.router.navigate(['/admin/disputes']);
+          },
+          error: (error) => {
+            this.snackBar.showError('Failed to resolve dispute: ' + error.message);
+          },
+        });
     }
   }
 
@@ -282,19 +292,22 @@ export class DisputeDetailComponent implements OnInit {
     this.submitting.set(true);
     const request: EscalateDisputeRequest = this.escalateForm.value;
 
-    this.adminApi.escalateDispute(this.disputeId(), request).pipe(
-      takeUntilDestroyed(this.destroyRef),
-      finalize(() => this.submitting.set(false)),
-    ).subscribe({
-      next: () => {
-        this.snackBar.showSuccess('Dispute escalated successfully');
-        this.loadDispute();
-        this.showEscalateForm.set(false);
-      },
-      error: (error) => {
-        this.snackBar.showError('Failed to escalate dispute: ' + error.message);
-      },
-    });
+    this.adminApi
+      .escalateDispute(this.disputeId(), request)
+      .pipe(
+        takeUntilDestroyed(this.destroyRef),
+        finalize(() => this.submitting.set(false)),
+      )
+      .subscribe({
+        next: () => {
+          this.snackBar.showSuccess('Dispute escalated successfully');
+          this.loadDispute();
+          this.showEscalateForm.set(false);
+        },
+        error: (error) => {
+          this.snackBar.showError('Failed to escalate dispute: ' + error.message);
+        },
+      });
   }
 
   getStatusColor(status: string): string {

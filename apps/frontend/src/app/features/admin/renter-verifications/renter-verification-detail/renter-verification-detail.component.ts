@@ -148,17 +148,20 @@ export class RenterVerificationDetailComponent implements OnInit {
     this.loading.set(true);
     this.error.set(null);
 
-    this.adminService.getVerificationDetails(this.userId).pipe(
-      takeUntilDestroyed(this.destroyRef),
-      finalize(() => this.loading.set(false)),
-    ).subscribe({
-      next: (data) => {
-        this.details.set(data);
-      },
-      error: () => {
-        this.error.set('Failed to load verification details');
-      },
-    });
+    this.adminService
+      .getVerificationDetails(this.userId)
+      .pipe(
+        takeUntilDestroyed(this.destroyRef),
+        finalize(() => this.loading.set(false)),
+      )
+      .subscribe({
+        next: (data) => {
+          this.details.set(data);
+        },
+        error: () => {
+          this.error.set('Failed to load verification details');
+        },
+      });
   }
 
   /**
@@ -172,19 +175,22 @@ export class RenterVerificationDetailComponent implements OnInit {
 
     this.loadingDocId.set(docId);
 
-    this.adminService.getDocumentSignedUrl(docId).pipe(
-      takeUntilDestroyed(this.destroyRef),
-      finalize(() => this.loadingDocId.set(null)),
-    ).subscribe({
-      next: (result) => {
-        const urls = new Map(this.documentUrls());
-        urls.set(docId, result.url);
-        this.documentUrls.set(urls);
-      },
-      error: () => {
-        this.notification.showError('Failed to load document');
-      },
-    });
+    this.adminService
+      .getDocumentSignedUrl(docId)
+      .pipe(
+        takeUntilDestroyed(this.destroyRef),
+        finalize(() => this.loadingDocId.set(null)),
+      )
+      .subscribe({
+        next: (result) => {
+          const urls = new Map(this.documentUrls());
+          urls.set(docId, result.url);
+          this.documentUrls.set(urls);
+        },
+        error: () => {
+          this.notification.showError('Failed to load document');
+        },
+      });
   }
 
   // ============================================================================
@@ -205,26 +211,30 @@ export class RenterVerificationDetailComponent implements OnInit {
         confirmColor: 'primary',
       },
     });
-    dialogRef.afterClosed().pipe(
-      takeUntilDestroyed(this.destroyRef),
-    ).subscribe((result) => {
-      if (!result) return;
+    dialogRef
+      .afterClosed()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((result) => {
+        if (!result) return;
 
-      this.actionLoading.set(true);
+        this.actionLoading.set(true);
 
-      this.adminService.approve(this.userId!, { notes: 'Approved via admin panel' }).pipe(
-        takeUntilDestroyed(this.destroyRef),
-        finalize(() => this.actionLoading.set(false)),
-      ).subscribe({
-        next: () => {
-          this.notification.showSuccess('Verification approved');
-          this.loadDetails();
-        },
-        error: () => {
-          this.notification.showError('Failed to approve verification');
-        },
+        this.adminService
+          .approve(this.userId!, { notes: 'Approved via admin panel' })
+          .pipe(
+            takeUntilDestroyed(this.destroyRef),
+            finalize(() => this.actionLoading.set(false)),
+          )
+          .subscribe({
+            next: () => {
+              this.notification.showSuccess('Verification approved');
+              this.loadDetails();
+            },
+            error: () => {
+              this.notification.showError('Failed to approve verification');
+            },
+          });
       });
-    });
   }
 
   /**
@@ -245,13 +255,14 @@ export class RenterVerificationDetailComponent implements OnInit {
       data: { displayName },
     });
 
-    dialogRef.afterClosed().pipe(
-      takeUntilDestroyed(this.destroyRef),
-    ).subscribe((reason) => {
-      if (reason && this.userId) {
-        this.executeReject(reason);
-      }
-    });
+    dialogRef
+      .afterClosed()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((reason) => {
+        if (reason && this.userId) {
+          this.executeReject(reason);
+        }
+      });
   }
 
   private executeReject(reason: string): void {
@@ -259,18 +270,21 @@ export class RenterVerificationDetailComponent implements OnInit {
 
     this.actionLoading.set(true);
 
-    this.adminService.reject(this.userId, { reason }).pipe(
-      takeUntilDestroyed(this.destroyRef),
-      finalize(() => this.actionLoading.set(false)),
-    ).subscribe({
-      next: () => {
-        this.notification.showSuccess('Verification rejected');
-        this.loadDetails();
-      },
-      error: () => {
-        this.notification.showError('Failed to reject verification');
-      },
-    });
+    this.adminService
+      .reject(this.userId, { reason })
+      .pipe(
+        takeUntilDestroyed(this.destroyRef),
+        finalize(() => this.actionLoading.set(false)),
+      )
+      .subscribe({
+        next: () => {
+          this.notification.showSuccess('Verification rejected');
+          this.loadDetails();
+        },
+        error: () => {
+          this.notification.showError('Failed to reject verification');
+        },
+      });
   }
 
   /**
@@ -289,26 +303,30 @@ export class RenterVerificationDetailComponent implements OnInit {
         reasonLabel: 'Suspension reason',
       },
     });
-    dialogRef.afterClosed().pipe(
-      takeUntilDestroyed(this.destroyRef),
-    ).subscribe((reason) => {
-      if (!reason) return;
+    dialogRef
+      .afterClosed()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((reason) => {
+        if (!reason) return;
 
-      this.actionLoading.set(true);
+        this.actionLoading.set(true);
 
-      this.adminService.suspend(this.userId!, { reason }).pipe(
-        takeUntilDestroyed(this.destroyRef),
-        finalize(() => this.actionLoading.set(false)),
-      ).subscribe({
-        next: () => {
-          this.notification.showSuccess('User suspended');
-          this.loadDetails();
-        },
-        error: () => {
-          this.notification.showError('Failed to suspend user');
-        },
+        this.adminService
+          .suspend(this.userId!, { reason })
+          .pipe(
+            takeUntilDestroyed(this.destroyRef),
+            finalize(() => this.actionLoading.set(false)),
+          )
+          .subscribe({
+            next: () => {
+              this.notification.showSuccess('User suspended');
+              this.loadDetails();
+            },
+            error: () => {
+              this.notification.showError('Failed to suspend user');
+            },
+          });
       });
-    });
   }
 
   // ============================================================================

@@ -124,63 +124,70 @@ export class FinancialDashboardComponent implements OnInit {
   }
 
   loadEscrowBalance(): void {
-    this.adminApi.getEscrowBalance().pipe(
-      takeUntilDestroyed(this.destroyRef),
-    ).subscribe({
-      next: (balance) => this.escrowBalance.set(balance),
-      error: () => this.notification.showError('Failed to load escrow balance'),
-    });
+    this.adminApi
+      .getEscrowBalance()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (balance) => this.escrowBalance.set(balance),
+        error: () => this.notification.showError('Failed to load escrow balance'),
+      });
   }
 
   loadPayouts(): void {
     this.loading.set(true);
-    this.adminApi.getPayoutQueue(this.pageIndex(), this.pageSize()).pipe(
-      takeUntilDestroyed(this.destroyRef),
-      finalize(() => this.loading.set(false)),
-    ).subscribe({
-      next: (response) => {
-        this.payouts.set(response.content);
-        this.totalElements.set(response.totalElements);
-        this.selection.clear();
-      },
-      error: () => {
-        this.notification.showError('Failed to load payouts');
-      },
-    });
+    this.adminApi
+      .getPayoutQueue(this.pageIndex(), this.pageSize())
+      .pipe(
+        takeUntilDestroyed(this.destroyRef),
+        finalize(() => this.loading.set(false)),
+      )
+      .subscribe({
+        next: (response) => {
+          this.payouts.set(response.content);
+          this.totalElements.set(response.totalElements);
+          this.selection.clear();
+        },
+        error: () => {
+          this.notification.showError('Failed to load payouts');
+        },
+      });
   }
 
   loadPayoutHistory(): void {
     this.payoutChartLoading.set(true);
     this.payoutChartError.set(null);
-    this.chartsService.getPayoutHistory(90).pipe(
-      takeUntilDestroyed(this.destroyRef),
-      finalize(() => this.payoutChartLoading.set(false)),
-    ).subscribe({
-      next: (data: PayoutHistoryData) => {
-        this.payoutChartData = {
-          labels: data.labels,
-          datasets: [
-            {
-              data: data.amounts,
-              label: 'Payouts (RSD)',
-              borderColor: 'var(--chart-payout-line, #4caf50)',
-              backgroundColor: 'var(--chart-payout-fill, rgba(76, 175, 80, 0.1))',
-              fill: true,
-              tension: 0.3,
-              borderWidth: 2,
-              pointRadius: 4,
-              pointHoverRadius: 6,
-              pointBackgroundColor: 'var(--chart-payout-line, #4caf50)',
-              pointBorderColor: 'var(--chart-payout-point-border, #fff)',
-              pointBorderWidth: 2,
-            },
-          ],
-        };
-      },
-      error: () => {
-        this.payoutChartError.set('Failed to load payout trend data.');
-      },
-    });
+    this.chartsService
+      .getPayoutHistory(90)
+      .pipe(
+        takeUntilDestroyed(this.destroyRef),
+        finalize(() => this.payoutChartLoading.set(false)),
+      )
+      .subscribe({
+        next: (data: PayoutHistoryData) => {
+          this.payoutChartData = {
+            labels: data.labels,
+            datasets: [
+              {
+                data: data.amounts,
+                label: 'Payouts (RSD)',
+                borderColor: 'var(--chart-payout-line, #4caf50)',
+                backgroundColor: 'var(--chart-payout-fill, rgba(76, 175, 80, 0.1))',
+                fill: true,
+                tension: 0.3,
+                borderWidth: 2,
+                pointRadius: 4,
+                pointHoverRadius: 6,
+                pointBackgroundColor: 'var(--chart-payout-line, #4caf50)',
+                pointBorderColor: 'var(--chart-payout-point-border, #fff)',
+                pointBorderWidth: 2,
+              },
+            ],
+          };
+        },
+        error: () => {
+          this.payoutChartError.set('Failed to load payout trend data.');
+        },
+      });
   }
 
   onPageChange(event: PageEvent): void {
@@ -214,40 +221,44 @@ export class FinancialDashboardComponent implements OnInit {
     };
 
     this.processing.set(true);
-    this.adminApi.processBatchPayouts(request).pipe(
-      takeUntilDestroyed(this.destroyRef),
-      finalize(() => this.processing.set(false)),
-    ).subscribe({
-      next: (result) => {
-        const message = dryRun
-          ? `Validation complete: ${result.successCount} valid, ${result.failureCount} invalid`
-          : `Processed: ${result.successCount} success, ${result.failureCount} failed`;
+    this.adminApi
+      .processBatchPayouts(request)
+      .pipe(
+        takeUntilDestroyed(this.destroyRef),
+        finalize(() => this.processing.set(false)),
+      )
+      .subscribe({
+        next: (result) => {
+          const message = dryRun
+            ? `Validation complete: ${result.successCount} valid, ${result.failureCount} invalid`
+            : `Processed: ${result.successCount} success, ${result.failureCount} failed`;
 
-        this.notification.showSuccess(message);
+          this.notification.showSuccess(message);
 
-        if (!dryRun) {
-          this.loadPayouts();
-          this.loadEscrowBalance();
-        }
-      },
-      error: (error) => {
-        this.notification.showError('Batch processing failed: ' + error.message);
-      },
-    });
+          if (!dryRun) {
+            this.loadPayouts();
+            this.loadEscrowBalance();
+          }
+        },
+        error: (error) => {
+          this.notification.showError('Batch processing failed: ' + error.message);
+        },
+      });
   }
 
   retryPayout(payout: PayoutQueueDto): void {
-    this.adminApi.retryPayout(payout.bookingId).pipe(
-      takeUntilDestroyed(this.destroyRef),
-    ).subscribe({
-      next: () => {
-        this.notification.showSuccess('Payout retry successful');
-        this.loadPayouts();
-      },
-      error: (error) => {
-        this.notification.showError('Retry failed: ' + error.message);
-      },
-    });
+    this.adminApi
+      .retryPayout(payout.bookingId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          this.notification.showSuccess('Payout retry successful');
+          this.loadPayouts();
+        },
+        error: (error) => {
+          this.notification.showError('Retry failed: ' + error.message);
+        },
+      });
   }
 
   formatCurrency(cents: number): string {

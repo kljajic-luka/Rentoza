@@ -156,15 +156,18 @@ export class CarApprovalDialogComponent {
 
   constructor(@Inject(MAT_DIALOG_DATA) public data: { car: AdminCarDto }) {
     // Update validators based on action
-    this.form.get('action')?.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((action) => {
-      const reasonControl = this.form.get('reason');
-      if (action === 'APPROVE') {
-        reasonControl?.clearValidators();
-      } else {
-        reasonControl?.setValidators([Validators.required, Validators.minLength(10)]);
-      }
-      reasonControl?.updateValueAndValidity();
-    });
+    this.form
+      .get('action')
+      ?.valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((action) => {
+        const reasonControl = this.form.get('reason');
+        if (action === 'APPROVE') {
+          reasonControl?.clearValidators();
+        } else {
+          reasonControl?.setValidators([Validators.required, Validators.minLength(10)]);
+        }
+        reasonControl?.updateValueAndValidity();
+      });
   }
 
   getStatusClass(status?: string): string {
@@ -215,11 +218,14 @@ export class CarApprovalDialogComponent {
           confirmColor: 'warn' as const,
         },
       });
-      confirmRef.afterClosed().pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result) => {
-        if (result) {
-          this.executeAction(action, reason);
-        }
-      });
+      confirmRef
+        .afterClosed()
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe((result) => {
+          if (result) {
+            this.executeAction(action, reason);
+          }
+        });
       return;
     }
 

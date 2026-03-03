@@ -4,7 +4,6 @@ import { Observable, of } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 import { environment } from '../../../../../environments/environment';
 
-
 /**
  * Data structure for revenue chart
  */
@@ -86,9 +85,8 @@ export class AdminChartsService {
   }
 
   getPayoutHistory(days: number = 90): Observable<PayoutHistoryData> {
-    return this.http
-      .get<PayoutHistoryData>(`${this.apiUrl}/admin/charts/payout-history`, {
-        params: { days: days.toString() },
-      });
+    return this.http.get<PayoutHistoryData>(`${this.apiUrl}/admin/charts/payout-history`, {
+      params: { days: days.toString() },
+    });
   }
 }

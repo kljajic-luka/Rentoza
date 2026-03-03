@@ -130,7 +130,7 @@ public class AdminCarReviewDetailDto {
             .collect(Collectors.toList());
         
         List<String> unverifiedDocuments = documents.stream()
-            .filter(doc -> "PENDING".equals(doc.getStatus()))
+            .filter(doc -> !"VERIFIED".equals(doc.getStatus()))
             .map(DocumentReviewDto::getType)
             .collect(Collectors.toList());
         

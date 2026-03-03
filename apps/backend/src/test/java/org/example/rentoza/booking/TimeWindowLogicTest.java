@@ -544,8 +544,8 @@ class TimeWindowLogicTest {
             // When: Getting effective advance notice
             int effectiveAdvanceNotice = car.getEffectiveBookingSettings().getEffectiveAdvanceNoticeHours();
 
-            // Then: Should use default (1 hour)
-            assertThat(effectiveAdvanceNotice).isEqualTo(1);
+            // Then: Should use default (2 hours, aligned with ToS)
+            assertThat(effectiveAdvanceNotice).isEqualTo(2);
         }
 
         @Test

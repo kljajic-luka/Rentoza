@@ -437,6 +437,7 @@ public class BookingService {
         booking.setPlatformRole("INTERMEDIARY");
         booking.setContractType("OWNER_RENTER_DIRECT");
         booking.setTermsVersion("1.0.0");
+        booking.setTermsContentHash(computeTermsContentHash("INTERMEDIARY", "OWNER_RENTER_DIRECT", "1.0.0"));
 
         // ========================================================================
         // GEOSPATIAL PICKUP LOCATION SNAPSHOT (Phase 2.4)
@@ -1646,5 +1647,20 @@ public class BookingService {
                 (int) tripCount,
                 (int) cancelledCount
         );
+    }
+
+    /**
+     * Compute SHA-256 hash of the terms metadata for tamper-evidence.
+     * Deterministic: same inputs always produce the same hash.
+     */
+    private static String computeTermsContentHash(String platformRole, String contractType, String termsVersion) {
+        try {
+            String canonical = platformRole + "|" + contractType + "|" + termsVersion;
+            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(canonical.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return java.util.HexFormat.of().formatHex(hash);
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new RuntimeException("SHA-256 not available", e);
+        }
     }
 }

@@ -171,22 +171,23 @@ public class TaxWithholdingService {
 
     /**
      * Aggregate all individual owner withholdings for PPPPD filing for a given month.
+     * Only includes individual owners (legal entities handle their own taxes).
      *
      * @param year tax period year
      * @param month tax period month (1-12)
-     * @return list of summaries for all owners with payouts in the period
+     * @return list of summaries for individual owners with payouts in the period
      */
     @Transactional
     public List<TaxWithholdingSummary> aggregateForPPPPD(int year, int month) {
-        // Get all unique owner IDs with payouts in this period
+        // Get all unique individual owner IDs with payouts in this period
         YearMonth ym = YearMonth.of(year, month);
         Instant periodStart = ym.atDay(1).atStartOfDay(SERBIA_ZONE).toInstant();
         Instant periodEnd = ym.plusMonths(1).atDay(1).atStartOfDay(SERBIA_ZONE).toInstant();
 
         List<Long> ownerIds = payoutLedgerRepository
-                .findDistinctHostUserIdsByPaidAtBetween(periodStart, periodEnd);
+                .findDistinctIndividualHostUserIdsByPaidAtBetween(periodStart, periodEnd);
 
-        log.info("[Tax] Aggregating PPPPD for {}-{}: {} owners with payouts", year, month, ownerIds.size());
+        log.info("[Tax] Aggregating PPPPD for {}-{}: {} individual owners with payouts", year, month, ownerIds.size());
 
         return ownerIds.stream()
                 .map(ownerId -> generateMonthlyStatement(ownerId, year, month))

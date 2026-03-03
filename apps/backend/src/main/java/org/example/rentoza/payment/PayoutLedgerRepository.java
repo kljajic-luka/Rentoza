@@ -142,4 +142,19 @@ public interface PayoutLedgerRepository extends JpaRepository<PayoutLedger, Long
     List<Long> findDistinctHostUserIdsByPaidAtBetween(
             @Param("start") Instant start,
             @Param("end") Instant end);
+
+    /**
+     * Find distinct individual-owner host user IDs with completed payouts in a date range.
+     * Used for PPPPD aggregation (only individual owners have income tax withholding).
+     */
+    @Query("""
+           SELECT DISTINCT p.hostUserId FROM PayoutLedger p
+           WHERE p.paidAt >= :start
+             AND p.paidAt < :end
+             AND p.status = 'COMPLETED'
+             AND p.ownerTaxType = 'INDIVIDUAL'
+           """)
+    List<Long> findDistinctIndividualHostUserIdsByPaidAtBetween(
+            @Param("start") Instant start,
+            @Param("end") Instant end);
 }

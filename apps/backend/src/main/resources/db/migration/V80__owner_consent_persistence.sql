@@ -6,8 +6,8 @@
 -- persisted. This migration adds timestamp + IP/UA provenance columns.
 
 ALTER TABLE users
-    ADD COLUMN host_agreement_accepted_at   TIMESTAMPTZ,
-    ADD COLUMN vehicle_insurance_confirmed_at  TIMESTAMPTZ,
-    ADD COLUMN vehicle_registration_confirmed_at TIMESTAMPTZ,
-    ADD COLUMN consent_ip         VARCHAR(45),
-    ADD COLUMN consent_user_agent VARCHAR(500);
+    ADD COLUMN IF NOT EXISTS host_agreement_accepted_at   TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS vehicle_insurance_confirmed_at  TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS vehicle_registration_confirmed_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS consent_ip         VARCHAR(45),
+    ADD COLUMN IF NOT EXISTS consent_user_agent VARCHAR(500);

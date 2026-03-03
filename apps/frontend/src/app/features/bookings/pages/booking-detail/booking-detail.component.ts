@@ -20,6 +20,7 @@ import { MatCardModule } from '@angular/material/card';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatChipsModule } from '@angular/material/chips';
+import { MatCheckboxModule } from '@angular/material/checkbox';
 
 import { BookingService, RentalAgreementDTO } from '../../../../core/services/booking.service';
 import { BookingDetails, PickupLocationData } from '../../../../core/models/booking-details.model';
@@ -49,6 +50,7 @@ import {
     MatDividerModule,
     MatProgressSpinnerModule,
     MatChipsModule,
+    MatCheckboxModule,
     ReadOnlyPickupLocationComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -192,6 +194,48 @@ import {
           <mat-card class="agreement-card">
             <mat-card-content>
               <h4>Ugovor o iznajmljivanju</h4>
+
+              <!-- Agreement terms snapshot -->
+              @if (agreement()?.termsSnapshot) {
+                <div class="agreement-terms">
+                  <div class="terms-section">
+                    <span class="terms-label">Početak:</span>
+                    <span>{{ agreement()?.termsSnapshot?.['startTime'] }}</span>
+                  </div>
+                  <div class="terms-section">
+                    <span class="terms-label">Kraj:</span>
+                    <span>{{ agreement()?.termsSnapshot?.['endTime'] }}</span>
+                  </div>
+                  <div class="terms-section">
+                    <span class="terms-label">Ukupna cena:</span>
+                    <span>{{ agreement()?.termsSnapshot?.['totalPrice'] }} RSD</span>
+                  </div>
+                  @if (agreement()?.termsSnapshot?.['securityDeposit']) {
+                    <div class="terms-section">
+                      <span class="terms-label">Depozit:</span>
+                      <span>{{ agreement()?.termsSnapshot?.['securityDeposit'] }} RSD</span>
+                    </div>
+                  }
+                  <div class="terms-section">
+                    <span class="terms-label">Osiguranje:</span>
+                    <span>{{ agreement()?.termsSnapshot?.['insuranceType'] }}</span>
+                  </div>
+                </div>
+              }
+
+              <!-- Vehicle snapshot -->
+              @if (agreement()?.vehicleSnapshot) {
+                <div class="agreement-vehicle">
+                  <span class="terms-label">Vozilo:</span>
+                  <span>{{ agreement()?.vehicleSnapshot?.['brand'] }} {{ agreement()?.vehicleSnapshot?.['model'] }} ({{ agreement()?.vehicleSnapshot?.['year'] }})</span>
+                  @if (agreement()?.vehicleSnapshot?.['licensePlate']) {
+                    <span class="license-plate">{{ agreement()?.vehicleSnapshot?.['licensePlate'] }}</span>
+                  }
+                </div>
+              }
+
+              <mat-divider></mat-divider>
+
               <div class="agreement-status">
                 <div class="agreement-party">
                   <mat-icon [class.accepted]="agreement()?.ownerAccepted">
@@ -207,11 +251,20 @@ import {
                 </div>
               </div>
               @if (canAcceptAgreement()) {
+                <div class="acceptance-confirm">
+                  <mat-checkbox
+                    [checked]="agreementConfirmed()"
+                    (change)="agreementConfirmed.set($event.checked)"
+                    color="primary"
+                  >
+                    Pročitao/la sam i prihvatam uslove ugovora
+                  </mat-checkbox>
+                </div>
                 <button
                   mat-raised-button
                   color="primary"
                   (click)="acceptAgreement()"
-                  [disabled]="isAcceptingAgreement()"
+                  [disabled]="isAcceptingAgreement() || !agreementConfirmed()"
                   class="accept-agreement-btn"
                 >
                   @if (isAcceptingAgreement()) {
@@ -523,6 +576,48 @@ import {
         color: rgba(0, 0, 0, 0.6);
       }
 
+      .agreement-terms {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 12px;
+        background: #fafafa;
+        border-radius: 8px;
+        margin-bottom: 12px;
+        font-size: 13px;
+      }
+
+      .terms-section {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .terms-label {
+        font-weight: 500;
+        color: rgba(0, 0, 0, 0.6);
+      }
+
+      .agreement-vehicle {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        margin-bottom: 12px;
+      }
+
+      .license-plate {
+        padding: 2px 8px;
+        background: #e3f2fd;
+        border-radius: 4px;
+        font-weight: 600;
+        font-size: 12px;
+      }
+
+      .acceptance-confirm {
+        margin: 8px 0;
+      }
+
       .agreement-status {
         display: flex;
         flex-direction: column;
@@ -588,6 +683,7 @@ export class BookingDetailComponent implements OnInit {
   // Rental agreement state
   agreement = signal<RentalAgreementDTO | null>(null);
   isAcceptingAgreement = signal(false);
+  agreementConfirmed = signal(false);
 
   /** Live ticker — bumps every 60s for countdown reactivity */
   private tick = signal(0);

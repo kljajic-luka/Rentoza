@@ -1,8 +1,14 @@
-import { Component, HostListener, OnDestroy, OnInit } from '@angular/core';
+import { Component, ElementRef, HostListener, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterModule, NavigationEnd } from '@angular/router';
-import { filter, map, Subject, takeUntil, Observable, BehaviorSubject } from 'rxjs';
-import { startWith, shareReplay, debounceTime, distinctUntilChanged, switchMap } from 'rxjs/operators';
+import { filter, map, Subject, take, takeUntil, Observable, BehaviorSubject } from 'rxjs';
+import {
+  startWith,
+  shareReplay,
+  debounceTime,
+  distinctUntilChanged,
+  switchMap,
+} from 'rxjs/operators';
 import { BreakpointObserver, Breakpoints } from '@angular/cdk/layout';
 import { MatSidenavModule } from '@angular/material/sidenav';
 import { MatListModule } from '@angular/material/list';
@@ -242,7 +248,12 @@ import { AdminKeyboardService } from '../shared/services/admin-keyboard.service'
           </div>
 
           <div class="global-search" *ngIf="!isSearchExpanded">
-            <button mat-icon-button (click)="expandSearch()" aria-label="Search" matTooltip="Search (/)">
+            <button
+              mat-icon-button
+              (click)="expandSearch()"
+              aria-label="Search"
+              matTooltip="Search (/)"
+            >
               <mat-icon>search</mat-icon>
             </button>
           </div>
@@ -262,11 +273,13 @@ import { AdminKeyboardService } from '../shared/services/admin-keyboard.service'
             <button mat-icon-button (click)="collapseSearch()" aria-label="Close search">
               <mat-icon>close</mat-icon>
             </button>
-            <mat-autocomplete #searchAuto="matAutocomplete"
-                              (optionSelected)="navigateToResult($event)"
-                              class="search-autocomplete"
-                              [displayWith]="displayResult"
-                              [autoActiveFirstOption]="true">
+            <mat-autocomplete
+              #searchAuto="matAutocomplete"
+              (optionSelected)="navigateToResult($event)"
+              class="search-autocomplete"
+              [displayWith]="displayResult"
+              [autoActiveFirstOption]="true"
+            >
               <mat-optgroup *ngIf="searchResults?.users?.length" label="Users">
                 <mat-option *ngFor="let item of searchResults!.users" [value]="item">
                   <mat-icon class="result-icon">{{ item.icon }}</mat-icon>
@@ -294,8 +307,16 @@ import { AdminKeyboardService } from '../shared/services/admin-keyboard.service'
                   </div>
                 </mat-option>
               </mat-optgroup>
-              <mat-option *ngIf="searchResults && searchResults.total === 0 && globalSearchTerm.length >= 2 && !searchLoading"
-                          disabled class="no-results-option">
+              <mat-option
+                *ngIf="
+                  searchResults &&
+                  searchResults.total === 0 &&
+                  globalSearchTerm.length >= 2 &&
+                  !searchLoading
+                "
+                disabled
+                class="no-results-option"
+              >
                 <mat-icon>search_off</mat-icon>
                 <span>No results for "{{ globalSearchTerm }}"</span>
               </mat-option>
@@ -352,6 +373,8 @@ export class AdminLayoutComponent implements OnInit, OnDestroy {
   private searchSubject$ = new Subject<string>();
   currentRoute = 'Dashboard';
   kpis$: Observable<DashboardKpiDto | null>;
+
+  @ViewChild('searchInput') searchInput?: ElementRef<HTMLInputElement>;
 
   // Global search
   isSearchExpanded = false;
@@ -414,6 +437,14 @@ export class AdminLayoutComponent implements OnInit, OnDestroy {
           this.searchLoading = false;
         },
       });
+
+    // Wire up "/" keyboard shortcut to focus the search bar
+    this.keyboardService.focusSearch$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(() => {
+        this.expandSearch();
+        setTimeout(() => this.searchInput?.nativeElement?.focus());
+      });
   }
 
   @HostListener('document:keydown', ['$event'])
@@ -427,7 +458,7 @@ export class AdminLayoutComponent implements OnInit, OnDestroy {
   }
 
   onSidenavClosed(): void {
-    this.sidenavMode$.pipe(takeUntil(this.destroy$)).subscribe((mode) => {
+    this.sidenavMode$.pipe(take(1)).subscribe((mode) => {
       if (mode === 'over') {
         this.sidenavOpened$.next(false);
       }
@@ -454,8 +485,8 @@ export class AdminLayoutComponent implements OnInit, OnDestroy {
     this.searchSubject$.next(this.globalSearchTerm);
   }
 
-  navigateToResult(event: any): void {
-    const item: SearchResultItem = event.option.value;
+  navigateToResult(event: { option: { value: SearchResultItem } }): void {
+    const item = event.option.value;
     if (item?.route) {
       this.router.navigate(item.route);
       this.collapseSearch();
@@ -486,7 +517,7 @@ export class AdminLayoutComponent implements OnInit, OnDestroy {
 
   private mapRouteLabel(url: string): string {
     const fragment = url.split('?')[0].split('/').filter(Boolean).pop();
-    const label = fragment ? fragment.replace('-', ' ') : 'Dashboard';
+    const label = fragment ? fragment.replace(/-/g, ' ') : 'Dashboard';
     return label.charAt(0).toUpperCase() + label.slice(1);
   }
 }

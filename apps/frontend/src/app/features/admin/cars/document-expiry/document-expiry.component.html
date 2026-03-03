@@ -8,7 +8,7 @@
 
   <!-- Summary Cards -->
   <div class="summary-cards">
-    <mat-card class="summary-card critical" (click)="onUrgencyChange('critical')">
+    <mat-card class="summary-card critical" (click)="onUrgencyChange('critical')" tabindex="0" role="button" (keydown.enter)="onUrgencyChange('critical')">
       <mat-card-content>
         <mat-icon>error</mat-icon>
         <div>
@@ -17,7 +17,7 @@
         </div>
       </mat-card-content>
     </mat-card>
-    <mat-card class="summary-card warning" (click)="onUrgencyChange('warning')">
+    <mat-card class="summary-card warning" (click)="onUrgencyChange('warning')" tabindex="0" role="button" (keydown.enter)="onUrgencyChange('warning')">
       <mat-card-content>
         <mat-icon>warning</mat-icon>
         <div>
@@ -26,7 +26,7 @@
         </div>
       </mat-card-content>
     </mat-card>
-    <mat-card class="summary-card ok" (click)="onUrgencyChange('ok')">
+    <mat-card class="summary-card ok" (click)="onUrgencyChange('ok')" tabindex="0" role="button" (keydown.enter)="onUrgencyChange('ok')">
       <mat-card-content>
         <mat-icon>check_circle</mat-icon>
         <div>
@@ -53,7 +53,10 @@
 
         <mat-form-field appearance="outline" class="filter-field">
           <mat-label>Document type</mat-label>
-          <mat-select [value]="documentTypeFilter()" (selectionChange)="onDocumentTypeChange($event.value)">
+          <mat-select
+            [value]="documentTypeFilter()"
+            (selectionChange)="onDocumentTypeChange($event.value)"
+          >
             <mat-option [value]="null">All types</mat-option>
             @for (type of documentTypes(); track type) {
               <mat-option [value]="type">{{ formatDocumentType(type) }}</mat-option>
@@ -144,8 +147,14 @@
             </ng-container>
 
             <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
-            <tr mat-row *matRowDef="let row; columns: displayedColumns"
-                (click)="viewCar(row.carId)" class="clickable-row"></tr>
+            <tr
+              mat-row
+              *matRowDef="let row; columns: displayedColumns"
+              (click)="viewCar(row.carId)"
+              (keydown.enter)="viewCar(row.carId)"
+              tabindex="0"
+              class="clickable-row"
+            ></tr>
           </table>
         </div>
       </mat-card-content>

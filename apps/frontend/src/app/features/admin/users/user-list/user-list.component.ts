@@ -1,4 +1,4 @@
-import { Component, OnInit, ViewChild, inject } from '@angular/core';
+import { Component, OnInit, ViewChild, inject, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatTableModule } from '@angular/material/table';
 import { MatPaginatorModule, MatPaginator, PageEvent } from '@angular/material/paginator';
@@ -17,7 +17,7 @@ import { MatCheckboxModule } from '@angular/material/checkbox';
 import { SelectionModel } from '@angular/cdk/collections';
 import { Router, RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
-import { debounceTime, distinctUntilChanged, Subject, take, forkJoin } from 'rxjs';
+import { debounceTime, distinctUntilChanged, Subject, take, forkJoin, of, catchError } from 'rxjs';
 import { AdminUserDto } from '../../../../core/services/admin-api.service';
 import { AdminNotificationService } from '../../../../core/services/admin-notification.service';
 import { ExportService } from '../../../../core/services/export.service';
@@ -25,6 +25,7 @@ import { BanUserDialogComponent } from '../../shared/dialogs/ban-user-dialog/ban
 import { UnbanUserDialogComponent } from '../../shared/dialogs/unban-user-dialog/unban-user-dialog.component';
 import { ConfirmDialogComponent } from '../../shared/dialogs/confirm-dialog/confirm-dialog.component';
 import { AdminStateService } from '../../../../core/services/admin-state.service';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 @Component({
   selector: 'app-user-list',
@@ -57,8 +58,9 @@ export class UserListComponent implements OnInit {
   private exportService = inject(ExportService);
   private dialog = inject(MatDialog);
   private adminState = inject(AdminStateService);
+  private destroyRef = inject(DestroyRef);
 
-  displayedColumns: string[] = [
+  readonly displayedColumns = [
     'select',
     'name',
     'email',
@@ -67,7 +69,7 @@ export class UserListComponent implements OnInit {
     'status',
     'riskScore',
     'actions',
-  ];
+  ] as const;
   users$ = this.adminState.users$;
   totalElements$ = this.adminState.totalUsers$;
   loading$ = this.adminState.loading$;
@@ -101,7 +103,11 @@ export class UserListComponent implements OnInit {
     this.loadUsers();
 
     // Debounce search input
-    this.searchSubject.pipe(debounceTime(400), distinctUntilChanged()).subscribe((term) => {
+    this.searchSubject.pipe(
+      debounceTime(400),
+      distinctUntilChanged(),
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe((term) => {
       this.pageIndex = 0; // Reset to first page on search
       this.loadUsers(term);
     });
@@ -109,7 +115,12 @@ export class UserListComponent implements OnInit {
 
   loadUsers(search?: string) {
     this.selection.clear();
-    this.adminState.loadUsers(this.pageIndex, this.pageSize, search, this.sortParam);
+    this.adminState.loadUsers(
+      this.pageIndex,
+      this.pageSize,
+      search,
+      this.sortParam,
+    );
   }
 
   onSearch(term: string) {
@@ -184,15 +195,20 @@ export class UserListComponent implements OnInit {
     dialogRef.afterClosed().subscribe((reason) => {
       if (reason) {
         this.bulkProcessing = true;
-        const actions = selected.map((u) => this.adminState.banUser(u.id, reason));
+        const actions = selected.map((u) =>
+          this.adminState.banUser(u.id, reason).pipe(
+            catchError(() => of('FAILED' as const)),
+          ),
+        );
         forkJoin(actions).subscribe({
-          next: () => {
-            this.notification.showSuccess(`${selected.length} user(s) banned`);
-            this.bulkProcessing = false;
-            this.loadUsers(this.searchTerm);
-          },
-          error: () => {
-            this.notification.showError('Some ban operations failed');
+          next: (results) => {
+            const failed = results.filter((r) => r === 'FAILED').length;
+            const succeeded = results.length - failed;
+            if (failed === 0) {
+              this.notification.showSuccess(`${succeeded} user(s) banned`);
+            } else {
+              this.notification.showWarning(`${succeeded} banned, ${failed} failed`);
+            }
             this.bulkProcessing = false;
             this.loadUsers(this.searchTerm);
           },
@@ -220,15 +236,20 @@ export class UserListComponent implements OnInit {
     dialogRef.afterClosed().subscribe((confirmed) => {
       if (confirmed) {
         this.bulkProcessing = true;
-        const actions = selected.map((u) => this.adminState.unbanUser(u.id));
+        const actions = selected.map((u) =>
+          this.adminState.unbanUser(u.id).pipe(
+            catchError(() => of('FAILED' as const)),
+          ),
+        );
         forkJoin(actions).subscribe({
-          next: () => {
-            this.notification.showSuccess(`${selected.length} user(s) unbanned`);
-            this.bulkProcessing = false;
-            this.loadUsers(this.searchTerm);
-          },
-          error: () => {
-            this.notification.showError('Some unban operations failed');
+          next: (results) => {
+            const failed = results.filter((r) => r === 'FAILED').length;
+            const succeeded = results.length - failed;
+            if (failed === 0) {
+              this.notification.showSuccess(`${succeeded} user(s) unbanned`);
+            } else {
+              this.notification.showWarning(`${succeeded} unbanned, ${failed} failed`);
+            }
             this.bulkProcessing = false;
             this.loadUsers(this.searchTerm);
           },

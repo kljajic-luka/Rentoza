@@ -842,7 +842,7 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
      * H-2 FIX: Aggregate sum of totalAmount by booking statuses.
      * Used for escrow balance and frozen funds calculations.
      */
-    @Query("SELECT COALESCE(SUM(b.totalAmount), 0) FROM Booking b " +
+    @Query("SELECT COALESCE(SUM(b.totalPrice), 0) FROM Booking b " +
            "WHERE b.status IN :statuses")
     java.math.BigDecimal sumTotalAmountByStatuses(@Param("statuses") java.util.Collection<BookingStatus> statuses);
 

@@ -1,5 +1,4 @@
 import { Component, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { MAT_DIALOG_DATA, MatDialogModule } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -8,22 +7,28 @@ import { ShortcutEntry } from '../../services/admin-keyboard.service';
 @Component({
   selector: 'app-shortcut-help-dialog',
   standalone: true,
-  imports: [CommonModule, MatDialogModule, MatButtonModule, MatIconModule],
+  imports: [MatDialogModule, MatButtonModule, MatIconModule],
   template: `
     <h2 mat-dialog-title>
       <mat-icon class="title-icon">keyboard</mat-icon>
       Keyboard Shortcuts
     </h2>
     <mat-dialog-content>
-      <div *ngFor="let category of categories" class="shortcut-category">
-        <div class="category-label">{{ category }}</div>
-        <div class="shortcut-row" *ngFor="let s of getByCategory(category)">
-          <span class="shortcut-keys">
-            <kbd *ngFor="let k of parseKeys(s.keys)">{{ k }}</kbd>
-          </span>
-          <span class="shortcut-desc">{{ s.description }}</span>
+      @for (category of categories; track category) {
+        <div class="shortcut-category">
+          <div class="category-label">{{ category }}</div>
+          @for (s of shortcutsByCategory[category]; track s.keys) {
+            <div class="shortcut-row">
+              <span class="shortcut-keys">
+                @for (k of parseKeys(s.keys); track k) {
+                  <kbd>{{ k }}</kbd>
+                }
+              </span>
+              <span class="shortcut-desc">{{ s.description }}</span>
+            </div>
+          }
         </div>
-      </div>
+      }
     </mat-dialog-content>
     <mat-dialog-actions align="end">
       <button mat-button mat-dialog-close>Close</button>
@@ -87,15 +92,18 @@ import { ShortcutEntry } from '../../services/admin-keyboard.service';
   ],
 })
 export class ShortcutHelpDialogComponent {
-  data = inject<{ shortcuts: ShortcutEntry[] }>(MAT_DIALOG_DATA);
+  private data = inject<{ shortcuts: ShortcutEntry[] }>(MAT_DIALOG_DATA);
 
-  get categories(): string[] {
+  readonly categories: string[];
+  readonly shortcutsByCategory: Record<string, ShortcutEntry[]>;
+
+  constructor() {
     const cats = new Set(this.data.shortcuts.map((s) => s.category));
-    return Array.from(cats);
-  }
-
-  getByCategory(category: string): ShortcutEntry[] {
-    return this.data.shortcuts.filter((s) => s.category === category);
+    this.categories = Array.from(cats);
+    this.shortcutsByCategory = {};
+    for (const cat of this.categories) {
+      this.shortcutsByCategory[cat] = this.data.shortcuts.filter((s) => s.category === cat);
+    }
   }
 
   parseKeys(keys: string): string[] {

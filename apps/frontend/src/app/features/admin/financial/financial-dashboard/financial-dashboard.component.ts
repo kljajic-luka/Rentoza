@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal, computed } from '@angular/core';
+import { Component, OnInit, inject, signal, computed, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 
@@ -26,10 +26,9 @@ import {
   BatchPayoutRequest,
 } from '../../../../core/services/admin-api.service';
 import { AdminNotificationService } from '../../../../core/services/admin-notification.service';
-import {
-  AdminChartsService,
-  PayoutHistoryData,
-} from '../../shared/services/admin-charts.service';
+import { AdminChartsService, PayoutHistoryData } from '../../shared/services/admin-charts.service';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { finalize } from 'rxjs';
 
 @Component({
   selector: 'app-financial-dashboard',
@@ -57,6 +56,7 @@ export class FinancialDashboardComponent implements OnInit {
   private adminApi = inject(AdminApiService);
   private notification = inject(AdminNotificationService);
   private chartsService = inject(AdminChartsService);
+  private destroyRef = inject(DestroyRef);
 
   // State
   escrowBalance = signal<EscrowBalanceDto | null>(null);
@@ -88,11 +88,11 @@ export class FinancialDashboardComponent implements OnInit {
       y: {
         beginAtZero: true,
         grid: { display: false },
-        ticks: { color: '#94a3b8' },
+        ticks: { color: 'var(--chart-axis-text, #94a3b8)' },
       },
       x: {
         grid: { display: false },
-        ticks: { color: '#94a3b8' },
+        ticks: { color: 'var(--chart-axis-text, #94a3b8)' },
       },
     },
   };
@@ -101,7 +101,7 @@ export class FinancialDashboardComponent implements OnInit {
   selection = new SelectionModel<PayoutQueueDto>(true, []);
 
   // Table
-  displayedColumns = [
+  readonly displayedColumns = [
     'select',
     'bookingId',
     'hostName',
@@ -109,7 +109,7 @@ export class FinancialDashboardComponent implements OnInit {
     'scheduledFor',
     'status',
     'actions',
-  ];
+  ] as const;
 
   // Computed
   hasSelection = computed(() => this.selection.selected.length > 0);
@@ -124,24 +124,27 @@ export class FinancialDashboardComponent implements OnInit {
   }
 
   loadEscrowBalance(): void {
-    this.adminApi.getEscrowBalance().subscribe({
+    this.adminApi.getEscrowBalance().pipe(
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe({
       next: (balance) => this.escrowBalance.set(balance),
-      error: (error) => console.error('Failed to load escrow balance:', error),
+      error: () => this.notification.showError('Failed to load escrow balance'),
     });
   }
 
   loadPayouts(): void {
     this.loading.set(true);
-    this.adminApi.getPayoutQueue(this.pageIndex(), this.pageSize()).subscribe({
+    this.adminApi.getPayoutQueue(this.pageIndex(), this.pageSize()).pipe(
+      takeUntilDestroyed(this.destroyRef),
+      finalize(() => this.loading.set(false)),
+    ).subscribe({
       next: (response) => {
         this.payouts.set(response.content);
         this.totalElements.set(response.totalElements);
-        this.loading.set(false);
         this.selection.clear();
       },
-      error: (error) => {
-        console.error('Failed to load payouts:', error);
-        this.loading.set(false);
+      error: () => {
+        this.notification.showError('Failed to load payouts');
       },
     });
   }
@@ -149,7 +152,10 @@ export class FinancialDashboardComponent implements OnInit {
   loadPayoutHistory(): void {
     this.payoutChartLoading.set(true);
     this.payoutChartError.set(null);
-    this.chartsService.getPayoutHistory(90).subscribe({
+    this.chartsService.getPayoutHistory(90).pipe(
+      takeUntilDestroyed(this.destroyRef),
+      finalize(() => this.payoutChartLoading.set(false)),
+    ).subscribe({
       next: (data: PayoutHistoryData) => {
         this.payoutChartData = {
           labels: data.labels,
@@ -157,24 +163,22 @@ export class FinancialDashboardComponent implements OnInit {
             {
               data: data.amounts,
               label: 'Payouts (RSD)',
-              borderColor: '#4caf50',
-              backgroundColor: 'rgba(76, 175, 80, 0.1)',
+              borderColor: 'var(--chart-payout-line, #4caf50)',
+              backgroundColor: 'var(--chart-payout-fill, rgba(76, 175, 80, 0.1))',
               fill: true,
               tension: 0.3,
               borderWidth: 2,
               pointRadius: 4,
               pointHoverRadius: 6,
-              pointBackgroundColor: '#4caf50',
-              pointBorderColor: '#fff',
+              pointBackgroundColor: 'var(--chart-payout-line, #4caf50)',
+              pointBorderColor: 'var(--chart-payout-point-border, #fff)',
               pointBorderWidth: 2,
             },
           ],
         };
-        this.payoutChartLoading.set(false);
       },
       error: () => {
         this.payoutChartError.set('Failed to load payout trend data.');
-        this.payoutChartLoading.set(false);
       },
     });
   }
@@ -210,14 +214,16 @@ export class FinancialDashboardComponent implements OnInit {
     };
 
     this.processing.set(true);
-    this.adminApi.processBatchPayouts(request).subscribe({
+    this.adminApi.processBatchPayouts(request).pipe(
+      takeUntilDestroyed(this.destroyRef),
+      finalize(() => this.processing.set(false)),
+    ).subscribe({
       next: (result) => {
         const message = dryRun
           ? `Validation complete: ${result.successCount} valid, ${result.failureCount} invalid`
           : `Processed: ${result.successCount} success, ${result.failureCount} failed`;
 
         this.notification.showSuccess(message);
-        this.processing.set(false);
 
         if (!dryRun) {
           this.loadPayouts();
@@ -226,13 +232,14 @@ export class FinancialDashboardComponent implements OnInit {
       },
       error: (error) => {
         this.notification.showError('Batch processing failed: ' + error.message);
-        this.processing.set(false);
       },
     });
   }
 
   retryPayout(payout: PayoutQueueDto): void {
-    this.adminApi.retryPayout(payout.bookingId).subscribe({
+    this.adminApi.retryPayout(payout.bookingId).pipe(
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe({
       next: () => {
         this.notification.showSuccess('Payout retry successful');
         this.loadPayouts();

@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal, computed } from '@angular/core';
+import { Component, OnInit, inject, signal, computed, DestroyRef } from '@angular/core';
 import { CommonModule, Location } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
@@ -24,6 +24,8 @@ import {
   getStatusIcon,
   getRiskLevelClass,
 } from '@core/models/renter-verification.model';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { finalize } from 'rxjs';
 
 /**
  * Admin Renter Verification Detail Component
@@ -61,6 +63,7 @@ export class RenterVerificationDetailComponent implements OnInit {
   private readonly dialog = inject(MatDialog);
   private readonly adminService = inject(AdminRenterVerificationService);
   private readonly notification = inject(AdminNotificationService);
+  private readonly destroyRef = inject(DestroyRef);
 
   // ============================================================================
   // STATE
@@ -145,15 +148,15 @@ export class RenterVerificationDetailComponent implements OnInit {
     this.loading.set(true);
     this.error.set(null);
 
-    this.adminService.getVerificationDetails(this.userId).subscribe({
+    this.adminService.getVerificationDetails(this.userId).pipe(
+      takeUntilDestroyed(this.destroyRef),
+      finalize(() => this.loading.set(false)),
+    ).subscribe({
       next: (data) => {
         this.details.set(data);
-        this.loading.set(false);
       },
-      error: (err) => {
-        this.error.set('Greška pri učitavanju detalja verifikacije');
-        this.loading.set(false);
-        console.error('Failed to load verification details:', err);
+      error: () => {
+        this.error.set('Failed to load verification details');
       },
     });
   }
@@ -169,17 +172,17 @@ export class RenterVerificationDetailComponent implements OnInit {
 
     this.loadingDocId.set(docId);
 
-    this.adminService.getDocumentSignedUrl(docId).subscribe({
+    this.adminService.getDocumentSignedUrl(docId).pipe(
+      takeUntilDestroyed(this.destroyRef),
+      finalize(() => this.loadingDocId.set(null)),
+    ).subscribe({
       next: (result) => {
         const urls = new Map(this.documentUrls());
         urls.set(docId, result.url);
         this.documentUrls.set(urls);
-        this.loadingDocId.set(null);
       },
-      error: (err) => {
-        this.notification.showError('Greška pri učitavanju dokumenta');
-        this.loadingDocId.set(null);
-        console.error('Failed to load document URL:', err);
+      error: () => {
+        this.notification.showError('Failed to load document');
       },
     });
   }
@@ -196,27 +199,29 @@ export class RenterVerificationDetailComponent implements OnInit {
 
     const dialogRef = this.dialog.open(ConfirmDialogComponent, {
       data: {
-        title: 'Odobri verifikaciju',
-        message: 'Da li ste sigurni da želite da odobrite ovu verifikaciju?',
-        confirmText: 'Odobri',
+        title: 'Approve Verification',
+        message: 'Are you sure you want to approve this verification?',
+        confirmText: 'Approve',
         confirmColor: 'primary',
       },
     });
-    dialogRef.afterClosed().subscribe((result) => {
+    dialogRef.afterClosed().pipe(
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe((result) => {
       if (!result) return;
 
       this.actionLoading.set(true);
 
-      this.adminService.approve(this.userId!, { notes: 'Approved via admin panel' }).subscribe({
+      this.adminService.approve(this.userId!, { notes: 'Approved via admin panel' }).pipe(
+        takeUntilDestroyed(this.destroyRef),
+        finalize(() => this.actionLoading.set(false)),
+      ).subscribe({
         next: () => {
-          this.notification.showSuccess('Verifikacija je odobrena');
+          this.notification.showSuccess('Verification approved');
           this.loadDetails();
-          this.actionLoading.set(false);
         },
-        error: (err) => {
-          this.notification.showError('Greška pri odobravanju verifikacije');
-          this.actionLoading.set(false);
-          console.error('Failed to approve:', err);
+        error: () => {
+          this.notification.showError('Failed to approve verification');
         },
       });
     });
@@ -232,16 +237,17 @@ export class RenterVerificationDetailComponent implements OnInit {
     const displayName = details?.fullName ?? 'ovog korisnika';
 
     // Dynamic import to avoid circular dependency
-    const { RejectRenterVerificationDialogComponent } = await import(
-      './reject-renter-verification-dialog.component'
-    );
+    const { RejectRenterVerificationDialogComponent } =
+      await import('./reject-renter-verification-dialog.component');
 
     const dialogRef = this.dialog.open(RejectRenterVerificationDialogComponent, {
       width: '520px',
       data: { displayName },
     });
 
-    dialogRef.afterClosed().subscribe((reason) => {
+    dialogRef.afterClosed().pipe(
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe((reason) => {
       if (reason && this.userId) {
         this.executeReject(reason);
       }
@@ -253,16 +259,16 @@ export class RenterVerificationDetailComponent implements OnInit {
 
     this.actionLoading.set(true);
 
-    this.adminService.reject(this.userId, { reason }).subscribe({
+    this.adminService.reject(this.userId, { reason }).pipe(
+      takeUntilDestroyed(this.destroyRef),
+      finalize(() => this.actionLoading.set(false)),
+    ).subscribe({
       next: () => {
-        this.notification.showSuccess('Verifikacija je odbijena');
+        this.notification.showSuccess('Verification rejected');
         this.loadDetails();
-        this.actionLoading.set(false);
       },
-      error: (err) => {
-        this.notification.showError('Greška pri odbijanju verifikacije');
-        this.actionLoading.set(false);
-        console.error('Failed to reject:', err);
+      error: () => {
+        this.notification.showError('Failed to reject verification');
       },
     });
   }
@@ -275,29 +281,31 @@ export class RenterVerificationDetailComponent implements OnInit {
 
     const dialogRef = this.dialog.open(ConfirmDialogComponent, {
       data: {
-        title: 'Suspenzija korisnika',
-        message: 'Unesite razlog suspenzije korisnika.',
-        confirmText: 'Suspenduj',
+        title: 'Suspend User',
+        message: 'Enter the reason for suspending this user.',
+        confirmText: 'Suspend',
         confirmColor: 'warn',
         requireReason: true,
-        reasonLabel: 'Razlog suspenzije',
+        reasonLabel: 'Suspension reason',
       },
     });
-    dialogRef.afterClosed().subscribe((reason) => {
+    dialogRef.afterClosed().pipe(
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe((reason) => {
       if (!reason) return;
 
       this.actionLoading.set(true);
 
-      this.adminService.suspend(this.userId!, { reason }).subscribe({
+      this.adminService.suspend(this.userId!, { reason }).pipe(
+        takeUntilDestroyed(this.destroyRef),
+        finalize(() => this.actionLoading.set(false)),
+      ).subscribe({
         next: () => {
-          this.notification.showSuccess('Korisnik je suspendovan');
+          this.notification.showSuccess('User suspended');
           this.loadDetails();
-          this.actionLoading.set(false);
         },
-        error: (err) => {
-          this.notification.showError('Greška pri suspenziji korisnika');
-          this.actionLoading.set(false);
-          console.error('Failed to suspend:', err);
+        error: () => {
+          this.notification.showError('Failed to suspend user');
         },
       });
     });
@@ -316,7 +324,7 @@ export class RenterVerificationDetailComponent implements OnInit {
   // ============================================================================
 
   onImageError(): void {
-    this.notification.showError('Greška pri učitavanju slike');
+    this.notification.showError('Failed to load image');
   }
 
   getRiskLabel(level: RiskLevel | null): string {

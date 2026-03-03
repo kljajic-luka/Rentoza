@@ -69,26 +69,13 @@
     <!-- Bulk Action Bar -->
     <div *ngIf="selection.hasValue()" class="bulk-action-bar">
       <span class="bulk-count">{{ selection.selected.length }} selected</span>
-      <button
-        mat-stroked-button
-        color="warn"
-        (click)="bulkBan()"
-        [disabled]="bulkProcessing"
-      >
+      <button mat-stroked-button color="warn" (click)="bulkBan()" [disabled]="bulkProcessing">
         <mat-icon>block</mat-icon> Ban Selected
       </button>
-      <button
-        mat-stroked-button
-        (click)="bulkUnban()"
-        [disabled]="bulkProcessing"
-      >
+      <button mat-stroked-button (click)="bulkUnban()" [disabled]="bulkProcessing">
         <mat-icon>check_circle</mat-icon> Unban Selected
       </button>
-      <button
-        mat-icon-button
-        (click)="selection.clear()"
-        matTooltip="Clear selection"
-      >
+      <button mat-icon-button (click)="selection.clear()" matTooltip="Clear selection">
         <mat-icon>close</mat-icon>
       </button>
     </div>
@@ -244,6 +231,9 @@
             mat-row
             *matRowDef="let row; columns: displayedColumns"
             (click)="viewUser(row.id)"
+            (keydown.enter)="viewUser(row.id)"
+            tabindex="0"
+            class="clickable-row"
           ></tr>
 
           <tr class="mat-row" *matNoDataRow>

@@ -97,10 +97,17 @@
                   <div class="photo-group">
                     <h4>Check-in Photos</h4>
                     <div class="evidence-thumbs">
-                      @for (id of parsePhotoIds(dispute()!.checkinPhotoIds); track id) {
-                        <img [src]="getPhotoUrl(dispute()!.bookingId, 'checkin', id)"
-                             class="evidence-thumb" alt="Check-in photo"
-                             (click)="openEvidenceGallery()" loading="lazy" />
+                      @for (id of parsePhotoIds(dispute()!.checkinPhotoIds); track id; let i = $index) {
+                        <img
+                          [src]="getPhotoUrl(dispute()!.bookingId, 'checkin', id)"
+                          class="evidence-thumb"
+                          [alt]="'Check-in photo ' + (i + 1)"
+                          (click)="openEvidenceGallery()"
+                          (keydown.enter)="openEvidenceGallery()"
+                          tabindex="0"
+                          role="button"
+                          loading="lazy"
+                        />
                       }
                     </div>
                   </div>
@@ -109,10 +116,17 @@
                   <div class="photo-group">
                     <h4>Check-out Photos (Damage)</h4>
                     <div class="evidence-thumbs">
-                      @for (id of parsePhotoIds(dispute()!.checkoutPhotoIds); track id) {
-                        <img [src]="getPhotoUrl(dispute()!.bookingId, 'checkout', id)"
-                             class="evidence-thumb" alt="Check-out photo"
-                             (click)="openEvidenceGallery()" loading="lazy" />
+                      @for (id of parsePhotoIds(dispute()!.checkoutPhotoIds); track id; let i = $index) {
+                        <img
+                          [src]="getPhotoUrl(dispute()!.bookingId, 'checkout', id)"
+                          class="evidence-thumb"
+                          [alt]="'Check-out photo ' + (i + 1)"
+                          (click)="openEvidenceGallery()"
+                          (keydown.enter)="openEvidenceGallery()"
+                          tabindex="0"
+                          role="button"
+                          loading="lazy"
+                        />
                       }
                     </div>
                   </div>
@@ -121,10 +135,17 @@
                   <div class="photo-group">
                     <h4>Additional Evidence</h4>
                     <div class="evidence-thumbs">
-                      @for (id of parsePhotoIds(dispute()!.evidencePhotoIds); track id) {
-                        <img [src]="getPhotoUrl(dispute()!.bookingId, 'evidence', id)"
-                             class="evidence-thumb" alt="Evidence photo"
-                             (click)="openEvidenceGallery()" loading="lazy" />
+                      @for (id of parsePhotoIds(dispute()!.evidencePhotoIds); track id; let i = $index) {
+                        <img
+                          [src]="getPhotoUrl(dispute()!.bookingId, 'evidence', id)"
+                          class="evidence-thumb"
+                          [alt]="'Evidence photo ' + (i + 1)"
+                          (click)="openEvidenceGallery()"
+                          (keydown.enter)="openEvidenceGallery()"
+                          tabindex="0"
+                          role="button"
+                          loading="lazy"
+                        />
                       }
                     </div>
                   </div>

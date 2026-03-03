@@ -14,7 +14,7 @@
   gap: 16px;
 
   p {
-    color: #666;
+    color: var(--color-text-muted, #666);
     margin: 0;
   }
 }
@@ -37,7 +37,7 @@
     margin: 0;
     font-size: 28px;
     font-weight: 500;
-    color: #1a237e;
+    color: var(--color-heading, #1a237e);
   }
 
   mat-chip {
@@ -77,7 +77,7 @@ mat-card {
     mat-card-title {
       font-size: var(--font-size-lg);
       font-weight: 600;
-      color: #1a237e;
+      color: var(--color-heading, #1a237e);
     }
   }
 
@@ -91,7 +91,7 @@ mat-card {
   display: flex;
   justify-content: space-between;
   padding: 8px 0;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--color-border-subtle, #f0f0f0);
 
   &:last-child {
     border-bottom: none;
@@ -99,15 +99,15 @@ mat-card {
 
   .label {
     font-weight: 600;
-    color: #666;
+    color: var(--color-text-muted, #666);
   }
 
   .value {
-    color: #333;
+    color: var(--color-text-primary, #333);
 
     &.amount {
       font-weight: 600;
-      color: #1a237e;
+      color: var(--color-heading, #1a237e);
       font-size: var(--font-size-base);
     }
   }
@@ -120,20 +120,20 @@ mat-card {
   p {
     margin: 0;
     line-height: 1.6;
-    color: #555;
+    color: var(--color-text-secondary, #555);
   }
 
   .timestamp {
     display: block;
     margin-top: 12px;
-    color: #999;
+    color: var(--color-text-disabled, #999);
     font-style: italic;
   }
 
   .admin-notes {
     margin-top: 12px;
     padding: 12px;
-    background: #f5f5f5;
+    background: var(--color-surface-muted, #f5f5f5);
     border-radius: 4px;
   }
 }
@@ -151,7 +151,7 @@ mat-card {
       margin: 0 0 8px;
       font-size: var(--font-size-base);
       font-weight: 600;
-      color: #1a237e;
+      color: var(--color-heading, #1a237e);
     }
   }
 
@@ -168,7 +168,7 @@ mat-card {
     border-radius: 8px;
     cursor: pointer;
     transition: transform 0.15s ease, box-shadow 0.15s ease;
-    background: #f5f5f5;
+    background: var(--color-surface-muted, #f5f5f5);
 
     &:hover {
       transform: scale(1.04);
@@ -227,7 +227,7 @@ mat-card {
 
 // Resolution summary card
 .resolution-summary-card {
-  border-left: 4px solid #1a237e;
+  border-left: 4px solid var(--color-heading, #1a237e);
 }
 
 .section-divider { margin: var(--space-3) 0; }

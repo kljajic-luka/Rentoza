@@ -9,9 +9,11 @@ import { MatIconModule } from '@angular/material/icon';
   standalone: true,
   imports: [CommonModule, RouterModule, MatCardModule, MatIconModule],
   template: `
-    <mat-card class="surface-card surface-roomy kpi-card"
-              [class.clickable]="routerLink"
-              [routerLink]="routerLink">
+    <mat-card
+      class="surface-card surface-roomy kpi-card"
+      [class.clickable]="routerLink"
+      [routerLink]="routerLink"
+    >
       <mat-card-content class="metric-card">
         <div class="metric-icon" [ngClass]="iconTintClass">
           <mat-icon>{{ icon }}</mat-icon>
@@ -42,16 +44,16 @@ export class KpiCardComponent {
     return this.trendDirection === 'up'
       ? 'trend-up'
       : this.trendDirection === 'down'
-      ? 'trend-down'
-      : 'trend-neutral';
+        ? 'trend-down'
+        : 'trend-neutral';
   }
 
   get trendIcon(): string {
     return this.trendDirection === 'up'
       ? 'arrow_upward'
       : this.trendDirection === 'down'
-      ? 'arrow_downward'
-      : 'remove';
+        ? 'arrow_downward'
+        : 'remove';
   }
 
   get iconTintClass(): string {

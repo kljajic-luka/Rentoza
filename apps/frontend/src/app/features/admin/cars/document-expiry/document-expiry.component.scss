@@ -14,7 +14,7 @@
     margin: 0;
     font-size: 28px;
     font-weight: 500;
-    color: #1a237e;
+    color: var(--color-heading, #1a237e);
   }
 }
 
@@ -58,26 +58,26 @@
   .label {
     display: block;
     font-size: var(--font-size-sm);
-    color: #666;
+    color: var(--color-text-muted, #666);
     margin-top: 4px;
   }
 
   &.critical {
-    border-left: 4px solid #ef4444;
-    mat-icon { color: #ef4444; }
-    .count { color: #ef4444; }
+    border-left: 4px solid var(--color-error, #ef4444);
+    mat-icon { color: var(--color-error, #ef4444); }
+    .count { color: var(--color-error, #ef4444); }
   }
 
   &.warning {
-    border-left: 4px solid #f59e0b;
-    mat-icon { color: #f59e0b; }
-    .count { color: #f59e0b; }
+    border-left: 4px solid var(--color-warning, #f59e0b);
+    mat-icon { color: var(--color-warning, #f59e0b); }
+    .count { color: var(--color-warning, #f59e0b); }
   }
 
   &.ok {
-    border-left: 4px solid #10b981;
-    mat-icon { color: #10b981; }
-    .count { color: #10b981; }
+    border-left: 4px solid var(--color-success, #10b981);
+    mat-icon { color: var(--color-success, #10b981); }
+    .count { color: var(--color-success, #10b981); }
   }
 }
 
@@ -126,20 +126,20 @@ table {
 td {
   strong {
     display: block;
-    color: #333;
+    color: var(--color-text-primary, #333);
   }
 
   .sub-text {
     display: block;
     font-size: var(--font-size-xs);
-    color: #999;
+    color: var(--color-text-disabled, #999);
     margin-top: 2px;
   }
 
   .days-text {
     display: block;
     font-size: var(--font-size-xs);
-    color: #666;
+    color: var(--color-text-muted, #666);
     margin-top: 4px;
   }
 }
@@ -153,7 +153,7 @@ td {
   gap: 16px;
 
   p {
-    color: #666;
+    color: var(--color-text-muted, #666);
     margin: 0;
   }
 }
@@ -166,18 +166,18 @@ td {
     font-size: 64px;
     width: 64px;
     height: 64px;
-    color: #10b981;
+    color: var(--color-success, #10b981);
     margin-bottom: 16px;
   }
 
   h3 {
     margin: 0 0 8px;
-    color: #333;
+    color: var(--color-text-primary, #333);
   }
 
   p {
     margin: 0;
-    color: #666;
+    color: var(--color-text-muted, #666);
   }
 }
 

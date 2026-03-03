@@ -82,7 +82,7 @@ import { ConfirmDialogComponent } from '../../shared/dialogs/confirm-dialog/conf
               >
                 <!-- Car column -->
                 <ng-container matColumnDef="car">
-                  <th mat-header-cell *matHeaderCellDef>Vozilo</th>
+                  <th mat-header-cell *matHeaderCellDef>Car</th>
                   <td mat-cell *matCellDef="let car">
                     <div class="row">
                       <div
@@ -99,7 +99,7 @@ import { ConfirmDialogComponent } from '../../shared/dialogs/confirm-dialog/conf
 
                 <!-- Owner column -->
                 <ng-container matColumnDef="owner">
-                  <th mat-header-cell *matHeaderCellDef>Vlasnik</th>
+                  <th mat-header-cell *matHeaderCellDef>Owner</th>
                   <td mat-cell *matCellDef="let car">{{ car.ownerEmail }}</td>
                 </ng-container>
 
@@ -126,9 +126,9 @@ import { ConfirmDialogComponent } from '../../shared/dialogs/confirm-dialog/conf
                         mat-stroked-button
                         color="primary"
                         (click)="openApprovalDialog(car)"
-                        matTooltip="Pregledaj i odobri/odbij"
+                        matTooltip="Review and approve/reject"
                       >
-                        <mat-icon>assessment</mat-icon> Pregledaj
+                        <mat-icon>assessment</mat-icon> Review
                       </button>
 
                       <!-- Quick Approve Action -->
@@ -137,7 +137,7 @@ import { ConfirmDialogComponent } from '../../shared/dialogs/confirm-dialog/conf
                         color="accent"
                         *ngIf="car.approvalStatus === ApprovalStatus.PENDING"
                         (click)="approveCar(car, $event)"
-                        matTooltip="Brzo odobrenje"
+                        matTooltip="Quick approve"
                       >
                         <mat-icon>check_circle</mat-icon>
                       </button>
@@ -180,8 +180,16 @@ import { ConfirmDialogComponent } from '../../shared/dialogs/confirm-dialog/conf
 
                 <mat-form-field appearance="outline" class="filter-field filter-field--narrow">
                   <mat-label>Listed after</mat-label>
-                  <input matInput [matDatepicker]="listedAfterPicker" [(ngModel)]="dateFilter" (dateChange)="applyFilters()" />
-                  <mat-datepicker-toggle matSuffix [for]="listedAfterPicker"></mat-datepicker-toggle>
+                  <input
+                    matInput
+                    [matDatepicker]="listedAfterPicker"
+                    [(ngModel)]="dateFilter"
+                    (dateChange)="applyFilters()"
+                  />
+                  <mat-datepicker-toggle
+                    matSuffix
+                    [for]="listedAfterPicker"
+                  ></mat-datepicker-toggle>
                   <mat-datepicker #listedAfterPicker></mat-datepicker>
                 </mat-form-field>
 
@@ -234,11 +242,11 @@ import { ConfirmDialogComponent } from '../../shared/dialogs/confirm-dialog/conf
                     <mat-menu #menu="matMenu">
                       <button mat-menu-item (click)="openApprovalDialog(car)">
                         <mat-icon>gavel</mat-icon>
-                        <span>Upravljaj statusom</span>
+                        <span>Manage Status</span>
                       </button>
                       <button mat-menu-item (click)="viewCar(car.id)">
                         <mat-icon>visibility</mat-icon>
-                        <span>Pregledaj detalje</span>
+                        <span>View Details</span>
                       </button>
                     </mat-menu>
                   </td>
@@ -317,7 +325,7 @@ export class CarListComponent implements OnInit, OnDestroy {
     this.router.events
       .pipe(
         filter((event) => event instanceof NavigationEnd),
-        takeUntil(this.destroy$)
+        takeUntil(this.destroy$),
       )
       .subscribe(() => {
         this.refreshView();
@@ -336,7 +344,7 @@ export class CarListComponent implements OnInit, OnDestroy {
     this.destroy$.complete();
   }
 
-  onTabChange(event: any) {
+  onTabChange(event: { index: number }) {
     this.selectedTabIndex = event.index;
     if (this.selectedTabIndex === 0) {
       this.loadPendingCars();
@@ -364,11 +372,16 @@ export class CarListComponent implements OnInit, OnDestroy {
 
   loadAllCars(search?: string) {
     this.loadingAll = true;
-    const listedAfter = this.dateFilter
-      ? this.dateFilter.toISOString().split('T')[0]
-      : undefined;
+    const listedAfter = this.dateFilter ? this.dateFilter.toISOString().split('T')[0] : undefined;
     this.adminApi
-      .getCars(this.pageIndex, this.pageSize, search, undefined, this.statusFilter ?? undefined, listedAfter)
+      .getCars(
+        this.pageIndex,
+        this.pageSize,
+        search,
+        undefined,
+        this.statusFilter ?? undefined,
+        listedAfter,
+      )
       .subscribe({
         next: (response) => {
           this.allCars = response.content;
@@ -435,15 +448,15 @@ export class CarListComponent implements OnInit, OnDestroy {
   getStatusLabel(status?: string): string {
     switch (status) {
       case ApprovalStatus.PENDING:
-        return 'Na čekanju';
+        return 'Pending';
       case ApprovalStatus.APPROVED:
-        return 'Odobreno';
+        return 'Approved';
       case ApprovalStatus.REJECTED:
-        return 'Odbijeno';
+        return 'Rejected';
       case ApprovalStatus.SUSPENDED:
-        return 'Suspendirano';
+        return 'Suspended';
       default:
-        return 'Nepoznato';
+        return 'Unknown';
     }
   }
 
@@ -485,9 +498,9 @@ export class CarListComponent implements OnInit, OnDestroy {
     event.stopPropagation();
     const dialogRef = this.dialog.open(ConfirmDialogComponent, {
       data: {
-        title: 'Odobrenje vozila',
-        message: `Odobrite vozilo ${car.brand} ${car.model}?`,
-        confirmText: 'Odobri',
+        title: 'Approve Car',
+        message: `Approve ${car.brand} ${car.model}?`,
+        confirmText: 'Approve',
         confirmColor: 'primary',
       },
     });
@@ -495,11 +508,11 @@ export class CarListComponent implements OnInit, OnDestroy {
       if (result) {
         this.adminApi.approveCar(car.id).subscribe({
           next: () => {
-            this.notification.showSuccess('Vozilo odobreno');
+            this.notification.showSuccess('Car approved');
             this.refreshView();
           },
           error: () => {
-            this.notification.showError('Greška pri odobravanju');
+            this.notification.showError('Failed to approve car');
           },
         });
       }

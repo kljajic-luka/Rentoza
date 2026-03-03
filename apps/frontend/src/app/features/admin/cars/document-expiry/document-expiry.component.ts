@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal, computed } from '@angular/core';
+import { Component, OnInit, inject, signal, computed, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 
@@ -12,11 +12,10 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
-import {
-  AdminApiService,
-  ExpiringDocumentDto,
-} from '../../../../core/services/admin-api.service';
+import { AdminApiService, ExpiringDocumentDto } from '../../../../core/services/admin-api.service';
 import { AdminNotificationService } from '../../../../core/services/admin-notification.service';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { finalize } from 'rxjs';
 
 type UrgencyLevel = 'critical' | 'warning' | 'ok';
 
@@ -42,6 +41,7 @@ export class DocumentExpiryComponent implements OnInit {
   private adminApi = inject(AdminApiService);
   private notification = inject(AdminNotificationService);
   private router = inject(Router);
+  private destroyRef = inject(DestroyRef);
 
   // State
   documents = signal<ExpiringDocumentDto[]>([]);
@@ -51,7 +51,7 @@ export class DocumentExpiryComponent implements OnInit {
   urgencyFilter = signal<UrgencyLevel | null>(null);
 
   // Table columns
-  displayedColumns = ['car', 'owner', 'documentType', 'expiryDate', 'daysRemaining', 'actions'];
+  readonly displayedColumns = ['car', 'owner', 'documentType', 'expiryDate', 'daysRemaining', 'actions'] as const;
 
   // Computed
   filteredDocuments = computed(() => {
@@ -90,14 +90,15 @@ export class DocumentExpiryComponent implements OnInit {
 
   loadDocuments(): void {
     this.loading.set(true);
-    this.adminApi.getExpiringDocuments(this.daysFilter()).subscribe({
+    this.adminApi.getExpiringDocuments(this.daysFilter()).pipe(
+      takeUntilDestroyed(this.destroyRef),
+      finalize(() => this.loading.set(false)),
+    ).subscribe({
       next: (docs) => {
         this.documents.set(docs);
-        this.loading.set(false);
       },
       error: () => {
         this.notification.showError('Failed to load expiring documents');
-        this.loading.set(false);
       },
     });
   }
@@ -112,7 +113,7 @@ export class DocumentExpiryComponent implements OnInit {
   }
 
   onUrgencyChange(urgency: UrgencyLevel | null): void {
-    this.urgencyFilter.set(urgency);
+    this.urgencyFilter.set(this.urgencyFilter() === urgency ? null : urgency);
   }
 
   getUrgency(daysRemaining: number): UrgencyLevel {
@@ -136,7 +137,7 @@ export class DocumentExpiryComponent implements OnInit {
   }
 
   formatDate(dateString: string): string {
-    return new Date(dateString).toLocaleDateString('sr-RS', {
+    return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',

@@ -15,14 +15,30 @@ import { ConfirmDialogComponent } from '../../shared/dialogs/confirm-dialog/conf
 import { AdminStateService } from '../../../../core/services/admin-state.service';
 import { AdminApiService, AdminUserDetailDto } from '../../../../core/services/admin-api.service';
 import { Observable, take } from 'rxjs';
-import { RiskScoreCardComponent, RiskFactor } from '../../shared/components/risk-score-card/risk-score-card.component';
+import {
+  RiskScoreCardComponent,
+  RiskFactor,
+} from '../../shared/components/risk-score-card/risk-score-card.component';
 
 // Renter Verification Components
 import { RenterVerificationCardComponent } from '../../shared/components/renter-verification-card/renter-verification-card.component';
-import { DocumentPreviewDialogComponent, DocumentPreviewDialogData } from '../../shared/dialogs/document-preview-dialog/document-preview-dialog.component';
-import { ApproveRenterVerificationDialogComponent, ApproveRenterVerificationDialogData } from '../../shared/dialogs/approve-renter-verification-dialog/approve-renter-verification-dialog.component';
-import { RejectRenterVerificationDialogComponent, RejectRenterVerificationDialogData, RejectRenterVerificationDialogResult } from '../../shared/dialogs/reject-renter-verification-dialog/reject-renter-verification-dialog.component';
-import { RenterDocumentDto, RenterVerificationProfileDto } from '../../../../core/models/admin-renter-verification.model';
+import {
+  DocumentPreviewDialogComponent,
+  DocumentPreviewDialogData,
+} from '../../shared/dialogs/document-preview-dialog/document-preview-dialog.component';
+import {
+  ApproveRenterVerificationDialogComponent,
+  ApproveRenterVerificationDialogData,
+} from '../../shared/dialogs/approve-renter-verification-dialog/approve-renter-verification-dialog.component';
+import {
+  RejectRenterVerificationDialogComponent,
+  RejectRenterVerificationDialogData,
+  RejectRenterVerificationDialogResult,
+} from '../../shared/dialogs/reject-renter-verification-dialog/reject-renter-verification-dialog.component';
+import {
+  RenterDocumentDto,
+  RenterVerificationProfileDto,
+} from '../../../../core/models/admin-renter-verification.model';
 
 @Component({
   selector: 'app-user-detail',
@@ -212,27 +228,30 @@ export class UserDetailComponent implements OnInit {
     if (!this.userId) return;
 
     // First fetch the verification profile for the dialog
-    this.adminApi.getRenterVerificationDetails(this.userId).pipe(take(1)).subscribe({
-      next: (profile) => {
-        const dialogRef = this.dialog.open(ApproveRenterVerificationDialogComponent, {
-          width: '520px',
-          data: { profile } as ApproveRenterVerificationDialogData,
-        });
+    this.adminApi
+      .getRenterVerificationDetails(this.userId)
+      .pipe(take(1))
+      .subscribe({
+        next: (profile) => {
+          const dialogRef = this.dialog.open(ApproveRenterVerificationDialogComponent, {
+            width: '520px',
+            data: { profile } as ApproveRenterVerificationDialogData,
+          });
 
-        dialogRef.afterClosed().subscribe((result) => {
-          if (result && this.userId) {
-            this.adminState.approveRenterVerification(this.userId, result.notes).subscribe({
-              next: () => {
-                this.notification.showSuccess('Verifikacija vozačke dozvole je odobrena');
-                this.loadUserDetail();
-              },
-              error: () => this.notification.showError('Greška pri odobravanju verifikacije'),
-            });
-          }
-        });
-      },
-      error: () => this.notification.showError('Greška pri učitavanju podataka verifikacije'),
-    });
+          dialogRef.afterClosed().subscribe((result) => {
+            if (result && this.userId) {
+              this.adminState.approveRenterVerification(this.userId, result.notes).subscribe({
+                next: () => {
+                  this.notification.showSuccess('Verifikacija vozačke dozvole je odobrena');
+                  this.loadUserDetail();
+                },
+                error: () => this.notification.showError('Greška pri odobravanju verifikacije'),
+              });
+            }
+          });
+        },
+        error: () => this.notification.showError('Greška pri učitavanju podataka verifikacije'),
+      });
   }
 
   /**
@@ -248,17 +267,19 @@ export class UserDetailComponent implements OnInit {
         data: { displayName } as RejectRenterVerificationDialogData,
       });
 
-      dialogRef.afterClosed().subscribe((result: RejectRenterVerificationDialogResult | undefined) => {
-        if (result && this.userId) {
-          this.adminState.rejectRenterVerification(this.userId, result.reason).subscribe({
-            next: () => {
-              this.notification.showSuccess('Verifikacija vozačke dozvole je odbijena');
-              this.loadUserDetail();
-            },
-            error: () => this.notification.showError('Greška pri odbijanju verifikacije'),
-          });
-        }
-      });
+      dialogRef
+        .afterClosed()
+        .subscribe((result: RejectRenterVerificationDialogResult | undefined) => {
+          if (result && this.userId) {
+            this.adminState.rejectRenterVerification(this.userId, result.reason).subscribe({
+              next: () => {
+                this.notification.showSuccess('Verifikacija vozačke dozvole je odbijena');
+                this.loadUserDetail();
+              },
+              error: () => this.notification.showError('Greška pri odbijanju verifikacije'),
+            });
+          }
+        });
     });
   }
 
@@ -284,7 +305,7 @@ export class UserDetailComponent implements OnInit {
         name: 'Account Banned',
         points: 40,
         category: 'Compliance',
-        isNegative: false
+        isNegative: false,
       });
     }
 
@@ -296,14 +317,14 @@ export class UserDetailComponent implements OnInit {
         name: 'Brand new account (< 7 days)',
         points: 20,
         category: 'Account',
-        isNegative: false
+        isNegative: false,
       });
     } else if (accountAgeDays < 30) {
       factors.push({
         name: 'New account (7-30 days)',
         points: 10,
         category: 'Account',
-        isNegative: false
+        isNegative: false,
       });
     }
 
@@ -313,34 +334,34 @@ export class UserDetailComponent implements OnInit {
         name: 'Phone not verified',
         points: 10,
         category: 'Identity',
-        isNegative: false
+        isNegative: false,
       });
     }
 
     // Behavioral factors
-    const totalBookings = (user.totalBookings || 0);
-    const cancelledBookings = (user.cancelledBookings || 0);
-    
+    const totalBookings = user.totalBookings || 0;
+    const cancelledBookings = user.cancelledBookings || 0;
+
     if (totalBookings > 0) {
       const cancellationRate = cancelledBookings / totalBookings;
-      if (cancellationRate > 0.30) {
+      if (cancellationRate > 0.3) {
         factors.push({
           name: `High cancellation rate (${Math.round(cancellationRate * 100)}%)`,
           points: 15,
           category: 'Behavioral',
-          isNegative: false
+          isNegative: false,
         });
       }
     }
 
     // Positive factors
-    const completedBookings = (user.completedBookings || 0);
+    const completedBookings = user.completedBookings || 0;
     if (completedBookings > 10) {
       factors.push({
         name: `Good booking history (${completedBookings} trips)`,
         points: Math.min(10, Math.floor(completedBookings / 2)),
         category: 'Behavioral',
-        isNegative: true // Negative = good (reduces risk)
+        isNegative: true, // Negative = good (reduces risk)
       });
     }
 

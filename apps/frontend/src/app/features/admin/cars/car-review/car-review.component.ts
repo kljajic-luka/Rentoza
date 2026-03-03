@@ -145,8 +145,13 @@ import {
               <div class="comparison-grid">
                 <div class="comparison-slot">
                   <p class="comparison-label">Left Photo</p>
-                  <img *ngIf="leftPhoto" [src]="leftPhoto" class="comparison-photo"
-                       alt="Left comparison" (click)="openInGallery(leftPhoto)" />
+                  <img
+                    *ngIf="leftPhoto"
+                    [src]="leftPhoto"
+                    class="comparison-photo"
+                    alt="Left comparison"
+                    (click)="openInGallery(leftPhoto)"
+                  />
                   <div *ngIf="!leftPhoto" class="comparison-placeholder">
                     <mat-icon>image</mat-icon>
                     <span>Select a photo below</span>
@@ -154,8 +159,13 @@ import {
                 </div>
                 <div class="comparison-slot">
                   <p class="comparison-label">Right Photo</p>
-                  <img *ngIf="rightPhoto" [src]="rightPhoto" class="comparison-photo"
-                       alt="Right comparison" (click)="openInGallery(rightPhoto)" />
+                  <img
+                    *ngIf="rightPhoto"
+                    [src]="rightPhoto"
+                    class="comparison-photo"
+                    alt="Right comparison"
+                    (click)="openInGallery(rightPhoto)"
+                  />
                   <div *ngIf="!rightPhoto" class="comparison-placeholder">
                     <mat-icon>image</mat-icon>
                     <span>Select a photo below</span>
@@ -163,15 +173,32 @@ import {
                 </div>
               </div>
               <div class="comparison-picker">
-                <div *ngFor="let photo of getComparisonPhotos(); let i = index" class="picker-thumb-wrap">
-                  <img [src]="photo" class="picker-thumb" alt="Photo {{ i + 1 }}"
-                       [class.selected-left]="photo === leftPhoto"
-                       [class.selected-right]="photo === rightPhoto" />
+                <div
+                  *ngFor="let photo of getComparisonPhotos(); let i = index"
+                  class="picker-thumb-wrap"
+                >
+                  <img
+                    [src]="photo"
+                    class="picker-thumb"
+                    alt="Photo {{ i + 1 }}"
+                    [class.selected-left]="photo === leftPhoto"
+                    [class.selected-right]="photo === rightPhoto"
+                  />
                   <div class="picker-actions">
-                    <button mat-icon-button matTooltip="Set as left" (click)="setLeftPhoto(photo)" class="picker-btn">
+                    <button
+                      mat-icon-button
+                      matTooltip="Set as left"
+                      (click)="setLeftPhoto(photo)"
+                      class="picker-btn"
+                    >
                       <mat-icon>arrow_back</mat-icon>
                     </button>
-                    <button mat-icon-button matTooltip="Set as right" (click)="setRightPhoto(photo)" class="picker-btn">
+                    <button
+                      mat-icon-button
+                      matTooltip="Set as right"
+                      (click)="setRightPhoto(photo)"
+                      class="picker-btn"
+                    >
                       <mat-icon>arrow_forward</mat-icon>
                     </button>
                   </div>
@@ -388,7 +415,7 @@ import {
                   <div class="document-details">
                     <div class="detail-row">
                       <span class="label">Uploaded:</span>
-                      <span>{{ doc.uploadDate | date : 'short' }}</span>
+                      <span>{{ doc.uploadDate | date: 'short' }}</span>
                     </div>
                     <div class="detail-row" *ngIf="doc.expiryDate">
                       <span class="label">Expires:</span>
@@ -396,7 +423,7 @@ import {
                     </div>
                     <div class="detail-row" *ngIf="doc.verifiedByName">
                       <span class="label">Verified by:</span>
-                      <span>{{ doc.verifiedByName }} on {{ doc.verifiedAt | date : 'short' }}</span>
+                      <span>{{ doc.verifiedByName }} on {{ doc.verifiedAt | date: 'short' }}</span>
                     </div>
                     <div class="detail-row" *ngIf="doc.rejectionReason">
                       <span class="label">Rejection Reason:</span>
@@ -649,7 +676,7 @@ export class CarReviewComponent implements OnInit, OnDestroy {
       }),
       distinctUntilChanged(),
       shareReplay({ bufferSize: 1, refCount: true }),
-      takeUntil(this.destroy$)
+      takeUntil(this.destroy$),
     );
 
     // Keep component state in sync with the URL (including the error case).
@@ -666,7 +693,7 @@ export class CarReviewComponent implements OnInit, OnDestroy {
       }),
       filter((carId): carId is number => carId !== null && Number.isFinite(carId) && carId > 0),
       shareReplay({ bufferSize: 1, refCount: true }),
-      takeUntil(this.destroy$)
+      takeUntil(this.destroy$),
     );
 
     // Centralized loader: triggers on route-id changes and on manual refresh(),
@@ -675,8 +702,8 @@ export class CarReviewComponent implements OnInit, OnDestroy {
       validCarId$,
       this.refresh$.pipe(
         withLatestFrom(validCarId$),
-        map(([, carId]) => carId)
-      )
+        map(([, carId]) => carId),
+      ),
     );
 
     loadTriggerCarId$
@@ -697,10 +724,10 @@ export class CarReviewComponent implements OnInit, OnDestroy {
             finalize(() => {
               this.loading = false;
               this.cdr.markForCheck();
-            })
-          )
+            }),
+          ),
         ),
-        takeUntil(this.destroy$)
+        takeUntil(this.destroy$),
       )
       .subscribe((data) => {
         this.carData = {
@@ -778,10 +805,10 @@ export class CarReviewComponent implements OnInit, OnDestroy {
 
   getDocumentName(type: string): string {
     const names: { [key: string]: string } = {
-      REGISTRATION: 'Vehicle Registration (Saobraćajna dozvola)',
-      TECHNICAL_INSPECTION: 'Technical Inspection (Tehnički pregled)',
-      LIABILITY_INSURANCE: 'Liability Insurance (Polisa Autoodgovornosti)',
-      AUTHORIZATION: 'Authorization (Ovlašćenje)',
+      REGISTRATION: 'Vehicle Registration',
+      TECHNICAL_INSPECTION: 'Technical Inspection',
+      LIABILITY_INSURANCE: 'Liability Insurance',
+      AUTHORIZATION: 'Authorization',
     };
     return names[type] || type;
   }

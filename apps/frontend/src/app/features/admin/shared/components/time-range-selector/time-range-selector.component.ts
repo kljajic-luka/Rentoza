@@ -1,4 +1,4 @@
-import { Component, signal, output } from '@angular/core';
+import { Component, signal, output, OnInit } from '@angular/core';
 import { MatButtonToggleChange, MatButtonToggleModule } from '@angular/material/button-toggle';
 
 export interface TimeRange {
@@ -6,6 +6,8 @@ export interface TimeRange {
   end: Date;
   label: string;
 }
+
+const DAYS_MAP: Record<string, number> = { '7d': 7, '30d': 30, '90d': 90, '1y': 365 };
 
 @Component({
   selector: 'app-time-range-selector',
@@ -16,6 +18,7 @@ export interface TimeRange {
       [value]="selectedRange()"
       (change)="onRangeChange($event)"
       class="time-range-group"
+      aria-label="Select time range"
     >
       <mat-button-toggle value="7d">7D</mat-button-toggle>
       <mat-button-toggle value="30d">30D</mat-button-toggle>
@@ -48,17 +51,24 @@ export interface TimeRange {
     `,
   ],
 })
-export class TimeRangeSelectorComponent {
+export class TimeRangeSelectorComponent implements OnInit {
   selectedRange = signal('30d');
   rangeChange = output<TimeRange>();
 
+  ngOnInit(): void {
+    this.emitRange('30d');
+  }
+
   onRangeChange(event: MatButtonToggleChange): void {
     this.selectedRange.set(event.value);
+    this.emitRange(event.value);
+  }
+
+  private emitRange(rangeKey: string): void {
     const end = new Date();
     const start = new Date();
-    const daysMap: Record<string, number> = { '7d': 7, '30d': 30, '90d': 90, '1y': 365 };
-    const days = daysMap[event.value] ?? 30;
+    const days = DAYS_MAP[rangeKey] ?? 30;
     start.setDate(start.getDate() - days);
-    this.rangeChange.emit({ start, end, label: event.value });
+    this.rangeChange.emit({ start, end, label: rangeKey });
   }
 }

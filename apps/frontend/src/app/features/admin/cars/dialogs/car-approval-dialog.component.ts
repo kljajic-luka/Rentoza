@@ -1,15 +1,22 @@
-import { Component, Inject, inject } from '@angular/core';
+import { Component, Inject, inject, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { MAT_DIALOG_DATA, MatDialogRef, MatDialogModule, MatDialog } from '@angular/material/dialog';
+import {
+  MAT_DIALOG_DATA,
+  MatDialogRef,
+  MatDialogModule,
+  MatDialog,
+} from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSelectModule } from '@angular/material/select';
 import { AdminCarDto, AdminApiService } from '@core/services/admin-api.service';
+import { AdminNotificationService } from '@core/services/admin-notification.service';
 import { ApprovalStatus } from '@core/models/car.model';
 import { ConfirmDialogComponent } from '../../shared/dialogs/confirm-dialog/confirm-dialog.component';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 @Component({
   selector: 'app-car-approval-dialog',
@@ -25,20 +32,21 @@ import { ConfirmDialogComponent } from '../../shared/dialogs/confirm-dialog/conf
     MatSelectModule,
   ],
   template: `
-    <h2 mat-dialog-title>Pregled Vozila: {{ data.car.brand }} {{ data.car.model }}</h2>
+    <h2 mat-dialog-title>Car Review: {{ data.car.brand }} {{ data.car.model }}</h2>
 
     <mat-dialog-content>
       <div class="car-summary">
         <div class="info-row">
-          <span class="label">Vlasnik:</span>
+          <span class="label">Owner:</span>
           <span class="value">{{ data.car.ownerEmail }}</span>
         </div>
         <div class="info-row">
-          <span class="label">Godište:</span>
+          <span class="label">Year:</span>
           <span class="value">{{ data.car.year }}</span>
         </div>
         <div class="info-row">
           <span class="label">Status:</span>
+
           <span class="badge" [ngClass]="getStatusClass(data.car.approvalStatus)">
             {{ data.car.approvalStatus || 'PENDING' }}
           </span>
@@ -47,11 +55,11 @@ import { ConfirmDialogComponent } from '../../shared/dialogs/confirm-dialog/conf
 
       <form [formGroup]="form" class="action-form">
         <mat-form-field appearance="outline" class="full-width">
-          <mat-label>Akcija</mat-label>
+          <mat-label>Action</mat-label>
           <mat-select formControlName="action">
-            <mat-option value="APPROVE">Odobri</mat-option>
-            <mat-option value="REJECT">Odbij</mat-option>
-            <mat-option value="SUSPEND">Suspenduj</mat-option>
+            <mat-option value="APPROVE">Approve</mat-option>
+            <mat-option value="REJECT">Reject</mat-option>
+            <mat-option value="SUSPEND">Suspend</mat-option>
           </mat-select>
         </mat-form-field>
 
@@ -60,17 +68,17 @@ import { ConfirmDialogComponent } from '../../shared/dialogs/confirm-dialog/conf
           class="full-width"
           *ngIf="form.get('action')?.value !== 'APPROVE'"
         >
-          <mat-label>Razlog (Obavezno za odbijanje/suspenziju)</mat-label>
+          <mat-label>Reason (required for rejection/suspension)</mat-label>
           <textarea matInput formControlName="reason" rows="3"></textarea>
           <mat-error *ngIf="form.get('reason')?.hasError('required')">
-            Razlog je obavezan
+            Reason is required
           </mat-error>
         </mat-form-field>
       </form>
     </mat-dialog-content>
 
     <mat-dialog-actions align="end">
-      <button mat-button mat-dialog-close>Odustani</button>
+      <button mat-button mat-dialog-close>Cancel</button>
       <button
         mat-flat-button
         color="primary"
@@ -136,6 +144,8 @@ export class CarApprovalDialogComponent {
   private adminApi = inject(AdminApiService);
   private dialogRef = inject(MatDialogRef<CarApprovalDialogComponent>);
   private nestedDialog = inject(MatDialog);
+  private notification = inject(AdminNotificationService);
+  private destroyRef = inject(DestroyRef);
 
   loading = false;
 
@@ -146,7 +156,7 @@ export class CarApprovalDialogComponent {
 
   constructor(@Inject(MAT_DIALOG_DATA) public data: { car: AdminCarDto }) {
     // Update validators based on action
-    this.form.get('action')?.valueChanges.subscribe((action) => {
+    this.form.get('action')?.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((action) => {
       const reasonControl = this.form.get('reason');
       if (action === 'APPROVE') {
         reasonControl?.clearValidators();
@@ -172,16 +182,16 @@ export class CarApprovalDialogComponent {
 
   getSubmitLabel(): string {
     const action = this.form.get('action')?.value;
-    if (this.loading) return 'Obrada...';
+    if (this.loading) return 'Processing...';
     switch (action) {
       case 'APPROVE':
-        return 'Odobri Vozilo';
+        return 'Approve Car';
       case 'REJECT':
-        return 'Odbij Vozilo';
+        return 'Reject Car';
       case 'SUSPEND':
-        return 'Suspenduj Vozilo';
+        return 'Suspend Car';
       default:
-        return 'Potvrdi';
+        return 'Confirm';
     }
   }
 
@@ -194,18 +204,18 @@ export class CarApprovalDialogComponent {
     if (action !== 'APPROVE') {
       const confirmMsg =
         action === 'REJECT'
-          ? 'Da li ste sigurni da želite da odbijete ovo vozilo? Vlasnik će biti obavešten.'
-          : 'Da li ste sigurni da želite da suspendujete ovo vozilo? Vozilo će biti uklonjeno iz pretrage.';
+          ? 'Are you sure you want to reject this car? The owner will be notified.'
+          : 'Are you sure you want to suspend this car? It will be removed from search results.';
 
       const confirmRef = this.nestedDialog.open(ConfirmDialogComponent, {
         data: {
-          title: action === 'REJECT' ? 'Odbij vozilo' : 'Suspenduj vozilo',
+          title: action === 'REJECT' ? 'Reject Car' : 'Suspend Car',
           message: confirmMsg,
-          confirmText: action === 'REJECT' ? 'Odbij' : 'Suspenduj',
+          confirmText: action === 'REJECT' ? 'Reject' : 'Suspend',
           confirmColor: 'warn' as const,
         },
       });
-      confirmRef.afterClosed().subscribe((result) => {
+      confirmRef.afterClosed().pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result) => {
         if (result) {
           this.executeAction(action, reason);
         }
@@ -216,7 +226,10 @@ export class CarApprovalDialogComponent {
     this.executeAction(action, reason);
   }
 
-  private executeAction(action: string | null | undefined, reason: string | null | undefined): void {
+  private executeAction(
+    action: string | null | undefined,
+    reason: string | null | undefined,
+  ): void {
     this.loading = true;
     const carId = this.data.car.id;
     let request;
@@ -234,12 +247,13 @@ export class CarApprovalDialogComponent {
     }
 
     if (request) {
-      request.subscribe({
+      request.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
         next: () => {
           this.dialogRef.close(true);
         },
         error: (err) => {
           console.error('Action failed', err);
+          this.notification.showError('Action failed. Please try again.');
           this.loading = false;
         },
       });

@@ -24,6 +24,8 @@ export interface SearchResults {
   total: number;
 }
 
+const SEARCH_PAGE_SIZE = 5;
+
 @Injectable({ providedIn: 'root' })
 export class AdminSearchService {
   private api = inject(AdminApiService);
@@ -35,7 +37,7 @@ export class AdminSearchService {
     }
 
     return forkJoin({
-      users: this.api.getUsers(0, 5, q).pipe(
+      users: this.api.getUsers(0, SEARCH_PAGE_SIZE, q).pipe(
         map((res) =>
           res.content.map((u: AdminUserDto) => ({
             type: 'user' as const,
@@ -48,7 +50,7 @@ export class AdminSearchService {
         ),
         catchError(() => of([])),
       ),
-      bookings: this.api.getBookings({ search: q, page: 0, size: 5 }).pipe(
+      bookings: this.api.getBookings({ search: q, page: 0, size: SEARCH_PAGE_SIZE }).pipe(
         map((res) =>
           res.content.map((b: AdminBookingDto) => ({
             type: 'booking' as const,
@@ -61,7 +63,7 @@ export class AdminSearchService {
         ),
         catchError(() => of([])),
       ),
-      cars: this.api.getCars(0, 5, q).pipe(
+      cars: this.api.getCars(0, SEARCH_PAGE_SIZE, q).pipe(
         map((res) =>
           res.content.map((c: AdminCarDto) => ({
             type: 'car' as const,

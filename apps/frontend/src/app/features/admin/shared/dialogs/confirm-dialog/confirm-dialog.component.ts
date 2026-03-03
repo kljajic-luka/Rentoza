@@ -9,6 +9,7 @@ export interface ConfirmDialogData {
   title: string;
   message: string;
   confirmText?: string;
+  cancelText?: string;
   confirmColor?: 'primary' | 'accent' | 'warn';
   requireReason?: boolean;
   reasonLabel?: string;
@@ -26,8 +27,12 @@ export interface ConfirmDialogData {
       @if (data.requireReason) {
         <mat-form-field class="w-full mt-4" appearance="outline">
           <mat-label>{{ data.reasonLabel || 'Reason' }}</mat-label>
-          <textarea matInput [(ngModel)]="reason" rows="3"
-                    [required]="data.requireReason"></textarea>
+          <textarea
+            matInput
+            [(ngModel)]="reason"
+            rows="3"
+            [required]="data.requireReason"
+          ></textarea>
           @if (data.reasonMinLength && reason.length > 0 && reason.length < data.reasonMinLength) {
             <mat-hint>{{ reason.length }}/{{ data.reasonMinLength }} characters minimum</mat-hint>
           }
@@ -35,20 +40,34 @@ export interface ConfirmDialogData {
       }
     </mat-dialog-content>
     <mat-dialog-actions align="end">
-      <button mat-button mat-dialog-close>Cancel</button>
-      <button mat-flat-button
-              [color]="data.confirmColor || 'primary'"
-              [disabled]="data.requireReason && (!reason.trim() || (data.reasonMinLength ? reason.trim().length < data.reasonMinLength : false))"
-              (click)="confirm()">
+      <button mat-button mat-dialog-close>{{ data.cancelText || 'Cancel' }}</button>
+      <button
+        mat-flat-button
+        [color]="data.confirmColor || 'primary'"
+        [disabled]="
+          data.requireReason &&
+          (!reason.trim() ||
+            (data.reasonMinLength ? reason.trim().length < data.reasonMinLength : false))
+        "
+        (click)="confirm()"
+      >
         {{ data.confirmText || 'Confirm' }}
       </button>
     </mat-dialog-actions>
   `,
-  styles: [`
-    mat-dialog-content { min-width: 380px; }
-    .w-full { width: 100%; }
-    .mt-4 { margin-top: 16px; }
-  `]
+  styles: [
+    `
+      mat-dialog-content {
+        min-width: 380px;
+      }
+      .w-full {
+        width: 100%;
+      }
+      .mt-4 {
+        margin-top: 16px;
+      }
+    `,
+  ],
 })
 export class ConfirmDialogComponent {
   data = inject<ConfirmDialogData>(MAT_DIALOG_DATA);

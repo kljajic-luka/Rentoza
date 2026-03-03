@@ -46,7 +46,7 @@ export interface AdminUserDetailDto extends AdminUserDto {
   totalCars: number;
   activeCars?: number;
   riskFactors: string[];
-  recentAdminActions: any[];
+  recentAdminActions: AdminAction[];
   createdAt: string;
   updatedAt?: string;
   ownerType?: 'INDIVIDUAL' | 'LEGAL_ENTITY';
@@ -60,6 +60,14 @@ export interface AdminUserDetailDto extends AdminUserDto {
   reviewsGiven?: number;
   reviewsReceived?: number;
   averageRating?: number;
+}
+
+export interface AdminAction {
+  id: number;
+  action: string;
+  performedBy: string;
+  performedAt: string;
+  details?: string;
 }
 
 export interface OwnerVerificationRejectRequest {

@@ -17,8 +17,11 @@ export class AdminKeyboardService {
   private ngZone = inject(NgZone);
 
   private pendingKey: string | null = null;
-  private pendingTimeout: any = null;
+  private pendingTimeout: ReturnType<typeof setTimeout> | null = null;
   private active = false;
+
+  /** Subject to notify the layout to focus the search input */
+  readonly focusSearch$ = new Subject<void>();
 
   readonly shortcuts: ShortcutEntry[] = [
     { keys: 'g → u', description: 'Go to Users', category: 'Navigation' },
@@ -32,16 +35,14 @@ export class AdminKeyboardService {
     { keys: '?', description: 'Show keyboard shortcuts', category: 'Actions' },
   ];
 
-  private readonly sequenceMap: Record<string, Record<string, () => void>> = {
-    g: {
-      u: () => this.router.navigate(['/admin/users']),
-      b: () => this.router.navigate(['/admin/bookings']),
-      c: () => this.router.navigate(['/admin/cars']),
-      f: () => this.router.navigate(['/admin/financial']),
-      d: () => this.router.navigate(['/admin/disputes']),
-      v: () => this.router.navigate(['/admin/renter-verifications']),
-      h: () => this.router.navigate(['/admin/dashboard']),
-    },
+  private readonly routeMap: Record<string, string> = {
+    u: '/admin/users',
+    b: '/admin/bookings',
+    c: '/admin/cars',
+    f: '/admin/financial',
+    d: '/admin/disputes',
+    v: '/admin/renter-verifications',
+    h: '/admin/dashboard',
   };
 
   enable(): void {
@@ -76,19 +77,7 @@ export class AdminKeyboardService {
     // Handle single-key shortcuts
     if (key === '/' && !this.pendingKey) {
       event.preventDefault();
-      const searchInput = document.querySelector<HTMLInputElement>('.admin-search-input');
-      if (searchInput) {
-        searchInput.focus();
-      } else {
-        // Expand search first, then focus
-        const searchBtn = document.querySelector<HTMLButtonElement>('.global-search button');
-        if (searchBtn) {
-          searchBtn.click();
-          setTimeout(() => {
-            document.querySelector<HTMLInputElement>('.admin-search-input')?.focus();
-          }, 100);
-        }
-      }
+      this.focusSearch$.next();
       return;
     }
 
@@ -99,18 +88,18 @@ export class AdminKeyboardService {
     }
 
     // Handle two-key sequences
-    if (this.pendingKey) {
-      const seqActions = this.sequenceMap[this.pendingKey];
-      if (seqActions && seqActions[key]) {
+    if (this.pendingKey === 'g') {
+      const route = this.routeMap[key];
+      if (route) {
         event.preventDefault();
-        this.ngZone.run(() => seqActions[key]());
+        this.ngZone.run(() => this.router.navigate([route]));
       }
       this.clearPending();
       return;
     }
 
     // Start a new sequence
-    if (this.sequenceMap[key]) {
+    if (key === 'g') {
       this.pendingKey = key;
       this.pendingTimeout = setTimeout(() => this.clearPending(), 800);
     }

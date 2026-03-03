@@ -66,6 +66,33 @@
       </mat-form-field>
     </div>
 
+    <!-- Bulk Action Bar -->
+    <div *ngIf="selection.hasValue()" class="bulk-action-bar">
+      <span class="bulk-count">{{ selection.selected.length }} selected</span>
+      <button
+        mat-stroked-button
+        color="warn"
+        (click)="bulkBan()"
+        [disabled]="bulkProcessing"
+      >
+        <mat-icon>block</mat-icon> Ban Selected
+      </button>
+      <button
+        mat-stroked-button
+        (click)="bulkUnban()"
+        [disabled]="bulkProcessing"
+      >
+        <mat-icon>check_circle</mat-icon> Unban Selected
+      </button>
+      <button
+        mat-icon-button
+        (click)="selection.clear()"
+        matTooltip="Clear selection"
+      >
+        <mat-icon>close</mat-icon>
+      </button>
+    </div>
+
     <div *ngIf="loading$ | async" class="row between loading-row">
       <span class="muted">Fetching users…</span>
       <mat-progress-spinner diameter="28" mode="indeterminate"></mat-progress-spinner>
@@ -74,6 +101,24 @@
     <div *ngIf="!(loading$ | async)">
       <ng-container *ngIf="users$ | async as users">
         <table mat-table [dataSource]="users" matSort (matSortChange)="onSortChange($event)">
+          <!-- Checkbox Column -->
+          <ng-container matColumnDef="select">
+            <th mat-header-cell *matHeaderCellDef>
+              <mat-checkbox
+                (change)="$event ? toggleAllRows(users) : null"
+                [checked]="selection.hasValue() && isAllSelected(users)"
+                [indeterminate]="selection.hasValue() && !isAllSelected(users)"
+              ></mat-checkbox>
+            </th>
+            <td mat-cell *matCellDef="let user">
+              <mat-checkbox
+                (click)="$event.stopPropagation()"
+                (change)="$event ? selection.toggle(user) : null"
+                [checked]="selection.isSelected(user)"
+              ></mat-checkbox>
+            </td>
+          </ng-container>
+
           <ng-container matColumnDef="name">
             <th mat-header-cell *matHeaderCellDef>User</th>
             <td mat-cell *matCellDef="let user" (click)="viewUser(user.id)">
@@ -202,7 +247,7 @@
           ></tr>
 
           <tr class="mat-row" *matNoDataRow>
-            <td class="mat-cell" colspan="7">
+            <td class="mat-cell" colspan="8">
               <div class="row no-data-row">
                 <mat-icon>search_off</mat-icon>
                 <span>No users found matching "{{ searchTerm }}"</span>

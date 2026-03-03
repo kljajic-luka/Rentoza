@@ -76,3 +76,26 @@
   justify-content: center;
   padding: var(--space-5);
 }
+
+// Bulk action bar
+.bulk-action-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  margin: 0 16px 8px;
+  background: rgba(89, 60, 251, 0.06);
+  border: 1px solid rgba(89, 60, 251, 0.15);
+  border-radius: 8px;
+
+  .bulk-count {
+    font-weight: 600;
+    font-size: var(--font-size-sm);
+    color: var(--color-text-primary);
+    margin-right: auto;
+  }
+
+  @media (max-width: 768px) {
+    flex-wrap: wrap;
+  }
+}

@@ -13,14 +13,17 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatDialogModule, MatDialog } from '@angular/material/dialog';
 import { MatSelectModule } from '@angular/material/select';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatCheckboxModule } from '@angular/material/checkbox';
+import { SelectionModel } from '@angular/cdk/collections';
 import { Router, RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
-import { debounceTime, distinctUntilChanged, Subject, take } from 'rxjs';
+import { debounceTime, distinctUntilChanged, Subject, take, forkJoin } from 'rxjs';
 import { AdminUserDto } from '../../../../core/services/admin-api.service';
 import { AdminNotificationService } from '../../../../core/services/admin-notification.service';
 import { ExportService } from '../../../../core/services/export.service';
 import { BanUserDialogComponent } from '../../shared/dialogs/ban-user-dialog/ban-user-dialog.component';
 import { UnbanUserDialogComponent } from '../../shared/dialogs/unban-user-dialog/unban-user-dialog.component';
+import { ConfirmDialogComponent } from '../../shared/dialogs/confirm-dialog/confirm-dialog.component';
 import { AdminStateService } from '../../../../core/services/admin-state.service';
 
 @Component({
@@ -43,6 +46,7 @@ import { AdminStateService } from '../../../../core/services/admin-state.service
     MatDialogModule,
     MatSelectModule,
     MatTooltipModule,
+    MatCheckboxModule,
   ],
   templateUrl: './user-list.component.html',
   styleUrls: ['../../admin-shared.styles.scss', './user-list.component.scss'],
@@ -55,6 +59,7 @@ export class UserListComponent implements OnInit {
   private adminState = inject(AdminStateService);
 
   displayedColumns: string[] = [
+    'select',
     'name',
     'email',
     'role',
@@ -66,6 +71,9 @@ export class UserListComponent implements OnInit {
   users$ = this.adminState.users$;
   totalElements$ = this.adminState.totalUsers$;
   loading$ = this.adminState.loading$;
+
+  // Bulk selection
+  selection = new SelectionModel<AdminUserDto>(true, []);
 
   // Search debouncing
   searchTerm = '';
@@ -83,6 +91,9 @@ export class UserListComponent implements OnInit {
   // Sorting state (server-side)
   sortParam?: string;
 
+  // Bulk action in progress
+  bulkProcessing = false;
+
   @ViewChild(MatPaginator) paginator!: MatPaginator;
   @ViewChild(MatSort) sort!: MatSort;
 
@@ -97,6 +108,7 @@ export class UserListComponent implements OnInit {
   }
 
   loadUsers(search?: string) {
+    this.selection.clear();
     this.adminState.loadUsers(this.pageIndex, this.pageSize, search, this.sortParam);
   }
 
@@ -133,6 +145,99 @@ export class UserListComponent implements OnInit {
     this.pageIndex = 0;
     this.loadUsers(this.searchTerm);
   }
+
+  // ==================== BULK SELECTION ====================
+
+  isAllSelected(users: AdminUserDto[]): boolean {
+    return this.selection.selected.length === users.length && users.length > 0;
+  }
+
+  toggleAllRows(users: AdminUserDto[]): void {
+    if (this.isAllSelected(users)) {
+      this.selection.clear();
+    } else {
+      users.forEach((row) => this.selection.select(row));
+    }
+  }
+
+  // ==================== BULK ACTIONS ====================
+
+  bulkBan(): void {
+    const selected = this.selection.selected.filter((u) => !u.banned);
+    if (selected.length === 0) {
+      this.notification.showWarning('No active users selected to ban');
+      return;
+    }
+
+    const dialogRef = this.dialog.open(ConfirmDialogComponent, {
+      data: {
+        title: 'Bulk Ban Users',
+        message: `Ban ${selected.length} user(s)? This action requires a reason.`,
+        confirmText: 'Ban All',
+        confirmColor: 'warn' as const,
+        requireReason: true,
+        reasonLabel: 'Ban reason',
+        reasonMinLength: 5,
+      },
+    });
+
+    dialogRef.afterClosed().subscribe((reason) => {
+      if (reason) {
+        this.bulkProcessing = true;
+        const actions = selected.map((u) => this.adminState.banUser(u.id, reason));
+        forkJoin(actions).subscribe({
+          next: () => {
+            this.notification.showSuccess(`${selected.length} user(s) banned`);
+            this.bulkProcessing = false;
+            this.loadUsers(this.searchTerm);
+          },
+          error: () => {
+            this.notification.showError('Some ban operations failed');
+            this.bulkProcessing = false;
+            this.loadUsers(this.searchTerm);
+          },
+        });
+      }
+    });
+  }
+
+  bulkUnban(): void {
+    const selected = this.selection.selected.filter((u) => u.banned);
+    if (selected.length === 0) {
+      this.notification.showWarning('No banned users selected to unban');
+      return;
+    }
+
+    const dialogRef = this.dialog.open(ConfirmDialogComponent, {
+      data: {
+        title: 'Bulk Unban Users',
+        message: `Unban ${selected.length} user(s)?`,
+        confirmText: 'Unban All',
+        confirmColor: 'primary' as const,
+      },
+    });
+
+    dialogRef.afterClosed().subscribe((confirmed) => {
+      if (confirmed) {
+        this.bulkProcessing = true;
+        const actions = selected.map((u) => this.adminState.unbanUser(u.id));
+        forkJoin(actions).subscribe({
+          next: () => {
+            this.notification.showSuccess(`${selected.length} user(s) unbanned`);
+            this.bulkProcessing = false;
+            this.loadUsers(this.searchTerm);
+          },
+          error: () => {
+            this.notification.showError('Some unban operations failed');
+            this.bulkProcessing = false;
+            this.loadUsers(this.searchTerm);
+          },
+        });
+      }
+    });
+  }
+
+  // ==================== HELPERS ====================
 
   getOwnerVerificationBadge(status?: string): string {
     switch (status) {

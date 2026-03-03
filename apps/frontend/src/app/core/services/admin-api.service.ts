@@ -15,426 +15,75 @@ import {
   SignedUrlResponse,
 } from '../models/admin-renter-verification.model';
 
-// DTO Interfaces
-// DTO Interfaces
-export interface DashboardKpiDto {
-  activeTripsCount: number;
-  totalRevenueThisMonth: number;
-  revenueGrowthPercent: number;
-  pendingApprovalsCount: number;
-  openDisputesCount: number;
-  suspendedUsersCount: number;
-  platformHealthScore: number;
-  calculatedAt: string;
-}
+// Re-export all DTO interfaces from the dedicated models file for backward compatibility
+export type {
+  DashboardKpiDto,
+  RecentBookingDto,
+  AdminUserDto,
+  AdminUserDetailDto,
+  OwnerVerificationRejectRequest,
+  BanUserRequest,
+  AdminCarDto,
+  CarApprovalRequest,
+  AdminCarReviewDetailDto,
+  DocumentReviewDto,
+  ApprovalStateDto,
+  DocumentVerificationRequestDto,
+  AdminDisputeListDto,
+  AdminDisputeDetailDto,
+  DisputeResolutionRequest,
+  EscalateDisputeRequest,
+  PayoutQueueDto,
+  EscrowBalanceDto,
+  BatchPayoutRequest,
+  BatchPayoutResult,
+  PayoutFailure,
+  RevenueTrendDto,
+  RevenueDataPoint,
+  CohortAnalysisDto,
+  RetentionMetrics,
+  TopPerformersDto,
+  TopHost,
+  TopCar,
+  AdminAuditLogDto,
+  AuditLogSearchParams,
+  AdminBookingDto,
+  ForceCompleteBookingRequest,
+  FlaggedMessageDto,
+  FlaggedMessagePage,
+  AdminSettings,
+} from '../models/admin.models';
 
-export interface RecentBookingDto {
-  id: number;
-  carTitle: string;
-  renterName: string;
-  ownerName: string;
-  status: string;
-  startDate: string;
-  endDate: string;
-  totalPrice: number;
-  createdAt: string;
-}
-
-export interface AdminUserDto {
-  id: number;
-  email: string;
-  firstName: string;
-  lastName: string;
-  role: string;
-  banned: boolean;
-  riskScore?: number;
-
-  // Owner verification (Serbian compliance)
-  ownerVerificationStatus?: 'NOT_SUBMITTED' | 'PENDING_REVIEW' | 'VERIFIED';
-  ownerVerificationSubmittedAt?: string; // ISO string from backend
-}
-
-export interface AdminUserDetailDto extends AdminUserDto {
-  phone: string;
-  totalBookings: number;
-  completedBookings: number;
-  cancelledBookings: number;
-  disputedBookings?: number;
-  totalCars: number;
-  activeCars?: number;
-  riskFactors: string[];
-  recentAdminActions: any[];
-
-  // Timestamps
-  createdAt: string; // ISO date - when user registered
-  updatedAt?: string; // ISO date - last profile update
-
-  // Owner verification review fields (masked only)
-  ownerType?: 'INDIVIDUAL' | 'LEGAL_ENTITY';
-  maskedJmbg?: string;
-  maskedPib?: string;
-  isIdentityVerified?: boolean;
-  ownerVerificationSubmittedAt?: string;
-  maskedBankAccountNumber?: string;
-
-  // Ban details
-  banReason?: string;
-  bannedAt?: string;
-  bannedByName?: string;
-
-  // Reviews & Ratings
-  reviewsGiven?: number;
-  reviewsReceived?: number;
-  averageRating?: number;
-}
-
-export interface OwnerVerificationRejectRequest {
-  reason: string;
-}
-
-export interface BanUserRequest {
-  reason: string;
-}
-
-export interface AdminCarDto {
-  id: number;
-  brand: string;
-  model: string;
-  year: number;
-  ownerEmail: string;
-  available: boolean;
-  active: boolean; // Computed from available
-  imageUrl?: string;
-
-  // ✅ ADDED FOR APPROVAL WORKFLOW
-  approvalStatus?: string;
-  rejectionReason?: string;
-  approvedAt?: string;
-  approvedBy?: string;
-  pricePerDay?: number;
-  ownerName?: string;
-}
-
-export interface CarApprovalRequest {
-  reason: string;
-  notes?: string;
-  approved: boolean;
-}
-
-/**
- * Detailed car review DTO for document verification workflow.
- */
-export interface AdminCarReviewDetailDto {
-  carId: number;
-  brand: string;
-  model: string;
-  year: number;
-  location: string;
-  ownerName: string;
-  ownerEmail: string;
-  ownerIdentityVerified: boolean;
-  ownerType: string; // INDIVIDUAL or LEGAL_ENTITY
-  registrationExpiryDate: string; // LocalDate
-  technicalInspectionDate: string; // LocalDate
-  technicalInspectionExpiryDate: string; // LocalDate
-  insuranceExpiryDate: string; // LocalDate
-  documents: DocumentReviewDto[];
-  imageUrls: string[]; // Base64 or URLs
-  approvalState: ApprovalStateDto;
-  createdAt: string;
-}
-
-/**
- * Single document in review workflow.
- */
-export interface DocumentReviewDto {
-  id: number;
-  type: string; // REGISTRATION, TECHNICAL_INSPECTION, LIABILITY_INSURANCE, AUTHORIZATION
-  status: string; // PENDING, VERIFIED, REJECTED, EXPIRED_AUTO
-  uploadDate: string; // ISO datetime
-  expiryDate: string; // ISO date
-  isExpired: boolean;
-  daysUntilExpiry: number;
-  verifiedByName?: string;
-  verifiedAt?: string;
-  rejectionReason?: string;
-  documentUrl: string;
-  documentHash: string;
-  originalFilename: string;
-  mimeType: string;
-  fileSize: number;
-}
-
-/**
- * Pre-calculated approval state for car.
- */
-export interface ApprovalStateDto {
-  ownerVerified: boolean;
-  missingDocuments: string[];
-  unverifiedDocuments: string[];
-  expiredDocuments: string[];
-  registrationValid: boolean;
-  techInspectionValid: boolean;
-  insuranceValid: boolean;
-  canApprove: boolean;
-}
-
-/**
- * Request to verify or reject a document.
- */
-export interface DocumentVerificationRequestDto {
-  approved: boolean;
-  rejectionReason?: string; // Required if approved=false, min 20 chars
-}
-
-// ==================== DISPUTES ====================
-
-export interface AdminDisputeListDto {
-  id: number;
-  status: string;
-  estimatedCostCents: number;
-  guestName: string;
-  hostName: string;
-  createdAt: string;
-}
-
-export interface AdminDisputeDetailDto extends AdminDisputeListDto {
-  bookingId: number;
-  description: string;
-  claimedAmount: number;
-  approvedAmount?: number;
-  checkinPhotoIds?: string;
-  checkoutPhotoIds?: string;
-  evidencePhotoIds?: string;
-  guestResponse?: string;
-  guestRespondedAt?: string;
-  adminNotes?: string;
-  reviewedBy?: string;
-  reviewedAt?: string;
-  // V61 additions
-  disputeStage?: string;
-  disputeType?: string;
-  initiator?: string;
-  adminReviewRequired?: boolean;
-  repairQuoteDocumentUrl?: string;
-  guestId?: number;
-  guestEmail?: string;
-  guestPhone?: string;
-  hostId?: number;
-  hostEmail?: string;
-  hostPhone?: string;
-  carId?: number;
-}
-
-export interface DisputeResolutionRequest {
-  decision: 'APPROVED' | 'REJECTED' | 'PARTIAL' | 'MEDIATED';
-  approvedAmount?: number;
-  notes: string;
-  rejectionReason?: string;
-}
-
-export interface EscalateDisputeRequest {
-  reason: string;
-}
-
-// ==================== FINANCIAL ====================
-
-export interface PayoutQueueDto {
-  bookingId: number;
-  hostId: number;
-  hostName: string;
-  hostEmail: string;
-  amountCents: number;
-  currency: string;
-  bookingCompletedAt: string;
-  payoutScheduledFor: string;
-  status: string;
-  retryCount: number;
-  failureReason?: string;
-  paymentReference?: string;
-}
-
-export interface EscrowBalanceDto {
-  totalEscrowBalance: number;
-  pendingPayouts: number;
-  availableBalance: number;
-  frozenFunds: number;
-  activeBookingsCount: number;
-  pendingPayoutsCount: number;
-  currency: string;
-}
-
-export interface BatchPayoutRequest {
-  bookingIds: number[];
-  dryRun?: boolean;
-  notes: string;
-}
-
-export interface BatchPayoutResult {
-  totalRequested: number;
-  successCount: number;
-  failureCount: number;
-  totalAmountProcessed: number;
-  failures: PayoutFailure[];
-  batchReference: string;
-}
-
-export interface PayoutFailure {
-  bookingId: number;
-  reason: string;
-  errorCode: string;
-}
-
-// ==================== ANALYTICS ====================
-
-export interface RevenueTrendDto {
-  dataPoints: RevenueDataPoint[];
-  totalRevenue: number;
-  averagePerPeriod: number;
-  growthRate: number;
-  period: string;
-}
-
-export interface RevenueDataPoint {
-  date: string;
-  revenue: number;
-  bookingCount: number;
-}
-
-export interface CohortAnalysisDto {
-  cohort: string;
-  totalUsers: number;
-  retentionByMonth: Record<number, RetentionMetrics>;
-}
-
-export interface RetentionMetrics {
-  activeUsers: number;
-  retentionRate: number;
-  revenueGenerated: number;
-  bookingCount: number;
-}
-
-export interface TopPerformersDto {
-  topHosts: TopHost[];
-  topCars: TopCar[];
-}
-
-export interface TopHost {
-  hostId: number;
-  hostName: string;
-  bookingCount: number;
-  totalRevenue: number;
-  averageRating: number;
-}
-
-export interface TopCar {
-  carId: number;
-  carMake: string;
-  carModel: string;
-  bookingCount: number;
-  totalRevenue: number;
-  utilizationRate: number;
-}
-
-// ==================== AUDIT ====================
-
-export interface AdminAuditLogDto {
-  id: number;
-  adminId: number;
-  adminName: string;
-  action: string;
-  resourceType: string;
-  resourceId: number;
-  beforeState?: string;
-  afterState?: string;
-  notes?: string;
-  timestamp: string;
-  ipAddress?: string;
-  userAgent?: string;
-}
-
-export interface AuditLogSearchParams {
-  adminId?: number;
-  resourceType?: string;
-  resourceId?: number;
-  action?: string;
-  startDate?: string;
-  endDate?: string;
-  searchTerm?: string;
-  page?: number;
-  size?: number;
-}
-
-// ==================== ADMIN BOOKINGS ====================
-
-export interface AdminBookingDto {
-  id: number;
-  status: string;
-  paymentStatus: string;
-  carId: number;
-  carTitle: string;
-  renterId: number;
-  renterName: string;
-  renterEmail: string;
-  ownerId: number;
-  ownerName: string;
-  ownerEmail: string;
-  startTime: string;
-  endTime: string;
-  totalPrice: number;
-  insuranceType: string;
-  createdAt: string;
-  // FA3: Payment lifecycle diagnostics (R5/R6 payment hardening)
-  chargeLifecycleStatus?: string;
-  captureAttempts?: number;
-}
-
-export interface ForceCompleteBookingRequest {
-  reason: string;
-}
-
-// ==================== FLAGGED MESSAGE MODERATION ====================
-
-export interface FlaggedMessageDto {
-  id: number;
-  senderId: number;
-  conversationId: number;
-  content: string;
-  moderationFlags: string;
-  timestamp: string;
-  mediaUrl?: string;
-}
-
-export interface FlaggedMessagePage {
-  content: FlaggedMessageDto[];
-  totalElements: number;
-  totalPages: number;
-  number: number;
-  size: number;
-}
-
-// ==================== ADMIN SETTINGS ====================
-
-export interface AdminSettings {
-  // Notifications
-  emailNotifications: boolean;
-  pushNotifications: boolean;
-  smsNotifications: boolean;
-
-  // Reports
-  weeklyReport: boolean;
-  monthlyReport: boolean;
-  reportFormat: 'pdf' | 'csv' | 'xlsx';
-
-  // Regional
-  timezone: string;
-  currencyFormat: string;
-
-  // Security
-  twoFactorEnabled: boolean;
-  loginAlerts: boolean;
-  sessionTimeout: string;
-}
+import type {
+  DashboardKpiDto,
+  RecentBookingDto,
+  AdminUserDto,
+  AdminUserDetailDto,
+  OwnerVerificationRejectRequest,
+  AdminCarDto,
+  CarApprovalRequest,
+  AdminCarReviewDetailDto,
+  DocumentReviewDto,
+  DocumentVerificationRequestDto,
+  AdminDisputeListDto,
+  AdminDisputeDetailDto,
+  DisputeResolutionRequest,
+  EscalateDisputeRequest,
+  PayoutQueueDto,
+  EscrowBalanceDto,
+  BatchPayoutRequest,
+  BatchPayoutResult,
+  RevenueTrendDto,
+  CohortAnalysisDto,
+  TopPerformersDto,
+  AdminAuditLogDto,
+  AuditLogSearchParams,
+  AdminBookingDto,
+  ForceCompleteBookingRequest,
+  FlaggedMessageDto,
+  FlaggedMessagePage,
+  AdminSettings,
+} from '../models/admin.models';
 
 @Injectable({
   providedIn: 'root',
@@ -525,13 +174,7 @@ export class AdminApiService {
   }
 
   // ==================== RENTER VERIFICATION (ADMIN) ====================
-  // Endpoints for managing renter driver's license verification
-  // @see AdminRenterVerificationController.java
 
-  /**
-   * Get pending verification queue (paginated).
-   * Users awaiting driver license verification.
-   */
   getRenterVerificationQueue(
     page: number = 0,
     size: number = 20,
@@ -548,38 +191,24 @@ export class AdminApiService {
     );
   }
 
-  /**
-   * Get queue statistics (pending count, today's activity).
-   */
   getRenterVerificationStats(): Observable<RenterVerificationQueueStats> {
     return this.http.get<RenterVerificationQueueStats>(
       `${this.apiUrl}/renter-verifications/pending/stats`,
     );
   }
 
-  /**
-   * Get complete verification profile for a user.
-   * Includes all documents with OCR/biometric data.
-   */
   getRenterVerificationDetails(userId: number): Observable<RenterVerificationProfileDto> {
     return this.http.get<RenterVerificationProfileDto>(
       `${this.apiUrl}/renter-verifications/users/${userId}`,
     );
   }
 
-  /**
-   * Get single document detail.
-   */
   getRenterDocument(documentId: number): Observable<RenterDocumentDto> {
     return this.http.get<RenterDocumentDto>(
       `${this.apiUrl}/renter-verifications/documents/${documentId}`,
     );
   }
 
-  /**
-   * Get signed URL for document viewing.
-   * URL expires in 15 minutes.
-   */
   getRenterDocumentSignedUrl(documentId: number): Observable<SignedUrlResponse> {
     return this.http.post<SignedUrlResponse>(
       `${this.apiUrl}/renter-verifications/documents/${documentId}/signed-url`,
@@ -587,19 +216,12 @@ export class AdminApiService {
     );
   }
 
-  /**
-   * Download document as binary blob.
-   */
   downloadRenterDocument(documentId: number): Observable<Blob> {
     return this.http.get(`${this.apiUrl}/renter-verifications/documents/${documentId}/download`, {
       responseType: 'blob',
     });
   }
 
-  /**
-   * Approve renter verification.
-   * User will be able to book cars after approval.
-   */
   approveRenterVerification(
     userId: number,
     notes?: string,
@@ -610,10 +232,6 @@ export class AdminApiService {
     );
   }
 
-  /**
-   * Reject renter verification.
-   * User must re-submit documents.
-   */
   rejectRenterVerification(
     userId: number,
     reason: string,
@@ -624,10 +242,6 @@ export class AdminApiService {
     );
   }
 
-  /**
-   * Suspend renter verification.
-   * For fraud/abuse cases requiring investigation.
-   */
   suspendRenterVerification(
     userId: number,
     reason: string,
@@ -638,18 +252,12 @@ export class AdminApiService {
     );
   }
 
-  /**
-   * Get verification audit history for user.
-   */
   getRenterVerificationAudits(userId: number): Observable<RenterVerificationAuditItem[]> {
     return this.http.get<RenterVerificationAuditItem[]>(
       `${this.apiUrl}/renter-verifications/users/${userId}/audits`,
     );
   }
 
-  /**
-   * Retry processing for a stuck document.
-   */
   retryRenterDocumentProcessing(
     documentId: number,
   ): Observable<{ success: boolean; message: string }> {
@@ -712,20 +320,10 @@ export class AdminApiService {
     return this.http.post<AdminCarDto>(`${this.apiUrl}/cars/${carId}/reactivate`, {});
   }
 
-  /**
-   * Get car review details for document verification workflow.
-   * Includes car photos, documents, and owner info.
-   */
   getCarReviewDetail(carId: number): Observable<AdminCarReviewDetailDto> {
     return this.http.get<AdminCarReviewDetailDto>(`${this.apiUrl}/cars/${carId}/review-detail`);
   }
 
-  /**
-   * Verify or reject a document.
-   * @param documentId Document ID
-   * @param approved true to verify, false to reject
-   * @param rejectionReason Reason if rejecting (min 20 chars)
-   */
   verifyDocument(
     documentId: number,
     approved: boolean,
@@ -763,7 +361,6 @@ export class AdminApiService {
     return this.http.post<void>(`${this.apiUrl}/disputes/${disputeId}/resolve`, request);
   }
 
-  /** Resolve a checkout-specific damage dispute (uses checkout resolution endpoint). */
   resolveCheckoutDispute(
     damageClaimId: number,
     request: {
@@ -910,40 +507,20 @@ export class AdminApiService {
 
   // ==================== ADMIN SETTINGS ====================
 
-  /**
-   * Get admin settings from backend.
-   * Backend creates default settings on first access if none exist.
-   *
-   * @returns Observable<AdminSettings> with current settings
-   */
   getAdminSettings(): Observable<AdminSettings> {
     return this.http.get<AdminSettings>(`${this.apiUrl}/settings`);
   }
 
-  /**
-   * Update admin settings on backend.
-   *
-   * @param settings New settings values (all fields required)
-   * @returns Observable<AdminSettings> with updated settings
-   */
   updateAdminSettings(settings: AdminSettings): Observable<AdminSettings> {
     return this.http.put<AdminSettings>(`${this.apiUrl}/settings`, settings);
   }
 
-  /**
-   * Reset admin settings to default values.
-   *
-   * @returns Observable<AdminSettings> with default settings
-   */
   resetAdminSettings(): Observable<AdminSettings> {
     return this.http.post<AdminSettings>(`${this.apiUrl}/settings/reset`, {});
   }
 
   // ==================== BOOKINGS ====================
 
-  /**
-   * List bookings with filters and pagination.
-   */
   getBookings(params?: {
     status?: string;
     search?: string;
@@ -960,16 +537,10 @@ export class AdminApiService {
       .pipe(map((response) => this.normalizePage<AdminBookingDto>(response)));
   }
 
-  /**
-   * Get booking detail.
-   */
   getBookingDetail(id: number): Observable<AdminBookingDto> {
     return this.http.get<AdminBookingDto>(`${this.apiUrl}/bookings/${id}`);
   }
 
-  /**
-   * Force-complete a booking.
-   */
   forceCompleteBooking(id: number, reason: string): Observable<AdminBookingDto> {
     return this.http.post<AdminBookingDto>(`${this.apiUrl}/bookings/${id}/force-complete`, {
       reason,
@@ -978,31 +549,21 @@ export class AdminApiService {
 
   // ==================== FLAGGED MESSAGE MODERATION ====================
 
-  /**
-   * Get paginated list of flagged messages from the chat service.
-   */
   getFlaggedMessages(page: number = 0, size: number = 20): Observable<FlaggedMessagePage> {
     return this.http.get<FlaggedMessagePage>(`${this.chatApiUrl}/messages/flagged`, {
       params: { page: page.toString(), size: size.toString() },
     });
   }
 
-  /**
-   * Get count of flagged messages (for badge display).
-   */
   getFlaggedMessageCount(): Observable<{ count: number }> {
     return this.http.get<{ count: number }>(`${this.chatApiUrl}/messages/flagged/count`);
   }
 
-  /**
-   * Dismiss moderation flags on a message (mark as reviewed/OK).
-   */
   dismissMessageFlags(messageId: number): Observable<void> {
     return this.http.post<void>(`${this.chatApiUrl}/messages/${messageId}/dismiss-flags`, {});
   }
 
   private normalizePage<T>(response: HateoasPage<T>): PaginatedResponse<T> {
-    // Prefer HATEOAS embedded content; fall back to first embedded array or legacy Page content.
     let content: T[] = [];
     if (Array.isArray(response._embedded?.content)) {
       content = response._embedded.content;

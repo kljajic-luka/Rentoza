@@ -169,7 +169,7 @@ public class AdminCarReviewDetailDto {
     }
     
     private static boolean isExpired(LocalDate expiryDate) {
-        return expiryDate != null && expiryDate.isBefore(LocalDate.now());
+        return expiryDate != null && !expiryDate.isAfter(LocalDate.now());
     }
     
     /**

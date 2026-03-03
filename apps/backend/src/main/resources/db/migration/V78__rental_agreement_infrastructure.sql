@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS rental_agreements (
     CONSTRAINT fk_ra_renter     FOREIGN KEY (renter_user_id)  REFERENCES users(id),
 
     -- Status constraint
-    CONSTRAINT chk_ra_status CHECK (status IN ('PENDING', 'OWNER_ACCEPTED', 'RENTER_ACCEPTED', 'FULLY_ACCEPTED', 'EXPIRED', 'VOIDED'))
+    CONSTRAINT chk_ra_status CHECK (status IN ('PENDING', 'OWNER_ACCEPTED', 'FULLY_ACCEPTED', 'EXPIRED', 'VOIDED'))
 );
 
 -- 2. Indexes for common query patterns
@@ -84,25 +84,6 @@ BEGIN
     END IF;
     IF OLD.renter_user_id IS DISTINCT FROM NEW.renter_user_id THEN
         RAISE EXCEPTION 'rental_agreements.renter_user_id is immutable after creation';
-    END IF;
-    -- Acceptance evidence: once set (non-NULL), cannot be changed
-    IF OLD.owner_accepted_at IS NOT NULL AND OLD.owner_accepted_at IS DISTINCT FROM NEW.owner_accepted_at THEN
-        RAISE EXCEPTION 'rental_agreements.owner_accepted_at is immutable once set';
-    END IF;
-    IF OLD.owner_ip IS NOT NULL AND OLD.owner_ip IS DISTINCT FROM NEW.owner_ip THEN
-        RAISE EXCEPTION 'rental_agreements.owner_ip is immutable once set';
-    END IF;
-    IF OLD.owner_user_agent IS NOT NULL AND OLD.owner_user_agent IS DISTINCT FROM NEW.owner_user_agent THEN
-        RAISE EXCEPTION 'rental_agreements.owner_user_agent is immutable once set';
-    END IF;
-    IF OLD.renter_accepted_at IS NOT NULL AND OLD.renter_accepted_at IS DISTINCT FROM NEW.renter_accepted_at THEN
-        RAISE EXCEPTION 'rental_agreements.renter_accepted_at is immutable once set';
-    END IF;
-    IF OLD.renter_ip IS NOT NULL AND OLD.renter_ip IS DISTINCT FROM NEW.renter_ip THEN
-        RAISE EXCEPTION 'rental_agreements.renter_ip is immutable once set';
-    END IF;
-    IF OLD.renter_user_agent IS NOT NULL AND OLD.renter_user_agent IS DISTINCT FROM NEW.renter_user_agent THEN
-        RAISE EXCEPTION 'rental_agreements.renter_user_agent is immutable once set';
     END IF;
     RETURN NEW;
 END;

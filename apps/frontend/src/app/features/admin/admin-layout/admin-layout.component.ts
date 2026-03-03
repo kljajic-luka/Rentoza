@@ -2,7 +2,7 @@ import { Component, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterModule, NavigationEnd } from '@angular/router';
 import { filter, map, Subject, takeUntil, Observable, BehaviorSubject } from 'rxjs';
-import { startWith, shareReplay } from 'rxjs/operators';
+import { startWith, shareReplay, debounceTime, distinctUntilChanged, switchMap } from 'rxjs/operators';
 import { BreakpointObserver, Breakpoints } from '@angular/cdk/layout';
 import { MatSidenavModule } from '@angular/material/sidenav';
 import { MatListModule } from '@angular/material/list';
@@ -13,11 +13,20 @@ import { MatBadgeModule } from '@angular/material/badge';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatAutocompleteModule } from '@angular/material/autocomplete';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { FormsModule } from '@angular/forms';
 import { AdminStateService } from '../../../core/services/admin-state.service';
 import { DashboardKpiDto } from '../../../core/services/admin-api.service';
 import { AuthService } from '../../../core/auth/auth.service';
 import { ThemeService } from '../../../core/services/theme.service';
+import {
+  AdminSearchService,
+  SearchResults,
+  SearchResultItem,
+} from '../shared/services/admin-search.service';
 
 @Component({
   selector: 'app-admin-layout',
@@ -34,6 +43,10 @@ import { ThemeService } from '../../../core/services/theme.service';
     MatMenuModule,
     MatDividerModule,
     MatTooltipModule,
+    MatAutocompleteModule,
+    MatFormFieldModule,
+    MatInputModule,
+    MatProgressSpinnerModule,
     FormsModule,
   ],
   template: `
@@ -228,7 +241,7 @@ import { ThemeService } from '../../../core/services/theme.service';
           </div>
 
           <div class="global-search" *ngIf="!isSearchExpanded">
-            <button mat-icon-button (click)="expandSearch()" aria-label="Search">
+            <button mat-icon-button (click)="expandSearch()" aria-label="Search" matTooltip="Search (/)">
               <mat-icon>search</mat-icon>
             </button>
           </div>
@@ -237,14 +250,55 @@ import { ThemeService } from '../../../core/services/theme.service';
             <input
               #searchInput
               type="text"
+              class="admin-search-input"
               placeholder="Search users, cars, bookings..."
               [(ngModel)]="globalSearchTerm"
-              (keyup.enter)="performGlobalSearch()"
+              [matAutocomplete]="searchAuto"
+              (input)="onSearchInput()"
               (keyup.escape)="collapseSearch()"
             />
+            <mat-spinner *ngIf="searchLoading" diameter="20" class="search-spinner"></mat-spinner>
             <button mat-icon-button (click)="collapseSearch()" aria-label="Close search">
               <mat-icon>close</mat-icon>
             </button>
+            <mat-autocomplete #searchAuto="matAutocomplete"
+                              (optionSelected)="navigateToResult($event)"
+                              class="search-autocomplete"
+                              [displayWith]="displayResult"
+                              [autoActiveFirstOption]="true">
+              <mat-optgroup *ngIf="searchResults?.users?.length" label="Users">
+                <mat-option *ngFor="let item of searchResults!.users" [value]="item">
+                  <mat-icon class="result-icon">{{ item.icon }}</mat-icon>
+                  <div class="result-text">
+                    <span class="result-title">{{ item.title }}</span>
+                    <span class="result-sub">{{ item.subtitle }}</span>
+                  </div>
+                </mat-option>
+              </mat-optgroup>
+              <mat-optgroup *ngIf="searchResults?.bookings?.length" label="Bookings">
+                <mat-option *ngFor="let item of searchResults!.bookings" [value]="item">
+                  <mat-icon class="result-icon">{{ item.icon }}</mat-icon>
+                  <div class="result-text">
+                    <span class="result-title">{{ item.title }}</span>
+                    <span class="result-sub">{{ item.subtitle }}</span>
+                  </div>
+                </mat-option>
+              </mat-optgroup>
+              <mat-optgroup *ngIf="searchResults?.cars?.length" label="Cars">
+                <mat-option *ngFor="let item of searchResults!.cars" [value]="item">
+                  <mat-icon class="result-icon">{{ item.icon }}</mat-icon>
+                  <div class="result-text">
+                    <span class="result-title">{{ item.title }}</span>
+                    <span class="result-sub">{{ item.subtitle }}</span>
+                  </div>
+                </mat-option>
+              </mat-optgroup>
+              <mat-option *ngIf="searchResults && searchResults.total === 0 && globalSearchTerm.length >= 2 && !searchLoading"
+                          disabled class="no-results-option">
+                <mat-icon>search_off</mat-icon>
+                <span>No results for "{{ globalSearchTerm }}"</span>
+              </mat-option>
+            </mat-autocomplete>
           </div>
 
           <div class="toolbar-actions">
@@ -294,12 +348,15 @@ import { ThemeService } from '../../../core/services/theme.service';
 })
 export class AdminLayoutComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>();
+  private searchSubject$ = new Subject<string>();
   currentRoute = 'Dashboard';
   kpis$: Observable<DashboardKpiDto | null>;
 
   // Global search
   isSearchExpanded = false;
   globalSearchTerm = '';
+  searchResults: SearchResults | null = null;
+  searchLoading = false;
 
   // Responsive sidebar observables
   sidenavMode$: Observable<'side' | 'over'>;
@@ -311,6 +368,7 @@ export class AdminLayoutComponent implements OnInit, OnDestroy {
     private authService: AuthService,
     private breakpointObserver: BreakpointObserver,
     public themeService: ThemeService,
+    private searchService: AdminSearchService,
   ) {
     this.kpis$ = this.adminState.dashboardKpi$;
 
@@ -330,6 +388,30 @@ export class AdminLayoutComponent implements OnInit, OnDestroy {
         takeUntil(this.destroy$),
       )
       .subscribe((label) => (this.currentRoute = label));
+
+    // Set up debounced search
+    this.searchSubject$
+      .pipe(
+        debounceTime(300),
+        distinctUntilChanged(),
+        switchMap((query) => {
+          if (!query || query.length < 2) {
+            this.searchLoading = false;
+            return [];
+          }
+          return this.searchService.search(query);
+        }),
+        takeUntil(this.destroy$),
+      )
+      .subscribe({
+        next: (results) => {
+          this.searchResults = results as SearchResults;
+          this.searchLoading = false;
+        },
+        error: () => {
+          this.searchLoading = false;
+        },
+      });
   }
 
   ngOnInit(): void {
@@ -355,17 +437,25 @@ export class AdminLayoutComponent implements OnInit, OnDestroy {
   collapseSearch(): void {
     this.isSearchExpanded = false;
     this.globalSearchTerm = '';
+    this.searchResults = null;
+    this.searchLoading = false;
   }
 
-  performGlobalSearch(): void {
-    if (this.globalSearchTerm.trim()) {
-      // Navigate to users page with search term for now
-      // Can be extended to a dedicated search results page
-      this.router.navigate(['/admin/users'], {
-        queryParams: { search: this.globalSearchTerm.trim() },
-      });
+  onSearchInput(): void {
+    this.searchLoading = this.globalSearchTerm.length >= 2;
+    this.searchSubject$.next(this.globalSearchTerm);
+  }
+
+  navigateToResult(event: any): void {
+    const item: SearchResultItem = event.option.value;
+    if (item?.route) {
+      this.router.navigate(item.route);
       this.collapseSearch();
     }
+  }
+
+  displayResult(): string {
+    return '';
   }
 
   logout(): void {

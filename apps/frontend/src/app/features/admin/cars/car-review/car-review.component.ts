@@ -41,6 +41,10 @@ import {
 import { AdminNotificationService } from '../../../../core/services/admin-notification.service';
 import { normalizeMediaUrlArray } from '@shared/utils/media-url.util';
 import { ConfirmDialogComponent } from '../../shared/dialogs/confirm-dialog/confirm-dialog.component';
+import {
+  PhotoGalleryDialogComponent,
+  PhotoGroup,
+} from '../../shared/dialogs/photo-gallery-dialog/photo-gallery-dialog.component';
 
 /**
  * Car review page for admin document verification workflow.
@@ -122,6 +126,58 @@ import { ConfirmDialogComponent } from '../../shared/dialogs/confirm-dialog/conf
                 ></div>
               </div>
             </div>
+          </mat-card>
+
+          <!-- Compare Button -->
+          <div class="compare-toggle" *ngIf="carData.imageUrls && carData.imageUrls.length > 1">
+            <button mat-stroked-button (click)="toggleComparisonMode()" color="primary">
+              <mat-icon>{{ comparisonMode ? 'close' : 'compare' }}</mat-icon>
+              {{ comparisonMode ? 'Exit Comparison' : 'Compare Photos' }}
+            </button>
+          </div>
+
+          <!-- Photo Comparison View -->
+          <mat-card class="surface-card surface-wide" *ngIf="comparisonMode">
+            <mat-card-header>
+              <mat-card-title>Photo Comparison</mat-card-title>
+            </mat-card-header>
+            <mat-card-content>
+              <div class="comparison-grid">
+                <div class="comparison-slot">
+                  <p class="comparison-label">Left Photo</p>
+                  <img *ngIf="leftPhoto" [src]="leftPhoto" class="comparison-photo"
+                       alt="Left comparison" (click)="openInGallery(leftPhoto)" />
+                  <div *ngIf="!leftPhoto" class="comparison-placeholder">
+                    <mat-icon>image</mat-icon>
+                    <span>Select a photo below</span>
+                  </div>
+                </div>
+                <div class="comparison-slot">
+                  <p class="comparison-label">Right Photo</p>
+                  <img *ngIf="rightPhoto" [src]="rightPhoto" class="comparison-photo"
+                       alt="Right comparison" (click)="openInGallery(rightPhoto)" />
+                  <div *ngIf="!rightPhoto" class="comparison-placeholder">
+                    <mat-icon>image</mat-icon>
+                    <span>Select a photo below</span>
+                  </div>
+                </div>
+              </div>
+              <div class="comparison-picker">
+                <div *ngFor="let photo of getComparisonPhotos(); let i = index" class="picker-thumb-wrap">
+                  <img [src]="photo" class="picker-thumb" alt="Photo {{ i + 1 }}"
+                       [class.selected-left]="photo === leftPhoto"
+                       [class.selected-right]="photo === rightPhoto" />
+                  <div class="picker-actions">
+                    <button mat-icon-button matTooltip="Set as left" (click)="setLeftPhoto(photo)" class="picker-btn">
+                      <mat-icon>arrow_back</mat-icon>
+                    </button>
+                    <button mat-icon-button matTooltip="Set as right" (click)="setRightPhoto(photo)" class="picker-btn">
+                      <mat-icon>arrow_forward</mat-icon>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </mat-card-content>
           </mat-card>
 
           <!-- Car Overview Card -->
@@ -556,6 +612,10 @@ export class CarReviewComponent implements OnInit, OnDestroy {
   rejectionReason: string | null = null;
 
   currentPhotoIndex = 0;
+  comparisonMode = false;
+  leftPhoto: string | null = null;
+  rightPhoto: string | null = null;
+
   get currentPhotoUrl(): string {
     if (!this.carData?.imageUrls || this.carData.imageUrls.length === 0) {
       return '';
@@ -668,6 +728,44 @@ export class CarReviewComponent implements OnInit, OnDestroy {
 
   goBack() {
     this.router.navigate(['/admin/cars']);
+  }
+
+  toggleComparisonMode() {
+    this.comparisonMode = !this.comparisonMode;
+    if (this.comparisonMode && this.carData?.imageUrls?.length) {
+      this.leftPhoto = this.carData.imageUrls[0] || null;
+      this.rightPhoto = this.carData.imageUrls.length > 1 ? this.carData.imageUrls[1] : null;
+    }
+  }
+
+  setLeftPhoto(url: string) {
+    this.leftPhoto = url;
+  }
+
+  setRightPhoto(url: string) {
+    this.rightPhoto = url;
+  }
+
+  openInGallery(photoUrl: string) {
+    if (!this.carData) return;
+    const groups: PhotoGroup[] = [
+      {
+        label: 'Car Photos',
+        photoUrls: this.carData.imageUrls || [],
+      },
+    ];
+    this.dialog.open(PhotoGalleryDialogComponent, {
+      width: '900px',
+      maxHeight: '90vh',
+      data: {
+        title: `${this.carData.brand} ${this.carData.model}`,
+        photoGroups: groups,
+      },
+    });
+  }
+
+  getComparisonPhotos(): string[] {
+    return this.carData?.imageUrls || [];
   }
 
   isExpired(dateString: string): boolean {

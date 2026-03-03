@@ -42,6 +42,13 @@ export const ADMIN_ROUTES: Routes = [
               import('./cars/car-list/car-list.component').then((m) => m.CarListComponent),
           },
           {
+            path: 'expiring-documents',
+            loadComponent: () =>
+              import('./cars/document-expiry/document-expiry.component').then(
+                (m) => m.DocumentExpiryComponent,
+              ),
+          },
+          {
             path: ':carId/review',
             loadComponent: () =>
               import('./cars/car-review/car-review.component').then((m) => m.CarReviewComponent),

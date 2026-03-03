@@ -52,6 +52,7 @@ export type {
   FlaggedMessageDto,
   FlaggedMessagePage,
   AdminSettings,
+  ExpiringDocumentDto,
 } from '../models/admin.models';
 
 import type {
@@ -83,6 +84,7 @@ import type {
   FlaggedMessageDto,
   FlaggedMessagePage,
   AdminSettings,
+  ExpiringDocumentDto,
 } from '../models/admin.models';
 
 @Injectable({
@@ -343,6 +345,13 @@ export class AdminApiService {
       approved,
       rejectionReason,
     } as DocumentVerificationRequestDto);
+  }
+
+  getExpiringDocuments(days: number = 30): Observable<ExpiringDocumentDto[]> {
+    const params = new HttpParams().set('days', days.toString());
+    return this.http.get<ExpiringDocumentDto[]>(`${this.apiUrl}/cars/expiring-documents`, {
+      params,
+    });
   }
 
   // ==================== DISPUTE MANAGEMENT ====================

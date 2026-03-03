@@ -149,6 +149,18 @@ export interface DocumentVerificationRequestDto {
   rejectionReason?: string;
 }
 
+export interface ExpiringDocumentDto {
+  carId: number;
+  carBrand: string;
+  carModel: string;
+  carYear: number;
+  ownerName: string;
+  ownerEmail: string;
+  documentType: string;
+  expiryDate: string;
+  daysRemaining: number;
+}
+
 // ==================== DISPUTES ====================
 
 export interface AdminDisputeListDto {

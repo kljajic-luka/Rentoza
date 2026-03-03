@@ -29,6 +29,10 @@ import {
   EscalateDisputeRequest,
 } from '../../../../core/services/admin-api.service';
 import { AdminNotificationService } from '../../../../core/services/admin-notification.service';
+import {
+  PhotoGalleryDialogComponent,
+  PhotoGroup,
+} from '../../shared/dialogs/photo-gallery-dialog/photo-gallery-dialog.component';
 
 /**
  * Dispute Detail Component - Admin view for resolving damage claim disputes.
@@ -68,6 +72,7 @@ export class DisputeDetailComponent implements OnInit {
   private router = inject(Router);
   private fb = inject(FormBuilder);
   private snackBar = inject(AdminNotificationService);
+  private dialog = inject(MatDialog);
 
   // State
   dispute = signal<AdminDisputeDetailDto | null>(null);
@@ -288,5 +293,51 @@ export class DisputeDetailComponent implements OnInit {
 
   goBack(): void {
     this.router.navigate(['/admin/disputes']);
+  }
+
+  parsePhotoIds(ids: string | undefined): string[] {
+    if (!ids) return [];
+    return ids.split(',').map((id) => id.trim()).filter(Boolean);
+  }
+
+  getPhotoUrl(bookingId: number, phase: string, photoId: string): string {
+    return `/api/bookings/${bookingId}/${phase}/photos/${photoId}`;
+  }
+
+  openEvidenceGallery(): void {
+    const d = this.dispute();
+    if (!d) return;
+
+    const groups: PhotoGroup[] = [];
+
+    const checkinIds = this.parsePhotoIds(d.checkinPhotoIds);
+    if (checkinIds.length > 0) {
+      groups.push({
+        label: 'Check-in Photos',
+        photoUrls: checkinIds.map((id) => this.getPhotoUrl(d.bookingId, 'checkin', id)),
+      });
+    }
+
+    const checkoutIds = this.parsePhotoIds(d.checkoutPhotoIds);
+    if (checkoutIds.length > 0) {
+      groups.push({
+        label: 'Check-out Photos',
+        photoUrls: checkoutIds.map((id) => this.getPhotoUrl(d.bookingId, 'checkout', id)),
+      });
+    }
+
+    const evidenceIds = this.parsePhotoIds(d.evidencePhotoIds);
+    if (evidenceIds.length > 0) {
+      groups.push({
+        label: 'Additional Evidence',
+        photoUrls: evidenceIds.map((id) => this.getPhotoUrl(d.bookingId, 'evidence', id)),
+      });
+    }
+
+    this.dialog.open(PhotoGalleryDialogComponent, {
+      width: '900px',
+      maxHeight: '90vh',
+      data: { title: `Evidence — Dispute #${d.id}`, photoGroups: groups },
+    });
   }
 }

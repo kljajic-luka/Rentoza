@@ -45,16 +45,28 @@
   }
 }
 
-// Grid Layout
-.detail-grid {
+// Split-View Layout
+.split-view {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  grid-template-columns: 1fr 400px;
   gap: 24px;
-  margin-bottom: 24px;
+  align-items: start;
+}
 
-  .full-width {
-    grid-column: 1 / -1;
-  }
+.context-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0; // prevent grid blowout
+}
+
+.resolution-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  position: sticky;
+  top: 24px;
+  align-self: start;
 }
 
 // Cards
@@ -165,17 +177,18 @@ mat-card {
   }
 }
 
-// Actions
-.actions {
-  display: flex;
-  gap: 16px;
-  margin-bottom: 24px;
-  justify-content: center;
+// Action Buttons (right panel)
+.actions-card {
+  .action-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
 
-  button {
-    min-width: 200px;
-    height: 48px;
-    font-size: var(--font-size-base);
+  .action-btn {
+    width: 100%;
+    height: 44px;
+    font-size: var(--font-size-sm);
 
     mat-icon {
       margin-right: 8px;
@@ -183,11 +196,8 @@ mat-card {
   }
 }
 
-// Forms
+// Forms (right panel)
 .form-card {
-  max-width: 800px;
-  margin: 0 auto 24px;
-
   form {
     display: flex;
     flex-direction: column;
@@ -205,7 +215,7 @@ mat-card {
     margin-top: 8px;
 
     button {
-      min-width: 120px;
+      min-width: 100px;
     }
 
     mat-spinner {
@@ -215,7 +225,24 @@ mat-card {
   }
 }
 
-// Responsive
+// Resolution summary card
+.resolution-summary-card {
+  border-left: 4px solid #1a237e;
+}
+
+.section-divider { margin: var(--space-3) 0; }
+
+// Responsive — stack panels on tablet/mobile
+@media (max-width: 1024px) {
+  .split-view {
+    grid-template-columns: 1fr;
+  }
+
+  .resolution-panel {
+    position: static;
+  }
+}
+
 @media (max-width: 768px) {
   .dispute-detail-container {
     padding: 16px;
@@ -229,18 +256,6 @@ mat-card {
     }
   }
 
-  .detail-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .actions {
-    flex-direction: column;
-
-    button {
-      width: 100%;
-    }
-  }
-
   .info-row {
     flex-direction: column;
     gap: 4px;
@@ -250,4 +265,3 @@ mat-card {
     }
   }
 }
-.section-divider { margin: var(--space-3) 0; }

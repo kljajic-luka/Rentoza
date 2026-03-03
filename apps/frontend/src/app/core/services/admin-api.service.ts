@@ -278,6 +278,8 @@ export class AdminApiService {
     size: number = 20,
     search?: string,
     pageUrl?: string,
+    status?: string,
+    listedAfter?: string,
   ): Observable<PaginatedResponse<AdminCarDto>> {
     const url = pageUrl ?? `${this.apiUrl}/cars`;
     let options: { params?: HttpParams } = {};
@@ -287,6 +289,14 @@ export class AdminApiService {
 
       if (search) {
         params = params.set('search', search);
+      }
+
+      if (status) {
+        params = params.set('status', status);
+      }
+
+      if (listedAfter) {
+        params = params.set('listedAfter', listedAfter);
       }
 
       options = { params };

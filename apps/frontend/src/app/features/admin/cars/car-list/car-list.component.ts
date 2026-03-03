@@ -9,9 +9,11 @@ import { MatInputModule } from '@angular/material/input';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatSelectModule } from '@angular/material/select';
 import { MatSortModule } from '@angular/material/sort';
 import { MatTableModule } from '@angular/material/table';
 import { MatTabsModule } from '@angular/material/tabs';
+import { MatDatepickerModule } from '@angular/material/datepicker';
 import { debounceTime, distinctUntilChanged, Subject, filter, takeUntil, forkJoin } from 'rxjs';
 import { AdminApiService, AdminCarDto } from '../../../../core/services/admin-api.service';
 import { AdminNotificationService } from '../../../../core/services/admin-notification.service';
@@ -40,6 +42,8 @@ import { ConfirmDialogComponent } from '../../shared/dialogs/confirm-dialog/conf
     MatMenuModule,
     MatTabsModule,
     MatProgressSpinnerModule,
+    MatSelectModule,
+    MatDatepickerModule,
     MatChipsModule,
     MatDialogModule,
     MatTooltipModule,
@@ -152,15 +156,44 @@ import { ConfirmDialogComponent } from '../../shared/dialogs/confirm-dialog/conf
 
           <mat-tab label="All Cars">
             <div class="tab-section">
-              <mat-form-field appearance="outline" class="search-field">
-                <mat-icon matPrefix>search</mat-icon>
-                <input
-                  matInput
-                  placeholder="Search cars"
-                  [ngModel]="searchTerm"
-                  (ngModelChange)="onSearch($event)"
-                />
-              </mat-form-field>
+              <div class="filter-bar">
+                <mat-form-field appearance="outline" class="filter-field">
+                  <mat-icon matPrefix>search</mat-icon>
+                  <input
+                    matInput
+                    placeholder="Search make, model, plate…"
+                    [ngModel]="searchTerm"
+                    (ngModelChange)="onSearch($event)"
+                  />
+                </mat-form-field>
+
+                <mat-form-field appearance="outline" class="filter-field filter-field--narrow">
+                  <mat-label>Status</mat-label>
+                  <mat-select [(ngModel)]="statusFilter" (selectionChange)="applyFilters()">
+                    <mat-option [value]="null">All</mat-option>
+                    <mat-option value="PENDING">Pending</mat-option>
+                    <mat-option value="APPROVED">Approved</mat-option>
+                    <mat-option value="REJECTED">Rejected</mat-option>
+                    <mat-option value="SUSPENDED">Suspended</mat-option>
+                  </mat-select>
+                </mat-form-field>
+
+                <mat-form-field appearance="outline" class="filter-field filter-field--narrow">
+                  <mat-label>Listed after</mat-label>
+                  <input matInput [matDatepicker]="listedAfterPicker" [(ngModel)]="dateFilter" (dateChange)="applyFilters()" />
+                  <mat-datepicker-toggle matSuffix [for]="listedAfterPicker"></mat-datepicker-toggle>
+                  <mat-datepicker #listedAfterPicker></mat-datepicker>
+                </mat-form-field>
+
+                <button
+                  mat-stroked-button
+                  (click)="clearFilters()"
+                  *ngIf="hasActiveFilters()"
+                  class="clear-filters-btn"
+                >
+                  <mat-icon>clear</mat-icon> Clear filters
+                </button>
+              </div>
 
               <div *ngIf="loadingAll" class="row between" style="padding: 12px 0;">
                 <span class="muted">Loading cars…</span>
@@ -267,6 +300,8 @@ export class CarListComponent implements OnInit, OnDestroy {
   pageSize = 10;
 
   searchTerm = '';
+  statusFilter: string | null = null;
+  dateFilter: Date | null = null;
   private searchSubject = new Subject<string>();
 
   private cdr = inject(ChangeDetectorRef);
@@ -329,20 +364,25 @@ export class CarListComponent implements OnInit, OnDestroy {
 
   loadAllCars(search?: string) {
     this.loadingAll = true;
-    this.adminApi.getCars(this.pageIndex, this.pageSize, search).subscribe({
-      next: (response) => {
-        this.allCars = response.content;
-        this.totalElements = response.totalElements;
-        this.loadingAll = false;
-        this.cdr.markForCheck();
-      },
-      error: (err) => {
-        console.error('Failed to load cars', err);
-        this.notification.showError('Failed to load cars');
-        this.loadingAll = false;
-        this.cdr.markForCheck();
-      },
-    });
+    const listedAfter = this.dateFilter
+      ? this.dateFilter.toISOString().split('T')[0]
+      : undefined;
+    this.adminApi
+      .getCars(this.pageIndex, this.pageSize, search, undefined, this.statusFilter ?? undefined, listedAfter)
+      .subscribe({
+        next: (response) => {
+          this.allCars = response.content;
+          this.totalElements = response.totalElements;
+          this.loadingAll = false;
+          this.cdr.markForCheck();
+        },
+        error: (err) => {
+          console.error('Failed to load cars', err);
+          this.notification.showError('Failed to load cars');
+          this.loadingAll = false;
+          this.cdr.markForCheck();
+        },
+      });
   }
 
   onSearch(term: string) {
@@ -354,6 +394,23 @@ export class CarListComponent implements OnInit, OnDestroy {
     this.pageIndex = event.pageIndex;
     this.pageSize = event.pageSize;
     this.loadAllCars(this.searchTerm);
+  }
+
+  applyFilters(): void {
+    this.pageIndex = 0;
+    this.loadAllCars(this.searchTerm);
+  }
+
+  clearFilters(): void {
+    this.searchTerm = '';
+    this.statusFilter = null;
+    this.dateFilter = null;
+    this.pageIndex = 0;
+    this.loadAllCars();
+  }
+
+  hasActiveFilters(): boolean {
+    return !!this.searchTerm || !!this.statusFilter || !!this.dateFilter;
   }
 
   // Helpers

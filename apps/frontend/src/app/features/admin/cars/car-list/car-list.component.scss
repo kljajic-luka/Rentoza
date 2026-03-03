@@ -4,8 +4,24 @@
   gap: 12px;
 }
 
-.search-field {
-  width: min(420px, 100%);
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.filter-field {
+  width: min(280px, 100%);
+}
+
+.filter-field--narrow {
+  width: min(180px, 100%);
+}
+
+.clear-filters-btn {
+  margin-top: 4px;
+  height: 48px;
 }
 
 .empty-state {

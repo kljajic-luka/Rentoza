@@ -12,7 +12,16 @@ import {
   RevenueChartData,
   TripActivityData,
 } from '../../../shared/services/admin-charts.service';
+import {
+  TimeRangeSelectorComponent,
+  TimeRange,
+} from '../../../shared/components/time-range-selector/time-range-selector.component';
 import { BehaviorSubject, Subject, takeUntil } from 'rxjs';
+
+/** Maps time range labels to months for revenue API */
+const RANGE_TO_MONTHS: Record<string, number> = { '7d': 1, '30d': 1, '90d': 3, '1y': 12 };
+/** Maps time range labels to weeks for trip activity API */
+const RANGE_TO_WEEKS: Record<string, number> = { '7d': 1, '30d': 4, '90d': 13, '1y': 52 };
 
 @Component({
   selector: 'app-dashboard-charts',
@@ -28,6 +37,7 @@ import { BehaviorSubject, Subject, takeUntil } from 'rxjs';
     MatProgressSpinnerModule,
     MatButtonModule,
     MatIconModule,
+    TimeRangeSelectorComponent,
   ],
   template: `
     <div class="charts-grid">
@@ -37,34 +47,11 @@ import { BehaviorSubject, Subject, takeUntil } from 'rxjs';
           <div class="chart-header">
             <div>
               <mat-card-title>Revenue Trends</mat-card-title>
-              <mat-card-subtitle>Last {{ period }} months</mat-card-subtitle>
+              <mat-card-subtitle>{{ revenueSubtitle }}</mat-card-subtitle>
             </div>
-            <div class="chart-controls">
-              <button
-                mat-icon-button
-                (click)="changePeriod(3)"
-                [class.active]="period === 3"
-                aria-label="Show 3 months"
-              >
-                3M
-              </button>
-              <button
-                mat-icon-button
-                (click)="changePeriod(6)"
-                [class.active]="period === 6"
-                aria-label="Show 6 months"
-              >
-                6M
-              </button>
-              <button
-                mat-icon-button
-                (click)="changePeriod(12)"
-                [class.active]="period === 12"
-                aria-label="Show 12 months"
-              >
-                1Y
-              </button>
-            </div>
+            <app-time-range-selector
+              (rangeChange)="onRevenueRangeChange($event)"
+            ></app-time-range-selector>
           </div>
         </mat-card-header>
         <mat-card-content>
@@ -93,8 +80,11 @@ import { BehaviorSubject, Subject, takeUntil } from 'rxjs';
           <div class="chart-header">
             <div>
               <mat-card-title>Trip Activity</mat-card-title>
-              <mat-card-subtitle>Weekly breakdown</mat-card-subtitle>
+              <mat-card-subtitle>{{ tripsSubtitle }}</mat-card-subtitle>
             </div>
+            <app-time-range-selector
+              (rangeChange)="onTripsRangeChange($event)"
+            ></app-time-range-selector>
           </div>
         </mat-card-header>
         <mat-card-content>
@@ -134,8 +124,13 @@ export class DashboardChartsComponent implements OnInit, OnDestroy {
   revenueChartData: ChartConfiguration<'line'>['data'] = { labels: [], datasets: [] };
   tripsChartData: ChartConfiguration<'bar'>['data'] = { labels: [], datasets: [] };
 
-  // Period for revenue chart (in months)
-  period = 6;
+  // Current periods
+  revenueMonths = 1; // default for 30d
+  tripsWeeks = 4; // default for 30d
+
+  // Dynamic subtitles
+  revenueSubtitle = 'Last 30 days';
+  tripsSubtitle = 'Last 30 days';
 
   // Chart options
   public revenueChartOptions: ChartOptions<'line'> = {
@@ -205,15 +200,34 @@ export class DashboardChartsComponent implements OnInit, OnDestroy {
     this.loadTripActivity();
   }
 
-  /**
-   * Loads revenue chart data from the service
-   */
+  onRevenueRangeChange(range: TimeRange): void {
+    this.revenueMonths = RANGE_TO_MONTHS[range.label] ?? 1;
+    this.revenueSubtitle = this.getRangeSubtitle(range.label);
+    this.loadRevenueChart();
+  }
+
+  onTripsRangeChange(range: TimeRange): void {
+    this.tripsWeeks = RANGE_TO_WEEKS[range.label] ?? 4;
+    this.tripsSubtitle = this.getRangeSubtitle(range.label);
+    this.loadTripActivity();
+  }
+
+  private getRangeSubtitle(label: string): string {
+    const subtitles: Record<string, string> = {
+      '7d': 'Last 7 days',
+      '30d': 'Last 30 days',
+      '90d': 'Last 90 days',
+      '1y': 'Last 12 months',
+    };
+    return subtitles[label] ?? 'Last 30 days';
+  }
+
   loadRevenueChart(): void {
     this.revenueLoading$.next(true);
     this.revenueError$.next(null);
 
     this.chartsService
-      .getRevenueChart(this.period)
+      .getRevenueChart(this.revenueMonths)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (data: RevenueChartData) => {
@@ -246,15 +260,12 @@ export class DashboardChartsComponent implements OnInit, OnDestroy {
       });
   }
 
-  /**
-   * Loads trip activity chart data from the service
-   */
   loadTripActivity(): void {
     this.tripsLoading$.next(true);
     this.tripsError$.next(null);
 
     this.chartsService
-      .getTripActivity(6)
+      .getTripActivity(this.tripsWeeks)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (data: TripActivityData) => {
@@ -285,16 +296,6 @@ export class DashboardChartsComponent implements OnInit, OnDestroy {
           this.tripsLoading$.next(false);
         },
       });
-  }
-
-  /**
-   * Changes the revenue chart period and reloads data
-   */
-  changePeriod(newPeriod: number): void {
-    if (this.period !== newPeriod) {
-      this.period = newPeriod;
-      this.loadRevenueChart();
-    }
   }
 
   ngOnDestroy(): void {

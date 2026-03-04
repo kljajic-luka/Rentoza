@@ -18,7 +18,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Rate limiting filter using token bucket algorithm.
+ * Rate limiting filter using fixed-window counter algorithm.
  * 
  * Execution Order:
  * 1. CORS filter

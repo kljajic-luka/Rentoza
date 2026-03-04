@@ -229,6 +229,18 @@ class TrustedProxyIpExtractorTest {
             assertFalse(TrustedProxyIpExtractor.isInCidr("10.0.0.1", "bad-cidr"));
             assertFalse(TrustedProxyIpExtractor.isInCidr("10.0.0.1", "10.0.0.0"));
         }
+
+        @Test
+        @DisplayName("isInCidr rejects out-of-range prefix lengths")
+        void cidrRejectsOutOfRangePrefix() {
+            // Negative prefix should NOT match
+            assertFalse(TrustedProxyIpExtractor.isInCidr("10.0.0.1", "10.0.0.0/-1"));
+            // Prefix > 32 for IPv4
+            assertFalse(TrustedProxyIpExtractor.isInCidr("10.0.0.1", "10.0.0.0/33"));
+            // Boundary: /0 and /32 are valid
+            assertTrue(TrustedProxyIpExtractor.isInCidr("10.0.0.1", "0.0.0.0/0"));
+            assertTrue(TrustedProxyIpExtractor.isInCidr("10.0.0.1", "10.0.0.1/32"));
+        }
     }
 
     // ================================================================

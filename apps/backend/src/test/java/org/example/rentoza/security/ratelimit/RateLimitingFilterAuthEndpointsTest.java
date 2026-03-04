@@ -71,7 +71,7 @@ class RateLimitingFilterAuthEndpointsTest {
 
         filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());
 
-        verify(rateLimitService).allowRequest(eq("ip:127.0.0.1"), eq(5), eq(60), eq(RateLimitTier.CRITICAL));
+        verify(rateLimitService).allowRequest(eq("ip:127.0.0.1:/api/auth/supabase/login"), eq(5), eq(60), eq(RateLimitTier.CRITICAL));
     }
 
     @Test
@@ -87,7 +87,7 @@ class RateLimitingFilterAuthEndpointsTest {
 
         filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());
 
-        verify(rateLimitService).allowRequest(eq("ip:127.0.0.1"), eq(3), eq(300), any(RateLimitTier.class));
+        verify(rateLimitService).allowRequest(eq("ip:127.0.0.1:/api/auth/supabase/forgot-password"), eq(3), eq(300), any(RateLimitTier.class));
     }
 
     @Test
@@ -103,7 +103,7 @@ class RateLimitingFilterAuthEndpointsTest {
 
         filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());
 
-        verify(rateLimitService).allowRequest(eq("ip:127.0.0.1"), eq(5), eq(300), any(RateLimitTier.class));
+        verify(rateLimitService).allowRequest(eq("ip:127.0.0.1:/api/auth/supabase/reset-password"), eq(5), eq(300), any(RateLimitTier.class));
     }
 
     @Test

@@ -190,6 +190,10 @@ public class TrustedProxyIpExtractor {
             // IPv4 vs IPv6 mismatch
             if (networkBytes.length != addressBytes.length) return false;
 
+            // Validate prefix range: 0..32 for IPv4, 0..128 for IPv6
+            int maxPrefix = networkBytes.length * 8;
+            if (prefixLength < 0 || prefixLength > maxPrefix) return false;
+
             int fullBytes = prefixLength / 8;
             int remainingBits = prefixLength % 8;
 

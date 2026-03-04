@@ -342,6 +342,22 @@ public class User {
     @Column(name = "consent_user_agent", length = 500)
     private String consentUserAgent;
 
+    /**
+     * Version identifier of the consent/terms policy the user agreed to.
+     * Format: YYYY-MM-DD-vN (e.g., "2025-01-01-v1").
+     * Immutable once set — database trigger prevents post-fact edits.
+     */
+    @Column(name = "consent_policy_version", length = 50)
+    private String consentPolicyVersion;
+
+    /**
+     * SHA-256 hash of the consent/terms document the user agreed to.
+     * Provides tamper-proof evidence of which exact document version was accepted.
+     * Immutable once set — database trigger prevents post-fact edits.
+     */
+    @Column(name = "consent_policy_hash", length = 64)
+    private String consentPolicyHash;
+
     // ========== RENTER DRIVER LICENSE VERIFICATION FIELDS ==========
     
     /**

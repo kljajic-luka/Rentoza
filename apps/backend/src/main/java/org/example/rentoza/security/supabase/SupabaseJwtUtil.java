@@ -6,10 +6,12 @@ import io.jsonwebtoken.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
 import jakarta.annotation.PostConstruct;
+import java.time.Duration;
 import java.math.BigInteger;
 import java.security.KeyFactory;
 import java.security.PublicKey;
@@ -49,7 +51,7 @@ public class SupabaseJwtUtil {
     private final String supabaseUrl;
     private final String jwtSecret; // Retained for JwtUtil consumers; not used for Supabase token validation
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final RestTemplate restTemplate;
     
     // Cache for JWKS public keys (kid -> PublicKey)
     private final Map<String, PublicKey> publicKeyCache = new ConcurrentHashMap<>();
@@ -58,10 +60,16 @@ public class SupabaseJwtUtil {
 
     public SupabaseJwtUtil(
             @Value("${supabase.jwt-secret}") String jwtSecret,
-            @Value("${supabase.url}") String supabaseUrl
+            @Value("${supabase.url}") String supabaseUrl,
+            @Value("${supabase.jwt.jwks.connect-timeout-ms:3000}") int jwksConnectTimeoutMs,
+            @Value("${supabase.jwt.jwks.read-timeout-ms:5000}") int jwksReadTimeoutMs
     ) {
         this.jwtSecret = jwtSecret;
         this.supabaseUrl = supabaseUrl;
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(Duration.ofMillis(jwksConnectTimeoutMs));
+        factory.setReadTimeout(Duration.ofMillis(jwksReadTimeoutMs));
+        this.restTemplate = new RestTemplate(factory);
     }
 
     @PostConstruct

@@ -123,6 +123,29 @@ public class ResilienceConfiguration {
         registry.circuitBreaker("paymentGateway", paymentConfig);
         registry.circuitBreaker("notificationService", notificationConfig);
         registry.circuitBreaker("geofenceValidation", defaultConfig);
+
+        // Supabase Auth API circuit breaker
+        // Fail fast when Supabase is down to avoid cascading timeouts
+        CircuitBreakerConfig supabaseAuthConfig = CircuitBreakerConfig.custom()
+                .failureRateThreshold(50)
+                .slidingWindowSize(10)
+                .slidingWindowType(CircuitBreakerConfig.SlidingWindowType.COUNT_BASED)
+                .waitDurationInOpenState(Duration.ofSeconds(30))
+                .permittedNumberOfCallsInHalfOpenState(3)
+                .minimumNumberOfCalls(5)
+                .recordExceptions(
+                        java.io.IOException.class,
+                        java.util.concurrent.TimeoutException.class,
+                        org.springframework.web.client.ResourceAccessException.class,
+                        org.springframework.web.client.HttpServerErrorException.class
+                )
+                .ignoreExceptions(
+                        org.springframework.web.client.HttpClientErrorException.class
+                )
+                .slowCallDurationThreshold(Duration.ofSeconds(5))
+                .slowCallRateThreshold(80)
+                .build();
+        registry.circuitBreaker("supabaseAuth", supabaseAuthConfig);
         
         // Add event consumers for observability
         registry.getEventPublisher()

@@ -5,6 +5,9 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import io.github.resilience4j.retry.Retry;
 import io.github.resilience4j.retry.RetryRegistry;
 import org.slf4j.Logger;
@@ -49,6 +52,7 @@ public class SupabaseAuthClient {
     private final String anonKey;
     private final String serviceRoleKey;
     private final Retry retry;
+    private final CircuitBreaker circuitBreaker;
 
     public SupabaseAuthClient(
             @Value("${supabase.url}") String supabaseUrl,
@@ -56,7 +60,8 @@ public class SupabaseAuthClient {
             @Value("${supabase.service-role-key}") String serviceRoleKey,
             @Value("${supabase.http.connect-timeout-ms:5000}") int connectTimeoutMs,
             @Value("${supabase.http.read-timeout-ms:10000}") int readTimeoutMs,
-            RetryRegistry retryRegistry
+            RetryRegistry retryRegistry,
+            CircuitBreakerRegistry circuitBreakerRegistry
     ) {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(Duration.ofMillis(connectTimeoutMs));
@@ -67,17 +72,27 @@ public class SupabaseAuthClient {
         this.anonKey = anonKey;
         this.serviceRoleKey = serviceRoleKey;
         this.retry = retryRegistry.retry("supabaseAuth");
-        log.info("SupabaseAuthClient initialized for: {} (connect={}ms, read={}ms, retry=enabled)",
+        this.circuitBreaker = circuitBreakerRegistry.circuitBreaker("supabaseAuth");
+        log.info("SupabaseAuthClient initialized for: {} (connect={}ms, read={}ms, retry+circuitBreaker=enabled)",
                 supabaseUrl, connectTimeoutMs, readTimeoutMs);
     }
 
     /**
-     * Execute a REST call with retry logic.
-     * Retries on 5xx, connection reset, and timeouts.
-     * Does NOT retry on 4xx (client errors).
+     * Execute a REST call with retry and circuit breaker.
+     * <p>Order: circuit breaker (outermost) → retry → actual call.
+     * On circuit breaker OPEN, throws SupabaseAuthException with auth-unavailable message.
+     * Retries on 5xx, connection reset, timeouts. Does NOT retry 4xx.
      */
     private <T> T executeWithRetry(Supplier<T> supplier) {
-        return Retry.decorateSupplier(retry, supplier).get();
+        try {
+            Supplier<T> retried = Retry.decorateSupplier(retry, supplier);
+            return CircuitBreaker.decorateSupplier(circuitBreaker, retried).get();
+        } catch (CallNotPermittedException e) {
+            log.error("[CircuitBreaker] supabaseAuth is OPEN — failing fast. State: {}",
+                    circuitBreaker.getState());
+            throw new SupabaseAuthException(
+                    "Authentication service temporarily unavailable. Please try again later.", e);
+        }
     }
 
     // =====================================================

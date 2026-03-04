@@ -14,6 +14,7 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { RouterLink } from '@angular/router';
 import { animate, state, style, transition, trigger } from '@angular/animations';
 import { EMPTY, catchError } from 'rxjs';
+import { AuthService } from '../../../core/auth/auth.service';
 
 /**
  * Cookie Consent Banner Component
@@ -233,6 +234,7 @@ export class CookieConsentComponent implements OnInit {
   private readonly STORAGE_KEY = 'rentoza_cookie_consent';
   private readonly CONSENT_VERSION = 1; // Increment to re-show banner
   private readonly http = inject(HttpClient);
+  private readonly authService = inject(AuthService);
 
   readonly showBanner = signal(false);
   readonly showSettings = signal(false);
@@ -326,6 +328,11 @@ export class CookieConsentComponent implements OnInit {
   }
 
   private syncConsentToBackend(consent: CookieConsent): void {
+    // Gate: only sync when user is authenticated — avoids 401 noise from anonymous sessions.
+    if (!this.authService.isAuthenticated()) {
+      return;
+    }
+
     // Best-effort sync via HttpClient — interceptors handle auth and XSRF automatically.
     // No blocking; errors are silently ignored (consent is saved locally regardless).
     this.http

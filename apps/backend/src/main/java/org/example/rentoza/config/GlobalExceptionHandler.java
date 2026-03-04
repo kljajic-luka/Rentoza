@@ -6,6 +6,7 @@ import org.example.rentoza.exception.BookingConflictException;
 import org.example.rentoza.exception.PaymentAuthorizationException;
 import org.example.rentoza.exception.ValidationException;
 import org.example.rentoza.security.ratelimit.RateLimitExceededException;
+import org.example.rentoza.security.supabase.SupabaseAuthClient.SupabaseAuthException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.CannotAcquireLockException;
@@ -121,6 +122,86 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .header("Retry-After", "0")
                 .body(body);
+    }
+
+    /**
+     * Handle Supabase Auth operation failures with meaningful HTTP status codes.
+     *
+     * <p>Maps known failure patterns to appropriate responses:
+     * <ul>
+     *   <li>"already registered" → 409 DUPLICATE_REGISTRATION</li>
+     *   <li>"temporarily unavailable" → 503 AUTH_SERVICE_UNAVAILABLE</li>
+     *   <li>"Invalid credentials" → 401</li>
+     *   <li>Other → sanitized 500 with correlation ID</li>
+     * </ul>
+     *
+     * <p><b>SECURITY:</b> Supabase-internal details (URLs, error codes) are never exposed.
+     * Only user-safe messages are returned.
+     */
+    @ExceptionHandler(SupabaseAuthException.class)
+    public ResponseEntity<Map<String, Object>> handleSupabaseAuthException(SupabaseAuthException ex) {
+        String msg = ex.getMessage() != null ? ex.getMessage() : "";
+        String msgLower = msg.toLowerCase(java.util.Locale.ROOT);
+
+        // Duplicate email / registration conflict
+        if (msgLower.contains("already registered") || msgLower.contains("already exists")) {
+            log.warn("Supabase registration conflict: {}", msg);
+            Map<String, Object> body = new HashMap<>();
+            body.put("timestamp", Instant.now().toString());
+            body.put("error", "Conflict");
+            body.put("code", "DUPLICATE_REGISTRATION");
+            body.put("message", "Nalog sa ovim podacima već postoji.");
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+        }
+
+        // Circuit-breaker open / Supabase unreachable
+        if (msgLower.contains("temporarily unavailable") || msgLower.contains("unavailable")) {
+            log.error("Supabase auth service unavailable: {}", msg);
+            Map<String, Object> body = new HashMap<>();
+            body.put("timestamp", Instant.now().toString());
+            body.put("error", "Service Unavailable");
+            body.put("code", "AUTH_SERVICE_UNAVAILABLE");
+            body.put("message", "Servis za autentifikaciju je privremeno nedostupan. Pokušajte ponovo kasnije.");
+            body.put("retryable", true);
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .header("Retry-After", "30")
+                    .body(body);
+        }
+
+        // Invalid credentials from Supabase login
+        if (msgLower.contains("invalid credentials")) {
+            log.warn("Supabase invalid credentials");
+            Map<String, Object> body = new HashMap<>();
+            body.put("timestamp", Instant.now().toString());
+            body.put("error", "Unauthorized");
+            body.put("message", "Invalid email or password");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
+        }
+
+        // Supabase upstream rejection (signup failed, code exchange failed, etc.)
+        if (msgLower.contains("registration failed") || msgLower.contains("authentication failed")) {
+            String correlationId = "AUTH-" + UUID.randomUUID().toString().substring(0, 8);
+            log.error("[{}] Supabase auth operation failed: {}", correlationId, msg, ex);
+            Map<String, Object> body = new HashMap<>();
+            body.put("timestamp", Instant.now().toString());
+            body.put("error", "Bad Gateway");
+            body.put("code", "AUTH_UPSTREAM_ERROR");
+            body.put("message", "Registracija nije uspela. Molimo pokušajte ponovo.");
+            body.put("correlationId", correlationId);
+            return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(body);
+        }
+
+        // Unknown SupabaseAuthException — sanitized 500
+        String correlationId = "AUTH-" + UUID.randomUUID().toString().substring(0, 8);
+        log.error("[{}] Unclassified SupabaseAuthException: {}", correlationId, msg, ex);
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", Instant.now().toString());
+        body.put("error", "Internal Server Error");
+        body.put("message", "Došlo je do greške pri autentifikaciji. Molimo pokušajte ponovo.");
+        body.put("correlationId", correlationId);
+        body.put("support", "Za pomoć, navedite ID greške: " + correlationId);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(body);
     }
 
     /**
@@ -272,7 +353,12 @@ public class GlobalExceptionHandler {
         constraintName = extractConstraintName(rootCause);
 
         // 23505 = unique_violation (PostgreSQL)
-        if ("23505".equals(sqlState)) {
+        // Also handle null sqlState when message clearly indicates unique violation
+        boolean isUniqueViolation = "23505".equals(sqlState)
+                || (sqlState == null && message != null
+                    && message.toLowerCase(java.util.Locale.ROOT).contains("violates unique constraint"));
+
+        if (isUniqueViolation) {
             // Registration-related constraints → 409 DUPLICATE_REGISTRATION
             if (isRegistrationConstraint(constraintName, message)) {
                 log.warn("Registration duplicate detected: constraint={}, sqlState={}", constraintName, sqlState);

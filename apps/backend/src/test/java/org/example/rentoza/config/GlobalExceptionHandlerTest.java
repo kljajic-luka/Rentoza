@@ -4,6 +4,7 @@ import jakarta.persistence.OptimisticLockException;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.Path;
+import org.example.rentoza.security.supabase.SupabaseAuthClient.SupabaseAuthException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.CannotAcquireLockException;
@@ -291,5 +292,91 @@ class GlobalExceptionHandlerTest {
                 "violates unique constraint idx_renter_documents_hash_unique");
         assertThat(handler.handleDataIntegrityViolation(docHash).getBody().get("code"))
                 .isEqualTo("DUPLICATE_DOCUMENT");
+    }
+
+    // ========== SupabaseAuthException Handler Tests ==========
+
+    @Test
+    @DisplayName("SupabaseAuthException with 'already registered' returns 409 DUPLICATE_REGISTRATION")
+    void supabaseAuthException_alreadyRegistered_returns409() {
+        SupabaseAuthException ex = new SupabaseAuthException("Email already registered");
+
+        ResponseEntity<Map<String, Object>> response = handler.handleSupabaseAuthException(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().get("code")).isEqualTo("DUPLICATE_REGISTRATION");
+    }
+
+    @Test
+    @DisplayName("SupabaseAuthException with 'temporarily unavailable' returns 503 with Retry-After")
+    void supabaseAuthException_unavailable_returns503() {
+        SupabaseAuthException ex = new SupabaseAuthException(
+                "Authentication service temporarily unavailable. Please try again later.");
+
+        ResponseEntity<Map<String, Object>> response = handler.handleSupabaseAuthException(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().get("code")).isEqualTo("AUTH_SERVICE_UNAVAILABLE");
+        assertThat(response.getBody().get("retryable")).isEqualTo(true);
+        assertThat(response.getHeaders().getFirst("Retry-After")).isEqualTo("30");
+    }
+
+    @Test
+    @DisplayName("SupabaseAuthException with 'Invalid credentials' returns 401")
+    void supabaseAuthException_invalidCredentials_returns401() {
+        SupabaseAuthException ex = new SupabaseAuthException("Invalid credentials");
+
+        ResponseEntity<Map<String, Object>> response = handler.handleSupabaseAuthException(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().get("message")).isEqualTo("Invalid email or password");
+    }
+
+    @Test
+    @DisplayName("SupabaseAuthException with 'Registration failed' returns 502 AUTH_UPSTREAM_ERROR")
+    void supabaseAuthException_registrationFailed_returns502() {
+        SupabaseAuthException ex = new SupabaseAuthException(
+                "Registration failed: could not create local account. Please try again.");
+
+        ResponseEntity<Map<String, Object>> response = handler.handleSupabaseAuthException(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().get("code")).isEqualTo("AUTH_UPSTREAM_ERROR");
+        assertThat(response.getBody().get("correlationId")).asString().startsWith("AUTH-");
+    }
+
+    @Test
+    @DisplayName("SupabaseAuthException with unknown message returns sanitized 500")
+    void supabaseAuthException_unknown_returns500() {
+        SupabaseAuthException ex = new SupabaseAuthException("Something entirely unexpected");
+
+        ResponseEntity<Map<String, Object>> response = handler.handleSupabaseAuthException(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().get("correlationId")).asString().startsWith("AUTH-");
+        // Security: internal message NOT leaked
+        assertThat(response.getBody().get("message").toString())
+                .doesNotContain("Something entirely unexpected");
+    }
+
+    // ========== SQLState Null Fallback Tests ==========
+
+    @Test
+    @DisplayName("Unique constraint violation with null SQLState but message match returns 409")
+    void uniqueConstraintViolation_nullSqlState_messageMatch_returns409() {
+        // Simulate a JDBC wrapper that loses SQLState but preserves message
+        DataIntegrityViolationException ex = new DataIntegrityViolationException(
+                "ERROR: duplicate key value violates unique constraint \"users_email_key\"");
+
+        ResponseEntity<Map<String, Object>> response = handler.handleDataIntegrityViolation(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().get("code")).isEqualTo("DUPLICATE_REGISTRATION");
     }
 }

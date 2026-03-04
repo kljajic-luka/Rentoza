@@ -4,6 +4,7 @@ import jakarta.persistence.EntityNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.example.rentoza.config.AppProperties;
 import org.example.rentoza.security.network.TrustedProxyIpExtractor;
 import org.example.rentoza.user.dto.CompleteProfileRequestDTO;
 import org.example.rentoza.user.dto.CompleteProfileResponseDTO;
@@ -47,6 +48,7 @@ public class ProfileCompletionService {
     private final UserRepository userRepository;
     private final HashUtil hashUtil;
     private final TrustedProxyIpExtractor ipExtractor;
+    private final AppProperties appProperties;
 
     /**
      * Complete user profile with required fields based on their role.
@@ -103,6 +105,8 @@ public class ProfileCompletionService {
                 String ua = httpRequest.getHeader("User-Agent");
                 user.setConsentUserAgent(ua != null && ua.length() > 500 ? ua.substring(0, 500) : ua);
             }
+            user.setConsentPolicyVersion(appProperties.getConsent().getPolicyVersion());
+            user.setConsentPolicyHash(appProperties.getConsent().getPolicyHash());
         }
 
         // 6. Set common fields

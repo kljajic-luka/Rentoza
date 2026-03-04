@@ -14,6 +14,7 @@ public class AppProperties {
     private final Cors cors = new Cors();
     private final Cookie cookie = new Cookie();
     private final RateLimit rateLimit = new RateLimit();
+    private final Consent consent = new Consent();
 
     public Cors getCors() {
         return cors;
@@ -25,6 +26,10 @@ public class AppProperties {
 
     public RateLimit getRateLimit() {
         return rateLimit;
+    }
+
+    public Consent getConsent() {
+        return consent;
     }
 
     /**
@@ -236,6 +241,43 @@ public class AppProperties {
             public void setWindowSeconds(int windowSeconds) {
                 this.windowSeconds = windowSeconds;
             }
+        }
+    }
+
+    /**
+     * Consent policy version tracking configuration.
+     * Records which policy version and document hash each user consented to.
+     * Used for GDPR/compliance audit trail.
+     */
+    public static class Consent {
+        /**
+         * Version identifier of the current consent/terms policy.
+         * Format: YYYY-MM-DD-vN (e.g., "2025-01-01-v1").
+         * Update when terms of service are revised.
+         */
+        private String policyVersion = "2025-01-01-v1";
+
+        /**
+         * SHA-256 hash of the current consent/terms document.
+         * Provides tamper-proof link between user consent and document content.
+         * Update when terms of service document changes.
+         */
+        private String policyHash = "placeholder-update-when-terms-finalized";
+
+        public String getPolicyVersion() {
+            return policyVersion;
+        }
+
+        public void setPolicyVersion(String policyVersion) {
+            this.policyVersion = policyVersion;
+        }
+
+        public String getPolicyHash() {
+            return policyHash;
+        }
+
+        public void setPolicyHash(String policyHash) {
+            this.policyHash = policyHash;
         }
     }
 }

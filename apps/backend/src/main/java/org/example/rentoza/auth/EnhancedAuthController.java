@@ -241,6 +241,8 @@ public class EnhancedAuthController {
             user.setVehicleRegistrationConfirmedAt(now);
             user.setConsentIp(ipExtractor.extractClientIp(request));
             user.setConsentUserAgent(truncate(request.getHeader("User-Agent"), 500));
+            user.setConsentPolicyVersion(appProperties.getConsent().getPolicyVersion());
+            user.setConsentPolicyHash(appProperties.getConsent().getPolicyHash());
 
             user = userRepository.save(user);
 
@@ -340,6 +342,8 @@ public class EnhancedAuthController {
                 user.setVehicleRegistrationConfirmedAt(now);
                 user.setConsentIp(ipExtractor.extractClientIp(request));
                 user.setConsentUserAgent(truncate(request.getHeader("User-Agent"), 500));
+                user.setConsentPolicyVersion(appProperties.getConsent().getPolicyVersion());
+                user.setConsentPolicyHash(appProperties.getConsent().getPolicyHash());
             } else {
                 // USER (Renter) registration now collects only basic profile metadata here.
                 // Driver license data is captured via /verify-license document flow.

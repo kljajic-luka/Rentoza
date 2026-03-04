@@ -152,37 +152,20 @@ public class AuthController {
         return builder.build();
     }
 
+    /**
+     * Legacy registration endpoint — DISABLED.
+     * Returns 410 GONE unconditionally. All registration must go through
+     * /api/auth/supabase/register (USER) or the dedicated owner registration flow (OWNER).
+     * Endpoint kept in SecurityConfig permitAll list; will be fully removed in Phase 4.
+     */
+    @Deprecated
     @PostMapping("/register")
-    public ResponseEntity<?> register(@Valid @RequestBody UserRegisterDTO dto,
-                                      HttpServletRequest request,
-                                      HttpServletResponse res) {
-        try {
-            User user = userService.register(dto);
-            String accessToken = jwtUtil.generateToken(user.getEmail(), user.getRole().name(), user.getId());
-
-            // Issue refresh token with IP/UserAgent fingerprinting
-            String ipAddress = RefreshTokenServiceEnhanced.extractIpAddress(request);
-            String userAgent = RefreshTokenServiceEnhanced.extractUserAgent(request);
-            String refreshRaw = refreshTokenService.issue(user.getEmail(), ipAddress, userAgent);
-
-            ResponseCookie cookie = createRefreshTokenCookie(refreshRaw);
-            ResponseCookie accessCookie = createAccessTokenCookie(accessToken);
-
-            res.addHeader("Set-Cookie", cookie.toString());
-            res.addHeader("Set-Cookie", accessCookie.toString());
-            ensureCsrfCookie(request, res);
-
-            UserResponseDTO userResponse = userService.toUserResponse(user);
-
-            log.info("User registered successfully: email={}, role={}", user.getEmail(), user.getRole());
-
-            // SECURITY: Token delivered via HttpOnly cookie, NOT in JSON body
-            return ResponseEntity.ok(AuthResponseDTO.success(userResponse, "Account created successfully"));
-
-        } catch (RuntimeException e) {
-            log.warn("Registration failed: {}", e.getMessage());
-            return ResponseEntity.badRequest().body(Map.of("error", "Registration failed"));
-        }
+    public ResponseEntity<?> register() {
+        log.warn("SECURITY: Legacy /api/auth/register called but disabled in production");
+        return ResponseEntity.status(410).body(Map.of(
+                "error", "ENDPOINT_DEPRECATED",
+                "message", "This registration endpoint is deprecated. Please use the current registration flow."
+        ));
     }
 
     @PostMapping("/login")

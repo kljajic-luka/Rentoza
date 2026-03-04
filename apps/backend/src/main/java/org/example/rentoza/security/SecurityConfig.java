@@ -1,9 +1,5 @@
 package org.example.rentoza.security;
 
-import org.example.rentoza.auth.oauth2.CookieOAuth2AuthorizationRequestRepository;
-import org.example.rentoza.auth.oauth2.CustomAuthorizationRequestResolver;
-import org.example.rentoza.auth.oauth2.CustomOAuth2UserService;
-import org.example.rentoza.auth.oauth2.OAuth2AuthenticationSuccessHandler;
 import org.example.rentoza.config.AppProperties;
 import org.example.rentoza.security.csrf.CustomCookieCsrfTokenRepository;
 import org.example.rentoza.security.csrf.LoggingCsrfTokenRequestHandler;
@@ -27,8 +23,6 @@ import org.springframework.security.config.annotation.authentication.configurati
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.HeadersConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.oauth2.client.registration.ClientRegistration;
-import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.authentication.session.NullAuthenticatedSessionStrategy;
@@ -45,26 +39,11 @@ public class SecurityConfig {
 
     private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
     private final AppProperties appProperties;
-    private final CustomOAuth2UserService customOAuth2UserService;
-    private final OAuth2AuthenticationSuccessHandler oauth2SuccessHandler;
-    private final CustomAuthorizationRequestResolver customAuthorizationRequestResolver;
-    private final ClientRegistrationRepository clientRegistrationRepository;
-    private final CookieOAuth2AuthorizationRequestRepository cookieOAuth2AuthorizationRequestRepository;
 
     public SecurityConfig(JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint,
-                          AppProperties appProperties,
-                          CustomOAuth2UserService customOAuth2UserService,
-                          OAuth2AuthenticationSuccessHandler oauth2SuccessHandler,
-                          CustomAuthorizationRequestResolver customAuthorizationRequestResolver,
-                          ClientRegistrationRepository clientRegistrationRepository,
-                          CookieOAuth2AuthorizationRequestRepository cookieOAuth2AuthorizationRequestRepository) {
+                          AppProperties appProperties) {
         this.jwtAuthenticationEntryPoint = jwtAuthenticationEntryPoint;
         this.appProperties = appProperties;
-        this.customOAuth2UserService = customOAuth2UserService;
-        this.oauth2SuccessHandler = oauth2SuccessHandler;
-        this.customAuthorizationRequestResolver = customAuthorizationRequestResolver;
-        this.clientRegistrationRepository = clientRegistrationRepository;
-        this.cookieOAuth2AuthorizationRequestRepository = cookieOAuth2AuthorizationRequestRepository;
     }
 
     /**
@@ -191,7 +170,8 @@ public class SecurityConfig {
                         // Debug endpoints — @Profile("!prod") prevents bean registration in production.
                         // Defense-in-depth: require ADMIN even in dev (controller also has @PreAuthorize).
                         .requestMatchers("/api/auth/debug/**").hasRole("ADMIN")
-                        // OAuth2 endpoints - required for Google login flow
+                        // OAuth2 endpoints — handled by LegacyOAuth2SecurityConfig when
+                        // legacy.oauth2.enabled=true; kept permitAll as fallback (404 when disabled)
                         .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
                         // Public static resources (images, documents, uploads)
                         .requestMatchers(HttpMethod.GET, "/uploads/**").permitAll()
@@ -277,65 +257,19 @@ public class SecurityConfig {
                                 .maxAgeInSeconds(31536000)) // 1 year
                         .contentTypeOptions(Customizer.withDefaults()) // X-Content-Type-Options: nosniff
                 )
-                // EXCEPTION HANDLING: Return JSON 401 instead of OAuth2 redirects
+                // EXCEPTION HANDLING: Return JSON 401 for unauthenticated requests
                 //
-                // CRITICAL: This prevents Spring Security from redirecting to Google OAuth2 when JWT fails
+                // JwtAuthenticationEntryPoint returns clean JSON:
+                //   {"error":"Unauthorized","message":"JWT expired or invalid"}
+                // Frontend sees 401 -> triggers silent token refresh.
                 //
-                // Default Behavior (without this):
-                // - When JWT is expired/invalid, Spring's default OAuth2 entry point redirects to:
-                //   https://accounts.google.com/o/oauth2/v2/auth?...
-                // - Browser blocks cross-origin redirect -> CORS error
-                // - Frontend can't handle 401 properly -> token refresh fails
-                //
-                // With JwtAuthenticationEntryPoint:
-                // - Returns clean JSON response: {"error":"Unauthorized","message":"JWT expired or invalid"}
-                // - Frontend sees 401 status code -> triggers silent token refresh
-                // - OAuth2 login flow remains intact for /oauth2/** endpoints
-                //
-                // Scope: This entry point applies to ALL authenticated endpoints
-                // OAuth2 endpoints (/oauth2/**, /login/oauth2/**) bypass JWT filter entirely (see shouldNotFilter)
+                // NOTE: Legacy OAuth2 login (if enabled) runs in a separate SecurityFilterChain
+                // at @Order(0) — see LegacyOAuth2SecurityConfig.
                 .exceptionHandling(ex -> ex.authenticationEntryPoint(jwtAuthenticationEntryPoint))
-                // SESSION MANAGEMENT: STATELESS for token-based authentication
-                //
-                // CRITICAL: This enforces a stateless, JWT-first authentication model
-                //
-                // Why STATELESS:
-                // - All API endpoints use JWT Bearer tokens (no server-side sessions)
-                // - OAuth2 login is only used for initial user provisioning
-                // - After OAuth2 success, frontend receives JWT and uses it exclusively
-                // - SupabaseJwtAuthFilter ALWAYS replaces any OAuth2 session auth with JWT auth
-                // - Prevents session fixation attacks and reduces server memory overhead
-                //
-                // OAuth2 Flow with STATELESS:
-                // 1. User clicks "Login with Google" -> OAuth2 authorization flow starts
-                // 2. OAuth2 may use minimal transient state during OIDC handshake
-                // 3. OAuth2AuthenticationSuccessHandler provisions user and generates JWT
-                // 4. Frontend receives JWT in redirect URL parameter
-                // 5. All subsequent API calls use JWT in Authorization header
-                // 6. No persistent session is maintained after OAuth2 redirect
-                //
-                // Defense in Depth:
-                // - Even if OAuth2 creates temporary session, SupabaseJwtAuthFilter replaces it
-                // - FavoriteController has fallback to handle DefaultOidcUser gracefully
-                // - JWT validation happens on every request (stateless verification)
+                // SESSION MANAGEMENT: STATELESS for JWT-based authentication
+                // All API endpoints use Supabase JWT tokens — no server-side sessions.
+                // Legacy OAuth2 (if enabled) runs in a separate filter chain (LegacyOAuth2SecurityConfig).
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                // Configure OAuth2 login with role-based registration support
-                // STATELESS: Uses cookie-based authorization request repository (no HttpSession)
-                .oauth2Login(oauth2 -> oauth2
-                        // ROLE-BASED REGISTRATION: Custom authorization request resolver
-                        // Captures ?role=owner from frontend and embeds it in OAuth2 state parameter
-                        // This enables owner registration via Google OAuth2
-                        .authorizationEndpoint(authorization -> authorization
-                                .authorizationRequestResolver(customAuthorizationRequestResolver)
-                                // STATELESS: Store OAuth2 authorization request in cookie instead of session
-                                // Prevents JSESSIONID creation during OAuth2 flows
-                                .authorizationRequestRepository(cookieOAuth2AuthorizationRequestRepository)
-                        )
-                        .userInfoEndpoint(userInfo -> userInfo
-                                .userService(customOAuth2UserService)
-                        )
-                        .successHandler(oauth2SuccessHandler)
-                )
                 // FILTER CHAIN ORDER (execution from top to bottom):
                 // 1. RateLimitingFilter (fail fast on rate limit exceeded)
                 // 2. ServiceAuthenticationFilter (internal service authentication)
@@ -358,7 +292,6 @@ public class SecurityConfig {
                 .addFilterAfter(new CsrfCookieFilter(), org.springframework.security.web.csrf.CsrfFilter.class);
 
         SecurityFilterChain chain = http.build();
-        logOAuth2Configuration();
         logRateLimitConfiguration();
         logSecurityChainInitialization();
         return chain;
@@ -445,20 +378,6 @@ public class SecurityConfig {
         return cfg.getAuthenticationManager();
     }
 
-    private void logOAuth2Configuration() {
-        if (clientRegistrationRepository == null) {
-            log.warn("⚠️ No OAuth2 client registrations available.");
-            return;
-        }
-
-        ClientRegistration google = clientRegistrationRepository.findByRegistrationId("google");
-        if (google != null) {
-            log.info("✅ OAuth2 login enabled for provider: {}", google.getRegistrationId());
-        } else {
-            log.warn("⚠️ Google OAuth2 client registration not found. OAuth2 login disabled.");
-        }
-    }
-
     private void logRateLimitConfiguration() {
         if (appProperties.getRateLimit().isEnabled()) {
             log.info("✅ Rate limiting enabled: default={} requests/{} seconds", 
@@ -495,6 +414,6 @@ public class SecurityConfig {
         log.info("   2. ServiceAuthenticationFilter - Internal microservice authentication");
         log.info("   3. SupabaseJwtAuthFilter - Supabase Auth JWT validation");
         log.info("   4. UsernamePasswordAuthenticationFilter - Spring Security default");
-        log.info("   Stateless authentication model: JWT-first with OAuth2 provisioning");
+        log.info("   Stateless authentication model: Supabase JWT-first (legacy OAuth2 in separate chain if enabled)");
     }
 }

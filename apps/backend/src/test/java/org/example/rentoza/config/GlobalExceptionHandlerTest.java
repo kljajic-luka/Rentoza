@@ -1,18 +1,28 @@
 package org.example.rentoza.config;
 
 import jakarta.persistence.OptimisticLockException;
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.ConstraintViolationException;
+import jakarta.validation.Path;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.CannotAcquireLockException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DeadlockLoserDataAccessException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 
+import java.sql.SQLException;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * Unit tests for GlobalExceptionHandler.
@@ -159,5 +169,127 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().get("error")).isEqualTo("Forbidden");
+    }
+
+    // ========== Phase 3: ConstraintViolationException Tests ==========
+
+    @Test
+    @DisplayName("ConstraintViolationException returns 400 with VALIDATION_FAILED code")
+    void constraintViolationException_returns400WithValidationFailedCode() {
+        // Given
+        @SuppressWarnings("unchecked")
+        ConstraintViolation<Object> violation = mock(ConstraintViolation.class);
+        Path path = mock(Path.class);
+        when(path.toString()).thenReturn("registerUser.dto.email");
+        when(violation.getPropertyPath()).thenReturn(path);
+        when(violation.getMessage()).thenReturn("Invalid email format");
+
+        Set<ConstraintViolation<?>> violations = new HashSet<>();
+        violations.add(violation);
+        ConstraintViolationException ex = new ConstraintViolationException("Validation failed", violations);
+
+        // When
+        ResponseEntity<Map<String, Object>> response = handler.handleConstraintViolation(ex);
+
+        // Then
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().get("code")).isEqualTo("VALIDATION_FAILED");
+        assertThat(response.getBody().get("error")).isEqualTo("Validation Error");
+        @SuppressWarnings("unchecked")
+        List<Map<String, String>> violationList = (List<Map<String, String>>) response.getBody().get("violations");
+        assertThat(violationList).hasSize(1);
+        assertThat(violationList.get(0).get("field")).isEqualTo("email");
+        assertThat(violationList.get(0).get("message")).isEqualTo("Invalid email format");
+    }
+
+    // ========== Phase 3: SQLState-Aware DataIntegrity Tests ==========
+
+    @Test
+    @DisplayName("Unique violation with registration constraint returns 409 DUPLICATE_REGISTRATION")
+    void uniqueViolation_registrationConstraint_returns409DuplicateRegistration() {
+        // Given - simulate SQLException with SQLState 23505 and registration table message
+        SQLException sqlEx = new SQLException(
+                "duplicate key value violates unique constraint \"supabase_user_mapping_pkey\"",
+                "23505");
+
+        DataIntegrityViolationException ex = new DataIntegrityViolationException(
+                "could not execute statement", sqlEx);
+
+        // When
+        ResponseEntity<Map<String, Object>> response = handler.handleDataIntegrityViolation(ex);
+
+        // Then
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(response.getBody()).isNotNull();
+        // Falls back to message-based classification since plain SQLException has no constraint name
+        assertThat(response.getBody().get("code")).isEqualTo("DUPLICATE_REGISTRATION");
+    }
+
+    @Test
+    @DisplayName("Unique violation with non-registration constraint returns 409 DATA_CONFLICT")
+    void uniqueViolation_nonRegistrationConstraint_returns409DataConflict() {
+        // Given - simulate SQLException with SQLState 23505 and unrelated message
+        SQLException sqlEx = new SQLException(
+                "duplicate key value violates unique constraint \"some_other_unique_idx\"",
+                "23505");
+
+        DataIntegrityViolationException ex = new DataIntegrityViolationException(
+                "could not execute statement", sqlEx);
+
+        // When
+        ResponseEntity<Map<String, Object>> response = handler.handleDataIntegrityViolation(ex);
+
+        // Then
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().get("code")).isEqualTo("DATA_CONFLICT");
+    }
+
+    @Test
+    @DisplayName("Non-unique integrity violation returns sanitized 500")
+    void nonUniqueIntegrityViolation_returns500() {
+        // Given - not 23505 (e.g. foreign key violation 23503)
+        DataIntegrityViolationException ex = new DataIntegrityViolationException(
+                "foreign key constraint violation");
+
+        // When
+        ResponseEntity<Map<String, Object>> response = handler.handleDataIntegrityViolation(ex);
+
+        // Then
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().get("correlationId")).asString().startsWith("DB-");
+        // Security: no internal details
+        assertThat(response.getBody().get("message")).asString()
+                .doesNotContain("foreign key");
+    }
+
+    @Test
+    @DisplayName("Existing specialized handlers (USER_OVERLAP, CAR_UNAVAILABLE, idempotency, document) remain unchanged")
+    void existingSpecializedHandlers_remainUnchanged() {
+        // USER_OVERLAP
+        DataIntegrityViolationException userOverlap = new DataIntegrityViolationException(
+                "ERROR: USER_OVERLAP: overlapping bookings");
+        assertThat(handler.handleDataIntegrityViolation(userOverlap).getBody().get("code"))
+                .isEqualTo("USER_OVERLAP");
+
+        // CAR_UNAVAILABLE
+        DataIntegrityViolationException carUnavailable = new DataIntegrityViolationException(
+                "ERROR: CAR_UNAVAILABLE: car booked");
+        assertThat(handler.handleDataIntegrityViolation(carUnavailable).getBody().get("code"))
+                .isEqualTo("CAR_UNAVAILABLE");
+
+        // Idempotency key
+        DataIntegrityViolationException idempotency = new DataIntegrityViolationException(
+                "duplicate key value violates unique constraint idempotency_key");
+        assertThat(handler.handleDataIntegrityViolation(idempotency).getBody().get("code"))
+                .isEqualTo("DUPLICATE_BOOKING");
+
+        // Document hash
+        DataIntegrityViolationException docHash = new DataIntegrityViolationException(
+                "violates unique constraint idx_renter_documents_hash_unique");
+        assertThat(handler.handleDataIntegrityViolation(docHash).getBody().get("code"))
+                .isEqualTo("DUPLICATE_DOCUMENT");
     }
 }

@@ -28,8 +28,10 @@ import org.springframework.validation.FieldError;
 
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @ControllerAdvice
 public class GlobalExceptionHandler {
@@ -122,6 +124,38 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Handle bean-level constraint violations (e.g., @Size, @Pattern on method params).
+     *
+     * <p>Returns 400 with field-level violation details for UI mapping.
+     */
+    @ExceptionHandler(jakarta.validation.ConstraintViolationException.class)
+    public ResponseEntity<Map<String, Object>> handleConstraintViolation(
+            jakarta.validation.ConstraintViolationException ex) {
+        log.warn("Constraint violation: {}", ex.getMessage());
+
+        List<Map<String, String>> violations = ex.getConstraintViolations().stream()
+                .map(cv -> {
+                    Map<String, String> v = new HashMap<>();
+                    String path = cv.getPropertyPath().toString();
+                    // Strip method name prefix (e.g., "registerUser.dto.email" → "email")
+                    int lastDot = path.lastIndexOf('.');
+                    v.put("field", lastDot >= 0 ? path.substring(lastDot + 1) : path);
+                    v.put("message", cv.getMessage());
+                    return v;
+                })
+                .collect(Collectors.toList());
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", Instant.now().toString());
+        body.put("error", "Validation Error");
+        body.put("code", "VALIDATION_FAILED");
+        body.put("message", "Input validation failed");
+        body.put("violations", violations);
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
+    /**
      * Handle all uncaught exceptions with sanitized error response.
      * 
      * <p><b>SECURITY (Issue 1.1):</b> Never expose internal details to clients:
@@ -181,8 +215,9 @@ public class GlobalExceptionHandler {
             org.springframework.dao.DataIntegrityViolationException ex) {
         String message = ex.getMostSpecificCause().getMessage();
 
+        // ── Explicit Known Handlers (trigger / constraint name based) ────────
+
         // P0 FIX: PostgreSQL trigger RAISE EXCEPTION with 'USER_OVERLAP' or 'CAR_UNAVAILABLE'
-        // wraps in DataIntegrityViolationException. Map these to 409 instead of generic 500.
         if (message != null && message.contains("USER_OVERLAP")) {
             log.warn("DB trigger caught user overlap: {}", message);
             Map<String, Object> body = new HashMap<>();
@@ -215,7 +250,6 @@ public class GlobalExceptionHandler {
         }
 
         // Renter document hash uniqueness violation
-        // This is a last-resort guard; normal path handles duplicates before the INSERT.
         if (message != null && message.contains("idx_renter_documents_hash_unique")) {
             log.warn("Renter document hash unique constraint violated (race condition guard): {}", message);
             Map<String, Object> body = new HashMap<>();
@@ -226,10 +260,44 @@ public class GlobalExceptionHandler {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
         }
 
-        // Fall through to generic DB error handling
+        // ── SQLState-aware classification for remaining integrity violations ──
+        Throwable rootCause = org.springframework.core.NestedExceptionUtils.getMostSpecificCause(ex);
+        String sqlState = null;
+        String constraintName = null;
+
+        if (rootCause instanceof java.sql.SQLException sqlEx) {
+            sqlState = sqlEx.getSQLState();
+        }
+        // Extract constraint name via reflection (PostgreSQL driver is runtime-scoped)
+        constraintName = extractConstraintName(rootCause);
+
+        // 23505 = unique_violation (PostgreSQL)
+        if ("23505".equals(sqlState)) {
+            // Registration-related constraints → 409 DUPLICATE_REGISTRATION
+            if (isRegistrationConstraint(constraintName, message)) {
+                log.warn("Registration duplicate detected: constraint={}, sqlState={}", constraintName, sqlState);
+                Map<String, Object> body = new HashMap<>();
+                body.put("timestamp", Instant.now().toString());
+                body.put("error", "Conflict");
+                body.put("code", "DUPLICATE_REGISTRATION");
+                body.put("message", "Nalog sa ovim podacima već postoji.");
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+            }
+
+            // Other unique violations → 409 DATA_CONFLICT
+            log.warn("Unique constraint violation: constraint={}, sqlState={}", constraintName, sqlState);
+            Map<String, Object> body = new HashMap<>();
+            body.put("timestamp", Instant.now().toString());
+            body.put("error", "Conflict");
+            body.put("code", "DATA_CONFLICT");
+            body.put("message", "Došlo je do konflikta podataka. Molimo pokušajte ponovo.");
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+        }
+
+        // ── Non-unique integrity violations → sanitized 500 ─────────────────
         String correlationId = "DB-" + UUID.randomUUID().toString().substring(0, 8);
-        log.error("[{}] Data integrity violation: type={}, message={}",
-                correlationId, ex.getClass().getSimpleName(), message, ex);
+        log.error("[{}] Data integrity violation: type={}, sqlState={}, constraint={}, message={}",
+                correlationId, ex.getClass().getSimpleName(), sqlState, constraintName, message, ex);
 
         Map<String, Object> body = new HashMap<>();
         body.put("timestamp", Instant.now().toString());
@@ -239,6 +307,49 @@ public class GlobalExceptionHandler {
         body.put("support", "Za pomoć, navedite ID greške: " + correlationId);
 
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(body);
+    }
+
+    /**
+     * Determine if a unique constraint violation is registration-related.
+     * Uses constraint name as primary classifier, message keywords as fallback.
+     */
+    private boolean isRegistrationConstraint(String constraintName, String message) {
+        // Primary: constraint name match
+        if (constraintName != null) {
+            String cn = constraintName.toLowerCase(java.util.Locale.ROOT);
+            return cn.contains("supabase_user_mapping")
+                    || cn.contains("users_email")
+                    || cn.contains("users_auth_uid")
+                    || cn.contains("uk_users_email")
+                    || cn.contains("user_mapping_pkey");
+        }
+        // Fallback: message-based (only for registration-specific tables)
+        if (message != null) {
+            String m = message.toLowerCase(java.util.Locale.ROOT);
+            return m.contains("supabase_user_mapping") || m.contains("users_email_key")
+                    || m.contains("users_auth_uid_key");
+        }
+        return false;
+    }
+
+    /**
+     * Extract constraint name from PostgreSQL PSQLException via reflection.
+     * PostgreSQL driver is runtime-scoped, so direct class reference is not possible.
+     */
+    private String extractConstraintName(Throwable rootCause) {
+        try {
+            if (rootCause.getClass().getName().equals("org.postgresql.util.PSQLException")) {
+                var semMethod = rootCause.getClass().getMethod("getServerErrorMessage");
+                Object serverErrorMessage = semMethod.invoke(rootCause);
+                if (serverErrorMessage != null) {
+                    var constraintMethod = serverErrorMessage.getClass().getMethod("getConstraint");
+                    return (String) constraintMethod.invoke(serverErrorMessage);
+                }
+            }
+        } catch (Exception ignored) {
+            // Reflection failed — fall back to null (constraint name unavailable)
+        }
+        return null;
     }
 
     /**

@@ -165,10 +165,8 @@ public class EnhancedAuthController {
         } catch (ValidationException e) {
             log.warn("User registration validation failed: {}", e.getMessage());
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
-        } catch (Exception e) {
-            log.error("User registration failed: {}", e.getMessage(), e);
-            return ResponseEntity.badRequest().body(Map.of("error", "Registration failed: " + e.getMessage()));
         }
+        // Unexpected exceptions propagate to GlobalExceptionHandler (sanitized 500)
     }
 
     /**
@@ -271,10 +269,8 @@ public class EnhancedAuthController {
         } catch (IdentityDocumentValidator.ValidationException e) {
             log.warn("Owner identity validation failed: {}", e.getMessage());
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
-        } catch (Exception e) {
-            log.error("Owner registration failed: {}", e.getMessage(), e);
-            return ResponseEntity.badRequest().body(Map.of("error", "Registration failed: " + e.getMessage()));
         }
+        // Unexpected exceptions propagate to GlobalExceptionHandler (sanitized 500)
     }
 
     /**
@@ -374,10 +370,8 @@ public class EnhancedAuthController {
         } catch (IdentityDocumentValidator.ValidationException e) {
             log.warn("OAuth completion identity validation failed: {}", e.getMessage());
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
-        } catch (Exception e) {
-            log.error("OAuth completion failed: {}", e.getMessage());
-            return ResponseEntity.badRequest().body(Map.of("error", "Profile completion failed"));
         }
+        // Unexpected exceptions propagate to GlobalExceptionHandler (sanitized 500)
     }
 
     // ==================== VALIDATION HELPERS ====================

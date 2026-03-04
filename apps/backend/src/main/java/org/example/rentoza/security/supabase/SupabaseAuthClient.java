@@ -5,6 +5,8 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.resilience4j.retry.Retry;
+import io.github.resilience4j.retry.RetryRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -18,6 +20,7 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 /**
  * Supabase Auth API client.
@@ -45,13 +48,15 @@ public class SupabaseAuthClient {
     private final String supabaseUrl;
     private final String anonKey;
     private final String serviceRoleKey;
+    private final Retry retry;
 
     public SupabaseAuthClient(
             @Value("${supabase.url}") String supabaseUrl,
             @Value("${supabase.anon-key}") String anonKey,
             @Value("${supabase.service-role-key}") String serviceRoleKey,
             @Value("${supabase.http.connect-timeout-ms:5000}") int connectTimeoutMs,
-            @Value("${supabase.http.read-timeout-ms:10000}") int readTimeoutMs
+            @Value("${supabase.http.read-timeout-ms:10000}") int readTimeoutMs,
+            RetryRegistry retryRegistry
     ) {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(Duration.ofMillis(connectTimeoutMs));
@@ -61,8 +66,18 @@ public class SupabaseAuthClient {
         this.supabaseUrl = supabaseUrl;
         this.anonKey = anonKey;
         this.serviceRoleKey = serviceRoleKey;
-        log.info("SupabaseAuthClient initialized for: {} (connect={}ms, read={}ms)",
+        this.retry = retryRegistry.retry("supabaseAuth");
+        log.info("SupabaseAuthClient initialized for: {} (connect={}ms, read={}ms, retry=enabled)",
                 supabaseUrl, connectTimeoutMs, readTimeoutMs);
+    }
+
+    /**
+     * Execute a REST call with retry logic.
+     * Retries on 5xx, connection reset, and timeouts.
+     * Does NOT retry on 4xx (client errors).
+     */
+    private <T> T executeWithRetry(Supplier<T> supplier) {
+        return Retry.decorateSupplier(retry, supplier).get();
     }
 
     // =====================================================
@@ -107,8 +122,8 @@ public class SupabaseAuthClient {
             ResponseEntity<String> response = restTemplate.postForEntity(url, request, String.class);
             return parseAuthResponse(response.getBody());
         } catch (HttpClientErrorException e) {
-            log.error("Supabase signup failed: {} - {}", e.getStatusCode(), e.getResponseBodyAsString());
-            throw new SupabaseAuthException("Registration failed: " + parseErrorMessage(e.getResponseBodyAsString()), e);
+            log.error("Supabase signup failed: status={}, message={}", e.getStatusCode(), extractSafeErrorMessage(e));
+            throw new SupabaseAuthException("Registration failed: " + extractSafeErrorMessage(e), e);
         }
     }
 
@@ -160,7 +175,7 @@ public class SupabaseAuthClient {
             return parseAuthResponse(response.getBody());
         } catch (HttpClientErrorException e) {
             log.warn("Supabase token refresh failed: {}", e.getStatusCode());
-            throw new SupabaseAuthException("Token refresh failed: " + parseErrorMessage(e.getResponseBodyAsString()), e);
+            throw new SupabaseAuthException("Token refresh failed: " + extractSafeErrorMessage(e), e);
         }
     }
 
@@ -219,10 +234,9 @@ public class SupabaseAuthClient {
                     authResponse.getUser() != null ? authResponse.getUser().getEmail() : "unknown");
             return authResponse;
         } catch (HttpClientErrorException e) {
-            log.error("Authorization code exchange failed: {} - {}", 
-                    e.getStatusCode(), e.getResponseBodyAsString());
-            String errorMsg = parseErrorMessage(e.getResponseBodyAsString());
-            throw new SupabaseAuthException("Failed to exchange authorization code: " + errorMsg, e);
+            log.error("Authorization code exchange failed: status={}, message={}", 
+                    e.getStatusCode(), extractSafeErrorMessage(e));
+            throw new SupabaseAuthException("Failed to exchange authorization code: " + extractSafeErrorMessage(e), e);
         }
     }
 
@@ -254,10 +268,9 @@ public class SupabaseAuthClient {
             ResponseEntity<String> response = restTemplate.postForEntity(url, request, String.class);
             return parseAuthResponse(response.getBody());
         } catch (HttpClientErrorException e) {
-            log.error("Authorization code exchange failed: {} - {}", 
-                    e.getStatusCode(), e.getResponseBodyAsString());
-            String errorMsg = parseErrorMessage(e.getResponseBodyAsString());
-            throw new SupabaseAuthException("Failed to exchange authorization code: " + errorMsg, e);
+            log.error("Authorization code exchange failed: status={}, message={}", 
+                    e.getStatusCode(), extractSafeErrorMessage(e));
+            throw new SupabaseAuthException("Failed to exchange authorization code: " + extractSafeErrorMessage(e), e);
         }
     }
     /**
@@ -303,7 +316,7 @@ public class SupabaseAuthClient {
             
             return user;
         } catch (HttpClientErrorException e) {
-            log.error("User lookup failed: {} - {}", e.getStatusCode(), e.getResponseBodyAsString());
+            log.error("User lookup failed: status={}, message={}", e.getStatusCode(), extractSafeErrorMessage(e));
             if (e.getStatusCode().value() == 401) {
                 throw new SupabaseAuthException("Invalid or expired access token", e);
             }
@@ -389,7 +402,7 @@ public class SupabaseAuthClient {
             restTemplate.exchange(url, HttpMethod.PUT, request, Void.class);
             log.debug("Updated user metadata for: {}", userId);
         } catch (HttpClientErrorException e) {
-            log.error("Failed to update user metadata: {}", e.getResponseBodyAsString());
+            log.error("Failed to update user metadata: status={}, message={}", e.getStatusCode(), extractSafeErrorMessage(e));
             throw new SupabaseAuthException("Failed to update user metadata", e);
         }
     }
@@ -441,7 +454,7 @@ public class SupabaseAuthClient {
             restTemplate.exchange(url, HttpMethod.PUT, request, Void.class);
             log.info("Password updated in Supabase for user: {}", userId);
         } catch (HttpClientErrorException e) {
-            log.error("Failed to update password in Supabase: {}", e.getResponseBodyAsString());
+            log.error("Failed to update password in Supabase: status={}, message={}", e.getStatusCode(), extractSafeErrorMessage(e));
             throw new SupabaseAuthException("Failed to update password", e);
         }
     }
@@ -472,7 +485,7 @@ public class SupabaseAuthClient {
             restTemplate.postForEntity(url, request, String.class);
             log.info("Password reset email sent via Supabase for: {}", email);
         } catch (HttpClientErrorException e) {
-            log.error("Failed to send password reset email: {}", e.getResponseBodyAsString());
+            log.error("Failed to send password reset email: status={}, message={}", e.getStatusCode(), extractSafeErrorMessage(e));
             throw new SupabaseAuthException("Failed to send reset email", e);
         }
     }
@@ -604,6 +617,25 @@ public class SupabaseAuthClient {
             return json;
         } catch (Exception e) {
             return json;
+        }
+    }
+
+    /**
+     * Extract a safe error message from an HttpClientErrorException without logging
+     * the full response body (which may contain tokens, user data, or internal details).
+     *
+     * @param e The HTTP client error exception
+     * @return A safe error message containing only the error type and message
+     */
+    private String extractSafeErrorMessage(HttpClientErrorException e) {
+        try {
+            JsonNode node = objectMapper.readTree(e.getResponseBodyAsString());
+            String error = node.path("error").asText("");
+            String msg = node.path("msg").asText(node.path("message").asText(
+                    node.path("error_description").asText("")));
+            return error + (msg.isEmpty() ? "" : ": " + msg);
+        } catch (Exception parseEx) {
+            return "unparseable error response";
         }
     }
 

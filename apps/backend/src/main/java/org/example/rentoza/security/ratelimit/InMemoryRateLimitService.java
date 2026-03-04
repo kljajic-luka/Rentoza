@@ -11,15 +11,16 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * In-memory rate limiting service using token bucket algorithm.
+ * In-memory rate limiting service using fixed-window counter algorithm.
  * 
  * FALLBACK IMPLEMENTATION:
  * - Used when Redis is not configured (spring.data.redis.host not set)
  * - Suitable for single-instance deployments or development
  * - For production multi-instance deployments, configure Redis
  * 
- * Algorithm: Token Bucket
- * - Each key (IP or user) has a bucket with max capacity = limit
+ * Algorithm: Fixed-Window Counter
+ * - Each key (IP or user) has a counter that resets after the window expires
+ * - NOT a sliding window: a burst at a window boundary can allow up to 2x the limit
  * - Bucket refills automatically after window expiration
  * - Atomic operations ensure thread safety
  * 

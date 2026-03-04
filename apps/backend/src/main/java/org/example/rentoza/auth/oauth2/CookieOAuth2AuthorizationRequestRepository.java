@@ -6,6 +6,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.example.rentoza.config.AppProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.ResponseCookie;
 import org.springframework.security.oauth2.client.web.AuthorizationRequestRepository;
 import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest;
@@ -41,6 +42,7 @@ import java.util.Base64;
  * 7. Cookie is cleared after successful authentication
  */
 @Component
+@ConditionalOnProperty(name = "legacy.oauth2.enabled", havingValue = "true")
 public class CookieOAuth2AuthorizationRequestRepository 
         implements AuthorizationRequestRepository<OAuth2AuthorizationRequest> {
 

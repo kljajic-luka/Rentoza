@@ -13,6 +13,7 @@ import org.example.rentoza.user.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseCookie;
 import org.springframework.security.core.Authentication;
@@ -39,6 +40,7 @@ import java.util.UUID;
  * 5. Redirect to Angular app with access token in URL parameter
  */
 @Component
+@ConditionalOnProperty(name = "legacy.oauth2.enabled", havingValue = "true")
 public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationSuccessHandler {
 
     private static final Logger log = LoggerFactory.getLogger(OAuth2AuthenticationSuccessHandler.class);

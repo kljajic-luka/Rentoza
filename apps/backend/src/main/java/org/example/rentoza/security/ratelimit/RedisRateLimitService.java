@@ -27,6 +27,11 @@ import java.util.function.Supplier;
 /**
  * Production-ready Redis-backed rate limiting service.
  * 
+ * <h2>Algorithm: Fixed-Window Counter</h2>
+ * <p>Uses atomic INCR+EXPIRE Lua script. Each key's counter resets when its
+ * TTL expires. This is a <strong>fixed-window</strong> algorithm, not a sliding
+ * window: a burst at a window boundary can allow up to 2&times; the configured limit.
+ * 
  * <h2>Features</h2>
  * <ul>
  *   <li>Atomic Lua script for thread-safe counter operations</li>

@@ -3,6 +3,7 @@ package org.example.rentoza.auth.oauth2;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.example.rentoza.user.User;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,6 +26,7 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/api/auth/google")
+@ConditionalOnProperty(name = "legacy.oauth2.enabled", havingValue = "true")
 public class GoogleAuthController {
 
     /**
@@ -150,6 +152,8 @@ public class GoogleAuthController {
      */
     @GetMapping("/status")
     public ResponseEntity<Map<String, Object>> getOAuth2Status() {
+        // This bean only exists when legacy.oauth2.enabled=true,
+        // so we can truthfully report that OAuth2 is enabled.
         Map<String, Object> response = new HashMap<>();
         response.put("oauth2Enabled", true);
         response.put("provider", "google");

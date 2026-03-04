@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 /**
  * P0-1, P0-2: Validates critical security configuration at application startup.
@@ -27,6 +28,7 @@ import java.util.Locale;
 public class SecurityConfigValidator {
 
     private static final Logger log = LoggerFactory.getLogger(SecurityConfigValidator.class);
+    private static final Pattern SHA256_HEX = Pattern.compile("^[a-f0-9]{64}$");
 
     private final Environment environment;
     private final AppProperties appProperties;
@@ -67,6 +69,9 @@ public class SecurityConfigValidator {
 
         // Validate chat service connectivity config
         validateChatServiceConfiguration(isProduction);
+
+        // Validate consent policy hash
+        validateConsentConfiguration(isProduction);
 
         log.info("=== Security Configuration Validation Complete ===");
     }
@@ -201,6 +206,41 @@ public class SecurityConfigValidator {
                 log.info("ℹ Chat service URL points to localhost (expected for local development): {}", configuredUrl);
             } else {
                 log.info("✓ Chat service URL: {} (non-local)", configuredUrl);
+            }
+        }
+    }
+
+    private void validateConsentConfiguration(boolean isProduction) {
+        String policyHash = appProperties.getConsent() != null
+                ? appProperties.getConsent().getPolicyHash()
+                : null;
+
+        if (isProduction) {
+            if (policyHash == null || policyHash.isBlank()) {
+                throw new SecurityConfigurationException(
+                    "Consent policy hash (app.consent.policy-hash) is not set. " +
+                    "Production deployment requires a valid SHA-256 hash of the terms of service.");
+            }
+
+            if (policyHash.contains("placeholder") || policyHash.contains("update-when")) {
+                throw new SecurityConfigurationException(
+                    "Consent policy hash is still set to a placeholder value ('" + policyHash + "'). " +
+                    "Set CONSENT_POLICY_HASH to the SHA-256 hex digest of the production terms of service.");
+            }
+
+            if (!SHA256_HEX.matcher(policyHash).matches()) {
+                throw new SecurityConfigurationException(
+                    "Consent policy hash does not look like a valid SHA-256 hex digest. " +
+                    "Expected 64 lowercase hex characters but got: '" + policyHash + "'.");
+            }
+
+            log.info("✓ Consent policy hash: valid SHA-256 ({} ...)", policyHash.substring(0, 8));
+        } else {
+            if (policyHash == null || policyHash.isBlank() || policyHash.contains("placeholder")) {
+                log.warn("⚠ Consent policy hash is not set or uses a placeholder. " +
+                         "Acceptable in development but must be set for production.");
+            } else {
+                log.info("✓ Consent policy hash: configured (development mode)");
             }
         }
     }

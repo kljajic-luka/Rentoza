@@ -102,7 +102,10 @@ public class RateLimitingFilter extends OncePerRequestFilter {
         RateLimitConfig config = getRateLimitConfig(requestPath);
 
         // Determine rate limit key: JWT email (authenticated) or IP (unauthenticated)
-        String rateLimitKey = getRateLimitKey(request);
+        // Key is endpoint-scoped to prevent collateral throttling across endpoints
+        String identityKey = getIdentityKey(request);
+        String endpointBucket = normalizeEndpointBucket(requestPath);
+        String rateLimitKey = identityKey + ":" + endpointBucket;
 
         // Determine endpoint criticality tier for fail-open vs fail-closed behavior
         RateLimitTier tier = resolveRateLimitTier(requestPath, requestMethod);
@@ -247,7 +250,7 @@ public class RateLimitingFilter extends OncePerRequestFilter {
     }
 
     /**
-     * Extract rate limit key from request.
+     * Extract identity key from request (user email or IP address).
      * 
      * Strategy:
      * - For authenticated requests: Use JWT email (user-based limiting)
@@ -258,7 +261,7 @@ public class RateLimitingFilter extends OncePerRequestFilter {
      * - IP address prevents brute-force on login/register endpoints
      * - Falls back to IP if JWT parsing fails (graceful degradation)
      */
-    private String getRateLimitKey(HttpServletRequest request) {
+    private String getIdentityKey(HttpServletRequest request) {
         // Try to extract JWT email for authenticated requests
         String authHeader = request.getHeader("Authorization");
         String token = null;
@@ -292,6 +295,22 @@ public class RateLimitingFilter extends OncePerRequestFilter {
         // Fall back to IP-based limiting for unauthenticated requests
         String ipAddress = ipExtractor.extractClientIp(request);
         return "ip:" + ipAddress;
+    }
+
+    /**
+     * Normalize the request path into an endpoint bucket for rate-limit key scoping.
+     *
+     * <p>Replaces numeric path segments with {@code *} so that
+     * {@code /api/bookings/123} and {@code /api/bookings/456} share the same bucket.
+     * This prevents per-resource key explosion while keeping endpoint isolation.
+     *
+     * @param requestPath the raw request URI
+     * @return normalized bucket string (e.g. {@code /api/bookings/*})
+     */
+    static String normalizeEndpointBucket(String requestPath) {
+        if (requestPath == null || requestPath.isEmpty()) return "/";
+        // Replace numeric path segments (IDs) with wildcard
+        return requestPath.replaceAll("/[0-9]+(?=/|$)", "/*");
     }
 
     /**

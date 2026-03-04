@@ -36,7 +36,7 @@ public class OwnerVerificationController {
      * Submit individual owner verification (JMBG).
      */
     @PostMapping("/individual")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasRole('OWNER')")
     public ResponseEntity<OwnerVerificationStatus> submitIndividualVerification(
             @Valid @RequestBody IndividualVerificationRequest request) {
         
@@ -55,7 +55,7 @@ public class OwnerVerificationController {
      * Submit legal entity owner verification (PIB).
      */
     @PostMapping("/legal-entity")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasRole('OWNER')")
     public ResponseEntity<OwnerVerificationStatus> submitLegalEntityVerification(
             @Valid @RequestBody LegalEntityVerificationRequest request) {
         

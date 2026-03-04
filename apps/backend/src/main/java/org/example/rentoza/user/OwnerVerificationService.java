@@ -131,6 +131,12 @@ public class OwnerVerificationService {
         User user = userRepository.findById(userId)
             .orElseThrow(() -> new RuntimeException("User not found: " + userId));
         
+        // Defense-in-depth: enforce OWNER role at service level
+        if (user.getRole() != Role.OWNER) {
+            log.warn("Non-OWNER user {} attempted individual verification submission", userId);
+            throw new ValidationException("Only owners can submit identity verification");
+        }
+        
         if (!isValidJmbg(jmbg)) {
             throw new ValidationException("Invalid JMBG format or checksum");
         }
@@ -185,6 +191,12 @@ public class OwnerVerificationService {
     public void submitLegalEntityVerification(Long userId, String pib, String bankAccountNumber) {
         User user = userRepository.findById(userId)
             .orElseThrow(() -> new RuntimeException("User not found: " + userId));
+        
+        // Defense-in-depth: enforce OWNER role at service level
+        if (user.getRole() != Role.OWNER) {
+            log.warn("Non-OWNER user {} attempted legal entity verification submission", userId);
+            throw new ValidationException("Only owners can submit identity verification");
+        }
         
         if (!isValidPib(pib)) {
             throw new ValidationException("Invalid PIB format or checksum");

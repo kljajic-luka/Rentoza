@@ -11,6 +11,7 @@ import org.example.rentoza.user.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -960,7 +961,55 @@ public class SupabaseAuthService {
         Optional<SupabaseUserMapping> mappingOpt = mappingRepository.findById(supabaseId);
         
         if (mappingOpt.isEmpty()) {
-            throw new SupabaseAuthException("User mapping not found. Please register again.");
+            log.warn("Email confirmation mapping recovery: supabaseId={}, email={}", supabaseId, email);
+
+            // 1) Authoritative reconciliation by authUid
+            Optional<User> recoveredUserOpt = userRepository.findByAuthUid(supabaseId);
+
+            // 2) Email fallback only for guarded SUPABASE edge case
+            if (recoveredUserOpt.isEmpty() && email != null && !email.isBlank()) {
+                Optional<User> emailUserOpt = userRepository.findByEmailIgnoreCase(email);
+                if (emailUserOpt.isPresent()) {
+                    User candidate = emailUserOpt.get();
+
+                    if (candidate.getAuthProvider() != AuthProvider.SUPABASE) {
+                        throw new SupabaseAuthException("Account linkage conflict. Please contact support.");
+                    }
+                    if (candidate.getAuthUid() != null && !supabaseId.equals(candidate.getAuthUid())) {
+                        throw new SupabaseAuthException("Account linkage conflict. Please contact support.");
+                    }
+
+                    if (candidate.getAuthUid() == null) {
+                        candidate.setAuthUid(supabaseId);
+                        candidate = userRepository.save(candidate);
+                    }
+                    recoveredUserOpt = Optional.of(candidate);
+                }
+            }
+
+            if (recoveredUserOpt.isEmpty()) {
+                throw new SupabaseAuthException("No account found for this email. Please register again.");
+            }
+
+            User recoveredUser = recoveredUserOpt.get();
+
+            // 3) Prevent cross-linking
+            Optional<SupabaseUserMapping> existingByUser = mappingRepository.findByRentozaUserId(recoveredUser.getId());
+            if (existingByUser.isPresent() && !supabaseId.equals(existingByUser.get().getSupabaseId())) {
+                throw new SupabaseAuthException("Account linkage conflict. Please contact support.");
+            }
+
+            // 4) Idempotent mapping recreation
+            try {
+                mappingRepository.save(SupabaseUserMapping.create(supabaseId, recoveredUser.getId()));
+            } catch (DataIntegrityViolationException ex) {
+                log.warn("Mapping recovery raced for supabaseId={}, loading existing mapping", supabaseId);
+            }
+
+            mappingOpt = mappingRepository.findById(supabaseId);
+            if (mappingOpt.isEmpty()) {
+                throw new SupabaseAuthException("Unable to recover account mapping. Please contact support.");
+            }
         }
 
         SupabaseUserMapping mapping = mappingOpt.get();

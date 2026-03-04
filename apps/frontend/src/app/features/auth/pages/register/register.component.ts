@@ -336,7 +336,7 @@ export class RegisterComponent implements OnInit {
       }
 
       this.authService
-        .supabaseRegister(payload as any)
+        .registerOwner(payload)
         .pipe(
           tap((user) => {
             if (user === null) {
@@ -375,7 +375,7 @@ export class RegisterComponent implements OnInit {
       };
 
       this.authService
-        .supabaseRegister(payload)
+        .registerUser(payload)
         .pipe(
           tap((user) => {
             if (user === null) {
@@ -391,7 +391,7 @@ export class RegisterComponent implements OnInit {
             } else {
               // Normal flow - user is logged in
               this.toast.success('Dobrodošli u Rentoza! Vaš nalog je uspešno kreiran.');
-              this.redirectService.redirectAfterLogin(user!);
+              this.redirectService.redirectAfterLogin(user);
             }
           }),
           finalize(() => this.isSubmitting.set(false)),
@@ -415,7 +415,7 @@ export class RegisterComponent implements OnInit {
     }
 
     this.authService
-      .supabaseRegister(payload as RegisterRequest)
+      .register(payload)
       .pipe(
         tap((user) => {
           if (user === null) {

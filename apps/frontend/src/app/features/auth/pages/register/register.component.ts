@@ -118,6 +118,7 @@ export class RegisterComponent implements OnInit {
       [
         Validators.required,
         Validators.minLength(8),
+        Validators.maxLength(72),
         Validators.pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/),
       ],
     ],
@@ -309,7 +310,6 @@ export class RegisterComponent implements OnInit {
       // Owner registration with identity documents
       const ownerData = this.ownerForm.getRawValue();
       const payload: OwnerRegisterRequest = {
-        role: 'OWNER', // ✅ CRITICAL: Set role to OWNER for host registration
         firstName: basicData.firstName,
         lastName: basicData.lastName,
         email: basicData.email,
@@ -364,7 +364,6 @@ export class RegisterComponent implements OnInit {
     } else {
       // Standard user registration
       const payload: UserRegisterRequest = {
-        role: 'USER', // ✅ CRITICAL: Set role to USER for standard registration
         firstName: basicData.firstName,
         lastName: basicData.lastName,
         email: basicData.email,

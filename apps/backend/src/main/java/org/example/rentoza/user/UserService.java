@@ -46,11 +46,8 @@ public class UserService {
         user.setPhone(dto.getPhone());
         user.setPassword(encoder.encode(dto.getPassword()));
 
-        if ("OWNER".equalsIgnoreCase(dto.getRole())) {
-            user.setRole(Role.OWNER);
-        } else {
-            user.setRole(Role.USER);
-        }
+        // Role is determined by endpoint route, default to USER for legacy path
+        user.setRole(Role.USER);
 
         user.setEnabled(true);
         user.setLocked(false);

@@ -6,6 +6,7 @@ import org.example.rentoza.deprecated.auth.RefreshTokenServiceEnhanced;
 import org.example.rentoza.deprecated.jwt.JwtUtil;
 import org.example.rentoza.monitoring.MissingResourceMetrics;
 import org.example.rentoza.security.csrf.CustomCookieCsrfTokenRepository;
+import org.example.rentoza.security.network.TrustedProxyIpExtractor;
 import org.example.rentoza.security.supabase.SupabaseAuthService;
 import org.example.rentoza.security.supabase.SupabaseAuthService.SupabaseAuthResult;
 import org.example.rentoza.user.*;
@@ -87,6 +88,9 @@ class EnhancedRegistrationIntegrationTest {
 
     @MockBean
     private MissingResourceMetrics missingResourceMetrics;
+
+    @MockBean
+    private TrustedProxyIpExtractor trustedProxyIpExtractor;
 
     // =========================================================================
     // /api/auth/register/user Tests
@@ -407,6 +411,98 @@ class EnhancedRegistrationIntegrationTest {
                                 }
                                 """.formatted(dob)))
                 .andExpect(status().isBadRequest());
+    }
+
+    // =========================================================================
+    // Phase 3: Validation regression tests
+    // =========================================================================
+
+    @Test
+    @DisplayName("registerUser: Password >72 chars rejected with 400")
+    void registerUser_passwordTooLong_returns400() throws Exception {
+        String dob = LocalDate.now().minusYears(25).toString();
+        String longPassword = "Aa1" + "x".repeat(70); // 73 chars, has uppercase, lowercase, digit
+
+        mockMvc.perform(post("/api/auth/register/user")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "firstName": "Petar",
+                                  "lastName": "Petrovic",
+                                  "email": "longpw@example.com",
+                                  "phone": "0641234599",
+                                  "password": "%s",
+                                  "dateOfBirth": "%s",
+                                  "confirmsAgeEligibility": true
+                                }
+                                """.formatted(longPassword, dob)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("registerOwner: Password >72 chars rejected with 400")
+    void registerOwner_passwordTooLong_returns400() throws Exception {
+        String dob = LocalDate.now().minusYears(30).toString();
+        String longPassword = "Aa1" + "x".repeat(70); // 73 chars
+
+        mockMvc.perform(post("/api/auth/register/owner")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "firstName": "Vlasnik",
+                                  "lastName": "Vlasnikovic",
+                                  "email": "longpw-owner@example.com",
+                                  "phone": "0641234598",
+                                  "password": "%s",
+                                  "dateOfBirth": "%s",
+                                  "confirmsAgeEligibility": true,
+                                  "ownerType": "INDIVIDUAL",
+                                  "jmbg": "1234567890123",
+                                  "agreesToHostAgreement": true,
+                                  "confirmsVehicleInsurance": true,
+                                  "confirmsVehicleRegistration": true
+                                }
+                                """.formatted(longPassword, dob)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("registerUser: Works without role in payload (role determined by route)")
+    void registerUser_noRoleInPayload_returns200() throws Exception {
+        User user = createUser(2L, "norole@example.com", Role.USER);
+        UserResponseDTO userResponse = mock(UserResponseDTO.class);
+
+        SupabaseAuthResult result = SupabaseAuthResult.builder()
+                .user(user)
+                .emailConfirmationPending(true)
+                .build();
+
+        when(userRepository.findByEmail("norole@example.com")).thenReturn(Optional.empty());
+        when(userRepository.findByPhone("0641234597")).thenReturn(Optional.empty());
+        when(supabaseAuthService.register(
+                eq("norole@example.com"), anyString(), eq("NoRole"), eq("User"), eq(Role.USER)
+        )).thenReturn(result);
+        when(userRepository.save(any(User.class))).thenReturn(user);
+        when(userService.toUserResponse(any(User.class))).thenReturn(userResponse);
+
+        String dob = LocalDate.now().minusYears(25).toString();
+
+        // No "role" field in JSON payload at all
+        mockMvc.perform(post("/api/auth/register/user")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "firstName": "NoRole",
+                                  "lastName": "User",
+                                  "email": "norole@example.com",
+                                  "phone": "0641234597",
+                                  "password": "StrongP@ss1",
+                                  "dateOfBirth": "%s",
+                                  "confirmsAgeEligibility": true
+                                }
+                                """.formatted(dob)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.emailConfirmationRequired").value(true));
     }
 
     // =========================================================================

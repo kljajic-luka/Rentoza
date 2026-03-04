@@ -15,7 +15,6 @@ import java.time.LocalDate;
  *   <li>Phone (required - Google does not provide)</li>
  *   <li>Date of birth (required for age verification)</li>
  *   <li>Last name (if was placeholder)</li>
- *   <li><b>USER (Renter):</b> driverLicenseNumber, driverLicenseExpiryDate, driverLicenseCountry</li>
  *   <li><b>OWNER:</b> ownerType, JMBG/PIB, bankAccountNumber, agreements</li>
  * </ul>
  */
@@ -42,31 +41,18 @@ public class GoogleOAuthCompletionDTO {
     private Boolean confirmsAgeEligibility;
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // USER (Renter) specific fields - required for USER role
-    // ═══════════════════════════════════════════════════════════════════════════
-    
-    /** Driver license number (5-20 alphanumeric) - Required for USER role */
-    @Size(min = 5, max = 20, message = "Driver license number must be 5-20 characters")
-    @Pattern(regexp = "^[A-Za-z0-9]{5,20}$", message = "Driver license number must be alphanumeric")
-    private String driverLicenseNumber;
-
-    /** Driver license expiry date - Required for USER role */
-    @Future(message = "Driver license must not be expired")
-    private LocalDate driverLicenseExpiryDate;
-
-    /** Driver license issuing country code (2-3 chars, e.g., RS, HR) - Required for USER role */
-    @Size(min = 2, max = 3, message = "Country code must be 2-3 characters")
-    @Pattern(regexp = "^[A-Za-z]{2,3}$", message = "Country code must be letters only")
-    private String driverLicenseCountry;
-
-    // ═══════════════════════════════════════════════════════════════════════════
     // Owner-specific fields (only for owner registration)
     // ═══════════════════════════════════════════════════════════════════════════
     
     private OwnerType ownerType;  // May be null for user registrations
 
+    @Pattern(regexp = "^[0-9]{13}$", message = "JMBG must be exactly 13 digits")
     private String jmbg;    // Conditional: required if ownerType = INDIVIDUAL
+
+    @Pattern(regexp = "^[0-9]{9}$", message = "PIB must be exactly 9 digits")
     private String pib;     // Conditional: required if ownerType = LEGAL_ENTITY
+
+    @Pattern(regexp = "^RS[0-9]{22}$", message = "Invalid IBAN format for Serbia")
     private String bankAccountNumber;
 
     // Agreement checkboxes (only for owner registration)

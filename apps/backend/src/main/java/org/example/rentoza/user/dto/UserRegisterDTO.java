@@ -31,7 +31,7 @@ public class UserRegisterDTO {
     private String phone;
 
     @NotBlank(message = "Password is required")
-    @Size(min = 8, message = "Password must be at least 8 characters long")
+    @Size(min = 8, max = 72, message = "Password must be between 8 and 72 characters")
     @Pattern(
             regexp = "^(?=.*[A-Z])(?=.*[a-z])(?=.*\\d).+$",
             message = "Password must contain uppercase, lowercase, and number"
@@ -46,7 +46,4 @@ public class UserRegisterDTO {
     @NotNull(message = "Age confirmation is required")
     @AssertTrue(message = "You must be at least 21 years old")
     private Boolean confirmsAgeEligibility;
-
-    // For backward compatibility with existing /api/auth/register endpoint
-    private String role;
 }

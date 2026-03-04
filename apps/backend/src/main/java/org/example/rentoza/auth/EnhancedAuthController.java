@@ -29,6 +29,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.Duration;
 import java.time.Instant;
+import org.example.rentoza.config.timezone.SerbiaTimeZone;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Map;
@@ -372,7 +373,7 @@ public class EnhancedAuthController {
         if (dateOfBirth == null) {
             throw new ValidationException("Date of birth is required");
         }
-        LocalDate minDate = LocalDate.now().minusYears(21);
+        LocalDate minDate = SerbiaTimeZone.today().minusYears(21);
         if (dateOfBirth.isAfter(minDate)) {
             throw new ValidationException("You must be at least 21 years old");
         }

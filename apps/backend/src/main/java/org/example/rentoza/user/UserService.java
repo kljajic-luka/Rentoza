@@ -2,6 +2,7 @@ package org.example.rentoza.user;
 
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
+import org.example.rentoza.config.timezone.SerbiaTimeZone;
 import org.example.rentoza.user.dto.UserProfileDTO;
 import org.example.rentoza.user.dto.UserRegisterDTO;
 import org.example.rentoza.user.dto.UpdateProfileRequestDTO;
@@ -270,12 +271,12 @@ public class UserService {
             }
             
             // Validate DOB is in the past
-            if (!dob.isBefore(java.time.LocalDate.now())) {
+            if (!dob.isBefore(SerbiaTimeZone.today())) {
                 throw new BadRequestException("Datum rođenja mora biti u prošlosti");
             }
             
             // Validate user is at least 18 years old
-            int age = java.time.Period.between(dob, java.time.LocalDate.now()).getYears();
+            int age = java.time.Period.between(dob, SerbiaTimeZone.today()).getYears();
             if (age < 18) {
                 throw new BadRequestException("Morate imati najmanje 18 godina");
             }

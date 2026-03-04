@@ -150,6 +150,20 @@ function extractUserFriendlyMessage(error: HttpErrorResponse): string {
       return 'Traženi resurs nije pronađen.';
     case 422:
       return 'Podaci koje ste uneli nisu validni.';
+    case 423: {
+      const lockRetryAfter = error.headers?.get('Retry-After');
+      if (lockRetryAfter) {
+        const seconds = parseInt(lockRetryAfter, 10);
+        if (!isNaN(seconds) && seconds > 0) {
+          if (seconds >= 60) {
+            const minutes = Math.ceil(seconds / 60);
+            return `Nalog je zaključan. Pokušajte ponovo za ${minutes} min.`;
+          }
+          return `Nalog je zaključan. Pokušajte ponovo za ${seconds} sek.`;
+        }
+      }
+      return 'Nalog je zaključan. Molimo sačekajte i pokušajte ponovo.';
+    }
     case 429: {
       const retryAfter = error.headers?.get('Retry-After');
       if (retryAfter) {

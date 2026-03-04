@@ -18,6 +18,8 @@ import java.time.Period;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.example.rentoza.config.timezone.SerbiaTimeZone;
+
 /**
  * Service for handling profile completion after Google OAuth registration.
  * 
@@ -259,7 +261,7 @@ public class ProfileCompletionService {
             throw new ProfileCompletionException("INVALID_DOB", "Datum rođenja je obavezan");
         }
 
-        int age = Period.between(dateOfBirth, LocalDate.now()).getYears();
+        int age = Period.between(dateOfBirth, SerbiaTimeZone.today()).getYears();
         if (age < MINIMUM_AGE) {
             throw new ProfileCompletionException("AGE_REQUIREMENT", 
                     String.format("Morate imati najmanje %d godina. Vaša starost: %d", MINIMUM_AGE, age));
@@ -286,7 +288,7 @@ public class ProfileCompletionService {
      */
     private CompleteProfileResponseDTO buildResponse(User user, String message) {
         int age = user.getDateOfBirth() != null 
-                ? Period.between(user.getDateOfBirth(), LocalDate.now()).getYears() 
+                ? Period.between(user.getDateOfBirth(), SerbiaTimeZone.today()).getYears() 
                 : 0;
 
         return CompleteProfileResponseDTO.builder()

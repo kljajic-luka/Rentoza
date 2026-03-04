@@ -15,6 +15,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.Period;
 import java.util.List;
+import org.example.rentoza.config.timezone.SerbiaTimeZone;
 import org.example.rentoza.util.AttributeEncryptor;
 
 @Entity
@@ -623,7 +624,7 @@ public class User {
             // Fallback to legacy age field during migration period
             return age;
         }
-        return Period.between(dateOfBirth, LocalDate.now()).getYears();
+        return Period.between(dateOfBirth, SerbiaTimeZone.today()).getYears();
     }
     
     /**

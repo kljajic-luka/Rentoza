@@ -39,6 +39,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -196,8 +197,8 @@ class SupabaseAuthControllerGateTest {
     }
 
     @Test
-    @DisplayName("Login on locked account returns 429")
-    void loginLockedAccount_returns429() throws Exception {
+    @DisplayName("Login on locked account returns 423 with Retry-After")
+    void loginLockedAccount_returns423() throws Exception {
         User user = createUser(203L, "locked@example.com");
         user.setLockedUntil(Instant.now().plusSeconds(600));
         when(userRepository.findByEmail("locked@example.com")).thenReturn(Optional.of(user));
@@ -207,8 +208,10 @@ class SupabaseAuthControllerGateTest {
                         .content("""
                                 {"email":"locked@example.com","password":"Aa123456!"}
                                 """))
-                .andExpect(status().isTooManyRequests())
-                .andExpect(jsonPath("$.error").value("ACCOUNT_LOCKED"));
+                .andExpect(status().is(423))
+                .andExpect(header().exists("Retry-After"))
+                .andExpect(jsonPath("$.error").value("ACCOUNT_LOCKED"))
+                .andExpect(jsonPath("$.retryAfterSeconds").isNumber());
 
         verifyNoInteractions(supabaseAuthService);
     }

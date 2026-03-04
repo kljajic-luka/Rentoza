@@ -23,6 +23,7 @@ type LoginFeedbackKind =
   | 'invalid_form'
   | 'invalid_credentials'
   | 'account_blocked'
+  | 'account_locked'
   | 'rate_limited'
   | 'network'
   | 'generic';
@@ -175,6 +176,22 @@ export class LoginComponent {
       const apiMessage = this.extractApiMessage(error.error);
       const apiCode = this.extractApiCode(error.error);
 
+      if (error.status === 423 && apiCode === 'ACCOUNT_LOCKED') {
+        const retrySeconds = this.extractRetryAfterSeconds(error);
+        const retryText = retrySeconds
+          ? retrySeconds >= 60
+            ? `Pokušajte ponovo za ${Math.ceil(retrySeconds / 60)} min.`
+            : `Pokušajte ponovo za ${retrySeconds} sek.`
+          : 'Pokušajte ponovo za nekoliko minuta.';
+        return {
+          kind: 'account_locked' as LoginFeedbackKind,
+          title: 'Nalog je zaključan',
+          message: `Previše neuspešnih pokušaja prijave. ${retryText}`,
+          icon: 'lock',
+          tone: 'warning',
+        };
+      }
+
       if (error.status === 403 && apiCode === 'ACCOUNT_BANNED') {
         return {
           kind: 'account_blocked',
@@ -269,6 +286,19 @@ export class LoginComponent {
 
     const code = source['error'] ?? source['code'];
     return typeof code === 'string' ? code.toUpperCase() : null;
+  }
+
+  private extractRetryAfterSeconds(error: HttpErrorResponse): number | null {
+    // Prefer body field, fallback to header
+    const bodySeconds = (error.error as Record<string, unknown>)?.['retryAfterSeconds'];
+    if (typeof bodySeconds === 'number' && bodySeconds > 0) return bodySeconds;
+
+    const header = error.headers?.get('Retry-After');
+    if (header) {
+      const parsed = parseInt(header, 10);
+      if (!isNaN(parsed) && parsed > 0) return parsed;
+    }
+    return null;
   }
 
   private applyInvalidCredentialsState(): void {

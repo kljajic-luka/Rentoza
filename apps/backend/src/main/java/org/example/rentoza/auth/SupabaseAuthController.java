@@ -559,10 +559,16 @@ public class SupabaseAuthController {
             Optional<User> existingUser = userRepository.findByEmail(dto.getEmail());
             if (existingUser.isPresent() && existingUser.get().isAccountLocked()) {
                 log.warn("Login attempt on locked account: email={}, ip={}", dto.getEmail(), clientIp);
-                return ResponseEntity.status(429).body(Map.of(
-                        "error", "ACCOUNT_LOCKED",
-                        "message", "Too many failed login attempts. Please try again later."
-                ));
+                long retryAfterSeconds = Math.max(
+                        java.time.Duration.between(java.time.Instant.now(),
+                                existingUser.get().getLockedUntil()).getSeconds(), 1);
+                return ResponseEntity.status(423)
+                        .header("Retry-After", String.valueOf(retryAfterSeconds))
+                        .body(Map.of(
+                                "error", "ACCOUNT_LOCKED",
+                                "message", "Too many failed login attempts. Please try again later.",
+                                "retryAfterSeconds", retryAfterSeconds
+                        ));
             }
 
             SupabaseAuthResult result = supabaseAuthService.login(dto.getEmail(), dto.getPassword());

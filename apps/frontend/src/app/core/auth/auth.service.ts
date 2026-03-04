@@ -259,7 +259,7 @@ export class AuthService {
    *
    * @see REGISTRATION_IMPLEMENTATION_PLAN.md
    */
-  registerOwner(payload: OwnerRegisterRequest): Observable<UserProfile> {
+  registerOwner(payload: OwnerRegisterRequest): Observable<UserProfile | null> {
     const context = new HttpContext().set(SKIP_AUTH, true);
     return this.http
       .post<AuthResponse>(`${this.apiUrl}/register/owner`, payload, {
@@ -267,8 +267,19 @@ export class AuthService {
         withCredentials: true,
       })
       .pipe(
-        tap((response) => this.persistSession(response)),
-        map(() => this.currentUserSubject.value!),
+        tap((response) => {
+          // Only persist session if email confirmation is NOT required
+          if (!response.emailConfirmationRequired && response.authenticated) {
+            this.persistSession(response);
+          }
+        }),
+        map((response) => {
+          // Return null if email confirmation required - don't try to get user
+          if (response.emailConfirmationRequired) {
+            return null;
+          }
+          return this.currentUserSubject.value!;
+        }),
       );
   }
 

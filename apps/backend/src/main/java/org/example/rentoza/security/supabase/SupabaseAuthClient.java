@@ -9,10 +9,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -47,14 +49,20 @@ public class SupabaseAuthClient {
     public SupabaseAuthClient(
             @Value("${supabase.url}") String supabaseUrl,
             @Value("${supabase.anon-key}") String anonKey,
-            @Value("${supabase.service-role-key}") String serviceRoleKey
+            @Value("${supabase.service-role-key}") String serviceRoleKey,
+            @Value("${supabase.http.connect-timeout-ms:5000}") int connectTimeoutMs,
+            @Value("${supabase.http.read-timeout-ms:10000}") int readTimeoutMs
     ) {
-        this.restTemplate = new RestTemplate();
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(Duration.ofMillis(connectTimeoutMs));
+        factory.setReadTimeout(Duration.ofMillis(readTimeoutMs));
+        this.restTemplate = new RestTemplate(factory);
         this.objectMapper = new ObjectMapper();
         this.supabaseUrl = supabaseUrl;
         this.anonKey = anonKey;
         this.serviceRoleKey = serviceRoleKey;
-        log.info("SupabaseAuthClient initialized for: {}", supabaseUrl);
+        log.info("SupabaseAuthClient initialized for: {} (connect={}ms, read={}ms)",
+                supabaseUrl, connectTimeoutMs, readTimeoutMs);
     }
 
     // =====================================================
@@ -484,7 +492,7 @@ public class SupabaseAuthClient {
     private SupabaseAuthResponse parseAuthResponse(String json) {
         try {
             JsonNode node = objectMapper.readTree(json);
-            log.debug("Parsing Supabase auth response: {}", json);
+            log.debug("Parsing Supabase auth response (length={})", json != null ? json.length() : 0);
             
             SupabaseAuthResponse response = new SupabaseAuthResponse();
             response.setAccessToken(node.path("access_token").asText(null));
@@ -509,6 +517,12 @@ public class SupabaseAuthClient {
                     && response.getAccessToken() == null
                     && response.getUser().getEmailConfirmedAt() == null;
             response.setEmailConfirmationPending(emailConfirmationPending);
+            
+            log.debug("Parsed auth response: user={}, hasAccessToken={}, hasRefreshToken={}, emailConfirmPending={}",
+                    response.getUser() != null ? response.getUser().getId() : "null",
+                    response.getAccessToken() != null,
+                    response.getRefreshToken() != null,
+                    response.isEmailConfirmationPending());
             
             return response;
         } catch (Exception e) {

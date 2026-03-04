@@ -7,11 +7,13 @@ import {
   inject,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { HttpClient } from '@angular/common/http';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { RouterLink } from '@angular/router';
 import { animate, state, style, transition, trigger } from '@angular/animations';
+import { EMPTY, catchError } from 'rxjs';
 
 /**
  * Cookie Consent Banner Component
@@ -230,6 +232,7 @@ import { animate, state, style, transition, trigger } from '@angular/animations'
 export class CookieConsentComponent implements OnInit {
   private readonly STORAGE_KEY = 'rentoza_cookie_consent';
   private readonly CONSENT_VERSION = 1; // Increment to re-show banner
+  private readonly http = inject(HttpClient);
 
   readonly showBanner = signal(false);
   readonly showSettings = signal(false);
@@ -322,28 +325,18 @@ export class CookieConsentComponent implements OnInit {
     }
   }
 
-  private async syncConsentToBackend(consent: CookieConsent): Promise<void> {
-    // Only sync if user is authenticated (has token)
-    const token = localStorage.getItem('access_token');
-    if (!token) return;
-
-    try {
-      await fetch('/api/users/me/consent', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          marketingEmails: consent.marketing,
-          smsNotifications: consent.marketing,
-          analyticsTracking: consent.analytics,
-          thirdPartySharing: consent.marketing,
-        }),
-      });
-    } catch (error) {
-      console.warn('[CookieConsent] Failed to sync consent to backend:', error);
-    }
+  private syncConsentToBackend(consent: CookieConsent): void {
+    // Best-effort sync via HttpClient — interceptors handle auth and XSRF automatically.
+    // No blocking; errors are silently ignored (consent is saved locally regardless).
+    this.http
+      .put('/api/users/me/consent', {
+        marketingEmails: consent.marketing,
+        smsNotifications: consent.marketing,
+        analyticsTracking: consent.analytics,
+        thirdPartySharing: consent.marketing,
+      })
+      .pipe(catchError(() => EMPTY))
+      .subscribe();
   }
 }
 

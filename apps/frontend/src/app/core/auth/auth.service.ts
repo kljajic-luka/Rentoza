@@ -28,6 +28,7 @@ import {
   SupabaseGoogleCallbackResponse,
 } from '@core/models/auth.model';
 import { UserProfile } from '@core/models/user.model';
+import { LOCALSTORAGE_ACCESS_TOKEN, LOCALSTORAGE_CURRENT_USER } from '@core/auth/cookie.constants';
 import { UserRole } from '@core/models/user-role.type';
 import { SKIP_AUTH } from './auth.tokens';
 
@@ -980,8 +981,8 @@ export class AuthService {
 
     // Defense-in-depth: remove any legacy localStorage tokens written by
     // older versions of the app or tampered by external scripts.
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('current_user');
+    localStorage.removeItem(LOCALSTORAGE_ACCESS_TOKEN);
+    localStorage.removeItem(LOCALSTORAGE_CURRENT_USER);
 
     // Stop token watcher when session is cleared
     this.stopTokenWatcher();

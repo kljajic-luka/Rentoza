@@ -4,6 +4,7 @@ import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.util.Base64;
 import org.example.rentoza.config.AppProperties;
 import org.springframework.http.HttpHeaders;
@@ -70,7 +71,9 @@ public class CustomCookieCsrfTokenRepository implements CsrfTokenRepository {
                 .path("/")
                 .domain(appProperties.getCookie().getDomain())
                 .sameSite(appProperties.getCookie().getSameSite())
-                .maxAge(-1) // Session cookie
+                // Align CSRF cookie lifetime with refresh token (14 days)
+                // so the token survives browser restarts alongside the session.
+                .maxAge(Duration.ofDays(14))
                 .build();
 
         response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());

@@ -18,6 +18,7 @@ import { SrMatPaginatorIntl } from '@core/i18n/mat-paginator-i18n';
 import { App } from './app/app';
 import { routes } from './app/app.routes';
 import { authTokenInterceptor } from '@core/auth/token.interceptor';
+import { XSRF_TOKEN_COOKIE, XSRF_TOKEN_HEADER } from '@core/auth/cookie.constants';
 import { errorResponseInterceptor } from '@core/interceptors/error.interceptor';
 import { httpCacheInterceptor } from '@core/interceptors/http-cache.interceptor';
 import { idempotencyInterceptor } from '@core/interceptors/idempotency.interceptor';
@@ -77,8 +78,8 @@ bootstrapApplication(App, {
     importProvidersFrom(BrowserAnimationsModule),
     provideHttpClient(
       withXsrfConfiguration({
-        cookieName: 'XSRF-TOKEN',
-        headerName: 'X-XSRF-TOKEN',
+        cookieName: XSRF_TOKEN_COOKIE,
+        headerName: XSRF_TOKEN_HEADER,
       }),
       // Interceptor order matters: auth → idempotency → retry → cache → error
       // Retry must run after auth but before error handling, so transient failures

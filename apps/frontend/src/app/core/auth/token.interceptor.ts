@@ -26,6 +26,17 @@ const waitForCookieSync = (ms: number = 300): Promise<void> => {
  * 2. Attach XSRF token header for CSRF protection
  * 3. Handle 401 responses → trigger token refresh via HttpOnly refresh cookie
  * 4. Handle session expiry → redirect to login
+ *
+ * DUAL XSRF HANDLING (defense-in-depth):
+ * Angular's built-in `withXsrfConfiguration()` (configured in main.ts) handles
+ * XSRF header attachment for standard requests. This interceptor provides an
+ * additional explicit layer that reads the XSRF-TOKEN cookie and attaches the
+ * X-XSRF-TOKEN header for mutation requests (POST/PUT/DELETE/PATCH).
+ *
+ * Both layers share constants from `cookie.constants.ts` to stay in sync.
+ * Do NOT remove either layer without understanding the full XSRF flow:
+ * - Angular layer: covers standard HttpClient usage
+ * - Interceptor layer: covers cloned/retried requests and edge cases
  */
 
 const shouldBypassAuth = (url: string): boolean =>

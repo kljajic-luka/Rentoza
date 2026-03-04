@@ -451,9 +451,17 @@ public class SupabaseAuthController {
                 ));
             }
 
-            // SECURITY: Only USER and OWNER are valid self-registration roles
-            Role role = (dto.getRole() == Role.USER || dto.getRole() == Role.OWNER)
-                    ? dto.getRole() : Role.USER;
+            // SECURITY: Only USER role allowed via this endpoint.
+            // OWNER registration requires identity verification (JMBG/PIB/age/agreements)
+            // and must go through the dedicated /register/owner flow.
+            if (dto.getRole() == Role.OWNER) {
+                log.warn("SECURITY: Rejected OWNER registration on /supabase/register. Must use /register/owner");
+                return ResponseEntity.badRequest().body(Map.of(
+                        "error", "INVALID_ROLE",
+                        "message", "Owner registration requires identity verification. Use the owner registration flow."
+                ));
+            }
+            Role role = Role.USER;
 
             SupabaseAuthResult result = supabaseAuthService.register(
                     dto.getEmail(),

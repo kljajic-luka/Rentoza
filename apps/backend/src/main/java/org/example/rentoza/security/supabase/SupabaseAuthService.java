@@ -716,9 +716,10 @@ public class SupabaseAuthService {
             String lastName,
             Role role
     ) {
-        // Defense-in-depth: reject ADMIN role in self-registration even if controller missed it
-        if (role == null || role == Role.ADMIN) {
-            log.warn("SECURITY: Rejected non-registerable role {} for: {}", role, email);
+        // Defense-in-depth: reject ADMIN and OWNER roles in self-registration
+        // OWNER must go through dedicated owner registration with compliance validation
+        if (role == null || role == Role.ADMIN || role == Role.OWNER) {
+            log.warn("SECURITY: Rejected non-USER role {} for Supabase register: {}", role, email);
             role = Role.USER;
         }
 

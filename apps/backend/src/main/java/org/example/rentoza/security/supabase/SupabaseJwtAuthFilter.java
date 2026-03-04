@@ -62,8 +62,6 @@ public class SupabaseJwtAuthFilter extends OncePerRequestFilter {
             "/api/reviews",     // Public reviews
             "/api/locations",   // Location search
             "/api/availability", // Availability check
-            "/login/oauth2",
-            "/oauth2",
             "/login",
             "/uploads",
             "/car-images",
@@ -236,11 +234,6 @@ public class SupabaseJwtAuthFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String requestUri = request.getRequestURI();
-        
-        // Don't filter OAuth2 callback - it needs to complete without auth
-        if (requestUri.contains("/oauth2/") || requestUri.contains("/login/oauth2/")) {
-            return true;
-        }
         
         // Public static resources
         if (requestUri.startsWith("/uploads/") || 

@@ -1,6 +1,5 @@
 package org.example.rentoza.security;
 
-import org.example.rentoza.auth.oauth2.*;
 import org.example.rentoza.config.AppProperties;
 import org.example.rentoza.deprecated.jwt.JwtAuthenticationEntryPoint;
 import org.example.rentoza.deprecated.jwt.JwtUtil;
@@ -19,8 +18,6 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
-import org.springframework.http.MediaType;
-import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -62,11 +59,6 @@ class SecurityCsrfIntegrationTest {
 
     // SecurityConfig constructor dependencies
     @MockBean private JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
-    @MockBean private CustomOAuth2UserService customOAuth2UserService;
-    @MockBean private OAuth2AuthenticationSuccessHandler oauth2SuccessHandler;
-    @MockBean private CustomAuthorizationRequestResolver customAuthorizationRequestResolver;
-    @MockBean private ClientRegistrationRepository clientRegistrationRepository;
-    @MockBean private CookieOAuth2AuthorizationRequestRepository cookieOAuth2AuthorizationRequestRepository;
 
     // @Bean method parameter dependencies
     @MockBean private RateLimitService rateLimitService;

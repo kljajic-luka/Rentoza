@@ -10,7 +10,6 @@ import { AuthService } from '@core/auth/auth.service';
 import { RedirectService } from '@core/services/redirect.service';
 import { ToastService } from '@core/services/toast.service';
 import { LoginRequest } from '@core/models/auth.model';
-import { environment } from '@environments/environment';
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -157,28 +156,6 @@ export class LoginComponent {
     this.authService.loginWithSupabaseGoogle('USER');
   }
 
-  /**
-   * Legacy Google OAuth sign-in (deprecated).
-   * @deprecated Use signInWithGoogle() which uses Supabase Auth
-   */
-  signInWithGoogleLegacy(): void {
-    // CRITICAL: OAuth2 endpoints are at root level (/oauth2/...), not under /api
-    // environment.baseApiUrl = 'http://localhost:8080/api'
-    // But OAuth2 endpoint is at: http://localhost:8080/oauth2/authorization/google
-    const baseUrl = environment.baseApiUrl.replace('/api', '');
-    const googleAuthUrl = `${baseUrl}/oauth2/authorization/google`;
-
-    // Preserve return URL if exists
-    const returnUrl = this.getReturnUrl();
-    if (returnUrl) {
-      // Store return URL in session storage to retrieve after OAuth2 callback
-      sessionStorage.setItem('oauth2_return_url', returnUrl);
-    }
-
-    // Redirect to backend OAuth2 endpoint
-    // Backend will redirect to Google, then back to /auth/callback with token
-    window.location.href = googleAuthUrl;
-  }
   private getReturnUrl(): string | null {
     const qp = this.route.snapshot.queryParamMap;
     const raw = qp.get('returnUrl') || qp.get('redirectUrl');

@@ -63,13 +63,6 @@ export const routes: Routes = [
             (m) => m.ResetPasswordComponent,
           ),
       },
-      {
-        path: 'callback',
-        loadComponent: () =>
-          import('@features/auth/pages/auth-callback/auth-callback.component').then(
-            (m) => m.AuthCallbackComponent,
-          ),
-      },
       // ═══════════════════════════════════════════════════════════════════════════
       // SUPABASE EMAIL CONFIRMATION CALLBACK
       // ═══════════════════════════════════════════════════════════════════════════
@@ -110,14 +103,6 @@ export const routes: Routes = [
           ),
       },
     ],
-  },
-  // OAuth2 cookie-only success route (no token in URL)
-  {
-    path: 'oauth2/success',
-    loadComponent: () =>
-      import('@features/auth/pages/auth-callback/auth-callback.component').then(
-        (m) => m.AuthCallbackComponent,
-      ),
   },
   {
     path: 'pocetna',

@@ -64,8 +64,6 @@ public class RateLimitingFilter extends OncePerRequestFilter {
     // Issue 1.3: Keep actuator exempt from rate limiting (health checks may be frequent)
     // but authentication is now enforced by SecurityConfig RBAC
     private static final List<String> EXCLUDED_PATHS = List.of(
-            "/oauth2/",           // OAuth2 authorization endpoints
-            "/login/oauth2/",     // OAuth2 login endpoints
             "/actuator/health",   // Health checks exempt (load balancer probes)
             "/actuator/info",     // Info endpoint (minimal overhead)
             "/h2-console/",       // H2 database console (dev only)

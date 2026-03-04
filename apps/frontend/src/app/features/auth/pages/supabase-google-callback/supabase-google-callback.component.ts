@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, inject, isDevMode, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 
 import { AuthService } from '@core/auth/auth.service';
@@ -98,11 +98,6 @@ export class SupabaseGoogleCallbackComponent implements OnInit {
   private ownerIntent = false;
 
   ngOnInit(): void {
-    // DEBUG: Log the full URL to understand what we're receiving
-    console.log('🔍 OAuth Callback - Full URL:', window.location.href);
-    console.log('🔍 OAuth Callback - Hash:', window.location.hash);
-    console.log('🔍 OAuth Callback - Search:', window.location.search);
-
     this.handleGoogleCallback();
   }
 
@@ -130,7 +125,7 @@ export class SupabaseGoogleCallbackComponent implements OnInit {
       }
 
       if (accessToken) {
-        console.log('🔑 Found access token in URL fragment (implicit flow)');
+        if (isDevMode()) console.log('🔑 Found access token in URL fragment (implicit flow)');
         this.processImplicitFlowTokens(accessToken, refreshToken || undefined);
         return;
       }
@@ -163,8 +158,8 @@ export class SupabaseGoogleCallbackComponent implements OnInit {
 
     // SECURITY NOTE: State parameter is optional. Supabase PKCE flow does not always
     // include a custom state param. CSRF protection is handled server-side via PKCE code verifier.
-    if (state) {
-      console.log('📋 State parameter present in callback:', state);
+    if (state && isDevMode()) {
+      console.log('📋 State parameter present in callback');
     }
 
     // Process the callback
@@ -179,14 +174,12 @@ export class SupabaseGoogleCallbackComponent implements OnInit {
    * The role is extracted from the URL query params (passed via redirect_to URL).
    */
   private processImplicitFlowTokens(accessToken: string, refreshToken?: string): void {
-    console.log('🔗 Processing Supabase implicit flow tokens');
+    if (isDevMode()) console.log('🔗 Processing Supabase implicit flow tokens');
 
     // Extract role from URL query parameters (Supabase preserves query params from redirect_to)
     // The URL format is: /auth/supabase/google/callback?role=USER#access_token=...
     const urlParams = new URLSearchParams(window.location.search);
     const role = urlParams.get('role') || 'USER';
-
-    console.log('📋 Role from URL params:', role);
 
     // Clean up the URL fragment for security (don't leave tokens in browser history)
     if (window.history.replaceState) {
@@ -201,7 +194,7 @@ export class SupabaseGoogleCallbackComponent implements OnInit {
           return;
         }
 
-        console.log('✅ Implicit flow OAuth successful:', user.email);
+        if (isDevMode()) console.log('✅ Implicit flow OAuth successful');
         this.handleSuccessfulAuth(user);
       },
       error: (err) => {
@@ -212,7 +205,7 @@ export class SupabaseGoogleCallbackComponent implements OnInit {
   }
 
   private processGoogleCallback(code: string, state?: string): void {
-    console.log('🔗 Processing Google OAuth callback via Supabase');
+    if (isDevMode()) console.log('🔗 Processing Google OAuth callback via Supabase');
 
     this.authService.handleSupabaseGoogleCallback(code, state).subscribe({
       next: (user) => {
@@ -221,7 +214,7 @@ export class SupabaseGoogleCallbackComponent implements OnInit {
           return;
         }
 
-        console.log('✅ Google OAuth successful:', user.email);
+        if (isDevMode()) console.log('✅ Google OAuth successful');
         this.handleSuccessfulAuth(user);
       },
       error: (err) => {
@@ -238,7 +231,7 @@ export class SupabaseGoogleCallbackComponent implements OnInit {
     // Check for INCOMPLETE registration status
     const enhancedUser = user as EnhancedUserProfile;
     if (enhancedUser.registrationStatus === 'INCOMPLETE') {
-      console.log('📝 User has INCOMPLETE registration - redirecting to profile completion');
+      if (isDevMode()) console.log('📝 User has INCOMPLETE registration - redirecting to profile completion');
 
       // Use ownerIntent from URL param — backend always returns USER role,
       // so user.roles won't contain OWNER at this point. Fallback kept for
@@ -268,7 +261,7 @@ export class SupabaseGoogleCallbackComponent implements OnInit {
     sessionStorage.removeItem('oauth2_return_url');
 
     if (returnUrl) {
-      console.log(`🔀 Redirecting to return URL: ${returnUrl}`);
+      if (isDevMode()) console.log('🔀 Redirecting to return URL');
       void this.router.navigateByUrl(returnUrl);
     } else {
       this.redirectToRoleBasedDashboard(user.roles);
@@ -289,23 +282,18 @@ export class SupabaseGoogleCallbackComponent implements OnInit {
 
   private redirectToRoleBasedDashboard(roles: string[] | undefined): void {
     if (!roles || roles.length === 0) {
-      console.warn('⚠️ No roles found - redirecting to /pocetna');
       void this.router.navigate(['/pocetna']);
       return;
     }
 
     // Priority: ADMIN > OWNER > USER
     if (roles.includes('ADMIN')) {
-      console.log('👑 Redirecting ADMIN to /admin');
       void this.router.navigate(['/admin']);
     } else if (roles.includes('OWNER')) {
-      console.log('🚗 Redirecting OWNER to /owner/dashboard');
       void this.router.navigate(['/owner/dashboard']);
     } else if (roles.includes('USER')) {
-      console.log('👤 Redirecting USER to /pocetna');
       void this.router.navigate(['/pocetna']);
     } else {
-      console.warn('⚠️ Unknown role - redirecting to /pocetna');
       void this.router.navigate(['/pocetna']);
     }
   }

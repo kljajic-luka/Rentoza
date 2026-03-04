@@ -1,4 +1,4 @@
-import { Injectable, Injector } from '@angular/core';
+import { Injectable, Injector, isDevMode } from '@angular/core';
 import { HttpClient, HttpContext, HttpErrorResponse } from '@angular/common/http';
 import {
   BehaviorSubject,
@@ -93,14 +93,14 @@ export class AuthService {
    * No localStorage is involved - the browser automatically sends HttpOnly cookies.
    */
   async initializeSession(): Promise<void> {
-    console.log('🍪 [AUTH] Initializing session via refresh endpoint (cookie-only mode)');
+    if (isDevMode()) console.log('[AUTH] Initializing session via refresh endpoint');
 
     try {
       // Attempt to refresh the session using HttpOnly refresh cookie
       // If successful, user state will be hydrated from /api/users/me
       await firstValueFrom(this.refreshAccessToken().pipe(catchError(() => of(null))));
     } catch (error) {
-      console.log('ℹ️ [AUTH] No active session found');
+      if (isDevMode()) console.log('[AUTH] No active session found');
     }
   }
 
@@ -123,7 +123,7 @@ export class AuthService {
     const hasActiveUser = this.currentUserSubject.value !== null;
 
     if (!hasActiveUser) {
-      console.log('🔒 No current user - attempting session verification');
+      if (isDevMode()) console.log('No current user - attempting session verification');
     }
 
     try {
@@ -131,13 +131,13 @@ export class AuthService {
         this.fetchBackendUserProfile().pipe(
           tap((verifiedUser) => {
             this.updateUserState(verifiedUser);
-            console.log('✅ Session verified with backend:', verifiedUser);
+            if (isDevMode()) console.log('Session verified with backend');
           }),
           catchError((error: HttpErrorResponse) => {
-            console.warn('⚠️ Session verification failed:', error.status);
+            if (isDevMode()) console.warn('Session verification failed:', error.status);
 
             if (error.status === 401) {
-              console.log('🔄 Token expired - attempting refresh');
+              if (isDevMode()) console.log('Token expired - attempting refresh');
               return this.refreshAccessToken().pipe(
                 switchMap((newToken) => {
                   if (!newToken) {
@@ -151,7 +151,7 @@ export class AuthService {
                   }
                 }),
                 catchError(() => {
-                  console.log('❌ Session refresh failed - clearing session');
+                  if (isDevMode()) console.log('Session refresh failed - clearing session');
                   this.clearSession();
                   this.sessionExpiredSubject.next();
                   return of(null);
@@ -160,7 +160,7 @@ export class AuthService {
             }
 
             if (error.status === 403) {
-              console.log('🚫 Insufficient permissions - clearing session');
+              if (isDevMode()) console.log('Insufficient permissions - clearing session');
               this.clearSession();
               return of(null);
             }
@@ -173,7 +173,7 @@ export class AuthService {
 
       return backendUser;
     } catch (error) {
-      console.error('❌ Session verification error:', error);
+      console.error('Session verification error');
       this.clearSession();
       return null;
     }
@@ -316,7 +316,7 @@ export class AuthService {
           if (!response.emailConfirmationPending) {
             this.persistSession(response);
           } else {
-            console.log('📧 Email confirmation pending - session not persisted');
+            if (isDevMode()) console.log('Email confirmation pending - session not persisted');
           }
         }),
         map((response) => {
@@ -327,7 +327,7 @@ export class AuthService {
           return this.currentUserSubject.value!;
         }),
         catchError((error: HttpErrorResponse) => {
-          console.error('Supabase registration failed:', error);
+          if (isDevMode()) console.error('Supabase registration failed:', error.status);
 
           if (error.status === 422) {
             const message = error.error?.message || 'Validation failed';
@@ -387,13 +387,13 @@ export class AuthService {
       )
       .pipe(
         tap(() => {
-          console.log('User logged out via Supabase');
+          if (isDevMode()) console.log('User logged out via Supabase');
           this.clearSession();
           this.stopTokenWatcher();
         }),
         map(() => undefined),
         catchError((error: HttpErrorResponse) => {
-          console.warn('Supabase logout error (clearing session anyway):', error);
+          if (isDevMode()) console.warn('Supabase logout error (clearing session anyway):', error.status);
           this.clearSession();
           return of(undefined);
         }),
@@ -472,12 +472,10 @@ export class AuthService {
       })
       .pipe(
         tap(() => {
-          // SECURITY NOTE: State/CSRF validation is handled server-side by Supabase PKCE.
-          // No client-side state storage needed — removed to prevent null-equals-null bypass.
-          console.log('🔗 Google OAuth initiated via Supabase, redirecting...');
+          if (isDevMode()) console.log('Google OAuth initiated via Supabase, redirecting...');
         }),
         catchError((error: HttpErrorResponse) => {
-          console.error('Failed to initiate Google OAuth:', error);
+          if (isDevMode()) console.error('Failed to initiate Google OAuth:', error.status);
           if (error.status === 400) {
             return throwError(() => new Error(error.error?.message || 'Invalid role specified'));
           }
@@ -504,7 +502,7 @@ export class AuthService {
           window.location.href = response.authorizationUrl;
         },
         error: (error) => {
-          console.error('Failed to start Google OAuth:', error);
+          if (isDevMode()) console.error('Failed to start Google OAuth:', error);
           // Let the component handle the error
         },
       });
@@ -550,7 +548,7 @@ export class AuthService {
               user: response.user as any,
             };
             this.persistSession(authResponse);
-            console.log('✅ Google OAuth callback successful:', response.registrationStatus);
+            if (isDevMode()) console.log('Google OAuth callback successful:', response.registrationStatus);
           }
         }),
         map((response) => {
@@ -560,7 +558,7 @@ export class AuthService {
           return this.currentUserSubject.value;
         }),
         catchError((error: HttpErrorResponse) => {
-          console.error('Google OAuth callback failed:', error);
+          if (isDevMode()) console.error('Google OAuth callback failed:', error.status);
 
           if (error.status === 401) {
             return throwError(() => new Error('Authentication session expired. Please try again.'));
@@ -616,7 +614,7 @@ export class AuthService {
               user: response.user as any,
             };
             this.persistSession(authResponse);
-            console.log('✅ Implicit OAuth callback successful:', response.registrationStatus);
+            if (isDevMode()) console.log('Implicit OAuth callback successful:', response.registrationStatus);
           }
         }),
         map((response) => {
@@ -626,7 +624,7 @@ export class AuthService {
           return this.currentUserSubject.value;
         }),
         catchError((error: HttpErrorResponse) => {
-          console.error('Implicit OAuth callback failed:', error);
+          if (isDevMode()) console.error('Implicit OAuth callback failed:', error.status);
 
           if (error.status === 401) {
             return throwError(() => new Error('Invalid or expired token. Please try again.'));
@@ -671,7 +669,7 @@ export class AuthService {
         tap((response) => this.persistSession(response)),
         map(() => this.currentUserSubject.value!),
         catchError((error: HttpErrorResponse) => {
-          console.error('Email confirmation failed:', error);
+          if (isDevMode()) console.error('Email confirmation failed:', error.status);
           return throwError(() => new Error('Email confirmation failed'));
         }),
       );
@@ -780,7 +778,7 @@ export class AuthService {
 
     const context = new HttpContext().set(SKIP_AUTH, true);
 
-    console.log('🔄 [AUTH] Starting token refresh...');
+    if (isDevMode()) console.log('[AUTH] Starting token refresh...');
 
     return this.http
       .post<AuthResponse>(
@@ -793,10 +791,12 @@ export class AuthService {
       )
       .pipe(
         tap((response) => {
-          console.log('🔄 [AUTH] Refresh response received:', {
-            authenticated: response.authenticated,
-            hasUser: !!response.user,
-          });
+          if (isDevMode()) {
+            console.log('[AUTH] Refresh response received:', {
+              authenticated: response.authenticated,
+              hasUser: !!response.user,
+            });
+          }
 
           // SECURITY HARDENING: Response no longer contains accessToken
           // Token is delivered via HttpOnly cookie by backend
@@ -812,19 +812,17 @@ export class AuthService {
 
           // Signal success (we don't have the token value, but session is valid)
           this.refreshSubject.next('session-refreshed');
-          console.log('✅ [AUTH] Token refresh successful');
+          if (isDevMode()) console.log('[AUTH] Token refresh successful');
         }),
         map(() => 'session-refreshed'),
         catchError((error: HttpErrorResponse) => {
           this.refreshSubject.next(null);
-          console.error('🔒 Token refresh failed:', {
-            status: error.status,
-            statusText: error.statusText,
-            url: error.url,
-            message: error.message,
-            error: error.error,
-            headers: error.headers?.keys(),
-          });
+          if (isDevMode()) {
+            console.error('Token refresh failed:', {
+              status: error.status,
+              statusText: error.statusText,
+            });
+          }
 
           if (error.status === 401) {
             // Classify session end reason from backend error code
@@ -840,8 +838,8 @@ export class AuthService {
               this._sessionEndReason = 'expired';
             }
 
-            console.log(
-              `🔒 Refresh token expired or invalid - session ended (reason: ${this._sessionEndReason})`,
+            if (isDevMode()) console.log(
+              `Refresh token expired - session ended (reason: ${this._sessionEndReason})`,
             );
             this.clearSession();
             // SECURITY FIX: Only show session expired if there was a previous session
@@ -849,7 +847,7 @@ export class AuthService {
             if (this.hasHadActiveSession) {
               this.sessionExpiredSubject.next(); // Emit session expired event
             } else {
-              console.log('ℹ️ No prior session - skipping session expired notification');
+              if (isDevMode()) console.log('No prior session - skipping session expired notification');
             }
             return of(null);
           }
@@ -857,7 +855,7 @@ export class AuthService {
           // For network errors or other issues, don't immediately clear session
           // The user might just have temporary connectivity issues
           if (error.status === 0 || error.status >= 500) {
-            console.warn('🔒 Refresh failed due to network/server error - preserving session');
+            if (isDevMode()) console.warn('Refresh failed due to network/server error - preserving session');
             return of(null); // Don't throw, just return null to indicate failure
           }
 
@@ -916,7 +914,7 @@ export class AuthService {
             },
             error: (error: HttpErrorResponse) => {
               if (error.status === 401) {
-                console.log('⏰ Session expired - clearing');
+                if (isDevMode()) console.log('Session expired - clearing');
                 this.clearSession();
                 this.sessionExpiredSubject.next();
               }
@@ -926,7 +924,7 @@ export class AuthService {
       }
     }, intervalMs);
 
-    console.log(`✅ Session watcher started (checking every ${intervalMs}ms)`);
+    if (isDevMode()) console.log(`Session watcher started (checking every ${intervalMs}ms)`);
   }
 
   /**
@@ -937,7 +935,7 @@ export class AuthService {
     if (this.tokenWatcherInterval) {
       clearInterval(this.tokenWatcherInterval);
       this.tokenWatcherInterval = null;
-      console.log('🛑 Token watcher stopped');
+      if (isDevMode()) console.log('Token watcher stopped');
     }
   }
 
@@ -951,7 +949,7 @@ export class AuthService {
     const currentUser = this.currentUserSubject.value;
 
     if (!currentUser) {
-      console.warn('⚠️ Cannot update avatar: no current user');
+      if (isDevMode()) console.warn('Cannot update avatar: no current user');
       return;
     }
 
@@ -963,8 +961,6 @@ export class AuthService {
 
     // Update observable (no localStorage in cookie-only mode)
     this.currentUserSubject.next(updatedUser);
-
-    console.log('✅ Avatar URL updated in user state:', avatarUrl);
   }
 
   /**
@@ -1004,7 +1000,7 @@ export class AuthService {
     const { user } = response;
 
     if (!user) {
-      console.log('ℹ️ Response missing user payload — hydrating via /api/users/me');
+      if (isDevMode()) console.log('Response missing user payload — hydrating via /api/users/me');
       this.hydrateUserFromBackend();
       return;
     }
@@ -1035,10 +1031,10 @@ export class AuthService {
         next: (profile) => {
           this.updateUserState(profile);
           this.hasHadActiveSession = true;
-          console.log('✅ Session hydrated via /api/users/me');
+          if (isDevMode()) console.log('Session hydrated via /api/users/me');
         },
         error: (error: HttpErrorResponse) => {
-          console.error('❌ Failed to hydrate user after refresh:', error);
+          if (isDevMode()) console.error('Failed to hydrate user after refresh:', error.status);
           if (error.status === 401) {
             this.clearSession();
             // SECURITY FIX: Only show session expired if there was a previous session

@@ -170,9 +170,6 @@ public class SecurityConfig {
                         // Debug endpoints — @Profile("!prod") prevents bean registration in production.
                         // Defense-in-depth: require ADMIN even in dev (controller also has @PreAuthorize).
                         .requestMatchers("/api/auth/debug/**").hasRole("ADMIN")
-                        // OAuth2 endpoints — handled by LegacyOAuth2SecurityConfig when
-                        // legacy.oauth2.enabled=true; kept permitAll as fallback (404 when disabled)
-                        .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
                         // Public static resources (images, documents, uploads)
                         .requestMatchers(HttpMethod.GET, "/uploads/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/car-images/**").permitAll()
@@ -262,13 +259,9 @@ public class SecurityConfig {
                 // JwtAuthenticationEntryPoint returns clean JSON:
                 //   {"error":"Unauthorized","message":"JWT expired or invalid"}
                 // Frontend sees 401 -> triggers silent token refresh.
-                //
-                // NOTE: Legacy OAuth2 login (if enabled) runs in a separate SecurityFilterChain
-                // at @Order(0) — see LegacyOAuth2SecurityConfig.
                 .exceptionHandling(ex -> ex.authenticationEntryPoint(jwtAuthenticationEntryPoint))
                 // SESSION MANAGEMENT: STATELESS for JWT-based authentication
                 // All API endpoints use Supabase JWT tokens — no server-side sessions.
-                // Legacy OAuth2 (if enabled) runs in a separate filter chain (LegacyOAuth2SecurityConfig).
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 // FILTER CHAIN ORDER (execution from top to bottom):
                 // 1. RateLimitingFilter (fail fast on rate limit exceeded)
@@ -414,6 +407,6 @@ public class SecurityConfig {
         log.info("   2. ServiceAuthenticationFilter - Internal microservice authentication");
         log.info("   3. SupabaseJwtAuthFilter - Supabase Auth JWT validation");
         log.info("   4. UsernamePasswordAuthenticationFilter - Spring Security default");
-        log.info("   Stateless authentication model: Supabase JWT-first (legacy OAuth2 in separate chain if enabled)");
+        log.info("   Stateless authentication model: Supabase JWT-first");
     }
 }

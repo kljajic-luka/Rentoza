@@ -8,8 +8,6 @@ import org.example.rentoza.exception.ValidationException;
 import org.example.rentoza.security.CookieConstants;
 import org.example.rentoza.security.JwtUserPrincipal;
 import org.example.rentoza.security.network.TrustedProxyIpExtractor;
-import org.example.rentoza.deprecated.jwt.JwtUtil;
-import org.example.rentoza.deprecated.auth.RefreshTokenServiceEnhanced;
 import org.example.rentoza.security.supabase.SupabaseAuthService;
 import org.example.rentoza.security.supabase.SupabaseAuthService.SupabaseAuthResult;
 import org.example.rentoza.user.*;
@@ -57,8 +55,6 @@ public class EnhancedAuthController {
     private final UserService userService;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
-    private final JwtUtil jwtUtil;
-    private final RefreshTokenServiceEnhanced refreshTokenService;
     private final AppProperties appProperties;
     private final CsrfTokenRepository csrfTokenRepository;
     private final IdentityDocumentValidator identityValidator;
@@ -74,8 +70,6 @@ public class EnhancedAuthController {
             UserService userService,
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
-            JwtUtil jwtUtil,
-            RefreshTokenServiceEnhanced refreshTokenService,
             AppProperties appProperties,
             CsrfTokenRepository csrfTokenRepository,
             IdentityDocumentValidator identityValidator,
@@ -86,8 +80,6 @@ public class EnhancedAuthController {
         this.userService = userService;
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
-        this.jwtUtil = jwtUtil;
-        this.refreshTokenService = refreshTokenService;
         this.appProperties = appProperties;
         this.csrfTokenRepository = csrfTokenRepository;
         this.identityValidator = identityValidator;
@@ -450,35 +442,6 @@ public class EnhancedAuthController {
     }
 
     // ==================== TOKEN ISSUING ====================
-
-    /**
-     * @deprecated Legacy JWT token issuance. Use {@link #issueSupabaseTokensAndRespond} instead.
-     * Retained temporarily for reference; no active callers remain.
-     */
-    @Deprecated(forRemoval = true)
-    @SuppressWarnings("unused")
-    private ResponseEntity<?> issueTokensAndRespond(User user,
-                                                    HttpServletRequest request,
-                                                    HttpServletResponse res,
-                                                    String message) {
-        String accessToken = jwtUtil.generateToken(user.getEmail(), user.getRole().name(), user.getId());
-
-        String ipAddress = RefreshTokenServiceEnhanced.extractIpAddress(request);
-        String userAgent = RefreshTokenServiceEnhanced.extractUserAgent(request);
-        String refreshRaw = refreshTokenService.issue(user.getEmail(), ipAddress, userAgent);
-
-        ResponseCookie refreshCookie = createRefreshTokenCookie(refreshRaw);
-        ResponseCookie accessCookie = createAccessTokenCookie(accessToken);
-
-        res.addHeader("Set-Cookie", refreshCookie.toString());
-        res.addHeader("Set-Cookie", accessCookie.toString());
-        ensureCsrfCookie(request, res);
-
-        UserResponseDTO userResponse = userService.toUserResponse(user);
-        log.info("User authenticated successfully: email={}, role={}", user.getEmail(), user.getRole());
-
-        return ResponseEntity.ok(AuthResponseDTO.success(userResponse, message));
-    }
 
     /**
      * Issue Supabase tokens in cookies and return user response.

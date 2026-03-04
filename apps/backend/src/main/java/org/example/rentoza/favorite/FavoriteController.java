@@ -2,7 +2,6 @@ package org.example.rentoza.favorite;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.example.rentoza.auth.oauth2.OAuth2UserPrincipal;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
 import org.springframework.http.HttpStatus;
@@ -11,8 +10,6 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.oauth2.core.oidc.user.DefaultOidcUser;
-import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -167,27 +164,8 @@ public class FavoriteController {
         String username = null;
         User currentUser = null;
 
-        // Extract user from different principal types
-        if (principal instanceof OAuth2UserPrincipal oauthPrincipal) {
-            currentUser = oauthPrincipal.getUser();
-            username = oauthPrincipal.getEmail();
-            log.debug("OAuth2UserPrincipal accessing favorites: {}", username);
-        } else if (principal instanceof DefaultOidcUser oidcUser) {
-            // CRITICAL FIX: Handle DefaultOidcUser from OAuth2 session
-            // This occurs when JWT filter doesn't replace OAuth2 session authentication
-            username = oidcUser.getAttribute("email");
-            if (username == null) {
-                username = oidcUser.getAttribute("sub");
-            }
-            log.warn("DefaultOidcUser detected in favorites (should use JWT instead): {}", username);
-        } else if (principal instanceof OAuth2User oauth2User) {
-            // Generic OAuth2User fallback
-            username = oauth2User.getAttribute("email");
-            if (username == null) {
-                username = oauth2User.getAttribute("sub");
-            }
-            log.warn("OAuth2User detected in favorites (should use JWT instead): {}", username);
-        } else if (principal instanceof UserDetails userDetails) {
+        // Extract user from principal types (Supabase JWT-only auth stack)
+        if (principal instanceof UserDetails userDetails) {
             username = userDetails.getUsername();
             log.debug("UserDetails principal accessing favorites: {}", username);
         } else if (principal instanceof User userPrincipal) {

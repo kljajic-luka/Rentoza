@@ -30,8 +30,6 @@ public class ServiceAuthenticationFilter extends OncePerRequestFilter {
     private static final String INTERNAL_SERVICE_TOKEN_HEADER = "X-Internal-Service-Token";
     private static final String INTERNAL_SERVICE_AUTHORITY = "INTERNAL_SERVICE";
     private static final List<String> PUBLIC_ENDPOINT_PREFIXES = List.of(
-            "/login/oauth2",
-            "/oauth2",
             "/login",
             "/uploads"
     );

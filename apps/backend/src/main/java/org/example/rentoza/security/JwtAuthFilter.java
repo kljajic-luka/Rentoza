@@ -40,14 +40,9 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     // NOTE: /api/auth includes both legacy (/api/auth/**) and Supabase (/api/auth/supabase/**)
     private static final List<String> PUBLIC_ENDPOINT_PREFIXES = List.of(
             "/api/auth",    // Auth endpoints - includes /api/auth/supabase/** (prevents dual JWT validation)
-            "/login/oauth2",
-            "/oauth2",
             "/login",
             "/uploads",
             "/api/public"
-            // Issue 1.3: Removed "/actuator" - now handled by SecurityConfig RBAC rules
-            // /actuator/health and /actuator/info are public
-            // /actuator/metrics, /actuator/env, etc. require ADMIN role
     );
     
     // Specific GET endpoints that are public (exact paths or patterns)
@@ -99,9 +94,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     return;
                 }
 
-                // CRITICAL FIX: Always replace existing authentication when valid JWT is present
-                // This ensures JWT takes precedence over OAuth2 session authentication
-                // Required for OAuth2 + JWT hybrid: after OAuth2 login, the session may conta                // DefaultOidcUser, but subsequent API calls with JWT must use token-based auth
+                // Always replace existing authentication when valid JWT is present
                 UserDetails userDetails = userDetailsService.loadUserByUsername(email);
 
                 // SECURITY: Ensure loaded principal is JwtUserPrincipal (required for RLS)
@@ -136,8 +129,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             }
         } catch (ExpiredJwtException e) {
             log.debug("JWT token expired for request to {}: {}", requestUri, e.getMessage());
-            // CRITICAL FIX: Return 401 immediately instead of continuing filter chain
-            // This prevents Spring Security from attempting OAuth2 redirect
+            // Return 401 immediately instead of continuing filter chain
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             response.setContentType("application/json");
             response.setCharacterEncoding("UTF-8");
@@ -210,17 +202,6 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         String path = request.getRequestURI();
         String method = request.getMethod();
 
-        // ENDPOINT SCOPING: This filter should NOT run on OAuth2 authentication endpoints
-        // OAuth2 flow uses different authentication mechanisms (authorization code, OIDC)
-        // JWT filter only applies to API endpoints that expect Bearer tokens
-        //
-        // Excluded paths:
-        // - /login/oauth2/** (OAuth2 authorization flow)
-        // - /oauth2/** (OAuth2 callbacks and redirects)
-        // - /login (traditional form login - if enabled)
-        //
-        // All other authenticated endpoints (/api/**) SHOULD use JWT authentication
-        
         // Check fully public endpoints (all methods)
         boolean isFullyPublic = PUBLIC_ENDPOINT_PREFIXES.stream().anyMatch(path::startsWith);
         if (isFullyPublic) {

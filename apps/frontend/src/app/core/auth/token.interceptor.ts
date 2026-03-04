@@ -1,5 +1,5 @@
 import { HttpInterceptorFn, HttpStatusCode } from '@angular/common/http';
-import { inject } from '@angular/core';
+import { inject, isDevMode } from '@angular/core';
 import { Router } from '@angular/router';
 import { catchError, defer, from, switchMap, throwError } from 'rxjs';
 
@@ -66,10 +66,12 @@ const enrichRequest = (request: Parameters<HttpInterceptorFn>[0], markRetried = 
       });
     } else {
       // SECURITY: Log warning if XSRF token missing during mutation request
-      console.warn(
-        `[Security] XSRF token missing for ${request.method} ${request.url}. ` +
-          'Ensure CSRF cookie is set by backend on authentication.'
-      );
+      if (isDevMode()) {
+        console.warn(
+          `[Security] XSRF token missing for ${request.method} request. ` +
+            'Ensure CSRF cookie is set by backend on authentication.'
+        );
+      }
     }
   }
 
@@ -117,8 +119,7 @@ const readCookie = (name: string): string | null => {
 /**
  * Handle session expiry by clearing state and redirecting to login.
  */
-const handleSessionExpiry = (authService: AuthService, router: Router, reason: string) => {
-  console.log(`🔒 Session expired: ${reason}`);
+const handleSessionExpiry = (authService: AuthService, router: Router, _reason: string) => {
   authService.clearSession();
   void router.navigate(['/auth/login'], { queryParams: { session: 'expired' } });
 };
@@ -159,26 +160,26 @@ export const authTokenInterceptor: HttpInterceptorFn = (req, next) => {
           return throwError(() => error);
         }
 
-        console.log(`🔄 401 on ${req.url} - attempting token refresh...`);
+        if (isDevMode()) console.log(`401 on ${req.method} - attempting token refresh...`);
 
         // Attempt token refresh (uses HttpOnly refresh cookie)
         return authService.refreshAccessToken().pipe(
           switchMap((result) => {
             if (!result) {
-              console.log(`❌ Token refresh returned null for ${req.url}`);
+              if (isDevMode()) console.log('Token refresh returned null');
               return throwError(() => error);
             }
-            console.log(`✅ Token refreshed, waiting 300ms for cookie sync...`);
+            if (isDevMode()) console.log('Token refreshed, waiting for cookie sync...');
 
             // Wait for browser to process Set-Cookie headers in a new event loop tick
             return from(waitForCookieSync(300)).pipe(
               switchMap(() => {
-                console.log(`🔄 Retrying ${req.url} after cookie sync delay`);
+                if (isDevMode()) console.log(`Retrying ${req.method} after cookie sync delay`);
                 const retriedRequest = enrichRequest(req, true);
                 return next(retriedRequest).pipe(
                   catchError((retryError) => {
                     if (retryError.status === HttpStatusCode.Unauthorized) {
-                      console.error(`❌ Retry still got 401 after refresh - cookie issue`);
+                      if (isDevMode()) console.error('Retry still got 401 after refresh');
                       // Preserve session - user can manually refresh the page
                     }
                     return throwError(() => retryError);
@@ -188,13 +189,11 @@ export const authTokenInterceptor: HttpInterceptorFn = (req, next) => {
             );
           }),
           catchError((refreshError) => {
-            // Only handle actual refresh endpoint failures
             if (refreshError.url?.includes('/auth/refresh')) {
-              console.error(`❌ Refresh endpoint failed:`, refreshError);
+              if (isDevMode()) console.error('Refresh endpoint failed:', refreshError.status);
               handleSessionExpiry(authService, router, `Refresh failed: ${refreshError.message}`);
             } else {
-              // Retry failure - preserve session
-              console.warn(`⚠️ Retry failed but session preserved`);
+              if (isDevMode()) console.warn('Retry failed but session preserved');
             }
             return throwError(() => refreshError);
           })

@@ -870,21 +870,8 @@ public class SupabaseAuthService {
         // Look up Rentoza user via mapping
         Optional<SupabaseUserMapping> mappingOpt = mappingRepository.findById(supabaseId);
         if (mappingOpt.isEmpty()) {
-            // User exists in Supabase but not in Rentoza - create mapping
-            log.warn("Supabase user {} has no Rentoza mapping, checking by email", supabaseId);
-            
-            Optional<User> userOpt = userRepository.findByEmail(email);
-            if (userOpt.isEmpty()) {
-                throw new SupabaseAuthException("User account not found. Please register.");
-            }
-            
-            // Create missing mapping
-            User user = userOpt.get();
-            SupabaseUserMapping mapping = SupabaseUserMapping.create(supabaseId, user.getId());
-            mappingRepository.save(mapping);
-            log.info("Created missing mapping for existing user: {} -> {}", supabaseId, user.getId());
-            
-            return buildAuthResult(supabaseResponse, user, supabaseId);
+            log.warn("Supabase user {} has no Rentoza mapping — auto-linking disabled for security", supabaseId);
+            throw new SupabaseAuthException("User account not found. Please register.");
         }
 
         Long rentozaUserId = mappingOpt.get().getRentozaUserId();

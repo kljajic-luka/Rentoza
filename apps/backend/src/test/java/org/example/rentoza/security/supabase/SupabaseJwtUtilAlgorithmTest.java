@@ -2,6 +2,8 @@ package org.example.rentoza.security.supabase;
 
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
+import io.github.resilience4j.retry.RetryConfig;
+import io.github.resilience4j.retry.RetryRegistry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -28,6 +30,7 @@ class SupabaseJwtUtilAlgorithmTest {
 
     private static final String TEST_SUPABASE_URL = "https://test.supabase.co";
     private static final String TEST_KID = "test-kid";
+    private static final RetryRegistry RETRY_REGISTRY = RetryRegistry.of(RetryConfig.ofDefaults());
 
     /**
      * Build a fake JWT header.payload.signature with the given alg.
@@ -52,28 +55,28 @@ class SupabaseJwtUtilAlgorithmTest {
         @Test
         @DisplayName("P2: HS256 token must be rejected (no fallback)")
         void hs256Token_shouldBeRejected() {
-            SupabaseJwtUtil util = new SupabaseJwtUtil("dummySecret", TEST_SUPABASE_URL);
+            SupabaseJwtUtil util = new SupabaseJwtUtil("dummySecret", TEST_SUPABASE_URL, 3000, 5000, RETRY_REGISTRY);
             assertThat(util.validateToken(fakeJwt("HS256"))).isFalse();
         }
 
         @Test
         @DisplayName("P2: RS256 token must be rejected")
         void rs256Token_shouldBeRejected() {
-            SupabaseJwtUtil util = new SupabaseJwtUtil("dummySecret", TEST_SUPABASE_URL);
+            SupabaseJwtUtil util = new SupabaseJwtUtil("dummySecret", TEST_SUPABASE_URL, 3000, 5000, RETRY_REGISTRY);
             assertThat(util.validateToken(fakeJwt("RS256"))).isFalse();
         }
 
         @Test
         @DisplayName("P2: none algorithm must be rejected")
         void noneAlg_shouldBeRejected() {
-            SupabaseJwtUtil util = new SupabaseJwtUtil("dummySecret", TEST_SUPABASE_URL);
+            SupabaseJwtUtil util = new SupabaseJwtUtil("dummySecret", TEST_SUPABASE_URL, 3000, 5000, RETRY_REGISTRY);
             assertThat(util.validateToken(fakeJwt("none"))).isFalse();
         }
 
         @Test
         @DisplayName("P2: ES256 token (with unseen kid) returns false — no key in empty cache")
         void es256TokenWithUnknownKid_shouldReturnFalseGracefully() {
-            SupabaseJwtUtil util = new SupabaseJwtUtil("dummySecret", TEST_SUPABASE_URL);
+            SupabaseJwtUtil util = new SupabaseJwtUtil("dummySecret", TEST_SUPABASE_URL, 3000, 5000, RETRY_REGISTRY);
             // No JWKS loaded, so validation fails gracefully (no exception, returns false)
             assertThat(util.validateToken(fakeJwt("ES256"))).isFalse();
         }
@@ -95,7 +98,7 @@ class SupabaseJwtUtilAlgorithmTest {
             gen.initialize(new ECGenParameterSpec("secp256r1"));
             ecKeyPair = gen.generateKeyPair();
 
-            SupabaseJwtUtil util = new SupabaseJwtUtil("dummySecret", TEST_SUPABASE_URL);
+            SupabaseJwtUtil util = new SupabaseJwtUtil("dummySecret", TEST_SUPABASE_URL, 3000, 5000, RETRY_REGISTRY);
 
             // Inject the public key into the cache via reflection
             Field cacheField = SupabaseJwtUtil.class.getDeclaredField("publicKeyCache");

@@ -2,6 +2,7 @@ package org.example.rentoza.security.ratelimit;
 
 import jakarta.servlet.ServletException;
 import org.example.rentoza.config.AppProperties;
+import org.example.rentoza.security.network.TrustedProxyIpExtractor;
 import org.example.rentoza.security.supabase.SupabaseJwtUtil;
 import org.example.rentoza.security.InternalServiceJwtUtil;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,7 +40,7 @@ class RateLimitingFilterInternalTokenTest {
         appProperties.getRateLimit().setDefaultLimit(100);
         appProperties.getRateLimit().setDefaultWindowSeconds(60);
 
-        filter = new RateLimitingFilter(rateLimitService, appProperties, supabaseJwtUtil, internalServiceJwtUtil);
+        filter = new RateLimitingFilter(rateLimitService, appProperties, supabaseJwtUtil, internalServiceJwtUtil, new TrustedProxyIpExtractor(appProperties));
     }
 
     @Test

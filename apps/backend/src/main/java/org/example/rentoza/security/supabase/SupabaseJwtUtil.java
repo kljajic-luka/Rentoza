@@ -3,6 +3,8 @@ package org.example.rentoza.security.supabase;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.*;
+import io.github.resilience4j.retry.Retry;
+import io.github.resilience4j.retry.RetryRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -52,6 +54,7 @@ public class SupabaseJwtUtil {
     private final String jwtSecret; // Retained for JwtUtil consumers; not used for Supabase token validation
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final RestTemplate restTemplate;
+    private final Retry jwksRetry;
     
     // Cache for JWKS public keys (kid -> PublicKey)
     private final Map<String, PublicKey> publicKeyCache = new ConcurrentHashMap<>();
@@ -62,7 +65,8 @@ public class SupabaseJwtUtil {
             @Value("${supabase.jwt-secret}") String jwtSecret,
             @Value("${supabase.url}") String supabaseUrl,
             @Value("${supabase.jwt.jwks.connect-timeout-ms:3000}") int jwksConnectTimeoutMs,
-            @Value("${supabase.jwt.jwks.read-timeout-ms:5000}") int jwksReadTimeoutMs
+            @Value("${supabase.jwt.jwks.read-timeout-ms:5000}") int jwksReadTimeoutMs,
+            RetryRegistry retryRegistry
     ) {
         this.jwtSecret = jwtSecret;
         this.supabaseUrl = supabaseUrl;
@@ -70,6 +74,7 @@ public class SupabaseJwtUtil {
         factory.setConnectTimeout(Duration.ofMillis(jwksConnectTimeoutMs));
         factory.setReadTimeout(Duration.ofMillis(jwksReadTimeoutMs));
         this.restTemplate = new RestTemplate(factory);
+        this.jwksRetry = retryRegistry.retry("supabaseJwks");
     }
 
     @PostConstruct
@@ -187,7 +192,8 @@ public class SupabaseJwtUtil {
             String jwksUrl = supabaseUrl + "/auth/v1/.well-known/jwks.json";
             log.debug("Fetching JWKS from: {}", jwksUrl);
             
-            String jwksJson = restTemplate.getForObject(jwksUrl, String.class);
+            String jwksJson = Retry.decorateSupplier(jwksRetry,
+                    () -> restTemplate.getForObject(jwksUrl, String.class)).get();
             JsonNode jwks = objectMapper.readTree(jwksJson);
             JsonNode keys = jwks.get("keys");
             

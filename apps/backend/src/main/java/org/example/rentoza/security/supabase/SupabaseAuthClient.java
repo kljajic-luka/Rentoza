@@ -119,7 +119,8 @@ public class SupabaseAuthClient {
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
 
         try {
-            ResponseEntity<String> response = restTemplate.postForEntity(url, request, String.class);
+            ResponseEntity<String> response = executeWithRetry(
+                    () -> restTemplate.postForEntity(url, request, String.class));
             return parseAuthResponse(response.getBody());
         } catch (HttpClientErrorException e) {
             log.error("Supabase signup failed: status={}, message={}", e.getStatusCode(), extractSafeErrorMessage(e));
@@ -146,7 +147,8 @@ public class SupabaseAuthClient {
         HttpEntity<Map<String, String>> request = new HttpEntity<>(body, headers);
 
         try {
-            ResponseEntity<String> response = restTemplate.postForEntity(url, request, String.class);
+            ResponseEntity<String> response = executeWithRetry(
+                    () -> restTemplate.postForEntity(url, request, String.class));
             return parseAuthResponse(response.getBody());
         } catch (HttpClientErrorException e) {
             log.warn("Supabase login failed for {}: {}", email, e.getStatusCode());
@@ -171,7 +173,8 @@ public class SupabaseAuthClient {
         HttpEntity<Map<String, String>> request = new HttpEntity<>(body, headers);
 
         try {
-            ResponseEntity<String> response = restTemplate.postForEntity(url, request, String.class);
+            ResponseEntity<String> response = executeWithRetry(
+                    () -> restTemplate.postForEntity(url, request, String.class));
             return parseAuthResponse(response.getBody());
         } catch (HttpClientErrorException e) {
             log.warn("Supabase token refresh failed: {}", e.getStatusCode());
@@ -192,7 +195,7 @@ public class SupabaseAuthClient {
         HttpEntity<Void> request = new HttpEntity<>(headers);
 
         try {
-            restTemplate.postForEntity(url, request, Void.class);
+            executeWithRetry(() -> restTemplate.postForEntity(url, request, Void.class));
             log.debug("User logged out from Supabase");
         } catch (HttpClientErrorException e) {
             // Logout failures are not critical - token may already be invalid
@@ -228,7 +231,8 @@ public class SupabaseAuthClient {
 
         try {
             log.debug("Exchanging authorization code for tokens");
-            ResponseEntity<String> response = restTemplate.postForEntity(url, request, String.class);
+            ResponseEntity<String> response = executeWithRetry(
+                    () -> restTemplate.postForEntity(url, request, String.class));
             SupabaseAuthResponse authResponse = parseAuthResponse(response.getBody());
             log.info("Successfully exchanged authorization code for user: {}", 
                     authResponse.getUser() != null ? authResponse.getUser().getEmail() : "unknown");
@@ -265,7 +269,8 @@ public class SupabaseAuthClient {
 
         try {
             log.debug("Exchanging authorization code for tokens (with redirect)");
-            ResponseEntity<String> response = restTemplate.postForEntity(url, request, String.class);
+            ResponseEntity<String> response = executeWithRetry(
+                    () -> restTemplate.postForEntity(url, request, String.class));
             return parseAuthResponse(response.getBody());
         } catch (HttpClientErrorException e) {
             log.error("Authorization code exchange failed: status={}, message={}", 
@@ -294,8 +299,8 @@ public class SupabaseAuthClient {
         HttpEntity<Void> request = new HttpEntity<>(headers);
 
         try {
-            ResponseEntity<String> response = restTemplate.exchange(
-                    url, HttpMethod.GET, request, String.class);
+            ResponseEntity<String> response = executeWithRetry(
+                    () -> restTemplate.exchange(url, HttpMethod.GET, request, String.class));
 
             if (response.getBody() == null) {
                 log.warn("Empty response from Supabase /auth/v1/user");
@@ -343,7 +348,8 @@ public class SupabaseAuthClient {
         HttpEntity<Void> request = new HttpEntity<>(headers);
 
         try {
-            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, request, String.class);
+            ResponseEntity<String> response = executeWithRetry(
+                    () -> restTemplate.exchange(url, HttpMethod.GET, request, String.class));
             JsonNode node = objectMapper.readTree(response.getBody());
             return parseUser(node);
         } catch (HttpClientErrorException.NotFound e) {
@@ -369,7 +375,8 @@ public class SupabaseAuthClient {
         HttpEntity<Void> request = new HttpEntity<>(headers);
 
         try {
-            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, request, String.class);
+            ResponseEntity<String> response = executeWithRetry(
+                    () -> restTemplate.exchange(url, HttpMethod.GET, request, String.class));
             JsonNode root = objectMapper.readTree(response.getBody());
             JsonNode users = root.has("users") ? root.get("users") : root;
             
@@ -399,7 +406,7 @@ public class SupabaseAuthClient {
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
 
         try {
-            restTemplate.exchange(url, HttpMethod.PUT, request, Void.class);
+            executeWithRetry(() -> restTemplate.exchange(url, HttpMethod.PUT, request, Void.class));
             log.debug("Updated user metadata for: {}", userId);
         } catch (HttpClientErrorException e) {
             log.error("Failed to update user metadata: status={}, message={}", e.getStatusCode(), extractSafeErrorMessage(e));
@@ -423,7 +430,7 @@ public class SupabaseAuthClient {
         HttpEntity<Void> request = new HttpEntity<>(headers);
 
         try {
-            restTemplate.exchange(url, HttpMethod.DELETE, request, Void.class);
+            executeWithRetry(() -> restTemplate.exchange(url, HttpMethod.DELETE, request, Void.class));
             log.info("Compensated: deleted Supabase user {}", userId);
         } catch (Exception e) {
             log.error("COMPENSATION FAILED: Could not delete Supabase user {}. Manual cleanup required.", userId, e);
@@ -451,7 +458,7 @@ public class SupabaseAuthClient {
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
 
         try {
-            restTemplate.exchange(url, HttpMethod.PUT, request, Void.class);
+            executeWithRetry(() -> restTemplate.exchange(url, HttpMethod.PUT, request, Void.class));
             log.info("Password updated in Supabase for user: {}", userId);
         } catch (HttpClientErrorException e) {
             log.error("Failed to update password in Supabase: status={}, message={}", e.getStatusCode(), extractSafeErrorMessage(e));
@@ -482,7 +489,7 @@ public class SupabaseAuthClient {
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
 
         try {
-            restTemplate.postForEntity(url, request, String.class);
+            executeWithRetry(() -> restTemplate.postForEntity(url, request, String.class));
             log.info("Password reset email sent via Supabase for: {}", email);
         } catch (HttpClientErrorException e) {
             log.error("Failed to send password reset email: status={}, message={}", e.getStatusCode(), extractSafeErrorMessage(e));

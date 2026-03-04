@@ -1,5 +1,6 @@
 package org.example.rentoza.config;
 
+import io.github.resilience4j.core.IntervalFunction;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import io.github.resilience4j.ratelimiter.RateLimiterConfig;
@@ -191,6 +192,37 @@ public class ResilienceConfiguration {
         registry.retry("exifValidation", exifRetry);
         registry.retry("paymentGateway", paymentRetry);
         registry.retry("notificationService", defaultRetry);
+
+        // Supabase Auth API retry - exponential backoff (500ms → 1s → 2s)
+        // Retries on 5xx, connection reset, timeouts. Does NOT retry 4xx.
+        RetryConfig supabaseAuthRetry = RetryConfig.custom()
+                .maxAttempts(3)
+                .intervalFunction(IntervalFunction.ofExponentialBackoff(500, 2.0))
+                .retryExceptions(
+                        java.io.IOException.class,
+                        java.util.concurrent.TimeoutException.class,
+                        org.springframework.web.client.ResourceAccessException.class,
+                        org.springframework.web.client.HttpServerErrorException.class
+                )
+                .ignoreExceptions(
+                        org.springframework.web.client.HttpClientErrorException.class,
+                        IllegalArgumentException.class
+                )
+                .build();
+        registry.retry("supabaseAuth", supabaseAuthRetry);
+
+        // JWKS fetch retry - lighter backoff for key refresh
+        RetryConfig supabaseJwksRetry = RetryConfig.custom()
+                .maxAttempts(3)
+                .intervalFunction(IntervalFunction.ofExponentialBackoff(300, 2.0))
+                .retryExceptions(
+                        java.io.IOException.class,
+                        java.util.concurrent.TimeoutException.class,
+                        org.springframework.web.client.ResourceAccessException.class,
+                        org.springframework.web.client.HttpServerErrorException.class
+                )
+                .build();
+        registry.retry("supabaseJwks", supabaseJwksRetry);
 
         log.info("[Resilience] RetryRegistry initialized");
         

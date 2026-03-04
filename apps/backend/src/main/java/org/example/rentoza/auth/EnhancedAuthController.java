@@ -503,7 +503,7 @@ public class EnhancedAuthController {
         var builder = ResponseCookie.from(CookieConstants.REFRESH_TOKEN, token)
                 .httpOnly(true)
                 .secure(appProperties.getCookie().isSecure())
-                .path("/api/auth/refresh")
+                .path("/api/auth/supabase")
                 .sameSite(appProperties.getCookie().getSameSite())
                 .maxAge(Duration.ofDays(14));
 

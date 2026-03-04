@@ -10,6 +10,10 @@ import java.util.Optional;
 @org.springframework.stereotype.Repository
 public interface UserRepository extends JpaRepository<User,Long> {
     Optional<User> findByEmail(String email);
+
+    @Query("SELECT u FROM User u WHERE LOWER(u.email) = LOWER(:email)")
+    Optional<User> findByEmailIgnoreCase(@org.springframework.data.repository.query.Param("email") String email);
+
     Optional<User> findByPhone(String phone);
     List<User> findByRole(Role role);
     boolean existsByPhoneAndIdNot(String phone, Long id);

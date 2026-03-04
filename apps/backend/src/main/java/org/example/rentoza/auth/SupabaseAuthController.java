@@ -428,6 +428,9 @@ public class SupabaseAuthController {
             HttpServletResponse response
     ) {
         try {
+            // Canonicalize email at boundary
+            dto.setEmail(dto.getEmail().trim().toLowerCase(java.util.Locale.ROOT));
+
             // P1: Password strength validation (Turo standard)
             List<String> passwordViolations = passwordPolicyService.validatePasswordStrength(dto.getPassword());
             if (!passwordViolations.isEmpty()) {
@@ -547,6 +550,9 @@ public class SupabaseAuthController {
             HttpServletResponse response
     ) {
         try {
+            // Canonicalize email at boundary
+            dto.setEmail(dto.getEmail().trim().toLowerCase(java.util.Locale.ROOT));
+
             String clientIp = request.getRemoteAddr();
 
             // P0: Brute-force protection — check if account is locked

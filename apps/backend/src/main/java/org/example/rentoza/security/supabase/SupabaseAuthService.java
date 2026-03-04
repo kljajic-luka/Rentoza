@@ -716,6 +716,8 @@ public class SupabaseAuthService {
             String lastName,
             Role role
     ) {
+        email = email.trim().toLowerCase(java.util.Locale.ROOT);
+
         // Defense-in-depth: reject ADMIN and OWNER roles in self-registration
         // OWNER must go through dedicated registerOwner() with compliance validation
         if (role == null || role == Role.ADMIN || role == Role.OWNER) {
@@ -751,6 +753,7 @@ public class SupabaseAuthService {
             String firstName,
             String lastName
     ) {
+        email = email.trim().toLowerCase(java.util.Locale.ROOT);
         return registerInternal(email, password, firstName, lastName, Role.OWNER);
     }
 
@@ -764,6 +767,8 @@ public class SupabaseAuthService {
             String lastName,
             Role role
     ) {
+        email = email.trim().toLowerCase(java.util.Locale.ROOT);
+
         // Check if email already exists in Rentoza
         if (userRepository.findByEmail(email).isPresent()) {
             throw new SupabaseAuthException("Email already registered");
@@ -851,6 +856,8 @@ public class SupabaseAuthService {
      */
     @Transactional(readOnly = true)
     public SupabaseAuthResult login(String email, String password) {
+        email = email.trim().toLowerCase(java.util.Locale.ROOT);
+
         // Authenticate with Supabase
         SupabaseAuthResponse supabaseResponse = supabaseClient.signInWithPassword(email, password);
         

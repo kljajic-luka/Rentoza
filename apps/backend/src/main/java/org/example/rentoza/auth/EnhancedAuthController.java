@@ -111,6 +111,9 @@ public class EnhancedAuthController {
                                           HttpServletRequest request,
                                           HttpServletResponse res) {
         try {
+            // Canonicalize email at boundary
+            dto.setEmail(dto.getEmail().trim().toLowerCase(java.util.Locale.ROOT));
+
             // Validate age eligibility (21+)
             validateAgeEligibility(dto.getDateOfBirth());
 
@@ -182,6 +185,9 @@ public class EnhancedAuthController {
                                            HttpServletRequest request,
                                            HttpServletResponse res) {
         try {
+            // Canonicalize email at boundary
+            dto.setEmail(dto.getEmail().trim().toLowerCase(java.util.Locale.ROOT));
+
             // Validate age eligibility (21+)
             validateAgeEligibility(dto.getDateOfBirth());
 

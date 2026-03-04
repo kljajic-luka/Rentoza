@@ -166,6 +166,15 @@ public class EnhancedAuthController {
 
     /**
      * Owner registration with JMBG/PIB validation and auto-submit to verification queue.
+     * Now uses Supabase Auth for authentication with Rentoza user record for profile data.
+     *
+     * <p>Handles two scenarios:
+     * <ol>
+     *   <li><b>Email confirmation required</b>: Returns success with emailConfirmationRequired=true,
+     *       no tokens issued. User must confirm email before logging in.</li>
+     *   <li><b>No email confirmation</b>: Returns success with Supabase tokens in cookies,
+     *       user can proceed immediately.</li>
+     * </ol>
      */
     @Transactional
     @PostMapping("/register/owner")
@@ -189,25 +198,21 @@ public class EnhancedAuthController {
                 return ResponseEntity.badRequest().body(Map.of("error", "Phone already registered"));
             }
 
-            // Create user
-            User user = new User();
-            user.setFirstName(dto.getFirstName());
-            user.setLastName(dto.getLastName());
-            user.setEmail(dto.getEmail().toLowerCase());
+            // Register via Supabase Auth (creates Supabase user + basic Rentoza user + mapping)
+            SupabaseAuthResult result = supabaseAuthService.registerOwner(
+                    dto.getEmail(),
+                    dto.getPassword(),
+                    dto.getFirstName(),
+                    dto.getLastName()
+            );
+
+            // Enrich the Rentoza user with owner-specific fields
+            User user = result.getUser();
             user.setPhone(dto.getPhone());
-            user.setPassword(passwordEncoder.encode(dto.getPassword()));
             user.setDateOfBirth(dto.getDateOfBirth());
-            user.setDobVerified(false);
-            user.setRole(Role.OWNER);
+            user.setDobVerified(false); // User-provided, not verified
             user.setOwnerType(dto.getOwnerType());
             user.setRegistrationStatus(RegistrationStatus.ACTIVE);
-            user.setAuthProvider(AuthProvider.LOCAL);
-            user.setEnabled(true);
-            user.setLocked(false);
-            user.setCars(new ArrayList<>());
-            user.setBookings(new ArrayList<>());
-            user.setReviewsGiven(new ArrayList<>());
-            user.setReviewsReceived(new ArrayList<>());
 
             // Set identity document with encryption and hash
             if (dto.getOwnerType() == OwnerType.INDIVIDUAL) {
@@ -232,9 +237,21 @@ public class EnhancedAuthController {
             // Auto-submit to owner verification queue
             ownerVerificationService.submitForVerification(user);
 
-            log.info("Owner registered successfully via enhanced flow: email={}, type={}",
-                    user.getEmail(), dto.getOwnerType());
-            return issueTokensAndRespond(user, request, res, "Account created successfully. Verification pending.");
+            log.info("Owner registered via Supabase: email={}, type={}, emailConfirmationPending={}",
+                    user.getEmail(), dto.getOwnerType(), result.isEmailConfirmationPending());
+
+            // Handle email confirmation pending scenario
+            if (result.isEmailConfirmationPending()) {
+                UserResponseDTO userResponse = userService.toUserResponse(user);
+                return ResponseEntity.ok(AuthResponseDTO.emailConfirmationRequired(
+                        userResponse,
+                        "Account created! Please check your email to confirm your account before logging in."
+                ));
+            }
+
+            // No email confirmation required - issue Supabase tokens
+            return issueSupabaseTokensAndRespond(result, user, request, res,
+                    "Account created successfully. Verification pending.");
 
         } catch (ValidationException e) {
             log.warn("Owner registration validation failed: {}", e.getMessage());
@@ -243,8 +260,8 @@ public class EnhancedAuthController {
             log.warn("Owner identity validation failed: {}", e.getMessage());
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
-            log.error("Owner registration failed: {}", e.getMessage());
-            return ResponseEntity.badRequest().body(Map.of("error", "Registration failed"));
+            log.error("Owner registration failed: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest().body(Map.of("error", "Registration failed: " + e.getMessage()));
         }
     }
 
@@ -426,6 +443,12 @@ public class EnhancedAuthController {
 
     // ==================== TOKEN ISSUING ====================
 
+    /**
+     * @deprecated Legacy JWT token issuance. Use {@link #issueSupabaseTokensAndRespond} instead.
+     * Retained temporarily for reference; no active callers remain.
+     */
+    @Deprecated(forRemoval = true)
+    @SuppressWarnings("unused")
     private ResponseEntity<?> issueTokensAndRespond(User user,
                                                     HttpServletRequest request,
                                                     HttpServletResponse res,

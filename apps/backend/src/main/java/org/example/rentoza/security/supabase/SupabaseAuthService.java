@@ -717,12 +717,53 @@ public class SupabaseAuthService {
             Role role
     ) {
         // Defense-in-depth: reject ADMIN and OWNER roles in self-registration
-        // OWNER must go through dedicated owner registration with compliance validation
+        // OWNER must go through dedicated registerOwner() with compliance validation
         if (role == null || role == Role.ADMIN || role == Role.OWNER) {
             log.warn("SECURITY: Rejected non-USER role {} for Supabase register: {}", role, email);
             role = Role.USER;
         }
 
+        return registerInternal(email, password, firstName, lastName, role);
+    }
+
+    /**
+     * Register a new OWNER via Supabase Auth.
+     *
+     * <p>This method is distinct from {@link #register} because owner registration
+     * requires compliance validation (JMBG/PIB, consent provenance) that must be
+     * enforced by the calling controller. The role is hardcoded to OWNER here to
+     * prevent misuse.
+     *
+     * <p>Only callable from EnhancedAuthController.registerOwner() which performs
+     * all owner-specific validation before calling this method.
+     *
+     * @param email User email
+     * @param password User password
+     * @param firstName User first name
+     * @param lastName User last name
+     * @return Authentication result with tokens and basic Rentoza user (caller enriches with owner fields)
+     * @throws SupabaseAuthException if registration fails
+     */
+    @Transactional
+    public SupabaseAuthResult registerOwner(
+            String email,
+            String password,
+            String firstName,
+            String lastName
+    ) {
+        return registerInternal(email, password, firstName, lastName, Role.OWNER);
+    }
+
+    /**
+     * Common registration logic shared by {@link #register} and {@link #registerOwner}.
+     */
+    private SupabaseAuthResult registerInternal(
+            String email,
+            String password,
+            String firstName,
+            String lastName,
+            Role role
+    ) {
         // Check if email already exists in Rentoza
         if (userRepository.findByEmail(email).isPresent()) {
             throw new SupabaseAuthException("Email already registered");

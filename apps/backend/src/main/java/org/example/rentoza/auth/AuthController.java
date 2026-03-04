@@ -152,22 +152,6 @@ public class AuthController {
         return builder.build();
     }
 
-    /**
-     * Legacy registration endpoint — DISABLED.
-     * Returns 410 GONE unconditionally. All registration must go through
-     * /api/auth/supabase/register (USER) or the dedicated owner registration flow (OWNER).
-     * Endpoint kept in SecurityConfig permitAll list; will be fully removed in Phase 4.
-     */
-    @Deprecated
-    @PostMapping("/register")
-    public ResponseEntity<?> register() {
-        log.warn("SECURITY: Legacy /api/auth/register called but disabled in production");
-        return ResponseEntity.status(410).body(Map.of(
-                "error", "ENDPOINT_DEPRECATED",
-                "message", "This registration endpoint is deprecated. Please use the current registration flow."
-        ));
-    }
-
     @PostMapping("/login")
     public ResponseEntity<?> login(@Valid @RequestBody UserLoginDTO dto,
                                    HttpServletRequest request,

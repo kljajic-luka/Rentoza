@@ -96,7 +96,7 @@ public class ProfileCompletionService {
             throw new ValidationException(validationErrors);
         }
 
-        // 5b. PHASE 4: Persist owner consent provenance after successful validation
+        // 5b. Persist owner consent provenance for legal compliance
         if (user.getRole() == Role.OWNER) {
             Instant now = Instant.now();
             user.setHostAgreementAcceptedAt(now);

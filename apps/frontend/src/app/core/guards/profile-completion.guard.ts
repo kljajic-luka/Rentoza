@@ -81,7 +81,7 @@ export class ProfileCompletionGuard implements CanActivate {
     // Check registration status
     const status = user.registrationStatus;
 
-    // If status is ACTIVE or undefined (legacy users), allow access
+    // If status is ACTIVE or undefined (pre-enhanced-registration users), allow access
     if (!status || status === 'ACTIVE') {
       return of(true);
     }

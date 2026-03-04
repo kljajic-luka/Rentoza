@@ -194,21 +194,8 @@ export class AuthService {
       );
   }
 
-  register(payload: RegisterRequest): Observable<UserProfile> {
-    const context = new HttpContext().set(SKIP_AUTH, true);
-    return this.http
-      .post<AuthResponse>(`${this.apiUrl}/register`, payload, {
-        context,
-        withCredentials: true,
-      })
-      .pipe(
-        tap((response) => this.persistSession(response)),
-        map((response) => response.user as UserProfile),
-      );
-  }
-
   // ═══════════════════════════════════════════════════════════════════════════
-  // PHASE 2: Enhanced Registration Methods
+  // Registration Methods
   // ═══════════════════════════════════════════════════════════════════════════
 
   /**

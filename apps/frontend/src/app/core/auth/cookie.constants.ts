@@ -8,7 +8,7 @@
  *
  * Usage:
  * - token.interceptor.ts: XSRF token extraction and header injection
- * - auth.service.ts: Session management (legacy localStorage mode)
+ * - auth.service.ts: Session management and cookie-based authentication
  * - websocket.service.ts: Authentication header construction
  */
 
@@ -42,17 +42,17 @@ export const XSRF_TOKEN_COOKIE = 'XSRF-TOKEN';
  */
 export const XSRF_TOKEN_HEADER = 'X-XSRF-TOKEN';
 
-// ============ LEGACY LOCALSTORAGE KEYS ============
+// ============ LOCALSTORAGE KEYS (CLEANUP FALLBACK) ============
 
 /**
- * localStorage key for access token (legacy mode only).
- * @deprecated Only used when environment.auth.useCookies = false
+ * localStorage key for access token.
+ * @deprecated Retained only to clear data from pre-cookie clients on upgrade.
  */
 export const LOCALSTORAGE_ACCESS_TOKEN = 'access_token';
 
 /**
- * localStorage key for current user profile (legacy mode only).
- * @deprecated Only used when environment.auth.useCookies = false
+ * localStorage key for current user profile.
+ * @deprecated Retained only to clear data from pre-cookie clients on upgrade.
  */
 export const LOCALSTORAGE_CURRENT_USER = 'current_user';
 

@@ -146,12 +146,11 @@ public class SecurityConfig {
                         // Sensitive actuator endpoints require ADMIN role
                         .requestMatchers("/actuator/**").hasRole("ADMIN")
                         
-                        // Public auth endpoints (local + OAuth2)
+                        // Public auth endpoints
                         .requestMatchers(
                                 "/api/auth/login",
-                                "/api/auth/register",
-                                "/api/auth/register/user",   // Phase 2: Enhanced user registration
-                                "/api/auth/register/owner",  // Phase 2: Enhanced owner registration
+                                "/api/auth/register/user",
+                                "/api/auth/register/owner",
                                 "/api/auth/refresh",
                                 "/api/auth/logout",
                                 "/api/auth/google/**"

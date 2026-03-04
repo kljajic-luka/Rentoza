@@ -225,7 +225,7 @@ public class EnhancedAuthController {
                 user.setBankAccountNumber(dto.getBankAccountNumber());
             }
 
-            // PHASE 4: Persist owner consent provenance
+            // Persist owner consent provenance for legal compliance
             Instant now = Instant.now();
             user.setHostAgreementAcceptedAt(now);
             user.setVehicleInsuranceConfirmedAt(now);
@@ -324,7 +324,7 @@ public class EnhancedAuthController {
                     user.setBankAccountNumber(dto.getBankAccountNumber());
                 }
 
-                // PHASE 4: Persist owner consent provenance
+                // Persist owner consent provenance for legal compliance
                 Instant now = Instant.now();
                 user.setHostAgreementAcceptedAt(now);
                 user.setVehicleInsuranceConfirmedAt(now);
@@ -413,7 +413,7 @@ public class EnhancedAuthController {
     }
 
     private void validateOwnerCompletion(GoogleOAuthCompletionDTO dto) {
-        // PHASE 4: Enforce same agreement checks as direct owner registration
+        // Enforce same agreement checks as direct owner registration
         if (!Boolean.TRUE.equals(dto.getAgreesToHostAgreement())) {
             throw new ValidationException("You must agree to the host agreement");
         }

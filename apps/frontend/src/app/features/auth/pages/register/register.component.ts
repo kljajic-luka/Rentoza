@@ -17,12 +17,10 @@ import { AuthService } from '@core/auth/auth.service';
 import { RedirectService } from '@core/services/redirect.service';
 import { ToastService } from '@core/services/toast.service';
 import {
-  RegisterRequest,
   UserRegisterRequest,
   OwnerRegisterRequest,
   OwnerType,
 } from '@core/models/auth.model';
-import { environment } from '@environments/environment';
 import {
   minAgeValidator,
   pastDateValidator,
@@ -86,13 +84,6 @@ export class RegisterComponent implements OnInit {
    * /auth/register?role=OWNER to /auth/register).
    */
   protected readonly isOwnerRegistration = signal(false);
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // PHASE 2: Enhanced Registration Feature Flag
-  // ═══════════════════════════════════════════════════════════════════════════
-  protected readonly isEnhancedRegistration = signal(
-    (environment as { enhancedRegistration?: boolean }).enhancedRegistration ?? true,
-  );
 
   // Owner type selection (INDIVIDUAL or LEGAL_ENTITY)
   protected readonly ownerType = signal<OwnerType>('INDIVIDUAL');
@@ -292,16 +283,11 @@ export class RegisterComponent implements OnInit {
 
     this.isSubmitting.set(true);
 
-    // Use enhanced registration if feature flag enabled
-    if (this.isEnhancedRegistration()) {
-      this.submitEnhancedRegistration();
-    } else {
-      this.submitLegacyRegistration();
-    }
+    this.submitEnhancedRegistration();
   }
 
   /**
-   * Phase 2: Enhanced registration with DOB, age verification, and owner identity documents.
+   * Submit registration with DOB, age verification, and owner identity documents.
    */
   private submitEnhancedRegistration(): void {
     const { confirmPassword, ...basicData } = this.form.getRawValue();
@@ -399,51 +385,6 @@ export class RegisterComponent implements OnInit {
           error: (err) => this.handleRegistrationError(err),
         });
     }
-  }
-
-  /**
-   * Legacy registration (backward compatibility when feature flag disabled).
-   */
-  private submitLegacyRegistration(): void {
-    const { confirmPassword, dateOfBirth, confirmsAgeEligibility, ...rest } =
-      this.form.getRawValue();
-    const payload: RegisterRequest = rest;
-
-    if (this.isOwnerRegistration()) {
-      payload.role = 'OWNER';
-    }
-
-    this.authService
-      .register(payload)
-      .pipe(
-        tap((user) => {
-          if (user === null) {
-            // Email confirmation required
-            this.toast.success(
-              'Nalog je uspešno kreiran! Molimo proverite Vaš email za potvrdu naloga.',
-              'Potvrda emaila potrebna',
-            );
-            this.router.navigate(['/auth/login'], {
-              queryParams: { emailConfirmation: 'required' },
-            });
-          } else {
-            this.toast.success(
-              this.isOwnerRegistration()
-                ? 'Dobrodošli u Rentoza zajednicu domaćina! Vaš nalog je kreiran.'
-                : 'Dobrodošli u Rentoza! Vaš nalog je uspešno kreiran.',
-            );
-            this.redirectService.redirectAfterLogin(user);
-          }
-        }),
-        finalize(() => this.isSubmitting.set(false)),
-      )
-      .subscribe({
-        error: () => {
-          this.toast.error(
-            'Registracija nije uspela. Molimo proverite podatke i pokušajte ponovo.',
-          );
-        },
-      });
   }
 
   /**

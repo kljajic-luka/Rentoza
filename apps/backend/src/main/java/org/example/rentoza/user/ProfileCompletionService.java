@@ -4,6 +4,7 @@ import jakarta.persistence.EntityNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.example.rentoza.security.network.TrustedProxyIpExtractor;
 import org.example.rentoza.user.dto.CompleteProfileRequestDTO;
 import org.example.rentoza.user.dto.CompleteProfileResponseDTO;
 import org.example.rentoza.util.HashUtil;
@@ -45,6 +46,7 @@ public class ProfileCompletionService {
 
     private final UserRepository userRepository;
     private final HashUtil hashUtil;
+    private final TrustedProxyIpExtractor ipExtractor;
 
     /**
      * Complete user profile with required fields based on their role.
@@ -97,7 +99,7 @@ public class ProfileCompletionService {
             user.setVehicleInsuranceConfirmedAt(now);
             user.setVehicleRegistrationConfirmedAt(now);
             if (httpRequest != null) {
-                user.setConsentIp(extractIp(httpRequest));
+                user.setConsentIp(ipExtractor.extractClientIp(httpRequest));
                 String ua = httpRequest.getHeader("User-Agent");
                 user.setConsentUserAgent(ua != null && ua.length() > 500 ? ua.substring(0, 500) : ua);
             }
@@ -273,14 +275,6 @@ public class ProfileCompletionService {
      */
     private boolean isBlank(String str) {
         return str == null || str.isBlank();
-    }
-
-    private static String extractIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
-        }
-        return request.getRemoteAddr();
     }
 
     /**

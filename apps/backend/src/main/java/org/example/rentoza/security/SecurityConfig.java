@@ -88,8 +88,9 @@ public class SecurityConfig {
             RateLimitService rateLimitService,
             AppProperties appProperties,
             SupabaseJwtUtil supabaseJwtUtil,
-            InternalServiceJwtUtil internalServiceJwtUtil) {
-        return new RateLimitingFilter(rateLimitService, appProperties, supabaseJwtUtil, internalServiceJwtUtil);
+            InternalServiceJwtUtil internalServiceJwtUtil,
+            org.example.rentoza.security.network.TrustedProxyIpExtractor ipExtractor) {
+        return new RateLimitingFilter(rateLimitService, appProperties, supabaseJwtUtil, internalServiceJwtUtil, ipExtractor);
     }
 
     /**

@@ -7,6 +7,7 @@ import org.example.rentoza.config.AppProperties;
 import org.example.rentoza.exception.ValidationException;
 import org.example.rentoza.security.CookieConstants;
 import org.example.rentoza.security.JwtUserPrincipal;
+import org.example.rentoza.security.network.TrustedProxyIpExtractor;
 import org.example.rentoza.deprecated.jwt.JwtUtil;
 import org.example.rentoza.deprecated.auth.RefreshTokenServiceEnhanced;
 import org.example.rentoza.security.supabase.SupabaseAuthService;
@@ -64,6 +65,7 @@ public class EnhancedAuthController {
     private final OwnerVerificationService ownerVerificationService;
     private final HashUtil hashUtil;
     private final SupabaseAuthService supabaseAuthService;
+    private final TrustedProxyIpExtractor ipExtractor;
 
     @Value("${jwt.expiration}")
     private long jwtExpirationMs;
@@ -79,7 +81,8 @@ public class EnhancedAuthController {
             IdentityDocumentValidator identityValidator,
             OwnerVerificationService ownerVerificationService,
             HashUtil hashUtil,
-            SupabaseAuthService supabaseAuthService) {
+            SupabaseAuthService supabaseAuthService,
+            TrustedProxyIpExtractor ipExtractor) {
         this.userService = userService;
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
@@ -91,6 +94,7 @@ public class EnhancedAuthController {
         this.ownerVerificationService = ownerVerificationService;
         this.hashUtil = hashUtil;
         this.supabaseAuthService = supabaseAuthService;
+        this.ipExtractor = ipExtractor;
     }
 
     /**
@@ -235,7 +239,7 @@ public class EnhancedAuthController {
             user.setHostAgreementAcceptedAt(now);
             user.setVehicleInsuranceConfirmedAt(now);
             user.setVehicleRegistrationConfirmedAt(now);
-            user.setConsentIp(extractIp(request));
+            user.setConsentIp(ipExtractor.extractClientIp(request));
             user.setConsentUserAgent(truncate(request.getHeader("User-Agent"), 500));
 
             user = userRepository.save(user);
@@ -334,7 +338,7 @@ public class EnhancedAuthController {
                 user.setHostAgreementAcceptedAt(now);
                 user.setVehicleInsuranceConfirmedAt(now);
                 user.setVehicleRegistrationConfirmedAt(now);
-                user.setConsentIp(extractIp(request));
+                user.setConsentIp(ipExtractor.extractClientIp(request));
                 user.setConsentUserAgent(truncate(request.getHeader("User-Agent"), 500));
             } else {
                 // USER (Renter) registration now collects only basic profile metadata here.
@@ -546,14 +550,6 @@ public class EnhancedAuthController {
     }
 
     // ==================== CONSENT PROVENANCE HELPERS ====================
-
-    private static String extractIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
-        }
-        return request.getRemoteAddr();
-    }
 
     private static String truncate(String value, int max) {
         if (value == null) return null;

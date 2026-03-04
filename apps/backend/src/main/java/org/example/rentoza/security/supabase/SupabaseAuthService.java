@@ -790,26 +790,35 @@ public class SupabaseAuthService {
         log.info("User registered in Supabase: {} -> {} (emailConfirmationPending={})", 
                 email, supabaseId, emailConfirmationPending);
 
-        // Create Rentoza user - we do this even if email confirmation is pending
-        // The user will have limited access until email is confirmed
-        User user = new User();
-        user.setEmail(email);
-        user.setPassword("SUPABASE_AUTH"); // Placeholder - actual password in Supabase
-        user.setFirstName(firstName);
-        user.setLastName(lastName);
-        user.setRole(role);
-        user.setEnabled(!emailConfirmationPending); // Disabled until email confirmed if pending
-        user.setAuthUid(supabaseId); // ✅ CRITICAL: Required for RLS policies
-        user.setLocked(false);
-        user.setBanned(false);
-        
-        user = userRepository.save(user);
-        log.info("Rentoza user created: {} -> {} (enabled={})", email, user.getId(), user.isEnabled());
+        // Wrap local DB writes in try-catch — if they fail, compensate by
+        // deleting the orphaned Supabase user so the email is not "taken".
+        User user;
+        try {
+            // Create Rentoza user - we do this even if email confirmation is pending
+            // The user will have limited access until email is confirmed
+            user = new User();
+            user.setEmail(email);
+            user.setPassword("SUPABASE_AUTH"); // Placeholder - actual password in Supabase
+            user.setFirstName(firstName);
+            user.setLastName(lastName);
+            user.setRole(role);
+            user.setEnabled(!emailConfirmationPending); // Disabled until email confirmed if pending
+            user.setAuthUid(supabaseId); // ✅ CRITICAL: Required for RLS policies
+            user.setLocked(false);
+            user.setBanned(false);
+            
+            user = userRepository.save(user);
+            log.info("Rentoza user created: {} -> {} (enabled={})", email, user.getId(), user.isEnabled());
 
-        // Create mapping
-        SupabaseUserMapping mapping = SupabaseUserMapping.create(supabaseId, user.getId());
-        mappingRepository.save(mapping);
-        log.info("User mapping created: Supabase {} -> Rentoza {}", supabaseId, user.getId());
+            // Create mapping
+            SupabaseUserMapping mapping = SupabaseUserMapping.create(supabaseId, user.getId());
+            mappingRepository.save(mapping);
+            log.info("User mapping created: Supabase {} -> Rentoza {}", supabaseId, user.getId());
+        } catch (Exception ex) {
+            log.error("COMPENSATION: Local DB write failed after Supabase signup for {}. Deleting Supabase user {}.", email, supabaseId, ex);
+            supabaseClient.deleteUser(supabaseId);
+            throw new SupabaseAuthException("Registration failed: could not create local account. Please try again.", ex);
+        }
 
         return SupabaseAuthResult.builder()
                 .accessToken(supabaseResponse.getAccessToken()) // May be null if email confirmation pending

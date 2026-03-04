@@ -389,6 +389,10 @@ public class SupabaseAuthClient {
     /**
      * Delete a user from Supabase Auth (requires service role key).
      * 
+     * <p>This method is also used for <b>compensation</b>: if local DB writes fail after
+     * a successful Supabase signup, the orphaned Supabase user is deleted to keep the
+     * two systems in sync. For that reason, failures are logged but not rethrown.
+     * 
      * @param userId Supabase Auth user UUID
      */
     public void deleteUser(UUID userId) {
@@ -399,10 +403,9 @@ public class SupabaseAuthClient {
 
         try {
             restTemplate.exchange(url, HttpMethod.DELETE, request, Void.class);
-            log.info("Deleted user from Supabase: {}", userId);
-        } catch (HttpClientErrorException e) {
-            log.error("Failed to delete user from Supabase: {}", e.getResponseBodyAsString());
-            throw new SupabaseAuthException("Failed to delete user", e);
+            log.info("Compensated: deleted Supabase user {}", userId);
+        } catch (Exception e) {
+            log.error("COMPENSATION FAILED: Could not delete Supabase user {}. Manual cleanup required.", userId, e);
         }
     }
 

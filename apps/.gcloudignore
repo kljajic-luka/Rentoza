@@ -1,0 +1,19 @@
+# Upload only what backend/chat image builds need.
+*
+
+!backend/**
+!chat-service/**
+!shared-security/**
+
+# Keep upload small.
+backend/target/**
+chat-service/target/**
+shared-security/target/**
+backend/.idea/**
+chat-service/.idea/**
+shared-security/.idea/**
+backend/src/test/**
+chat-service/src/test/**
+backend/docs/**
+chat-service/docs/**
+.DS_Store

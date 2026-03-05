@@ -17,19 +17,24 @@ WORKDIR /app
 # Install required build tools
 RUN apk add --no-cache dos2unix
 
-# Copy Maven wrapper and configuration first (cached layer)
-COPY mvnw .
-COPY .mvn .mvn
-COPY pom.xml .
+# Copy Maven wrapper and backend pom first (cached layer)
+COPY backend/mvnw .
+COPY backend/.mvn .mvn
+COPY backend/pom.xml .
+
+# Copy shared-security source so it can be installed to local Maven repo
+COPY shared-security/pom.xml /shared-security/pom.xml
+COPY shared-security/src /shared-security/src
 
 # Fix line endings and make wrapper executable
 RUN dos2unix mvnw && chmod +x mvnw
 
-# Download dependencies (cached unless pom.xml changes)
-RUN ./mvnw dependency:go-offline -B
+# Install local shared module first, then resolve backend dependencies
+RUN ./mvnw -f /shared-security/pom.xml -DskipTests install -B && \
+    ./mvnw dependency:go-offline -B
 
 # Copy source code
-COPY src src
+COPY backend/src src
 
 # Build the application (skip tests for faster build)
 RUN ./mvnw package -DskipTests -B && \

@@ -82,13 +82,23 @@ public class OwnerVerificationController {
     
     private OwnerVerificationStatus getStatus(Long userId) {
         User user = userRepository.findById(userId).orElseThrow();
+        String status;
+        if (Boolean.TRUE.equals(user.getIsIdentityVerified())) {
+            status = "VERIFIED";
+        } else if (user.getJmbg() != null || user.getPib() != null) {
+            status = "PENDING_REVIEW";
+        } else if (user.getIdentityRejectedAt() != null) {
+            status = "REJECTED";
+        } else {
+            status = "NOT_SUBMITTED";
+        }
         return new OwnerVerificationStatus(
             user.getOwnerType(),
             user.getOwnerType() == OwnerType.INDIVIDUAL ? user.getMaskedJmbg() : user.getMaskedPib(),
             user.getIsIdentityVerified(),
-            user.getIsIdentityVerified() ? "VERIFIED" : 
-                (user.getJmbg() != null || user.getPib() != null ? "PENDING_REVIEW" : "NOT_SUBMITTED"),
-            user.getIdentityVerifiedAt()
+            status,
+            user.getIdentityVerifiedAt(),
+            user.getIdentityRejectionReason()
         );
     }
     
@@ -116,6 +126,7 @@ public class OwnerVerificationController {
         String maskedId,
         boolean isVerified,
         String status,
-        java.time.LocalDateTime verifiedAt
+        java.time.LocalDateTime verifiedAt,
+        String rejectionReason
     ) {}
 }

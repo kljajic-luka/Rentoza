@@ -40,10 +40,8 @@ public class OwnerRegistrationDTO {
 
     @NotBlank(message = "Password is required")
     @Size(min = 8, max = 72, message = "Password must be between 8 and 72 characters")
-    @Pattern(
-            regexp = "^(?=.*[A-Z])(?=.*[a-z])(?=.*\\d).+$",
-            message = "Password must contain uppercase, lowercase, and number"
-    )
+    // SECURITY (L-2): Removed @Pattern — password complexity enforced by PasswordPolicyService
+    // which already requires uppercase, lowercase, digit AND special character.
     private String password;
 
     // Age verification (same as USER)

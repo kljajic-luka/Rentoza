@@ -151,6 +151,62 @@
               Reject Verification
             </button>
           </div>
+
+          <!-- Identity Rejection Details (shown when verification was rejected) -->
+          <div *ngIf="user.ownerVerificationStatus === 'REJECTED'" class="rejection-panel">
+            <div class="row between" *ngIf="user.identityRejectionReason">
+              <span class="muted">Rejection Reason</span>
+              <span class="strong text-error">{{ user.identityRejectionReason }}</span>
+            </div>
+            <div class="row between" *ngIf="user.identityRejectedAt">
+              <span class="muted">Rejected At</span>
+              <span class="strong">{{ user.identityRejectedAt | date: 'medium' }}</span>
+            </div>
+          </div>
+        </mat-card-content>
+      </mat-card>
+
+      <!-- DOB Correction Request Card -->
+      <mat-card class="surface-card surface-roomy" *ngIf="user.dobCorrectionStatus">
+        <mat-card-header>
+          <mat-icon mat-card-avatar>calendar_today</mat-icon>
+          <mat-card-title>DOB Correction Request</mat-card-title>
+        </mat-card-header>
+        <mat-card-content class="stack">
+          <div class="row between">
+            <span class="muted">Status</span>
+            <span
+              [ngClass]="{
+                'badge badge-warn': user.dobCorrectionStatus === 'PENDING',
+                'badge badge-success': user.dobCorrectionStatus === 'APPROVED',
+                'badge badge-error': user.dobCorrectionStatus === 'REJECTED',
+              }"
+              >{{ user.dobCorrectionStatus }}</span
+            >
+          </div>
+          <div class="row between" *ngIf="user.dobCorrectionRequestedValue">
+            <span class="muted">Requested DOB</span>
+            <span class="strong">{{ user.dobCorrectionRequestedValue | date: 'mediumDate' }}</span>
+          </div>
+          <div class="row between" *ngIf="user.dobCorrectionReason">
+            <span class="muted">Reason</span>
+            <span class="strong">{{ user.dobCorrectionReason }}</span>
+          </div>
+          <div class="row between" *ngIf="user.dobCorrectionRequestedAt">
+            <span class="muted">Requested At</span>
+            <span class="strong">{{ user.dobCorrectionRequestedAt | date: 'medium' }}</span>
+          </div>
+
+          <div class="stack stack--sm" *ngIf="user.dobCorrectionStatus === 'PENDING'">
+            <button mat-flat-button color="primary" (click)="approveDobCorrection()">
+              <mat-icon>check_circle</mat-icon>
+              Approve DOB Correction
+            </button>
+            <button mat-stroked-button color="warn" (click)="rejectDobCorrection()">
+              <mat-icon>cancel</mat-icon>
+              Reject DOB Correction
+            </button>
+          </div>
         </mat-card-content>
       </mat-card>
 

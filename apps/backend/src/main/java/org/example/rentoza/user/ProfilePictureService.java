@@ -62,7 +62,7 @@ public class ProfilePictureService {
     @Autowired
     public ProfilePictureService(SupabaseStorageService supabaseStorageService) {
         this.supabaseStorageService = supabaseStorageService;
-        log.info("✅ Profile pictures storage initialized (SUPABASE mode)");
+        log.info("Profile pictures storage initialized (SUPABASE mode)");
     }
 
     /**
@@ -74,7 +74,7 @@ public class ProfilePictureService {
      * @throws ProfilePictureException if validation or processing fails
      */
     public ProfilePictureResultDTO uploadProfilePicture(Long userId, MultipartFile file) {
-        log.info("📸 Processing profile picture upload for user {}", userId);
+        log.info("Processing profile picture upload for user {}", userId);
 
         // Step 1: Validate the uploaded file
         validateFile(file);
@@ -90,13 +90,13 @@ public class ProfilePictureService {
             // Step 4: Upload to Supabase Storage
             String profilePictureUrl = supabaseStorageService.uploadUserAvatarBytes(userId, processedImage);
 
-            log.info("✅ Profile picture uploaded for user {}: {} ({} bytes → {} bytes)",
+            log.info("Profile picture uploaded for user {}: {} ({} bytes → {} bytes)",
                     userId, profilePictureUrl, fileBytes.length, processedImage.length);
 
             return new ProfilePictureResultDTO(profilePictureUrl);
 
         } catch (IOException e) {
-            log.error("❌ Failed to process profile picture for user {}: {}", userId, e.getMessage());
+            log.error("Failed to process profile picture for user {}: {}", userId, e.getMessage());
             throw new ProfilePictureException("Failed to process image: " + e.getMessage());
         }
     }
@@ -305,9 +305,9 @@ public class ProfilePictureService {
         if (currentAvatarUrl != null && !currentAvatarUrl.isBlank()) {
             try {
                 supabaseStorageService.deleteUserAvatar(currentAvatarUrl);
-                log.info("🗑️ Deleted profile picture for user {}", userId);
+                log.info("Deleted profile picture for user {}", userId);
             } catch (Exception e) {
-                log.warn("⚠️ Failed to delete profile picture for user {}: {}", userId, e.getMessage());
+                log.warn("Failed to delete profile picture for user {}: {}", userId, e.getMessage());
             }
         }
     }

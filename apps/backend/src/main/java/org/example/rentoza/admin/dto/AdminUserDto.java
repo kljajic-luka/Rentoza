@@ -45,8 +45,11 @@ public class AdminUserDto {
     private Integer carsCount;
 
     /** Owner verification (Serbian compliance) */
-    private String ownerVerificationStatus; // NOT_SUBMITTED | PENDING_REVIEW | VERIFIED
+    private String ownerVerificationStatus; // NOT_SUBMITTED | PENDING_REVIEW | VERIFIED | REJECTED
     private LocalDateTime ownerVerificationSubmittedAt;
+
+    /** DOB correction status (M-9) — PENDING | APPROVED | REJECTED */
+    private String dobCorrectionStatus;
     
     /**
      * Convert User entity to summary DTO.
@@ -69,12 +72,14 @@ public class AdminUserDto {
             .updatedAt(user.getUpdatedAt())
             .ownerVerificationStatus(computeOwnerVerificationStatus(user))
             .ownerVerificationSubmittedAt(user.getOwnerVerificationSubmittedAt())
+            .dobCorrectionStatus(user.getDobCorrectionStatus())
             .build();
     }
 
     private static String computeOwnerVerificationStatus(User user) {
         if (Boolean.TRUE.equals(user.getIsIdentityVerified())) return "VERIFIED";
         if (user.getOwnerVerificationSubmittedAt() != null) return "PENDING_REVIEW";
+        if (user.getIdentityRejectedAt() != null) return "REJECTED";
         return "NOT_SUBMITTED";
     }
     

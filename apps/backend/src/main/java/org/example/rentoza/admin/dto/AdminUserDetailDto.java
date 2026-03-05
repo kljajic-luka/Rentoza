@@ -9,6 +9,7 @@ import org.example.rentoza.user.User;
 import org.example.rentoza.user.OwnerType;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -71,7 +72,7 @@ public class AdminUserDetailDto {
     private List<AdminAuditLogDto> recentAdminActions;
 
     // ==================== OWNER VERIFICATION (Serbian Compliance) ====================
-    /** NOT_SUBMITTED | PENDING_REVIEW | VERIFIED (computed, to match list view) */
+    /** NOT_SUBMITTED | PENDING_REVIEW | VERIFIED | REJECTED (computed, to match list view) */
     private String ownerVerificationStatus;
 
     // ==================== OWNER VERIFICATION (Serbian Compliance) ====================
@@ -83,6 +84,22 @@ public class AdminUserDetailDto {
     private Boolean isIdentityVerified;
     private LocalDateTime ownerVerificationSubmittedAt;
     private String maskedBankAccountNumber;
+
+    // ==================== IDENTITY REJECTION (M-3) ====================
+    /** Reason admin gave when rejecting identity verification */
+    private String identityRejectionReason;
+    /** When identity was rejected */
+    private LocalDateTime identityRejectedAt;
+
+    // ==================== DOB CORRECTION (M-9) ====================
+    /** Requested new date of birth value */
+    private LocalDate dobCorrectionRequestedValue;
+    /** When the DOB correction was requested */
+    private LocalDateTime dobCorrectionRequestedAt;
+    /** User's reason for requesting DOB correction */
+    private String dobCorrectionReason;
+    /** PENDING | APPROVED | REJECTED */
+    private String dobCorrectionStatus;
     
     /**
      * Convert User entity to detailed DTO.
@@ -111,7 +128,13 @@ public class AdminUserDetailDto {
             .maskedPib(user.getMaskedPib())
             .isIdentityVerified(user.getIsIdentityVerified())
             .ownerVerificationSubmittedAt(user.getOwnerVerificationSubmittedAt())
-            .maskedBankAccountNumber(user.getMaskedBankAccountNumber());
+            .maskedBankAccountNumber(user.getMaskedBankAccountNumber())
+            .identityRejectionReason(user.getIdentityRejectionReason())
+            .identityRejectedAt(user.getIdentityRejectedAt())
+            .dobCorrectionRequestedValue(user.getDobCorrectionRequestedValue())
+            .dobCorrectionRequestedAt(user.getDobCorrectionRequestedAt())
+            .dobCorrectionReason(user.getDobCorrectionReason())
+            .dobCorrectionStatus(user.getDobCorrectionStatus());
         
         if (user.getBannedBy() != null) {
             builder.bannedById(user.getBannedBy().getId());
@@ -125,6 +148,7 @@ public class AdminUserDetailDto {
     private static String computeOwnerVerificationStatus(User user) {
         if (Boolean.TRUE.equals(user.getIsIdentityVerified())) return "VERIFIED";
         if (user.getOwnerVerificationSubmittedAt() != null) return "PENDING_REVIEW";
+        if (user.getIdentityRejectedAt() != null) return "REJECTED";
         return "NOT_SUBMITTED";
     }
     

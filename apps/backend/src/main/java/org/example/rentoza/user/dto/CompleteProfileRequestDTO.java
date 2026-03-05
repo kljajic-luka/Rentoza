@@ -49,36 +49,6 @@ public class CompleteProfileRequestDTO {
 
     // ========== USER (RENTER) SPECIFIC FIELDS ==========
 
-    /**
-     * Driver's license number.
-     * @deprecated No longer collected at profile completion. License metadata is
-     * sourced exclusively from OCR during document processing at /verify-license.
-     * Field retained for backward compatibility; ignored by ProfileCompletionService.
-     */
-    @Deprecated(since = "Phase 4 - License OCR Migration", forRemoval = true)
-    @com.fasterxml.jackson.annotation.JsonIgnore
-    @Size(min = 1, max = 50, message = "Broj vozačke dozvole mora biti između 1 i 50 karaktera")
-    private String driverLicenseNumber;
-
-    /**
-     * Driver's license expiry date.
-     * @deprecated No longer collected at profile completion. License metadata is
-     * sourced exclusively from OCR during document processing at /verify-license.
-     */
-    @Deprecated(since = "Phase 4 - License OCR Migration", forRemoval = true)
-    @com.fasterxml.jackson.annotation.JsonIgnore
-    private LocalDate driverLicenseExpiryDate;
-
-    /**
-     * Country that issued the driver's license (ISO 3166-1 alpha-3).
-     * @deprecated No longer collected at profile completion. License metadata is
-     * sourced exclusively from OCR during document processing at /verify-license.
-     */
-    @Deprecated(since = "Phase 4 - License OCR Migration", forRemoval = true)
-    @com.fasterxml.jackson.annotation.JsonIgnore
-    @Size(min = 3, max = 3, message = "Država mora biti u ISO 3166-1 alpha-3 formatu (3 slova)")
-    private String driverLicenseCountry = "SRB";
-
     // ========== OWNER SPECIFIC FIELDS ==========
 
     /**

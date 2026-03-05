@@ -3,17 +3,24 @@ package org.example.rentoza.user;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
 import org.example.rentoza.config.timezone.SerbiaTimeZone;
+import org.example.rentoza.security.validation.InputSanitizer;
 import org.example.rentoza.user.dto.UserProfileDTO;
 import org.example.rentoza.user.dto.UserRegisterDTO;
 import org.example.rentoza.user.dto.UpdateProfileRequestDTO;
 import org.example.rentoza.user.dto.UserResponseDTO;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Retryable;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.Optional;
 import java.util.ArrayList;
 
 @Service
+@Slf4j
 public class UserService {
 
     private final UserRepository repo;
@@ -58,6 +65,14 @@ public class UserService {
         user.setReviewsReceived(new ArrayList<>());
 
         return repo.save(user);
+    }
+
+    /**
+     * Save user entity directly. Used for field updates outside of profile flow.
+     */
+    @Transactional
+    public User saveUser(User user) {
+        return repo.saveAndFlush(user);
     }
 
     @Transactional
@@ -187,25 +202,24 @@ public class UserService {
 
     /**
      * Secure partial profile update - only allows updating safe, non-identity fields.
-     * This enforces the trust-first identity model where sensitive fields like
-     * firstName, lastName, email, and role require verification/admin approval.
-     *
-     * @param email The authenticated user's email (from JWT)
-     * @param dto   Contains only editable fields: phone, avatarUrl, bio
-     * @return Updated user entity
-     * @throws EntityNotFoundException if user not found
-     * @throws BadRequestException     if validation fails or phone already in use
+     * SECURITY (L-6): @Retryable handles OptimisticLockingFailureException for concurrent updates.
      */
     @Transactional
+    @Retryable(
+            retryFor = OptimisticLockingFailureException.class,
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 100, multiplier = 2)
+    )
     public User updateProfileSecure(String email, UpdateProfileRequestDTO dto) {
         User user = getOrThrow(email);
         boolean changed = false;
 
-        // ✅ PHONE - validate and check uniqueness
+        // ✅ PHONE - validate, normalize to E.164, and check uniqueness
+        // SECURITY (M-6): Normalize to E.164 format for consistent storage
         if (dto.getPhone() != null) {
-            String sanitized = dto.getPhone().trim().replaceAll("[^0-9]", "");
+            String sanitized = normalizePhoneToE164(dto.getPhone().trim());
             if (!sanitized.isBlank() && !sanitized.equals(user.getPhone())) {
-                if (!sanitized.matches("^[0-9]{8,15}$")) {
+                if (!sanitized.matches("^\\+?[0-9]{8,15}$")) {
                     throw new BadRequestException("Phone must contain 8-15 digits");
                 }
                 // Check uniqueness excluding current user
@@ -217,21 +231,27 @@ public class UserService {
             }
         }
 
-        // ✅ AVATAR URL - basic validation
+        // ✅ AVATAR URL - validate URL scheme (M-7)
+        // SECURITY (M-7): Only allow https:// URLs to prevent javascript: or data: URI injection
         if (dto.getAvatarUrl() != null) {
             String avatarUrl = dto.getAvatarUrl().trim();
             if (!avatarUrl.equals(user.getAvatarUrl())) {
                 if (avatarUrl.length() > 500) {
                     throw new BadRequestException("Avatar URL must be maximum 500 characters");
                 }
+                if (!avatarUrl.isBlank() && !avatarUrl.toLowerCase().startsWith("https://")) {
+                    throw new BadRequestException("Avatar URL must use HTTPS");
+                }
                 user.setAvatarUrl(avatarUrl.isBlank() ? null : avatarUrl);
                 changed = true;
             }
         }
 
-        // ✅ BIO - validate length
+        // ✅ BIO - sanitize XSS and validate length (H-3)
+        // SECURITY (H-3): Sanitize bio through InputSanitizer.sanitizeText()
+        // to strip HTML tags and XSS patterns before storage
         if (dto.getBio() != null) {
-            String bio = dto.getBio().trim();
+            String bio = InputSanitizer.sanitizeText(dto.getBio().trim());
             if (!bio.equals(user.getBio())) {
                 if (bio.length() > 300) {
                     throw new BadRequestException("Bio must be maximum 300 characters");
@@ -242,10 +262,11 @@ public class UserService {
         }
 
         // ✅ LAST NAME - allow change only for Google placeholder users
+        // SECURITY (M-8): Audit log for lastName changes
         if (dto.getLastName() != null) {
             String lastName = dto.getLastName().trim();
-            if (lastName.isBlank() || lastName.length() < 3 || lastName.length() > 50) {
-                throw new BadRequestException("Last name must be between 3 and 50 characters");
+            if (lastName.isBlank() || lastName.length() < 1 || lastName.length() > 50) {
+                throw new BadRequestException("Last name must be between 1 and 50 characters");
             }
             if (!User.GOOGLE_PLACEHOLDER_LAST_NAME.equals(user.getLastName())) {
                 throw new BadRequestException("Changing last name requires identity verification");
@@ -254,6 +275,8 @@ public class UserService {
                 throw new BadRequestException("Please provide your actual last name");
             }
             if (!lastName.equals(user.getLastName())) {
+                log.info("AUDIT: lastName changed for userId={}, from='{}' to='{}'",
+                        user.getId(), user.getLastName(), lastName);
                 user.setLastName(lastName);
                 changed = true;
             }
@@ -275,10 +298,10 @@ public class UserService {
                 throw new BadRequestException("Datum rođenja mora biti u prošlosti");
             }
             
-            // Validate user is at least 18 years old
+            // Validate user is at least 21 years old (M-2: minimum age for platform)
             int age = java.time.Period.between(dob, SerbiaTimeZone.today()).getYears();
-            if (age < 18) {
-                throw new BadRequestException("Morate imati najmanje 18 godina");
+            if (age < 21) {
+                throw new BadRequestException("Morate imati najmanje 21 godinu");
             }
             
             // Validate user is not unreasonably old (sanity check)
@@ -398,5 +421,28 @@ public class UserService {
                  CHECKOUT_DAMAGE_DISPUTE -> true;
             case COMPLETED, CANCELLED, DECLINED, EXPIRED, EXPIRED_SYSTEM, NO_SHOW_HOST, NO_SHOW_GUEST, REFUND_FAILED -> false;
         };
+    }
+
+    /**
+     * SECURITY (M-6): Normalize phone number to E.164-like format.
+     * Serbian numbers: strip leading zero, prepend +381.
+     * If already has +, keep as-is (strip non-digits except +).
+     *
+     * @param phone raw phone input
+     * @return normalized phone string
+     */
+    private String normalizePhoneToE164(String phone) {
+        if (phone == null) return null;
+        String stripped = phone.replaceAll("[^0-9+]", "");
+        if (stripped.startsWith("+")) {
+            // Already in international format
+            return stripped;
+        }
+        // Serbian domestic: 06X... -> +381 6X...
+        if (stripped.startsWith("0")) {
+            return "+381" + stripped.substring(1);
+        }
+        // Digits only, no leading 0: assume already without country code
+        return stripped;
     }
 }

@@ -70,7 +70,7 @@ public class ProfilePictureController {
                     .orElseThrow(() -> new SecurityException("User not authenticated"));
 
             Long userId = principal.id();
-            log.info("📸 Profile picture upload request from user {}", userId);
+            log.info("Profile picture upload request from user {}", userId);
 
             // Process and save the profile picture
             ProfilePictureResultDTO result = profilePictureService.uploadProfilePicture(userId, file);
@@ -78,7 +78,7 @@ public class ProfilePictureController {
             // Update user's avatarUrl in database
             userService.updateAvatarUrl(userId, result.profilePictureUrl());
 
-            log.info("✅ Profile picture updated for user {}: {}", userId, result.profilePictureUrl());
+            log.info("Profile picture updated for user {}: {}", userId, result.profilePictureUrl());
 
             // Return success with no-store cache directive
             return ResponseEntity.ok()
@@ -88,19 +88,19 @@ public class ProfilePictureController {
 
         } catch (ProfilePictureService.ProfilePictureException e) {
             // Validation or processing error (client error)
-            log.warn("⚠️ Profile picture validation failed: {}", e.getMessage());
+            log.warn("Profile picture validation failed: {}", e.getMessage());
             return ResponseEntity.badRequest()
                     .body(Map.of("error", e.getMessage()));
 
         } catch (SecurityException e) {
             // Authentication error
-            log.warn("🔒 Unauthorized profile picture upload attempt: {}", e.getMessage());
+            log.warn("Unauthorized profile picture upload attempt: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of("error", "Authentication required"));
 
         } catch (Exception e) {
             // Unexpected server error
-            log.error("❌ Profile picture upload failed unexpectedly", e);
+            log.error("Profile picture upload failed unexpectedly", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "An unexpected error occurred. Please try again."));
         }
@@ -130,7 +130,7 @@ public class ProfilePictureController {
             // Clear avatarUrl in database
             userService.updateAvatarUrl(userId, null);
 
-            log.info("🗑️ Profile picture deleted for user {}", userId);
+            log.info("Profile picture deleted for user {}", userId);
 
             return ResponseEntity.ok()
                     .body(Map.of("message", "Profile picture deleted successfully"));
@@ -140,7 +140,7 @@ public class ProfilePictureController {
                     .body(Map.of("error", "Authentication required"));
 
         } catch (Exception e) {
-            log.error("❌ Profile picture deletion failed", e);
+            log.error("Profile picture deletion failed", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "Failed to delete profile picture"));
         }

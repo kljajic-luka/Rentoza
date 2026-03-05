@@ -5,9 +5,7 @@
   <!-- Current Status (show only when loaded) -->
   <div *ngIf="!initializing() && status()" class="status-card" [ngClass]="getStatusClass()">
     <span class="status-label">Status: {{ getStatusLabel() }}</span>
-    <span *ngIf="status()?.maskedId" class="masked-id">
-      ID: {{ status()?.maskedId }}
-    </span>
+    <span *ngIf="status()?.maskedId" class="masked-id"> ID: {{ status()?.maskedId }} </span>
   </div>
 
   <!-- Already Verified -->
@@ -33,19 +31,38 @@
     </div>
   </div>
 
-  <!-- Form Section (show only if not submitted) -->
-  <div *ngIf="!initializing() && (status()?.status === 'NOT_SUBMITTED')" class="form-section">
-    
+  <!-- Rejected Verification -->
+  <div *ngIf="status()?.status === 'REJECTED'" class="status-message rejected">
+    <div class="icon-wrapper">
+      <mat-icon>cancel</mat-icon>
+    </div>
+    <div class="content">
+      <h4>Odbijeno</h4>
+      <p>Vaša verifikacija je odbijena.</p>
+      <p *ngIf="status()?.rejectionReason" class="small-text">
+        Razlog: {{ status()?.rejectionReason }}
+      </p>
+      <p class="small-text">Možete ponovo podneti zahtev sa ispravnim podacima.</p>
+    </div>
+  </div>
+
+  <!-- Form Section (show only if not submitted or rejected, so user can re-submit) -->
+  <div
+    *ngIf="
+      !initializing() && (status()?.status === 'NOT_SUBMITTED' || status()?.status === 'REJECTED')
+    "
+    class="form-section"
+  >
     <!-- Owner Type Toggle -->
     <div class="type-toggle">
-      <button 
+      <button
         type="button"
         [class.active]="ownerType() === 'INDIVIDUAL'"
         (click)="setOwnerType('INDIVIDUAL')"
       >
         👤 Fizičko lice
       </button>
-      <button 
+      <button
         type="button"
         [class.active]="ownerType() === 'LEGAL_ENTITY'"
         (click)="setOwnerType('LEGAL_ENTITY')"
@@ -55,17 +72,17 @@
     </div>
 
     <!-- Individual Form (JMBG) -->
-    <form 
-      *ngIf="ownerType() === 'INDIVIDUAL'" 
-      [formGroup]="individualForm" 
+    <form
+      *ngIf="ownerType() === 'INDIVIDUAL'"
+      [formGroup]="individualForm"
       (ngSubmit)="submitIndividual()"
       class="verification-form"
     >
       <div class="form-group">
         <label for="jmbg">JMBG (Jedinstveni matični broj građana)</label>
-        <input 
-          type="text" 
-          id="jmbg" 
+        <input
+          type="text"
+          id="jmbg"
           formControlName="jmbg"
           placeholder="Unesite 13 cifara"
           maxlength="13"
@@ -76,9 +93,9 @@
 
       <div class="form-group">
         <label for="bankAccount1">Broj bankovnog računa (opciono)</label>
-        <input 
-          type="text" 
-          id="bankAccount1" 
+        <input
+          type="text"
+          id="bankAccount1"
           formControlName="bankAccountNumber"
           placeholder="Za isplate prihoda od iznajmljivanja"
         />
@@ -90,17 +107,17 @@
     </form>
 
     <!-- Legal Entity Form (PIB) -->
-    <form 
-      *ngIf="ownerType() === 'LEGAL_ENTITY'" 
-      [formGroup]="legalEntityForm" 
+    <form
+      *ngIf="ownerType() === 'LEGAL_ENTITY'"
+      [formGroup]="legalEntityForm"
       (ngSubmit)="submitLegalEntity()"
       class="verification-form"
     >
       <div class="form-group">
         <label for="pib">PIB (Poreski identifikacioni broj)</label>
-        <input 
-          type="text" 
-          id="pib" 
+        <input
+          type="text"
+          id="pib"
           formControlName="pib"
           placeholder="Unesite 9 cifara"
           maxlength="9"
@@ -111,9 +128,9 @@
 
       <div class="form-group">
         <label for="bankAccount2">Broj bankovnog računa *</label>
-        <input 
-          type="text" 
-          id="bankAccount2" 
+        <input
+          type="text"
+          id="bankAccount2"
           formControlName="bankAccountNumber"
           placeholder="Obavezan za pravna lica"
         />
@@ -125,9 +142,7 @@
     </form>
 
     <!-- Error Message -->
-    <div *ngIf="error()" class="error-message">
-      ⚠️ {{ error() }}
-    </div>
+    <div *ngIf="error()" class="error-message">⚠️ {{ error() }}</div>
 
     <!-- Success Message -->
     <div *ngIf="success()" class="success-message">
@@ -139,8 +154,8 @@
   <div class="info-box">
     <strong>ℹ️ Zašto je ovo potrebno?</strong>
     <p>
-      U skladu sa srpskim zakonima o iznajmljivanju vozila, svi vlasnici moraju biti 
-      verifikovani. Vaši podaci su sigurno enkriptovani i koriste se samo za verifikaciju.
+      U skladu sa srpskim zakonima o iznajmljivanju vozila, svi vlasnici moraju biti verifikovani.
+      Vaši podaci su sigurno enkriptovani i koriste se samo za verifikaciju.
     </p>
   </div>
 </div>

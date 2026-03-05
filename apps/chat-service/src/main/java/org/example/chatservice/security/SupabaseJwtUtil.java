@@ -36,6 +36,8 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.example.rentoza.security.jwt.SupabaseTokenValidator;
+
 /**
  * Supabase JWT Utility for ES256 Token Validation
  * 
@@ -83,6 +85,9 @@ public class SupabaseJwtUtil {
     private long lastJwksFetchTime = 0;
     private static final long JWKS_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
+    // SECURITY (M-11): Shared validator prevents security drift between backend and chat-service
+    private SupabaseTokenValidator sharedValidator;
+
     @PostConstruct
     public void init() {
         // Register BouncyCastle security provider (required for EC key operations)
@@ -107,15 +112,31 @@ public class SupabaseJwtUtil {
         
         try {
             refreshPublicKeysWithRetry();
-            log.info("✅ JWKS cache initialized successfully with {} keys", keyCache.size());
+            log.info("JWKS cache initialized successfully with {} keys", keyCache.size());
         } catch (Exception e) {
             log.error("Failed to initialize JWKS cache: {}. Token validation will fail until keys are fetched.", 
                 e.getMessage(), e);
         }
+
+        // SECURITY (M-11): Create shared validator linking to this service's key management
+        this.sharedValidator = new SupabaseTokenValidator(
+                kid -> getPublicKey(kid),
+                issuer, audience);
     }
 
     @Timed(value = "auth.jwt.validation", description = "JWT validation duration", percentiles = {0.5, 0.95, 0.99})
     public boolean validateToken(String token) {
+        // SECURITY (M-11): Delegate to shared validator in production
+        if (sharedValidator != null) {
+            boolean valid = sharedValidator.validateToken(token);
+            if (valid) {
+                meterRegistry.counter("auth.jwt.validation.success").increment();
+            } else {
+                meterRegistry.counter("auth.jwt.validation.failure", "reason", "shared_validator_rejected").increment();
+            }
+            return valid;
+        }
+        // Local fallback for unit tests where @PostConstruct was not invoked
         try {
             // Parse unverified header to get kid (key ID)
             String kid = extractKeyId(token);

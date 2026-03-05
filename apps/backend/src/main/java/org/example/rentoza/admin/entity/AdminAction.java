@@ -23,6 +23,10 @@ public enum AdminAction {
     USER_VERIFIED_ID,
     /** User identity verification rejected by admin (with reason) */
     USER_VERIFICATION_REJECTED,
+    /** User DOB correction request approved by admin */
+    DOB_CORRECTION_APPROVED,
+    /** User DOB correction request rejected by admin */
+    DOB_CORRECTION_REJECTED,
     
     // ==================== CAR APPROVALS ====================
     /** Car listing approved for marketplace */

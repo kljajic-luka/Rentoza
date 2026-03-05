@@ -418,7 +418,8 @@ export class AuthService {
         }),
         map(() => undefined),
         catchError((error: HttpErrorResponse) => {
-          if (isDevMode()) console.warn('Supabase logout error (clearing session anyway):', error.status);
+          if (isDevMode())
+            console.warn('Supabase logout error (clearing session anyway):', error.status);
           this.clearSession();
           return of(undefined);
         }),
@@ -573,7 +574,8 @@ export class AuthService {
               user: response.user,
             };
             this.persistSession(authResponse);
-            if (isDevMode()) console.log('Google OAuth callback successful:', response.registrationStatus);
+            if (isDevMode())
+              console.log('Google OAuth callback successful:', response.registrationStatus);
           }
         }),
         map((response) => {
@@ -639,7 +641,8 @@ export class AuthService {
               user: response.user,
             };
             this.persistSession(authResponse);
-            if (isDevMode()) console.log('Implicit OAuth callback successful:', response.registrationStatus);
+            if (isDevMode())
+              console.log('Implicit OAuth callback successful:', response.registrationStatus);
           }
         }),
         map((response) => {
@@ -863,16 +866,18 @@ export class AuthService {
               this._sessionEndReason = 'expired';
             }
 
-            if (isDevMode()) console.log(
-              `Refresh token expired - session ended (reason: ${this._sessionEndReason})`,
-            );
+            if (isDevMode())
+              console.log(
+                `Refresh token expired - session ended (reason: ${this._sessionEndReason})`,
+              );
             this.clearSession();
             // SECURITY FIX: Only show session expired if there was a previous session
             // This prevents false "session expired" toasts for first-time visitors
             if (this.hasHadActiveSession) {
               this.sessionExpiredSubject.next(); // Emit session expired event
             } else {
-              if (isDevMode()) console.log('No prior session - skipping session expired notification');
+              if (isDevMode())
+                console.log('No prior session - skipping session expired notification');
             }
             return of(null);
           }
@@ -880,7 +885,8 @@ export class AuthService {
           // For network errors or other issues, don't immediately clear session
           // The user might just have temporary connectivity issues
           if (error.status === 0 || error.status >= 500) {
-            if (isDevMode()) console.warn('Refresh failed due to network/server error - preserving session');
+            if (isDevMode())
+              console.warn('Refresh failed due to network/server error - preserving session');
             return of(null); // Don't throw, just return null to indicate failure
           }
 

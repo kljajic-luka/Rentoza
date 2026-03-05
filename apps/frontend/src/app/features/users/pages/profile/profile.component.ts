@@ -89,19 +89,19 @@ export class ProfileComponent {
   protected readonly isSaving = signal(false);
   protected readonly isGooglePlaceholder = signal(false);
 
-  // DOB field: max date is 18 years ago (minimum age requirement)
+  // DOB field: max date is 21 years ago (minimum age requirement)
   protected readonly maxDateOfBirth = this.calculateMaxDateOfBirth();
 
   private calculateMaxDateOfBirth(): string {
     const today = new Date();
-    const minAge = 18;
+    const minAge = 21;
     const maxDate = new Date(today.getFullYear() - minAge, today.getMonth(), today.getDate());
     return maxDate.toISOString().split('T')[0];
   }
 
   // Edit form (avatarUrl removed - now using ProfilePictureUploader component)
   protected readonly editForm = this.fb.group({
-    phone: ['', [Validators.pattern(/^[0-9]{8,15}$/)]],
+    phone: ['', [Validators.pattern(/^\+?[0-9]{8,15}$/)]],
     bio: ['', [Validators.maxLength(300)]],
     lastName: [
       { value: '', disabled: true },

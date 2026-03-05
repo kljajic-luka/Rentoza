@@ -38,42 +38,42 @@ export class AdminStateService {
   // Selectors with replay to avoid unnecessary HTTP calls across subscribers
   dashboardKpi$: Observable<DashboardKpiDto | null> = this.state.pipe(
     map((s) => s.dashboardKpi),
-    shareReplay(1)
+    shareReplay(1),
   );
 
   users$: Observable<AdminUserDto[]> = this.state.pipe(
     map((s) => s.users),
-    shareReplay(1)
+    shareReplay(1),
   );
 
   totalUsers$: Observable<number> = this.state.pipe(
     map((s) => s.totalUsers),
-    shareReplay(1)
+    shareReplay(1),
   );
 
   currentUser$: Observable<AdminUserDetailDto | null> = this.state.pipe(
     map((s) => s.currentUser),
-    shareReplay(1)
+    shareReplay(1),
   );
 
   cars$: Observable<AdminCarDto[]> = this.state.pipe(
     map((s) => s.cars),
-    shareReplay(1)
+    shareReplay(1),
   );
 
   pendingCars$: Observable<AdminCarDto[]> = this.state.pipe(
     map((s) => s.pendingCars),
-    shareReplay(1)
+    shareReplay(1),
   );
 
   loading$: Observable<boolean> = this.state.pipe(
     map((s) => s.loading),
-    shareReplay(1)
+    shareReplay(1),
   );
 
   error$: Observable<string | null> = this.state.pipe(
     map((s) => s.error),
-    shareReplay(1)
+    shareReplay(1),
   );
 
   constructor(private api: AdminApiService) {}
@@ -190,6 +190,47 @@ export class AdminStateService {
         },
         error: (err) => {
           this.updateState({ error: 'Failed to reject owner verification' });
+          subscriber.error(err);
+        },
+      });
+    });
+  }
+
+  // ==================== DOB CORRECTION ACTIONS ====================
+
+  /**
+   * Approve a pending DOB correction request.
+   * Updates user's dateOfBirth to the requested value.
+   */
+  approveDobCorrection(userId: number): Observable<void> {
+    return new Observable((subscriber) => {
+      this.api.approveDobCorrection(userId).subscribe({
+        next: () => {
+          this.loadUserDetail(userId);
+          subscriber.next();
+          subscriber.complete();
+        },
+        error: (err) => {
+          this.updateState({ error: 'Failed to approve DOB correction' });
+          subscriber.error(err);
+        },
+      });
+    });
+  }
+
+  /**
+   * Reject a pending DOB correction request.
+   */
+  rejectDobCorrection(userId: number, reason?: string): Observable<void> {
+    return new Observable((subscriber) => {
+      this.api.rejectDobCorrection(userId, reason).subscribe({
+        next: () => {
+          this.loadUserDetail(userId);
+          subscriber.next();
+          subscriber.complete();
+        },
+        error: (err) => {
+          this.updateState({ error: 'Failed to reject DOB correction' });
           subscriber.error(err);
         },
       });

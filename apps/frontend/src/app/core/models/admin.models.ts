@@ -33,8 +33,9 @@ export interface AdminUserDto {
   role: string;
   banned: boolean;
   riskScore?: number;
-  ownerVerificationStatus?: 'NOT_SUBMITTED' | 'PENDING_REVIEW' | 'VERIFIED';
+  ownerVerificationStatus?: 'NOT_SUBMITTED' | 'PENDING_REVIEW' | 'VERIFIED' | 'REJECTED';
   ownerVerificationSubmittedAt?: string;
+  dobCorrectionStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
 }
 
 export interface AdminUserDetailDto extends AdminUserDto {
@@ -60,6 +61,16 @@ export interface AdminUserDetailDto extends AdminUserDto {
   reviewsGiven?: number;
   reviewsReceived?: number;
   averageRating?: number;
+
+  // Identity rejection (M-3)
+  identityRejectionReason?: string;
+  identityRejectedAt?: string;
+
+  // DOB correction (M-9)
+  dobCorrectionRequestedValue?: string;
+  dobCorrectionRequestedAt?: string;
+  dobCorrectionReason?: string;
+  dobCorrectionStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
 }
 
 export interface AdminAction {

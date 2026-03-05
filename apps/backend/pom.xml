@@ -16,6 +16,12 @@
         <firebase.version>9.2.0</firebase.version>
     </properties>
     <dependencies>
+        <!-- SECURITY (M-11): Shared JWT validation library -->
+        <dependency>
+            <groupId>org.example</groupId>
+            <artifactId>rentoza-shared-security</artifactId>
+            <version>1.0.0</version>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>

@@ -153,4 +153,19 @@ public interface AdminUserRepository extends UserRepository {
            "SUM(CASE WHEN u.banned = true THEN 1L ELSE 0L END)) " +
            "FROM User u GROUP BY u.role")
     List<UserStatDto> getUserStatistics();
+
+    // ==================== DOB CORRECTION QUEUE (M-9) ====================
+
+    /**
+     * Find users with a pending DOB correction request.
+     * Used for admin operations queue.
+     */
+    @Query("SELECT u FROM User u WHERE u.dobCorrectionStatus = 'PENDING' ORDER BY u.dobCorrectionRequestedAt ASC")
+    Page<User> findPendingDobCorrections(Pageable pageable);
+
+    /**
+     * Count pending DOB correction requests.
+     */
+    @Query("SELECT COUNT(u) FROM User u WHERE u.dobCorrectionStatus = 'PENDING'")
+    Long countPendingDobCorrections();
 }

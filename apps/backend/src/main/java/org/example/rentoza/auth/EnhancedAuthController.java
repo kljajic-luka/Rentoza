@@ -114,19 +114,22 @@ public class EnhancedAuthController {
             // Validate age eligibility (21+)
             validateAgeEligibility(dto.getDateOfBirth());
 
-            // Check for existing email in Rentoza
+            // SECURITY (H-1): Anti-enumeration — return 200 for duplicate email/phone
+            // to prevent attackers from probing account existence.
+            // Matches SupabaseAuthController.register() anti-enumeration pattern.
             if (userRepository.findByEmail(dto.getEmail().toLowerCase()).isPresent()) {
-                return ResponseEntity.status(409).body(Map.of(
-                        "error", "EMAIL_ALREADY_REGISTERED",
-                        "message", "An account with this email already exists"
+                log.info("Registration attempt with existing email (anti-enumeration: returning 200)");
+                return ResponseEntity.ok(Map.of(
+                        "message", "If this email is available, a confirmation link has been sent.",
+                        "emailConfirmationRequired", true
                 ));
             }
 
-            // Check for existing phone
             if (userRepository.findByPhone(dto.getPhone()).isPresent()) {
-                return ResponseEntity.status(409).body(Map.of(
-                        "error", "PHONE_ALREADY_REGISTERED",
-                        "message", "An account with this phone number already exists"
+                log.info("Registration attempt with existing phone (anti-enumeration: returning 200)");
+                return ResponseEntity.ok(Map.of(
+                        "message", "If this email is available, a confirmation link has been sent.",
+                        "emailConfirmationRequired", true
                 ));
             }
 
@@ -202,19 +205,20 @@ public class EnhancedAuthController {
             // Validate owner-specific requirements
             validateOwnerRegistration(dto);
 
-            // Check for existing email
+            // SECURITY (H-1): Anti-enumeration — return 200 for duplicate email/phone
             if (userRepository.findByEmail(dto.getEmail().toLowerCase()).isPresent()) {
-                return ResponseEntity.status(409).body(Map.of(
-                        "error", "EMAIL_ALREADY_REGISTERED",
-                        "message", "An account with this email already exists"
+                log.info("Owner registration attempt with existing email (anti-enumeration: returning 200)");
+                return ResponseEntity.ok(Map.of(
+                        "message", "If this email is available, a confirmation link has been sent.",
+                        "emailConfirmationRequired", true
                 ));
             }
 
-            // Check for existing phone
             if (userRepository.findByPhone(dto.getPhone()).isPresent()) {
-                return ResponseEntity.status(409).body(Map.of(
-                        "error", "PHONE_ALREADY_REGISTERED",
-                        "message", "An account with this phone number already exists"
+                log.info("Owner registration attempt with existing phone (anti-enumeration: returning 200)");
+                return ResponseEntity.ok(Map.of(
+                        "message", "If this email is available, a confirmation link has been sent.",
+                        "emailConfirmationRequired", true
                 ));
             }
 

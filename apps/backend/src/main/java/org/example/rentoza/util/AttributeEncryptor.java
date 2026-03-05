@@ -59,6 +59,22 @@ public class AttributeEncryptor implements AttributeConverter<String, String> {
     private final Key key;
     private final SecureRandom secureRandom;
 
+    /**
+     * SECURITY (H-7): Counter for legacy ECB fallback events.
+     * Enables monitoring via /actuator/metrics or log aggregation.
+     * When this reaches zero across all instances, legacy ECB support can be removed.
+     */
+    private static final java.util.concurrent.atomic.AtomicLong ecbFallbackCounter =
+            new java.util.concurrent.atomic.AtomicLong(0);
+
+    /**
+     * Get the number of ECB fallback decryptions since application start.
+     * Expose via Actuator metrics endpoint for monitoring migration progress.
+     */
+    public static long getEcbFallbackCount() {
+        return ecbFallbackCounter.get();
+    }
+
     public AttributeEncryptor() {
         String encryptionKey = System.getenv("PII_ENCRYPTION_KEY");
         if (encryptionKey == null || encryptionKey.isEmpty()) {
@@ -153,20 +169,28 @@ public class AttributeEncryptor implements AttributeConverter<String, String> {
 
     /**
      * Decrypt legacy AES-ECB data (pre-migration).
-     * Falls back to returning raw data if ECB decryption also fails
-     * (handles pre-encryption plaintext rows from initial deployment).
+     * SECURITY (H-7): Increments fallback counter and logs a WARN for monitoring.
+     * SECURITY (C-2): Fail-closed — throws on ECB decrypt failure instead of returning raw ciphertext.
      */
     private String decryptLegacyEcb(String dbData) {
+        ecbFallbackCounter.incrementAndGet();
         try {
             Cipher cipher = Cipher.getInstance(AES_ECB);
             cipher.init(Cipher.DECRYPT_MODE, key);
-            return new String(cipher.doFinal(Base64.getDecoder().decode(dbData)));
+            String decrypted = new String(cipher.doFinal(Base64.getDecoder().decode(dbData)));
+            log.warn("[AttributeEncryptor] SECURITY: ECB fallback decryption triggered (count={}). " +
+                    "Run batch migration to re-encrypt all rows with AES-GCM.", ecbFallbackCounter.get());
+            return decrypted;
         } catch (Exception e) {
-            // Final fallback: data may be unencrypted plaintext from before encryption was enabled.
-            // Return as-is so the entity can be loaded and re-saved with GCM encryption.
-            log.warn("[AttributeEncryptor] ECB decryption failed, treating as legacy plaintext. " +
-                    "This data will be re-encrypted with AES-GCM on next save.");
-            return dbData;
+            // SECURITY (C-2): Fail-closed — do NOT return raw dbData.
+            // Returning raw ciphertext would leak encrypted PII into application layer.
+            log.error("[AttributeEncryptor] SECURITY: ECB decryption FAILED (count={}). " +
+                    "Data cannot be decrypted — possible corruption or key mismatch. " +
+                    "Run batch re-encryption migration.", ecbFallbackCounter.get(), e);
+            throw new IllegalStateException(
+                    "Failed to decrypt PII attribute (ECB legacy). " +
+                    "Data may be corrupted or encryption key has changed. " +
+                    "Contact platform administrator.", e);
         }
     }
 }

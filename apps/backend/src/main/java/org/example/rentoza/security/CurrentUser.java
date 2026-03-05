@@ -134,9 +134,10 @@ public class CurrentUser {
         Long currentUserId = id();
         
         if (!currentUserId.equals(ownerId) && !isAdmin()) {
+            // SECURITY (L-5): Do not leak user IDs in exception messages
             throw new AccessDeniedException(
-                    "Unauthorized to access %s: user %d does not own entity owned by %d"
-                            .formatted(entityType, currentUserId, ownerId)
+                    "Unauthorized to access %s: ownership verification failed"
+                            .formatted(entityType)
             );
         }
     }
@@ -153,9 +154,10 @@ public class CurrentUser {
         Long currentUserId = id();
         
         if (!allowedUserIds.contains(currentUserId) && !isAdmin()) {
+            // SECURITY (L-5): Do not leak user IDs or allowed lists in exception messages
             throw new AccessDeniedException(
-                    "Unauthorized to access %s: user %d not in allowed list %s"
-                            .formatted(entityType, currentUserId, allowedUserIds)
+                    "Unauthorized to access %s: ownership verification failed"
+                            .formatted(entityType)
             );
         }
     }

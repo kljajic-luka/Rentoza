@@ -9,8 +9,9 @@ export interface OwnerVerificationStatus {
   ownerType: OwnerType | null;
   maskedId: string | null;
   isVerified: boolean;
-  status: 'NOT_SUBMITTED' | 'PENDING_REVIEW' | 'VERIFIED';
+  status: 'NOT_SUBMITTED' | 'PENDING_REVIEW' | 'VERIFIED' | 'REJECTED';
   verifiedAt: string | null;
+  rejectionReason: string | null;
 }
 
 export interface IndividualVerificationRequest {

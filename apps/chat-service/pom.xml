@@ -20,9 +20,17 @@
 
     <properties>
         <java.version>17</java.version>
+        <!-- Override Boot 3.2.0 BOM default (1.18.30) — required for JDK 21 compatibility -->
+        <lombok.version>1.18.40</lombok.version>
     </properties>
 
     <dependencies>
+        <!-- SECURITY (M-11): Shared JWT validation library -->
+        <dependency>
+            <groupId>org.example</groupId>
+            <artifactId>rentoza-shared-security</artifactId>
+            <version>1.0.0</version>
+        </dependency>
         <!-- Spring Boot Web -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -170,7 +178,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.11.0</version>
+                <version>3.14.0</version>
                 <configuration>
                     <source>${java.version}</source>
                     <target>${java.version}</target>
@@ -178,7 +186,7 @@
                         <path>
                             <groupId>org.projectlombok</groupId>
                             <artifactId>lombok</artifactId>
-                            <version>1.18.36</version>
+                            <version>1.18.40</version>
                         </path>
                     </annotationProcessorPaths>
                 </configuration>

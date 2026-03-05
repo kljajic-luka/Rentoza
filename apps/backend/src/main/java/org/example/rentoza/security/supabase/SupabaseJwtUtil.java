@@ -27,6 +27,8 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
+import org.example.rentoza.security.jwt.SupabaseTokenValidator;
+
 /**
  * Supabase JWT validation utility with ES256 (Elliptic Curve) support.
  * 
@@ -61,6 +63,9 @@ public class SupabaseJwtUtil {
     private volatile long lastJwksRefresh = 0;
     private static final long JWKS_CACHE_DURATION_MS = 3600000; // 1 hour
 
+    // SECURITY (M-11): Shared validator prevents security drift between backend and chat-service
+    private SupabaseTokenValidator sharedValidator;
+
     public SupabaseJwtUtil(
             @Value("${supabase.jwt-secret}") String jwtSecret,
             @Value("${supabase.url}") String supabaseUrl,
@@ -87,6 +92,14 @@ public class SupabaseJwtUtil {
         } catch (Exception e) {
             log.warn("Failed to pre-fetch JWKS at startup (will retry on first request): {}", e.getMessage());
         }
+
+        // SECURITY (M-11): Create shared validator linking to this service's key management
+        this.sharedValidator = new SupabaseTokenValidator(
+                kid -> {
+                    PublicKey pk = getPublicKey(kid);
+                    return pk instanceof ECPublicKey ? (ECPublicKey) pk : null;
+                },
+                supabaseUrl + "/auth/v1", "authenticated");
     }
 
     // =====================================================
@@ -100,6 +113,11 @@ public class SupabaseJwtUtil {
      * @return true if token is valid and not expired
      */
     public boolean validateToken(String token) {
+        // SECURITY (M-11): Delegate to shared validator in production
+        if (sharedValidator != null) {
+            return sharedValidator.validateToken(token);
+        }
+        // Local fallback for unit tests where @PostConstruct was not invoked
         try {
             // Parse header to get algorithm and key ID
             String[] parts = token.split("\\.");

@@ -8,6 +8,7 @@ import org.example.rentoza.config.AppProperties;
 import org.example.rentoza.security.network.TrustedProxyIpExtractor;
 import org.example.rentoza.user.dto.CompleteProfileRequestDTO;
 import org.example.rentoza.user.dto.CompleteProfileResponseDTO;
+import org.example.rentoza.user.validation.IdentityDocumentValidator;
 import org.example.rentoza.util.HashUtil;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -51,6 +52,7 @@ public class ProfileCompletionService {
     private final HashUtil hashUtil;
     private final TrustedProxyIpExtractor ipExtractor;
     private final AppProperties appProperties;
+    private final IdentityDocumentValidator identityDocumentValidator;
 
     /**
      * Complete user profile with required fields based on their role.
@@ -181,6 +183,8 @@ public class ProfileCompletionService {
         } else if (!request.getJmbg().matches("^[0-9]{13}$")) {
             errors.add("JMBG mora sadržati tačno 13 cifara");
         } else {
+            // SECURITY (M-5): Checksum validation via IdentityDocumentValidator (Modulo 11)
+            identityDocumentValidator.validateJmbg(request.getJmbg());
             // Check for duplicate JMBG
             String jmbgHash = hashUtil.hash(request.getJmbg());
             if (userRepository.existsByJmbgHashAndIdNot(jmbgHash, user.getId())) {
@@ -196,6 +200,8 @@ public class ProfileCompletionService {
             if (!request.getBankAccountNumber().matches("^RS[0-9]{22}$")) {
                 errors.add("Neispravan IBAN format. Mora početi sa RS i imati 22 cifre");
             } else {
+                // SECURITY (M-4): IBAN checksum validation via IdentityDocumentValidator (MOD-97)
+                identityDocumentValidator.validateIban(request.getBankAccountNumber());
                 user.setBankAccountNumber(request.getBankAccountNumber());
             }
         }
@@ -215,6 +221,8 @@ public class ProfileCompletionService {
         } else if (!request.getPib().matches("^[0-9]{9}$")) {
             errors.add("PIB mora sadržati tačno 9 cifara");
         } else {
+            // SECURITY (M-5): Checksum validation via IdentityDocumentValidator (Modulo 11)
+            identityDocumentValidator.validatePib(request.getPib());
             // Check for duplicate PIB
             String pibHash = hashUtil.hash(request.getPib());
             if (userRepository.existsByPibHashAndIdNot(pibHash, user.getId())) {
@@ -231,6 +239,8 @@ public class ProfileCompletionService {
         } else if (!request.getBankAccountNumber().matches("^RS[0-9]{22}$")) {
             errors.add("Neispravan IBAN format. Mora početi sa RS i imati 22 cifre");
         } else {
+            // SECURITY (M-4): IBAN checksum validation via IdentityDocumentValidator (MOD-97)
+            identityDocumentValidator.validateIban(request.getBankAccountNumber());
             user.setBankAccountNumber(request.getBankAccountNumber());
         }
 
@@ -254,8 +264,11 @@ public class ProfileCompletionService {
     }
 
     /**
-     * Validate age is at least 21 years.
+     * Validate age is at least 21 years and at most 120 years.
+     * SECURITY (M-2): Added maximum age check to reject implausible dates of birth.
      */
+    private static final int MAXIMUM_AGE = 120;
+
     private void validateAge(LocalDate dateOfBirth) {
         if (dateOfBirth == null) {
             throw new ProfileCompletionException("INVALID_DOB", "Datum rođenja je obavezan");
@@ -266,14 +279,27 @@ public class ProfileCompletionService {
             throw new ProfileCompletionException("AGE_REQUIREMENT", 
                     String.format("Morate imati najmanje %d godina. Vaša starost: %d", MINIMUM_AGE, age));
         }
+        if (age > MAXIMUM_AGE) {
+            throw new ProfileCompletionException("INVALID_DOB",
+                    "Unet datum rođenja nije validan");
+        }
     }
 
     /**
-     * Normalize phone number (remove non-digits).
+     * Normalize phone number to E.164 format.
+     * SECURITY (M-6): Consistent with UserService.normalizePhoneToE164().
      */
     private String normalizePhone(String phone) {
         if (phone == null) return null;
-        return phone.replaceAll("[^0-9]", "");
+        String cleaned = phone.trim();
+        if (cleaned.startsWith("+")) {
+            return cleaned.replaceAll("[^0-9+]", "");
+        }
+        String digits = cleaned.replaceAll("[^0-9]", "");
+        if (digits.startsWith("0")) {
+            return "+381" + digits.substring(1);
+        }
+        return "+" + digits;
     }
 
     /**

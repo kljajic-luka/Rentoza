@@ -99,6 +99,19 @@ public class AdminUserService {
         Page<User> users = userRepo.findBannedUsersPaged(pageable);
         return users.map(this::toAdminUserDto);
     }
+
+    /**
+     * List users with pending DOB correction requests.
+     * SECURITY (M-9): Operations queue for admin review.
+     *
+     * @param pageable Pagination parameters
+     * @return Paginated list of users with pending DOB corrections
+     */
+    @Transactional(readOnly = true)
+    public Page<AdminUserDto> listPendingDobCorrections(Pageable pageable) {
+        Page<User> users = userRepo.findPendingDobCorrections(pageable);
+        return users.map(this::toAdminUserDto);
+    }
     
     // ==================== USER DETAIL ====================
     

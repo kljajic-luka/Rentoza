@@ -16,11 +16,7 @@ import { finalize, tap } from 'rxjs';
 import { AuthService } from '@core/auth/auth.service';
 import { RedirectService } from '@core/services/redirect.service';
 import { ToastService } from '@core/services/toast.service';
-import {
-  UserRegisterRequest,
-  OwnerRegisterRequest,
-  OwnerType,
-} from '@core/models/auth.model';
+import { UserRegisterRequest, OwnerRegisterRequest, OwnerType } from '@core/models/auth.model';
 import {
   minAgeValidator,
   pastDateValidator,

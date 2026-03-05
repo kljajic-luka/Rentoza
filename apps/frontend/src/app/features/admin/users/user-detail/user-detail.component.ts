@@ -156,6 +156,8 @@ export class UserDetailComponent implements OnInit {
         return 'badge badge-warn';
       case 'VERIFIED':
         return 'badge badge-success';
+      case 'REJECTED':
+        return 'badge badge-error';
       default:
         return 'badge badge-neutral';
     }
@@ -167,6 +169,8 @@ export class UserDetailComponent implements OnInit {
         return 'Pending review';
       case 'VERIFIED':
         return 'Verified';
+      case 'REJECTED':
+        return 'Rejected';
       default:
         return 'Not submitted';
     }
@@ -204,6 +208,54 @@ export class UserDetailComponent implements OnInit {
           });
         }
       });
+    });
+  }
+
+  // ========== DOB CORRECTION METHODS ==========
+
+  approveDobCorrection(): void {
+    if (!this.userId) return;
+
+    const dialogRef = this.dialog.open(ConfirmDialogComponent, {
+      data: {
+        title: 'Approve DOB Correction',
+        message: 'Are you sure you want to approve this date of birth correction request?',
+        confirmText: 'Approve',
+        confirmColor: 'primary',
+      },
+    });
+
+    dialogRef.afterClosed().subscribe((result) => {
+      if (result && this.userId) {
+        this.adminState.approveDobCorrection(this.userId).subscribe({
+          next: () => {
+            this.notification.showSuccess('DOB correction approved');
+            this.loadUserDetail();
+          },
+          error: () => this.notification.showError('Failed to approve DOB correction'),
+        });
+      }
+    });
+  }
+
+  rejectDobCorrection(): void {
+    if (!this.userId) return;
+
+    const dialogRef = this.dialog.open(RejectOwnerVerificationDialogComponent, {
+      width: '520px',
+      data: { displayName: 'DOB correction request' },
+    });
+
+    dialogRef.afterClosed().subscribe((reason: string | undefined) => {
+      if (reason && this.userId) {
+        this.adminState.rejectDobCorrection(this.userId, reason).subscribe({
+          next: () => {
+            this.notification.showSuccess('DOB correction rejected');
+            this.loadUserDetail();
+          },
+          error: () => this.notification.showError('Failed to reject DOB correction'),
+        });
+      }
     });
   }
 

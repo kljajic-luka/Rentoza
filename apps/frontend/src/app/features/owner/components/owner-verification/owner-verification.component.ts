@@ -36,7 +36,10 @@ export class OwnerVerificationComponent implements OnInit {
   individualForm: FormGroup;
   legalEntityForm: FormGroup;
 
-  constructor(private fb: FormBuilder, private verificationService: OwnerVerificationService) {
+  constructor(
+    private fb: FormBuilder,
+    private verificationService: OwnerVerificationService,
+  ) {
     // Individual form (JMBG)
     this.individualForm = this.fb.group({
       jmbg: ['', [Validators.required, Validators.pattern(/^\d{13}$/)]],
@@ -130,6 +133,8 @@ export class OwnerVerificationComponent implements OnInit {
         return 'Na čekanju';
       case 'VERIFIED':
         return 'Verifikovano ✓';
+      case 'REJECTED':
+        return 'Odbijeno ✗';
       default:
         return '';
     }
@@ -143,6 +148,8 @@ export class OwnerVerificationComponent implements OnInit {
         return 'status-verified';
       case 'PENDING_REVIEW':
         return 'status-pending';
+      case 'REJECTED':
+        return 'status-rejected';
       default:
         return 'status-default';
     }

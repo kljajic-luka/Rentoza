@@ -21,7 +21,6 @@ import org.example.rentoza.security.validation.InputSanitizer;
 import org.example.rentoza.user.Role;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.example.rentoza.user.dto.AuthResponseDTO;
 import org.example.rentoza.user.dto.UserResponseDTO;
@@ -75,7 +74,8 @@ public class SupabaseAuthController {
     private static final long ACCESS_TOKEN_EXPIRY_MS = 3600000L;
     private static final long REFRESH_TOKEN_EXPIRY_DAYS = 7L;
 
-    private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
+    // SECURITY (M-1): Injected via constructor instead of creating new BCryptPasswordEncoder()
+    private final PasswordEncoder passwordEncoder;
 
     public SupabaseAuthController(
             SupabaseAuthService supabaseAuthService,
@@ -85,7 +85,8 @@ public class SupabaseAuthController {
             PasswordResetService passwordResetService,
             PasswordPolicyService passwordPolicyService,
             TokenDenylistService tokenDenylistService,
-            SupabaseJwtUtil supabaseJwtUtil
+            SupabaseJwtUtil supabaseJwtUtil,
+            PasswordEncoder passwordEncoder
     ) {
         this.supabaseAuthService = supabaseAuthService;
         this.userService = userService;
@@ -95,6 +96,7 @@ public class SupabaseAuthController {
         this.passwordPolicyService = passwordPolicyService;
         this.tokenDenylistService = tokenDenylistService;
         this.supabaseJwtUtil = supabaseJwtUtil;
+        this.passwordEncoder = passwordEncoder;
     }
 
     // =====================================================

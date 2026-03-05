@@ -113,6 +113,34 @@ public class User {
     @Column(name = "dob_verified", nullable = false)
     private boolean dobVerified = false;
 
+    // ========== DOB CORRECTION REQUEST FIELDS (M-9) ==========
+
+    /**
+     * SECURITY (M-9): Requested new DOB when user disputes their verified DOB.
+     * Requires admin review and approval before taking effect.
+     */
+    @Column(name = "dob_correction_requested_value")
+    private LocalDate dobCorrectionRequestedValue;
+
+    /**
+     * SECURITY (M-9): When user requested DOB correction.
+     */
+    @Column(name = "dob_correction_requested_at")
+    private LocalDateTime dobCorrectionRequestedAt;
+
+    /**
+     * SECURITY (M-9): Reason for DOB correction request.
+     */
+    @Column(name = "dob_correction_reason", length = 500)
+    private String dobCorrectionReason;
+
+    /**
+     * SECURITY (M-9): Status of DOB correction request.
+     * PENDING, APPROVED, REJECTED
+     */
+    @Column(name = "dob_correction_status", length = 20)
+    private String dobCorrectionStatus;
+
     /**
      * @deprecated Use {@link #getAge()} instead which calculates from {@link #dateOfBirth}.
      * Kept for backward compatibility during migration.
@@ -300,6 +328,19 @@ public class User {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "identity_verified_by")
     private User identityVerifiedBy;
+
+    /**
+     * SECURITY (M-3): Reason for identity verification rejection.
+     * Stored so users can understand what went wrong and resubmit correctly.
+     */
+    @Column(name = "identity_rejection_reason", length = 500)
+    private String identityRejectionReason;
+
+    /**
+     * SECURITY (M-3): When identity verification was last rejected.
+     */
+    @Column(name = "identity_rejected_at")
+    private LocalDateTime identityRejectedAt;
     
     /**
      * Bank account number for payouts (encrypted).

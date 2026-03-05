@@ -18,6 +18,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/users")
 @Slf4j
+@PreAuthorize("isAuthenticated()")
 public class UserController {
 
     private final UserService service;
@@ -48,43 +49,36 @@ public class UserController {
      * @return CurrentUserDTO with id, email, roles array, registrationStatus, authenticated flag
      */
     @GetMapping("/me")
-    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<?> getMyProfile() {
-        try {
-            // Use CurrentUser to get backend-verified authentication context
-            JwtUserPrincipal principal = currentUser.getPrincipal()
-                    .orElseThrow(() -> new EntityNotFoundException("User not authenticated"));
-            
-            // Fetch complete user data from database
-            var user = service.getUserById(principal.id())
-                    .orElseThrow(() -> new EntityNotFoundException("User not found"));
-            
-            // Build response map (Map.of() only supports up to 10 entries)
-            java.util.Map<String, Object> response = new java.util.HashMap<>();
-            response.put("id", user.getId());
-            response.put("email", user.getEmail());
-            response.put("firstName", user.getFirstName());
-            response.put("lastName", user.getLastName());
-            response.put("phone", user.getPhone() != null ? user.getPhone() : "");
-            response.put("age", user.getAge() != null ? user.getAge() : 0);
-            response.put("avatarUrl", user.getAvatarUrl() != null ? user.getAvatarUrl() : "");
-            response.put("roles", List.of(user.getRole().name()));
-            response.put("authenticated", true);
-            // CRITICAL: Registration status for profile completion flow
-            response.put("registrationStatus", user.getRegistrationStatus() != null 
-                    ? user.getRegistrationStatus().name() 
-                    : "ACTIVE");
-            response.put("ownerType", user.getOwnerType() != null 
-                    ? user.getOwnerType().name() 
-                    : null);
-            
-            return ResponseEntity.ok(response);
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(401).body(Map.of(
-                    "error", e.getMessage(),
-                    "authenticated", false
-            ));
-        }
+        // SECURITY (H-2): No catch block — let GlobalExceptionHandler handle errors
+        // without leaking internal exception messages to client.
+        // SECURITY (H-5): Uses typed CurrentUserDTO instead of raw HashMap
+        // to prevent accidental data leaks.
+        JwtUserPrincipal principal = currentUser.getPrincipal()
+                .orElseThrow(() -> new EntityNotFoundException("User not authenticated"));
+
+        var user = service.getUserById(principal.id())
+                .orElseThrow(() -> new EntityNotFoundException("User not found"));
+
+        CurrentUserDTO response = CurrentUserDTO.builder()
+                .id(user.getId())
+                .email(user.getEmail())
+                .firstName(user.getFirstName())
+                .lastName(user.getLastName())
+                .phone(user.getPhone() != null ? user.getPhone() : "")
+                .age(user.getAge() != null ? user.getAge() : 0)
+                .avatarUrl(user.getAvatarUrl() != null ? user.getAvatarUrl() : "")
+                .roles(List.of(user.getRole().name()))
+                .authenticated(true)
+                .registrationStatus(user.getRegistrationStatus() != null
+                        ? user.getRegistrationStatus().name()
+                        : "ACTIVE")
+                .ownerType(user.getOwnerType() != null
+                        ? user.getOwnerType().name()
+                        : null)
+                .build();
+
+        return ResponseEntity.ok(response);
     }
 
     /**
@@ -107,22 +101,17 @@ public class UserController {
         ));
     }
 
+    // SECURITY (H-2): Removed try-catch blocks that leaked e.getMessage() to client.
+    // GlobalExceptionHandler now returns safe error messages.
+    // SECURITY (H-6): @PreAuthorize inherited from class-level annotation.
     @GetMapping("/profile")
     public ResponseEntity<?> getProfileSummary(@org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal) {
-        try {
-            return ResponseEntity.ok(profileService.getProfileSummary(principal.getUsername()));
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(401).body(Map.of("error", e.getMessage()));
-        }
+        return ResponseEntity.ok(profileService.getProfileSummary(principal.getUsername()));
     }
 
     @GetMapping("/profile/details")
     public ResponseEntity<?> getProfileDetails(@org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal) {
-        try {
-            return ResponseEntity.ok(profileService.getProfileDetails(principal.getUsername()));
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(401).body(Map.of("error", e.getMessage()));
-        }
+        return ResponseEntity.ok(profileService.getProfileDetails(principal.getUsername()));
     }
 
     /**
@@ -130,6 +119,8 @@ public class UserController {
      * Only allows updating safe fields: phone, avatarUrl, bio
      * Sensitive fields (name, email, role) are blocked to enforce identity integrity
      */
+    // SECURITY (H-2): Removed broad RuntimeException catch.
+    // BadRequestException still caught for validation feedback.
     @PatchMapping("/me")
     public ResponseEntity<?> updateMyProfile(
             @org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal,
@@ -137,17 +128,10 @@ public class UserController {
     ) {
         try {
             User updated = service.updateProfileSecure(principal.getUsername(), dto);
-
-            // Return updated ProfileDetailsDTO to refresh frontend state
             ProfileDetailsDTO details = profileService.getProfileDetails(principal.getUsername());
             return ResponseEntity.ok(details);
-
         } catch (UserService.BadRequestException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
-        } catch (EntityNotFoundException e) {
-            return ResponseEntity.status(404).body(Map.of("error", "User not found"));
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(401).body(Map.of("error", "Unauthorized"));
         }
     }
 
@@ -155,23 +139,21 @@ public class UserController {
      * Get user profile by ID (for chat service enrichment)
      * Public endpoint for inter-service communication
      */
+    // SECURITY (H-6): Internal/service-to-service endpoint — requires authentication
+    // via class-level @PreAuthorize. H-2: Let GlobalExceptionHandler handle EntityNotFoundException.
     @GetMapping("/profile/{userId}")
     public ResponseEntity<?> getUserProfileById(@PathVariable Long userId) {
-        try {
-            User user = service.getUserById(userId)
-                    .orElseThrow(() -> new EntityNotFoundException("User not found with ID: " + userId));
-            return ResponseEntity.ok(new UserResponseDTO(
-                    user.getId(),
-                    user.getFirstName(),
-                    user.getLastName(),
-                    user.getEmail(),
-                    user.getPhone(),
-                    user.getAge(),
-                    user.getRole().name()
-            ));
-        } catch (EntityNotFoundException e) {
-            return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
-        }
+        User user = service.getUserById(userId)
+                .orElseThrow(() -> new EntityNotFoundException("User not found"));
+        return ResponseEntity.ok(new UserResponseDTO(
+                user.getId(),
+                user.getFirstName(),
+                user.getLastName(),
+                user.getEmail(),
+                user.getPhone(),
+                user.getAge(),
+                user.getRole().name()
+        ));
     }
 
     // ========================================================================
@@ -333,6 +315,60 @@ public class UserController {
         }
 
         return missing;
+    }
+
+    // ========== DOB CORRECTION REQUEST (M-9) ==========
+
+    /**
+     * SECURITY (M-9): Request a date-of-birth correction when verified DOB is incorrect.
+     * Creates a pending correction request that requires admin review.
+     * Only allowed if DOB is currently verified (from license OCR) and no pending request exists.
+     */
+    @PostMapping("/me/dob-correction")
+    public ResponseEntity<?> requestDobCorrection(
+            @org.springframework.security.core.annotation.AuthenticationPrincipal JwtUserPrincipal principal,
+            @Valid @RequestBody DobCorrectionRequestDTO request
+    ) {
+        User user = service.getUserById(principal.id())
+                .orElseThrow(() -> new EntityNotFoundException("User not found"));
+
+        if (!user.isDobVerified()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "DOB_NOT_VERIFIED",
+                    "message", "Korekcija datuma rođenja je moguća samo nakon verifikacije"
+            ));
+        }
+
+        if ("PENDING".equals(user.getDobCorrectionStatus())) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                    "error", "CORRECTION_ALREADY_PENDING",
+                    "message", "Zahtev za korekciju datuma rođenja je već podnet"
+            ));
+        }
+
+        // Validate new DOB age bounds
+        int newAge = java.time.Period.between(request.getNewDateOfBirth(), 
+                org.example.rentoza.config.timezone.SerbiaTimeZone.today()).getYears();
+        if (newAge < 21 || newAge > 120) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "INVALID_DOB",
+                    "message", "Novi datum rođenja nije validan"
+            ));
+        }
+
+        user.setDobCorrectionRequestedValue(request.getNewDateOfBirth());
+        user.setDobCorrectionRequestedAt(java.time.LocalDateTime.now());
+        user.setDobCorrectionReason(request.getReason());
+        user.setDobCorrectionStatus("PENDING");
+        service.saveUser(user);
+
+        log.info("AUDIT: DOB correction requested for userId={}, currentDob={}, requestedDob={}", 
+                principal.id(), user.getDateOfBirth(), request.getNewDateOfBirth());
+
+        return ResponseEntity.ok(Map.of(
+                "status", "PENDING",
+                "message", "Zahtev za korekciju datuma rođenja je uspešno podnet. Administrator će pregledati vaš zahtev."
+        ));
     }
 
 }

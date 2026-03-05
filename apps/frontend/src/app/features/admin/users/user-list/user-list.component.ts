@@ -255,6 +255,8 @@ export class UserListComponent implements OnInit {
         return 'badge badge-warn';
       case 'VERIFIED':
         return 'badge badge-success';
+      case 'REJECTED':
+        return 'badge badge-error';
       default:
         return 'badge badge-neutral';
     }
@@ -266,6 +268,8 @@ export class UserListComponent implements OnInit {
         return 'Pending';
       case 'VERIFIED':
         return 'Verified';
+      case 'REJECTED':
+        return 'Rejected';
       default:
         return 'Not submitted';
     }

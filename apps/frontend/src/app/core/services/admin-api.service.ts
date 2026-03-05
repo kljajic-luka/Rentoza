@@ -175,6 +175,37 @@ export class AdminApiService {
     } as OwnerVerificationRejectRequest);
   }
 
+  // ==================== DOB CORRECTION (ADMIN) ====================
+
+  approveDobCorrection(userId: number): Observable<{ message: string }> {
+    return this.http.put<{ message: string }>(
+      `${this.apiUrl}/users/${userId}/dob-correction/approve`,
+      {},
+    );
+  }
+
+  rejectDobCorrection(userId: number, reason?: string): Observable<{ message: string }> {
+    let params = new HttpParams();
+    if (reason) {
+      params = params.set('reason', reason);
+    }
+    return this.http.put<{ message: string }>(
+      `${this.apiUrl}/users/${userId}/dob-correction/reject`,
+      {},
+      { params },
+    );
+  }
+
+  getPendingDobCorrections(
+    page: number = 0,
+    size: number = 20,
+  ): Observable<PaginatedResponse<AdminUserDto>> {
+    const params = new HttpParams().set('page', page.toString()).set('size', size.toString());
+    return this.http
+      .get<HateoasPage<AdminUserDto>>(`${this.apiUrl}/users/dob-corrections/pending`, { params })
+      .pipe(map((response) => this.normalizePage(response)));
+  }
+
   // ==================== RENTER VERIFICATION (ADMIN) ====================
 
   getRenterVerificationQueue(

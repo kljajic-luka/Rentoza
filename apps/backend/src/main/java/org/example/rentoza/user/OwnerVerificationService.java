@@ -293,6 +293,7 @@ public class OwnerVerificationService {
     
     /**
      * Admin rejects owner identity verification.
+     * SECURITY (M-3): Only clears fields relevant to the owner's type, stores rejection reason.
      * 
      * @param userId User to reject
      * @param reason Rejection reason
@@ -302,17 +303,26 @@ public class OwnerVerificationService {
         User user = userRepository.findById(userId)
             .orElseThrow(() -> new RuntimeException("User not found: " + userId));
         
-        // Clear submitted data (user must resubmit)
-        user.setJmbg(null);
-        user.setJmbgHash(null);
-        user.setPib(null);
-        user.setPibHash(null);
+        // SECURITY (M-3): Only clear data relevant to owner type
+        if (user.getOwnerType() == OwnerType.INDIVIDUAL) {
+            user.setJmbg(null);
+            user.setJmbgHash(null);
+        } else if (user.getOwnerType() == OwnerType.LEGAL_ENTITY) {
+            user.setPib(null);
+            user.setPibHash(null);
+        }
+        
         user.setIsIdentityVerified(false);
         user.setIdentityVerifiedAt(null);
         user.setIdentityVerifiedBy(null);
         user.setOwnerVerificationSubmittedAt(null);
         
+        // SECURITY (M-3): Store rejection reason and timestamp for audit trail
+        user.setIdentityRejectionReason(reason);
+        user.setIdentityRejectedAt(LocalDateTime.now());
+        
         userRepository.save(user);
-        log.warn("Identity verification rejected for userId={}, reason={}", userId, reason);
+        log.warn("Identity verification rejected for userId={}, ownerType={}, reason={}", 
+                userId, user.getOwnerType(), reason);
     }
 }

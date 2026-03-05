@@ -69,7 +69,7 @@ const enrichRequest = (request: Parameters<HttpInterceptorFn>[0], markRetried = 
       if (isDevMode()) {
         console.warn(
           `[Security] XSRF token missing for ${request.method} request. ` +
-            'Ensure CSRF cookie is set by backend on authentication.'
+            'Ensure CSRF cookie is set by backend on authentication.',
         );
       }
     }
@@ -183,9 +183,9 @@ export const authTokenInterceptor: HttpInterceptorFn = (req, next) => {
                       // Preserve session - user can manually refresh the page
                     }
                     return throwError(() => retryError);
-                  })
+                  }),
                 );
-              })
+              }),
             );
           }),
           catchError((refreshError) => {
@@ -196,9 +196,9 @@ export const authTokenInterceptor: HttpInterceptorFn = (req, next) => {
               if (isDevMode()) console.warn('Retry failed but session preserved');
             }
             return throwError(() => refreshError);
-          })
+          }),
         );
-      })
+      }),
     );
   });
 };

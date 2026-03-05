@@ -196,6 +196,16 @@ import { AdminKeyboardService } from '../shared/services/admin-keyboard.service'
             </a>
             <a
               mat-list-item
+              routerLink="/admin/dob-corrections"
+              routerLinkActive="active"
+              class="nav-item pill"
+            >
+              <mat-icon matListItemIcon>cake</mat-icon>
+              <span matListItemTitle>DOB Corrections</span>
+              <span class="nav-caret">›</span>
+            </a>
+            <a
+              mat-list-item
               routerLink="/admin/financial"
               routerLinkActive="active"
               class="nav-item pill"

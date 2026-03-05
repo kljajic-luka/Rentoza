@@ -2,7 +2,6 @@ package org.example.rentoza.security.password;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,9 +39,15 @@ public class PasswordPolicyService {
     private final PasswordHistoryRepository passwordHistoryRepository;
     private final PasswordEncoder passwordEncoder;
 
-    public PasswordPolicyService(PasswordHistoryRepository passwordHistoryRepository) {
+    /**
+     * SECURITY (M-1): Inject Spring-managed PasswordEncoder bean instead of creating
+     * a private BCryptPasswordEncoder. Ensures consistent BCrypt work factor and
+     * allows centralized algorithm changes.
+     */
+    public PasswordPolicyService(PasswordHistoryRepository passwordHistoryRepository,
+                                  PasswordEncoder passwordEncoder) {
         this.passwordHistoryRepository = passwordHistoryRepository;
-        this.passwordEncoder = new BCryptPasswordEncoder();
+        this.passwordEncoder = passwordEncoder;
     }
 
     /**

@@ -125,6 +125,13 @@ export const ADMIN_ROUTES: Routes = [
         ],
       },
       {
+        path: 'dob-corrections',
+        loadComponent: () =>
+          import('./dob-corrections/dob-correction-list/dob-correction-list.component').then(
+            (m) => m.DobCorrectionListComponent,
+          ),
+      },
+      {
         path: 'financial',
         loadComponent: () =>
           import('./financial/financial-dashboard/financial-dashboard.component').then(

@@ -23,10 +23,11 @@ import java.time.LocalDate;
 public class UpdateProfileRequestDTO {
 
     /**
-     * Phone number (8-15 digits only).
+     * Phone number in E.164 format (optional + prefix, 8-15 digits).
      * Must be unique across all users.
+     * SECURITY (M-6): Accepts E.164 format (+381...) to match backend normalization.
      */
-    @Pattern(regexp = "^[0-9]{8,15}$", message = "Phone must contain 8-15 digits")
+    @Pattern(regexp = "^\\+?[0-9]{8,15}$", message = "Phone must be 8-15 digits with optional + prefix")
     private String phone;
 
     /**
@@ -46,8 +47,9 @@ public class UpdateProfileRequestDTO {
 
     /**
      * Last name can only be changed for Google-provisioned placeholder users.
+     * SECURITY (L-4): min=1 to support single-character surnames.
      */
-    @Size(min = 3, max = 50, message = "Last name must be between 3 and 50 characters")
+    @Size(min = 1, max = 50, message = "Last name must be between 1 and 50 characters")
     private String lastName;
     
     /**

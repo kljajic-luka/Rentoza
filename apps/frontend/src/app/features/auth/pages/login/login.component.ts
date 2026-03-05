@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, isDevMode, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
@@ -130,7 +130,9 @@ export class LoginComponent {
             this.focusControl('password');
           }
 
-          console.error('Login failed:', error);
+          if (isDevMode()) {
+            console.error('Login failed:', error);
+          }
         },
       });
   }

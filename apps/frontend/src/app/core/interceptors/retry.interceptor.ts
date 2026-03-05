@@ -1,4 +1,5 @@
 import { HttpErrorResponse, HttpInterceptorFn } from '@angular/common/http';
+import { isDevMode } from '@angular/core';
 import { delay, Observable, of, retry, RetryConfig, throwError, timer } from 'rxjs';
 import { catchError, finalize, switchMap } from 'rxjs/operators';
 
@@ -88,9 +89,11 @@ export const retryInterceptor: HttpInterceptorFn = (req, next) => {
       // Calculate delay with exponential backoff
       const delay = calculateDelay(retryCount, error);
 
-      console.log(
-        `🔄 Retrying ${req.method} ${req.url} (attempt ${retryCount}/${DEFAULT_RETRY_OPTIONS.maxRetries}) after ${delay}ms`,
-      );
+      if (isDevMode()) {
+        console.log(
+          `🔄 Retrying ${req.method} ${req.url} (attempt ${retryCount}/${DEFAULT_RETRY_OPTIONS.maxRetries}) after ${delay}ms`,
+        );
+      }
 
       // Wait and retry
       return timer(delay).pipe(switchMap(() => next(req)));
@@ -104,9 +107,11 @@ export const retryInterceptor: HttpInterceptorFn = (req, next) => {
         }
 
         const delay = calculateDelay(retryIndex + 1, error);
-        console.log(
-          `🔄 Retrying ${req.method} ${req.url} (attempt ${retryIndex + 1}/${DEFAULT_RETRY_OPTIONS.maxRetries}) after ${delay}ms`,
-        );
+        if (isDevMode()) {
+          console.log(
+            `🔄 Retrying ${req.method} ${req.url} (attempt ${retryIndex + 1}/${DEFAULT_RETRY_OPTIONS.maxRetries}) after ${delay}ms`,
+          );
+        }
 
         return timer(delay);
       },

@@ -6,6 +6,7 @@ import { of } from 'rxjs';
 import { AuthService } from './auth.service';
 import { UserProfile } from '@core/models/user.model';
 import { UserRole } from '@core/models/user-role.type';
+import { UserRegisterRequest, OwnerRegisterRequest } from '@core/models/auth.model';
 import { environment } from '@environments/environment';
 
 describe('AuthService (cookie-mode session)', () => {
@@ -167,5 +168,281 @@ describe('AuthService (cookie-mode session)', () => {
     // Verify localStorage is cleared
     expect(localStorage.getItem('access_token')).toBeNull();
     expect(localStorage.getItem('current_user')).toBeNull();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// REGISTRATION COMPLIANCE TESTS
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('AuthService (registration compliance)', () => {
+  let service: AuthService;
+  let httpMock: HttpTestingController;
+  let originalUseCookies: boolean | undefined;
+
+  beforeEach(() => {
+    originalUseCookies = environment.auth?.useCookies;
+    if (!environment.auth) {
+      (environment as any).auth = {};
+    }
+    environment.auth.useCookies = true;
+
+    const jwtHelperMock = {
+      decodeToken: jasmine.createSpy('decodeToken').and.returnValue({ roles: ['ROLE_USER'] }),
+      getTokenExpirationDate: jasmine
+        .createSpy('getTokenExpirationDate')
+        .and.returnValue(new Date(Date.now() + 60000)),
+      isTokenExpired: jasmine.createSpy('isTokenExpired').and.returnValue(false),
+    } as unknown as JwtHelperService;
+
+    TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule],
+      providers: [AuthService, { provide: JwtHelperService, useValue: jwtHelperMock }],
+    });
+
+    service = TestBed.inject(AuthService);
+    httpMock = TestBed.inject(HttpTestingController);
+    spyOn<any>(service, 'loadFavoritesForSession').and.stub();
+  });
+
+  afterEach(() => {
+    httpMock.verify();
+
+    // Restore original env value to prevent state leaking into other specs
+    if (environment.auth) {
+      environment.auth.useCookies = originalUseCookies ?? false;
+    }
+  });
+
+  // ─── registerUser() ───────────────────────────────────────────────────────
+
+  it('registerUser() should POST to /auth/register/user with full payload', () => {
+    const payload: UserRegisterRequest = {
+      firstName: 'Marko',
+      lastName: 'Petrović',
+      email: 'marko@example.com',
+      phone: '0641234567',
+      password: 'SecurePass1',
+      dateOfBirth: '1990-05-15',
+      confirmsAgeEligibility: true,
+    };
+
+    service.registerUser(payload).subscribe();
+
+    const req = httpMock.expectOne((r) => r.url.includes('/auth/register/user'));
+    expect(req.request.method).toBe('POST');
+    expect(req.request.withCredentials).toBeTrue();
+
+    // Verify all enhanced fields are present in the request body
+    const body = req.request.body as UserRegisterRequest;
+    expect(body.phone).toBe('0641234567');
+    expect(body.dateOfBirth).toBe('1990-05-15');
+    expect(body.confirmsAgeEligibility).toBeTrue();
+    expect(body.firstName).toBe('Marko');
+    expect(body.lastName).toBe('Petrović');
+
+    req.flush({
+      authenticated: true,
+      user: {
+        id: '10',
+        email: 'marko@example.com',
+        firstName: 'Marko',
+        lastName: 'Petrović',
+        roles: ['USER'],
+      },
+    });
+  });
+
+  it('registerUser() should return null when email confirmation is required', () => {
+    const payload: UserRegisterRequest = {
+      firstName: 'Ana',
+      lastName: 'Jovanović',
+      email: 'ana@example.com',
+      phone: '0659876543',
+      password: 'SecurePass1',
+      dateOfBirth: '1995-03-20',
+      confirmsAgeEligibility: true,
+    };
+
+    let result: UserProfile | null | undefined;
+    service.registerUser(payload).subscribe((user) => (result = user));
+
+    const req = httpMock.expectOne((r) => r.url.includes('/auth/register/user'));
+    req.flush({
+      authenticated: false,
+      emailConfirmationRequired: true,
+      user: null,
+    });
+
+    expect(result).toBeNull();
+    // Session should NOT be persisted
+    expect(service.getCurrentUser()).toBeNull();
+  });
+
+  it('registerUser() should persist session when email confirmation is NOT required', () => {
+    const payload: UserRegisterRequest = {
+      firstName: 'Ivan',
+      lastName: 'Nikolić',
+      email: 'ivan@example.com',
+      phone: '0631112233',
+      password: 'SecurePass1',
+      dateOfBirth: '1988-11-10',
+      confirmsAgeEligibility: true,
+    };
+
+    let result: UserProfile | null | undefined;
+    service.registerUser(payload).subscribe((user) => (result = user));
+
+    const req = httpMock.expectOne((r) => r.url.includes('/auth/register/user'));
+    req.flush({
+      authenticated: true,
+      emailConfirmationRequired: false,
+      user: {
+        id: '11',
+        email: 'ivan@example.com',
+        firstName: 'Ivan',
+        lastName: 'Nikolić',
+        roles: ['USER'],
+      },
+    });
+
+    expect(result).toBeTruthy();
+    expect(service.getCurrentUser()?.email).toBe('ivan@example.com');
+  });
+
+  // ─── registerOwner() ─────────────────────────────────────────────────────
+
+  it('registerOwner() should POST to /auth/register/owner with owner-specific fields', () => {
+    const payload: OwnerRegisterRequest = {
+      firstName: 'Petar',
+      lastName: 'Đorđević',
+      email: 'petar@example.com',
+      phone: '0621234567',
+      password: 'SecurePass1',
+      dateOfBirth: '1985-07-22',
+      confirmsAgeEligibility: true,
+      ownerType: 'INDIVIDUAL',
+      jmbg: '2207985710038',
+      agreesToHostAgreement: true,
+      confirmsVehicleInsurance: true,
+      confirmsVehicleRegistration: true,
+    };
+
+    service.registerOwner(payload).subscribe();
+
+    const req = httpMock.expectOne((r) => r.url.includes('/auth/register/owner'));
+    expect(req.request.method).toBe('POST');
+    expect(req.request.withCredentials).toBeTrue();
+
+    // Verify owner-specific fields in request body
+    const body = req.request.body as OwnerRegisterRequest;
+    expect(body.ownerType).toBe('INDIVIDUAL');
+    expect(body.jmbg).toBe('2207985710038');
+    expect(body.agreesToHostAgreement).toBeTrue();
+    expect(body.confirmsVehicleInsurance).toBeTrue();
+    expect(body.confirmsVehicleRegistration).toBeTrue();
+    expect(body.phone).toBe('0621234567');
+    expect(body.dateOfBirth).toBe('1985-07-22');
+
+    req.flush({
+      authenticated: true,
+      user: {
+        id: '12',
+        email: 'petar@example.com',
+        firstName: 'Petar',
+        lastName: 'Đorđević',
+        roles: ['OWNER'],
+        ownerType: 'INDIVIDUAL',
+      },
+    });
+  });
+
+  it('registerOwner() should support LEGAL_ENTITY with PIB and bank account', () => {
+    const payload: OwnerRegisterRequest = {
+      firstName: 'Kompanija',
+      lastName: 'DOO',
+      email: 'firma@example.com',
+      phone: '0111234567',
+      password: 'SecurePass1',
+      dateOfBirth: '1975-01-01',
+      confirmsAgeEligibility: true,
+      ownerType: 'LEGAL_ENTITY',
+      pib: '123456789',
+      bankAccountNumber: 'RS35260005601001611379',
+      agreesToHostAgreement: true,
+      confirmsVehicleInsurance: true,
+      confirmsVehicleRegistration: true,
+    };
+
+    service.registerOwner(payload).subscribe();
+
+    const req = httpMock.expectOne((r) => r.url.includes('/auth/register/owner'));
+    const body = req.request.body as OwnerRegisterRequest;
+    expect(body.ownerType).toBe('LEGAL_ENTITY');
+    expect(body.pib).toBe('123456789');
+    expect(body.bankAccountNumber).toBe('RS35260005601001611379');
+
+    req.flush({
+      authenticated: true,
+      user: {
+        id: '13',
+        email: 'firma@example.com',
+        firstName: 'Kompanija',
+        lastName: 'DOO',
+        roles: ['OWNER'],
+        ownerType: 'LEGAL_ENTITY',
+      },
+    });
+  });
+
+  it('registerOwner() should return null when email confirmation is required', () => {
+    const payload: OwnerRegisterRequest = {
+      firstName: 'Test',
+      lastName: 'Owner',
+      email: 'test-owner@example.com',
+      phone: '0651112233',
+      password: 'SecurePass1',
+      dateOfBirth: '1990-01-01',
+      confirmsAgeEligibility: true,
+      ownerType: 'INDIVIDUAL',
+      jmbg: '0101990710012',
+      agreesToHostAgreement: true,
+      confirmsVehicleInsurance: true,
+      confirmsVehicleRegistration: true,
+    };
+
+    let result: UserProfile | null | undefined;
+    service.registerOwner(payload).subscribe((user) => (result = user));
+
+    const req = httpMock.expectOne((r) => r.url.includes('/auth/register/owner'));
+    req.flush({
+      authenticated: false,
+      emailConfirmationRequired: true,
+      user: null,
+    });
+
+    expect(result).toBeNull();
+    expect(service.getCurrentUser()).toBeNull();
+  });
+
+  // ─── Session refresh uses Supabase path ───────────────────────────────────
+
+  it('refreshAccessToken() should POST to /auth/supabase/refresh', () => {
+    service.refreshAccessToken().subscribe();
+
+    const req = httpMock.expectOne((r) => r.url.includes('/auth/supabase/refresh'));
+    expect(req.request.method).toBe('POST');
+    expect(req.request.withCredentials).toBeTrue();
+
+    req.flush({
+      authenticated: true,
+      user: {
+        id: '1',
+        email: 'test@example.com',
+        firstName: 'Test',
+        lastName: 'User',
+        roles: ['USER'],
+      },
+    });
   });
 });

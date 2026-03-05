@@ -12,7 +12,7 @@ import { LoggerService } from '@core/services/logger.service';
  */
 const SILENT_ERROR_ENDPOINTS = [
   '/bookings/car/', // Guest users viewing car details shouldn't see auth errors
-  '/auth/refresh', // Silent token refresh failures are handled by auth service
+  '/auth/supabase/refresh', // Silent token refresh failures are handled by auth service
   '/availability', // Availability checks are non-critical and handled in component
   '/stats', // Stats endpoints are non-blocking
   '/reviews', // Review loading is non-blocking

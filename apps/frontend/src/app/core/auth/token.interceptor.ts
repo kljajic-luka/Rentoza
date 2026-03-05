@@ -144,8 +144,8 @@ export const authTokenInterceptor: HttpInterceptorFn = (req, next) => {
 
     return next(requestWithAuth).pipe(
       catchError((error) => {
-        // Don't intercept errors on auth endpoints
-        if (shouldBypassAuth(req.url) || req.url.includes('/auth/refresh')) {
+        // Don't intercept errors on auth endpoints (including Supabase refresh)
+        if (shouldBypassAuth(req.url) || req.url.includes('/auth/supabase/refresh')) {
           return throwError(() => error);
         }
 
@@ -189,7 +189,7 @@ export const authTokenInterceptor: HttpInterceptorFn = (req, next) => {
             );
           }),
           catchError((refreshError) => {
-            if (refreshError.url?.includes('/auth/refresh')) {
+            if (refreshError.url?.includes('/auth/supabase/refresh')) {
               if (isDevMode()) console.error('Refresh endpoint failed:', refreshError.status);
               handleSessionExpiry(authService, router, `Refresh failed: ${refreshError.message}`);
             } else {

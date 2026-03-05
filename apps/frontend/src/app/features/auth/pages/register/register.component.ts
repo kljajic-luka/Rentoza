@@ -85,6 +85,9 @@ export class RegisterComponent implements OnInit {
    */
   protected readonly isOwnerRegistration = signal(false);
 
+  /** Enhanced registration is now the only active path (legacy auth gated off). */
+  protected readonly isEnhancedRegistration = signal(true);
+
   // Owner type selection (INDIVIDUAL or LEGAL_ENTITY)
   protected readonly ownerType = signal<OwnerType>('INDIVIDUAL');
 

@@ -5,6 +5,7 @@ import {
   OnInit,
   computed,
   inject,
+  isDevMode,
   signal,
 } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -184,7 +185,9 @@ export class OAuthCompleteComponent implements OnInit {
 
       this.isLoading.set(false);
     } catch (error) {
-      console.error('Failed to load user profile:', error);
+      if (isDevMode()) {
+        console.error('Failed to load user profile:', error);
+      }
       this.toast.error('Greška pri učitavanju profila.');
       this.router.navigate(['/auth/login']);
     }

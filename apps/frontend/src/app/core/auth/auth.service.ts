@@ -26,11 +26,49 @@ import {
   GoogleOAuthCompletionRequest,
   GoogleAuthInitResponse,
   SupabaseGoogleCallbackResponse,
+  RegistrationStatus,
+  OwnerType,
 } from '@core/models/auth.model';
 import { UserProfile } from '@core/models/user.model';
 import { LOCALSTORAGE_ACCESS_TOKEN, LOCALSTORAGE_CURRENT_USER } from '@core/auth/cookie.constants';
 import { UserRole } from '@core/models/user-role.type';
 import { SKIP_AUTH } from './auth.tokens';
+
+/**
+ * Raw backend user shape that may include a single `role` string
+ * alongside the standard profile fields. Used to normalize the
+ * auth response into a proper UserProfile in persistSession().
+ */
+interface RawBackendUser {
+  id: string | number;
+  email: string;
+  firstName: string;
+  lastName: string;
+  phone?: string;
+  age?: number;
+  avatarUrl?: string;
+  role?: string;
+  roles?: UserRole[];
+  registrationStatus?: RegistrationStatus;
+  ownerType?: OwnerType;
+}
+
+/**
+ * Shape returned by GET /api/users/me.
+ */
+interface BackendUserMeResponse {
+  authenticated: boolean;
+  id: string | number;
+  email: string;
+  firstName: string;
+  lastName: string;
+  phone?: string;
+  age?: number;
+  avatarUrl?: string;
+  roles: UserRole[] | string;
+  registrationStatus?: string;
+  ownerType?: string;
+}
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -173,7 +211,7 @@ export class AuthService {
 
       return backendUser;
     } catch (error) {
-      console.error('Session verification error');
+      if (isDevMode()) console.error('Session verification error');
       this.clearSession();
       return null;
     }
@@ -365,7 +403,7 @@ export class AuthService {
    */
   supabaseLogout(): Observable<void> {
     return this.http
-      .post<any>(
+      .post<void>(
         `${this.apiUrl}/supabase/logout`,
         {},
         {
@@ -532,7 +570,7 @@ export class AuthService {
             // Convert response to AuthResponse format for persistSession
             const authResponse: AuthResponse = {
               authenticated: true,
-              user: response.user as any,
+              user: response.user,
             };
             this.persistSession(authResponse);
             if (isDevMode()) console.log('Google OAuth callback successful:', response.registrationStatus);
@@ -598,7 +636,7 @@ export class AuthService {
           if (response.success && response.user) {
             const authResponse: AuthResponse = {
               authenticated: true,
-              user: response.user as any,
+              user: response.user,
             };
             this.persistSession(authResponse);
             if (isDevMode()) console.log('Implicit OAuth callback successful:', response.registrationStatus);
@@ -972,8 +1010,12 @@ export class AuthService {
 
     // Clear favorited cars on logout
     import('@core/services/favorite.service').then(({ FavoriteService }) => {
-      const favoriteService = this.injector.get(FavoriteService);
-      favoriteService.clearFavorites();
+      try {
+        const favoriteService = this.injector.get(FavoriteService);
+        favoriteService.clearFavorites();
+      } catch {
+        // Injector may already be destroyed during test teardown — safe to ignore
+      }
     });
   }
 
@@ -992,18 +1034,20 @@ export class AuthService {
       return;
     }
 
-    // Extract role from user object (no token decoding - token is HttpOnly)
-    const singleRole = (user as any)?.role;
-    const effectiveRoles = singleRole ? [singleRole] : ((user as any).roles ?? []);
+    const rawUser = user as RawBackendUser;
+    const singleRole = rawUser.role;
+    const effectiveRoles: UserRole[] = singleRole
+      ? [singleRole as UserRole]
+      : (rawUser.roles ?? []);
 
     const completeUser: UserProfile = {
       ...user,
       id: String(user.id),
       roles: effectiveRoles,
       // CRITICAL: Preserve registrationStatus for profile completion flow
-      registrationStatus: (user as any)?.registrationStatus,
-      ownerType: (user as any)?.ownerType,
-    } as UserProfile;
+      registrationStatus: rawUser.registrationStatus,
+      ownerType: rawUser.ownerType,
+    };
 
     this.updateUserState(completeUser);
 
@@ -1035,13 +1079,13 @@ export class AuthService {
 
   private fetchBackendUserProfile(): Observable<UserProfile> {
     return this.http
-      .get<any>(`${environment.baseApiUrl}/users/me`, {
+      .get<BackendUserMeResponse>(`${environment.baseApiUrl}/users/me`, {
         withCredentials: true,
       })
       .pipe(map((response) => this.mapBackendUserResponse(response)));
   }
 
-  private mapBackendUserResponse(response: any): UserProfile {
+  private mapBackendUserResponse(response: BackendUserMeResponse): UserProfile {
     if (!response?.authenticated) {
       throw new Error('Backend reports user not authenticated');
     }
@@ -1053,7 +1097,7 @@ export class AuthService {
         : [];
 
     // Map to UserProfile with registrationStatus for profile completion flow
-    const profile: UserProfile & { registrationStatus?: string; ownerType?: string } = {
+    const profile: UserProfile = {
       id: String(response.id),
       email: response.email,
       firstName: response.firstName,
@@ -1063,11 +1107,11 @@ export class AuthService {
       avatarUrl: response.avatarUrl || undefined,
       roles: normalizedRoles,
       // CRITICAL: Include registrationStatus for profile completion guard
-      registrationStatus: response.registrationStatus,
-      ownerType: response.ownerType,
+      registrationStatus: response.registrationStatus as RegistrationStatus | undefined,
+      ownerType: response.ownerType as OwnerType | undefined,
     };
 
-    return profile as UserProfile;
+    return profile;
   }
 
   /**
@@ -1081,8 +1125,8 @@ export class AuthService {
       id: String(user.id),
       roles: Array.isArray(user.roles) ? user.roles : [],
       // Preserve critical fields for profile completion flow
-      registrationStatus: (user as any).registrationStatus,
-      ownerType: (user as any).ownerType,
+      registrationStatus: user.registrationStatus,
+      ownerType: user.ownerType,
     };
 
     // Update observable only (no localStorage in cookie-only mode)
@@ -1097,13 +1141,19 @@ export class AuthService {
 
     this.favoritesLoadedForSession = true;
     import('@core/services/favorite.service').then(({ FavoriteService }) => {
-      const favoriteService = this.injector.get(FavoriteService);
-      favoriteService
-        .loadFavoritedCarIds()
-        .pipe(take(1))
-        .subscribe({
-          error: (err) => console.error('Failed to load favorited cars:', err),
-        });
+      try {
+        const favoriteService = this.injector.get(FavoriteService);
+        favoriteService
+          .loadFavoritedCarIds()
+          .pipe(take(1))
+          .subscribe({
+            error: (err) => {
+              if (isDevMode()) console.error('Failed to load favorited cars:', err);
+            },
+          });
+      } catch {
+        // Injector may already be destroyed during test teardown — safe to ignore
+      }
     });
   }
 

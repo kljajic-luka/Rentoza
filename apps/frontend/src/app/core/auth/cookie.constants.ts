@@ -65,7 +65,7 @@ export const LOCALSTORAGE_CURRENT_USER = 'current_user';
 export const AUTH_BYPASS_SEGMENTS = [
   '/auth/login',
   '/auth/register',
-  '/auth/refresh',
+  '/auth/supabase/refresh',
   '/auth/logout',
 ] as const;
 

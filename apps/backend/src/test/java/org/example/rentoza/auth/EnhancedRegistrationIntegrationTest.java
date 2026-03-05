@@ -182,8 +182,8 @@ class EnhancedRegistrationIntegrationTest {
     }
 
     @Test
-    @DisplayName("registerUser: Duplicate email → 400")
-    void registerUser_duplicateEmail_returns400() throws Exception {
+    @DisplayName("registerUser: Duplicate email → 409 CONFLICT")
+    void registerUser_duplicateEmail_returns409() throws Exception {
         when(userRepository.findByEmail("taken@example.com")).thenReturn(
                 Optional.of(createUser(99L, "taken@example.com", Role.USER)));
 
@@ -202,8 +202,8 @@ class EnhancedRegistrationIntegrationTest {
                                   "confirmsAgeEligibility": true
                                 }
                                 """.formatted(dob)))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("Email already registered"));
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("EMAIL_ALREADY_REGISTERED"));
     }
 
     @Test

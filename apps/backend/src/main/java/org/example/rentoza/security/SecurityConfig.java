@@ -146,14 +146,18 @@ public class SecurityConfig {
                         // Sensitive actuator endpoints require ADMIN role
                         .requestMatchers("/actuator/**").hasRole("ADMIN")
                         
-                        // Public auth endpoints
+                        // Legacy auth endpoints — guarded behind legacy.auth.enabled=true
+                        // If AuthController bean is not active, these paths return 404 naturally.
+                        // Kept here so requests don't hit the catch-all .authenticated() rule.
                         .requestMatchers(
                                 "/api/auth/login",
-                                "/api/auth/register/user",
-                                "/api/auth/register/owner",
                                 "/api/auth/refresh",
-                                "/api/auth/logout",
-                                "/api/auth/google/**"
+                                "/api/auth/logout"
+                        ).permitAll()
+                        // Enhanced registration endpoints (registration.enhanced=true)
+                        .requestMatchers(
+                                "/api/auth/register/user",
+                                "/api/auth/register/owner"
                         ).permitAll()
                         // Supabase auth endpoints
                         .requestMatchers(

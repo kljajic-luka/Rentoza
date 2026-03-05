@@ -2,8 +2,6 @@ package org.example.rentoza.auth;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.example.rentoza.config.AppProperties;
-import org.example.rentoza.deprecated.auth.RefreshTokenServiceEnhanced;
-import org.example.rentoza.deprecated.jwt.JwtUtil;
 import org.example.rentoza.monitoring.MissingResourceMetrics;
 import org.example.rentoza.security.csrf.CustomCookieCsrfTokenRepository;
 import org.example.rentoza.security.password.PasswordPolicyService;
@@ -27,7 +25,6 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -44,7 +41,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Tests that Supabase /register rejects OWNER role and forces others to USER,
  * and that the legacy /api/auth/register returns 410 GONE.
  */
-@WebMvcTest(controllers = {SupabaseAuthController.class, AuthController.class})
+@WebMvcTest(controllers = {SupabaseAuthController.class})
 @AutoConfigureMockMvc(addFilters = false)
 @Import(SupabaseRegistrationRestrictionTest.TestConfig.class)
 @TestPropertySource(properties = {
@@ -82,16 +79,6 @@ class SupabaseRegistrationRestrictionTest {
 
     @MockBean
     private SupabaseJwtUtil supabaseJwtUtil;
-
-    // --- AuthController dependencies ---
-    @MockBean
-    private PasswordEncoder passwordEncoder;
-
-    @MockBean
-    private JwtUtil jwtUtil;
-
-    @MockBean
-    private RefreshTokenServiceEnhanced refreshTokenService;
 
     // --- @ControllerAdvice dependency ---
     @MockBean
@@ -228,13 +215,12 @@ class SupabaseRegistrationRestrictionTest {
     // =========================================================================
 
     @Test
-    @DisplayName("POST /api/auth/register → 410 GONE ENDPOINT_DEPRECATED")
-    void legacyRegister_returns410Gone() throws Exception {
+    @DisplayName("POST /api/auth/register → 404 (endpoint removed, no longer exists)")
+    void legacyRegister_returns404NotFound() throws Exception {
         mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
-                .andExpect(status().isGone())
-                .andExpect(jsonPath("$.error").value("ENDPOINT_DEPRECATED"));
+                .andExpect(status().isNotFound());
     }
 
     // =========================================================================

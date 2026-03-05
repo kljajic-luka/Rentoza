@@ -317,21 +317,9 @@ class SupabaseAuthControllerGateTest {
     }
 
     @Test
-    @DisplayName("P0: Register with OWNER role still works (valid self-registration role)")
-    void register_withOwnerRole_shouldPassThroughOwner() throws Exception {
-        User user = createUser(302L, "owner@test.com");
-        user.setRole(Role.OWNER);
-        UserResponseDTO userResponse = mock(UserResponseDTO.class);
-
-        SupabaseAuthResult pendingResult = SupabaseAuthResult.builder()
-                .user(user)
-                .emailConfirmationPending(true)
-                .build();
-
+    @DisplayName("P0: Register with OWNER role is rejected — OWNER must use /register/owner")
+    void register_withOwnerRole_shouldRejectWith400() throws Exception {
         when(passwordPolicyService.validatePasswordStrength(anyString())).thenReturn(java.util.List.of());
-        when(supabaseAuthService.register(eq("owner@test.com"), anyString(), anyString(), anyString(), eq(Role.OWNER)))
-                .thenReturn(pendingResult);
-        when(userService.toUserResponse(any(User.class))).thenReturn(userResponse);
 
         mockMvc.perform(post("/api/auth/supabase/register")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -344,9 +332,11 @@ class SupabaseAuthControllerGateTest {
                                   "role": "OWNER"
                                 }
                                 """))
-                .andExpect(status().isOk());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_ROLE"));
 
-        verify(supabaseAuthService).register(eq("owner@test.com"), anyString(), anyString(), anyString(), eq(Role.OWNER));
+        // OWNER must not reach SupabaseAuthService.register() — rejected at controller gate
+        verifyNoInteractions(supabaseAuthService);
     }
 
     @Test

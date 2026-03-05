@@ -1,4 +1,4 @@
-package org.example.rentoza.auth;
+package org.example.rentoza. auth;
 
 import org.example.rentoza.security.supabase.SupabaseAuthClient.SupabaseAuthException;
 import org.example.rentoza.security.supabase.SupabaseAuthService;

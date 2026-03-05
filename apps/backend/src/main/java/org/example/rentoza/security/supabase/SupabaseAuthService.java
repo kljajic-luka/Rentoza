@@ -17,15 +17,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Service for Supabase authentication operations.
@@ -61,15 +57,6 @@ import java.util.concurrent.ConcurrentHashMap;
 public class SupabaseAuthService {
 
     private static final Logger log = LoggerFactory.getLogger(SupabaseAuthService.class);
-    
-    /** State token expiration time in milliseconds (10 minutes) */
-    private static final long STATE_EXPIRATION_MS = 10 * 60 * 1000;
-    
-    /** Thread-safe store for OAuth state tokens with expiration */
-    private final ConcurrentHashMap<String, OAuthStateData> pendingOAuthStates = new ConcurrentHashMap<>();
-    
-    /** Secure random generator for state token creation */
-    private final SecureRandom secureRandom = new SecureRandom();
 
     private final SupabaseAuthClient supabaseClient;
     private final SupabaseUserMappingRepository mappingRepository;
@@ -461,40 +448,6 @@ public class SupabaseAuthService {
     // =====================================================
 
     /**
-     * Validates and consumes an OAuth state token.
-     * 
-     * <p>This method performs the following validations:
-     * <ul>
-     *   <li>State exists in pending states (CSRF protection)</li>
-     *   <li>State has not expired (replay attack prevention)</li>
-     *   <li>State is consumed (one-time use)</li>
-     * </ul>
-     * 
-     * @param state State token from callback
-     * @return OAuthStateData containing role and timestamp
-     * @throws SupabaseAuthException if validation fails
-     */
-    private OAuthStateData validateAndConsumeState(String state) {
-        String stateHash = hashState(state);
-        
-        OAuthStateData stateData = pendingOAuthStates.remove(stateHash);
-        if (stateData == null) {
-            log.warn("Invalid or expired OAuth state token");
-            throw new SupabaseAuthException("Invalid or expired authentication session. Please try again.");
-        }
-        
-        // Check expiration
-        if (System.currentTimeMillis() - stateData.createdAt() > STATE_EXPIRATION_MS) {
-            log.warn("Expired OAuth state token (created {}ms ago)", 
-                    System.currentTimeMillis() - stateData.createdAt());
-            throw new SupabaseAuthException("Authentication session has expired. Please try again.");
-        }
-        
-        log.debug("OAuth state validated and consumed for role={}", stateData.role());
-        return stateData;
-    }
-
-    /**
      * Resolves the OAuth redirect URI from configuration or provided value.
      * 
      * @param providedUri Optional redirect URI from request
@@ -586,38 +539,6 @@ public class SupabaseAuthService {
         url.append("&scopes=").append(URLEncoder.encode("email profile", StandardCharsets.UTF_8));
         
         return url.toString();
-    }
-
-    /**
-     * Creates SHA-256 hash of state token for secure storage.
-     * 
-     * @param state Plain state token
-     * @return Hex-encoded SHA-256 hash
-     */
-    private String hashState(String state) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(state.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hexString = new StringBuilder();
-            for (byte b : hash) {
-                String hex = Integer.toHexString(0xff & b);
-                if (hex.length() == 1) hexString.append('0');
-                hexString.append(hex);
-            }
-            return hexString.toString();
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
-    }
-
-    /**
-     * Cleans up expired OAuth state tokens.
-     * Called periodically to prevent memory leaks.
-     */
-    private void cleanupExpiredStates() {
-        long now = System.currentTimeMillis();
-        pendingOAuthStates.entrySet().removeIf(entry -> 
-                now - entry.getValue().createdAt() > STATE_EXPIRATION_MS);
     }
 
     /**
@@ -1164,15 +1085,4 @@ public class SupabaseAuthService {
      * @param state State token to validate during callback (stored by frontend)
      */
     public record GoogleAuthInitResult(String authorizationUrl, String state) {}
-
-    /**
-     * Internal state data for pending OAuth requests.
-     * 
-     * <p>Stores the role and creation timestamp for CSRF protection
-     * and state expiration validation.
-     * 
-     * @param role User role to assign after successful authentication
-     * @param createdAt Timestamp when state was created (for expiration)
-     */
-    private record OAuthStateData(Role role, long createdAt) {}
 }

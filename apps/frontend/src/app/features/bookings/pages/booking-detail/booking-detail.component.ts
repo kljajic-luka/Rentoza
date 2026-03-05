@@ -227,9 +227,16 @@ import {
               @if (agreement()?.vehicleSnapshot) {
                 <div class="agreement-vehicle">
                   <span class="terms-label">Vozilo:</span>
-                  <span>{{ agreement()?.vehicleSnapshot?.['brand'] }} {{ agreement()?.vehicleSnapshot?.['model'] }} ({{ agreement()?.vehicleSnapshot?.['year'] }})</span>
+                  <span
+                    >{{ agreement()?.vehicleSnapshot?.['brand'] }}
+                    {{ agreement()?.vehicleSnapshot?.['model'] }} ({{
+                      agreement()?.vehicleSnapshot?.['year']
+                    }})</span
+                  >
                   @if (agreement()?.vehicleSnapshot?.['licensePlate']) {
-                    <span class="license-plate">{{ agreement()?.vehicleSnapshot?.['licensePlate'] }}</span>
+                    <span class="license-plate">{{
+                      agreement()?.vehicleSnapshot?.['licensePlate']
+                    }}</span>
                   }
                 </div>
               }

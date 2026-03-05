@@ -5,8 +5,10 @@ import org.example.rentoza.config.AppProperties;
 import org.example.rentoza.deprecated.jwt.JwtUtil;
 import org.example.rentoza.deprecated.auth.RefreshTokenServiceEnhanced;
 import org.example.rentoza.deprecated.auth.RefreshTokenResult;
+import org.example.rentoza.monitoring.MissingResourceMetrics;
 import org.example.rentoza.user.Role;
 import org.example.rentoza.user.User;
+import org.example.rentoza.user.UserRepository;
 import org.example.rentoza.user.UserService;
 import org.example.rentoza.user.dto.UserResponseDTO;
 import org.junit.jupiter.api.DisplayName;
@@ -21,6 +23,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Optional;
@@ -36,6 +39,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(controllers = AuthController.class)
 @AutoConfigureMockMvc(addFilters = false)
 @Import(AuthControllerRefreshTest.TestAppPropertiesConfig.class)
+@TestPropertySource(properties = {
+        "app.cookie.domain=localhost",
+        "app.cookie.secure=false",
+        "app.cookie.sameSite=Lax",
+        "jwt.expiration=3600000",
+        "legacy.auth.enabled=true"
+})
 class AuthControllerRefreshTest {
 
     @Autowired
@@ -43,6 +53,9 @@ class AuthControllerRefreshTest {
 
     @MockBean
     private UserService userService;
+
+    @MockBean
+    private UserRepository userRepository;
 
     @MockBean
     private PasswordEncoder passwordEncoder;
@@ -53,8 +66,11 @@ class AuthControllerRefreshTest {
     @MockBean
     private RefreshTokenServiceEnhanced refreshTokenService;
 
+    @MockBean
+    private MissingResourceMetrics missingResourceMetrics;
+
     @Test
-    @DisplayName("/auth/refresh returns access token and hydrated user payload")
+    @DisplayName("/auth/refresh returns authenticated response with hydrated user and sets cookies")
     void refreshReturnsAccessTokenAndUser() throws Exception {
         User user = new User();
         user.setId(7L);
@@ -82,7 +98,7 @@ class AuthControllerRefreshTest {
                         .cookie(new Cookie("rentoza_refresh", "stored-refresh"))
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.accessToken").value("signed-access"))
+                .andExpect(jsonPath("$.authenticated").value(true))
                 .andExpect(jsonPath("$.user.email").value("cookie@example.com"))
                 .andExpect(jsonPath("$.user.firstName").value("Cookie"))
                 .andExpect(jsonPath("$.user.role").value("USER"))

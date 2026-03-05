@@ -24,7 +24,7 @@ export const ACCESS_TOKEN_COOKIE = 'access_token';
 /**
  * HttpOnly cookie containing the refresh token.
  * Note: Frontend cannot read this cookie (HttpOnly=true)
- * Backend sets this cookie with narrow path: /api/auth/refresh
+ * Backend sets this cookie with narrow path: /api/auth/supabase/refresh
  */
 export const REFRESH_TOKEN_COOKIE = 'rentoza_refresh';
 

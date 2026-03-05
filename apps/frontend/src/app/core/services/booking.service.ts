@@ -295,7 +295,13 @@ export interface RentalAgreementDTO {
   agreementType: string;
   contentHash: string;
   generatedAt: string;
-  status: 'PENDING' | 'OWNER_ACCEPTED' | 'RENTER_ACCEPTED' | 'FULLY_ACCEPTED' | 'EXPIRED' | 'VOIDED';
+  status:
+    | 'PENDING'
+    | 'OWNER_ACCEPTED'
+    | 'RENTER_ACCEPTED'
+    | 'FULLY_ACCEPTED'
+    | 'EXPIRED'
+    | 'VOIDED';
   ownerAccepted: boolean;
   ownerAcceptedAt: string | null;
   renterAccepted: boolean;

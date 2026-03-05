@@ -14,7 +14,8 @@ import java.time.LocalDate;
  * 
  * <p>This DTO supports dynamic field requirements based on role:
  * <ul>
- *   <li><b>USER (Renter):</b> phone, dateOfBirth, driverLicenseNumber, driverLicenseExpiryDate, driverLicenseCountry</li>
+ *   <li><b>USER (Renter):</b> phone, dateOfBirth (21+). Driver license data is
+ *       captured via document upload OCR at /verify-license (NOT here).</li>
  *   <li><b>OWNER (Individual):</b> phone, dateOfBirth, jmbg, bankAccountNumber (optional), agreements</li>
  *   <li><b>OWNER (Legal Entity):</b> phone, dateOfBirth, pib, bankAccountNumber (required), agreements</li>
  * </ul>
@@ -49,23 +50,32 @@ public class CompleteProfileRequestDTO {
     // ========== USER (RENTER) SPECIFIC FIELDS ==========
 
     /**
-     * Driver's license number - required for USER role.
-     * Will be stored encrypted.
+     * Driver's license number.
+     * @deprecated No longer collected at profile completion. License metadata is
+     * sourced exclusively from OCR during document processing at /verify-license.
+     * Field retained for backward compatibility; ignored by ProfileCompletionService.
      */
+    @Deprecated(since = "Phase 4 - License OCR Migration", forRemoval = true)
+    @com.fasterxml.jackson.annotation.JsonIgnore
     @Size(min = 1, max = 50, message = "Broj vozačke dozvole mora biti između 1 i 50 karaktera")
     private String driverLicenseNumber;
 
     /**
-     * Driver's license expiry date - required for USER role.
-     * Must be a future date (license must be valid).
+     * Driver's license expiry date.
+     * @deprecated No longer collected at profile completion. License metadata is
+     * sourced exclusively from OCR during document processing at /verify-license.
      */
+    @Deprecated(since = "Phase 4 - License OCR Migration", forRemoval = true)
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private LocalDate driverLicenseExpiryDate;
 
     /**
      * Country that issued the driver's license (ISO 3166-1 alpha-3).
-     * Default: "SRB" (Serbia).
-     * Examples: "SRB", "HRV", "DEU", "AUT"
+     * @deprecated No longer collected at profile completion. License metadata is
+     * sourced exclusively from OCR during document processing at /verify-license.
      */
+    @Deprecated(since = "Phase 4 - License OCR Migration", forRemoval = true)
+    @com.fasterxml.jackson.annotation.JsonIgnore
     @Size(min = 3, max = 3, message = "Država mora biti u ISO 3166-1 alpha-3 formatu (3 slova)")
     private String driverLicenseCountry = "SRB";
 

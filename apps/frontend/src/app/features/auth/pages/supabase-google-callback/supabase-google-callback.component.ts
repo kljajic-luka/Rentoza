@@ -1,5 +1,12 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, OnInit, inject, isDevMode, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  OnInit,
+  inject,
+  isDevMode,
+  signal,
+} from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 
 import { AuthService } from '@core/auth/auth.service';
@@ -119,7 +126,8 @@ export class SupabaseGoogleCallbackComponent implements OnInit {
       const errorDescFromFragment = fragmentParams.get('error_description');
 
       if (errorFromFragment) {
-        console.error('Google OAuth error (fragment):', errorFromFragment, errorDescFromFragment);
+        if (isDevMode())
+          console.error('Google OAuth error (fragment):', errorFromFragment, errorDescFromFragment);
         this.handleError(errorDescFromFragment || 'Google prijavljivanje nije uspelo.');
         return;
       }
@@ -139,19 +147,21 @@ export class SupabaseGoogleCallbackComponent implements OnInit {
 
     // Handle OAuth2 error from provider
     if (error) {
-      console.error('Google OAuth error:', error, errorDescription);
+      if (isDevMode()) console.error('Google OAuth error:', error, errorDescription);
       this.handleError(errorDescription || 'Google prijavljivanje nije uspelo.');
       return;
     }
 
     // Validate required parameters
     if (!code) {
-      console.error('❌ Missing authorization code in callback');
-      console.error('❌ No tokens in fragment, no code in query params');
-      console.error('❌ This usually means Supabase redirect URL is not configured correctly');
-      console.error(
-        '❌ Check Supabase Dashboard → Authentication → URL Configuration → Redirect URLs',
-      );
+      if (isDevMode()) {
+        console.error('❌ Missing authorization code in callback');
+        console.error('❌ No tokens in fragment, no code in query params');
+        console.error('❌ This usually means Supabase redirect URL is not configured correctly');
+        console.error(
+          '❌ Check Supabase Dashboard → Authentication → URL Configuration → Redirect URLs',
+        );
+      }
       this.handleError('Autentifikacija nije uspela. Proverite konfiguraciju.');
       return;
     }
@@ -198,7 +208,7 @@ export class SupabaseGoogleCallbackComponent implements OnInit {
         this.handleSuccessfulAuth(user);
       },
       error: (err) => {
-        console.error('Implicit flow callback failed:', err);
+        if (isDevMode()) console.error('Implicit flow callback failed:', err);
         this.handleError(err.message || 'Prijavljivanje putem Google-a nije uspelo.');
       },
     });
@@ -218,7 +228,7 @@ export class SupabaseGoogleCallbackComponent implements OnInit {
         this.handleSuccessfulAuth(user);
       },
       error: (err) => {
-        console.error('Google OAuth callback failed:', err);
+        if (isDevMode()) console.error('Google OAuth callback failed:', err);
         this.handleError(err.message || 'Prijavljivanje putem Google-a nije uspelo.');
       },
     });
@@ -231,7 +241,8 @@ export class SupabaseGoogleCallbackComponent implements OnInit {
     // Check for INCOMPLETE registration status
     const enhancedUser = user as EnhancedUserProfile;
     if (enhancedUser.registrationStatus === 'INCOMPLETE') {
-      if (isDevMode()) console.log('📝 User has INCOMPLETE registration - redirecting to profile completion');
+      if (isDevMode())
+        console.log('📝 User has INCOMPLETE registration - redirecting to profile completion');
 
       // Use ownerIntent from URL param — backend always returns USER role,
       // so user.roles won't contain OWNER at this point. Fallback kept for
@@ -247,7 +258,9 @@ export class SupabaseGoogleCallbackComponent implements OnInit {
 
     // Load favorites for the authenticated user
     this.favoriteService.loadFavoritedCarIds().subscribe({
-      error: (err) => console.warn('Failed to preload favorites after OAuth login', err),
+      error: (err) => {
+        if (isDevMode()) console.warn('Failed to preload favorites after OAuth login', err);
+      },
     });
 
     // Start session watcher

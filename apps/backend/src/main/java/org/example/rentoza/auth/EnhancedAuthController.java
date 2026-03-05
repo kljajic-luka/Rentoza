@@ -116,12 +116,18 @@ public class EnhancedAuthController {
 
             // Check for existing email in Rentoza
             if (userRepository.findByEmail(dto.getEmail().toLowerCase()).isPresent()) {
-                return ResponseEntity.badRequest().body(Map.of("error", "Email already registered"));
+                return ResponseEntity.status(409).body(Map.of(
+                        "error", "EMAIL_ALREADY_REGISTERED",
+                        "message", "An account with this email already exists"
+                ));
             }
 
             // Check for existing phone
             if (userRepository.findByPhone(dto.getPhone()).isPresent()) {
-                return ResponseEntity.badRequest().body(Map.of("error", "Phone already registered"));
+                return ResponseEntity.status(409).body(Map.of(
+                        "error", "PHONE_ALREADY_REGISTERED",
+                        "message", "An account with this phone number already exists"
+                ));
             }
 
             // Register via Supabase Auth (creates Supabase user + Rentoza user + mapping)
@@ -138,6 +144,13 @@ public class EnhancedAuthController {
             user.setPhone(dto.getPhone());
             user.setDateOfBirth(dto.getDateOfBirth());
             user.setDobVerified(false); // User-provided, not verified
+
+            // Stamp consent provenance for GDPR compliance (same as owner registration)
+            user.setConsentIp(ipExtractor.extractClientIp(request));
+            user.setConsentUserAgent(truncate(request.getHeader("User-Agent"), 500));
+            user.setConsentPolicyVersion(appProperties.getConsent().getPolicyVersion());
+            user.setConsentPolicyHash(appProperties.getConsent().getPolicyHash());
+
             user = userRepository.save(user);
 
             log.info("User registered via Supabase: email={}, emailConfirmationPending={}", 
@@ -191,12 +204,18 @@ public class EnhancedAuthController {
 
             // Check for existing email
             if (userRepository.findByEmail(dto.getEmail().toLowerCase()).isPresent()) {
-                return ResponseEntity.badRequest().body(Map.of("error", "Email already registered"));
+                return ResponseEntity.status(409).body(Map.of(
+                        "error", "EMAIL_ALREADY_REGISTERED",
+                        "message", "An account with this email already exists"
+                ));
             }
 
             // Check for existing phone
             if (userRepository.findByPhone(dto.getPhone()).isPresent()) {
-                return ResponseEntity.badRequest().body(Map.of("error", "Phone already registered"));
+                return ResponseEntity.status(409).body(Map.of(
+                        "error", "PHONE_ALREADY_REGISTERED",
+                        "message", "An account with this phone number already exists"
+                ));
             }
 
             // Register via Supabase Auth (creates Supabase user + basic Rentoza user + mapping)
@@ -296,7 +315,10 @@ public class EnhancedAuthController {
 
             // Check for existing phone (excluding current user)
             if (userRepository.existsByPhoneAndIdNot(dto.getPhone(), user.getId())) {
-                return ResponseEntity.badRequest().body(Map.of("error", "Phone already registered"));
+                return ResponseEntity.status(409).body(Map.of(
+                        "error", "PHONE_ALREADY_REGISTERED",
+                        "message", "An account with this phone number already exists"
+                ));
             }
 
             // Update basic info
@@ -475,7 +497,7 @@ public class EnhancedAuthController {
         var builder = ResponseCookie.from(CookieConstants.REFRESH_TOKEN, token)
                 .httpOnly(true)
                 .secure(appProperties.getCookie().isSecure())
-                .path("/api/auth/supabase")
+                .path("/api/auth/supabase/refresh")  // Narrowed to match SupabaseAuthController
                 .sameSite(appProperties.getCookie().getSameSite())
                 .maxAge(Duration.ofDays(14));
 

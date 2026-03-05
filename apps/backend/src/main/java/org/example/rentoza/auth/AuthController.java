@@ -20,6 +20,7 @@ import org.example.rentoza.user.dto.UserResponseDTO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -32,14 +33,20 @@ import java.time.Duration;
 import java.util.Map;
 
 /**
- * Authentication endpoints for user registration, login, token refresh, and logout.
- * Uses JWT for access tokens and secure HttpOnly cookies for refresh tokens.
+ * Legacy authentication endpoints for user login, token refresh, and logout.
+ * Uses custom JWT for access tokens and secure HttpOnly cookies for refresh tokens.
+ * 
+ * <p><b>DEPRECATED:</b> This controller is superseded by {@link SupabaseAuthController}
+ * and {@link EnhancedAuthController}. Guarded behind {@code legacy.auth.enabled=true}
+ * so it is inactive in production unless explicitly opted-in (e.g., for migration testing).
  * 
  * SECURITY: All cookie names are centralized in CookieConstants to prevent typos
  * and ensure consistency across the codebase.
  */
+@Deprecated(since = "Phase 4 - Supabase Migration", forRemoval = true)
 @RestController
 @RequestMapping("/api/auth")
+@ConditionalOnProperty(name = "legacy.auth.enabled", havingValue = "true", matchIfMissing = false)
 public class AuthController {
 
     private static final Logger log = LoggerFactory.getLogger(AuthController.class);

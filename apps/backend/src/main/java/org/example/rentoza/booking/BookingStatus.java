@@ -195,7 +195,29 @@ public enum BookingStatus {
             CHECK_IN_HOST_COMPLETE,
             CHECK_IN_COMPLETE,
             CHECK_IN_DISPUTE,
-            IN_TRIP
+            IN_TRIP,
+            CHECKOUT_OPEN,
+            CHECKOUT_GUEST_COMPLETE,
+            CHECKOUT_HOST_COMPLETE
+        );
+
+        /**
+         * Blocking statuses used during host approval.
+         *
+         * <p>Pending requests are intentionally excluded so one pending request does not
+         * prevent another from being approved first. Once a booking is approved or has
+         * progressed into check-in / checkout, it must block overlapping approvals.
+         */
+        public static final Set<BookingStatus> APPROVAL_BLOCKING_STATUSES = EnumSet.of(
+            ACTIVE,
+            CHECK_IN_OPEN,
+            CHECK_IN_HOST_COMPLETE,
+            CHECK_IN_COMPLETE,
+            CHECK_IN_DISPUTE,
+            IN_TRIP,
+            CHECKOUT_OPEN,
+            CHECKOUT_GUEST_COMPLETE,
+            CHECKOUT_HOST_COMPLETE
     );
 
     // ========== HELPER METHODS ==========

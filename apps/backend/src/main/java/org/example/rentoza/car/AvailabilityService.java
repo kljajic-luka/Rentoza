@@ -459,8 +459,9 @@ public class AvailabilityService {
             return false;
         }
 
-        // 2. Fetch all confirmed bookings for this car
-        // Uses BookingRepository.findPublicBookingsForCar which returns ACTIVE + COMPLETED bookings only
+        // 2. Fetch all blocking bookings for this car.
+        // This stays aligned with BookingStatus.BLOCKING_STATUSES so public reads do not
+        // drift from create/approval overlap enforcement.
         List<Booking> confirmedBookings = bookingRepository.findPublicBookingsForCar(car.getId());
 
         // Check for overlaps

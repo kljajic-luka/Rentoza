@@ -129,13 +129,17 @@ class AvailabilitySearchBatchTest extends AbstractIntegrationTest {
     }
 
     private Booking createBlockingBooking(Car car, LocalDateTime start, LocalDateTime end) {
+        return createBlockingBooking(car, start, end, BookingStatus.ACTIVE);
+    }
+
+    private Booking createBlockingBooking(Car car, LocalDateTime start, LocalDateTime end, BookingStatus status) {
         User renter = userRepository.findById(renterId).orElseThrow();
         Booking booking = new Booking();
         booking.setCar(car);
         booking.setRenter(renter);
         booking.setStartTime(start);
         booking.setEndTime(end);
-        booking.setStatus(BookingStatus.ACTIVE);
+        booking.setStatus(status);
         booking.setTotalPrice(new BigDecimal("300.00"));
         return bookingRepository.save(booking);
     }
@@ -320,5 +324,56 @@ class AvailabilitySearchBatchTest extends AbstractIntegrationTest {
         Page<Car> result = availabilityService.searchAvailableCars(request);
 
         assertThat(result.getTotalElements()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("TC-BATCH-04: Checkout-phase bookings are returned by batch booking overlap query")
+    void checkoutPhaseBookingsBlockBatchAvailabilitySearch() {
+        LocalDateTime searchStart = LocalDateTime.now().plusDays(10).withHour(9).withMinute(0);
+        LocalDateTime searchEnd = searchStart.plusDays(3);
+
+        tx.execute(status -> {
+            createApprovedCar("BMW", "Available", "beograd");
+
+            Car checkoutOpenCar = createApprovedCar("BMW", "CheckoutOpen", "beograd");
+            createBlockingBooking(checkoutOpenCar, searchStart.plusHours(1), searchEnd.minusHours(1),
+                    BookingStatus.CHECKOUT_OPEN);
+
+            Car guestCompleteCar = createApprovedCar("BMW", "GuestComplete", "beograd");
+            createBlockingBooking(guestCompleteCar, searchStart.plusHours(1), searchEnd.minusHours(1),
+                    BookingStatus.CHECKOUT_GUEST_COMPLETE);
+
+            Car hostCompleteCar = createApprovedCar("BMW", "HostComplete", "beograd");
+            createBlockingBooking(hostCompleteCar, searchStart.plusHours(1), searchEnd.minusHours(1),
+                    BookingStatus.CHECKOUT_HOST_COMPLETE);
+
+            return null;
+        });
+
+        java.util.Map<String, Long> carIdsByModel = tx.execute(status -> carRepository.findAll().stream()
+                .collect(java.util.stream.Collectors.toMap(Car::getModel, Car::getId)));
+
+        assertThat(bookingRepository.findCarIdsWithOverlappingBookings(
+                carIdsByModel.values(),
+                searchStart,
+                searchEnd))
+                .containsExactlyInAnyOrder(
+                        carIdsByModel.get("CheckoutOpen"),
+                        carIdsByModel.get("GuestComplete"),
+                        carIdsByModel.get("HostComplete"));
+
+        AvailabilitySearchRequestDTO request = AvailabilitySearchRequestDTO.builder()
+                .location("beograd")
+                .startTime(searchStart)
+                .endTime(searchEnd)
+                .page(0)
+                .size(50)
+                .build();
+        Page<Car> result = availabilityService.searchAvailableCars(request);
+
+        assertThat(result.getTotalElements()).isEqualTo(1);
+        assertThat(result.getContent())
+                .extracting(Car::getModel)
+                .containsExactly("Available");
     }
 }

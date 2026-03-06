@@ -306,6 +306,40 @@ class BookingDoubleBookingPreventionTest extends AbstractIntegrationTest {
             // Assert
             assertThat(hasOverlap).isTrue();
         }
+
+        @Test
+        @DisplayName("Checkout-phase bookings cause overlap")
+        void checkoutPhaseBookingsCauseOverlap() {
+            BookingStatus[] checkoutStatuses = {
+                BookingStatus.CHECKOUT_OPEN,
+                BookingStatus.CHECKOUT_GUEST_COMPLETE,
+                BookingStatus.CHECKOUT_HOST_COMPLETE
+            };
+
+            for (BookingStatus status : checkoutStatuses) {
+                Booking booking = new Booking();
+                booking.setRenter(renter1);
+                booking.setCar(car);
+                booking.setStatus(status);
+                booking.setStartTime(LocalDateTime.of(2026, 2, 10, 10, 0));
+                booking.setEndTime(LocalDateTime.of(2026, 2, 15, 10, 0));
+                booking.setTotalPrice(BigDecimal.valueOf(17500));
+                booking = bookingRepository.save(booking);
+
+                boolean hasOverlap = bookingRepository.existsOverlappingBookingsWithLock(
+                    car.getId(),
+                    LocalDateTime.of(2026, 2, 12, 10, 0),
+                    LocalDateTime.of(2026, 2, 18, 10, 0)
+                );
+
+                assertThat(hasOverlap)
+                    .as("Expected overlap while incumbent booking is in %s", status)
+                    .isTrue();
+
+                bookingRepository.delete(booking);
+                bookingRepository.flush();
+            }
+        }
     }
 
     @Nested

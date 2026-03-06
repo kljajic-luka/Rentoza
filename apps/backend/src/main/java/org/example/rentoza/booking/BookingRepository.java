@@ -507,6 +507,7 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
      * Blocking statuses (already approved/in-progress):
      * - ACTIVE: Confirmed, waiting for check-in
      * - CHECK_IN_OPEN, CHECK_IN_HOST_COMPLETE, CHECK_IN_COMPLETE: Check-in in progress
+     * - CHECKOUT_OPEN, CHECKOUT_GUEST_COMPLETE, CHECKOUT_HOST_COMPLETE: Return in progress
      * - IN_TRIP: Trip is happening
      * 
      * COMPLETED/NO_SHOW bookings do NOT block - those times are now free.
@@ -517,25 +518,29 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
      * @return true if there are conflicting in-progress bookings
      */
     @Query("SELECT COUNT(b) > 0 FROM Booking b WHERE b.car.id = :carId " +
-           "AND b.status IN ('ACTIVE', 'CHECK_IN_OPEN', 'CHECK_IN_HOST_COMPLETE', 'CHECK_IN_COMPLETE', 'IN_TRIP') " +
+          "AND b.status IN :statuses " +
            "AND b.startTime < :endTime AND b.endTime > :startTime")
     boolean existsConflictingBookings(
             @Param("carId") Long carId,
             @Param("startTime") LocalDateTime startTime,
-            @Param("endTime") LocalDateTime endTime
+           @Param("endTime") LocalDateTime endTime,
+           @Param("statuses") Collection<BookingStatus> statuses
     );
+
+    /**
+     * Convenience overload using the canonical approval blocking status set.
+     */
+    default boolean existsConflictingBookings(Long carId, LocalDateTime startTime, LocalDateTime endTime) {
+       return existsConflictingBookings(carId, startTime, endTime, BookingStatus.APPROVAL_BLOCKING_STATUSES);
+    }
 
     /**
      * Find bookings for public calendar view.
      * Returns blocking bookings to show unavailable times.
      * 
      * Blocking Statuses (shown as unavailable):
-     * - PENDING_APPROVAL: Awaiting host decision (blocks to prevent overbooking)
-     * - ACTIVE: Confirmed, waiting for check-in window
-     * - CHECK_IN_OPEN: Check-in window is open
-     * - CHECK_IN_HOST_COMPLETE: Host completed check-in
-     * - CHECK_IN_COMPLETE: Both parties completed check-in
-     * - IN_TRIP: Trip is in progress
+       * Uses {@link BookingStatus#BLOCKING_STATUSES}, including checkout-in-progress
+       * states, so public availability stays aligned with write-side overlap guards.
      * 
      * Non-Blocking Statuses (EXCLUDED - times are free):
      * - CANCELLED: Trip was cancelled
@@ -549,9 +554,19 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
      */
     @Query("SELECT b FROM Booking b " +
            "WHERE b.car.id = :carId " +
-           "AND b.status IN ('PENDING_APPROVAL', 'ACTIVE', 'CHECK_IN_OPEN', 'CHECK_IN_HOST_COMPLETE', 'CHECK_IN_COMPLETE', 'IN_TRIP') " +
+           "AND b.status IN :statuses " +
            "ORDER BY b.startTime ASC")
-    List<Booking> findPublicBookingsForCar(@Param("carId") Long carId);
+    List<Booking> findPublicBookingsForCar(
+            @Param("carId") Long carId,
+            @Param("statuses") Collection<BookingStatus> statuses
+    );
+
+    /**
+     * Convenience overload using the canonical blocking status set.
+     */
+    default List<Booking> findPublicBookingsForCar(Long carId) {
+        return findPublicBookingsForCar(carId, BookingStatus.BLOCKING_STATUSES);
+    }
 
     // ========== RENTER AVAILABILITY LOGIC (Single-Booking Constraint) ==========
 
@@ -569,8 +584,9 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
      * Status Filter (blocking statuses only):
      * - PENDING_APPROVAL: Request awaiting host decision (blocks user's times)
      * - ACTIVE: Confirmed, waiting for check-in window
-     * - CHECK_IN_OPEN, CHECK_IN_HOST_COMPLETE, CHECK_IN_COMPLETE: Check-in in progress
-     * - IN_TRIP: Trip is in progress
+       * - CHECK_IN_OPEN, CHECK_IN_HOST_COMPLETE, CHECK_IN_COMPLETE: Check-in in progress
+       * - IN_TRIP: Trip is in progress
+       * - CHECKOUT_OPEN, CHECKOUT_GUEST_COMPLETE, CHECKOUT_HOST_COMPLETE: Checkout in progress
      * 
      * Non-blocking statuses:
      * - CANCELLED, DECLINED, COMPLETED, EXPIRED, EXPIRED_SYSTEM, NO_SHOW_HOST, NO_SHOW_GUEST
@@ -1283,9 +1299,8 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
     /**
      * Batch: find car IDs that have at least one overlapping booking in blocking status.
      *
-     * Blocking statuses (same as {@link #existsOverlappingBookings}):
-     * PENDING_APPROVAL, ACTIVE, CHECK_IN_OPEN, CHECK_IN_HOST_COMPLETE,
-     * CHECK_IN_COMPLETE, IN_TRIP
+     * Blocking statuses use {@link BookingStatus#BLOCKING_STATUSES} so the batch
+     * search path stays aligned with create/approval overlap enforcement.
      *
      * Overlap formula: (booking.startTime < requestedEnd) AND (booking.endTime > requestedStart)
      *
@@ -1296,12 +1311,23 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
      */
     @Query("SELECT DISTINCT b.car.id FROM Booking b " +
            "WHERE b.car.id IN :carIds " +
-           "AND b.status IN ('PENDING_APPROVAL', 'ACTIVE', 'CHECK_IN_OPEN', " +
-           "    'CHECK_IN_HOST_COMPLETE', 'CHECK_IN_COMPLETE', 'IN_TRIP') " +
+          "AND b.status IN :statuses " +
            "AND b.startTime < :endTime AND b.endTime > :startTime")
     List<Long> findCarIdsWithOverlappingBookings(
             @Param("carIds") Collection<Long> carIds,
             @Param("startTime") LocalDateTime startTime,
-            @Param("endTime") LocalDateTime endTime
+           @Param("endTime") LocalDateTime endTime,
+           @Param("statuses") Collection<BookingStatus> statuses
     );
+
+    /**
+     * Convenience overload using the canonical blocking status set.
+     */
+    default List<Long> findCarIdsWithOverlappingBookings(
+           Collection<Long> carIds,
+           LocalDateTime startTime,
+           LocalDateTime endTime
+    ) {
+       return findCarIdsWithOverlappingBookings(carIds, startTime, endTime, BookingStatus.BLOCKING_STATUSES);
+    }
 }

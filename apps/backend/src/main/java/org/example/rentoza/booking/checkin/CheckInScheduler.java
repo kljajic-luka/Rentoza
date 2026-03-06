@@ -263,11 +263,11 @@ public class CheckInScheduler {
                             log.info("[CheckIn] Deposit authorized for booking {} at check-in window opening: {}",
                                     booking.getId(), depositResult.getAuthorizationId());
                         } else {
-                            log.warn("[CheckIn] Deposit auth FAILED for booking {} — check-in NOT blocked: {} ({})",
+                            log.warn("[CheckIn] Deposit auth failed for booking {} — handoff will remain blocked until authorization succeeds: {} ({})",
                                     booking.getId(), depositResult.getErrorMessage(), depositResult.getErrorCode());
                         }
                     } catch (Exception depositEx) {
-                        log.error("[CheckIn] Unexpected error during deposit auth for booking {} — check-in NOT blocked: {}",
+                        log.error("[CheckIn] Unexpected error during deposit auth for booking {} — handoff remains blocked until resolved: {}",
                                 booking.getId(), depositEx.getMessage(), depositEx);
                     }
 

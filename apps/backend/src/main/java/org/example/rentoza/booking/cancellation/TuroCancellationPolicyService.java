@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingStatus;
+import org.example.rentoza.booking.util.BookingDurationPolicy;
 import org.example.rentoza.booking.dto.CancellationPreviewDTO;
 import org.example.rentoza.booking.dto.CancellationResultDTO;
 import org.example.rentoza.user.User;
@@ -219,7 +220,7 @@ public class TuroCancellationPolicyService implements CancellationPolicyService 
         record = cancellationRecordRepository.save(record);
         
         // Update booking state
-        booking.setStatus(BookingStatus.CANCELLED);
+        booking.setStatus(BookingStatus.CANCELLATION_PENDING_SETTLEMENT);
         booking.setCancelledBy(cancelledBy);
         booking.setCancelledAt(now);
         booking.setCancellationRecord(record);
@@ -308,10 +309,13 @@ public class TuroCancellationPolicyService implements CancellationPolicyService 
     }
 
     private int calculateTripDays(Booking booking) {
-        if (booking.getStartDate() == null || booking.getEndDate() == null) {
+        if (booking.getStartTime() == null || booking.getEndTime() == null) {
             return 1;
         }
-        return (int) ChronoUnit.DAYS.between(booking.getStartDate(), booking.getEndDate()) + 1;
+        return Math.toIntExact(
+            BookingDurationPolicy.calculate(booking.getStartTime(), booking.getEndTime())
+                .cancellationCalendarDaysInclusive()
+        );
     }
 
     private BigDecimal calculateDailyRate(Booking booking) {

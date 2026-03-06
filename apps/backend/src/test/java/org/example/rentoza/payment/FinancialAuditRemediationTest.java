@@ -221,13 +221,16 @@ class FinancialAuditRemediationTest {
         @Mock PaymentTransactionRepository txRepository;
         @Mock BookingRepository bookingRepository;
         @Mock PayoutLedgerRepository payoutLedgerRepository;
+        @Mock TripExtensionRepository tripExtensionRepository;
+        @Mock NotificationService notificationService;
 
         ProviderEventService service;
 
         @BeforeEach
         void setUp() throws Exception {
             service = new ProviderEventService(
-                    eventRepository, txRepository, bookingRepository, payoutLedgerRepository);
+                    eventRepository, txRepository, bookingRepository, payoutLedgerRepository,
+                    tripExtensionRepository, notificationService);
             // Set webhook secret and max age via reflection
             var secretField = ProviderEventService.class.getDeclaredField("webhookSecret");
             secretField.setAccessible(true);
@@ -931,13 +934,16 @@ class FinancialAuditRemediationTest {
         @Mock PaymentTransactionRepository txRepository;
         @Mock BookingRepository bookingRepository;
         @Mock PayoutLedgerRepository payoutLedgerRepository;
+        @Mock TripExtensionRepository tripExtensionRepository;
+        @Mock NotificationService notificationService;
 
         ProviderEventService service;
 
         @BeforeEach
         void setUp() throws Exception {
             service = new ProviderEventService(
-                    eventRepository, txRepository, bookingRepository, payoutLedgerRepository);
+                    eventRepository, txRepository, bookingRepository, payoutLedgerRepository,
+                    tripExtensionRepository, notificationService);
             var secretField = ProviderEventService.class.getDeclaredField("webhookSecret");
             secretField.setAccessible(true);
             secretField.set(service, "");

@@ -23,6 +23,8 @@ import org.example.rentoza.notification.NotificationService;
 import org.example.rentoza.notification.NotificationType;
 import org.example.rentoza.notification.dto.CreateNotificationRequestDTO;
 import org.example.rentoza.payment.BookingPaymentService;
+import org.example.rentoza.payment.ChargeLifecycleStatus;
+import org.example.rentoza.payment.DepositLifecycleStatus;
 import org.example.rentoza.payment.PaymentProvider.PaymentResult;
 import org.example.rentoza.security.LockboxEncryptionService;
 import org.example.rentoza.user.User;
@@ -894,23 +896,34 @@ public class CheckInService {
                 // In-person handshake - require license verification
                 validateLicenseVerification(booking);
             }
-            
-            // Start the trip!
+
+            validateFinancialPreconditionsForTripStart(booking);
+
+            PaymentResult captureResult = bookingPaymentService.captureBookingPaymentNow(booking.getId());
+            if (!captureResult.isSuccess()) {
+                throw new IllegalStateException("Naplata rezervacije nije uspela. Trip ne može da počne dok plaćanje ne bude validno.");
+            }
+
+            // Start the trip only after successful capture.
             booking.setStatus(BookingStatus.IN_TRIP);
             booking.setHandshakeCompletedAt(Instant.now());
             booking.setTripStartedAt(Instant.now());
 
-            eventService.recordEvent(
-                booking,
-                booking.getCheckInSessionId(),
-                CheckInEventType.TRIP_STARTED,
-                userId,
-                isHost ? CheckInActorRole.HOST : CheckInActorRole.GUEST,
-                Map.of(
-                    "handshakeMethod", booking.getLockboxCodeEncrypted() != null ? "REMOTE" : "IN_PERSON",
-                    "geofenceStatus", booking.getGeofenceDistanceMeters() != null ? "PASSED" : "N/A"
-                )
-            );
+            try {
+                eventService.recordEvent(
+                    booking,
+                    booking.getCheckInSessionId(),
+                    CheckInEventType.TRIP_STARTED,
+                    userId,
+                    isHost ? CheckInActorRole.HOST : CheckInActorRole.GUEST,
+                    Map.of(
+                        "handshakeMethod", booking.getLockboxCodeEncrypted() != null ? "REMOTE" : "IN_PERSON",
+                        "geofenceStatus", booking.getGeofenceDistanceMeters() != null ? "PASSED" : "N/A"
+                    )
+                );
+            } catch (Exception e) {
+                log.error("[CheckIn] Failed to record TRIP_STARTED event for booking {}", booking.getId(), e);
+            }
 
             handshakeCompletedCounter.increment();
 
@@ -923,20 +936,10 @@ public class CheckInService {
             log.info("[CheckIn] Trip started for booking {} - handshake complete", booking.getId());
 
             // Notify both parties
-            notifyTripStarted(booking);
-
-            // P1-FIX: Trigger payment capture at the physical handoff point rather than
-            // relying solely on the T-24h scheduler. Runs in REQUIRES_NEW so a transient
-            // capture failure cannot roll back the IN_TRIP transition.
-            // The PaymentLifecycleScheduler is the authoritative fallback for any capture
-            // that does not complete synchronously here.
-            final Long captureBookingId = booking.getId();
             try {
-                bookingPaymentService.captureBookingPaymentNow(captureBookingId);
-                log.info("[CheckIn] Payment captured at trip start for booking {}", captureBookingId);
-            } catch (Exception capEx) {
-                log.warn("[CheckIn] Capture at trip start was not successful for booking {} — " +
-                        "scheduler will retry: {}", captureBookingId, capEx.getMessage());
+                notifyTripStarted(booking);
+            } catch (Exception e) {
+                log.error("[CheckIn] Failed to send trip-start notifications for booking {}", booking.getId(), e);
             }
             log.info(
                 "[CheckIn] Handshake decision: bookingId={}, actorRole={}, hostConfirmed={}, guestConfirmed={}, resultingStatus={}",
@@ -952,6 +955,31 @@ public class CheckInService {
         bookingRepository.save(booking);
         
         return mapToStatusDTO(booking, userId);
+    }
+
+    private void validateFinancialPreconditionsForTripStart(Booking booking) {
+        ChargeLifecycleStatus chargeStatus = booking.getChargeLifecycleStatus();
+        if (chargeStatus != ChargeLifecycleStatus.AUTHORIZED && chargeStatus != ChargeLifecycleStatus.CAPTURE_FAILED) {
+            throw new IllegalStateException("Trip start blocked: booking payment authorization is not collectible.");
+        }
+
+        Instant authExpiresAt = booking.getBookingAuthExpiresAt();
+        if (authExpiresAt != null && authExpiresAt.isBefore(Instant.now())) {
+            throw new IllegalStateException("Trip start blocked: payment authorization has expired. Reauthorization required.");
+        }
+
+        if (booking.getSecurityDeposit() != null && booking.getSecurityDeposit().compareTo(BigDecimal.ZERO) > 0) {
+            if (booking.getDepositLifecycleStatus() != DepositLifecycleStatus.AUTHORIZED
+                    || booking.getDepositAuthorizationId() == null
+                    || booking.getDepositAuthorizationId().isBlank()) {
+                throw new IllegalStateException("Trip start blocked: security deposit authorization is required before handoff.");
+            }
+
+            Instant depositAuthExpiresAt = booking.getDepositAuthExpiresAt();
+            if (depositAuthExpiresAt != null && depositAuthExpiresAt.isBefore(Instant.now())) {
+                throw new IllegalStateException("Trip start blocked: security deposit authorization has expired.");
+            }
+        }
     }
 
     // ========== NO-SHOW HANDLING ==========

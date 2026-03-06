@@ -2,6 +2,10 @@ package org.example.rentoza.payment;
 
 import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingRepository;
+import org.example.rentoza.booking.extension.TripExtension;
+import org.example.rentoza.booking.extension.TripExtensionRepository;
+import org.example.rentoza.booking.extension.TripExtensionStatus;
+import org.example.rentoza.notification.NotificationService;
 import org.example.rentoza.payment.PaymentTransaction.PaymentOperation;
 import org.example.rentoza.payment.PaymentTransaction.PaymentTransactionStatus;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,6 +39,12 @@ class ProviderEventServiceTest {
 
     @Mock
     private BookingRepository bookingRepository;
+
+    @Mock
+    private TripExtensionRepository tripExtensionRepository;
+
+    @Mock
+    private NotificationService notificationService;
 
     @InjectMocks
     private ProviderEventService service;
@@ -74,6 +84,27 @@ class ProviderEventServiceTest {
         tx.setOperation(PaymentOperation.AUTHORIZE);
         tx.setProviderAuthId(AUTH_ID);
         return tx;
+    }
+
+    private PaymentTransaction redirectRequiredChargeTx() {
+        PaymentTransaction tx = new PaymentTransaction();
+        tx.setId(2L);
+        tx.setBookingId(BOOKING_ID);
+        tx.setStatus(PaymentTransactionStatus.REDIRECT_REQUIRED);
+        tx.setOperation(PaymentOperation.CHARGE);
+        tx.setProviderReference(AUTH_ID);
+        tx.setIdempotencyKey("pay_ext_100_e1");
+        return tx;
+    }
+
+    private TripExtension paymentPendingExtension(Booking booking) {
+        TripExtension extension = new TripExtension();
+        extension.setId(1L);
+        extension.setBooking(booking);
+        extension.setStatus(TripExtensionStatus.PAYMENT_PENDING);
+        extension.setRequestedEndDate(java.time.LocalDate.now().plusDays(2));
+        extension.setAdditionalCost(java.math.BigDecimal.valueOf(1000));
+        return extension;
     }
 
     // ========================================================================
@@ -148,6 +179,33 @@ class ProviderEventServiceTest {
             assertThat(result).isTrue();
             assertThat(booking.getChargeLifecycleStatus()).isEqualTo(ChargeLifecycleStatus.AUTHORIZED);
         }
+
+        @Test
+        @DisplayName("Extension CHARGE confirmation should settle tx without mutating booking lifecycle")
+        void shouldConfirmChargeWithoutChangingBookingLifecycle() {
+            Booking booking = bookingInState(ChargeLifecycleStatus.CAPTURED);
+            booking.setEndTime(java.time.LocalDateTime.now().plusDays(1));
+            booking.setTotalPrice(java.math.BigDecimal.valueOf(5000));
+            org.example.rentoza.user.User renter = new org.example.rentoza.user.User();
+            renter.setId(10L);
+            booking.setRenter(renter);
+            TripExtension extension = paymentPendingExtension(booking);
+            when(bookingRepository.findById(BOOKING_ID)).thenReturn(Optional.of(booking));
+            when(txRepository.findByProviderAuthId(AUTH_ID)).thenReturn(Optional.empty());
+            when(txRepository.findByProviderReference(AUTH_ID)).thenReturn(Optional.of(redirectRequiredChargeTx()));
+            when(tripExtensionRepository.findById(1L)).thenReturn(Optional.of(extension));
+            when(txRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(tripExtensionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            boolean result = service.ingestEvent(EVENT_ID, "PAYMENT_CONFIRMED",
+                    BOOKING_ID, AUTH_ID, "{}", null);
+
+            assertThat(result).isTrue();
+            assertThat(booking.getChargeLifecycleStatus()).isEqualTo(ChargeLifecycleStatus.CAPTURED);
+                verify(bookingRepository).save(booking);
+            verify(tripExtensionRepository).save(extension);
+            verify(notificationService).createNotification(any());
+        }
     }
 
     // ========================================================================
@@ -188,6 +246,25 @@ class ProviderEventServiceTest {
             assertThat(result).isTrue();
             // AUTHORIZED should NOT be overwritten — handler only transitions PENDING
             assertThat(booking.getChargeLifecycleStatus()).isEqualTo(ChargeLifecycleStatus.AUTHORIZED);
+        }
+
+        @Test
+        @DisplayName("Extension CHARGE failure should fail tx without mutating booking lifecycle")
+        void shouldFailChargeWithoutChangingBookingLifecycle() {
+            Booking booking = bookingInState(ChargeLifecycleStatus.CAPTURED);
+            TripExtension extension = paymentPendingExtension(booking);
+            when(txRepository.findByProviderAuthId(AUTH_ID)).thenReturn(Optional.empty());
+            when(txRepository.findByProviderReference(AUTH_ID)).thenReturn(Optional.of(redirectRequiredChargeTx()));
+            when(tripExtensionRepository.findById(1L)).thenReturn(Optional.of(extension));
+            when(txRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(tripExtensionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            boolean result = service.ingestEvent(EVENT_ID, "PAYMENT_FAILED",
+                    BOOKING_ID, AUTH_ID, "{}", null);
+
+            assertThat(result).isTrue();
+            verifyNoInteractions(bookingRepository);
+            verify(tripExtensionRepository).save(extension);
         }
     }
 }

@@ -56,6 +56,11 @@ public enum BookingStatus {
     
     /** Booking cancelled (by renter or owner, with cancellation policy applied) */
     CANCELLED,
+
+    /**
+     * Cancellation was requested and accepted, but refund/release settlement is still pending.
+     */
+    CANCELLATION_PENDING_SETTLEMENT,
     
     // ========== CHECK-IN PHASE (T-24h to T+2h) ==========
     
@@ -244,6 +249,7 @@ public enum BookingStatus {
         return switch (this) {
             case COMPLETED,
                  CANCELLED,
+                  CANCELLATION_PENDING_SETTLEMENT,
                  DECLINED,
                  EXPIRED,
                  EXPIRED_SYSTEM,

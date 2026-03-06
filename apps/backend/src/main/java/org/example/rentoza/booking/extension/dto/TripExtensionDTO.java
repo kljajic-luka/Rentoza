@@ -38,6 +38,9 @@ public class TripExtensionDTO {
     
     private TripExtensionStatus status;
     private String statusDisplay;
+    private String paymentStatus;
+    private String paymentRedirectUrl;
+    private String paymentActionToken;
     private LocalDateTime responseDeadline;
     private String hostResponse;
     private LocalDateTime respondedAt;

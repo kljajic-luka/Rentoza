@@ -21,19 +21,19 @@ public interface TripExtensionRepository extends JpaRepository<TripExtension, Lo
     /**
      * Find pending extension for a booking.
      */
-    @Query("SELECT e FROM TripExtension e WHERE e.booking.id = :bookingId AND e.status = 'PENDING'")
+    @Query("SELECT e FROM TripExtension e WHERE e.booking.id = :bookingId AND e.status IN ('PENDING', 'PAYMENT_PENDING') ORDER BY e.createdAt DESC")
     Optional<TripExtension> findPendingByBookingId(@Param("bookingId") Long bookingId);
 
     /**
      * Check if booking has a pending extension.
      */
-    @Query("SELECT COUNT(e) > 0 FROM TripExtension e WHERE e.booking.id = :bookingId AND e.status = 'PENDING'")
+    @Query("SELECT COUNT(e) > 0 FROM TripExtension e WHERE e.booking.id = :bookingId AND e.status IN ('PENDING', 'PAYMENT_PENDING')")
     boolean hasPendingExtension(@Param("bookingId") Long bookingId);
 
     /**
      * Find extensions that have expired (deadline passed without response).
      */
-    @Query("SELECT e FROM TripExtension e WHERE e.status = 'PENDING' AND e.responseDeadline < :now")
+    @Query("SELECT e FROM TripExtension e WHERE e.status IN ('PENDING', 'PAYMENT_PENDING') AND e.responseDeadline < :now")
     List<TripExtension> findExpiredPending(@Param("now") Instant now);
 
     /**

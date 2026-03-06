@@ -1,6 +1,8 @@
 package org.example.rentoza.payment;
 
 import org.example.rentoza.booking.BookingRepository;
+import org.example.rentoza.booking.extension.TripExtensionRepository;
+import org.example.rentoza.notification.NotificationService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -28,8 +30,16 @@ class ProviderEventServiceWebhookSecretTest {
     @Mock
     private PayoutLedgerRepository payoutLedgerRepository;
 
+    @Mock
+    private TripExtensionRepository tripExtensionRepository;
+
+    @Mock
+    private NotificationService notificationService;
+
     private ProviderEventService createService(String webhookSecret, String activeProfile) {
-        ProviderEventService service = new ProviderEventService(eventRepository, txRepository, bookingRepository, payoutLedgerRepository);
+        ProviderEventService service = new ProviderEventService(
+                eventRepository, txRepository, bookingRepository, payoutLedgerRepository,
+                tripExtensionRepository, notificationService);
         ReflectionTestUtils.setField(service, "webhookSecret", webhookSecret);
         ReflectionTestUtils.setField(service, "activeProfile", activeProfile);
         return service;

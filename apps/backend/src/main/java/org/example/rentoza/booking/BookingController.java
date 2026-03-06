@@ -24,6 +24,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.util.List;
 import java.util.Map;
@@ -131,7 +132,7 @@ public class BookingController {
                     """
     )
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Booking created successfully",
+                @ApiResponse(responseCode = "201", description = "Booking created successfully",
                     content = @Content(schema = @Schema(implementation = BookingResponseDTO.class))),
             @ApiResponse(responseCode = "400", description = "Invalid request - validation failed",
                     content = @Content(examples = @ExampleObject(
@@ -168,7 +169,12 @@ public class BookingController {
             ));
         }
 
-        return ResponseEntity.ok(new BookingResponseDTO(result.booking()));
+        java.net.URI location = ServletUriComponentsBuilder
+            .fromCurrentRequestUri()
+            .path("/{id}")
+            .buildAndExpand(result.booking().getId())
+            .toUri();
+        return ResponseEntity.created(location).body(new BookingResponseDTO(result.booking()));
     }
 
     /**
@@ -280,24 +286,8 @@ public class BookingController {
     public ResponseEntity<?> getBookingById(
             @Parameter(description = "Booking ID", example = "456")
             @PathVariable Long id) {
-        try {
-            Booking booking = service.getBookingById(id);
-            return ResponseEntity.ok(new BookingResponseDTO(booking));
-        } catch (ResourceNotFoundException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(Map.of(
-                            "id", id,
-                            "error", "Booking not found",
-                            "message", e.getMessage()
-                    ));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of(
-                            "id", id,
-                            "error", "Failed to fetch booking",
-                            "message", e.getMessage()
-                    ));
-        }
+        Booking booking = service.getBookingById(id);
+        return ResponseEntity.ok(new BookingResponseDTO(booking));
     }
 
     /**

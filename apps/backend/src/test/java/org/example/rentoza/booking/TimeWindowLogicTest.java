@@ -236,6 +236,9 @@ class TimeWindowLogicTest {
         @Mock
         private NotificationService notificationService;
 
+        @Mock
+        private org.example.rentoza.payment.BookingPaymentService bookingPaymentService;
+
         private TripExtensionService extensionService;
         private MeterRegistry meterRegistry;
 
@@ -246,6 +249,7 @@ class TimeWindowLogicTest {
                     extensionRepository,
                     bookingRepository,
                     notificationService,
+                    bookingPaymentService,
                     meterRegistry
             );
             ReflectionTestUtils.setField(extensionService, "responseHours", 24);

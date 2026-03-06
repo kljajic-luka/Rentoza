@@ -116,6 +116,22 @@ public class BookingSecurityService {
     }
 
     /**
+     * Financial reauthorization is renter-only (plus admin bypass).
+     */
+    public boolean canReauthorizeBookingPayment(Long bookingId, Long userId) {
+        if (currentUser.isAdmin()) {
+            return true;
+        }
+
+        Booking booking = bookingRepository.findByIdWithRelations(bookingId).orElse(null);
+        if (booking == null) {
+            return false;
+        }
+
+        return booking.getRenter() != null && booking.getRenter().getId().equals(userId);
+    }
+
+    /**
      * Checks if the user can view bookings for a specific car.
      * Only the car owner or admin can view all bookings for their car.
      *

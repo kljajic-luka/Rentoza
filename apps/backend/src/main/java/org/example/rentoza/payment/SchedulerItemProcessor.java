@@ -435,6 +435,8 @@ public class SchedulerItemProcessor {
         }
 
         if (result.isSuccess()) {
+            record.getBooking().setStatus(BookingStatus.CANCELLED);
+            bookingRepository.save(record.getBooking());
             record.setRefundStatus(RefundStatus.COMPLETED);
             record.setRetryCount(attempt);
             cancellationRecordRepository.save(record);

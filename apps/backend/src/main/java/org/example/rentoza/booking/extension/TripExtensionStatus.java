@@ -9,6 +9,11 @@ public enum TripExtensionStatus {
      * Extension request submitted, awaiting host response.
      */
     PENDING,
+
+    /**
+     * Host approved, awaiting successful extension payment confirmation.
+     */
+    PAYMENT_PENDING,
     
     /**
      * Host approved the extension.
@@ -31,7 +36,7 @@ public enum TripExtensionStatus {
     CANCELLED;
     
     public boolean isOpen() {
-        return this == PENDING;
+        return this == PENDING || this == PAYMENT_PENDING;
     }
     
     public boolean isApproved() {

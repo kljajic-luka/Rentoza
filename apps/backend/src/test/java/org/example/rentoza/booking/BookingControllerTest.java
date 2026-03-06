@@ -142,7 +142,8 @@ class BookingControllerTest {
                     .content(objectMapper.writeValueAsString(request)));
 
             // Then
-            result.andExpect(status().isOk())
+                result.andExpect(status().isCreated())
+                    .andExpect(header().exists("Location"))
                     .andExpect(jsonPath("$.carId").value(testCar.getId()))
                     .andExpect(jsonPath("$.status").value("ACTIVE"));
         }

@@ -7,6 +7,7 @@ import org.example.rentoza.availability.BlockedDateRepository;
 import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingRepository;
 import org.example.rentoza.booking.BookingTimeUtil;
+import org.example.rentoza.booking.util.BookingDurationPolicy;
 import org.example.rentoza.car.dto.AvailabilitySearchRequestDTO;
 import org.example.rentoza.car.dto.UnavailableRangeDTO;
 import org.example.rentoza.exception.ResourceNotFoundException;
@@ -248,14 +249,7 @@ public class AvailabilityService {
             LocalDateTime requestedEnd
     ) {
         // Calculate requested rental days from search date range
-        long rentalDays = ChronoUnit.DAYS.between(
-            requestedStart.toLocalDate(),
-            requestedEnd.toLocalDate()
-        );
-        // Minimum 1 day if same-day or overnight rental
-        if (rentalDays < 1) {
-            rentalDays = 1;
-        }
+        long rentalDays = BookingDurationPolicy.calculate(requestedStart, requestedEnd).billablePeriods();
 
         final long finalRentalDays = rentalDays;
 

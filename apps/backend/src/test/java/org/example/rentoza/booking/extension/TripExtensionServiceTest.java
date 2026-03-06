@@ -8,6 +8,8 @@ import org.example.rentoza.booking.extension.dto.TripExtensionDTO;
 import org.example.rentoza.car.Car;
 import org.example.rentoza.notification.NotificationService;
 import org.example.rentoza.notification.dto.CreateNotificationRequestDTO;
+import org.example.rentoza.payment.BookingPaymentService;
+import org.example.rentoza.payment.PaymentProvider;
 import org.example.rentoza.user.User;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -61,6 +63,9 @@ class TripExtensionServiceTest {
     @Mock
     private NotificationService notificationService;
 
+        @Mock
+        private BookingPaymentService bookingPaymentService;
+
     private TripExtensionService service;
 
     @BeforeEach
@@ -70,8 +75,11 @@ class TripExtensionServiceTest {
                 extensionRepository,
                 bookingRepository,
                 notificationService,
+                bookingPaymentService,
                 meterRegistry
         );
+        lenient().when(bookingPaymentService.findExtensionPaymentAction(anyLong(), anyLong()))
+                .thenReturn(Optional.empty());
         ReflectionTestUtils.setField(service, "responseHours", 24);
     }
 
@@ -280,9 +288,10 @@ class TripExtensionServiceTest {
     class ApproveExtension {
 
         @Test
-        @DisplayName("9. approve updates booking endTime and totalPrice")
+                @DisplayName("9. approve charges extension first and then updates booking")
         void approve_updates_booking_end_time_and_total_price() {
             Booking booking = createTestBooking(BookingStatus.IN_TRIP);
+                        booking.setStoredPaymentMethodId("pm_1");
             TripExtension extension = createPendingExtension(booking);
 
             when(extensionRepository.findById(EXTENSION_ID))
@@ -291,6 +300,12 @@ class TripExtensionServiceTest {
                     .thenAnswer(invocation -> invocation.getArgument(0));
             when(bookingRepository.save(any(Booking.class)))
                     .thenAnswer(invocation -> invocation.getArgument(0));
+            when(bookingPaymentService.chargeExtension(eq(EXTENSION_ID), eq("pm_1")))
+                    .thenReturn(PaymentProvider.PaymentResult.builder()
+                            .success(true)
+                            .status(PaymentProvider.PaymentStatus.SUCCESS)
+                            .transactionId("ext_txn_1")
+                            .build());
 
             TripExtensionDTO result = service.approveExtension(
                     EXTENSION_ID, "Approved, enjoy!", HOST_USER_ID);
@@ -307,12 +322,14 @@ class TripExtensionServiceTest {
             // totalPrice: 20000 + 15000 = 35000
             assertThat(savedBooking.getTotalPrice())
                     .isEqualByComparingTo(new BigDecimal("35000.00"));
+            verify(bookingPaymentService).chargeExtension(EXTENSION_ID, "pm_1");
         }
 
         @Test
         @DisplayName("10. approve rejected if caller is not the host")
         void approve_rejected_if_not_host() {
             Booking booking = createTestBooking(BookingStatus.IN_TRIP);
+                        booking.setStoredPaymentMethodId("pm_1");
             TripExtension extension = createPendingExtension(booking);
             Long wrongUserId = 999L;
 
@@ -327,27 +344,27 @@ class TripExtensionServiceTest {
         }
 
         @Test
-        @DisplayName("11. approve rejected if extension is not PENDING")
+                @DisplayName("11. approve is idempotent when extension is already APPROVED")
         void approve_rejected_if_not_pending() {
             Booking booking = createTestBooking(BookingStatus.IN_TRIP);
+                        booking.setStoredPaymentMethodId("pm_1");
             TripExtension extension = createPendingExtension(booking);
             extension.approve("already"); // move to APPROVED
 
             when(extensionRepository.findById(EXTENSION_ID))
                     .thenReturn(Optional.of(extension));
 
-            assertThatThrownBy(() ->
-                    service.approveExtension(EXTENSION_ID, "ok", HOST_USER_ID))
-                    .isInstanceOf(IllegalStateException.class)
-                    .hasMessageContaining("nije na \u010dekanju");
-
+            TripExtensionDTO result = service.approveExtension(EXTENSION_ID, "ok", HOST_USER_ID);
+            assertThat(result.getStatus()).isEqualTo(TripExtensionStatus.APPROVED);
             verify(bookingRepository, never()).save(any());
+            verify(bookingPaymentService, never()).chargeExtension(anyLong(), anyString());
         }
 
         @Test
         @DisplayName("12. approve sends notification to guest")
         void approve_sends_notification_to_guest() {
             Booking booking = createTestBooking(BookingStatus.IN_TRIP);
+                        booking.setStoredPaymentMethodId("pm_1");
             TripExtension extension = createPendingExtension(booking);
 
             when(extensionRepository.findById(EXTENSION_ID))
@@ -356,6 +373,12 @@ class TripExtensionServiceTest {
                     .thenAnswer(invocation -> invocation.getArgument(0));
             when(bookingRepository.save(any(Booking.class)))
                     .thenAnswer(invocation -> invocation.getArgument(0));
+            when(bookingPaymentService.chargeExtension(eq(EXTENSION_ID), eq("pm_1")))
+                    .thenReturn(PaymentProvider.PaymentResult.builder()
+                            .success(true)
+                            .status(PaymentProvider.PaymentStatus.SUCCESS)
+                            .transactionId("ext_txn_2")
+                            .build());
 
             service.approveExtension(EXTENSION_ID, "Sure!", HOST_USER_ID);
 
@@ -367,6 +390,171 @@ class TripExtensionServiceTest {
             assertThat(notification.getRecipientId()).isEqualTo(GUEST_USER_ID);
             assertThat(notification.getMessage()).contains("odobren");
         }
+
+                @Test
+                @DisplayName("13. approve keeps extension PAYMENT_PENDING when redirect is required")
+                void approve_redirect_required_keeps_payment_pending() {
+                        Booking booking = createTestBooking(BookingStatus.IN_TRIP);
+                        booking.setStoredPaymentMethodId("pm_1");
+                        TripExtension extension = createPendingExtension(booking);
+
+                        when(extensionRepository.findById(EXTENSION_ID)).thenReturn(Optional.of(extension));
+                        when(extensionRepository.save(any(TripExtension.class))).thenAnswer(invocation -> invocation.getArgument(0));
+                        when(bookingPaymentService.chargeExtension(eq(EXTENSION_ID), eq("pm_1")))
+                                        .thenReturn(PaymentProvider.PaymentResult.builder()
+                                                        .success(false)
+                                                        .status(PaymentProvider.PaymentStatus.REDIRECT_REQUIRED)
+                                                        .redirectUrl("https://redirect")
+                                                        .build());
+
+                        TripExtensionDTO result = service.approveExtension(EXTENSION_ID, "ok", HOST_USER_ID);
+
+                        assertThat(result.getStatus()).isEqualTo(TripExtensionStatus.PAYMENT_PENDING);
+                        assertThat(result.getPaymentRedirectUrl()).isNull();
+                        assertThat(result.getPaymentActionToken()).isNull();
+                        verify(bookingRepository, never()).save(any(Booking.class));
+                }
+
+                @Test
+                @DisplayName("16. payment-pending extension finalizes once async charge succeeds")
+                void payment_pending_extension_finalizes_after_async_success() {
+                        Booking booking = createTestBooking(BookingStatus.IN_TRIP);
+                        booking.setStoredPaymentMethodId("pm_1");
+                        TripExtension extension = createPendingExtension(booking);
+                        extension.setStatus(TripExtensionStatus.PAYMENT_PENDING);
+
+                        when(extensionRepository.findById(EXTENSION_ID)).thenReturn(Optional.of(extension));
+                        when(extensionRepository.save(any(TripExtension.class))).thenAnswer(invocation -> invocation.getArgument(0));
+                        when(bookingRepository.save(any(Booking.class))).thenAnswer(invocation -> invocation.getArgument(0));
+                        when(bookingPaymentService.findExtensionPaymentAction(BOOKING_ID, EXTENSION_ID))
+                                .thenReturn(Optional.of(new BookingPaymentService.ExtensionPaymentAction(
+                                        true,
+                                        PaymentProvider.PaymentStatus.SUCCESS,
+                                        null,
+                                        null,
+                                        "ext_txn_1",
+                                        null
+                                )));
+
+                        TripExtensionDTO result = service.approveExtension(EXTENSION_ID, "host response", HOST_USER_ID);
+
+                        assertThat(result.getStatus()).isEqualTo(TripExtensionStatus.APPROVED);
+                        verify(bookingRepository).save(any(Booking.class));
+                        verify(bookingPaymentService, never()).chargeExtension(anyLong(), anyString());
+                }
+
+                @Test
+                @DisplayName("17. payment-pending extension reopens to PENDING after async failure")
+                void payment_pending_extension_reopens_after_async_failure() {
+                        Booking booking = createTestBooking(BookingStatus.IN_TRIP);
+                        booking.setStoredPaymentMethodId("pm_1");
+                        TripExtension extension = createPendingExtension(booking);
+                        extension.setStatus(TripExtensionStatus.PAYMENT_PENDING);
+
+                        when(extensionRepository.findById(EXTENSION_ID)).thenReturn(Optional.of(extension));
+                        when(extensionRepository.save(any(TripExtension.class))).thenAnswer(invocation -> invocation.getArgument(0));
+                        when(bookingPaymentService.findExtensionPaymentAction(BOOKING_ID, EXTENSION_ID))
+                                .thenReturn(Optional.of(new BookingPaymentService.ExtensionPaymentAction(
+                                        false,
+                                        PaymentProvider.PaymentStatus.FAILED,
+                                        null,
+                                        null,
+                                        null,
+                                        null
+                                )));
+
+                        TripExtensionDTO result = service.approveExtension(EXTENSION_ID, "host response", HOST_USER_ID);
+
+                        assertThat(result.getStatus()).isEqualTo(TripExtensionStatus.PENDING);
+                        verify(bookingPaymentService, never()).chargeExtension(anyLong(), anyString());
+                }
+
+                @Test
+                @DisplayName("14. approve fails and does not mutate booking when payment fails")
+                void approve_payment_failure_does_not_mutate_booking() {
+                        Booking booking = createTestBooking(BookingStatus.IN_TRIP);
+                        booking.setStoredPaymentMethodId("pm_1");
+                        TripExtension extension = createPendingExtension(booking);
+
+                        when(extensionRepository.findById(EXTENSION_ID)).thenReturn(Optional.of(extension));
+                        when(extensionRepository.save(any(TripExtension.class))).thenAnswer(invocation -> invocation.getArgument(0));
+                        when(bookingPaymentService.chargeExtension(eq(EXTENSION_ID), eq("pm_1")))
+                                        .thenReturn(PaymentProvider.PaymentResult.builder()
+                                                        .success(false)
+                                                        .status(PaymentProvider.PaymentStatus.FAILED)
+                                                        .errorCode("CARD_DECLINED")
+                                                        .errorMessage("declined")
+                                                        .build());
+
+                        assertThatThrownBy(() -> service.approveExtension(EXTENSION_ID, "ok", HOST_USER_ID))
+                                        .isInstanceOf(IllegalStateException.class)
+                                        .hasMessageContaining("Naplata produženja nije uspela");
+
+                        verify(bookingRepository, never()).save(any(Booking.class));
+                }
+
+                @Test
+                @DisplayName("15. duplicate approve is idempotent for already-approved extension")
+                void approve_is_idempotent_when_already_approved() {
+                        Booking booking = createTestBooking(BookingStatus.IN_TRIP);
+                        booking.setStoredPaymentMethodId("pm_1");
+                        TripExtension extension = createPendingExtension(booking);
+                        extension.approve("already");
+
+                        when(extensionRepository.findById(EXTENSION_ID)).thenReturn(Optional.of(extension));
+
+                        TripExtensionDTO result = service.approveExtension(EXTENSION_ID, "ignored", HOST_USER_ID);
+
+                        assertThat(result.getStatus()).isEqualTo(TripExtensionStatus.APPROVED);
+                        verify(bookingPaymentService, never()).chargeExtension(anyLong(), anyString());
+                        verify(bookingRepository, never()).save(any(Booking.class));
+                }
+
+                @Test
+                @DisplayName("18. renter pending read contains payment continuation data")
+                void renter_pending_read_exposes_payment_continuation_data() {
+                        Booking booking = createTestBooking(BookingStatus.IN_TRIP);
+                        TripExtension extension = createPendingExtension(booking);
+                        extension.setStatus(TripExtensionStatus.PAYMENT_PENDING);
+
+                        when(bookingRepository.findByIdWithRelations(BOOKING_ID)).thenReturn(Optional.of(booking));
+                        when(extensionRepository.findPendingByBookingId(BOOKING_ID)).thenReturn(Optional.of(extension));
+                        when(bookingPaymentService.findExtensionPaymentAction(BOOKING_ID, EXTENSION_ID))
+                                .thenReturn(Optional.of(new BookingPaymentService.ExtensionPaymentAction(
+                                        false,
+                                        PaymentProvider.PaymentStatus.REDIRECT_REQUIRED,
+                                        "https://redirect",
+                                        "sca-token-1",
+                                        null,
+                                        "auth-ext"
+                                )));
+
+                        TripExtensionDTO result = service.getPendingExtension(BOOKING_ID, GUEST_USER_ID);
+
+                        assertThat(result).isNotNull();
+                        assertThat(result.getPaymentRedirectUrl()).isEqualTo("https://redirect");
+                        assertThat(result.getPaymentActionToken()).isEqualTo("sca-token-1");
+                        verify(extensionRepository, never()).save(any(TripExtension.class));
+                }
+
+                @Test
+                @DisplayName("19. host pending read hides payment continuation data")
+                void host_pending_read_hides_payment_continuation_data() {
+                        Booking booking = createTestBooking(BookingStatus.IN_TRIP);
+                        TripExtension extension = createPendingExtension(booking);
+                        extension.setStatus(TripExtensionStatus.PAYMENT_PENDING);
+
+                        when(bookingRepository.findByIdWithRelations(BOOKING_ID)).thenReturn(Optional.of(booking));
+                        when(extensionRepository.findPendingByBookingId(BOOKING_ID)).thenReturn(Optional.of(extension));
+
+                        TripExtensionDTO result = service.getPendingExtension(BOOKING_ID, HOST_USER_ID);
+
+                        assertThat(result).isNotNull();
+                        assertThat(result.getPaymentRedirectUrl()).isNull();
+                        assertThat(result.getPaymentActionToken()).isNull();
+                        verify(extensionRepository, never()).save(any(TripExtension.class));
+                        verify(bookingPaymentService, never()).findExtensionPaymentAction(anyLong(), anyLong());
+                }
     }
 
     // ========== DECLINE EXTENSION ==========

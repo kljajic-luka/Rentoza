@@ -5,6 +5,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingRepository;
+import org.example.rentoza.booking.extension.TripExtension;
+import org.example.rentoza.booking.extension.TripExtensionRepository;
+import org.example.rentoza.booking.extension.TripExtensionStatus;
+import org.example.rentoza.notification.NotificationService;
+import org.example.rentoza.notification.NotificationType;
+import org.example.rentoza.notification.dto.CreateNotificationRequestDTO;
 import org.example.rentoza.payment.PaymentTransaction.PaymentOperation;
 import org.example.rentoza.payment.PaymentTransaction.PaymentTransactionStatus;
 import org.springframework.beans.factory.annotation.Value;
@@ -56,6 +62,8 @@ public class ProviderEventService {
     private final PaymentTransactionRepository txRepository;
     private final BookingRepository bookingRepository;
     private final PayoutLedgerRepository payoutLedgerRepository;
+    private final TripExtensionRepository tripExtensionRepository;
+    private final NotificationService notificationService;
 
     @Value("${app.payment.webhook.secret}")
     private String webhookSecret;
@@ -348,18 +356,27 @@ public class ProviderEventService {
 
         // P0-4: When the provider supplies an authorization ID, locate the exact transaction.
         boolean any = false;
+        boolean authorizeConfirmed = false;
         if (providerAuthorizationId != null && !providerAuthorizationId.isBlank()) {
             Optional<PaymentTransaction> txOpt = txRepository.findByProviderAuthId(providerAuthorizationId);
+            if (txOpt.isEmpty()) {
+                txOpt = txRepository.findByProviderReference(providerAuthorizationId);
+            }
             if (txOpt.isPresent()) {
                 PaymentTransaction tx = txOpt.get();
                 if ((tx.getStatus() == PaymentTransactionStatus.REDIRECT_REQUIRED
                         || tx.getStatus() == PaymentTransactionStatus.PENDING_CONFIRMATION)
-                        && tx.getOperation() == PaymentOperation.AUTHORIZE) {
+                        && (tx.getOperation() == PaymentOperation.AUTHORIZE
+                        || tx.getOperation() == PaymentOperation.CHARGE)) {
                     tx.setStatus(PaymentTransactionStatus.SUCCEEDED);
                     txRepository.save(tx);
+                    settleExtensionIfApplicable(tx, true);
                     log.info("[Webhook] Booking {} tx {} (authId={}) → SUCCEEDED (PAYMENT_CONFIRMED)",
                             bookingId, tx.getId(), providerAuthorizationId);
                     any = true;
+                    if (tx.getOperation() == PaymentOperation.AUTHORIZE) {
+                        authorizeConfirmed = true;
+                    }
                 } else {
                     log.info("[Webhook] PAYMENT_CONFIRMED for booking {} — tx {} already in {} ({})",
                             bookingId, tx.getId(), tx.getStatus(), tx.getOperation());
@@ -389,12 +406,17 @@ public class ProviderEventService {
             for (PaymentTransaction tx : txList) {
                 if ((tx.getStatus() == PaymentTransactionStatus.REDIRECT_REQUIRED
                         || tx.getStatus() == PaymentTransactionStatus.PENDING_CONFIRMATION)
-                        && tx.getOperation() == PaymentOperation.AUTHORIZE) {
+                        && (tx.getOperation() == PaymentOperation.AUTHORIZE
+                        || tx.getOperation() == PaymentOperation.CHARGE)) {
                     tx.setStatus(PaymentTransactionStatus.SUCCEEDED);
                     txRepository.save(tx);
+                    settleExtensionIfApplicable(tx, true);
                     log.info("[Webhook] Booking {} tx {} {} → SUCCEEDED (PAYMENT_CONFIRMED, booking-scoped fallback)",
                             bookingId, tx.getId(), tx.getOperation());
                     any = true;
+                    if (tx.getOperation() == PaymentOperation.AUTHORIZE) {
+                        authorizeConfirmed = true;
+                    }
                 }
             }
         }
@@ -406,22 +428,24 @@ public class ProviderEventService {
         // Advance booking's charge lifecycle to AUTHORIZED.
         // P0-FIX: Also allow REAUTH_REQUIRED → AUTHORIZED so that a successful reauth
         // 3DS redirect webhook restores the booking to AUTHORIZED (unblocking capture).
-        ChargeLifecycleStatus current = booking.getChargeLifecycleStatus();
-        if (current == null || current == ChargeLifecycleStatus.PENDING
-                || current == ChargeLifecycleStatus.REAUTH_REQUIRED) {
-            transitionCharge(booking, ChargeLifecycleStatus.AUTHORIZED, "PAYMENT_CONFIRMED webhook");
-            booking.setPaymentStatus("AUTHORIZED");
-            // On successful reauth, refresh the auth expiry window so capture can proceed.
-            if (current == ChargeLifecycleStatus.REAUTH_REQUIRED) {
-                booking.setBookingAuthExpiresAt(Instant.now().plusSeconds(168 * 3600L)); // 7-day default
-                log.info("[Webhook] Booking {} REAUTH_REQUIRED → AUTHORIZED (auth expiry refreshed)", bookingId);
+        if (authorizeConfirmed) {
+            ChargeLifecycleStatus current = booking.getChargeLifecycleStatus();
+            if (current == null || current == ChargeLifecycleStatus.PENDING
+                    || current == ChargeLifecycleStatus.REAUTH_REQUIRED) {
+                transitionCharge(booking, ChargeLifecycleStatus.AUTHORIZED, "PAYMENT_CONFIRMED webhook");
+                booking.setPaymentStatus("AUTHORIZED");
+                // On successful reauth, refresh the auth expiry window so capture can proceed.
+                if (current == ChargeLifecycleStatus.REAUTH_REQUIRED) {
+                    booking.setBookingAuthExpiresAt(Instant.now().plusSeconds(168 * 3600L)); // 7-day default
+                    log.info("[Webhook] Booking {} REAUTH_REQUIRED → AUTHORIZED (auth expiry refreshed)", bookingId);
+                } else {
+                    log.info("[Webhook] Booking {} chargeLifecycleStatus → AUTHORIZED", bookingId);
+                }
+                bookingRepository.save(booking);
             } else {
-                log.info("[Webhook] Booking {} chargeLifecycleStatus → AUTHORIZED", bookingId);
+                log.info("[Webhook] Booking {} already in state {} — not overwriting on PAYMENT_CONFIRMED",
+                        bookingId, current);
             }
-            bookingRepository.save(booking);
-        } else {
-            log.info("[Webhook] Booking {} already in state {} — not overwriting on PAYMENT_CONFIRMED",
-                    bookingId, current);
         }
     }
 
@@ -439,18 +463,27 @@ public class ProviderEventService {
         }
 
         boolean any = false;
+        boolean authorizeFailed = false;
         if (providerAuthorizationId != null && !providerAuthorizationId.isBlank()) {
             Optional<PaymentTransaction> txOpt = txRepository.findByProviderAuthId(providerAuthorizationId);
+            if (txOpt.isEmpty()) {
+                txOpt = txRepository.findByProviderReference(providerAuthorizationId);
+            }
             if (txOpt.isPresent()) {
                 PaymentTransaction tx = txOpt.get();
                 if ((tx.getStatus() == PaymentTransactionStatus.REDIRECT_REQUIRED
                         || tx.getStatus() == PaymentTransactionStatus.PENDING_CONFIRMATION)
-                        && tx.getOperation() == PaymentOperation.AUTHORIZE) {
+                        && (tx.getOperation() == PaymentOperation.AUTHORIZE
+                        || tx.getOperation() == PaymentOperation.CHARGE)) {
                     tx.setStatus(PaymentTransactionStatus.FAILED_TERMINAL);
                     txRepository.save(tx);
+                    settleExtensionIfApplicable(tx, false);
                     log.warn("[Webhook] Booking {} tx {} (authId={}) → FAILED_TERMINAL (PAYMENT_FAILED)",
                             bookingId, tx.getId(), providerAuthorizationId);
                     any = true;
+                    if (tx.getOperation() == PaymentOperation.AUTHORIZE) {
+                        authorizeFailed = true;
+                    }
                 }
             } else {
                 log.warn("[Webhook] PAYMENT_FAILED for booking {} — no tx found for providerAuthId={}; "
@@ -474,25 +507,32 @@ public class ProviderEventService {
             for (PaymentTransaction tx : txList) {
                 if ((tx.getStatus() == PaymentTransactionStatus.REDIRECT_REQUIRED
                         || tx.getStatus() == PaymentTransactionStatus.PENDING_CONFIRMATION)
-                        && tx.getOperation() == PaymentOperation.AUTHORIZE) {
+                        && (tx.getOperation() == PaymentOperation.AUTHORIZE
+                        || tx.getOperation() == PaymentOperation.CHARGE)) {
                     tx.setStatus(PaymentTransactionStatus.FAILED_TERMINAL);
                     txRepository.save(tx);
+                    settleExtensionIfApplicable(tx, false);
                     log.warn("[Webhook] Booking {} tx {} {} → FAILED_TERMINAL (PAYMENT_FAILED, booking-scoped fallback)",
                             bookingId, tx.getId(), tx.getOperation());
+                    if (tx.getOperation() == PaymentOperation.AUTHORIZE) {
+                        authorizeFailed = true;
+                    }
                 }
             }
         }
 
-        Optional<Booking> bookingOpt = bookingRepository.findById(bookingId);
-        bookingOpt.ifPresent(booking -> {
-            ChargeLifecycleStatus current = booking.getChargeLifecycleStatus();
-            if (current == ChargeLifecycleStatus.PENDING) {
-                transitionCharge(booking, ChargeLifecycleStatus.CAPTURE_FAILED, "PAYMENT_FAILED webhook");
-                booking.setPaymentStatus("PAYMENT_FAILED");
-                bookingRepository.save(booking);
-                log.warn("[Webhook] Booking {} chargeLifecycleStatus → FAILED (PAYMENT_FAILED webhook)", bookingId);
-            }
-        });
+        if (authorizeFailed) {
+            Optional<Booking> bookingOpt = bookingRepository.findById(bookingId);
+            bookingOpt.ifPresent(booking -> {
+                ChargeLifecycleStatus current = booking.getChargeLifecycleStatus();
+                if (current == ChargeLifecycleStatus.PENDING) {
+                    transitionCharge(booking, ChargeLifecycleStatus.CAPTURE_FAILED, "PAYMENT_FAILED webhook");
+                    booking.setPaymentStatus("PAYMENT_FAILED");
+                    bookingRepository.save(booking);
+                    log.warn("[Webhook] Booking {} chargeLifecycleStatus → FAILED (PAYMENT_FAILED webhook)", bookingId);
+                }
+            });
+        }
     }
 
     // ── H-5 Monri-specific event handlers ───────────────────────────────────
@@ -609,6 +649,73 @@ public class ProviderEventService {
                 },
                 () -> log.warn("[Webhook] PAYOUT.FAILED for booking {} — no payout ledger entry found", bookingId)
         );
+    }
+
+    private void settleExtensionIfApplicable(PaymentTransaction tx, boolean success) {
+        if (tx.getOperation() != PaymentOperation.CHARGE || tx.getIdempotencyKey() == null) {
+            return;
+        }
+        Long extensionId = extractExtensionId(tx.getIdempotencyKey());
+        if (extensionId == null) {
+            return;
+        }
+        tripExtensionRepository.findById(extensionId).ifPresent(extension -> {
+            if (success) {
+                settleExtensionSuccess(extension);
+            } else {
+                settleExtensionFailure(extension);
+            }
+        });
+    }
+
+    private void settleExtensionSuccess(TripExtension extension) {
+        if (extension.getStatus() != TripExtensionStatus.PAYMENT_PENDING) {
+            return;
+        }
+
+        Booking booking = extension.getBooking();
+        extension.approve(extension.getHostResponse());
+
+        java.time.LocalTime endTimeOfDay = booking.getEndTime().toLocalTime();
+        booking.setEndTime(extension.getRequestedEndDate().atTime(endTimeOfDay));
+        booking.setTotalPrice(booking.getTotalPrice().add(extension.getAdditionalCost()));
+        bookingRepository.save(booking);
+        tripExtensionRepository.save(extension);
+
+        notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                .recipientId(booking.getRenter().getId())
+                .type(NotificationType.BOOKING_APPROVED)
+                .message(String.format("Vaš zahtev za produženje je odobren! Novi datum završetka: %s",
+                        extension.getRequestedEndDate()))
+                .relatedEntityId(String.valueOf(booking.getId()))
+                .build());
+
+        log.info("[Webhook] Extension {} finalized on payment success", extension.getId());
+    }
+
+    private void settleExtensionFailure(TripExtension extension) {
+        if (extension.getStatus() != TripExtensionStatus.PAYMENT_PENDING) {
+            return;
+        }
+
+        extension.setStatus(TripExtensionStatus.PENDING);
+        extension.setRespondedAt(null);
+        tripExtensionRepository.save(extension);
+        log.warn("[Webhook] Extension {} returned to PENDING after payment failure", extension.getId());
+    }
+
+    private Long extractExtensionId(String idempotencyKey) {
+        // Expected: pay_ext_<bookingId>_e<extensionId>
+        int marker = idempotencyKey.lastIndexOf("_e");
+        if (marker < 0 || marker + 2 >= idempotencyKey.length()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(idempotencyKey.substring(marker + 2));
+        } catch (NumberFormatException ex) {
+            log.debug("[Webhook] idempotency key {} is not an extension charge key", idempotencyKey);
+            return null;
+        }
     }
 
     // ── Lifecycle transition guard ──────────────────────────────────────────────

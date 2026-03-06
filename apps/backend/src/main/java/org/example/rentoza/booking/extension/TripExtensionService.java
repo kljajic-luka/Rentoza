@@ -11,6 +11,8 @@ import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.notification.NotificationService;
 import org.example.rentoza.notification.NotificationType;
 import org.example.rentoza.notification.dto.CreateNotificationRequestDTO;
+import org.example.rentoza.payment.BookingPaymentService;
+import org.example.rentoza.payment.PaymentProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
@@ -37,6 +39,7 @@ public class TripExtensionService {
     private final TripExtensionRepository extensionRepository;
     private final BookingRepository bookingRepository;
     private final NotificationService notificationService;
+    private final BookingPaymentService bookingPaymentService;
 
     // Metrics
     private final Counter extensionRequestedCounter;
@@ -50,10 +53,12 @@ public class TripExtensionService {
             TripExtensionRepository extensionRepository,
             BookingRepository bookingRepository,
             NotificationService notificationService,
+            BookingPaymentService bookingPaymentService,
             MeterRegistry meterRegistry) {
         this.extensionRepository = extensionRepository;
         this.bookingRepository = bookingRepository;
         this.notificationService = notificationService;
+        this.bookingPaymentService = bookingPaymentService;
 
         this.extensionRequestedCounter = Counter.builder("trip_extension.requested")
                 .description("Trip extensions requested")
@@ -171,7 +176,7 @@ public class TripExtensionService {
                 .relatedEntityId(String.valueOf(bookingId))
                 .build());
 
-        return mapToDTO(extension);
+        return mapToDTO(extension, guestUserId);
     }
 
     // ========== HOST RESPONSE ==========
@@ -182,35 +187,56 @@ public class TripExtensionService {
     @Transactional
     public TripExtensionDTO approveExtension(Long extensionId, String response, Long hostUserId) {
         TripExtension extension = getExtensionForHost(extensionId, hostUserId);
+        TripExtensionStatus initialStatus = extension.getStatus();
 
-        if (extension.getStatus() != TripExtensionStatus.PENDING) {
+        extension = reconcilePendingExtensionPayment(extension);
+
+        if (initialStatus == TripExtensionStatus.PAYMENT_PENDING) {
+            return mapToDTO(extension, hostUserId);
+        }
+
+        if (extension.getStatus() == TripExtensionStatus.APPROVED) {
+            return mapToDTO(extension, hostUserId);
+        }
+
+        if (extension.getStatus() == TripExtensionStatus.PAYMENT_PENDING) {
+            return mapToDTO(extension, hostUserId);
+        }
+
+        if (extension.getStatus() != TripExtensionStatus.PENDING
+                && extension.getStatus() != TripExtensionStatus.PAYMENT_PENDING) {
             throw new IllegalStateException("Ovaj zahtev više nije na čekanju");
         }
 
-        extension.approve(response);
-
-        // Update booking end time (keep same time of day, extend to new date)
         Booking booking = extension.getBooking();
-        java.time.LocalTime endTimeOfDay = booking.getEndTime().toLocalTime();
-        booking.setEndTime(extension.getRequestedEndDate().atTime(endTimeOfDay));
-        booking.setTotalPrice(booking.getTotalPrice().add(extension.getAdditionalCost()));
-        bookingRepository.save(booking);
 
-        extension = extensionRepository.save(extension);
+        if (extension.getStatus() == TripExtensionStatus.PENDING) {
+            extension.setStatus(TripExtensionStatus.PAYMENT_PENDING);
+            extension.setHostResponse(response);
+            extension.setRespondedAt(Instant.now());
+            extensionRepository.save(extension);
+        }
 
-        extensionApprovedCounter.increment();
-        log.info("[TripExtension] Extension {} approved for booking {}", extensionId, booking.getId());
+        String storedPaymentMethodId = booking.getStoredPaymentMethodId();
+        if (storedPaymentMethodId == null || storedPaymentMethodId.isBlank()) {
+            throw new IllegalStateException("Nije sačuvan način plaćanja za naplatu produženja");
+        }
 
-        // Notify guest
-        notificationService.createNotification(CreateNotificationRequestDTO.builder()
-                .recipientId(booking.getRenter().getId())
-                .type(NotificationType.BOOKING_APPROVED)
-                .message(String.format("Vaš zahtev za produženje je odobren! Novi datum završetka: %s",
-                        extension.getRequestedEndDate()))
-                .relatedEntityId(String.valueOf(booking.getId()))
-                .build());
+        PaymentProvider.PaymentResult chargeResult = bookingPaymentService.chargeExtension(extension.getId(), storedPaymentMethodId);
+        if (!chargeResult.isSuccess()) {
+            if (chargeResult.isRedirectRequired() || chargeResult.getStatus() == PaymentProvider.PaymentStatus.PENDING) {
+                log.info("[TripExtension] Extension {} payment pending async confirmation", extensionId);
+                extension.setStatus(TripExtensionStatus.PAYMENT_PENDING);
+                extension = extensionRepository.save(extension);
+                return mapToDTO(extension, hostUserId);
+            }
+            log.warn("[TripExtension] Extension {} payment failed: {} ({})",
+                    extensionId, chargeResult.getErrorMessage(), chargeResult.getErrorCode());
+            throw new IllegalStateException("Naplata produženja nije uspela. Rezervacija nije izmenjena.");
+        }
 
-        return mapToDTO(extension);
+        extension = finalizeApprovedExtension(extension, response);
+        return mapToDTO(extension, hostUserId);
     }
 
     /**
@@ -239,7 +265,7 @@ public class TripExtensionService {
                 .relatedEntityId(String.valueOf(extension.getBooking().getId()))
                 .build());
 
-        return mapToDTO(extension);
+        return mapToDTO(extension, hostUserId);
     }
 
     // ========== GUEST ACTIONS ==========
@@ -256,7 +282,7 @@ public class TripExtensionService {
             throw new AccessDeniedException("Nemate pristup ovom zahtevu");
         }
 
-        if (extension.getStatus() != TripExtensionStatus.PENDING) {
+        if (!extension.getStatus().isOpen()) {
             throw new IllegalStateException("Ovaj zahtev više nije na čekanju");
         }
 
@@ -265,7 +291,7 @@ public class TripExtensionService {
 
         log.info("[TripExtension] Extension {} cancelled by guest", extensionId);
 
-        return mapToDTO(extension);
+        return mapToDTO(extension, guestUserId);
     }
 
     // ========== SCHEDULER ==========
@@ -312,7 +338,7 @@ public class TripExtensionService {
         }
 
         return extensionRepository.findPendingByBookingId(bookingId)
-                .map(this::mapToDTO)
+                .map(extension -> mapToDTO(extension, userId))
                 .orElse(null);
     }
 
@@ -330,15 +356,38 @@ public class TripExtensionService {
         }
 
         return extensionRepository.findByBookingIdOrderByCreatedAtDesc(bookingId).stream()
-                .map(this::mapToDTO)
+                .map(extension -> mapToDTO(extension, userId))
                 .toList();
     }
 
     @Transactional(readOnly = true)
     public List<TripExtensionDTO> getExtensionsForHost(Long hostId) {
         return extensionRepository.findByHostId(hostId).stream()
-                .map(this::mapToDTO)
+                .map(extension -> mapToDTO(extension, hostId))
                 .toList();
+    }
+
+    /**
+     * Resolve extension booking mutation as soon as CHARGE async settlement is confirmed.
+     */
+    @Transactional
+    public void handleExtensionPaymentSettled(Long extensionId, boolean success) {
+        TripExtension extension = extensionRepository.findById(extensionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Zahtev za produženje nije pronađen"));
+
+        if (success) {
+            if (extension.getStatus() == TripExtensionStatus.PAYMENT_PENDING) {
+                finalizeApprovedExtension(extension, extension.getHostResponse());
+            }
+            return;
+        }
+
+        if (extension.getStatus() == TripExtensionStatus.PAYMENT_PENDING) {
+            extension.setStatus(TripExtensionStatus.PENDING);
+            extension.setRespondedAt(null);
+            extensionRepository.save(extension);
+            log.warn("[TripExtension] Extension {} payment failed asynchronously - returning to PENDING", extension.getId());
+        }
     }
 
     // ========== HELPERS ==========
@@ -354,9 +403,20 @@ public class TripExtensionService {
         return extension;
     }
 
-    private TripExtensionDTO mapToDTO(TripExtension extension) {
+    private TripExtensionDTO mapToDTO(TripExtension extension, Long requesterUserId) {
+        boolean requesterIsRenter = requesterUserId != null
+                && extension.getBooking().getRenter() != null
+                && extension.getBooking().getRenter().getId().equals(requesterUserId);
+        BookingPaymentService.ExtensionPaymentAction paymentAction = null;
+        if (requesterIsRenter) {
+            paymentAction = bookingPaymentService
+                    .findExtensionPaymentAction(extension.getBooking().getId(), extension.getId())
+                    .orElse(null);
+        }
+
         String statusDisplay = switch (extension.getStatus()) {
             case PENDING -> "Na čekanju";
+            case PAYMENT_PENDING -> "Čeka potvrdu plaćanja";
             case APPROVED -> "Odobreno";
             case DECLINED -> "Odbijeno";
             case EXPIRED -> "Isteklo";
@@ -374,6 +434,9 @@ public class TripExtensionService {
                 .additionalCost(extension.getAdditionalCost())
                 .status(extension.getStatus())
                 .statusDisplay(statusDisplay)
+                .paymentStatus(requesterIsRenter && paymentAction != null ? paymentAction.status().name() : null)
+                .paymentRedirectUrl(requesterIsRenter && paymentAction != null ? paymentAction.redirectUrl() : null)
+                .paymentActionToken(requesterIsRenter && paymentAction != null ? paymentAction.actionToken() : null)
                 .responseDeadline(toLocalDateTime(extension.getResponseDeadline()))
                 .hostResponse(extension.getHostResponse())
                 .respondedAt(toLocalDateTime(extension.getRespondedAt()))
@@ -383,6 +446,58 @@ public class TripExtensionService {
                 .guestId(extension.getBooking().getRenter().getId())
                 .guestName(extension.getBooking().getRenter().getFirstName() + " " + extension.getBooking().getRenter().getLastName())
                 .build();
+    }
+
+    private TripExtension reconcilePendingExtensionPayment(TripExtension extension) {
+        if (extension.getStatus() != TripExtensionStatus.PAYMENT_PENDING) {
+            return extension;
+        }
+
+        BookingPaymentService.ExtensionPaymentAction action = bookingPaymentService
+                .findExtensionPaymentAction(extension.getBooking().getId(), extension.getId())
+                .orElse(null);
+
+        if (action == null || action.isPending()) {
+            return extension;
+        }
+
+        if (action.success()) {
+            log.info("[TripExtension] Extension {} payment confirmed asynchronously - finalizing", extension.getId());
+            return finalizeApprovedExtension(extension, extension.getHostResponse());
+        }
+
+        // Payment was resolved as failed: reopen to host/guest actions instead of deadlocking.
+        handleExtensionPaymentSettled(extension.getId(), false);
+        extension = extensionRepository.findById(extension.getId()).orElse(extension);
+        return extension;
+    }
+
+    private TripExtension finalizeApprovedExtension(TripExtension extension, String response) {
+        Booking booking = extension.getBooking();
+
+        extension.approve(response);
+
+        // Mutate booking only after successful extension payment.
+        java.time.LocalTime endTimeOfDay = booking.getEndTime().toLocalTime();
+        booking.setEndTime(extension.getRequestedEndDate().atTime(endTimeOfDay));
+        booking.setTotalPrice(booking.getTotalPrice().add(extension.getAdditionalCost()));
+        bookingRepository.save(booking);
+
+        extension = extensionRepository.save(extension);
+
+        extensionApprovedCounter.increment();
+        log.info("[TripExtension] Extension {} approved for booking {}", extension.getId(), booking.getId());
+
+        // Notify guest
+        notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                .recipientId(booking.getRenter().getId())
+                .type(NotificationType.BOOKING_APPROVED)
+                .message(String.format("Vaš zahtev za produženje je odobren! Novi datum završetka: %s",
+                        extension.getRequestedEndDate()))
+                .relatedEntityId(String.valueOf(booking.getId()))
+                .build());
+
+        return extension;
     }
 
     private LocalDateTime toLocalDateTime(Instant instant) {

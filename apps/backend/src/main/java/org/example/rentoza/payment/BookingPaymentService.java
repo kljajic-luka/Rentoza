@@ -311,7 +311,7 @@ public class BookingPaymentService {
      * ({@link PaymentLifecycleScheduler}) acts as the fallback for any capture that
      * does not complete here.
      */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional(propagation = Propagation.MANDATORY)
     public PaymentResult captureBookingPaymentNow(Long bookingId) {
         return captureBookingPayment(bookingId);
     }
@@ -355,6 +355,17 @@ public class BookingPaymentService {
     @Transactional
     public PaymentResult captureBookingPayment(Long bookingId) {
         Booking booking = getBooking(bookingId);
+
+        ChargeLifecycleStatus lifecycle = booking.getChargeLifecycleStatus();
+        if (lifecycle != ChargeLifecycleStatus.AUTHORIZED && lifecycle != ChargeLifecycleStatus.CAPTURE_FAILED) {
+            log.warn("[Payment] Booking {} capture blocked: invalid lifecycle {}", bookingId, lifecycle);
+            return PaymentResult.builder()
+                    .success(false)
+                    .errorCode("INVALID_STATE")
+                    .errorMessage("Booking is not in a capturable payment state")
+                    .status(PaymentStatus.FAILED)
+                    .build();
+        }
 
         String authorizationId = booking.getBookingAuthorizationId();
         if (authorizationId == null || authorizationId.isBlank()) {
@@ -1421,6 +1432,12 @@ public class BookingPaymentService {
     /** Adapt a ProviderResult to the legacy PaymentResult for backward compat. */
     private PaymentResult toLegacyResult(ProviderResult r) {
         boolean success = r.getOutcome() == ProviderOutcome.SUCCESS;
+        PaymentStatus status = switch (r.getOutcome()) {
+            case SUCCESS -> PaymentStatus.SUCCESS;
+            case REDIRECT_REQUIRED -> PaymentStatus.REDIRECT_REQUIRED;
+            case PENDING -> PaymentStatus.PENDING;
+            default -> PaymentStatus.FAILED;
+        };
         return PaymentResult.builder()
                 .success(success)
                 .transactionId(r.getProviderTransactionId())
@@ -1430,15 +1447,13 @@ public class BookingPaymentService {
                 .redirectUrl(r.getRedirectUrl())
                 .errorCode(r.getErrorCode())
                 .errorMessage(r.getErrorMessage())
-                .status(success ? PaymentStatus.SUCCESS
-                        : r.getOutcome() == ProviderOutcome.REDIRECT_REQUIRED ? PaymentStatus.REDIRECT_REQUIRED
-                        : PaymentStatus.FAILED)
+            .status(status)
                 .build();
     }
 
     private PaymentResult toLegacyResult(PaymentTransaction tx) {
         boolean success = tx.getStatus() == PaymentTransactionStatus.SUCCEEDED;
-        boolean isRedirect = tx.getStatus() == PaymentTransactionStatus.REDIRECT_REQUIRED;
+        PaymentStatus status = mapPaymentStatus(tx.getStatus());
         return PaymentResult.builder()
                 .success(success)
                 .transactionId(tx.getProviderReference())
@@ -1446,10 +1461,17 @@ public class BookingPaymentService {
                 .amount(tx.getAmount())
                 .currency(tx.getCurrency())
                 .redirectUrl(tx.getRedirectUrl())
-                .status(success ? PaymentStatus.SUCCESS
-                        : isRedirect ? PaymentStatus.REDIRECT_REQUIRED
-                        : PaymentStatus.FAILED)
+                .status(status)
                 .build();
+    }
+
+    private PaymentStatus mapPaymentStatus(PaymentTransactionStatus status) {
+        return switch (status) {
+            case SUCCEEDED -> PaymentStatus.SUCCESS;
+            case REDIRECT_REQUIRED -> PaymentStatus.REDIRECT_REQUIRED;
+            case PENDING_CONFIRMATION, PROCESSING -> PaymentStatus.PENDING;
+            default -> PaymentStatus.FAILED;
+        };
     }
 
     private PaymentResult toSuccess(PaymentTransaction tx) {
@@ -1480,6 +1502,34 @@ public class BookingPaymentService {
         return txRepository.findByIdempotencyKey(ikey)
                 .filter(tx -> tx.getStatus() == PaymentTransactionStatus.REDIRECT_REQUIRED)
                 .map(PaymentTransaction::getRedirectUrl);
+    }
+
+    /** Snapshot of extension payment action state for UI continuation and reconciliation. */
+    public record ExtensionPaymentAction(
+            boolean success,
+            PaymentStatus status,
+            String redirectUrl,
+            String actionToken,
+            String transactionId,
+            String authorizationId
+    ) {
+        public boolean isPending() {
+            return status == PaymentStatus.REDIRECT_REQUIRED || status == PaymentStatus.PENDING;
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.Optional<ExtensionPaymentAction> findExtensionPaymentAction(Long bookingId, Long extensionId) {
+        String ikey = PaymentIdempotencyKey.forExtension(bookingId, extensionId);
+        return txRepository.findByIdempotencyKey(ikey)
+                .map(tx -> new ExtensionPaymentAction(
+                        tx.getStatus() == PaymentTransactionStatus.SUCCEEDED,
+                        mapPaymentStatus(tx.getStatus()),
+                        tx.getRedirectUrl(),
+                        tx.getSessionToken(),
+                        tx.getProviderReference(),
+                        tx.getProviderAuthId()
+                ));
     }
 
     // ========== LIFECYCLE TRANSITION GUARDS ==========

@@ -48,6 +48,13 @@ public interface PaymentTransactionRepository extends JpaRepository<PaymentTrans
     Optional<PaymentTransaction> findByProviderAuthId(String providerAuthId);
 
     /**
+     * Find a transaction by provider transaction/reference ID.
+     * Used for CHARGE/CAPTURE webhooks where provider sends transaction reference
+     * rather than authorization ID.
+     */
+    Optional<PaymentTransaction> findByProviderReference(String providerReference);
+
+    /**
      * Sum the amounts of all SUCCEEDED REFUND transactions for a booking.
      * Used by processRefund() to enforce cumulative refund cap (M5).
      * Returns {@code null} when no succeeded refunds exist.

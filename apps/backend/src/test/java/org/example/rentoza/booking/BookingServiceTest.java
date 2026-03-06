@@ -375,6 +375,24 @@ class BookingServiceTest {
                     .hasMessageContaining("Maksimalno trajanje");
         }
 
+                @Test
+                @DisplayName("Should reject 7 days + 1 hour when maxTripDays is 7")
+                void shouldRejectSevenDaysPlusOneHourWhenMaxIsSeven() {
+                    LocalDateTime start = LocalDateTime.now(SERBIA_ZONE).plusDays(2).withMinute(0);
+                    validBookingRequest.setStartTime(start);
+                    validBookingRequest.setEndTime(start.plusDays(7).plusHours(1));
+                    car.getBookingSettings().setMaxTripDays(7);
+
+                    when(userRepo.findByEmail("renter@test.com")).thenReturn(Optional.of(renter));
+                    when(carRepo.findById(100L)).thenReturn(Optional.of(car));
+                    when(bookingRepo.existsOverlappingBookingsWithLock(anyLong(), any(), any())).thenReturn(false);
+                    when(bookingRepo.existsOverlappingUserBooking(anyLong(), any(), any())).thenReturn(false);
+
+                    assertThatThrownBy(() -> bookingService.createBooking(validBookingRequest, "renter@test.com"))
+                        .isInstanceOf(ValidationException.class)
+                        .hasMessageContaining("Maksimalno trajanje");
+                }
+
         @Test
         @DisplayName("Should accept booking at exactly minimum duration")
         void shouldAcceptBookingAtExactlyMinimumDuration() {

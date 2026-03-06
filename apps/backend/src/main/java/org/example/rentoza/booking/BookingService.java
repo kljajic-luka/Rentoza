@@ -6,6 +6,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.booking.cancellation.CancellationPolicyService;
 import org.example.rentoza.booking.cancellation.CancellationReason;
+import org.example.rentoza.booking.util.BookingDurationPolicy;
 import org.example.rentoza.booking.validation.BookingEdgeCaseValidator;
 import org.example.rentoza.booking.dto.BookingRequestDTO;
 import org.example.rentoza.booking.dto.BookingResponseDTO;
@@ -316,7 +317,8 @@ public class BookingService {
         // Default: 24 hours, but hosts can configure per-car.
         // ========================================================================
         int minTripHours = carBookingSettings.getEffectiveMinTripHours();
-        long tripDurationHours = ChronoUnit.HOURS.between(tripStartDateTime, tripEndDateTime);
+        BookingDurationPolicy.DurationBreakdown duration = BookingDurationPolicy.calculate(tripStartDateTime, tripEndDateTime);
+        long tripDurationHours = duration.actualDuration().toHours();
         
         if (tripDurationHours < minTripHours) {
             log.warn("Minimum duration validation failed: duration={}h, required={}h, carId={}", 
@@ -334,7 +336,7 @@ public class BookingService {
         // Default: 30 days, but hosts can configure per-car.
         // ========================================================================
         int maxTripDays = carBookingSettings.getEffectiveMaxTripDays();
-        long tripDurationDays = ChronoUnit.DAYS.between(tripStartDateTime.toLocalDate(), tripEndDateTime.toLocalDate());
+        long tripDurationDays = duration.billablePeriods();
         
         if (tripDurationDays > maxTripDays) {
             log.warn("Maximum duration validation failed: duration={}d, max={}d, carId={}", 
@@ -534,8 +536,7 @@ public class BookingService {
         //
         // Exact Timestamp Architecture: Calculate 24-hour periods, rounded up.
         // Example: 36 hours = 2 periods (ceil(36/24) = 2)
-        long hours = ChronoUnit.HOURS.between(dto.getStartTime(), dto.getEndTime());
-        int periods = Math.max(1, (int) Math.ceil(hours / 24.0));
+        int periods = Math.toIntExact(duration.billablePeriods());
         BigDecimal basePrice = car.getPricePerDay()
                 .multiply(BigDecimal.valueOf(periods));
 
@@ -591,8 +592,8 @@ public class BookingService {
         booking.setServiceFeeSnapshot(serviceFee);
         booking.setInsuranceCostSnapshot(insuranceCost);
         
-        log.debug("Price breakdown: hours={}, periods={}, base={}, insurance={}, serviceFee={}, refuel={}, delivery={}, deposit={}, total={}",
-                hours, periods, basePrice, insuranceCost, serviceFee, refuelCost, deliveryFee, depositAmount, totalPrice);
+        log.debug("Price breakdown: actualDuration={}, periods={}, base={}, insurance={}, serviceFee={}, refuel={}, delivery={}, deposit={}, total={}",
+            duration.actualDuration(), periods, basePrice, insuranceCost, serviceFee, refuelCost, deliveryFee, depositAmount, totalPrice);
 
         // ========================================================================
         // CANCELLATION POLICY: Snapshot Daily Rate at Booking Time

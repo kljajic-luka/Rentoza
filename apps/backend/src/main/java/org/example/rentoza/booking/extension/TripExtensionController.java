@@ -110,6 +110,9 @@ public class TripExtensionController {
         
         String responseText = response != null ? response.getResponse() : null;
         TripExtensionDTO extension = extensionService.approveExtension(extensionId, responseText, userId);
+        if (extension.getStatus() == TripExtensionStatus.PAYMENT_PENDING) {
+            return ResponseEntity.status(HttpStatus.ACCEPTED).body(extension);
+        }
         return ResponseEntity.ok(extension);
     }
 

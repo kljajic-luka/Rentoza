@@ -1,11 +1,14 @@
 package org.example.rentoza.payment;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.security.JwtUserPrincipal;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -62,12 +65,17 @@ public class PaymentController {
      * @return result map with {@code success}, {@code errorCode?} and {@code errorMessage?}
      */
     @PostMapping("/bookings/{bookingId}/reauthorize")
-    @PreAuthorize("@bookingSecurity.canAccessBooking(#bookingId, authentication.principal.id) or hasRole('ADMIN')")
+    @PreAuthorize("@bookingSecurity.canReauthorizeBookingPayment(#bookingId, authentication.principal.id) or hasRole('ADMIN')")
     @Operation(
             summary = "Reauthorize booking payment",
             description = "Re-issues a card authorization for a booking in REAUTH_REQUIRED state. "
                     + "Called by renter when their prior authorization has expired near the trip start."
     )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Reauthorization succeeded"),
+            @ApiResponse(responseCode = "202", description = "User action/redirect required to complete reauthorization"),
+            @ApiResponse(responseCode = "422", description = "Reauthorization failed for business/payment reasons")
+    })
     public ResponseEntity<Map<String, Object>> reauthorizeBookingPayment(
             @PathVariable Long bookingId,
             @RequestBody ReauthorizeRequest request,
@@ -94,18 +102,19 @@ public class PaymentController {
                     "success", true,
                     "authorizationId", result.getAuthorizationId() != null ? result.getAuthorizationId() : ""
             ));
-        } else if ("REDIRECT_REQUIRED".equals(result.getStatus() != null ? result.getStatus().name() : "")) {
+        } else if (result.getStatus() == PaymentProvider.PaymentStatus.REDIRECT_REQUIRED
+                || result.getStatus() == PaymentProvider.PaymentStatus.PENDING) {
             log.info("[PaymentController] Reauth for booking {} requires 3DS redirect: {}",
                     bookingId, result.getRedirectUrl());
-            return ResponseEntity.ok(Map.of(
+            return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of(
                     "success", false,
-                    "status", "REDIRECT_REQUIRED",
+                    "status", result.getStatus().name(),
                     "redirectUrl", result.getRedirectUrl() != null ? result.getRedirectUrl() : ""
             ));
         } else {
             log.warn("[PaymentController] Reauth failed for booking {}: {} ({})",
                     bookingId, result.getErrorMessage(), result.getErrorCode());
-            return ResponseEntity.ok(Map.of(
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
                     "success", false,
                     "errorCode", result.getErrorCode() != null ? result.getErrorCode() : "UNKNOWN",
                     "errorMessage", result.getErrorMessage() != null ? result.getErrorMessage() : "Reauthorization failed"

@@ -6,6 +6,12 @@
  *
  * Updated for Exact Timestamp Architecture - uses endTime instead of endDate.
  */
+import {
+  formatDateSerbiaValue,
+  formatDateTimeSerbiaValue,
+  formatTimeSerbiaValue,
+  parseSerbiaDateTime,
+} from './serbia-time.util';
 
 /**
  * Check if a booking is considered completed.
@@ -27,7 +33,8 @@ export function isBookingCompleted(booking: { status: string; endTime: string | 
   }
 
   const now = new Date();
-  const endTime = new Date(booking.endTime);
+  const endTime =
+    typeof booking.endTime === 'string' ? parseSerbiaDateTime(booking.endTime) : booking.endTime;
 
   return booking.status === 'COMPLETED' || endTime < now;
 }
@@ -49,7 +56,8 @@ export function isReviewWindowOpen(booking: { endTime: string | Date }): boolean
   if (!booking || !booking.endTime) {
     return true; // No end time = allow (server will enforce)
   }
-  const endTime = new Date(booking.endTime);
+  const endTime =
+    typeof booking.endTime === 'string' ? parseSerbiaDateTime(booking.endTime) : booking.endTime;
   const deadline = new Date(
     endTime.getTime() + REVIEW_SUBMISSION_WINDOW_DAYS * 24 * 60 * 60 * 1000,
   );
@@ -101,14 +109,7 @@ export function canOwnerReviewRenter(booking: {
  * @returns Formatted date and time string (e.g., "10.10.2025 09:00")
  */
 export function formatDateTime(dateTimeStr: string): string {
-  const date = new Date(dateTimeStr);
-  return date.toLocaleDateString('sr-RS', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return formatDateTimeSerbiaValue(dateTimeStr);
 }
 
 /**
@@ -118,12 +119,7 @@ export function formatDateTime(dateTimeStr: string): string {
  * @returns Formatted date string (e.g., "10.10.2025")
  */
 export function formatDate(dateTimeStr: string): string {
-  const date = new Date(dateTimeStr);
-  return date.toLocaleDateString('sr-RS', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
+  return formatDateSerbiaValue(dateTimeStr);
 }
 
 /**
@@ -133,9 +129,5 @@ export function formatDate(dateTimeStr: string): string {
  * @returns Formatted time string (e.g., "09:00")
  */
 export function formatTime(dateTimeStr: string): string {
-  const date = new Date(dateTimeStr);
-  return date.toLocaleTimeString('sr-RS', {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return formatTimeSerbiaValue(dateTimeStr);
 }

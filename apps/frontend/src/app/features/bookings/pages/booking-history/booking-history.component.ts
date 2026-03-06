@@ -157,7 +157,7 @@ export class BookingHistoryComponent implements OnInit {
   }
 
   private isCancelledStatus(status: string): boolean {
-    return status === 'CANCELLED';
+    return status === 'CANCELLED' || status === 'CANCELLATION_PENDING_SETTLEMENT';
   }
 
   private isTerminalStatus(status: string): boolean {
@@ -370,6 +370,8 @@ export class BookingHistoryComponent implements OnInit {
         return 'Isteklo';
       case 'CANCELLED':
         return 'Otkazano';
+      case 'CANCELLATION_PENDING_SETTLEMENT':
+        return 'Otkazano, poravnanje u toku';
       case 'COMPLETED':
         return 'Završeno';
       case 'EXPIRED_SYSTEM':
@@ -415,6 +417,8 @@ export class BookingHistoryComponent implements OnInit {
         return 'status-expired';
       case 'CANCELLED':
         return 'status-cancelled';
+      case 'CANCELLATION_PENDING_SETTLEMENT':
+        return 'status-cancelled';
       case 'COMPLETED':
         return 'status-completed';
       case 'CHECK_IN_OPEN':
@@ -456,6 +460,8 @@ export class BookingHistoryComponent implements OnInit {
         return 'Zahtev za rezervaciju je istekao jer domaćin nije odgovorio na vreme.';
       case 'CANCELLED':
         return 'Rezervacija je otkazana.';
+      case 'CANCELLATION_PENDING_SETTLEMENT':
+        return 'Rezervacija je otkazana. Finansijsko poravnanje je još u toku.';
       case 'COMPLETED':
         return 'Putovanje je završeno.';
       case 'CHECK_IN_OPEN':
@@ -489,6 +495,7 @@ export class BookingHistoryComponent implements OnInit {
       'DECLINED',
       'EXPIRED',
       'EXPIRED_SYSTEM',
+      'CANCELLATION_PENDING_SETTLEMENT',
       'CHECK_IN_HOST_COMPLETE',
     ].includes(status);
   }

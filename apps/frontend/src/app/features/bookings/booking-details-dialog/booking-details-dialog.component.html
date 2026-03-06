@@ -51,11 +51,11 @@
         <div class="info-grid">
           <div class="info-item">
             <span class="label">Početak</span>
-            <span class="value">{{ b.startTime | date : 'dd.MM.yyyy HH:mm' }}</span>
+            <span class="value">{{ formatDateTime(b.startTime) }}</span>
           </div>
           <div class="info-item">
             <span class="label">Kraj</span>
-            <span class="value">{{ b.endTime | date : 'dd.MM.yyyy HH:mm' }}</span>
+            <span class="value">{{ formatDateTime(b.endTime) }}</span>
           </div>
           <div class="info-item">
             <span class="label">Trajanje</span>
@@ -158,6 +158,10 @@
       <mat-icon>photo_library</mat-icon> Slike
     </button>
     <button mat-stroked-button (click)="openReceipt()"><mat-icon>receipt</mat-icon> Račun</button>
+    <button mat-stroked-button color="primary" (click)="openFullBookingPage()">
+      <mat-icon>open_in_new</mat-icon>
+      Upravljaj rezervacijom
+    </button>
     <button mat-flat-button color="primary" (click)="close()">Zatvori</button>
   </mat-dialog-actions>
 </div>

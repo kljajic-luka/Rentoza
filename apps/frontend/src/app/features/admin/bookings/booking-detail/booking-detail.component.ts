@@ -261,6 +261,7 @@ export class BookingDetailComponent implements OnInit {
     return [
       'COMPLETED',
       'CANCELLED',
+      'CANCELLATION_PENDING_SETTLEMENT',
       'DECLINED',
       'EXPIRED',
       'EXPIRED_SYSTEM',
@@ -271,6 +272,7 @@ export class BookingDetailComponent implements OnInit {
 
   getStatusClass(status: string): string {
     if (this.isTerminal(status)) return 'badge-neutral';
+    if (status === 'CANCELLATION_PENDING_SETTLEMENT') return 'badge-warn';
     if (status === 'IN_TRIP') return 'badge-success';
     if (status.startsWith('CHECK_IN') || status.startsWith('CHECKOUT')) return 'badge-warn';
     return 'badge-info';

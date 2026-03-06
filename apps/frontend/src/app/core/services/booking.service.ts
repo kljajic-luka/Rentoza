@@ -13,6 +13,13 @@ import {
 } from '@core/models/booking.model';
 import { GuestBookingPreview } from '@core/models/guest-preview.model';
 import { AnalyticsService } from './analytics.service';
+import {
+  BookingReauthorizeRequest,
+  BookingReauthorizeResponse,
+  TripExtension,
+  TripExtensionHostResponse,
+  TripExtensionRequest,
+} from '@core/models/trip-extension.model';
 
 @Injectable({ providedIn: 'root' })
 export class BookingService {
@@ -285,6 +292,81 @@ export class BookingService {
         { withCredentials: true },
       )
       .pipe(tap(() => this.analytics.track('agreement.accepted', { bookingId })));
+  }
+
+  getBookingExtensions(bookingId: number | string): Observable<TripExtension[]> {
+    return this.http.get<TripExtension[]>(`${this.baseUrl}/${bookingId}/extensions`, {
+      withCredentials: true,
+    });
+  }
+
+  getPendingBookingExtension(bookingId: number | string): Observable<TripExtension | null> {
+    return this.http.get<TripExtension>(`${this.baseUrl}/${bookingId}/extensions/pending`, {
+      withCredentials: true,
+    });
+  }
+
+  requestBookingExtension(
+    bookingId: number | string,
+    payload: TripExtensionRequest,
+  ): Observable<TripExtension> {
+    return this.http.post<TripExtension>(`${this.baseUrl}/${bookingId}/extensions`, payload, {
+      withCredentials: true,
+    });
+  }
+
+  cancelBookingExtension(
+    bookingId: number | string,
+    extensionId: number,
+  ): Observable<TripExtension> {
+    return this.http.post<TripExtension>(
+      `${this.baseUrl}/${bookingId}/extensions/${extensionId}/cancel`,
+      {},
+      {
+        withCredentials: true,
+      },
+    );
+  }
+
+  approveBookingExtension(
+    bookingId: number | string,
+    extensionId: number,
+    payload?: TripExtensionHostResponse,
+  ): Observable<TripExtension> {
+    return this.http.post<TripExtension>(
+      `${this.baseUrl}/${bookingId}/extensions/${extensionId}/approve`,
+      payload ?? {},
+      {
+        withCredentials: true,
+      },
+    );
+  }
+
+  declineBookingExtension(
+    bookingId: number | string,
+    extensionId: number,
+    payload?: TripExtensionHostResponse,
+  ): Observable<TripExtension> {
+    return this.http.post<TripExtension>(
+      `${this.baseUrl}/${bookingId}/extensions/${extensionId}/decline`,
+      payload ?? {},
+      {
+        withCredentials: true,
+      },
+    );
+  }
+
+  reauthorizeBookingPayment(
+    bookingId: number | string,
+    payload: BookingReauthorizeRequest,
+  ): Observable<BookingReauthorizeResponse> {
+    return this.http.post<BookingReauthorizeResponse>(
+      `${environment.baseApiUrl}/payments/bookings/${bookingId}/reauthorize`,
+      payload,
+      {
+        withCredentials: true,
+      },
+    );
   }
 }
 

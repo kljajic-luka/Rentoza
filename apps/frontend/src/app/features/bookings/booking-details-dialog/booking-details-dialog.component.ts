@@ -12,6 +12,7 @@ import { MatDividerModule } from '@angular/material/divider';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { Router } from '@angular/router';
 import { BookingService } from '@core/services/booking.service';
 import { BookingDetails, PickupLocationData } from '@core/models/booking-details.model';
 import { CarRules } from '@app/core/models/car-rules.model';
@@ -21,6 +22,11 @@ import {
   CancellationPreviewDialogResult,
 } from '@shared/components/cancellation-preview-dialog/cancellation-preview-dialog.component';
 import { ReadOnlyPickupLocationComponent } from '../components/readonly-pickup-location';
+import {
+  formatDateSerbiaValue,
+  formatDateTimeSerbiaValue,
+  getRoundedTripDaysSerbia,
+} from '@core/utils/serbia-time.util';
 
 @Component({
   selector: 'app-booking-details-dialog',
@@ -43,6 +49,7 @@ export class BookingDetailsDialogComponent implements OnInit {
   private readonly bookingService = inject(BookingService);
   private readonly dialogRef = inject(MatDialogRef<BookingDetailsDialogComponent>);
   private readonly dialog = inject(MatDialog);
+  private readonly router = inject(Router);
 
   booking = signal<BookingDetails | null>(null);
   isLoading = signal(true);
@@ -116,6 +123,11 @@ export class BookingDetailsDialogComponent implements OnInit {
     this.dialogRef.close();
   }
 
+  openFullBookingPage(): void {
+    this.dialogRef.close();
+    void this.router.navigate(['/bookings', this.data.bookingId]);
+  }
+
   openRules(): void {
     // Placeholder for Rules Modal
     alert('Pravila putovanja:\n\n' + CarRules.DEFAULT_RULES.join('\n• '));
@@ -162,18 +174,19 @@ export class BookingDetailsDialogComponent implements OnInit {
   }
 
   getDuration(start: string, end: string): number {
-    const startDate = new Date(start);
-    const endDate = new Date(end);
-    const diffTime = Math.abs(endDate.getTime() - startDate.getTime());
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return getRoundedTripDaysSerbia(start, end);
   }
 
   formatDate(date: string): string {
-    return new Date(date).toLocaleDateString('sr-RS', {
+    return formatDateSerbiaValue(date, {
       day: 'numeric',
       month: 'long',
       year: 'numeric',
     });
+  }
+
+  formatDateTime(date: string): string {
+    return formatDateTimeSerbiaValue(date);
   }
 
   getStatusLabel(status: string): string {
@@ -188,6 +201,8 @@ export class BookingDetailsDialogComponent implements OnInit {
         return 'Isteklo';
       case 'CANCELLED':
         return 'Otkazano';
+      case 'CANCELLATION_PENDING_SETTLEMENT':
+        return 'Otkazano, poravnanje u toku';
       case 'COMPLETED':
         return 'Završeno';
       default:
@@ -201,6 +216,8 @@ export class BookingDetailsDialogComponent implements OnInit {
         return 'warn';
       case 'ACTIVE':
         return 'primary';
+      case 'CANCELLATION_PENDING_SETTLEMENT':
+        return 'warn';
       case 'COMPLETED':
         return 'accent';
       default:

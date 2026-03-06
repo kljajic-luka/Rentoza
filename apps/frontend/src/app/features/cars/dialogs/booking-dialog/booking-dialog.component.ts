@@ -35,7 +35,6 @@ import {
   generateTimeSlots,
   TimeSlot,
   combineDateTime,
-  calculatePeriods,
   BookingRequest,
   BookingCreateResponse,
   isRedirectResponse,
@@ -54,6 +53,12 @@ import {
   DEFAULT_MIN_TRIP_HOURS,
   DEFAULT_MAX_TRIP_DAYS,
 } from '@core/utils/time-validation.util';
+import {
+  calculateBillablePeriodsSerbia,
+  formatTripDurationSerbia,
+  parseSerbiaDateTime,
+  toSerbiaCalendarDate,
+} from '@core/utils/serbia-time.util';
 import { PaymentFormComponent } from '@core/payment/payment-form/payment-form.component';
 import {
   generateDeterministicIdempotencyKey,
@@ -415,13 +420,13 @@ export class BookingDialogComponent implements OnInit {
     const endDateTime = combineDateTime(endDate, endTime);
 
     // Calculate hours
-    const startMs = new Date(startDateTime).getTime();
-    const endMs = new Date(endDateTime).getTime();
+    const startMs = parseSerbiaDateTime(startDateTime).getTime();
+    const endMs = parseSerbiaDateTime(endDateTime).getTime();
     const hours = Math.round((endMs - startMs) / (1000 * 60 * 60));
     this.rentalHours.set(hours);
 
     // Calculate 24-hour periods for pricing
-    const periods = calculatePeriods(startDateTime, endDateTime);
+    const periods = calculateBillablePeriodsSerbia(startDateTime, endDateTime);
     this.rentalDays.set(periods);
 
     // Validate duration
@@ -543,8 +548,8 @@ export class BookingDialogComponent implements OnInit {
     // Validate minimum hours before booking using centralized validation
     const startDateTime = combineDateTime(formValues.startDate!, formValues.startTime);
     const endDateTime = combineDateTime(formValues.endDate!, formValues.endTime);
-    const startDate = new Date(startDateTime);
-    const endDate = new Date(endDateTime);
+    const startDate = parseSerbiaDateTime(startDateTime);
+    const endDate = parseSerbiaDateTime(endDateTime);
 
     // Use car-specific or default advance notice hours
     const advanceNoticeHours = this.data.car.advanceNoticeHours ?? DEFAULT_ADVANCE_NOTICE_HOURS;
@@ -968,11 +973,7 @@ export class BookingDialogComponent implements OnInit {
    * Check if two dates are on the same day.
    */
   private isSameDay(date1: Date, date2: Date): boolean {
-    return (
-      date1.getFullYear() === date2.getFullYear() &&
-      date1.getMonth() === date2.getMonth() &&
-      date1.getDate() === date2.getDate()
-    );
+    return this.normalizeDate(date1).getTime() === this.normalizeDate(date2).getTime();
   }
 
   /**
@@ -991,8 +992,8 @@ export class BookingDialogComponent implements OnInit {
   private getNextUnavailableDate(from: Date): Date | null {
     const ranges = [
       ...this.data.bookings.map((b) => ({
-        start: this.addDays(this.normalizeDate(new Date(b.startTime)), -this.BUFFER_DAYS),
-        end: this.addDays(this.normalizeDate(new Date(b.endTime)), this.BUFFER_DAYS),
+        start: this.addDays(this.normalizeDate(b.startTime), -this.BUFFER_DAYS),
+        end: this.addDays(this.normalizeDate(b.endTime), this.BUFFER_DAYS),
       })),
       ...this.data.blockedDates.map((b) => ({
         start: this.addDays(this.normalizeDate(b.startDate), -this.BUFFER_DAYS),
@@ -1013,8 +1014,7 @@ export class BookingDialogComponent implements OnInit {
   }
 
   private normalizeDate(value: Date | string): Date {
-    const d = new Date(value);
-    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    return toSerbiaCalendarDate(value);
   }
 
   private addDays(date: Date, days: number): Date {
@@ -1027,12 +1027,14 @@ export class BookingDialogComponent implements OnInit {
    * Format duration for display.
    */
   protected formatDuration(): string {
-    const hours = this.rentalHours();
-    if (hours < 24) {
-      return `${hours} sat${hours === 1 ? '' : hours < 5 ? 'a' : 'i'}`;
+    const formValues = this.bookingForm.getRawValue();
+    if (!formValues.startDate || !formValues.endDate || !formValues.startTime || !formValues.endTime) {
+      return '0 sati';
     }
-    const days = this.rentalDays();
-    return `${days} dan${days === 1 ? '' : days < 5 ? 'a' : 'a'} (${hours}h)`;
+
+    const startDateTime = combineDateTime(formValues.startDate, formValues.startTime);
+    const endDateTime = combineDateTime(formValues.endDate, formValues.endTime);
+    return `${formatTripDurationSerbia(startDateTime, endDateTime)} (${this.rentalHours()}h)`;
   }
 
   /**

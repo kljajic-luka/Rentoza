@@ -16,6 +16,7 @@ import { Booking } from '@core/models/booking.model';
 import { BookingService } from '@core/services/booking.service';
 import { AuthService } from '@core/auth/auth.service';
 import { isBookingCompleted, canOwnerReviewRenter } from '@core/utils/booking.utils';
+import { formatDateSerbiaValue, parseSerbiaDateTime } from '@core/utils/serbia-time.util';
 import {
   CancellationPreviewDialogComponent,
   CancellationPreviewDialogData,
@@ -46,9 +47,6 @@ export class OwnerBookingsComponent implements OnInit {
   private readonly authService = inject(AuthService);
   private readonly dialog = inject(MatDialog);
   private readonly router = inject(Router);
-
-  /** Serbia timezone identifier for consistent time parsing */
-  private readonly SERBIA_TIMEZONE = 'Europe/Belgrade';
 
   protected readonly isLoading = signal(false);
   protected readonly upcomingBookings = signal<Booking[]>([]);
@@ -112,13 +110,19 @@ export class OwnerBookingsComponent implements OnInit {
                 }
 
                 // Parse timestamps (exact timestamp architecture)
-                const startTime = this.parseAsSerbia(booking.startTime);
-                const endTime = this.parseAsSerbia(booking.endTime);
+                const startTime = parseSerbiaDateTime(booking.startTime);
+                const endTime = parseSerbiaDateTime(booking.endTime);
 
                 // Categorize based on times AND status
                 // 0. Terminal states (cancelled/declined/expired) should never appear as upcoming
                 if (
-                  ['CANCELLED', 'DECLINED', 'EXPIRED', 'EXPIRED_SYSTEM'].includes(booking.status)
+                  [
+                    'CANCELLED',
+                    'CANCELLATION_PENDING_SETTLEMENT',
+                    'DECLINED',
+                    'EXPIRED',
+                    'EXPIRED_SYSTEM',
+                  ].includes(booking.status)
                 ) {
                   completed.push(booking);
                 }
@@ -215,6 +219,7 @@ export class OwnerBookingsComponent implements OnInit {
       case 'NO_SHOW_HOST':
       case 'NO_SHOW_GUEST':
       case 'CANCELLED':
+      case 'CANCELLATION_PENDING_SETTLEMENT':
         return 'status-cancelled';
       default:
         return '';
@@ -231,6 +236,8 @@ export class OwnerBookingsComponent implements OnInit {
         return 'Završeno';
       case 'CANCELLED':
         return 'Otkazano';
+      case 'CANCELLATION_PENDING_SETTLEMENT':
+        return 'Otkazano, poravnanje u toku';
       case 'CHECK_IN_OPEN':
         return 'Check-in otvoren';
       case 'CHECK_IN_HOST_COMPLETE':
@@ -384,9 +391,7 @@ export class OwnerBookingsComponent implements OnInit {
       bookingId: Number(booking.id),
       userRole: 'HOST',
       carInfo: car ? `${car.brand || ''} ${car.model}`.trim() : 'Vozilo',
-      tripDates: `${this.parseAsSerbia(booking.startTime).toLocaleDateString('sr-RS')} - ${this.parseAsSerbia(
-        booking.endTime,
-      ).toLocaleDateString('sr-RS')}`,
+      tripDates: `${formatDateSerbiaValue(booking.startTime)} - ${formatDateSerbiaValue(booking.endTime)}`,
     };
 
     const dialogRef = this.dialog.open(CancellationPreviewDialogComponent, {
@@ -445,7 +450,7 @@ export class OwnerBookingsComponent implements OnInit {
    * Parses dates as Serbia timezone since backend stores LocalDateTime without timezone.
    */
   protected getTimeUntil(dateStr: string): string {
-    const date = this.parseAsSerbia(dateStr);
+    const date = parseSerbiaDateTime(dateStr);
     const now = new Date();
     const diffMs = date.getTime() - now.getTime();
 
@@ -480,90 +485,6 @@ export class OwnerBookingsComponent implements OnInit {
     }
 
     return 'Sada';
-  }
-
-  /**
-   * Parse a date string as Serbia timezone.
-   * Backend sends LocalDateTime (no timezone) which represents Serbia local time.
-   */
-  private parseAsSerbia(dateStr: string): Date {
-    if (!dateStr) {
-      return new Date(NaN);
-    }
-
-    // If timezone is explicit (e.g. Z, +01:00), native parsing is correct.
-    if (/(?:[zZ]|[+-]\d{2}:?\d{2})$/.test(dateStr)) {
-      return new Date(dateStr);
-    }
-
-    // Parse ISO LocalDateTime and interpret it as Europe/Belgrade clock time.
-    const match = dateStr.match(
-      /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/,
-    );
-    if (!match) {
-      return new Date(dateStr);
-    }
-
-    const year = Number(match[1]);
-    const month = Number(match[2]);
-    const day = Number(match[3]);
-    const hour = Number(match[4]);
-    const minute = Number(match[5]);
-    const second = Number(match[6] ?? '0');
-    const millisecond = Number((match[7] ?? '0').padEnd(3, '0'));
-
-    const serbiaLocalAsUtcMillis = Date.UTC(
-      year,
-      month - 1,
-      day,
-      hour,
-      minute,
-      second,
-      millisecond,
-    );
-
-    // Iterate once to handle DST boundaries (offset depends on resulting instant).
-    let utcMillis = serbiaLocalAsUtcMillis;
-    for (let i = 0; i < 2; i++) {
-      const offsetMinutes = this.getTimeZoneOffsetMinutes(utcMillis, this.SERBIA_TIMEZONE);
-      utcMillis = serbiaLocalAsUtcMillis - offsetMinutes * 60_000;
-    }
-
-    return new Date(utcMillis);
-  }
-
-  /**
-   * Get timezone offset in minutes for a concrete instant.
-   */
-  private getTimeZoneOffsetMinutes(timestampMs: number, timeZone: string): number {
-    const date = new Date(timestampMs);
-    const parts = new Intl.DateTimeFormat('en-US', {
-      timeZone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-      hourCycle: 'h23',
-    }).formatToParts(date);
-
-    const get = (type: Intl.DateTimeFormatPartTypes): number => {
-      const value = parts.find((part) => part.type === type)?.value;
-      return value ? Number(value) : 0;
-    };
-
-    const asIfUtc = Date.UTC(
-      get('year'),
-      get('month') - 1,
-      get('day'),
-      get('hour'),
-      get('minute'),
-      get('second'),
-    );
-
-    return Math.round((asIfUtc - timestampMs) / 60_000);
   }
 
   /**

@@ -1,5 +1,11 @@
 import { Car } from './car.model';
 import { User } from './user.model';
+import {
+  calculateBillablePeriodsSerbia,
+  formatTripDurationSerbia,
+  getSerbiaTimeHHmm,
+  toSerbiaCalendarDate,
+} from '../utils/serbia-time.util';
 
 /**
  * Booking status enum values.
@@ -15,6 +21,7 @@ export type BookingStatus =
   | 'EXPIRED'
   | 'EXPIRED_SYSTEM' // System auto-expired due to host inactivity
   | 'CANCELLED'
+  | 'CANCELLATION_PENDING_SETTLEMENT'
   | 'COMPLETED'
   // Check-in workflow statuses
   | 'CHECK_IN_OPEN'
@@ -257,36 +264,22 @@ export function combineDateTime(date: Date, time: string): string {
  * Parse ISO-8601 LocalDateTime string to Date and time.
  */
 export function parseDateTime(dateTimeStr: string): { date: Date; time: string } {
-  const dt = new Date(dateTimeStr);
-  const time = `${dt.getHours().toString().padStart(2, '0')}:${dt
-    .getMinutes()
-    .toString()
-    .padStart(2, '0')}`;
-  return { date: dt, time };
+  return {
+    date: toSerbiaCalendarDate(dateTimeStr),
+    time: getSerbiaTimeHHmm(dateTimeStr),
+  };
 }
 
 /**
  * Format duration in hours/days for display.
  */
 export function formatDuration(startTime: string, endTime: string): string {
-  const start = new Date(startTime);
-  const end = new Date(endTime);
-  const hours = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60));
-
-  if (hours < 24) {
-    return `${hours} sat${hours === 1 ? '' : hours < 5 ? 'a' : 'i'}`;
-  }
-
-  const days = Math.ceil(hours / 24);
-  return `${days} dan${days === 1 ? '' : days < 5 ? 'a' : 'a'}`;
+  return formatTripDurationSerbia(startTime, endTime);
 }
 
 /**
  * Calculate rental periods (24-hour blocks) for pricing.
  */
 export function calculatePeriods(startTime: string, endTime: string): number {
-  const start = new Date(startTime);
-  const end = new Date(endTime);
-  const hours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
-  return Math.max(1, Math.ceil(hours / 24));
+  return calculateBillablePeriodsSerbia(startTime, endTime);
 }

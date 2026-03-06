@@ -30,6 +30,7 @@ export interface BookingDetails {
     | 'DECLINED'
     | 'EXPIRED'
     | 'CANCELLED'
+    | 'CANCELLATION_PENDING_SETTLEMENT'
     | 'COMPLETED'
     | 'CHECK_IN_OPEN'
     | 'CHECK_IN_HOST_COMPLETE'

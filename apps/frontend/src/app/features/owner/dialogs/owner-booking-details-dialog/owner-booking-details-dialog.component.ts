@@ -16,6 +16,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { BookingService } from '@core/services/booking.service';
 import { Booking } from '@core/models/booking.model';
+import { formatDateTimeSerbiaValue, getRoundedTripDaysSerbia } from '@core/utils/serbia-time.util';
 
 @Component({
   selector: 'app-owner-booking-details-dialog',
@@ -47,10 +48,7 @@ export class OwnerBookingDetailsDialogComponent implements OnInit {
   readonly durationDays = computed(() => {
     const b = this.booking();
     if (!b) return 0;
-    const start = new Date(b.startTime);
-    const end = new Date(b.endTime);
-    const diffTime = Math.abs(end.getTime() - start.getTime());
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return getRoundedTripDaysSerbia(b.startTime, b.endTime);
   });
 
   readonly grossTotal = computed(() => this.booking()?.totalPrice ?? 0);
@@ -112,6 +110,11 @@ export class OwnerBookingDetailsDialogComponent implements OnInit {
     this.router.navigate(['/messages']);
   }
 
+  openFullBookingPage(): void {
+    this.dialogRef.close();
+    void this.router.navigate(['/bookings', this.data.bookingId]);
+  }
+
   getStatusLabel(status: string): string {
     switch (status) {
       case 'PENDING_APPROVAL': return 'Čeka odobrenje';
@@ -119,6 +122,7 @@ export class OwnerBookingDetailsDialogComponent implements OnInit {
       case 'DECLINED': return 'Odbijeno';
       case 'EXPIRED': return 'Isteklo';
       case 'CANCELLED': return 'Otkazano';
+      case 'CANCELLATION_PENDING_SETTLEMENT': return 'Otkazano, poravnanje u toku';
       case 'COMPLETED': return 'Završeno';
       case 'CHECK_IN_OPEN': return 'Check-in otvoren';
       case 'CHECK_IN_HOST_COMPLETE': return 'Čeka se gost';
@@ -136,6 +140,7 @@ export class OwnerBookingDetailsDialogComponent implements OnInit {
         return 'status-active';
       case 'COMPLETED': return 'status-completed';
       case 'CANCELLED':
+      case 'CANCELLATION_PENDING_SETTLEMENT':
       case 'DECLINED':
       case 'EXPIRED':
         return 'status-cancelled';
@@ -145,6 +150,10 @@ export class OwnerBookingDetailsDialogComponent implements OnInit {
         return 'status-check-in';
       default: return '';
     }
+  }
+
+  formatDateTime(date: string): string {
+    return formatDateTimeSerbiaValue(date);
   }
 
   // Timeline Helper

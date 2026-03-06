@@ -193,6 +193,7 @@ export class BookingListComponent implements OnInit {
     'CHECKOUT_HOST_COMPLETE',
     'COMPLETED',
     'CANCELLED',
+    'CANCELLATION_PENDING_SETTLEMENT',
     'DECLINED',
     'EXPIRED',
     'NO_SHOW_HOST',
@@ -278,6 +279,7 @@ export class BookingListComponent implements OnInit {
     return [
       'COMPLETED',
       'CANCELLED',
+      'CANCELLATION_PENDING_SETTLEMENT',
       'DECLINED',
       'EXPIRED',
       'EXPIRED_SYSTEM',
@@ -288,6 +290,7 @@ export class BookingListComponent implements OnInit {
 
   getStatusClass(status: string): string {
     if (this.isTerminal(status)) return 'badge-neutral';
+    if (status === 'CANCELLATION_PENDING_SETTLEMENT') return 'badge-warn';
     if (status === 'IN_TRIP') return 'badge-success';
     if (status.startsWith('CHECK_IN') || status.startsWith('CHECKOUT')) return 'badge-warn';
     return 'badge-info';

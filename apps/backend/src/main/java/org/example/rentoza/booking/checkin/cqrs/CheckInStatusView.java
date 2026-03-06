@@ -114,7 +114,7 @@ public class CheckInStatusView implements Serializable {
     // ========== STATUS ==========
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 30)
+    @Column(name = "status", nullable = false, length = 50)
     private BookingStatus status;
 
     @Column(name = "status_display", length = 100)

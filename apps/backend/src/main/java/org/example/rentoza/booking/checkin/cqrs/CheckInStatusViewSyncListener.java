@@ -335,6 +335,7 @@ public class CheckInStatusViewSyncListener {
             case CHECKOUT_OPEN -> "Povratak otvoren";
             case CHECKOUT_GUEST_COMPLETE -> "Gost završio";
             case CHECKOUT_HOST_COMPLETE -> "Domaćin završio";
+            case CHECKOUT_SETTLEMENT_PENDING -> "Poravnanje u toku";
             case COMPLETED -> "Završeno";
             default -> status.name();
         };

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -20,8 +21,8 @@ import java.util.UUID;
  *   <li>No authentication — the endpoint is intentionally public so that payment providers
  *       can call it without credentials. Security is enforced via HMAC signature
  *       verification inside {@link ProviderEventService}.</li>
- *   <li>Always returns {@code 200 OK} so the provider does not retry on processing
- *       errors. Duplicate events are silently acknowledged.</li>
+ *   <li>Returns {@code 200 OK} only for accepted/idempotent events. Retryable transport
+ *       or processing failures return {@code 503} so the provider can retry safely.</li>
  *   <li>The raw body is forwarded as-is without parsing — the service layer owns
  *       interpretation logic.</li>
  * </ul>
@@ -57,7 +58,7 @@ public class WebhookPaymentController {
      *                      (optional but required for accurate transaction-scoped routing)
      * @param signature     {@code X-Monri-Signature} header (HMAC, optional)
      * @param rawBody       raw JSON request body
-     * @return 200 OK always (provider must receive 2xx to stop retrying)
+    * @return 200 for accepted/idempotent events, non-2xx for retryable failures or invalid requests
      */
     @PostMapping(consumes = "application/json")
     public ResponseEntity<Map<String, Object>> handleWebhook(
@@ -74,7 +75,7 @@ public class WebhookPaymentController {
         if (eventId == null || eventId.isBlank()) {
             if (webhookSecret != null && !webhookSecret.isBlank()) {
                 log.error("[Webhook] REJECTED: Missing X-Monri-Event-Id while signature verification is active");
-                return ResponseEntity.ok(Map.of(
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
                         "status",    "rejected",
                         "reason",    "MISSING_EVENT_ID",
                         "processed", false
@@ -112,20 +113,34 @@ public class WebhookPaymentController {
         }
 
         try {
-            boolean processed = providerEventService.ingestEvent(
+                ProviderEventService.IngestResult result = providerEventService.ingestEventDetailed(
                     eventId, eventType, bookingId, authId, rawBody, signature, eventTimestamp);
 
-            return ResponseEntity.ok(Map.of(
-                    "status",    "ok",
-                    "eventId",   eventId,
-                    "processed", processed
-            ));
+                return switch (result.outcome()) {
+                case PROCESSED, DUPLICATE -> ResponseEntity.ok(Map.of(
+                    "status", result.outcome() == ProviderEventService.IngestOutcome.DUPLICATE ? "duplicate" : "ok",
+                    "eventId", eventId,
+                    "processed", result.processed()
+                ));
+                case REJECTED -> ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                    "status", "rejected",
+                    "eventId", eventId,
+                    "reason", result.reason(),
+                    "processed", false
+                ));
+                case RETRYABLE_FAILURE -> ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(
+                    "status", "retry",
+                    "eventId", eventId,
+                    "reason", result.reason(),
+                    "processed", false
+                ));
+                };
         } catch (Exception ex) {
-            // Never surface 5xx to the provider — it would trigger unbounded retries
             log.error("[Webhook] Unhandled error processing event={}: {}", eventId, ex.getMessage(), ex);
-            return ResponseEntity.ok(Map.of(
-                    "status",    "error",
+                return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(
+                    "status",    "retry",
                     "eventId",   eventId,
+                    "reason",    ex.getMessage(),
                     "processed", false
             ));
         }

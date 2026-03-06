@@ -15,13 +15,12 @@ public interface ProviderEventRepository extends JpaRepository<ProviderEvent, Lo
 
     boolean existsByProviderEventId(String providerEventId);
 
-    /** Unprocessed (and non-errored) events ready for replay. */
+    /** Stored webhook events that were never fully processed and are old enough to replay. */
     @Query("""
            SELECT e FROM ProviderEvent e
            WHERE e.processedAt IS NULL
-             AND e.processingError IS NULL
              AND e.receivedAt < :before
            ORDER BY e.receivedAt ASC
            """)
-    java.util.List<ProviderEvent> findUnprocessed(@Param("before") Instant before);
+    java.util.List<ProviderEvent> findReplayable(@Param("before") Instant before);
 }

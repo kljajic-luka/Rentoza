@@ -2,6 +2,7 @@ package org.example.rentoza.booking.cancellation;
 
 import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingStatus;
+import org.example.rentoza.booking.cancellation.CancellationSettlementService;
 import org.example.rentoza.booking.dto.CancellationResultDTO;
 import org.example.rentoza.car.Car;
 import org.example.rentoza.user.User;
@@ -23,12 +24,13 @@ class TuroCancellationPolicyPendingApprovalFairnessTest {
 
     @Mock private CancellationRecordRepository cancellationRecordRepository;
     @Mock private HostCancellationStatsRepository hostCancellationStatsRepository;
+    @Mock private CancellationSettlementService cancellationSettlementService;
 
     private TuroCancellationPolicyService service;
 
     @BeforeEach
     void setUp() {
-        service = new TuroCancellationPolicyService(cancellationRecordRepository, hostCancellationStatsRepository);
+        service = new TuroCancellationPolicyService(cancellationRecordRepository, hostCancellationStatsRepository, cancellationSettlementService);
     }
 
     @Test
@@ -55,10 +57,11 @@ class TuroCancellationPolicyPendingApprovalFairnessTest {
         booking.setSnapshotDailyRate(new BigDecimal("5000.00"));
 
         when(cancellationRecordRepository.existsByBookingId(100L)).thenReturn(false);
-        when(cancellationRecordRepository.save(any(CancellationRecord.class)))
+        when(cancellationSettlementService.beginSettlement(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenAnswer(invocation -> {
-                    CancellationRecord record = invocation.getArgument(0);
+                    CancellationRecord record = new CancellationRecord();
                     record.setId(999L);
+                    record.setBooking(invocation.getArgument(0));
                     return record;
                 });
 

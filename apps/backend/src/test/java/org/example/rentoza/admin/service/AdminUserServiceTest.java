@@ -6,6 +6,8 @@ import org.example.rentoza.admin.repository.AdminUserRepository;
 import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingRepository;
 import org.example.rentoza.booking.BookingStatus;
+import org.example.rentoza.booking.cancellation.CancellationRecord;
+import org.example.rentoza.booking.cancellation.CancellationSettlementService;
 import org.example.rentoza.booking.dispute.DamageClaimRepository;
 import org.example.rentoza.car.Car;
 import org.example.rentoza.car.CarRepository;
@@ -67,6 +69,9 @@ class AdminUserServiceTest {
     private DamageClaimRepository damageClaimRepo;
 
     @Mock
+    private CancellationSettlementService cancellationSettlementService;
+
+    @Mock
     private AdminAuditService auditService;
 
     @Captor
@@ -86,7 +91,7 @@ class AdminUserServiceTest {
     @BeforeEach
     void setUp() {
         adminUserService = new AdminUserService(
-                userRepo, bookingRepo, carRepo, reviewRepo, damageClaimRepo, auditService
+            userRepo, bookingRepo, carRepo, reviewRepo, damageClaimRepo, cancellationSettlementService, auditService
         );
 
         testAdmin = new User();
@@ -121,6 +126,15 @@ class AdminUserServiceTest {
             activeBooking.setStatus(BookingStatus.ACTIVE);
             when(bookingRepo.findByRenterIdAndStatusIn(eq(2L), any()))
                     .thenReturn(List.of(activeBooking));
+                when(cancellationSettlementService.beginFullRefundSettlement(any(), any(), any(), anyString(), anyString()))
+                    .thenAnswer(invocation -> {
+                    Booking booking = invocation.getArgument(0);
+                    booking.setStatus(BookingStatus.CANCELLATION_PENDING_SETTLEMENT);
+                    CancellationRecord record = new CancellationRecord();
+                    record.setId(99L);
+                    record.setBooking(booking);
+                    return record;
+                    });
 
             Car ownedCar = new Car();
             ownedCar.setId(20L);
@@ -147,8 +161,8 @@ class AdminUserServiceTest {
             inOrder.verify(userRepo).delete(testUser);
 
             // Assert - cascade: bookings cancelled
-            assertThat(activeBooking.getStatus()).isEqualTo(BookingStatus.CANCELLED);
-            verify(bookingRepo).save(activeBooking);
+            assertThat(activeBooking.getStatus()).isEqualTo(BookingStatus.CANCELLATION_PENDING_SETTLEMENT);
+            verify(cancellationSettlementService).beginFullRefundSettlement(eq(activeBooking), any(), any(), anyString(), anyString());
 
             // Assert - cascade: cars deactivated
             assertThat(ownedCar.isAvailable()).isFalse();

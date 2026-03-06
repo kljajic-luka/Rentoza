@@ -8,6 +8,9 @@ import org.example.rentoza.admin.repository.DisputeResolutionRepository;
 import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingRepository;
 import org.example.rentoza.booking.BookingStatus;
+import org.example.rentoza.booking.cancellation.CancellationRecord;
+import org.example.rentoza.booking.cancellation.CancellationSettlementService;
+import org.example.rentoza.booking.cancellation.RefundStatus;
 import org.example.rentoza.booking.checkout.saga.CheckoutSagaOrchestrator;
 import org.example.rentoza.booking.dispute.DamageClaim;
 import org.example.rentoza.booking.dispute.DamageClaimRepository;
@@ -30,6 +33,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
@@ -61,6 +65,9 @@ class AdminDisputeServiceTest {
 
     @Mock
     private CheckoutSagaOrchestrator checkoutSagaOrchestrator;
+
+        @Mock
+        private CancellationSettlementService cancellationSettlementService;
 
     @InjectMocks
     private AdminDisputeService service;
@@ -230,15 +237,20 @@ class AdminDisputeServiceTest {
     class ResolveCheckInDisputeTests {
 
         @Test
-        @DisplayName("C-6: CANCEL with refund failure propagates RuntimeException")
+        @DisplayName("C-6: CANCEL with settlement failure leaves booking pending/refund failed")
         void cancel_refundFailure_propagatesException() {
             // Reconfigure claim as a check-in dispute
             claim.setDisputeStage(DisputeStage.CHECK_IN);
             claim.setStatus(DamageClaimStatus.CHECK_IN_DISPUTE_PENDING);
 
             when(damageClaimRepo.findByIdWithLock(1L)).thenReturn(Optional.of(claim));
-            when(paymentService.processFullRefund(eq(10L), anyString()))
-                    .thenThrow(new RuntimeException("Payment gateway error"));
+            CancellationRecord record = new CancellationRecord();
+            record.setBooking(booking);
+            record.setRefundStatus(RefundStatus.FAILED);
+            record.setLastError("Payment gateway error");
+            booking.setStatus(BookingStatus.CANCELLATION_PENDING_SETTLEMENT);
+            when(cancellationSettlementService.beginAndAttemptFullRefundSettlement(eq(booking), any(), any(), anyString(), anyString(), anyString()))
+                    .thenReturn(new CancellationSettlementService.SettlementAttemptResult(record, false));
 
             CheckInDisputeResolutionDTO resolution = CheckInDisputeResolutionDTO.builder()
                     .decision(CheckInDisputeDecision.CANCEL)
@@ -248,14 +260,10 @@ class AdminDisputeServiceTest {
 
             assertThatThrownBy(() -> service.resolveCheckInDispute(1L, resolution, admin))
                     .isInstanceOf(RuntimeException.class)
-                    .hasMessageContaining("Refund failed")
-                    .hasCauseInstanceOf(RuntimeException.class);
+                    .hasMessageContaining("Refund settlement pending");
 
-            // Verify refund was attempted
-            verify(paymentService).processFullRefund(eq(10L), contains("Undisclosed damage"));
-
-            // Verify booking was marked as REFUND_FAILED before exception propagated
-            assertThat(booking.getStatus()).isEqualTo(BookingStatus.REFUND_FAILED);
+                        verify(cancellationSettlementService).beginAndAttemptFullRefundSettlement(eq(booking), any(), any(), anyString(), anyString(), contains("Undisclosed damage"));
+                        assertThat(booking.getStatus()).isIn(BookingStatus.CANCELLATION_PENDING_SETTLEMENT, BookingStatus.REFUND_FAILED);
         }
     }
 }

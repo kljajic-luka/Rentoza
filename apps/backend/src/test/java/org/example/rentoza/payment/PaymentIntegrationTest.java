@@ -715,6 +715,7 @@ class PaymentIntegrationTest {
                 notificationService,
                 lockStore,
                 payoutLedgerRepository,
+                mock(ProviderEventService.class),
                 processor,
                 new SimpleMeterRegistry()
         );

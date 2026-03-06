@@ -131,6 +131,17 @@ public class AdminBookingController {
         // in one query, preventing concurrent force-completes and avoiding N+1 on the return DTO.
         Booking booking = bookingRepo.findByIdWithLock(id)
             .orElseThrow(() -> new ResourceNotFoundException("Booking not found: " + id));
+
+        if (booking.getStatus() == BookingStatus.CANCELLATION_PENDING_SETTLEMENT
+            || booking.getStatus() == BookingStatus.CHECKOUT_SETTLEMENT_PENDING) {
+            String settlementPhase = booking.getStatus() == BookingStatus.CANCELLATION_PENDING_SETTLEMENT
+                ? "cancellation"
+                : "checkout";
+            return ResponseEntity.badRequest().body(Map.of(
+                "error", "SETTLEMENT_PENDING",
+                "message", "Cannot force-complete while " + settlementPhase + " settlement is still pending."
+            ));
+        }
         
         // Guard: already terminal
         if (booking.getStatus().isTerminal()) {

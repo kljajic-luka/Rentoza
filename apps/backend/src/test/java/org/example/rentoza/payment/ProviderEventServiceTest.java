@@ -59,7 +59,7 @@ class ProviderEventServiceTest {
         ReflectionTestUtils.setField(service, "webhookSecret", "");
         ReflectionTestUtils.setField(service, "activeProfile", "dev");
         // Not a duplicate event
-        lenient().when(eventRepository.existsByProviderEventId(any())).thenReturn(false);
+        lenient().when(eventRepository.findByProviderEventId(any())).thenReturn(Optional.empty());
         lenient().when(eventRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
     }
 

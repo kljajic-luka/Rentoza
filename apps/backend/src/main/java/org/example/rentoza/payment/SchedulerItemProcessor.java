@@ -421,6 +421,8 @@ public class SchedulerItemProcessor {
             if (exhausted) {
                 record.setRefundStatus(RefundStatus.MANUAL_REVIEW);
                 record.setNextRetryAt(null);
+                record.getBooking().setStatus(BookingStatus.REFUND_FAILED);
+                bookingRepository.save(record.getBooking());
                 refundManualReviewCounter.increment();
                 log.error("[ALERT][MANUAL_REVIEW] Refund ESCALATED to MANUAL_REVIEW for booking {} after {} attempts: {}. "
                         + "Runbook: https://wiki.internal/runbooks/refund-manual-review",
@@ -466,6 +468,8 @@ public class SchedulerItemProcessor {
             if (exhausted) {
                 record.setRefundStatus(RefundStatus.MANUAL_REVIEW);
                 record.setNextRetryAt(null);
+                record.getBooking().setStatus(BookingStatus.REFUND_FAILED);
+                bookingRepository.save(record.getBooking());
                 refundManualReviewCounter.increment();
                 log.error("[ALERT][MANUAL_REVIEW] Refund ESCALATED to MANUAL_REVIEW for booking {} after {} attempts: {}. "
                         + "Runbook: https://wiki.internal/runbooks/refund-manual-review",

@@ -12,6 +12,9 @@ import org.example.rentoza.admin.repository.DisputeResolutionRepository;
 import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingRepository;
 import org.example.rentoza.booking.BookingStatus;
+import org.example.rentoza.booking.cancellation.CancelledBy;
+import org.example.rentoza.booking.cancellation.CancellationReason;
+import org.example.rentoza.booking.cancellation.CancellationSettlementService;
 import org.example.rentoza.booking.checkout.saga.CheckoutSagaOrchestrator;
 import org.example.rentoza.booking.dispute.DamageClaim;
 import org.example.rentoza.booking.dispute.DamageClaimRepository;
@@ -50,6 +53,7 @@ public class AdminDisputeService {
     private final BookingPaymentService paymentService;
     private final BookingRepository bookingRepository;
     private final CheckoutSagaOrchestrator checkoutSagaOrchestrator;
+    private final CancellationSettlementService cancellationSettlementService;
 
     // ==================== DISPUTE LISTING ====================
 
@@ -409,31 +413,29 @@ public class AdminDisputeService {
     private void resolveCheckInCancel(DamageClaim dispute, Booking booking, 
                                       CheckInDisputeResolutionDTO resolution, User admin) {
         dispute.resolveCheckInCancel(admin, resolution.getNotes(), resolution.getCancellationReason());
-        
-        // Cancel booking
-        booking.setStatus(BookingStatus.CANCELLED);
-        booking.setCancelledAt(java.time.LocalDateTime.now());
-        
-        // Process refund
-        try {
-            paymentService.processFullRefund(booking.getId(), "Check-in dispute: " + resolution.getCancellationReason());
-        } catch (Exception e) {
-            log.error("CRITICAL: Refund failed for booking {} after check-in dispute cancellation. " +
-                    "Marking as REFUND_FAILED for manual retry.", booking.getId(), e);
-            booking.setStatus(BookingStatus.REFUND_FAILED);
+        CancellationSettlementService.SettlementAttemptResult settlement =
+            cancellationSettlementService.beginAndAttemptFullRefundSettlement(
+                booking,
+                CancelledBy.SYSTEM,
+                CancellationReason.SYSTEM_ADMIN_ACTION,
+                resolution.getCancellationReason(),
+                "CHECKIN_DISPUTE_CANCEL",
+                "Check-in dispute: " + resolution.getCancellationReason()
+            );
 
+        if (!settlement.settled()) {
             auditService.logAction(
                 admin,
                 AdminAction.DISPUTE_RESOLUTION_FAILED,
                 ResourceType.BOOKING,
                 booking.getId(),
                 null,
-                "REFUND_FAILED",
-                "Check-in cancel refund failed: " + e.getMessage()
+                booking.getStatus().name(),
+                "Check-in cancel refund failed: " + settlement.record().getLastError()
             );
 
-            throw new RuntimeException("Refund failed for booking " + booking.getId() +
-                    " — marked REFUND_FAILED for manual retry", e);
+            throw new RuntimeException("Refund settlement pending for booking " + booking.getId()
+                + " — current status " + booking.getStatus());
         }
         
         // Notify both parties

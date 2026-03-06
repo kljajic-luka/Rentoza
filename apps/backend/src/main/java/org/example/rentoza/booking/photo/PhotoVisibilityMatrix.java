@@ -100,6 +100,11 @@ public class PhotoVisibilityMatrix {
                 // Both see all photos (checkout complete)
                 yield true;
             }
+
+            case CHECKOUT_SETTLEMENT_PENDING -> {
+                // Physical checkout is complete, settlement is still running.
+                yield true;
+            }
             
             case COMPLETED -> {
                 // Both see all photos (final state, trip finished)

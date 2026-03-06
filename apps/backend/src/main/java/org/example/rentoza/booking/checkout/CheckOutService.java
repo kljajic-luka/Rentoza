@@ -51,7 +51,8 @@ import java.util.stream.Stream;
  * 
  * <h2>State Flow</h2>
  * <pre>
- * IN_TRIP → CHECKOUT_OPEN → CHECKOUT_GUEST_COMPLETE → CHECKOUT_HOST_COMPLETE → COMPLETED
+ * IN_TRIP → CHECKOUT_OPEN → CHECKOUT_GUEST_COMPLETE → CHECKOUT_HOST_COMPLETE
+ *         → CHECKOUT_SETTLEMENT_PENDING → COMPLETED
  * </pre>
  *
  * @see CheckInService for check-in workflow
@@ -594,7 +595,7 @@ public class CheckOutService {
     // ========== CHECKOUT COMPLETION ==========
 
     /**
-     * Complete the checkout process and mark trip as COMPLETED.
+    * Complete the physical checkout flow and hand off financial settlement to the saga.
      * Delegates charge calculation to CheckoutSagaOrchestrator (single source of truth).
      * 
      * <p>Enterprise Pattern: Saga-First Architecture</p>
@@ -613,7 +614,7 @@ public class CheckOutService {
     public void completeCheckout(Booking booking, Long userId) {
         booking.setCheckoutCompletedAt(Instant.now());
         booking.setTripEndedAt(Instant.now());
-        booking.setStatus(BookingStatus.COMPLETED);
+        booking.setStatus(BookingStatus.CHECKOUT_SETTLEMENT_PENDING);
         
         // Calculate trip duration for metrics
         if (booking.getTripStartedAt() != null) {
@@ -641,7 +642,7 @@ public class CheckOutService {
         
         bookingRepository.save(booking);
         
-        log.info("[CheckOut] Checkout completed for booking {} - delegating charge calculation to saga", 
+        log.info("[CheckOut] Checkout moved to settlement pending for booking {} - delegating charge calculation to saga", 
             booking.getId());
         
         // Invoke saga for charge calculation and payment processing
@@ -658,8 +659,6 @@ public class CheckOutService {
             // This ensures user experience is not blocked by saga failures
         }
         
-        // Notify both parties
-        notifyCheckoutComplete(booking);
     }
 
     // ========== LATE RETURN HANDLING ==========
@@ -869,7 +868,8 @@ public class CheckOutService {
                         || booking.getStatus() == BookingStatus.CHECKOUT_HOST_COMPLETE)
                 .guestCheckOutComplete(booking.getGuestCheckoutCompletedAt() != null)
                 .hostCheckOutComplete(booking.getHostCheckoutCompletedAt() != null)
-                .checkoutComplete(booking.getStatus() == BookingStatus.COMPLETED)
+                .checkoutComplete(booking.getStatus() == BookingStatus.CHECKOUT_SETTLEMENT_PENDING
+                    || booking.getStatus() == BookingStatus.COMPLETED)
                 .checkoutOpenedAt(toLocalDateTime(booking.getCheckoutOpenedAt()))
                 .guestCompletedAt(toLocalDateTime(booking.getGuestCheckoutCompletedAt()))
                 .hostCompletedAt(toLocalDateTime(booking.getHostCheckoutCompletedAt()))

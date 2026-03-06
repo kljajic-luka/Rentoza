@@ -67,6 +67,7 @@ public class TuroCancellationPolicyService implements CancellationPolicyService 
 
     private final CancellationRecordRepository cancellationRecordRepository;
     private final HostCancellationStatsRepository hostCancellationStatsRepository;
+    private final CancellationSettlementService cancellationSettlementService;
 
     @Override
     public String getPolicyVersion() {
@@ -193,37 +194,19 @@ public class TuroCancellationPolicyService implements CancellationPolicyService 
             cancelledBy == CancelledBy.HOST ? initiator.getId() : null
         );
         
-        // Create the cancellation record
-        CancellationRecord record = CancellationRecord.builder()
-            .booking(booking)
-            .cancelledBy(cancelledBy)
-            .reason(reason)
-            .notes(notes)
-            .initiatedAt(now)
-            .processedAt(now)
-            .hoursBeforeTripStart(hoursBeforeTripStart)
-            .originalTotalPrice(originalTotal)
-            .bookingTotal(originalTotal)
-            .dailyRateSnapshot(dailyRate)
-            .penaltyAmount(calc.penaltyAmount)
-            .refundToGuest(calc.refundToGuest)
-            .payoutToHost(calc.payoutToHost)
-            .refundStatus(RefundStatus.PENDING)
-            .policyVersion(POLICY_VERSION)
-            .appliedRule(calc.appliedRule)
-            .timezone(BELGRADE_ZONE.getId())
-            .tripStartDate(booking.getStartDate())
-            .tripEndDate(booking.getEndDate())
-            .build();
-        
-        // Persist the record
-        record = cancellationRecordRepository.save(record);
-        
-        // Update booking state
-        booking.setStatus(BookingStatus.CANCELLATION_PENDING_SETTLEMENT);
-        booking.setCancelledBy(cancelledBy);
-        booking.setCancelledAt(now);
-        booking.setCancellationRecord(record);
+        CancellationRecord record = cancellationSettlementService.beginSettlement(
+            booking,
+            cancelledBy,
+            reason,
+            notes,
+            calc.penaltyAmount,
+            calc.refundToGuest,
+            calc.payoutToHost,
+            calc.appliedRule,
+            POLICY_VERSION,
+            dailyRate,
+            now
+        );
         
         // Handle host-specific logic
         BigDecimal hostPenaltyApplied = null;

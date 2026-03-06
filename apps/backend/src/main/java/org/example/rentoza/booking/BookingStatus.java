@@ -30,7 +30,8 @@ import java.util.Set;
  *
  * CHECKOUT_GUEST_COMPLETE ─[Host Confirms]───► CHECKOUT_HOST_COMPLETE
  *
- * CHECKOUT_HOST_COMPLETE ─[Settlement Done]──► COMPLETED
+ * CHECKOUT_HOST_COMPLETE ─[Settlement Started]► CHECKOUT_SETTLEMENT_PENDING
+ * CHECKOUT_SETTLEMENT_PENDING ─[Settlement Done]► COMPLETED
  * </pre>
  *
  * @see org.example.rentoza.booking.checkin.CheckInEvent for audit trail
@@ -125,6 +126,11 @@ public enum BookingStatus {
      * May include damage assessment. Awaiting final settlement.
      */
     CHECKOUT_HOST_COMPLETE,
+
+    /**
+     * Physical checkout is complete, but payment/deposit settlement is still running.
+     */
+    CHECKOUT_SETTLEMENT_PENDING,
     
     /**
      * Host has reported new damage at checkout, deposit is held pending resolution.
@@ -198,7 +204,8 @@ public enum BookingStatus {
             IN_TRIP,
             CHECKOUT_OPEN,
             CHECKOUT_GUEST_COMPLETE,
-            CHECKOUT_HOST_COMPLETE
+            CHECKOUT_HOST_COMPLETE,
+            CHECKOUT_SETTLEMENT_PENDING
         );
 
         /**
@@ -217,7 +224,8 @@ public enum BookingStatus {
             IN_TRIP,
             CHECKOUT_OPEN,
             CHECKOUT_GUEST_COMPLETE,
-            CHECKOUT_HOST_COMPLETE
+            CHECKOUT_HOST_COMPLETE,
+            CHECKOUT_SETTLEMENT_PENDING
     );
 
     // ========== HELPER METHODS ==========
@@ -239,6 +247,7 @@ public enum BookingStatus {
      *   <li>CHECKOUT_OPEN - Checkout started</li>
      *   <li>CHECKOUT_GUEST_COMPLETE - Guest done</li>
      *   <li>CHECKOUT_HOST_COMPLETE - Host confirmed</li>
+    *   <li>CHECKOUT_SETTLEMENT_PENDING - Settlement running</li>
      *   <li>CHECKOUT_DAMAGE_DISPUTE - Damage dispute</li>
      *   <li>COMPLETED - Trip finished</li>
      * </ul>
@@ -256,6 +265,7 @@ public enum BookingStatus {
                  CHECKOUT_OPEN,
                  CHECKOUT_GUEST_COMPLETE,
                  CHECKOUT_HOST_COMPLETE,
+                 CHECKOUT_SETTLEMENT_PENDING,
                  CHECKOUT_DAMAGE_DISPUTE,
                  COMPLETED -> true;
             default -> false;
@@ -271,12 +281,12 @@ public enum BookingStatus {
         return switch (this) {
             case COMPLETED,
                  CANCELLED,
-                  CANCELLATION_PENDING_SETTLEMENT,
                  DECLINED,
                  EXPIRED,
                  EXPIRED_SYSTEM,
                  NO_SHOW_HOST,
-                 NO_SHOW_GUEST -> true;
+                 NO_SHOW_GUEST,
+                 REFUND_FAILED -> true;
             default -> false;
         };
     }

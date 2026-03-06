@@ -5,6 +5,8 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingRepository;
 import org.example.rentoza.booking.BookingStatus;
+import org.example.rentoza.booking.cancellation.CancellationRecord;
+import org.example.rentoza.booking.cancellation.CancellationSettlementService;
 import org.example.rentoza.booking.checkin.cqrs.CheckInCommandService;
 import org.example.rentoza.booking.dispute.DamageClaimRepository;
 import org.example.rentoza.car.Car;
@@ -63,7 +65,8 @@ class StaleHandshakeSchedulerTest {
     @Mock private BookingRepository bookingRepository;
     @Mock private DamageClaimRepository damageClaimRepository;
     @Mock private NotificationService notificationService;
-    @Mock private BookingPaymentService bookingPaymentService;
+        @Mock private BookingPaymentService bookingPaymentService;
+        @Mock private CancellationSettlementService cancellationSettlementService;
 
     private CheckInScheduler scheduler;
 
@@ -80,6 +83,7 @@ class StaleHandshakeSchedulerTest {
                 damageClaimRepository,
                 notificationService,
                 bookingPaymentService,
+                cancellationSettlementService,
                 meterRegistry
         );
 
@@ -144,8 +148,14 @@ class StaleHandshakeSchedulerTest {
                     eq(BookingStatus.CHECK_IN_COMPLETE), any(LocalDateTime.class)))
                     .thenReturn(List.of(booking));
 
-            when(checkInService.processHostNoShowRefund(booking))
-                    .thenReturn(true);
+            CancellationRecord record = new CancellationRecord();
+            record.setBooking(booking);
+            when(cancellationSettlementService.beginAndAttemptFullRefundSettlement(any(), any(), any(), anyString(), anyString(), anyString()))
+                    .thenAnswer(invocation -> {
+                        booking.setStatus(BookingStatus.CANCELLED);
+                                                booking.setCancelledAt(LocalDateTime.now(SERBIA_ZONE));
+                        return new CancellationSettlementService.SettlementAttemptResult(record, true);
+                    });
 
             // Act
             scheduler.detectStaleHandshakes();
@@ -159,11 +169,8 @@ class StaleHandshakeSchedulerTest {
                     .as("cancelledAt must be set")
                     .isNotNull();
 
-            // Assert — saved
-            verify(bookingRepository).save(booking);
-
             // Assert — refund attempted
-            verify(checkInService).processHostNoShowRefund(booking);
+            verify(cancellationSettlementService).beginAndAttemptFullRefundSettlement(eq(booking), any(), any(), anyString(), anyString(), anyString());
 
             // Assert — events recorded
             verify(eventService).recordSystemEvent(
@@ -185,8 +192,10 @@ class StaleHandshakeSchedulerTest {
 
             when(bookingRepository.findStaleCheckInHandshakes(any(), any()))
                     .thenReturn(List.of(booking));
-            when(checkInService.processHostNoShowRefund(booking))
-                    .thenReturn(true);
+            CancellationRecord record = new CancellationRecord();
+            record.setBooking(booking);
+            when(cancellationSettlementService.beginAndAttemptFullRefundSettlement(any(), any(), any(), anyString(), anyString(), anyString()))
+                    .thenReturn(new CancellationSettlementService.SettlementAttemptResult(record, true));
 
             // Act
             scheduler.detectStaleHandshakes();
@@ -210,8 +219,13 @@ class StaleHandshakeSchedulerTest {
 
             when(bookingRepository.findStaleCheckInHandshakes(any(), any()))
                     .thenReturn(List.of(booking));
-            when(checkInService.processHostNoShowRefund(booking))
-                    .thenReturn(false);
+            CancellationRecord record = new CancellationRecord();
+            record.setBooking(booking);
+            when(cancellationSettlementService.beginAndAttemptFullRefundSettlement(any(), any(), any(), anyString(), anyString(), anyString()))
+                    .thenAnswer(invocation -> {
+                        booking.setStatus(BookingStatus.CANCELLATION_PENDING_SETTLEMENT);
+                        return new CancellationSettlementService.SettlementAttemptResult(record, false);
+                    });
 
             // Act
             scheduler.detectStaleHandshakes();
@@ -254,7 +268,7 @@ class StaleHandshakeSchedulerTest {
 
             // Assert — no save, no refund, no events, no notifications
             verify(bookingRepository, never()).save(any());
-            verify(checkInService, never()).processHostNoShowRefund(any());
+            verify(cancellationSettlementService, never()).beginAndAttemptFullRefundSettlement(any(), any(), any(), anyString(), anyString(), anyString());
             verify(eventService, never()).recordSystemEvent(any(), any(), any(), any());
             verify(notificationService, never()).createNotification(any());
             verify(notificationService, never()).alertAdminNoShow(any(), any(), anyBoolean());
@@ -274,7 +288,7 @@ class StaleHandshakeSchedulerTest {
             // Assert
             assertThat(booking.getStatus()).isEqualTo(BookingStatus.CANCELLED);
             verify(bookingRepository, never()).save(any());
-            verify(checkInService, never()).processHostNoShowRefund(any());
+            verify(cancellationSettlementService, never()).beginAndAttemptFullRefundSettlement(any(), any(), any(), anyString(), anyString(), anyString());
         }
 
         @Test
@@ -313,7 +327,7 @@ class StaleHandshakeSchedulerTest {
 
             // Assert — no processing at all
             verify(bookingRepository, never()).save(any());
-            verify(checkInService, never()).processHostNoShowRefund(any());
+                        verify(cancellationSettlementService, never()).beginAndAttemptFullRefundSettlement(any(), any(), any(), anyString(), anyString(), anyString());
             verify(notificationService, never()).createNotification(any());
         }
 
@@ -343,8 +357,13 @@ class StaleHandshakeSchedulerTest {
 
             when(bookingRepository.findStaleCheckInHandshakes(any(), any()))
                     .thenReturn(List.of(stale, raced));
-            when(checkInService.processHostNoShowRefund(stale))
-                    .thenReturn(true);
+            CancellationRecord record = new CancellationRecord();
+            record.setBooking(stale);
+            when(cancellationSettlementService.beginAndAttemptFullRefundSettlement(eq(stale), any(), any(), anyString(), anyString(), anyString()))
+                    .thenAnswer(invocation -> {
+                        stale.setStatus(BookingStatus.CANCELLED);
+                        return new CancellationSettlementService.SettlementAttemptResult(record, true);
+                    });
 
             // Act
             scheduler.detectStaleHandshakes();
@@ -355,9 +374,8 @@ class StaleHandshakeSchedulerTest {
             // Assert — raced booking untouched
             assertThat(raced.getStatus()).isEqualTo(BookingStatus.IN_TRIP);
 
-            // Assert — only stale booking saved
-            verify(bookingRepository, times(1)).save(stale);
-            verify(bookingRepository, never()).save(raced);
+                        verify(cancellationSettlementService).beginAndAttemptFullRefundSettlement(eq(stale), any(), any(), anyString(), anyString(), anyString());
+                        verify(cancellationSettlementService, never()).beginAndAttemptFullRefundSettlement(eq(raced), any(), any(), anyString(), anyString(), anyString());
         }
     }
 }

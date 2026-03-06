@@ -248,7 +248,7 @@ class FinancialAuditRemediationTest {
         @Test
         @DisplayName("Event within replay window is accepted")
         void eventWithinWindowAccepted() {
-            when(eventRepository.existsByProviderEventId(anyString())).thenReturn(false);
+            when(eventRepository.findByProviderEventId(anyString())).thenReturn(java.util.Optional.empty());
             // Not testing full flow — just verify the timestamp check doesn't reject fresh events
             Instant fresh = Instant.now().minus(1, ChronoUnit.MINUTES);
             // This will fail at HMAC verification since we don't provide valid sig,
@@ -263,7 +263,7 @@ class FinancialAuditRemediationTest {
         @Test
         @DisplayName("Event older than max age is rejected with REPLAY_WINDOW_EXCEEDED")
         void staleEventRejected() {
-            when(eventRepository.existsByProviderEventId(anyString())).thenReturn(false);
+            when(eventRepository.findByProviderEventId(anyString())).thenReturn(java.util.Optional.empty());
 
             Instant stale = Instant.now().minus(10, ChronoUnit.MINUTES); // 10 min > 5 min window
 
@@ -293,7 +293,7 @@ class FinancialAuditRemediationTest {
         @Test
         @DisplayName("Event with future timestamp beyond tolerance is rejected")
         void futureEventRejected() {
-            when(eventRepository.existsByProviderEventId(anyString())).thenReturn(false);
+            when(eventRepository.findByProviderEventId(anyString())).thenReturn(java.util.Optional.empty());
 
             try {
                 var secretField = ProviderEventService.class.getDeclaredField("webhookSecret");
@@ -315,7 +315,7 @@ class FinancialAuditRemediationTest {
         @Test
         @DisplayName("Null timestamp is accepted (backward compat)")
         void nullTimestampAccepted() {
-            when(eventRepository.existsByProviderEventId(anyString())).thenReturn(false);
+            when(eventRepository.findByProviderEventId(anyString())).thenReturn(java.util.Optional.empty());
             when(eventRepository.save(any(ProviderEvent.class))).thenAnswer(inv -> inv.getArgument(0));
 
             try {
@@ -970,7 +970,7 @@ class FinancialAuditRemediationTest {
             booking.setId(200L);
             booking.setPaymentReference(null); // Not yet set
 
-            when(eventRepository.existsByProviderEventId(anyString())).thenReturn(false);
+            when(eventRepository.findByProviderEventId(anyString())).thenReturn(java.util.Optional.empty());
             when(eventRepository.save(any(ProviderEvent.class))).thenAnswer(inv -> inv.getArgument(0));
             when(payoutLedgerRepository.findByBookingId(200L)).thenReturn(Optional.of(ledger));
             when(bookingRepository.findById(200L)).thenReturn(Optional.of(booking));
@@ -1127,7 +1127,7 @@ class FinancialAuditRemediationTest {
                     bookingRepository, paymentService, paymentProvider,
                     cancellationRecordRepository, damageClaimRepository,
                     notificationService, schedulerLockStore,
-                    payoutLedgerRepository, itemProcessor,
+                    payoutLedgerRepository, mock(ProviderEventService.class), itemProcessor,
                     new SimpleMeterRegistry());
         }
 

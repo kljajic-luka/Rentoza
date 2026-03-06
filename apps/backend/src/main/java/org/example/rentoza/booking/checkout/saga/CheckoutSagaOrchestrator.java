@@ -206,12 +206,11 @@ public class CheckoutSagaOrchestrator {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Booking not found: " + bookingId));
 
-        // Accept both CHECKOUT_HOST_COMPLETE and COMPLETED statuses
-        // Service may have already transitioned to COMPLETED before invoking saga
-        if (booking.getStatus() != BookingStatus.CHECKOUT_HOST_COMPLETE && 
-            booking.getStatus() != BookingStatus.COMPLETED) {
+        if (booking.getStatus() != BookingStatus.CHECKOUT_HOST_COMPLETE
+            && booking.getStatus() != BookingStatus.CHECKOUT_SETTLEMENT_PENDING) {
             throw new IllegalStateException(
-                    "Booking must be in CHECKOUT_HOST_COMPLETE or COMPLETED status. Current: " + booking.getStatus());
+                "Booking must be in CHECKOUT_HOST_COMPLETE or CHECKOUT_SETTLEMENT_PENDING status. Current: "
+                    + booking.getStatus());
         }
 
         // Create saga state
@@ -834,14 +833,9 @@ public class CheckoutSagaOrchestrator {
     private void executeCompleteBooking(CheckoutSagaState saga) {
         Booking booking = loadBooking(saga.getBookingId());
 
-        // IDEMPOTENT: Only update if not already COMPLETED
-        // This handles scenarios where:
-        // 1. Service already set status to COMPLETED before saga ran
-        // 2. Saga retry after previous successful completion
-        // 3. Multiple saga instances due to race condition
+        // IDEMPOTENT: Only update if not already COMPLETED.
         if (booking.getStatus() != BookingStatus.COMPLETED) {
             booking.setStatus(BookingStatus.COMPLETED);
-            booking.setCheckoutCompletedAt(Instant.now());
             bookingRepository.save(booking);
             log.info("[Saga] Booking {} transitioned to COMPLETED", saga.getBookingId());
         } else {
@@ -849,10 +843,6 @@ public class CheckoutSagaOrchestrator {
                 saga.getBookingId());
         }
 
-        // P1 FIX: Mock-auto host payout moved OUTSIDE the status guard.
-        // CheckOutService sets COMPLETED before saga runs, so payout was
-        // previously unreachable inside the if-block.
-        // The saga step itself provides idempotency (only executed once per flow).
         try {
             String batchRef = "SAGA_AUTO_" + saga.getSagaId().toString().substring(0, 8) + "_" + 
                               System.currentTimeMillis();

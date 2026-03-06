@@ -52,6 +52,9 @@ public class ProviderEvent {
     @Column(name = "booking_id")
     private Long bookingId;
 
+    @Column(name = "provider_authorization_id", length = 150)
+    private String providerAuthorizationId;
+
     @Column(name = "event_type", length = 100, nullable = false)
     private String eventType;
 

@@ -25,6 +25,7 @@ import java.security.InvalidKeyException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
@@ -107,6 +108,31 @@ public class ProviderEventService {
         }
     }
 
+    public enum IngestOutcome {
+        PROCESSED,
+        DUPLICATE,
+        REJECTED,
+        RETRYABLE_FAILURE
+    }
+
+    public record IngestResult(IngestOutcome outcome, String eventId, boolean processed, String reason) {
+        static IngestResult processed(String eventId) {
+            return new IngestResult(IngestOutcome.PROCESSED, eventId, true, null);
+        }
+
+        static IngestResult duplicate(String eventId) {
+            return new IngestResult(IngestOutcome.DUPLICATE, eventId, false, null);
+        }
+
+        static IngestResult rejected(String eventId, String reason) {
+            return new IngestResult(IngestOutcome.REJECTED, eventId, false, reason);
+        }
+
+        static IngestResult retryableFailure(String eventId, String reason) {
+            return new IngestResult(IngestOutcome.RETRYABLE_FAILURE, eventId, false, reason);
+        }
+    }
+
     // ── Entry point ──────────────────────────────────────────────────────────
 
     /**
@@ -122,8 +148,8 @@ public class ProviderEventService {
                                String providerAuthorizationId,
                                String rawPayload,
                                String signatureHeader) {
-        return ingestEvent(providerEventId, eventType, bookingId,
-                providerAuthorizationId, rawPayload, signatureHeader, null);
+        return ingestEventDetailed(providerEventId, eventType, bookingId,
+            providerAuthorizationId, rawPayload, signatureHeader, null).processed();
     }
 
     /**
@@ -148,51 +174,50 @@ public class ProviderEventService {
                                String rawPayload,
                                String signatureHeader,
                                Instant eventTimestamp) {
-
-        // ── 1. Deduplication ──────────────────────────────────────────────────
-        if (eventRepository.existsByProviderEventId(providerEventId)) {
-            log.info("[Webhook] Duplicate event — skipping providerEventId={} type={}", providerEventId, eventType);
-            return false;
+        return ingestEventDetailed(providerEventId, eventType, bookingId,
+            providerAuthorizationId, rawPayload, signatureHeader, eventTimestamp).processed();
         }
 
-        // ── 2. Verify HMAC signature ──────────────────────────────────────────
-        // P0-FIX: When webhookSecret is configured, a MISSING signature is treated as
-        // a forged request and rejected — not silently processed unauthenticated.
+        @Transactional
+        public IngestResult ingestEventDetailed(String providerEventId,
+                            String eventType,
+                            Long bookingId,
+                            String providerAuthorizationId,
+                            String rawPayload,
+                            String signatureHeader,
+                            Instant eventTimestamp) {
+
+        Optional<ProviderEvent> existingEvent = eventRepository.findByProviderEventId(providerEventId);
+        if (existingEvent.isPresent()) {
+            ProviderEvent event = existingEvent.get();
+            if (event.getProcessedAt() != null) {
+            log.info("[Webhook] Duplicate processed event — skipping providerEventId={} type={}", providerEventId, eventType);
+            return IngestResult.duplicate(providerEventId);
+            }
+
+            if (providerAuthorizationId != null && !providerAuthorizationId.isBlank()
+                && (event.getProviderAuthorizationId() == null || event.getProviderAuthorizationId().isBlank())) {
+            event.setProviderAuthorizationId(providerAuthorizationId);
+            }
+            return processStoredEvent(event, eventType, bookingId,
+                providerAuthorizationId != null ? providerAuthorizationId : event.getProviderAuthorizationId());
+        }
+
         boolean sigVerified = false;
         if (webhookSecret != null && !webhookSecret.isBlank()) {
-            // Secret is configured — signature header is MANDATORY.
             if (signatureHeader == null || signatureHeader.isBlank()) {
                 log.warn("[Webhook] SIGNATURE REQUIRED but absent — rejecting providerEventId={} type={}",
                         providerEventId, eventType);
-                ProviderEvent rejected = ProviderEvent.builder()
-                        .providerEventId(providerEventId)
-                        .eventType(eventType)
-                        .bookingId(bookingId)
-                        .rawPayload(rawPayload)
-                        .signatureHeader(null)
-                        .signatureVerified(false)
-                        .processingError("SIGNATURE_MISSING")
-                        .processedAt(Instant.now())
-                        .build();
-                eventRepository.save(rejected);
-                return false;
+            saveRejectedEvent(providerEventId, eventType, bookingId, providerAuthorizationId,
+                rawPayload, null, false, "SIGNATURE_MISSING");
+            return IngestResult.rejected(providerEventId, "SIGNATURE_MISSING");
             }
             sigVerified = verifyHmac(rawPayload, signatureHeader);
             if (!sigVerified) {
                 log.warn("[Webhook] SIGNATURE MISMATCH — rejecting providerEventId={} type={}", providerEventId, eventType);
-                // Store the event for audit but do NOT process it
-                ProviderEvent rejected = ProviderEvent.builder()
-                        .providerEventId(providerEventId)
-                        .eventType(eventType)
-                        .bookingId(bookingId)
-                        .rawPayload(rawPayload)
-                        .signatureHeader(signatureHeader)
-                        .signatureVerified(false)
-                        .processingError("SIGNATURE_VERIFICATION_FAILED")
-                        .processedAt(Instant.now())
-                        .build();
-                eventRepository.save(rejected);
-                return false;
+            saveRejectedEvent(providerEventId, eventType, bookingId, providerAuthorizationId,
+                rawPayload, signatureHeader, false, "SIGNATURE_VERIFICATION_FAILED");
+            return IngestResult.rejected(providerEventId, "SIGNATURE_VERIFICATION_FAILED");
             }
         }
 
@@ -204,46 +229,27 @@ public class ProviderEventService {
             if (ageSeconds > webhookMaxAgeSeconds) {
                 log.warn("[Webhook] REPLAY REJECTED — event too old: providerEventId={} age={}s maxAge={}s timestamp={}",
                         providerEventId, ageSeconds, webhookMaxAgeSeconds, eventTimestamp);
-                ProviderEvent rejected = ProviderEvent.builder()
-                        .providerEventId(providerEventId)
-                        .eventType(eventType)
-                        .bookingId(bookingId)
-                        .rawPayload(rawPayload)
-                        .signatureHeader(signatureHeader)
-                        .signatureVerified(sigVerified)
-                        .processingError("REPLAY_WINDOW_EXCEEDED:age=" + ageSeconds + "s")
-                        .processedAt(Instant.now())
-                        .build();
-                eventRepository.save(rejected);
-                return false;
+                saveRejectedEvent(providerEventId, eventType, bookingId, providerAuthorizationId,
+                        rawPayload, signatureHeader, sigVerified,
+                        "REPLAY_WINDOW_EXCEEDED:age=" + ageSeconds + "s");
+                return IngestResult.rejected(providerEventId, "REPLAY_WINDOW_EXCEEDED");
             }
             // Also reject events with future timestamps beyond a 60-second clock-skew tolerance
             if (ageSeconds < -60) {
                 log.warn("[Webhook] FUTURE EVENT REJECTED — providerEventId={} timestamp={} ({}s in future)",
                         providerEventId, eventTimestamp, -ageSeconds);
-                ProviderEvent rejected = ProviderEvent.builder()
-                        .providerEventId(providerEventId)
-                        .eventType(eventType)
-                        .bookingId(bookingId)
-                        .rawPayload(rawPayload)
-                        .signatureHeader(signatureHeader)
-                        .signatureVerified(sigVerified)
-                        .processingError("FUTURE_TIMESTAMP:offset=" + (-ageSeconds) + "s")
-                        .processedAt(Instant.now())
-                        .build();
-                eventRepository.save(rejected);
-                return false;
+                saveRejectedEvent(providerEventId, eventType, bookingId, providerAuthorizationId,
+                        rawPayload, signatureHeader, sigVerified,
+                        "FUTURE_TIMESTAMP:offset=" + (-ageSeconds) + "s");
+                return IngestResult.rejected(providerEventId, "FUTURE_TIMESTAMP");
             }
         }
 
-        // ── 3. Persist raw event record (audit trail before processing) ───────
-        // H5-FIX: The UNIQUE constraint on provider_event_id enforces deduplication
-        // at the DB level. If a concurrent thread already inserted this event between
-        // our existsBy check (step 1) and this save, the DB rejects the duplicate.
         ProviderEvent event = ProviderEvent.builder()
                 .providerEventId(providerEventId)
                 .eventType(eventType)
                 .bookingId(bookingId)
+                .providerAuthorizationId(providerAuthorizationId)
                 .rawPayload(rawPayload)
                 .signatureHeader(signatureHeader)
                 .signatureVerified(sigVerified)
@@ -251,28 +257,81 @@ public class ProviderEventService {
         try {
             event = eventRepository.save(event);
         } catch (DataIntegrityViolationException e) {
-            // H5-FIX: Concurrent duplicate — another thread inserted first.
-            // Treat as idempotent duplicate: log and return false (same as step 1).
-            log.info("[Webhook] Concurrent duplicate detected on save — skipping providerEventId={} type={}",
+            log.info("[Webhook] Concurrent duplicate detected on save — reloading providerEventId={} type={}",
                     providerEventId, eventType);
-            return false;
+            ProviderEvent concurrent = eventRepository.findByProviderEventId(providerEventId).orElse(null);
+            if (concurrent == null) {
+                return IngestResult.retryableFailure(providerEventId, "CONCURRENT_SAVE_RELOAD_FAILED");
+            }
+            if (concurrent.getProcessedAt() != null) {
+                return IngestResult.duplicate(providerEventId);
+            }
+            return processStoredEvent(concurrent, eventType, bookingId,
+                    providerAuthorizationId != null ? providerAuthorizationId : concurrent.getProviderAuthorizationId());
         }
 
-        // ── 4. Process ────────────────────────────────────────────────────────
-        String error = null;
+        return processStoredEvent(event, eventType, bookingId, providerAuthorizationId);
+    }
+
+    @Transactional
+    public int replayStaleEvents(Instant before) {
+        List<ProviderEvent> replayable = eventRepository.findReplayable(before);
+        int replayed = 0;
+
+        for (ProviderEvent event : replayable) {
+            IngestResult result = processStoredEvent(
+                    event,
+                    event.getEventType(),
+                    event.getBookingId(),
+                    event.getProviderAuthorizationId()
+            );
+            if (result.outcome() == IngestOutcome.PROCESSED) {
+                replayed++;
+            }
+        }
+
+        return replayed;
+    }
+
+    private IngestResult processStoredEvent(ProviderEvent event,
+                                            String eventType,
+                                            Long bookingId,
+                                            String providerAuthorizationId) {
         try {
             dispatch(eventType, bookingId, providerAuthorizationId);
+            event.setProcessedAt(Instant.now());
+            event.setProcessingError(null);
+            eventRepository.save(event);
+            return IngestResult.processed(event.getProviderEventId());
         } catch (Exception ex) {
-            log.error("[Webhook] Processing error for providerEventId={}: {}", providerEventId, ex.getMessage(), ex);
-            error = ex.getMessage();
+            log.error("[Webhook] Processing error for providerEventId={}: {}", event.getProviderEventId(), ex.getMessage(), ex);
+            event.setProcessedAt(null);
+            event.setProcessingError(ex.getMessage());
+            eventRepository.save(event);
+            return IngestResult.retryableFailure(event.getProviderEventId(), ex.getMessage());
         }
+    }
 
-        // ── 5. Mark processed ─────────────────────────────────────────────────
-        event.setProcessedAt(Instant.now());
-        event.setProcessingError(error);
-        eventRepository.save(event);
-
-        return error == null;
+    private void saveRejectedEvent(String providerEventId,
+                                   String eventType,
+                                   Long bookingId,
+                                   String providerAuthorizationId,
+                                   String rawPayload,
+                                   String signatureHeader,
+                                   boolean signatureVerified,
+                                   String error) {
+        ProviderEvent rejected = ProviderEvent.builder()
+                .providerEventId(providerEventId)
+                .eventType(eventType)
+                .bookingId(bookingId)
+                .providerAuthorizationId(providerAuthorizationId)
+                .rawPayload(rawPayload)
+                .signatureHeader(signatureHeader)
+                .signatureVerified(signatureVerified)
+                .processingError(error)
+                .processedAt(Instant.now())
+                .build();
+        eventRepository.save(rejected);
     }
 
     // ── Dispatcher ───────────────────────────────────────────────────────────

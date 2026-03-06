@@ -6,6 +6,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingRepository;
 import org.example.rentoza.booking.BookingStatus;
+import org.example.rentoza.booking.cancellation.CancelledBy;
+import org.example.rentoza.booking.cancellation.CancellationReason;
+import org.example.rentoza.booking.cancellation.CancellationSettlementService;
 import org.example.rentoza.booking.checkin.cqrs.CheckInCommandService;
 import org.example.rentoza.booking.dispute.DamageClaim;
 import org.example.rentoza.booking.dispute.DamageClaimRepository;
@@ -107,6 +110,7 @@ public class CheckInScheduler {
     private final DamageClaimRepository damageClaimRepository;
     private final NotificationService notificationService;
     private final BookingPaymentService bookingPaymentService;
+    private final CancellationSettlementService cancellationSettlementService;
     private final Counter windowsOpenedCounter;
     private final Counter noShowHostCounter;
     private final Counter noShowGuestCounter;
@@ -124,6 +128,7 @@ public class CheckInScheduler {
             DamageClaimRepository damageClaimRepository,
             NotificationService notificationService,
             BookingPaymentService bookingPaymentService,
+            CancellationSettlementService cancellationSettlementService,
             MeterRegistry meterRegistry) {
         this.checkInService = checkInService;
         this.checkInCommandService = checkInCommandService;
@@ -133,6 +138,7 @@ public class CheckInScheduler {
         this.damageClaimRepository = damageClaimRepository;
         this.notificationService = notificationService;
         this.bookingPaymentService = bookingPaymentService;
+        this.cancellationSettlementService = cancellationSettlementService;
         
         this.windowsOpenedCounter = Counter.builder("checkin.window.opened")
                 .description("Number of check-in windows opened")
@@ -817,11 +823,16 @@ public class CheckInScheduler {
             return;
         }
 
-        booking.setStatus(BookingStatus.CANCELLED);
-        booking.setCancelledAt(LocalDateTime.now(SERBIA_ZONE));
-        bookingRepository.save(booking);
-
-        boolean refundSuccess = checkInService.processHostNoShowRefund(booking);
+        CancellationSettlementService.SettlementAttemptResult settlement =
+            cancellationSettlementService.beginAndAttemptFullRefundSettlement(
+                booking,
+                CancelledBy.SYSTEM,
+                CancellationReason.SYSTEM_ADMIN_ACTION,
+                "Handshake timeout auto-cancel",
+                "HANDSHAKE_TIMEOUT_FULL_REFUND",
+                "Automatski povraćaj zbog isteka roka za primopredaju"
+            );
+        boolean refundSuccess = settlement.settled();
 
         eventService.recordSystemEvent(
             booking,

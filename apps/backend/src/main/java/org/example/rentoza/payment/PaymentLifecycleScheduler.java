@@ -64,6 +64,7 @@ public class PaymentLifecycleScheduler {
     private static final String LOCK_PAYOUT_EXEC  = "payment.scheduler.payout.execute";
     private static final String LOCK_REAUTH        = "payment.scheduler.reauth";
     private static final String LOCK_DEP_REAUTH    = "payment.scheduler.deposit.reauth";
+    private static final String LOCK_WEBHOOK_REPLAY = "payment.scheduler.webhook.replay";
 
     // Conservative TTL: must cover worst-case job duration; must leave gap before next tick
     private static final Duration LOCK_TTL_HOURLY  = Duration.ofMinutes(55);
@@ -88,6 +89,7 @@ public class PaymentLifecycleScheduler {
     private final NotificationService notificationService;
     private final SchedulerLockStore schedulerLockStore;
     private final PayoutLedgerRepository payoutLedgerRepository;
+    private final ProviderEventService providerEventService;
     /**
      * P1-1: Per-item processor lives in a separate bean so that
      * {@code @Transactional(REQUIRES_NEW)} takes effect via the Spring proxy.
@@ -127,6 +129,7 @@ public class PaymentLifecycleScheduler {
             NotificationService notificationService,
             SchedulerLockStore schedulerLockStore,
             PayoutLedgerRepository payoutLedgerRepository,
+            ProviderEventService providerEventService,
             SchedulerItemProcessor itemProcessor,
             MeterRegistry meterRegistry) {
         this.bookingRepository = bookingRepository;
@@ -137,6 +140,7 @@ public class PaymentLifecycleScheduler {
         this.notificationService = notificationService;
         this.schedulerLockStore = schedulerLockStore;
         this.payoutLedgerRepository = payoutLedgerRepository;
+        this.providerEventService = providerEventService;
         this.itemProcessor = itemProcessor;
 
         this.captureSuccessCounter      = counter(meterRegistry, "payment.scheduler.capture.success",   "Scheduled captures succeeded");
@@ -298,6 +302,25 @@ public class PaymentLifecycleScheduler {
     /** Delegates to {@link SchedulerItemProcessor#processRefundSafely} for isolated transaction. */
     public void processRefundSafely(CancellationRecord record) {
         itemProcessor.processRefundSafely(record);
+    }
+
+    // ========== JOB 4B: REPLAY STALE WEBHOOK EVENTS ==========
+
+    @Scheduled(cron = "0 */5 * * * *")
+    public void replayStaleWebhookEvents() {
+        if (!schedulerLockStore.tryAcquireLock(LOCK_WEBHOOK_REPLAY, LOCK_TTL_SHORT)) {
+            log.debug("[PaymentScheduler] replayStaleWebhookEvents — lock held, skipping");
+            return;
+        }
+        try {
+            Instant replayBefore = Instant.now().minus(30, ChronoUnit.SECONDS);
+            int replayed = providerEventService.replayStaleEvents(replayBefore);
+            if (replayed > 0) {
+                log.info("[PaymentScheduler] Replayed {} stale webhook event(s)", replayed);
+            }
+        } finally {
+            schedulerLockStore.releaseLock(LOCK_WEBHOOK_REPLAY);
+        }
     }
 
     // ========== JOB 5: SCHEDULE HOST PAYOUTS ==========

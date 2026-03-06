@@ -939,7 +939,8 @@ public class Booking {
      * Check if checkout has been completed.
      */
     public boolean isCheckoutComplete() {
-        return status == BookingStatus.COMPLETED && checkoutCompletedAt != null;
+        return (status == BookingStatus.CHECKOUT_SETTLEMENT_PENDING || status == BookingStatus.COMPLETED)
+                && checkoutCompletedAt != null;
     }
 
     /**

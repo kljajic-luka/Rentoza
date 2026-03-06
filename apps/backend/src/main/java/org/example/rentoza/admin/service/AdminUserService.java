@@ -11,6 +11,9 @@ import org.example.rentoza.admin.repository.AdminUserRepository;
 import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingRepository;
 import org.example.rentoza.booking.BookingStatus;
+import org.example.rentoza.booking.cancellation.CancelledBy;
+import org.example.rentoza.booking.cancellation.CancellationReason;
+import org.example.rentoza.booking.cancellation.CancellationSettlementService;
 import org.example.rentoza.booking.dispute.DamageClaimRepository;
 import org.example.rentoza.car.Car;
 import org.example.rentoza.car.CarRepository;
@@ -56,6 +59,7 @@ public class AdminUserService {
     private final CarRepository carRepo;
     private final ReviewRepository reviewRepo;
     private final DamageClaimRepository damageClaimRepo;
+    private final CancellationSettlementService cancellationSettlementService;
     private final AdminAuditService auditService;
     
     // ==================== USER LISTING ====================
@@ -428,8 +432,18 @@ public class AdminUserService {
         );
         
         for (Booking booking : activeBookings) {
-            booking.setStatus(BookingStatus.CANCELLED);
-            bookingRepo.save(booking);
+            if (booking.getStatus() == BookingStatus.PENDING_APPROVAL) {
+                booking.setStatus(BookingStatus.CANCELLED);
+                bookingRepo.save(booking);
+            } else {
+                cancellationSettlementService.beginFullRefundSettlement(
+                        booking,
+                        CancelledBy.SYSTEM,
+                        CancellationReason.SYSTEM_ADMIN_ACTION,
+                        "User deletion cascade",
+                        "ADMIN_DELETE_FULL_REFUND"
+                );
+            }
             log.debug("Cancelled booking {} for deleted user {}", 
                 booking.getId(), user.getId());
         }

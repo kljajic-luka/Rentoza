@@ -112,7 +112,8 @@ public class AdminFinancialService {
                     BookingStatus.CHECK_IN_OPEN, BookingStatus.CHECK_IN_HOST_COMPLETE,
                     BookingStatus.CHECK_IN_COMPLETE, BookingStatus.IN_TRIP,
                     BookingStatus.CHECKOUT_OPEN, BookingStatus.CHECKOUT_GUEST_COMPLETE,
-                    BookingStatus.CHECKOUT_HOST_COMPLETE));
+                    BookingStatus.CHECKOUT_HOST_COMPLETE,
+                    BookingStatus.CHECKOUT_SETTLEMENT_PENDING));
 
         // Pending payouts (completed, awaiting host payment)
         Instant cutoffDate = Instant.now().minus(PAYOUT_DELAY_DAYS, ChronoUnit.DAYS);

@@ -84,7 +84,7 @@ public interface BlockedDateRepository extends JpaRepository<BlockedDate, Long> 
     String OCCUPYING_STATUSES =
             "'ACTIVE','APPROVED','CHECK_IN_OPEN','CHECK_IN_HOST_COMPLETE'," +
             "'CHECK_IN_COMPLETE','CHECK_IN_DISPUTE','IN_TRIP','CHECKOUT_OPEN'," +
-            "'CHECKOUT_GUEST_COMPLETE','CHECKOUT_HOST_COMPLETE'";
+            "'CHECKOUT_GUEST_COMPLETE','CHECKOUT_HOST_COMPLETE','CHECKOUT_SETTLEMENT_PENDING'";
 
     /**
      * Status-aware overlap check.
@@ -107,7 +107,8 @@ public interface BlockedDateRepository extends JpaRepository<BlockedDate, Long> 
                                  'ACTIVE','APPROVED','CHECK_IN_OPEN',
                                  'CHECK_IN_HOST_COMPLETE','CHECK_IN_COMPLETE',
                                  'CHECK_IN_DISPUTE','IN_TRIP','CHECKOUT_OPEN',
-                                 'CHECKOUT_GUEST_COMPLETE','CHECKOUT_HOST_COMPLETE'
+                                                                                        'CHECKOUT_GUEST_COMPLETE','CHECKOUT_HOST_COMPLETE',
+                                                                                        'CHECKOUT_SETTLEMENT_PENDING'
                               )
                    )
               )
@@ -137,7 +138,8 @@ public interface BlockedDateRepository extends JpaRepository<BlockedDate, Long> 
                                  'ACTIVE','APPROVED','CHECK_IN_OPEN',
                                  'CHECK_IN_HOST_COMPLETE','CHECK_IN_COMPLETE',
                                  'CHECK_IN_DISPUTE','IN_TRIP','CHECKOUT_OPEN',
-                                 'CHECKOUT_GUEST_COMPLETE','CHECKOUT_HOST_COMPLETE'
+                                                                                        'CHECKOUT_GUEST_COMPLETE','CHECKOUT_HOST_COMPLETE',
+                                                                                        'CHECKOUT_SETTLEMENT_PENDING'
                               )
                    )
               )
@@ -179,7 +181,8 @@ public interface BlockedDateRepository extends JpaRepository<BlockedDate, Long> 
                                  'ACTIVE','APPROVED','CHECK_IN_OPEN',
                                  'CHECK_IN_HOST_COMPLETE','CHECK_IN_COMPLETE',
                                  'CHECK_IN_DISPUTE','IN_TRIP','CHECKOUT_OPEN',
-                                 'CHECKOUT_GUEST_COMPLETE','CHECKOUT_HOST_COMPLETE'
+                                                                                        'CHECKOUT_GUEST_COMPLETE','CHECKOUT_HOST_COMPLETE',
+                                                                                        'CHECKOUT_SETTLEMENT_PENDING'
                               )
                    )
               )

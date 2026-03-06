@@ -126,10 +126,10 @@ class CheckoutSagaIntegrationTest {
         // Then: Saga is invoked
         verify(checkoutSagaOrchestrator, times(1)).startSaga(eq(12345L));
 
-        // And: Booking status updated to COMPLETED
+        // And: Booking status moved to settlement pending before saga finalizes it
         ArgumentCaptor<Booking> bookingCaptor = ArgumentCaptor.forClass(Booking.class);
         verify(bookingRepository).save(bookingCaptor.capture());
-        assertThat(bookingCaptor.getValue().getStatus()).isEqualTo(BookingStatus.COMPLETED);
+        assertThat(bookingCaptor.getValue().getStatus()).isEqualTo(BookingStatus.CHECKOUT_SETTLEMENT_PENDING);
     }
 
     @Test
@@ -175,17 +175,17 @@ class CheckoutSagaIntegrationTest {
         // Then: Checkout still committed
         verify(bookingRepository).save(any(Booking.class));
 
-        // And: Notification still sent
-        verify(notificationService, atLeastOnce()).createNotification(any());
+        // And: Service does not emit final completion notifications before settlement succeeds
+        verify(notificationService, never()).createNotification(any());
     }
 
     @Test
-    @DisplayName("Saga accepts already COMPLETED booking (idempotent)")
-    void testSagaAcceptsCompletedStatus() {
-        // Given: Booking already COMPLETED by service
+    @DisplayName("Saga accepts settlement-pending booking")
+    void testSagaAcceptsSettlementPendingStatus() {
+        // Given: Booking already moved to settlement pending by service
         Booking booking = createTestBooking(180);
         booking.setId(12345L);
-        booking.setStatus(BookingStatus.COMPLETED);
+        booking.setStatus(BookingStatus.CHECKOUT_SETTLEMENT_PENDING);
 
         CheckoutSagaState saga = CheckoutSagaState.builder()
             .bookingId(12345L)
@@ -209,12 +209,12 @@ class CheckoutSagaIntegrationTest {
             meterRegistry
         );
 
-        // Then: No exception thrown (validates precondition accepts COMPLETED)
+        // Then: No exception thrown (validates precondition accepts settlement pending)
         try {
             orchestrator.startSaga(12345L);
         } catch (IllegalStateException e) {
-            if (e.getMessage().contains("must be in CHECKOUT_HOST_COMPLETE or COMPLETED")) {
-                throw new AssertionError("Saga should accept COMPLETED status", e);
+            if (e.getMessage().contains("must be in CHECKOUT_HOST_COMPLETE or CHECKOUT_SETTLEMENT_PENDING")) {
+                throw new AssertionError("Saga should accept CHECKOUT_SETTLEMENT_PENDING status", e);
             }
             throw e;
         }
@@ -250,7 +250,7 @@ class CheckoutSagaIntegrationTest {
         // Given: Booking already has active saga
         Booking booking = createTestBooking(180);
         booking.setId(12345L);
-        booking.setStatus(BookingStatus.COMPLETED);
+        booking.setStatus(BookingStatus.CHECKOUT_SETTLEMENT_PENDING);
 
         CheckoutSagaState existingSaga = CheckoutSagaState.builder()
             .sagaId(java.util.UUID.randomUUID())
@@ -372,7 +372,7 @@ class CheckoutSagaIntegrationTest {
     }
 
     @Test
-    @DisplayName("Guest accept damage claim transitions booking to COMPLETED before saga")
+    @DisplayName("Guest accept damage claim transitions booking to settlement pending before saga")
     void testAcceptDamageClaimCompletesBooking() {
         // Given: Booking in CHECKOUT_DAMAGE_DISPUTE
         Booking booking = createTestBooking(0);
@@ -403,8 +403,8 @@ class CheckoutSagaIntegrationTest {
         // When
         checkOutService.acceptDamageClaim(6000L, guestId);
 
-        // Then: Booking status should be COMPLETED (set by completeCheckout())
-        assertThat(booking.getStatus()).isEqualTo(BookingStatus.COMPLETED);
+        // Then: Booking status should be settlement pending (set by completeCheckout())
+        assertThat(booking.getStatus()).isEqualTo(BookingStatus.CHECKOUT_SETTLEMENT_PENDING);
         assertThat(booking.getCheckoutCompletedAt()).isNotNull();
         assertThat(booking.getTripEndedAt()).isNotNull();
     }
@@ -444,8 +444,8 @@ class CheckoutSagaIntegrationTest {
         // When: Should NOT throw (resilient design — recovery scheduler will retry)
         checkOutService.acceptDamageClaim(7000L, guestId);
 
-        // Then: Booking is still COMPLETED and claim is still accepted
-        assertThat(booking.getStatus()).isEqualTo(BookingStatus.COMPLETED);
+        // Then: Booking remains settlement pending and claim is still accepted
+        assertThat(booking.getStatus()).isEqualTo(BookingStatus.CHECKOUT_SETTLEMENT_PENDING);
         assertThat(claim.getStatus())
                 .isEqualTo(org.example.rentoza.booking.dispute.DamageClaimStatus.CHECKOUT_GUEST_ACCEPTED);
         assertThat(claim.getApprovedAmount())

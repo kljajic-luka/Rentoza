@@ -5,6 +5,12 @@ import { catchError, throwError } from 'rxjs';
 import { AuthService } from '@core/auth/auth.service';
 import { ToastService } from '@core/services/toast.service';
 import { LoggerService } from '@core/services/logger.service';
+import {
+  getApiErrorCode,
+  getApiErrorCodes,
+  getApiErrorMessage,
+  getApiErrorValue,
+} from '@core/utils/api-error.utils';
 
 /**
  * List of API endpoints that should NOT show error toasts to users.
@@ -108,20 +114,20 @@ function isSilentEndpoint(url: string): boolean {
  */
 function extractUserFriendlyMessage(error: HttpErrorResponse): string {
   // Check for specific error codes from backend
-  const errorCode = error.error?.code;
+  const errorCode = getApiErrorCode(error.error);
 
   // Handle specific booking conflict types
   if (error.status === 409) {
     // Check-in timing blocked (photo upload response uses errorCodes array)
-    const errorCodes: string[] | undefined = error.error?.errorCodes;
+    const errorCodes = getApiErrorCodes(error.error);
     if (errorCodes?.includes('CHECKIN_TOO_EARLY')) {
-      const earliest = error.error?.earliestAllowedTime;
-      const minutes = error.error?.minutesUntilAllowed;
+      const earliest = getApiErrorValue<string>(error.error, 'earliestAllowedTime');
+      const minutes = getApiErrorValue<number>(error.error, 'minutesUntilAllowed');
       if (earliest) {
         const time = earliest.substring(11, 16); // extract HH:mm from ISO local
         return `Check-in nije još dozvoljen. Pokušajte ponovo u ${time} (za ${minutes ?? '?'} min).`;
       }
-      return error.error?.userMessage || 'Check-in još nije dozvoljen.';
+      return getApiErrorMessage(error.error) || 'Check-in još nije dozvoljen.';
     }
 
     switch (errorCode) {
@@ -136,9 +142,7 @@ function extractUserFriendlyMessage(error: HttpErrorResponse): string {
       case 'DB_DEADLOCK':
         return 'Server je privremeno zauzet. Molimo pokušajte ponovo.';
       default:
-        return (
-          error.error?.message || 'Ova radnja nije moguća zbog konflikta sa trenutnim stanjem.'
-        );
+        return getApiErrorMessage(error.error) || 'Ova radnja nije moguća zbog konflikta sa trenutnim stanjem.';
     }
   }
 
@@ -183,6 +187,6 @@ function extractUserFriendlyMessage(error: HttpErrorResponse): string {
     case 503:
       return 'Servis je trenutno nedostupan. Molimo pokušajte kasnije.';
     default:
-      return 'Došlo je do greške. Molimo pokušajte ponovo.';
+      return getApiErrorMessage(error.error) || 'Došlo je do greške. Molimo pokušajte ponovo.';
   }
 }

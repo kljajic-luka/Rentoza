@@ -7,6 +7,7 @@ import {
   DocumentType,
   CarDocument,
 } from '../../../../core/services/car-document.service';
+import { getHttpErrorMessage } from '@core/utils/api-error.utils';
 
 /**
  * Document upload component with drag-and-drop support.
@@ -146,7 +147,7 @@ export class DocumentUploadComponent {
         },
         error: (err) => {
           this.uploading.set(false);
-          this.error.set(err.error?.message || 'Greška pri otpremanju');
+          this.error.set(getHttpErrorMessage(err) || 'Greška pri otpremanju');
           console.error('Upload error:', err);
         },
       });

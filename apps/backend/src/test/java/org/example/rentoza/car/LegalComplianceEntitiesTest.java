@@ -116,6 +116,17 @@ class LegalComplianceEntitiesTest {
             car.setId(1L);
             car.setBrand("BMW");
             car.setModel("X5");
+
+            User owner = new User();
+            owner.setId(10L);
+            owner.setIsIdentityVerified(true);
+            car.setOwner(owner);
+
+            User admin = new User();
+            admin.setId(11L);
+            car.setDocumentsVerifiedBy(admin);
+            car.setDocumentsVerifiedAt(LocalDateTime.now().minusHours(2));
+            car.setAvailable(true);
         }
         
         @Test
@@ -164,39 +175,6 @@ class LegalComplianceEntitiesTest {
             car.setInsuranceExpiryDate(LocalDate.now().minusDays(1));
             
             assertTrue(car.isInsuranceExpired());
-        }
-        
-        @Test
-        @DisplayName("Approved car with all valid documents = legally rentable")
-        void approvedCarWithValidDocs_isLegallyRentable() {
-            car.setListingStatus(ListingStatus.APPROVED);
-            car.setTechnicalInspectionExpiryDate(LocalDate.now().plusMonths(3));
-            car.setRegistrationExpiryDate(LocalDate.now().plusMonths(6));
-            car.setInsuranceExpiryDate(LocalDate.now().plusMonths(12));
-            
-            assertTrue(car.isLegallyRentable());
-        }
-        
-        @Test
-        @DisplayName("Approved car with expired tech inspection = not legally rentable")
-        void approvedCarWithExpiredTech_notLegallyRentable() {
-            car.setListingStatus(ListingStatus.APPROVED);
-            car.setTechnicalInspectionExpiryDate(LocalDate.now().minusDays(1)); // expired
-            car.setRegistrationExpiryDate(LocalDate.now().plusMonths(6));
-            car.setInsuranceExpiryDate(LocalDate.now().plusMonths(12));
-            
-            assertFalse(car.isLegallyRentable());
-        }
-        
-        @Test
-        @DisplayName("Non-approved car = not legally rentable")
-        void pendingCar_notLegallyRentable() {
-            car.setListingStatus(ListingStatus.PENDING_APPROVAL);
-            car.setTechnicalInspectionExpiryDate(LocalDate.now().plusMonths(3));
-            car.setRegistrationExpiryDate(LocalDate.now().plusMonths(6));
-            car.setInsuranceExpiryDate(LocalDate.now().plusMonths(12));
-            
-            assertFalse(car.isLegallyRentable());
         }
         
         @Test

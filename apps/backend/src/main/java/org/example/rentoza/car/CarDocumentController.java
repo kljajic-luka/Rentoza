@@ -2,6 +2,7 @@ package org.example.rentoza.car;
 
 import lombok.RequiredArgsConstructor;
 import org.example.rentoza.car.dto.CarDocumentDto;
+import org.example.rentoza.exception.ApiErrorResponse;
 import org.example.rentoza.security.CurrentUser;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
@@ -17,6 +18,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * REST API for car document management (Serbian compliance).
@@ -49,7 +51,7 @@ public class CarDocumentController {
      */
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<CarDocumentDto> uploadDocument(
+    public ResponseEntity<?> uploadDocument(
             @PathVariable Long carId,
             @RequestParam("file") MultipartFile file,
             @RequestParam("type") DocumentType type,
@@ -67,7 +69,11 @@ public class CarDocumentController {
             return ResponseEntity.status(HttpStatus.CREATED).body(CarDocumentDto.from(document));
         } catch (IOException e) {
             log.error("File upload failed for carId={}: {}", carId, e.getMessage());
-            return ResponseEntity.internalServerError().build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+                    ApiErrorResponse.internalError(
+                            "An unexpected error occurred while uploading the document",
+                            UUID.randomUUID().toString(),
+                            "/api/cars/" + carId + "/documents"));
         }
     }
     
@@ -77,8 +83,9 @@ public class CarDocumentController {
     @GetMapping
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<CarDocumentDto>> getDocuments(@PathVariable Long carId) {
-        
-        List<CarDocument> documents = documentService.getDocumentsForCar(carId);
+        User requester = loadCurrentUser();
+
+        List<CarDocument> documents = documentService.getDocumentsForCar(carId, requester);
         List<CarDocumentDto> dtos = documents.stream()
             .map(CarDocumentDto::from)
             .toList();
@@ -92,9 +99,10 @@ public class CarDocumentController {
     @GetMapping("/status")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<DocumentComplianceStatus> getComplianceStatus(@PathVariable Long carId) {
-        
-        List<CarDocument> documents = documentService.getDocumentsForCar(carId);
-        boolean allVerified = documentService.hasAllRequiredDocumentsVerified(carId);
+        User requester = loadCurrentUser();
+
+        List<CarDocument> documents = documentService.getDocumentsForCar(carId, requester);
+        boolean allVerified = documentService.hasAllRequiredDocumentsVerified(carId, requester);
         
         DocumentComplianceStatus status = new DocumentComplianceStatus(
             allVerified,
@@ -127,4 +135,10 @@ public class CarDocumentController {
         boolean technicalInspectionVerified,
         boolean insuranceVerified
     ) {}
+
+    private User loadCurrentUser() {
+        Long userId = currentUser.id();
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalStateException("User not found"));
+    }
 }

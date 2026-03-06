@@ -1,19 +1,19 @@
 package org.example.rentoza.car;
 
 import org.example.rentoza.car.dto.AvailabilitySearchRequestDTO;
+import org.example.rentoza.monitoring.MissingResourceMetrics;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.time.LocalDate;
-import java.time.LocalTime;
+import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
 
@@ -26,8 +26,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Integration tests for CarController availability-search endpoint
  * Tests request/response handling, validation, and error scenarios
  */
-@SpringBootTest
-@AutoConfigureMockMvc
+@WebMvcTest(controllers = CarController.class)
+@AutoConfigureMockMvc(addFilters = false)
 @DisplayName("CarController /availability-search Endpoint Tests")
 class CarControllerTest {
 
@@ -36,6 +36,15 @@ class CarControllerTest {
 
     @MockBean
     private AvailabilityService availabilityService;
+
+        @MockBean
+        private CarService carService;
+
+        @MockBean
+        private org.example.rentoza.user.UserRepository userRepository;
+
+        @MockBean
+        private MissingResourceMetrics missingResourceMetrics;
 
     @Test
     @DisplayName("Test 1: Valid request should return 200 OK with paginated results")
@@ -57,10 +66,8 @@ class CarControllerTest {
         // Act & Assert
         mockMvc.perform(get("/api/cars/availability-search")
                         .param("location", "Beograd")
-                        .param("startDate", LocalDate.now().plusDays(1).toString())
-                        .param("startTime", "09:00")
-                        .param("endDate", LocalDate.now().plusDays(3).toString())
-                        .param("endTime", "18:00")
+                        .param("startTime", "2026-03-07T09:00:00")
+                        .param("endTime", "2026-03-09T18:00:00")
                         .param("page", "0")
                         .param("size", "20")
                         .contentType(MediaType.APPLICATION_JSON))
@@ -78,12 +85,11 @@ class CarControllerTest {
         // Act & Assert - Missing startTime
         mockMvc.perform(get("/api/cars/availability-search")
                         .param("location", "Beograd")
-                        .param("startDate", LocalDate.now().plusDays(1).toString())
-                        // MISSING startTime
-                        .param("endDate", LocalDate.now().plusDays(3).toString())
-                        .param("endTime", "18:00")
+                        .param("endTime", "2026-03-09T18:00:00")
                         .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.error.path").value("/api/cars/availability-search"));
     }
 
     @Test
@@ -92,12 +98,11 @@ class CarControllerTest {
         // Act & Assert - Invalid date format
         mockMvc.perform(get("/api/cars/availability-search")
                         .param("location", "Beograd")
-                        .param("startDate", "2025-13-45") // INVALID DATE
-                        .param("startTime", "09:00")
-                        .param("endDate", LocalDate.now().plusDays(3).toString())
-                        .param("endTime", "18:00")
+                        .param("startTime", "2025-13-45T09:00:00")
+                        .param("endTime", "2026-03-09T18:00:00")
                         .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
     }
 
     @Test
@@ -106,12 +111,11 @@ class CarControllerTest {
         // Act & Assert - Invalid time format
         mockMvc.perform(get("/api/cars/availability-search")
                         .param("location", "Beograd")
-                        .param("startDate", LocalDate.now().plusDays(1).toString())
-                        .param("startTime", "25:99") // INVALID TIME
-                        .param("endDate", LocalDate.now().plusDays(3).toString())
-                        .param("endTime", "18:00")
+                        .param("startTime", "2026-03-07T25:99:00")
+                        .param("endTime", "2026-03-09T18:00:00")
                         .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
     }
 
     @Test
@@ -124,14 +128,12 @@ class CarControllerTest {
         // Act & Assert - Start date after end date
         mockMvc.perform(get("/api/cars/availability-search")
                         .param("location", "Beograd")
-                        .param("startDate", LocalDate.now().plusDays(5).toString()) // AFTER END
-                        .param("startTime", "09:00")
-                        .param("endDate", LocalDate.now().plusDays(1).toString())
-                        .param("endTime", "18:00")
+                        .param("startTime", "2026-03-11T09:00:00")
+                        .param("endTime", "2026-03-07T18:00:00")
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("Invalid request"))
-                .andExpect(jsonPath("$.message").exists());
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.error.message").exists());
     }
 
     @Test
@@ -144,14 +146,12 @@ class CarControllerTest {
         // Act & Assert - Range exceeds 90 days
         mockMvc.perform(get("/api/cars/availability-search")
                         .param("location", "Beograd")
-                        .param("startDate", LocalDate.now().plusDays(1).toString())
-                        .param("startTime", "09:00")
-                        .param("endDate", LocalDate.now().plusDays(91).toString()) // 91 DAYS
-                        .param("endTime", "18:00")
+                        .param("startTime", "2026-03-07T09:00:00")
+                        .param("endTime", "2026-06-10T18:00:00")
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("Invalid request"))
-                .andExpect(jsonPath("$.message").exists());
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.error.message").exists());
     }
 
     @Test
@@ -164,13 +164,11 @@ class CarControllerTest {
         // Act & Assert - Blank location
         mockMvc.perform(get("/api/cars/availability-search")
                         .param("location", "   ") // BLANK
-                        .param("startDate", LocalDate.now().plusDays(1).toString())
-                        .param("startTime", "09:00")
-                        .param("endDate", LocalDate.now().plusDays(3).toString())
-                        .param("endTime", "18:00")
+                        .param("startTime", "2026-03-07T09:00:00")
+                        .param("endTime", "2026-03-09T18:00:00")
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("Invalid request"));
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
     }
 
     @Test
@@ -183,14 +181,12 @@ class CarControllerTest {
         // Act & Assert
         mockMvc.perform(get("/api/cars/availability-search")
                         .param("location", "Beograd")
-                        .param("startDate", LocalDate.now().plusDays(1).toString())
-                        .param("startTime", "09:00")
-                        .param("endDate", LocalDate.now().plusDays(3).toString())
-                        .param("endTime", "18:00")
+                        .param("startTime", "2026-03-07T09:00:00")
+                        .param("endTime", "2026-03-09T18:00:00")
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isInternalServerError())
-                .andExpect(jsonPath("$.error").value("Internal server error"))
-                .andExpect(jsonPath("$.message").exists());
+                .andExpect(jsonPath("$.error.code").value("INTERNAL_ERROR"))
+                .andExpect(jsonPath("$.error.message").exists());
     }
 
     @Test
@@ -204,10 +200,8 @@ class CarControllerTest {
         // Act & Assert
         mockMvc.perform(get("/api/cars/availability-search")
                         .param("location", "Beograd")
-                        .param("startDate", LocalDate.now().plusDays(1).toString())
-                        .param("startTime", "09:00")
-                        .param("endDate", LocalDate.now().plusDays(3).toString())
-                        .param("endTime", "18:00")
+                        .param("startTime", "2026-03-07T09:00:00")
+                        .param("endTime", "2026-03-09T18:00:00")
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content").isArray())
@@ -236,10 +230,8 @@ class CarControllerTest {
         // Act & Assert - Test custom page size
         mockMvc.perform(get("/api/cars/availability-search")
                         .param("location", "Beograd")
-                        .param("startDate", LocalDate.now().plusDays(1).toString())
-                        .param("startTime", "09:00")
-                        .param("endDate", LocalDate.now().plusDays(3).toString())
-                        .param("endTime", "18:00")
+                        .param("startTime", "2026-03-07T09:00:00")
+                        .param("endTime", "2026-03-09T18:00:00")
                         .param("page", "0")
                         .param("size", "50") // CUSTOM SIZE
                         .contentType(MediaType.APPLICATION_JSON))
@@ -247,5 +239,20 @@ class CarControllerTest {
                 .andExpect(jsonPath("$.content").isArray())
                 .andExpect(jsonPath("$.content.length()").value(2))
                 .andExpect(jsonPath("$.currentPage").value(0));
+    }
+
+    @Test
+    @DisplayName("Test 11: ISO LocalDateTime contract is accepted")
+    void testIsoLocalDateTimeContract() throws Exception {
+        Page<Car> emptyPage = new PageImpl<>(Collections.emptyList());
+        when(availabilityService.searchAvailableCars(any(AvailabilitySearchRequestDTO.class)))
+                .thenReturn(emptyPage);
+
+        mockMvc.perform(get("/api/cars/availability-search")
+                        .param("location", "Beograd")
+                        .param("startTime", "2026-03-07T09:00:00")
+                        .param("endTime", "2026-03-10T18:00:00")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk());
     }
 }

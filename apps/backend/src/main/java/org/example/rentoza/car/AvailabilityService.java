@@ -69,6 +69,7 @@ public class AvailabilityService {
     private final BlockedDateRepository blockedDateRepository;
     private final BookingTimeUtil bookingTimeUtil;
     private final ReviewRepository reviewRepository;
+    private final MarketplaceComplianceService marketplaceComplianceService;
 
     /**
      * Search for cars available in a specific location and time range.
@@ -104,10 +105,8 @@ public class AvailabilityService {
             Hibernate.initialize(car.getImages());
         });
 
-        // CRITICAL: Filter out non-approved cars (e.g. legacy data or pending approval)
-        candidateCars = candidateCars.stream()
-            .filter(car -> car.getListingStatus() == org.example.rentoza.car.ListingStatus.APPROVED)
-            .collect(Collectors.toList());
+        // CRITICAL: Only keep marketplace-visible cars in discovery results.
+        candidateCars = marketplaceComplianceService.filterMarketplaceVisible(candidateCars);
 
         // Step 2: Batch availability filtering (P2 fix — eliminates N+1)
         LocalDateTime requestedStart = request.getStartDateTime();

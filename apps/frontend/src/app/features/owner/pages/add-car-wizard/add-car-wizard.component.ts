@@ -42,6 +42,7 @@ import {
   DocumentType as CarDocumentType,
   CarDocument,
 } from '@core/services/car-document.service';
+import { getHttpErrorMessage } from '@core/utils/api-error.utils';
 
 @Component({
   selector: 'app-add-car-wizard',
@@ -550,7 +551,7 @@ export class AddCarWizardComponent implements OnInit {
     } catch (error: any) {
       console.error('Error in car submission flow:', error);
       this.snackBar.open(
-        error.message || 'Greška pri kreiranju vozila. Proverite podatke.',
+        getHttpErrorMessage(error) || 'Greška pri kreiranju vozila. Proverite podatke.',
         'Zatvori',
         { duration: 5000 },
       );

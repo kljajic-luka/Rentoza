@@ -40,6 +40,7 @@ class CarListingHardeningTest {
     @Mock private ReviewRepository reviewRepository;
     @Mock private CurrentUser currentUser;
     @Mock private CarImageStorageService carImageStorageService;
+    @Mock private MarketplaceComplianceService marketplaceComplianceService;
 
     private CarService carService;
     private User testOwner;
@@ -48,7 +49,7 @@ class CarListingHardeningTest {
     void setUp() {
         carService = new CarService(
                 carRepository, bookingRepository, reviewRepository,
-                currentUser, carImageStorageService
+            currentUser, carImageStorageService, marketplaceComplianceService
         );
         testOwner = new User();
         testOwner.setId(1L);

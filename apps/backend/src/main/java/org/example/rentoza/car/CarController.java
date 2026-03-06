@@ -7,6 +7,7 @@ import org.example.rentoza.car.dto.CarSearchCriteria;
 import org.example.rentoza.car.dto.UnavailableRangeDTO;
 import org.example.rentoza.config.CachingConfig;
 import org.example.rentoza.exception.ResourceNotFoundException;
+import org.example.rentoza.exception.ApiErrorResponse;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
 import org.slf4j.Logger;
@@ -25,6 +26,7 @@ import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @RestController
@@ -358,16 +360,23 @@ public class CarController {
 
         } catch (IllegalArgumentException e) {
             log.warn("[AvailabilitySearch] Validation error: {}", e.getMessage());
-            return ResponseEntity.badRequest().body(Map.of(
-                "error", "Invalid request",
-                "message", e.getMessage()
-            ));
+            return ResponseEntity.badRequest().body(
+                ApiErrorResponse.validation(
+                    e.getMessage(),
+                    Map.of(),
+                    UUID.randomUUID().toString(),
+                    "/api/cars/availability-search"
+                )
+            );
         } catch (Exception e) {
             log.error("[AvailabilitySearch] Unexpected error", e);
-            return ResponseEntity.status(500).body(Map.of(
-                "error", "Internal server error",
-                "message", "An unexpected error occurred while searching for available cars"
-            ));
+            return ResponseEntity.status(500).body(
+                ApiErrorResponse.internalError(
+                    "An unexpected error occurred while searching for available cars",
+                    UUID.randomUUID().toString(),
+                    "/api/cars/availability-search"
+                )
+            );
         }
     }
 

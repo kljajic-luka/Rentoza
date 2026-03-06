@@ -7,6 +7,7 @@ import org.example.rentoza.car.ApprovalStatus;
 import org.example.rentoza.car.Car;
 import org.example.rentoza.car.CarBookingSettings;
 import org.example.rentoza.car.CarRepository;
+import org.example.rentoza.car.MarketplaceComplianceService;
 import org.example.rentoza.chat.ChatServiceClient;
 import org.example.rentoza.delivery.DeliveryFeeCalculator;
 import org.example.rentoza.exception.BookingConflictException;
@@ -80,6 +81,8 @@ class BookingServiceTest {
     @Mock private BookingPaymentService bookingPaymentService;
     @Mock private SchedulerIdempotencyService lockService;
     @Mock private BookingEdgeCaseValidator edgeCaseValidator;
+        @Mock private RentalAgreementService rentalAgreementService;
+        @Mock private MarketplaceComplianceService marketplaceComplianceService;
 
     @InjectMocks
     private BookingService bookingService;
@@ -124,6 +127,7 @@ class BookingServiceTest {
         carOwner.setEmail("owner@test.com");
         carOwner.setFirstName("Car");
         carOwner.setLastName("Owner");
+        carOwner.setIsIdentityVerified(true);
 
         // Create test car with settings (approved + available)
         car = new Car();
@@ -133,12 +137,19 @@ class BookingServiceTest {
         car.setApprovalStatus(ApprovalStatus.APPROVED);
         car.setListingStatus(org.example.rentoza.car.ListingStatus.APPROVED);
         car.setAvailable(true);
+        car.setRegistrationExpiryDate(LocalDate.now().plusMonths(6));
+        car.setInsuranceExpiryDate(LocalDate.now().plusMonths(6));
+        car.setTechnicalInspectionExpiryDate(LocalDate.now().plusMonths(3));
+        car.setDocumentsVerifiedAt(LocalDateTime.now().minusDays(1));
+        car.setDocumentsVerifiedBy(carOwner);
 
         CarBookingSettings settings = new CarBookingSettings();
         settings.setAdvanceNoticeHours(1);
         settings.setMinTripHours(24);
         settings.setMaxTripDays(30);
         car.setBookingSettings(settings);
+
+        lenient().when(marketplaceComplianceService.isMarketplaceVisible(any(Car.class))).thenReturn(true);
 
         // Create valid booking request (2 days from now, 3-day trip)
         validBookingRequest = new BookingRequestDTO();
@@ -158,6 +169,21 @@ class BookingServiceTest {
     @Nested
     @DisplayName("Booking Creation - Valid Scenarios")
     class BookingCreationValidTests {
+
+                @Test
+                @DisplayName("Should reject booking when car fails live marketplace compliance")
+                void shouldRejectBookingWhenCarFailsLiveMarketplaceCompliance() {
+                        when(marketplaceComplianceService.isMarketplaceVisible(car)).thenReturn(false);
+
+                        when(userRepo.findByEmail("renter@test.com")).thenReturn(Optional.of(renter));
+                        when(carRepo.findById(100L)).thenReturn(Optional.of(car));
+
+                        assertThatThrownBy(() -> bookingService.createBooking(validBookingRequest, "renter@test.com"))
+                                        .isInstanceOf(ValidationException.class)
+                                        .hasMessageContaining("marketplace compliance");
+
+                        verifyNoInteractions(bookingRepo);
+                }
 
         @Test
         @DisplayName("Should create booking with valid inputs and authorize payment")

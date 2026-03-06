@@ -4,6 +4,7 @@ import org.example.rentoza.booking.cancellation.CancellationPolicyService;
 import org.example.rentoza.booking.dto.BookingRequestDTO;
 import org.example.rentoza.car.Car;
 import org.example.rentoza.car.CarBookingSettings;
+import org.example.rentoza.car.MarketplaceComplianceService;
 import org.example.rentoza.car.CarRepository;
 import org.example.rentoza.chat.ChatServiceClient;
 import org.example.rentoza.delivery.DeliveryFeeCalculator;
@@ -55,6 +56,7 @@ class BookingServiceApprovalDeadlinePolicyTest {
     @Mock private org.example.rentoza.scheduler.SchedulerIdempotencyService lockService;
     @Mock private org.example.rentoza.booking.validation.BookingEdgeCaseValidator edgeCaseValidator;
     @Mock private RentalAgreementService rentalAgreementService;
+    @Mock private MarketplaceComplianceService marketplaceComplianceService;
 
     private BookingService bookingService;
 
@@ -74,11 +76,13 @@ class BookingServiceApprovalDeadlinePolicyTest {
                 bookingPaymentService,
                 lockService,
                 edgeCaseValidator,
-                rentalAgreementService
+                rentalAgreementService,
+                marketplaceComplianceService
         );
 
         ReflectionTestUtils.setField(bookingService, "approvalSlaHours", 48);
         ReflectionTestUtils.setField(bookingService, "minGuestPreparationHours", 12);
+            org.mockito.Mockito.lenient().when(marketplaceComplianceService.isMarketplaceVisible(any(Car.class))).thenReturn(true);
     }
 
     @Test

@@ -15,6 +15,7 @@ import org.example.rentoza.booking.dto.CancellationRequestDTO;
 import org.example.rentoza.booking.dto.CancellationResultDTO;
 import org.example.rentoza.booking.dto.UserBookingResponseDTO;
 import org.example.rentoza.car.Car;
+import org.example.rentoza.car.MarketplaceComplianceService;
 import org.example.rentoza.car.CarRepository;
 import org.example.rentoza.chat.ChatServiceClient;
 import org.example.rentoza.common.GeoPoint;
@@ -96,6 +97,7 @@ public class BookingService {
     private final SchedulerIdempotencyService lockService;
     private final BookingEdgeCaseValidator edgeCaseValidator;
     private final RentalAgreementService rentalAgreementService;
+    private final MarketplaceComplianceService marketplaceComplianceService;
 
     @org.springframework.beans.factory.annotation.Value("${app.booking.host-approval.enabled:false}")
     private boolean approvalEnabled;
@@ -127,7 +129,8 @@ public class BookingService {
                           org.example.rentoza.payment.BookingPaymentService bookingPaymentService,
                           SchedulerIdempotencyService lockService,
                           BookingEdgeCaseValidator edgeCaseValidator,
-                          RentalAgreementService rentalAgreementService) {
+                          RentalAgreementService rentalAgreementService,
+                          MarketplaceComplianceService marketplaceComplianceService) {
         this.repo = repo;
         this.carRepo = carRepo;
         this.userRepo = userRepo;
@@ -141,6 +144,7 @@ public class BookingService {
         this.bookingPaymentService = bookingPaymentService;
         this.lockService = lockService;
         this.edgeCaseValidator = edgeCaseValidator;
+            this.marketplaceComplianceService = marketplaceComplianceService;
         this.rentalAgreementService = rentalAgreementService;
     }
 
@@ -184,16 +188,14 @@ public class BookingService {
                 .orElseThrow(() -> new ResourceNotFoundException("Car not found"));
 
         // ========================================================================
-        // P0 FIX: APPROVAL & AVAILABILITY GATE
+        // P0 FIX: MARKETPLACE VISIBILITY GATE
         // ========================================================================
-        // Prevent booking of unapproved or unavailable cars.
-        // Unapproved listings must not be bookable even if accessed by direct ID.
+        // Publicly bookable listings must satisfy the same live compliance checks
+        // used by discovery, not just stale approval flags.
         // ========================================================================
-        if (car.getListingStatus() != org.example.rentoza.car.ListingStatus.APPROVED) {
-            throw new org.example.rentoza.exception.ValidationException("This car listing is not yet approved and cannot be booked.");
-        }
-        if (!car.isAvailable()) {
-            throw new org.example.rentoza.exception.ValidationException("This car is currently unavailable for booking.");
+        if (!marketplaceComplianceService.isMarketplaceVisible(car)) {
+            throw new org.example.rentoza.exception.ValidationException(
+                    "This car listing does not currently meet marketplace compliance requirements and cannot be booked.");
         }
 
         // ========================================================================

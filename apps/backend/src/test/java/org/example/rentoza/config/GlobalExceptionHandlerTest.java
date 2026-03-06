@@ -1,9 +1,11 @@
 package org.example.rentoza.config;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.persistence.OptimisticLockException;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.Path;
+import org.example.rentoza.exception.ApiErrorResponse;
 import org.example.rentoza.security.supabase.SupabaseAuthClient.SupabaseAuthException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -11,10 +13,21 @@ import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DeadlockLoserDataAccessException;
 import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import org.springframework.validation.BeanPropertyBindingResult;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.core.MethodParameter;
 
+import java.lang.reflect.Method;
 import java.sql.SQLException;
 import java.util.HashSet;
 import java.util.List;
@@ -34,6 +47,19 @@ import static org.mockito.Mockito.when;
 class GlobalExceptionHandlerTest {
 
     private final GlobalExceptionHandler handler = new GlobalExceptionHandler();
+
+    private MockHttpServletRequest request(String path) {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRequestURI(path);
+        return request;
+    }
+
+    @SuppressWarnings("unused")
+    private static class TestController {
+        @GetMapping("/test")
+        void test(@RequestParam String id) {
+        }
+    }
 
     // ========== BUG-006: Optimistic Locking Tests ==========
 
@@ -162,14 +188,86 @@ class GlobalExceptionHandlerTest {
         // Given
         org.springframework.security.access.AccessDeniedException ex = 
             new org.springframework.security.access.AccessDeniedException("Not authorized");
+        MockHttpServletRequest request = request("/api/cars/55/documents");
 
         // When
-        ResponseEntity<Map<String, Object>> response = handler.handleAccessDenied(ex);
+        ResponseEntity<ApiErrorResponse> response = handler.handleAccessDenied(ex, request);
 
         // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
         assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().get("error")).isEqualTo("Forbidden");
+        assertThat(response.getBody().getError().getCode()).isEqualTo("FORBIDDEN");
+        assertThat(response.getBody().getError().getMessage()).isEqualTo("Access Denied");
+        assertThat(response.getBody().getError().getPath()).isEqualTo("/api/cars/55/documents");
+    }
+
+    @Test
+    @DisplayName("Malformed body returns validation envelope")
+    void httpMessageNotReadable_returnsValidationEnvelope() {
+        ResponseEntity<ApiErrorResponse> response = handler.handleHttpMessageNotReadable(
+                new HttpMessageNotReadableException("bad json"),
+                request("/api/cars/availability-search"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getError().getCode()).isEqualTo("VALIDATION_ERROR");
+        assertThat(response.getBody().getError().getPath()).isEqualTo("/api/cars/availability-search");
+    }
+
+    @Test
+    @DisplayName("Missing request parameter returns validation envelope with details")
+    void missingRequestParameter_returnsValidationEnvelope() {
+        ResponseEntity<ApiErrorResponse> response = handler.handleMissingRequestParameter(
+                new MissingServletRequestParameterException("startTime", "String"),
+                request("/api/cars/availability-search"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getError().getCode()).isEqualTo("VALIDATION_ERROR");
+        assertThat(response.getBody().getError().getDetails()).containsEntry("parameter", "startTime");
+    }
+
+    @Test
+    @DisplayName("Bean validation returns validation envelope with field map")
+    void methodArgumentNotValid_returnsValidationEnvelope() throws Exception {
+        BeanPropertyBindingResult bindingResult = new BeanPropertyBindingResult(new Object(), "request");
+        bindingResult.addError(new FieldError("request", "location", "must not be blank"));
+
+        Method method = TestController.class.getDeclaredMethod("test", String.class);
+        MethodParameter parameter = new MethodParameter(method, 0);
+        MethodArgumentNotValidException ex = new MethodArgumentNotValidException(parameter, bindingResult);
+
+        ResponseEntity<ApiErrorResponse> response = handler.handleValidationExceptions(
+                ex,
+                request("/api/cars/availability-search"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getError().getCode()).isEqualTo("VALIDATION_ERROR");
+        assertThat(response.getBody().getError().getDetails()).containsEntry("location", "must not be blank");
+    }
+
+    @Test
+    @DisplayName("Type mismatch returns validation envelope with parameter details")
+    void methodArgumentTypeMismatch_returnsValidationEnvelope() throws Exception {
+        Method method = TestController.class.getDeclaredMethod("test", String.class);
+        MethodParameter parameter = new MethodParameter(method, 0);
+        MethodArgumentTypeMismatchException ex = new MethodArgumentTypeMismatchException(
+                "abc",
+                Long.class,
+                "id",
+                parameter,
+                new IllegalArgumentException("bad type"));
+
+        ResponseEntity<ApiErrorResponse> response = handler.handleMethodArgumentTypeMismatch(
+                ex,
+                request("/api/cars/abc"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getError().getCode()).isEqualTo("VALIDATION_ERROR");
+        assertThat(response.getBody().getError().getDetails()).containsEntry("parameter", "id");
+        assertThat(response.getBody().getError().getDetails()).containsEntry("value", "abc");
     }
 
     // ========== Phase 3: ConstraintViolationException Tests ==========

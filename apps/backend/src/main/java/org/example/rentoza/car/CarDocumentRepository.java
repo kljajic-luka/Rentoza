@@ -20,6 +20,11 @@ public interface CarDocumentRepository extends JpaRepository<CarDocument, Long> 
     List<CarDocument> findByCarId(Long carId);
 
     /**
+     * Find all documents for multiple cars.
+     */
+    List<CarDocument> findByCarIdIn(List<Long> carIds);
+
+    /**
      * Find a document with its verifier eagerly loaded.
      *
      * <p>Used by admin review workflows to avoid LazyInitializationException

@@ -465,34 +465,24 @@ public class Car {
      * Check if technical inspection is expired (> 6 months old).
      */
     public boolean isTechnicalInspectionExpired() {
-        return technicalInspectionExpiryDate != null && 
-               technicalInspectionExpiryDate.isBefore(java.time.LocalDate.now());
+         return technicalInspectionExpiryDate != null &&
+             !technicalInspectionExpiryDate.isAfter(java.time.LocalDate.now());
     }
 
     /**
      * Check if registration is expired.
      */
     public boolean isRegistrationExpired() {
-        return registrationExpiryDate != null && 
-               registrationExpiryDate.isBefore(java.time.LocalDate.now());
+         return registrationExpiryDate != null &&
+             !registrationExpiryDate.isAfter(java.time.LocalDate.now());
     }
 
     /**
      * Check if insurance is expired.
      */
     public boolean isInsuranceExpired() {
-        return insuranceExpiryDate != null && 
-               insuranceExpiryDate.isBefore(java.time.LocalDate.now());
-    }
-
-    /**
-     * Check if car is legally rentable (all documents current + approved).
-     */
-    public boolean isLegallyRentable() {
-        return listingStatus == ListingStatus.APPROVED &&
-               !isTechnicalInspectionExpired() &&
-               !isRegistrationExpired() &&
-               !isInsuranceExpired();
+        return insuranceExpiryDate != null &&
+               !insuranceExpiryDate.isAfter(java.time.LocalDate.now());
     }
 
     /**

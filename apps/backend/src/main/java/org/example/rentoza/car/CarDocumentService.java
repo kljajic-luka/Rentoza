@@ -1,13 +1,16 @@
 package org.example.rentoza.car;
 
 import org.example.rentoza.admin.dto.DocumentReviewDto;
+import org.example.rentoza.booking.util.FileSignatureValidator;
 import org.example.rentoza.config.timezone.SerbiaTimeZone;
 import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.exception.ValidationException;
 import org.example.rentoza.storage.SupabaseStorageService;
+import org.example.rentoza.user.Role;
 import org.example.rentoza.user.User;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -95,7 +98,9 @@ public class CarDocumentService {
         }
         
         // Validate file
-        validateFile(file);
+        String normalizedMimeType = validateFile(file);
+
+        invalidateComplianceVerification(car);
 
         // Serbian compliance: required documents MUST have an explicit expiry date
         if (type == DocumentType.REGISTRATION
@@ -133,7 +138,7 @@ public class CarDocumentService {
             .originalFilename(file.getOriginalFilename())
             .documentHash(hash)
             .fileSize(file.getSize())
-            .mimeType(file.getContentType())
+            .mimeType(normalizedMimeType)
             .uploadDate(SerbiaTimeZone.now())
             .expiryDate(effectiveExpiry)
             .status(DocumentVerificationStatus.PENDING)
@@ -273,6 +278,15 @@ public class CarDocumentService {
     public List<CarDocument> getDocumentsForCar(Long carId) {
         return documentRepository.findByCarId(carId);
     }
+
+    /**
+     * Get all documents for a car after owner/admin authorization.
+     */
+    @Transactional(readOnly = true)
+    public List<CarDocument> getDocumentsForCar(Long carId, User requester) {
+        verifyDocumentMetadataAccess(carId, requester);
+        return getDocumentsForCar(carId);
+    }
     
     /**
      * Get all pending documents for admin review.
@@ -291,10 +305,16 @@ public class CarDocumentService {
         long count = documentRepository.countRequiredVerifiedDocuments(carId);
         return count >= 3;
     }
+
+    @Transactional(readOnly = true)
+    public boolean hasAllRequiredDocumentsVerified(Long carId, User requester) {
+        verifyDocumentMetadataAccess(carId, requester);
+        return hasAllRequiredDocumentsVerified(carId);
+    }
     
     // ==================== HELPER METHODS ====================
     
-    private void validateFile(MultipartFile file) {
+    private String validateFile(MultipartFile file) throws IOException {
         if (file.isEmpty()) {
             throw new ValidationException("File is empty");
         }
@@ -303,10 +323,53 @@ public class CarDocumentService {
             throw new ValidationException("File too large. Maximum 10MB allowed.");
         }
         
-        String mimeType = file.getContentType();
-        if (mimeType == null || !ALLOWED_MIME_TYPES.contains(mimeType.toLowerCase())) {
+        String mimeType = normalizeMimeType(file.getContentType());
+        if (mimeType == null || !ALLOWED_MIME_TYPES.contains(mimeType)) {
             throw new ValidationException("Invalid file type. Allowed: PDF, JPEG, PNG");
         }
+
+        try {
+            FileSignatureValidator.validateImageSignature(file.getBytes(), mimeType);
+        } catch (IllegalArgumentException ex) {
+            throw new ValidationException(ex.getMessage());
+        }
+
+        return mimeType;
+    }
+
+    private String normalizeMimeType(String mimeType) {
+        if (mimeType == null) {
+            return null;
+        }
+        return mimeType.toLowerCase().split(";")[0].trim();
+    }
+
+    private void verifyDocumentMetadataAccess(Long carId, User requester) {
+        Car car = carRepository.findById(carId)
+                .orElseThrow(() -> new ResourceNotFoundException("Car not found: " + carId));
+
+        boolean isOwner = requester != null && car.getOwner() != null
+                && car.getOwner().getId().equals(requester.getId());
+        boolean isAdmin = requester != null && requester.getRole() == Role.ADMIN;
+
+        if (!isOwner && !isAdmin) {
+            throw new AccessDeniedException("Unauthorized to access car document metadata");
+        }
+    }
+
+    private void invalidateComplianceVerification(Car car) {
+        car.setDocumentsVerifiedAt(null);
+        car.setDocumentsVerifiedBy(null);
+
+        if (car.getListingStatus() == ListingStatus.APPROVED || car.getListingStatus() == ListingStatus.REJECTED) {
+            car.setListingStatus(ListingStatus.PENDING_APPROVAL);
+            car.setApprovalStatus(ApprovalStatus.PENDING);
+            car.setApprovedAt(null);
+            car.setApprovedBy(null);
+            car.setRejectionReason(null);
+        }
+
+        car.setAvailable(false);
     }
     
     private String getFileExtension(String filename) {

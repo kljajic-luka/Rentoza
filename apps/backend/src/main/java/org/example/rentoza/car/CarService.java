@@ -24,10 +24,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 import org.springframework.cache.annotation.Cacheable;
@@ -43,19 +45,22 @@ public class CarService {
     private final ReviewRepository reviewRepo;
     private final org.example.rentoza.security.CurrentUser currentUser;
     private final CarImageStorageService carImageStorageService;
+    private final MarketplaceComplianceService marketplaceComplianceService;
 
     public CarService(
             CarRepository repo,
             BookingRepository bookingRepo,
             ReviewRepository reviewRepo,
             org.example.rentoza.security.CurrentUser currentUser,
-            CarImageStorageService carImageStorageService
+            CarImageStorageService carImageStorageService,
+            MarketplaceComplianceService marketplaceComplianceService
     ) {
         this.repo = repo;
         this.bookingRepo = bookingRepo;
         this.reviewRepo = reviewRepo;
         this.currentUser = currentUser;
         this.carImageStorageService = carImageStorageService;
+        this.marketplaceComplianceService = marketplaceComplianceService;
     }
 
     @Transactional
@@ -269,8 +274,9 @@ public class CarService {
         // Public listing - only show available cars to users
         // Privacy: Use fuzzy locations for non-owners
         Long currentUserId = currentUser.idOrNull();
-        return repo.findByAvailableTrueAndListingStatus(ListingStatus.APPROVED)
-                .stream()
+        return marketplaceComplianceService.filterMarketplaceVisible(
+                repo.findByAvailableTrueAndListingStatus(ListingStatus.APPROVED))
+            .stream()
                 .map(car -> mapToResponseWithPrivacy(car, currentUserId))
                 .collect(Collectors.toList());
     }
@@ -280,8 +286,9 @@ public class CarService {
         // Public listing - only show available cars to users
         // Privacy: Use fuzzy locations for non-owners
         Long currentUserId = currentUser.idOrNull();
-        return repo.findByLocationIgnoreCaseAndAvailableTrueAndListingStatus(location, ListingStatus.APPROVED)
-                .stream()
+        return marketplaceComplianceService.filterMarketplaceVisible(
+                repo.findByLocationIgnoreCaseAndAvailableTrueAndListingStatus(location, ListingStatus.APPROVED))
+            .stream()
                 .map(car -> mapToResponseWithPrivacy(car, currentUserId))
                 .collect(Collectors.toList());
     }
@@ -343,8 +350,8 @@ public class CarService {
                 && car.getOwner().getId().equals(currentUserId);
         boolean isAdmin = currentUser.isAdmin();
 
-        if (car.getListingStatus() != ListingStatus.APPROVED && !isOwner && !isAdmin) {
-            log.warn("[CarService] Blocked access to unapproved car ID={} (status={})", id, car.getListingStatus());
+        if (!marketplaceComplianceService.isMarketplaceVisible(car) && !isOwner && !isAdmin) {
+            log.warn("[CarService] Blocked public access to non-visible car ID={} (status={})", id, car.getListingStatus());
             throw new ResourceNotFoundException("Car not found with ID: " + id);
         }
 
@@ -461,6 +468,8 @@ public class CarService {
             dto.setDescription(sanitizeText(dto.getDescription()));
         }
 
+        boolean materialChangeDetected = hasMaterialListingChanges(car, dto);
+
         // Update fields
         if (dto.getBrand() != null && !dto.getBrand().isBlank()) {
             car.setBrand(dto.getBrand().trim());
@@ -478,6 +487,7 @@ public class CarService {
         if (dto.getLocation() != null && !dto.getLocation().isBlank()) {
             car.setLocation(dto.getLocation().trim().toLowerCase());
         }
+        updateGeoLocation(car, dto);
         if (dto.getLicensePlate() != null && !dto.getLicensePlate().isBlank()) {
             car.setLicensePlate(dto.getLicensePlate().trim().toUpperCase());
         }
@@ -537,6 +547,10 @@ public class CarService {
             car.setSecurityDepositRsd(dto.getSecurityDepositRsd());
         }
 
+        if (materialChangeDetected) {
+            markListingPendingReview(car);
+        }
+
         Car savedCar = repo.save(car);
         // Return DTO with exact location for owner
         return new CarResponseDTO(savedCar, true, requester.getId());
@@ -553,8 +567,8 @@ public class CarService {
         }
 
         // CRITICAL: Prevent activation if car is not approved
-        if (available && car.getListingStatus() != ListingStatus.APPROVED) {
-            throw new RuntimeException("Cannot activate car that is not approved by admin. Current status: " + car.getListingStatus());
+        if (available && !marketplaceComplianceService.isMarketplaceVisible(car)) {
+            throw new RuntimeException("Cannot activate car that does not currently meet marketplace compliance requirements.");
         }
 
         car.setAvailable(available);
@@ -593,121 +607,77 @@ public class CarService {
         // Normalize and validate criteria
         criteria.normalize();
 
-        // Check if rating sort is requested (needs special handling)
-        boolean isRatingSort = criteria.getSort() != null
-                && criteria.getSort().startsWith("rating");
-
         // Build dynamic specification from criteria
         Specification<Car> spec = buildSearchSpecification(criteria);
 
-        Pageable pageable;
+        Pageable pageable = buildPageable(criteria);
+        boolean isRatingSort = pageable.getSort().stream().anyMatch(order -> order.getProperty().equals("rating"));
+
+        List<Car> matchingCars = isRatingSort
+            ? repo.findAll(spec)
+            : repo.findAll(spec, pageable.getSort());
+        matchingCars = marketplaceComplianceService.filterMarketplaceVisible(matchingCars);
+
+        java.util.Map<Long, Double> ratingMap = loadOwnerRatings(matchingCars);
         if (isRatingSort) {
-            // Rating sort: push ORDER BY into the database via a correlated subquery
-            // so pagination is fully accurate — no in-memory cap needed.
-            boolean ascending = criteria.getSort().contains("asc");
-            spec = spec.and(ratingOrderSpec(ascending));
-            int page = criteria.getPage() != null ? criteria.getPage() : 0;
-            int size = criteria.getSize() != null ? criteria.getSize() : 20;
-            pageable = PageRequest.of(page, size); // unsorted — ORDER BY is set by spec
-        } else {
-            pageable = buildPageable(criteria);
+            applyRatingSort(matchingCars, pageable.getSort(), ratingMap);
         }
 
-        // Execute search with all filters applied server-side
-        Page<Car> carPage = repo.findAll(spec, pageable);
+        int start = (int) pageable.getOffset();
+        int end = Math.min(start + pageable.getPageSize(), matchingCars.size());
+        List<Car> pageCars = start < matchingCars.size() ? matchingCars.subList(start, end) : List.of();
 
-        // Map to DTOs with privacy-aware location
         Long currentUserId = currentUser.idOrNull();
+        List<CarResponseDTO> dtos = pageCars.stream()
+            .map(car -> {
+                CarResponseDTO dto = mapToResponseWithPrivacy(car, currentUserId);
+                if (car.getOwner() != null) {
+                dto.setOwnerRating(ratingMap.getOrDefault(car.getOwner().getId(), 0.0));
+                }
+                return dto;
+            })
+            .toList();
 
-        if (isRatingSort) {
-            // Populate ownerRating on the page-sized DTO list (single batch query)
-            List<Car> pageCars = carPage.getContent();
-            java.util.Set<Long> ownerIds = pageCars.stream()
-                    .map(Car::getOwner)
-                    .filter(java.util.Objects::nonNull)
-                    .map(User::getId)
-                    .collect(Collectors.toSet());
+        return new org.springframework.data.domain.PageImpl<>(dtos, pageable, matchingCars.size());
+    }
 
-            java.util.Map<Long, Double> ratingMap = new java.util.HashMap<>();
-            if (!ownerIds.isEmpty()) {
-                // P0-2 FIX: Visibility-filtered batch ratings (double-blind enforcement)
-                Instant visibilityTimeout = Instant.now().minus(14, ChronoUnit.DAYS);
-                reviewRepo.findVisibleAverageRatingsForReviewees(ownerIds, ReviewDirection.FROM_USER, visibilityTimeout)
-                        .forEach(row -> ratingMap.put((Long) row[0], (Double) row[1]));
-            }
+        private java.util.Map<Long, Double> loadOwnerRatings(List<Car> cars) {
+        java.util.Set<Long> ownerIds = cars.stream()
+            .map(Car::getOwner)
+            .filter(java.util.Objects::nonNull)
+            .map(User::getId)
+            .collect(Collectors.toSet());
 
-            List<CarResponseDTO> dtos = pageCars.stream()
-                    .map(car -> {
-                        CarResponseDTO dto = mapToResponseWithPrivacy(car, currentUserId);
-                        double rating = (car.getOwner() != null)
-                                ? ratingMap.getOrDefault(car.getOwner().getId(), 0.0)
-                                : 0.0;
-                        dto.setOwnerRating(rating);
-                        return dto;
-                    })
-                    .collect(Collectors.toList());
-
-            return new org.springframework.data.domain.PageImpl<>(
-                    dtos, carPage.getPageable(), carPage.getTotalElements());
+        java.util.Map<Long, Double> ratingMap = new java.util.HashMap<>();
+        if (!ownerIds.isEmpty()) {
+            Instant visibilityTimeout = Instant.now().minus(14, ChronoUnit.DAYS);
+            reviewRepo.findVisibleAverageRatingsForReviewees(ownerIds, ReviewDirection.FROM_USER, visibilityTimeout)
+                .forEach(row -> ratingMap.put((Long) row[0], (Double) row[1]));
+        }
+        return ratingMap;
         }
 
-        return carPage.map(car -> mapToResponseWithPrivacy(car, currentUserId));
-    }
+        private void applyRatingSort(List<Car> cars, Sort sort, java.util.Map<Long, Double> ratingMap) {
+        Sort.Order ratingOrder = sort.stream()
+            .filter(order -> order.getProperty().equals("rating"))
+            .findFirst()
+            .orElse(Sort.Order.desc("rating"));
 
-    /**
-     * Specification that adds a database-level ORDER BY on owner average rating
-     * via a correlated subquery.  This lets the DB handle sorting + LIMIT/OFFSET
-     * so pagination totals are always accurate and there is no row-count cap.
-     *
-     * Only adds ORDER BY to the data query (skips count queries).
-     */
-    private Specification<Car> ratingOrderSpec(boolean ascending) {
-        return (root, query, cb) -> {
-            // Skip ORDER BY for count queries (result type Long)
-            if (Long.class.equals(query.getResultType()) || long.class.equals(query.getResultType())) {
-                return cb.conjunction();
-            }
+        java.util.Comparator<Car> comparator = java.util.Comparator
+            .comparingDouble((Car car) -> car.getOwner() != null
+                ? ratingMap.getOrDefault(car.getOwner().getId(), 0.0)
+                : 0.0)
+            .thenComparing(Car::getId, java.util.Comparator.reverseOrder());
 
-            // P0-2 FIX: Visibility-filtered rating sort (double-blind enforcement)
-            Instant visibilityTimeout = Instant.now().minus(14, ChronoUnit.DAYS);
+        if (ratingOrder.getDirection() == Sort.Direction.DESC) {
+            comparator = comparator.reversed();
+        }
 
-            // Correlated subquery: AVG(r.rating) for the car's owner (visibility-filtered)
-            jakarta.persistence.criteria.Subquery<Double> ratingSubquery = query.subquery(Double.class);
-            jakarta.persistence.criteria.Root<Review> reviewRoot = ratingSubquery.from(Review.class);
-
-            // Reciprocal review exists subquery (double-blind visibility check)
-            jakarta.persistence.criteria.Subquery<Long> reciprocalSub = query.subquery(Long.class);
-            jakarta.persistence.criteria.Root<Review> recipRoot = reciprocalSub.from(Review.class);
-            reciprocalSub.select(cb.literal(1L))
-                    .where(
-                            cb.equal(recipRoot.get("booking"), reviewRoot.get("booking")),
-                            cb.notEqual(recipRoot.get("direction"), reviewRoot.get("direction"))
-                    );
-
-            ratingSubquery.select(cb.coalesce(cb.avg(reviewRoot.get("rating")), cb.literal(0.0)))
-                    .where(
-                            cb.equal(reviewRoot.get("reviewee"), root.get("owner")),
-                            cb.equal(reviewRoot.get("direction"), ReviewDirection.FROM_USER),
-                            cb.or(
-                                    cb.lessThan(reviewRoot.get("createdAt"), visibilityTimeout),
-                                    cb.exists(reciprocalSub)
-                            )
-                    );
-
-            query.orderBy(
-                    ascending ? cb.asc(ratingSubquery) : cb.desc(ratingSubquery),
-                    cb.desc(root.get("id"))  // deterministic tie-breaker for stable pagination
-            );
-            return cb.conjunction(); // no additional WHERE — only ORDER BY contribution
-        };
-    }
+        cars.sort(comparator);
+        }
 
     /**
      * Build JPA Specification from search criteria for server-side filtering.
-     *
-     * Base conditions (always applied):
-     * - available = true
-     * - listingStatus = APPROVED
      *
      * Optional filters delegated to {@link CarFilterEngine#buildSpecification}
      * to ensure consistency with the availability-search in-memory path.
@@ -716,11 +686,7 @@ public class CarService {
      * via geospatial/city queries before the filter stage).
      */
     private Specification<Car> buildSearchSpecification(CarSearchCriteria criteria) {
-        // CRITICAL: Only show APPROVED and available cars in public search
-        Specification<Car> spec = Specification.where(
-                (root, query, cb) -> cb.equal(root.get("available"), true));
-        spec = spec.and((root, query, cb) ->
-                cb.equal(root.get("listingStatus"), ListingStatus.APPROVED));
+        Specification<Car> spec = Specification.where(null);
 
         // Location filter (CarService-specific — not in CarFilterEngine)
         if (criteria.getLocation() != null && !criteria.getLocation().isBlank()) {
@@ -855,5 +821,106 @@ public class CarService {
                 .replaceAll("(?i)on\\w+\\s*=", "")   // Remove event handlers like onerror=
                 .trim();
         return result;
+    }
+
+    private void updateGeoLocation(Car car, CarRequestDTO dto) {
+        boolean hasGeoUpdate = dto.getLocationLatitude() != null || dto.getLocationLongitude() != null
+                || dto.getLocationAddress() != null || dto.getLocationCity() != null || dto.getLocationZipCode() != null;
+        if (!hasGeoUpdate) {
+            return;
+        }
+
+        GeoPoint geoPoint = car.getLocationGeoPoint() != null ? car.getLocationGeoPoint() : new GeoPoint();
+        if (dto.getLocationLatitude() != null) {
+            geoPoint.setLatitude(dto.getLocationLatitude());
+        }
+        if (dto.getLocationLongitude() != null) {
+            geoPoint.setLongitude(dto.getLocationLongitude());
+        }
+        if (dto.getLocationAddress() != null) {
+            geoPoint.setAddress(dto.getLocationAddress().trim());
+        }
+        if (dto.getLocationCity() != null) {
+            geoPoint.setCity(dto.getLocationCity().trim());
+        }
+        if (dto.getLocationZipCode() != null) {
+            geoPoint.setZipCode(dto.getLocationZipCode().trim());
+        }
+        car.setLocationGeoPoint(geoPoint);
+    }
+
+    private boolean hasMaterialListingChanges(Car car, CarRequestDTO dto) {
+        return hasNonBlankDifference(dto.getBrand(), car.getBrand())
+                || hasNonBlankDifference(dto.getModel(), car.getModel())
+                || hasDifference(dto.getYear(), car.getYear())
+                || hasDifference(dto.getPricePerDay(), car.getPricePerDay())
+                || hasNonBlankDifference(dto.getLocation(), car.getLocation())
+                || hasGeoLocationDifference(car, dto)
+                || hasNonBlankDifference(dto.getLicensePlate(), car.getLicensePlate())
+                || hasDifference(normalizeNullable(dto.getDescription()), normalizeNullable(car.getDescription()))
+                || hasDifference(dto.getSeats(), car.getSeats())
+                || hasDifference(dto.getFuelType(), car.getFuelType())
+                || hasDifference(dto.getFuelConsumption(), car.getFuelConsumption())
+                || hasDifference(dto.getTransmissionType(), car.getTransmissionType())
+                || hasSetDifference(dto.getFeatures(), car.getFeatures())
+                || hasSetDifference(dto.getAddOns(), car.getAddOns())
+                || hasDifference(dto.getDailyMileageLimitKm(), car.getDailyMileageLimitKm())
+                || hasDifference(dto.getCurrentMileageKm(), car.getCurrentMileageKm())
+                || hasDifference(dto.getSecurityDepositRsd(), car.getSecurityDepositRsd())
+                || hasDifference(dto.getMinRentalDays(), car.getMinRentalDays())
+                || hasDifference(dto.getMaxRentalDays(), car.getMaxRentalDays())
+                || hasDifference(dto.getInstantBookEnabled(), car.getEffectiveBookingSettings().getInstantBookEnabled());
+    }
+
+    private boolean hasGeoLocationDifference(Car car, CarRequestDTO dto) {
+        boolean hasGeoUpdate = dto.getLocationLatitude() != null || dto.getLocationLongitude() != null
+                || dto.getLocationAddress() != null || dto.getLocationCity() != null || dto.getLocationZipCode() != null;
+        if (!hasGeoUpdate) {
+            return false;
+        }
+
+        GeoPoint currentGeoPoint = car.getLocationGeoPoint();
+        return hasDifference(dto.getLocationLatitude(), currentGeoPoint != null ? currentGeoPoint.getLatitude() : null)
+                || hasDifference(dto.getLocationLongitude(), currentGeoPoint != null ? currentGeoPoint.getLongitude() : null)
+                || hasDifference(normalizeNullable(dto.getLocationAddress()), currentGeoPoint != null ? normalizeNullable(currentGeoPoint.getAddress()) : null)
+                || hasDifference(normalizeNullable(dto.getLocationCity()), currentGeoPoint != null ? normalizeNullable(currentGeoPoint.getCity()) : null)
+                || hasDifference(normalizeNullable(dto.getLocationZipCode()), currentGeoPoint != null ? normalizeNullable(currentGeoPoint.getZipCode()) : null);
+    }
+
+    private boolean hasNonBlankDifference(String incomingValue, String existingValue) {
+        if (incomingValue == null || incomingValue.isBlank()) {
+            return false;
+        }
+        return !Objects.equals(incomingValue.trim(), normalizeNullable(existingValue));
+    }
+
+    private <T> boolean hasDifference(T incomingValue, T existingValue) {
+        return incomingValue != null && !Objects.equals(incomingValue, existingValue);
+    }
+
+    private boolean hasSetDifference(List<?> incomingValues, java.util.Collection<?> existingValues) {
+        if (incomingValues == null) {
+            return false;
+        }
+        return !new java.util.HashSet<>(incomingValues).equals(
+                existingValues == null ? java.util.Set.of() : new java.util.HashSet<>(existingValues));
+    }
+
+    private String normalizeNullable(String value) {
+        return value == null ? null : value.trim();
+    }
+
+    private void markListingPendingReview(Car car) {
+        if (car.getListingStatus() == ListingStatus.SUSPENDED) {
+            car.setAvailable(false);
+            return;
+        }
+
+        car.setListingStatus(ListingStatus.PENDING_APPROVAL);
+        car.setApprovalStatus(ApprovalStatus.PENDING);
+        car.setAvailable(false);
+        car.setApprovedAt(null);
+        car.setApprovedBy(null);
+        car.setRejectionReason(null);
     }
 }

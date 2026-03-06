@@ -12,6 +12,7 @@ import org.example.rentoza.car.Car;
 import org.example.rentoza.car.CarDocumentService;
 import org.example.rentoza.car.CarRepository;
 import org.example.rentoza.car.ListingStatus;
+import org.example.rentoza.car.MarketplaceComplianceService;
 import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.user.User;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,6 +28,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -56,6 +58,9 @@ class AdminCarServiceTest {
     @Mock
     private CarDocumentService documentService;
 
+    @Mock
+    private MarketplaceComplianceService marketplaceComplianceService;
+
     private MeterRegistry meterRegistry;
 
     private AdminCarService adminCarService;
@@ -69,7 +74,7 @@ class AdminCarServiceTest {
     @BeforeEach
     void setUp() {
         meterRegistry = new SimpleMeterRegistry();
-        adminCarService = new AdminCarService(carRepo, documentService, auditService, meterRegistry);
+        adminCarService = new AdminCarService(carRepo, documentService, marketplaceComplianceService, auditService, meterRegistry);
 
         testAdmin = new User();
         testAdmin.setId(1L);
@@ -96,6 +101,35 @@ class AdminCarServiceTest {
         testCar.setTechnicalInspectionExpiryDate(LocalDate.now().plusMonths(3));
         testCar.setDocumentsVerifiedAt(LocalDateTime.now().minusDays(1));
         testCar.setDocumentsVerifiedBy(testAdmin);
+
+        lenient().when(marketplaceComplianceService.buildComplianceIssues(any(Car.class))).thenAnswer(invocation -> {
+            Car car = invocation.getArgument(0);
+            java.util.List<String> issues = new java.util.ArrayList<>();
+
+            if (car.getRegistrationExpiryDate() == null) {
+                issues.add("Registration expiry date not set");
+            } else if (!car.getRegistrationExpiryDate().isAfter(LocalDate.now())) {
+                issues.add("Registration expired on " + car.getRegistrationExpiryDate());
+            }
+
+            if (car.getInsuranceExpiryDate() == null) {
+                issues.add("Insurance expiry date not set");
+            } else if (!car.getInsuranceExpiryDate().isAfter(LocalDate.now())) {
+                issues.add("Insurance expired on " + car.getInsuranceExpiryDate());
+            }
+
+            if (car.getTechnicalInspectionExpiryDate() == null) {
+                issues.add("Technical inspection expiry date not set");
+            } else if (!car.getTechnicalInspectionExpiryDate().isAfter(LocalDate.now())) {
+                issues.add("Technical inspection expired on " + car.getTechnicalInspectionExpiryDate());
+            }
+
+            if (car.getDocumentsVerifiedAt() == null || car.getDocumentsVerifiedBy() == null) {
+                issues.add("Documents not yet verified by admin");
+            }
+
+            return issues;
+        });
     }
 
     @Nested
@@ -442,6 +476,23 @@ class AdminCarServiceTest {
             assertThat(testCar.getListingStatus()).isEqualTo(ListingStatus.APPROVED);
             assertThat(testCar.isAvailable()).isTrue();
             assertThat(testCar.getRejectionReason()).isNull();
+        }
+
+        @Test
+        @DisplayName("Should block reactivation when compliance has drifted")
+        void shouldBlockReactivationWhenComplianceHasDrifted() {
+            testCar.setApprovalStatus(ApprovalStatus.SUSPENDED);
+            testCar.setListingStatus(ListingStatus.SUSPENDED);
+            testCar.setRegistrationExpiryDate(LocalDate.now().minusDays(1));
+
+            when(carRepo.findByIdForUpdate(100L)).thenReturn(Optional.of(testCar));
+
+            assertThatThrownBy(() -> adminCarService.reactivateCar(100L, testAdmin))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("Cannot reactivate car")
+                    .hasMessageContaining("Registration expired");
+
+            verify(carRepo, never()).save(any());
         }
     }
 }

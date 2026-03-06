@@ -15,6 +15,7 @@ import org.example.rentoza.car.CarRepository;
 import org.example.rentoza.car.CarDocument;
 import org.example.rentoza.car.CarDocumentService;
 import org.example.rentoza.car.DocumentVerificationStatus;
+import org.example.rentoza.car.MarketplaceComplianceService;
 import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.user.User;
 import org.slf4j.MDC;
@@ -57,6 +58,7 @@ public class AdminCarService {
     
     private final CarRepository carRepo;
     private final CarDocumentService documentService;
+    private final MarketplaceComplianceService marketplaceComplianceService;
     private final AdminAuditService auditService;
     private final MeterRegistry meterRegistry;
     
@@ -138,7 +140,7 @@ public class AdminCarService {
             }
 
             // PHASE 2: Compliance hard gate — verify documents before approval
-            List<String> complianceIssues = buildComplianceIssues(car);
+            List<String> complianceIssues = marketplaceComplianceService.buildComplianceIssues(car);
             boolean canApprove = complianceIssues.isEmpty();
 
             if (!canApprove) {
@@ -337,12 +339,21 @@ public class AdminCarService {
         
         // Capture before state
         String beforeState = auditService.toJson(AdminCarDto.fromEntity(car));
+
+        List<String> complianceIssues = marketplaceComplianceService.buildComplianceIssues(car);
+        if (!complianceIssues.isEmpty()) {
+            String summary = String.join("; ", complianceIssues);
+            throw new IllegalStateException(
+                "Cannot reactivate car: compliance requirements not met. Issues: " + summary);
+        }
         
         // Reactivate — Phase 5: listingStatus is source of truth
         car.setListingStatus(org.example.rentoza.car.ListingStatus.APPROVED);
         car.setApprovalStatus(org.example.rentoza.car.ApprovalStatus.APPROVED); // legacy compat
         car.setRejectionReason(null);
         car.setAvailable(true);
+        car.setApprovedBy(admin);
+        car.setApprovedAt(java.time.Instant.now());
         
         Car saved = carRepo.save(car);
         
@@ -400,79 +411,6 @@ public class AdminCarService {
             .toList();
 
         return AdminCarReviewDetailDto.fromEntity(car, docDtos);
-    }
-
-    // ==================== COMPLIANCE GATE HELPERS ====================
-
-    /**
-     * Build list of compliance issues that block car approval.
-     * Empty list = car is compliant and can be approved.
-     *
-     * <p>Checks performed:
-     * <ol>
-     *   <li>Owner identity verification (C1)</li>
-     *   <li>Car-level registration/insurance/tech inspection expiry dates</li>
-     *   <li>Per-document verification status (must not be PENDING or REJECTED)</li>
-     *   <li>Per-document expiry dates</li>
-     *   <li>Global document verification timestamp</li>
-     * </ol>
-     *
-     * <p><b>Date boundary (I1 fix):</b> Uses {@code !date.isAfter(today)} instead of
-     * {@code date.isBefore(today)} so that documents expiring today are treated as
-     * expired, consistent with the DTO-side {@code isAfter(today)} check.
-     */
-    private List<String> buildComplianceIssues(Car car) {
-        List<String> issues = new ArrayList<>();
-        LocalDate today = LocalDate.now();
-
-        // 1. Owner identity must be verified (C1)
-        if (car.getOwner() == null || !Boolean.TRUE.equals(car.getOwner().getIsIdentityVerified())) {
-            issues.add("Owner identity not verified");
-        }
-
-        // 2. Registration must exist and not be expired (I1: !isAfter for boundary)
-        if (car.getRegistrationExpiryDate() == null) {
-            issues.add("Registration expiry date not set");
-        } else if (!car.getRegistrationExpiryDate().isAfter(today)) {
-            issues.add("Registration expired on " + car.getRegistrationExpiryDate());
-        }
-
-        // 3. Insurance must exist and not be expired (I1: !isAfter for boundary)
-        if (car.getInsuranceExpiryDate() == null) {
-            issues.add("Insurance expiry date not set");
-        } else if (!car.getInsuranceExpiryDate().isAfter(today)) {
-            issues.add("Insurance expired on " + car.getInsuranceExpiryDate());
-        }
-
-        // 4. Technical inspection must exist and not be expired (I1: !isAfter for boundary)
-        if (car.getTechnicalInspectionExpiryDate() == null) {
-            issues.add("Technical inspection expiry date not set");
-        } else if (!car.getTechnicalInspectionExpiryDate().isAfter(today)) {
-            issues.add("Technical inspection expired on " + car.getTechnicalInspectionExpiryDate());
-        }
-
-        // 5. Per-document verification status and expiry checks
-        List<CarDocument> documents = documentService.getDocumentsForCar(car.getId());
-        for (CarDocument doc : documents) {
-            String docLabel = doc.getType().name();
-
-            // 5a. Each document must be VERIFIED (not PENDING or REJECTED)
-            if (doc.getStatus() != DocumentVerificationStatus.VERIFIED) {
-                issues.add(docLabel + " document not verified (status: " + doc.getStatus() + ")");
-            }
-
-            // 5b. Per-document expiry date must not be expired (I1: !isAfter for boundary)
-            if (doc.getExpiryDate() != null && !doc.getExpiryDate().isAfter(today)) {
-                issues.add(docLabel + " document expired on " + doc.getExpiryDate());
-            }
-        }
-
-        // 6. Global document verification timestamp must be present
-        if (car.getDocumentsVerifiedAt() == null || car.getDocumentsVerifiedBy() == null) {
-            issues.add("Documents not yet verified by admin");
-        }
-
-        return issues;
     }
 
     /**

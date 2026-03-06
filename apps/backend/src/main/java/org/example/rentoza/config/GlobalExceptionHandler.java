@@ -1,9 +1,11 @@
 package org.example.rentoza.config;
 
+import jakarta.servlet.http.HttpServletRequest;
 import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.exception.UserOverlapException;
 import org.example.rentoza.exception.BookingConflictException;
 import org.example.rentoza.exception.PaymentAuthorizationException;
+import org.example.rentoza.exception.ApiErrorResponse;
 import org.example.rentoza.exception.ValidationException;
 import org.example.rentoza.security.ratelimit.RateLimitExceededException;
 import org.example.rentoza.security.supabase.SupabaseAuthClient.SupabaseAuthException;
@@ -22,6 +24,7 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -48,15 +51,14 @@ public class GlobalExceptionHandler {
      * <p>Returning 403 keeps API semantics correct and avoids masking auth issues as 500s.
      */
     @ExceptionHandler({AccessDeniedException.class, AuthorizationDeniedException.class})
-    public ResponseEntity<Map<String, Object>> handleAccessDenied(Exception ex) {
+    public ResponseEntity<ApiErrorResponse> handleAccessDenied(Exception ex, HttpServletRequest request) {
         log.warn("Access denied: {}", ex.getMessage());
 
-        Map<String, Object> body = new HashMap<>();
-        body.put("timestamp", Instant.now().toString());
-        body.put("error", "Forbidden");
-        body.put("message", "Access Denied");
-
-        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(
+                ApiErrorResponse.forbidden(
+                        "Access Denied",
+                        newRequestId(),
+                        requestPath(request)));
     }
 
     /**
@@ -480,6 +482,7 @@ public class GlobalExceptionHandler {
         Map<String, Object> body = new HashMap<>();
         body.put("timestamp", Instant.now().toString());
         body.put("error", "Validation Error");
+        body.put("code", "VALIDATION_ERROR");
         body.put("message", ex.getMessage()); // Safe - these are user-facing messages
         
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
@@ -643,33 +646,50 @@ public class GlobalExceptionHandler {
      * Jackson internals. Only a generic "malformed request body" message is returned.
      */
     @ExceptionHandler(HttpMessageNotReadableException.class)
-    public ResponseEntity<Map<String, Object>> handleHttpMessageNotReadable(HttpMessageNotReadableException ex) {
+    public ResponseEntity<ApiErrorResponse> handleHttpMessageNotReadable(
+            HttpMessageNotReadableException ex,
+            HttpServletRequest request) {
         log.warn("Malformed request body: {}", ex.getMessage());
 
-        Map<String, Object> body = new HashMap<>();
-        body.put("timestamp", Instant.now().toString());
-        body.put("error", "Bad Request");
-        body.put("message", "Neispravan format zahteva. Proverite poslate podatke.");
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
+                ApiErrorResponse.validation(
+                        "Neispravan format zahteva. Proverite poslate podatke.",
+                        Map.of(),
+                        newRequestId(),
+                        requestPath(request)));
+    }
 
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ApiErrorResponse> handleMissingRequestParameter(
+            MissingServletRequestParameterException ex,
+            HttpServletRequest request) {
+        log.warn("Missing request parameter: {}", ex.getParameterName());
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
+                ApiErrorResponse.validation(
+                        "Nedostaje obavezan parametar: '" + ex.getParameterName() + "'",
+                        Map.of("parameter", ex.getParameterName()),
+                        newRequestId(),
+                        requestPath(request)));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<Map<String, Object>> handleValidationExceptions(MethodArgumentNotValidException ex) {
-        Map<String, Object> body = new HashMap<>();
-        body.put("timestamp", Instant.now().toString());
-        body.put("error", "Validation Error");
-        body.put("message", "Input validation failed");
-
+    public ResponseEntity<ApiErrorResponse> handleValidationExceptions(
+            MethodArgumentNotValidException ex,
+            HttpServletRequest request) {
         Map<String, String> errors = new HashMap<>();
         ex.getBindingResult().getAllErrors().forEach((error) -> {
             String fieldName = ((FieldError) error).getField();
             String errorMessage = error.getDefaultMessage();
             errors.put(fieldName, errorMessage);
         });
-        body.put("details", errors);
 
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
+                ApiErrorResponse.validation(
+                        "Input validation failed",
+                        new HashMap<>(errors),
+                        newRequestId(),
+                        requestPath(request)));
     }
 
     /**
@@ -681,18 +701,21 @@ public class GlobalExceptionHandler {
      * handler the exception propagates to the catch-all and returns 500.
      */
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
-    public ResponseEntity<Map<String, Object>> handleMethodArgumentTypeMismatch(
-            MethodArgumentTypeMismatchException ex) {
+        public ResponseEntity<ApiErrorResponse> handleMethodArgumentTypeMismatch(
+            MethodArgumentTypeMismatchException ex,
+            HttpServletRequest request) {
         log.warn("Path variable type mismatch: param='{}' value='{}' required='{}'",
                 ex.getName(), ex.getValue(),
                 ex.getRequiredType() != null ? ex.getRequiredType().getSimpleName() : "unknown");
 
-        Map<String, Object> body = new HashMap<>();
-        body.put("timestamp", Instant.now().toString());
-        body.put("error", "Bad Request");
-        body.put("message", "Neispravan parametar zahteva: '" + ex.getName() + "'");
-
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
+            ApiErrorResponse.validation(
+                "Neispravan parametar zahteva: '" + ex.getName() + "'",
+                Map.of(
+                    "parameter", ex.getName(),
+                    "value", ex.getValue() != null ? ex.getValue().toString() : "null"),
+                newRequestId(),
+                requestPath(request)));
     }
 
     /**
@@ -718,5 +741,13 @@ public class GlobalExceptionHandler {
         body.put("message", "Invalid email or password");
         
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
+    }
+
+    private String newRequestId() {
+        return UUID.randomUUID().toString();
+    }
+
+    private String requestPath(HttpServletRequest request) {
+        return request != null ? request.getRequestURI() : "unknown";
     }
 }

@@ -57,6 +57,12 @@ public class MarketplaceComplianceService {
         return buildComplianceIssues(car).isEmpty();
     }
 
+    @Transactional(readOnly = true)
+    public boolean isEligibleForActivation(Car car) {
+        return car.getListingStatus() == ListingStatus.APPROVED
+                && isApprovalCompliant(car);
+    }
+
     private ComplianceAssessment assess(Car car, List<CarDocument> documents) {
         List<String> issues = new ArrayList<>();
         LocalDate today = LocalDate.now();

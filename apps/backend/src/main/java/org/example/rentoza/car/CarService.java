@@ -566,8 +566,9 @@ public class CarService {
             throw new RuntimeException("You do not have permission to modify this car");
         }
 
-        // CRITICAL: Prevent activation if car is not approved
-        if (available && !marketplaceComplianceService.isMarketplaceVisible(car)) {
+        // Activation eligibility must ignore the current available flag.
+        // Otherwise an inactive approved car can never be reactivated.
+        if (available && !marketplaceComplianceService.isEligibleForActivation(car)) {
             throw new RuntimeException("Cannot activate car that does not currently meet marketplace compliance requirements.");
         }
 

@@ -68,7 +68,7 @@ export class MyCarsComponent implements OnInit {
           const isValid = user !== null && !!(user.email || user.id);
           return isValid;
         }),
-        take(1)
+        take(1),
       )
       .subscribe({
         next: (currentUser) => {
@@ -151,7 +151,7 @@ export class MyCarsComponent implements OnInit {
       this.snackBar.open(
         'Vozilo mora biti odobreno od strane administratora pre aktivacije.',
         'Zatvori',
-        { duration: 4000, panelClass: ['snackbar-warning'] }
+        { duration: 4000, panelClass: ['snackbar-warning'] },
       );
       return;
     }
@@ -160,7 +160,7 @@ export class MyCarsComponent implements OnInit {
       next: (updatedCar) => {
         // Update local state
         this.cars.update((cars) =>
-          cars.map((c) => (c.id === car.id ? { ...c, available: updatedCar.available } : c))
+          cars.map((c) => (c.id === car.id ? { ...c, available: updatedCar.available } : c)),
         );
         this.carService.clearSearchCache(); // Clear cache to ensure fresh results
         const message = updatedCar.available
@@ -170,7 +170,9 @@ export class MyCarsComponent implements OnInit {
       },
       error: (error) => {
         console.error('Error toggling availability:', error);
-        this.snackBar.open('Greška pri promeni statusa', 'Zatvori', { duration: 3000 });
+        const errorMessage =
+          error.error?.error || error.error?.message || 'Greška pri promeni statusa';
+        this.snackBar.open(errorMessage, 'Zatvori', { duration: 4000 });
       },
     });
   }

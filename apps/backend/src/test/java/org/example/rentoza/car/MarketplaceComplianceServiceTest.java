@@ -90,6 +90,20 @@ class MarketplaceComplianceServiceTest {
         assertThat(complianceService.isMarketplaceVisible(car)).isTrue();
     }
 
+    @Test
+    @DisplayName("Activation eligibility stays true for approved compliant cars even while temporarily unavailable")
+    void activationEligibilityAllowsApprovedCompliantInactiveCar() {
+        car.setAvailable(false);
+        when(documentRepository.findByCarId(1L)).thenReturn(List.of(
+                verifiedDocument(DocumentType.REGISTRATION),
+                verifiedDocument(DocumentType.TECHNICAL_INSPECTION),
+                verifiedDocument(DocumentType.LIABILITY_INSURANCE)
+        ));
+
+        assertThat(complianceService.isMarketplaceVisible(car)).isFalse();
+        assertThat(complianceService.isEligibleForActivation(car)).isTrue();
+    }
+
     private CarDocument verifiedDocument(DocumentType type) {
         CarDocument document = new CarDocument();
         document.setCar(car);

@@ -366,4 +366,24 @@ class MonriPaymentProviderTest {
         assertThat(result.isTerminalFailure()).isTrue();
         assertThat(result.getErrorCode()).isEqualTo("INSUFFICIENT_FUNDS");
     }
+
+        @Test
+        @DisplayName("H5: Blank merchant key in MONRI mode throws at startup")
+        void blankMerchantKeyInMonriMode_throwsAtStartup() throws Exception {
+                setField("merchantKey", "");
+
+                assertThatThrownBy(() -> provider.validateCredentials())
+                                .isInstanceOf(IllegalStateException.class)
+                                .hasMessageContaining("MONRI_MERCHANT_KEY");
+        }
+
+        @Test
+        @DisplayName("H5: Blank authenticity token in MONRI mode throws at startup")
+        void blankAuthenticityTokenInMonriMode_throwsAtStartup() throws Exception {
+                setField("authenticityToken", "");
+
+                assertThatThrownBy(() -> provider.validateCredentials())
+                                .isInstanceOf(IllegalStateException.class)
+                                .hasMessageContaining("MONRI_AUTHENTICITY_TOKEN");
+        }
 }

@@ -102,6 +102,25 @@ public class MonriPaymentProvider implements PaymentProvider {
     }
 
     @PostConstruct
+    void validateCredentials() {
+        // AUDIT-H5-FIX: Fail fast if Monri credentials are missing.
+        // Without this, the app starts successfully but fails on first payment attempt.
+        if (merchantKey == null || merchantKey.isBlank()) {
+            throw new IllegalStateException(
+                    "FATAL: MONRI_MERCHANT_KEY is not set. " +
+                    "Monri payment provider requires a merchant key. " +
+                    "Set the MONRI_MERCHANT_KEY environment variable.");
+        }
+        if (authenticityToken == null || authenticityToken.isBlank()) {
+            throw new IllegalStateException(
+                    "FATAL: MONRI_AUTHENTICITY_TOKEN is not set. " +
+                    "Monri payment provider requires an authenticity token. " +
+                    "Set the MONRI_AUTHENTICITY_TOKEN environment variable.");
+        }
+        log.info("[Payment] Monri payment provider initialized - API URL: {}", apiUrl);
+    }
+
+    @PostConstruct
     void applyTimeouts() {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(connectTimeoutMs);

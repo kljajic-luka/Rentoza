@@ -28,10 +28,8 @@ public class GuestBookingPreviewDTO {
     private String lastInitial; // e.g., "S."
     private String joinDate; // e.g., "Oct 2021"
     
-    // Verification Status
-    private boolean emailVerified;
-    private boolean phoneVerified;
-    private boolean identityVerified;
+    // Trust Signals (provenance-backed renter verification only)
+    private List<GuestTrustSignalDTO> trustSignals;
     private String drivingEligibilityStatus; // "APPROVED", "PENDING_REVIEW", "REJECTED", "NOT_STARTED"
     
     // Guest Demographics

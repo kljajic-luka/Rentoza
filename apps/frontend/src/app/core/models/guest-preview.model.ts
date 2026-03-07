@@ -3,6 +3,12 @@ export interface ReviewPreview {
   comment: string;
 }
 
+export interface GuestTrustSignal {
+  code: string;
+  label: string;
+  state: 'verified' | 'pending' | 'warning' | 'blocked';
+}
+
 /**
  * Guest preview data for host approval workflow.
  * Contains enterprise-grade information for hosts to make informed booking decisions.
@@ -14,10 +20,8 @@ export interface GuestBookingPreview {
   lastInitial: string;
   joinDate: string;
 
-  // Verification Status
-  emailVerified: boolean;
-  phoneVerified: boolean;
-  identityVerified: boolean;
+  // Trust Signals (provenance-backed renter verification only)
+  trustSignals: GuestTrustSignal[];
   drivingEligibilityStatus: string; // 'APPROVED', 'PENDING_REVIEW', 'REJECTED', 'NOT_STARTED'
 
   // Guest Demographics

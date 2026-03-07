@@ -33,24 +33,17 @@
           <h3>{{ guest.firstName }} {{ guest.lastInitial }}</h3>
           <p class="join-date">Član od {{ guest.joinDate }}</p>
           
-          <!-- Verification Badges (inline, no duplicates) -->
-          <div class="verification-badges">
-            @if (guest.identityVerified) {
-            <mat-chip class="verified-badge" matTooltip="Identitet verifikovan">
-              <mat-icon>verified_user</mat-icon> ID
-            </mat-chip>
-            }
-            @if (guest.phoneVerified) {
-            <mat-chip class="verified-badge" matTooltip="Telefon verifikovan">
-              <mat-icon>phone_iphone</mat-icon> Tel
-            </mat-chip>
-            }
-            @if (guest.emailVerified) {
-            <mat-chip class="verified-badge" matTooltip="Email verifikovan">
-              <mat-icon>email</mat-icon> Email
+          <!-- Provenance-backed trust signals only -->
+          @if (guest.trustSignals && guest.trustSignals.length > 0) {
+          <div class="trust-signals">
+            @for (signal of guest.trustSignals; track signal.code) {
+            <mat-chip class="trust-signal-badge" [class]="'trust-signal-badge state-' + signal.state" [matTooltip]="trustSignalTooltip(signal)">
+              <mat-icon>{{ trustSignalIcon(signal) }}</mat-icon>
+              {{ signal.label }}
             </mat-chip>
             }
           </div>
+          }
           
           <!-- Achievement Badges -->
           @if (guest.badges && guest.badges.length > 0) {
@@ -83,7 +76,7 @@
           <span class="stat-value" [class.verified]="guest.ageVerified">
             {{ guest.age }}
             @if (guest.ageVerified) {
-            <mat-icon class="verified-icon" matTooltip="Potvrđeno">check_circle</mat-icon>
+            <mat-icon class="verified-icon" matTooltip="Potvrdeno iz verifikovanog dokumenta">check_circle</mat-icon>
             }
           </span>
           } @else {
@@ -124,6 +117,8 @@
                 @case ('APPROVED') { <mat-icon>check_circle</mat-icon> Odobren }
                 @case ('PENDING_REVIEW') { <mat-icon>schedule</mat-icon> Na čekanju }
                 @case ('REJECTED') { <mat-icon>cancel</mat-icon> Odbijen }
+                @case ('SUSPENDED') { <mat-icon>gpp_bad</mat-icon> Suspendovan }
+                @case ('EXPIRED') { <mat-icon>warning</mat-icon> Istekao }
                 @default { <mat-icon>help</mat-icon> {{ guest.drivingEligibilityStatus }} }
               }
             </span>

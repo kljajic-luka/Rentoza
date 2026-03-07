@@ -8,7 +8,7 @@ import { MatChipsModule } from '@angular/material/chips';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { BookingService } from '@core/services/booking.service';
-import { GuestBookingPreview } from '@core/models/guest-preview.model';
+import { GuestBookingPreview, GuestTrustSignal } from '@core/models/guest-preview.model';
 import { catchError, finalize } from 'rxjs/operators';
 import { of } from 'rxjs';
 
@@ -122,5 +122,29 @@ export class GuestBookingPreviewDialogComponent implements OnInit {
       month: 'short',
       year: 'numeric',
     });
+  }
+
+  trustSignalIcon(signal: GuestTrustSignal): string {
+    switch (signal.code) {
+      case 'DRIVER_APPROVED':
+        return 'verified_user';
+      case 'DRIVER_PENDING_REVIEW':
+        return 'schedule';
+      case 'DRIVER_REJECTED':
+        return 'cancel';
+      case 'DRIVER_SUSPENDED':
+        return 'gpp_bad';
+      case 'DRIVER_EXPIRED':
+      case 'LICENSE_EXPIRING_SOON':
+        return 'warning';
+      case 'AGE_VERIFIED':
+        return 'cake';
+      default:
+        return 'shield';
+    }
+  }
+
+  trustSignalTooltip(signal: GuestTrustSignal): string {
+    return signal.label;
   }
 }

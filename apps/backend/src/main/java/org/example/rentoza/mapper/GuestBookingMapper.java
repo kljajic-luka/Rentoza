@@ -2,8 +2,10 @@ package org.example.rentoza.mapper;
 
 import org.example.rentoza.booking.Booking;
 import org.example.rentoza.dto.GuestBookingPreviewDTO;
+import org.example.rentoza.dto.GuestTrustSignalDTO;
 import org.example.rentoza.dto.ReviewPreviewDTO;
 import org.example.rentoza.review.Review;
+import org.example.rentoza.user.DriverLicenseStatus;
 import org.example.rentoza.user.User;
 
 import java.time.format.DateTimeFormatter;
@@ -69,6 +71,8 @@ public class GuestBookingMapper {
             ? (cancelledTripsCount * 100.0) / totalBookings 
             : 0.0;
 
+        List<GuestTrustSignalDTO> trustSignals = buildTrustSignals(renter);
+
         return GuestBookingPreviewDTO.builder()
                 // Basic Profile
                 .profilePhotoUrl(renter.getAvatarUrl())
@@ -78,10 +82,8 @@ public class GuestBookingMapper {
                         org.example.rentoza.config.timezone.SerbiaTimeZone.toLocalDateTime(renter.getCreatedAt())
                         .format(JOIN_DATE_FORMATTER) : "")
                 
-                // Verification Status
-                .emailVerified(renter.isEnabled())
-                .phoneVerified(renter.getPhone() != null && !renter.getPhone().isBlank())
-                .identityVerified(Boolean.TRUE.equals(renter.getIsIdentityVerified()))
+                    // Trust Signals
+                    .trustSignals(trustSignals)
                 .drivingEligibilityStatus(renter.getDriverLicenseStatus() != null 
                     ? renter.getDriverLicenseStatus().name() 
                     : "NOT_STARTED")
@@ -143,6 +145,69 @@ public class GuestBookingMapper {
             return "";
         }
         return lastName.charAt(0) + ".";
+    }
+
+    private static List<GuestTrustSignalDTO> buildTrustSignals(User renter) {
+        List<GuestTrustSignalDTO> trustSignals = new ArrayList<>();
+        DriverLicenseStatus licenseStatus = renter.getDriverLicenseStatus();
+
+        if (licenseStatus != null && licenseStatus != DriverLicenseStatus.NOT_STARTED) {
+            switch (licenseStatus) {
+                case APPROVED -> trustSignals.add(trustSignal(
+                        "DRIVER_APPROVED",
+                        "Vozacka odobrena",
+                        "verified"
+                ));
+                case PENDING_REVIEW -> trustSignals.add(trustSignal(
+                        "DRIVER_PENDING_REVIEW",
+                        "Vozacka na pregledu",
+                        "pending"
+                ));
+                case REJECTED -> trustSignals.add(trustSignal(
+                        "DRIVER_REJECTED",
+                        "Vozacka odbijena",
+                        "blocked"
+                ));
+                case SUSPENDED -> trustSignals.add(trustSignal(
+                        "DRIVER_SUSPENDED",
+                        "Vozacka suspendovana",
+                        "blocked"
+                ));
+                case EXPIRED -> trustSignals.add(trustSignal(
+                        "DRIVER_EXPIRED",
+                        "Vozacka istekla",
+                        "warning"
+                ));
+                default -> {
+                }
+            }
+        }
+
+        if (renter.isAgeVerified()) {
+            trustSignals.add(trustSignal(
+                    "AGE_VERIFIED",
+                    "Starost potvrdena",
+                    "verified"
+            ));
+        }
+
+        if (renter.isVerifiedRenter() && renter.willDriverLicenseExpireWithin(30)) {
+            trustSignals.add(trustSignal(
+                    "LICENSE_EXPIRING_SOON",
+                    "Vozacka uskoro istice",
+                    "warning"
+            ));
+        }
+
+        return trustSignals;
+    }
+
+    private static GuestTrustSignalDTO trustSignal(String code, String label, String state) {
+        return GuestTrustSignalDTO.builder()
+                .code(code)
+                .label(label)
+                .state(state)
+                .build();
     }
 }
 

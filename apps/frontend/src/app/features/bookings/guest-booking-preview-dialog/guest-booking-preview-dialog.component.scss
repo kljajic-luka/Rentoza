@@ -76,25 +76,57 @@ mat-dialog-content {
       font-size: var(--font-size-sm);
     }
 
-    // Verification badges (ID, Phone, Email)
-    .verification-badges {
+    .trust-signals {
       display: flex;
       flex-wrap: wrap;
       gap: 6px;
       margin-bottom: 8px;
 
-      .verified-badge {
+      .trust-signal-badge {
         font-size: var(--font-size-xs);
-        height: 22px;
-        background-color: #e8f5e9;
-        color: #2e7d32;
+        min-height: 24px;
         
         mat-icon {
           font-size: var(--font-size-sm);
           width: 14px;
           height: 14px;
           margin-right: 2px;
+        }
+
+        &.state-verified {
+          background-color: #e8f5e9;
           color: #2e7d32;
+
+          mat-icon {
+            color: #2e7d32;
+          }
+        }
+
+        &.state-pending {
+          background-color: #fff3e0;
+          color: #e65100;
+
+          mat-icon {
+            color: #e65100;
+          }
+        }
+
+        &.state-warning {
+          background-color: #fff8e1;
+          color: #a15c00;
+
+          mat-icon {
+            color: #a15c00;
+          }
+        }
+
+        &.state-blocked {
+          background-color: #ffebee;
+          color: #c62828;
+
+          mat-icon {
+            color: #c62828;
+          }
         }
       }
     }
@@ -443,8 +475,25 @@ mat-dialog-content {
     .join-date { color: rgba(255, 255, 255, 0.7); }
   }
 
-  .verification-badges .verified-badge {
-    background-color: rgba(46, 125, 50, 0.2);
+  .trust-signals .trust-signal-badge {
+    &.state-verified {
+      background-color: rgba(46, 125, 50, 0.2);
+    }
+
+    &.state-pending {
+      background-color: rgba(230, 81, 0, 0.2);
+      color: #ffb74d;
+    }
+
+    &.state-warning {
+      background-color: rgba(161, 92, 0, 0.2);
+      color: #ffd54f;
+    }
+
+    &.state-blocked {
+      background-color: rgba(198, 40, 40, 0.2);
+      color: #ef9a9a;
+    }
   }
 
   .achievement-badges .achievement-badge {
@@ -496,6 +545,16 @@ mat-dialog-content {
         &.status-rejected {
           background-color: rgba(198, 40, 40, 0.2);
           color: #ef9a9a;
+        }
+
+        &.status-suspended {
+          background-color: rgba(198, 40, 40, 0.2);
+          color: #ef9a9a;
+        }
+
+        &.status-expired {
+          background-color: rgba(161, 92, 0, 0.2);
+          color: #ffd54f;
         }
       }
     }

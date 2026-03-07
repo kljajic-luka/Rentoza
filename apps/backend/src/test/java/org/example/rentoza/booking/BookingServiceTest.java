@@ -42,6 +42,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
@@ -787,6 +788,29 @@ class BookingServiceTest {
             // No notifications sent during redirect — webhook will confirm payment
             verify(notificationService, never()).createNotification(any());
         }
+
+                @Test
+                @DisplayName("createBooking_dbSaveFailsAfterAuth_releasesOrphanedAuthorization")
+                void createBooking_dbSaveFailsAfterAuth_releasesOrphanedAuthorization() {
+                        when(userRepo.findByEmail("renter@test.com")).thenReturn(Optional.of(renter));
+                        when(carRepo.findById(100L)).thenReturn(Optional.of(car));
+                        when(bookingRepo.existsOverlappingBookingsWithLock(anyLong(), any(), any())).thenReturn(false);
+                        when(bookingRepo.existsOverlappingUserBooking(anyLong(), any(), any())).thenReturn(false);
+                        when(renterVerificationService.checkBookingEligibilityForUser(any(), any()))
+                                        .thenReturn(BookingEligibilityDTO.eligible());
+                        when(bookingRepo.save(any(Booking.class))).thenAnswer(inv -> {
+                                Booking b = inv.getArgument(0);
+                                b.setId(1L);
+                                return b;
+                        });
+                        when(bookingPaymentService.processBookingPayment(anyLong(), anyString()))
+                                        .thenThrow(new DataIntegrityViolationException("db fail after auth"));
+
+                        assertThatThrownBy(() -> bookingService.createBooking(validBookingRequest, "renter@test.com"))
+                                        .isInstanceOf(DataIntegrityViolationException.class);
+
+                        verify(bookingPaymentService).releaseBookingPayment(1L);
+                }
     }
 
     // ========================================================================

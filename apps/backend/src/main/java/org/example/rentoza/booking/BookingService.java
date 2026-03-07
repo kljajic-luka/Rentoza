@@ -666,8 +666,23 @@ public class BookingService {
         String paymentMethodId = dto.getPaymentMethodId();
 
         // 1. Authorize booking payment (hold total amount)
-        org.example.rentoza.payment.PaymentProvider.PaymentResult bookingPaymentResult =
-                bookingPaymentService.processBookingPayment(savedBooking.getId(), paymentMethodId);
+        org.example.rentoza.payment.PaymentProvider.PaymentResult bookingPaymentResult;
+        try {
+            bookingPaymentResult = bookingPaymentService.processBookingPayment(savedBooking.getId(), paymentMethodId);
+        } catch (Exception e) {
+            // AUDIT-H1-FIX: Release orphaned auth if payment flow fails after provider hold was placed.
+            if (savedBooking.getId() != null) {
+                log.error("[Payment][AUDIT-H1] Payment flow failed after auth - attempting orphaned authorization release for booking {}",
+                        savedBooking.getId());
+                try {
+                    bookingPaymentService.releaseBookingPayment(savedBooking.getId());
+                } catch (Exception releaseEx) {
+                    log.error("[Payment][AUDIT-H1] CRITICAL: Failed to release orphaned auth {}: {}",
+                            savedBooking.getBookingAuthorizationId(), releaseEx.getMessage());
+                }
+            }
+            throw e;
+        }
 
         // R1-FIX: Handle 3DS/SCA redirect as a non-exception path. When the provider
         // returns REDIRECT_REQUIRED, the booking and PaymentTransaction rows must persist

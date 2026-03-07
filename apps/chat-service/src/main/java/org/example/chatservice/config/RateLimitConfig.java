@@ -1,12 +1,13 @@
 package org.example.chatservice.config;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Rate limiter configuration for chat messaging.
@@ -25,13 +26,24 @@ import java.util.concurrent.ConcurrentHashMap;
 public class RateLimitConfig {
 
     // Per-user bucket storage (in-memory for single instance, Redis for distributed)
-    private final ConcurrentHashMap<String, Bucket> userBuckets = new ConcurrentHashMap<>();
+    private final Cache<String, Bucket> userBuckets;
 
     // Rate limit configuration
     private static final int HOURLY_LIMIT = 50;
     private static final int BURST_LIMIT = 10;
     private static final Duration BURST_DURATION = Duration.ofMinutes(1);
     private static final Duration HOURLY_DURATION = Duration.ofHours(1);
+
+    public RateLimitConfig() {
+        this(Caffeine.newBuilder()
+                .maximumSize(50_000)
+                .expireAfterAccess(Duration.ofHours(2))
+                .build());
+    }
+
+    RateLimitConfig(Cache<String, Bucket> userBuckets) {
+        this.userBuckets = userBuckets;
+    }
 
     /**
      * Get or create a rate limit bucket for a user.
@@ -40,7 +52,7 @@ public class RateLimitConfig {
      * @return The rate limit bucket for this user
      */
     public Bucket resolveBucket(String userId) {
-        return userBuckets.computeIfAbsent(userId, this::createNewBucket);
+        return userBuckets.get(userId, this::createNewBucket);
     }
 
     /**
@@ -96,7 +108,7 @@ public class RateLimitConfig {
      * Clear all buckets (for testing).
      */
     public void clearAllBuckets() {
-        userBuckets.clear();
+        userBuckets.invalidateAll();
     }
 
     /**

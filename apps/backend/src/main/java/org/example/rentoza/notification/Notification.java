@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 import org.example.rentoza.user.User;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.Where;
 
 import java.time.Instant;
 
@@ -13,6 +14,7 @@ import java.time.Instant;
  * Notifications auto-expire after 30 days via scheduled cleanup task.
  */
 @Entity
+@Where(clause = "deleted_at IS NULL")
 @Table(
         name = "notifications",
         indexes = {
@@ -50,6 +52,7 @@ public class Notification {
     @Column(name = "related_entity_id", length = 100)
     private String relatedEntityId;
 
+    @Builder.Default
     @Column(name = "read_status", nullable = false)
     private boolean read = false;
 
@@ -57,10 +60,17 @@ public class Notification {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
+
     /**
      * Helper method to mark notification as read.
      */
     public void markAsRead() {
         this.read = true;
+    }
+
+    public void softDelete() {
+        this.deletedAt = Instant.now();
     }
 }

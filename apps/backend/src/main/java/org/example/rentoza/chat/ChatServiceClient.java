@@ -4,12 +4,14 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import lombok.extern.slf4j.Slf4j;
+import org.example.rentoza.scheduler.SchedulerIdempotencyService;
 import org.example.rentoza.chat.dto.ConversationResponse;
 import org.example.rentoza.chat.dto.CreateConversationRequest;
 import org.example.rentoza.security.InternalServiceJwtUtil;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
@@ -40,19 +42,26 @@ public class ChatServiceClient {
     private final Counter asyncSuccessCounter;
     private final Counter asyncFailureCounter;
     private final Timer asyncDuration;
+    private final ConversationCreationOutboxRepository outboxRepository;
+    private final SchedulerIdempotencyService lockService;
 
     private static final int MAX_RETRY_ATTEMPTS = 2;
     private static final long RETRY_DELAY_MS = 3000;
+    private static final String OUTBOX_LOCK_KEY = "chat.conversation.outbox.retry";
 
     public ChatServiceClient(
             RestTemplate restTemplate,
             @Value("${chat.service.url:http://localhost:8081}") String chatServiceUrl,
             InternalServiceJwtUtil internalServiceJwtUtil,
-            MeterRegistry meterRegistry
+            MeterRegistry meterRegistry,
+            ConversationCreationOutboxRepository outboxRepository,
+            SchedulerIdempotencyService lockService
     ) {
         this.restTemplate = restTemplate;
         this.chatServiceUrl = chatServiceUrl;
         this.internalServiceJwtUtil = internalServiceJwtUtil;
+        this.outboxRepository = outboxRepository;
+        this.lockService = lockService;
 
         // Bounded thread pool with virtual threads if available, else fixed pool
         this.chatExecutor = Executors.newFixedThreadPool(4, r -> {
@@ -72,6 +81,19 @@ public class ChatServiceClient {
                 .register(meterRegistry);
     }
 
+    private record ConversationCreationAttempt(
+            ConversationCreationOutcome outcome,
+            ConversationResponse response,
+            String errorMessage
+    ) {
+    }
+
+    private enum ConversationCreationOutcome {
+        CREATED,
+        EXISTS,
+        FAILED
+    }
+
     /**
      * Creates a conversation in the chat microservice with retry logic.
      *
@@ -82,6 +104,14 @@ public class ChatServiceClient {
      * @return The created conversation response, or null if all attempts fail
      */
     public ConversationResponse createConversation(String bookingId, String renterId, String ownerId, String jwtToken) {
+        return attemptCreateConversation(bookingId, renterId, ownerId, jwtToken).response();
+        }
+
+        private ConversationCreationAttempt attemptCreateConversation(
+            String bookingId,
+            String renterId,
+            String ownerId,
+            String jwtToken) {
         CreateConversationRequest request = new CreateConversationRequest(bookingId, renterId, ownerId);
 
         // Ensure token is clean and doesn't have double Bearer prefix
@@ -114,17 +144,26 @@ public class ChatServiceClient {
                 if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                     log.info("Successfully created conversation {} for booking {}",
                             response.getBody().getId(), bookingId);
-                    return response.getBody();
+                    return new ConversationCreationAttempt(
+                        ConversationCreationOutcome.CREATED,
+                        response.getBody(),
+                        null);
                 }
 
             } catch (HttpClientErrorException e) {
                 if (e.getStatusCode() == HttpStatus.CONFLICT) {
                     log.warn("Conversation already exists for booking {}", bookingId);
-                    return null;
+                    return new ConversationCreationAttempt(
+                        ConversationCreationOutcome.EXISTS,
+                        null,
+                        null);
                 }
                 log.error("Client error creating conversation for booking {}: {} - {}",
                         bookingId, e.getStatusCode(), e.getResponseBodyAsString());
-                return null;
+                return new ConversationCreationAttempt(
+                    ConversationCreationOutcome.FAILED,
+                    null,
+                    e.getMessage());
 
             } catch (HttpServerErrorException e) {
                 lastException = e;
@@ -144,7 +183,10 @@ public class ChatServiceClient {
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
                     log.error("Retry interrupted for booking {}", bookingId);
-                    return null;
+                    return new ConversationCreationAttempt(
+                            ConversationCreationOutcome.FAILED,
+                            null,
+                            "Retry interrupted");
                 }
             }
         }
@@ -152,7 +194,10 @@ public class ChatServiceClient {
         log.error("Failed to create conversation for booking {} after {} attempts. Last error: {}",
                 bookingId, MAX_RETRY_ATTEMPTS,
                 lastException != null ? lastException.getMessage() : "Unknown");
-        return null;
+        return new ConversationCreationAttempt(
+                ConversationCreationOutcome.FAILED,
+                null,
+                lastException != null ? lastException.getMessage() : "Unknown");
     }
 
     /**
@@ -171,15 +216,19 @@ public class ChatServiceClient {
         return CompletableFuture.supplyAsync(() -> {
             Timer.Sample sample = Timer.start();
             try {
-                ConversationResponse result = createConversation(bookingId, renterId, ownerId, jwtToken);
-                if (result != null) {
+                ConversationCreationAttempt attempt = attemptCreateConversation(bookingId, renterId, ownerId, jwtToken);
+                if (attempt.outcome() == ConversationCreationOutcome.CREATED) {
                     asyncSuccessCounter.increment();
                 } else {
                     asyncFailureCounter.increment();
+                    if (attempt.outcome() == ConversationCreationOutcome.FAILED) {
+                        persistOutboxEntry(bookingId, renterId, ownerId, attempt.errorMessage());
+                    }
                 }
-                return result;
+                return attempt.response();
             } catch (Exception e) {
                 asyncFailureCounter.increment();
+                persistOutboxEntry(bookingId, renterId, ownerId, e.getMessage());
                 log.error("[ChatServiceClient] Async conversation creation failed for booking {}: {}",
                         bookingId, e.getMessage(), e);
                 return null;
@@ -187,6 +236,58 @@ public class ChatServiceClient {
                 sample.stop(asyncDuration);
             }
         }, chatExecutor);
+    }
+
+    private void persistOutboxEntry(String bookingId, String renterId, String ownerId, String errorMessage) {
+        ConversationCreationOutbox existing = outboxRepository.findFirstByBookingIdAndStatusIn(
+                        bookingId,
+                        List.of(ConversationCreationOutbox.Status.PENDING))
+                .orElse(ConversationCreationOutbox.builder()
+                        .bookingId(bookingId)
+                        .renterId(renterId)
+                        .ownerId(ownerId)
+                        .maxAttempts(5)
+                        .build());
+
+        existing.setRenterId(renterId);
+        existing.setOwnerId(ownerId);
+        existing.recordFailure(errorMessage);
+        outboxRepository.save(existing);
+    }
+
+    @Scheduled(fixedDelay = 60000)
+    public void retryConversationCreationOutbox() {
+        if (!lockService.tryAcquireLock(OUTBOX_LOCK_KEY, java.time.Duration.ofSeconds(55))) {
+            return;
+        }
+
+        try {
+            List<ConversationCreationOutbox> pending = outboxRepository.findPendingForRetry(java.time.Instant.now());
+            if (pending.isEmpty()) {
+                return;
+            }
+
+            String internalToken = internalServiceJwtUtil.generateServiceToken("backend").trim();
+
+            for (ConversationCreationOutbox outboxEntry : pending) {
+                ConversationCreationAttempt attempt = attemptCreateConversation(
+                        outboxEntry.getBookingId(),
+                        outboxEntry.getRenterId(),
+                        outboxEntry.getOwnerId(),
+                        internalToken);
+
+                if (attempt.outcome() == ConversationCreationOutcome.CREATED
+                        || attempt.outcome() == ConversationCreationOutcome.EXISTS) {
+                    outboxEntry.markCreated();
+                } else {
+                    outboxEntry.recordFailure(attempt.errorMessage());
+                }
+
+                outboxRepository.save(outboxEntry);
+            }
+        } finally {
+            lockService.releaseLock(OUTBOX_LOCK_KEY);
+        }
     }
 
     // ==================== GDPR COMPLIANCE (GAP-3 REMEDIATION) ====================

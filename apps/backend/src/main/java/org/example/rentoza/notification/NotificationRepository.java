@@ -42,12 +42,12 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
     int markAllAsReadForUser(@Param("recipientId") Long recipientId);
 
     /**
-     * Delete notifications older than the specified instant.
-     * Used by scheduled cleanup task to remove expired notifications (30+ days old).
+        * Soft-delete notifications older than the specified instant.
+        * Used by scheduled cleanup task to retain evidence while hiding expired rows.
      */
     @Modifying
-    @Query("DELETE FROM Notification n WHERE n.createdAt < :expirationDate")
-    int deleteExpiredNotifications(@Param("expirationDate") Instant expirationDate);
+        @Query("UPDATE Notification n SET n.deletedAt = CURRENT_TIMESTAMP WHERE n.createdAt < :expirationDate AND n.deletedAt IS NULL")
+        int softDeleteExpiredNotifications(@Param("expirationDate") Instant expirationDate);
 
     /**
      * Find notifications by type and related entity ID.

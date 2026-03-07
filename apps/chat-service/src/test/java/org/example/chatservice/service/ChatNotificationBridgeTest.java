@@ -101,6 +101,12 @@ class ChatNotificationBridgeTest {
                 .build();
         when(messageRepository.save(any(Message.class))).thenReturn(savedMessage);
 
+        org.example.chatservice.dto.client.UserDetailsDTO sender = new org.example.chatservice.dto.client.UserDetailsDTO();
+        sender.setId(RENTER_ID);
+        sender.setFirstName("Petar");
+        sender.setLastName("Test");
+        when(backendApiClient.getUserDetails(anyLong())).thenReturn(Mono.just(sender));
+
         when(backendApiClient.sendNewMessageNotification(anyLong(), anyLong(), anyString(), anyString()))
                 .thenReturn(Mono.empty());
     }
@@ -127,10 +133,24 @@ class ChatNotificationBridgeTest {
         }
 
         @Test
-        @DisplayName("Notification includes sender name 'Korisnik' as hardcoded in sendMessage")
+        @DisplayName("Notification includes sender first name when backend details are available")
         void notificationIncludesSenderName() {
             String content = "When can I pick up?";
             stubHappyPath(content);
+
+            chatService.sendMessage(BOOKING_ID, RENTER_ID,
+                    SendMessageRequest.builder().content(content).build());
+
+            verify(backendApiClient).sendNewMessageNotification(
+                    eq(OWNER_ID), eq(BOOKING_ID), eq("Petar"), eq(content));
+        }
+
+        @Test
+        @DisplayName("Notification falls back to Korisnik when sender details are unavailable")
+        void notificationFallsBackToGenericSenderName() {
+            String content = "When can I pick up?";
+            stubHappyPath(content);
+            when(backendApiClient.getUserDetails(RENTER_ID)).thenReturn(Mono.empty());
 
             chatService.sendMessage(BOOKING_ID, RENTER_ID,
                     SendMessageRequest.builder().content(content).build());
@@ -180,6 +200,10 @@ class ChatNotificationBridgeTest {
                     .content(content)
                     .build();
             when(messageRepository.save(any(Message.class))).thenReturn(savedMessage);
+            org.example.chatservice.dto.client.UserDetailsDTO sender = new org.example.chatservice.dto.client.UserDetailsDTO();
+            sender.setId(OWNER_ID);
+            sender.setFirstName("Vlasnik");
+            when(backendApiClient.getUserDetails(anyLong())).thenReturn(Mono.just(sender));
             when(backendApiClient.sendNewMessageNotification(anyLong(), anyLong(), anyString(), anyString()))
                     .thenReturn(Mono.empty());
 
@@ -310,6 +334,22 @@ class ChatNotificationBridgeTest {
                     .startsWith("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA") // 47 A's
                     .endsWith("...");
         }
+
+        @Test
+        @DisplayName("URL in preview is sanitized before notification delivery")
+        void urlInPreviewIsSanitized() {
+            String content = "Pogledaj https://example.com/booking-details sada";
+            stubHappyPath(content);
+
+            chatService.sendMessage(BOOKING_ID, RENTER_ID,
+                    SendMessageRequest.builder().content(content).build());
+
+            ArgumentCaptor<String> previewCaptor = ArgumentCaptor.forClass(String.class);
+            verify(backendApiClient).sendNewMessageNotification(
+                    anyLong(), anyLong(), anyString(), previewCaptor.capture());
+
+            assertThat(previewCaptor.getValue()).contains("[link]").doesNotContain("https://");
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -334,6 +374,7 @@ class ChatNotificationBridgeTest {
                     .content(content)
                     .build();
             when(messageRepository.save(any(Message.class))).thenReturn(savedMessage);
+            when(backendApiClient.getUserDetails(anyLong())).thenReturn(Mono.empty());
 
             // Notification call returns an error Mono
             when(backendApiClient.sendNewMessageNotification(anyLong(), anyLong(), anyString(), anyString()))
@@ -372,6 +413,7 @@ class ChatNotificationBridgeTest {
                     .content(content)
                     .build();
             when(messageRepository.save(any(Message.class))).thenReturn(savedMessage);
+            when(backendApiClient.getUserDetails(anyLong())).thenReturn(Mono.empty());
 
             // Notification returns empty (simulates backend returning no body)
             when(backendApiClient.sendNewMessageNotification(anyLong(), anyLong(), anyString(), anyString()))
@@ -399,6 +441,7 @@ class ChatNotificationBridgeTest {
                     .content(content)
                     .build();
             when(messageRepository.save(any(Message.class))).thenReturn(savedMessage);
+            when(backendApiClient.getUserDetails(anyLong())).thenReturn(Mono.empty());
 
             // Notification errors with a network-level exception
             when(backendApiClient.sendNewMessageNotification(anyLong(), anyLong(), anyString(), anyString()))
@@ -462,6 +505,10 @@ class ChatNotificationBridgeTest {
                     .content("Different booking")
                     .build();
             when(messageRepository.save(any(Message.class))).thenReturn(savedMessage);
+            org.example.chatservice.dto.client.UserDetailsDTO sender = new org.example.chatservice.dto.client.UserDetailsDTO();
+            sender.setId(RENTER_ID);
+            sender.setFirstName("Petar");
+            when(backendApiClient.getUserDetails(anyLong())).thenReturn(Mono.just(sender));
             when(backendApiClient.sendNewMessageNotification(anyLong(), anyLong(), anyString(), anyString()))
                     .thenReturn(Mono.empty());
 
@@ -469,7 +516,7 @@ class ChatNotificationBridgeTest {
                     SendMessageRequest.builder().content("Different booking").build());
 
             verify(backendApiClient).sendNewMessageNotification(
-                    eq(OWNER_ID), eq(otherBookingId), eq("Korisnik"), eq("Different booking"));
+                    eq(OWNER_ID), eq(otherBookingId), eq("Petar"), eq("Different booking"));
         }
     }
 
@@ -493,7 +540,7 @@ class ChatNotificationBridgeTest {
             verify(backendApiClient).sendNewMessageNotification(
                     eq(OWNER_ID),       // recipient = other participant
                     eq(BOOKING_ID),     // bookingId forwarded
-                    eq("Korisnik"),     // hardcoded sender name
+                    eq("Petar"),       // sender first name
                     eq(content)         // short message not truncated
             );
         }
@@ -514,6 +561,10 @@ class ChatNotificationBridgeTest {
                     .content(content)
                     .build();
             when(messageRepository.save(any(Message.class))).thenReturn(savedMessage);
+            org.example.chatservice.dto.client.UserDetailsDTO sender = new org.example.chatservice.dto.client.UserDetailsDTO();
+            sender.setId(OWNER_ID);
+            sender.setFirstName("Vlasnik");
+            when(backendApiClient.getUserDetails(anyLong())).thenReturn(Mono.just(sender));
             when(backendApiClient.sendNewMessageNotification(anyLong(), anyLong(), anyString(), anyString()))
                     .thenReturn(Mono.empty());
 
@@ -525,7 +576,7 @@ class ChatNotificationBridgeTest {
             verify(backendApiClient).sendNewMessageNotification(
                     eq(RENTER_ID),       // recipient = renter (since owner sent)
                     eq(BOOKING_ID),      // bookingId forwarded
-                    eq("Korisnik"),      // hardcoded sender name
+                                        eq("Vlasnik"),       // sender first name
                     eq(expectedPreview)  // long message truncated
             );
         }

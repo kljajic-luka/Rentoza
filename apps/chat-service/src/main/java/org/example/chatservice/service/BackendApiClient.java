@@ -205,14 +205,9 @@ public class BackendApiClient {
                 .bodyValue(new NewMessageNotificationRequest(recipientId, bookingId, senderName, messagePreview))
                 .retrieve()
                 .bodyToMono(Void.class)
-                .doOnSuccess(v -> logger.info("✅ NEW_MESSAGE notification sent to user {}", recipientId))
-                .doOnError(error -> logger.error("❌ Failed to send NEW_MESSAGE notification to user {}: {}",
-                        recipientId, error.getMessage()))
-                .onErrorResume(e -> {
-                    // Don't fail the message send if notification fails
-                    logger.warn("⚠️ Notification delivery failed, message was still sent");
-                    return Mono.empty();
-                });
+            .doOnSuccess(v -> logger.info("✅ NEW_MESSAGE notification sent to user {}", recipientId))
+            .doOnError(error -> logger.error("❌ Failed to send NEW_MESSAGE notification to user {}: {}",
+                recipientId, error.getMessage()));
     }
     
     /**

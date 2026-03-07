@@ -23,10 +23,12 @@ public class WebSocketNotificationChannel implements NotificationChannel {
     @Override
     public void send(Notification notification) {
         try {
-            String destination = "/user/" + notification.getRecipient().getId() + "/queue/notifications";
             NotificationResponseDTO dto = NotificationResponseDTO.fromEntity(notification);
 
-            messagingTemplate.convertAndSend(destination, dto);
+            messagingTemplate.convertAndSendToUser(
+                    String.valueOf(notification.getRecipient().getId()),
+                    "/queue/notifications",
+                    dto);
 
             log.debug("WebSocket notification sent to user {} for type {}",
                     notification.getRecipient().getId(),

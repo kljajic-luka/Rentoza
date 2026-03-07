@@ -4,7 +4,7 @@ import jakarta.servlet.http.Cookie;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.security.CookieConstants;
-import org.example.rentoza.deprecated.jwt.JwtUtil;
+import org.example.rentoza.security.supabase.SupabaseJwtUtil;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
@@ -27,7 +27,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class WebSocketAuthInterceptor implements HandshakeInterceptor {
 
-    private final JwtUtil jwtUtil;
+    private final SupabaseJwtUtil jwtUtil;
 
     @Override
     public boolean beforeHandshake(ServerHttpRequest request, ServerHttpResponse response,
@@ -43,13 +43,21 @@ public class WebSocketAuthInterceptor implements HandshakeInterceptor {
         try {
             if (jwtUtil.validateToken(token)) {
                 String email = jwtUtil.getEmailFromToken(token);
-                String userId = jwtUtil.getUserIdFromToken(token);
+                String userId = jwtUtil.getSupabaseUserId(token) != null
+                        ? jwtUtil.getSupabaseUserId(token).toString()
+                        : null;
+
+                if (userId == null || userId.isBlank()) {
+                    denyHandshake(response, "JWT missing user ID for WebSocket handshake");
+                    return false;
+                }
 
                 attributes.put("email", email);
                 attributes.put("userId", userId);
                 attributes.put("authenticated", true);
+                attributes.put("PRINCIPAL", new StompPrincipal(userId));
 
-                log.debug("WebSocket handshake authenticated for user: {}", email);
+                log.debug("WebSocket handshake authenticated for userId: {}", userId);
                 return true;
             }
 

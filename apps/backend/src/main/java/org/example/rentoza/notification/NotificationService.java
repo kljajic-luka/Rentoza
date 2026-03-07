@@ -62,6 +62,21 @@ public class NotificationService {
         User recipient = userRepository.findById(request.getRecipientId())
                 .orElseThrow(() -> new ResourceNotFoundException("Recipient not found"));
 
+        if (request.getRelatedEntityId() != null) {
+            Optional<Notification> existing = notificationRepository.findByTypeAndRelatedEntityId(
+                    request.getType(), request.getRelatedEntityId())
+                .stream()
+                .filter(notification -> notification.getRecipient() != null
+                    && notification.getRecipient().getId().equals(request.getRecipientId()))
+                .findFirst();
+
+            if (existing.isPresent()) {
+            log.info("Duplicate notification suppressed: type={}, relatedEntityId={}, recipientId={}",
+                request.getType(), request.getRelatedEntityId(), request.getRecipientId());
+            return NotificationResponseDTO.fromEntity(existing.get());
+            }
+        }
+
         Notification notification = Notification.builder()
                 .recipient(recipient)
                 .type(request.getType())
@@ -88,7 +103,6 @@ public class NotificationService {
      *
      * @param event Notification event with multiple recipients
      */
-    @Async
     @Transactional
     public void createBatchNotifications(NotificationEventDTO event) {
         for (Long recipientId : event.getRecipientIds()) {
@@ -303,16 +317,6 @@ public class NotificationService {
     }
 
     /**
-     * @deprecated Use {@link #unregisterDeviceToken(String, Long)} instead for ownership verification.
-     */
-    @Deprecated
-    @Transactional
-    public void unregisterDeviceToken(String deviceToken) {
-        deviceTokenRepository.deleteByDeviceToken(deviceToken);
-        log.info("Device token unregistered: {}", deviceToken);
-    }
-
-    /**
      * Notify users about a dispute resolution.
      * Sends notifications to both guest (renter) and host (owner).
      *
@@ -464,12 +468,12 @@ public class NotificationService {
     public void escalateCheckInDisputeToSeniorAdmin(Booking booking, DamageClaim claim) {
         try {
             log.warn("ESCALATION: Check-in dispute requires senior admin attention. " +
-                    "Booking ID: {}, Claim ID: {}, Dispute Type: {}, " +
-                    "Guest: {}, Host: {}, Trip Start: {}",
+                "Booking ID: {}, Claim ID: {}, Dispute Type: {}, " +
+                "Guest ID: {}, Host ID: {}, Trip Start: {}",
                     booking.getId(), claim.getId(), claim.getDisputeType(),
-                    booking.getRenter() != null ? booking.getRenter().getEmail() : "N/A",
+                booking.getRenter() != null ? booking.getRenter().getId() : "N/A",
                     booking.getCar() != null && booking.getCar().getOwner() != null ?
-                            booking.getCar().getOwner().getEmail() : "N/A",
+                    booking.getCar().getOwner().getId() : "N/A",
                     booking.getStartTime());
 
             // Notify guest that dispute is being escalated
@@ -517,13 +521,13 @@ public class NotificationService {
 
         try {
             Instant expirationDate = Instant.now().minus(30, ChronoUnit.DAYS);
-            int deleted = notificationRepository.deleteExpiredNotifications(expirationDate);
+            int deleted = notificationRepository.softDeleteExpiredNotifications(expirationDate);
 
             if (deleted > 0) {
-                log.info("Cleaned up {} expired notifications", deleted);
+                log.info("Soft-deleted {} expired notifications", deleted);
             }
         } finally {
             lockService.releaseLock("notification.cleanup.expired");
         }
     }
-    }
+}

@@ -1,9 +1,13 @@
 package org.example.chatservice.config;
 
+import com.github.benmanes.caffeine.cache.Caffeine;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+
+import java.time.Duration;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -140,6 +144,24 @@ class RateLimitConfigTest {
             // New bucket should have full tokens (bucket recreated on access)
             long tokens = rateLimitConfig.getRemainingTokens(USER_A);
             assertThat(tokens).isEqualTo(RateLimitConfig.getBurstLimit());
+        }
+
+        @Test
+        @DisplayName("Should evict idle buckets after access expiry")
+        void evictsIdleBucketsAfterExpiry() {
+            AtomicLong now = new AtomicLong();
+            RateLimitConfig expiringConfig = new RateLimitConfig(Caffeine.newBuilder()
+                    .maximumSize(10)
+                    .expireAfterAccess(Duration.ofMillis(5))
+                    .ticker(now::get)
+                    .build());
+
+            var firstBucket = expiringConfig.resolveBucket(String.valueOf(USER_A));
+            now.set(Duration.ofMillis(10).toNanos());
+
+            var secondBucket = expiringConfig.resolveBucket(String.valueOf(USER_A));
+
+            assertThat(secondBucket).isNotSameAs(firstBucket);
         }
     }
 

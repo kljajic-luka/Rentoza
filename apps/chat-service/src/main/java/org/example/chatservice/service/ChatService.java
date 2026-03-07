@@ -21,7 +21,9 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Mono;
+import reactor.util.retry.Retry;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
@@ -207,6 +209,7 @@ public class ChatService {
     /**
      * Send a message with optional moderation flags for admin review persistence.
      */
+    @Transactional
     public MessageDTO sendMessage(Long bookingId, Long userId, SendMessageRequest request, List<String> moderationFlags) {
         Conversation conversation = conversationRepository.findByBookingId(bookingId)
                 .orElseThrow(() -> new ConversationNotFoundException("Conversation not found for booking: " + bookingId));
@@ -270,20 +273,44 @@ public class ChatService {
         Long recipientId = userId.equals(conversation.getRenterId()) 
                 ? conversation.getOwnerId() 
                 : conversation.getRenterId();
-        String messagePreview = request.getContent().length() > 50 
-                ? request.getContent().substring(0, 47) + "..." 
-                : request.getContent();
-        backendApiClient.sendNewMessageNotification(
-                recipientId, 
-                bookingId, 
-                "Korisnik", // Sender name - could be enriched
-                messagePreview
-        ).subscribe(); // Fire and forget - don't block message delivery
+        String messagePreview = buildNotificationPreview(request.getContent());
+        notifyRecipientOfNewMessage(recipientId, bookingId, userId, messagePreview);
 
         // Return the correct DTO to the sender with isOwnMessage=true
         MessageDTO senderDTO = toMessageDTO(message, userId);
         return senderDTO;
     }
+
+        private void notifyRecipientOfNewMessage(Long recipientId, Long bookingId, Long senderId, String messagePreview) {
+        backendApiClient.getUserDetails(senderId)
+            .switchIfEmpty(Mono.fromSupplier(() -> {
+                UserDetailsDTO fallback = new UserDetailsDTO();
+                fallback.setId(senderId);
+                fallback.setFirstName("Korisnik");
+                fallback.setLastName("");
+                return fallback;
+            }))
+            .flatMap(sender -> backendApiClient.sendNewMessageNotification(
+                recipientId,
+                bookingId,
+                sender.getFirstName() != null && !sender.getFirstName().isBlank()
+                    ? sender.getFirstName()
+                    : "Korisnik",
+                messagePreview))
+            .retryWhen(Retry.backoff(2, Duration.ofSeconds(1)).maxBackoff(Duration.ofSeconds(5)))
+            .subscribe(
+                unused -> {
+                },
+                error -> log.error("Failed to send new-message notification after retries: {}", error.getMessage())
+            );
+        }
+
+        private String buildNotificationPreview(String content) {
+        String preview = content.length() > 50
+            ? content.substring(0, 47) + "..."
+            : content;
+        return preview.replaceAll("https?://\\S+", "[link]");
+        }
 
     @Transactional
     public void markMessagesAsRead(Long bookingId, Long userId) {

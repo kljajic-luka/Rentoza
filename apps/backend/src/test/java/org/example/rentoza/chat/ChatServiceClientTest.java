@@ -5,6 +5,7 @@ import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.example.rentoza.chat.dto.ConversationResponse;
 import org.example.rentoza.chat.dto.CreateConversationRequest;
+import org.example.rentoza.scheduler.SchedulerIdempotencyService;
 import org.example.rentoza.security.InternalServiceJwtUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -41,6 +42,12 @@ class ChatServiceClientTest {
     @Mock
     private InternalServiceJwtUtil internalServiceJwtUtil;
 
+        @Mock
+        private ConversationCreationOutboxRepository outboxRepository;
+
+        @Mock
+        private SchedulerIdempotencyService lockService;
+
     private SimpleMeterRegistry meterRegistry;
     private ChatServiceClient chatServiceClient;
 
@@ -53,7 +60,13 @@ class ChatServiceClientTest {
     @BeforeEach
     void setUp() {
         meterRegistry = new SimpleMeterRegistry();
-        chatServiceClient = new ChatServiceClient(restTemplate, CHAT_SERVICE_URL, internalServiceJwtUtil, meterRegistry);
+                chatServiceClient = new ChatServiceClient(
+                                restTemplate,
+                                CHAT_SERVICE_URL,
+                                internalServiceJwtUtil,
+                                meterRegistry,
+                                outboxRepository,
+                                lockService);
     }
 
     /**
@@ -395,6 +408,46 @@ class ChatServiceClientTest {
             Counter failureCounter = meterRegistry.find("chat.conversation.async.failure").counter();
             assertThat(failureCounter).isNotNull();
             assertThat(failureCounter.count()).isEqualTo(1.0);
+        }
+
+        @Test
+        @DisplayName("Async failure persists outbox entry for later retry")
+        void createConversationAsync_failure_persistsOutboxEntry() throws Exception {
+            when(restTemplate.exchange(
+                    anyString(), eq(HttpMethod.POST), any(HttpEntity.class), eq(ConversationResponse.class)
+            )).thenThrow(new HttpClientErrorException(HttpStatus.BAD_GATEWAY));
+
+            CompletableFuture<ConversationResponse> future =
+                    chatServiceClient.createConversationAsync(BOOKING_ID, RENTER_ID, OWNER_ID, JWT_TOKEN);
+
+            assertThat(future.get(10, TimeUnit.SECONDS)).isNull();
+            verify(outboxRepository).save(any(ConversationCreationOutbox.class));
+        }
+
+        @Test
+        @DisplayName("Retry worker picks pending outbox entries and marks them created on success")
+        void retryWorkerMarksEntryCreatedOnSuccess() {
+            ConversationCreationOutbox outbox = ConversationCreationOutbox.builder()
+                    .bookingId(BOOKING_ID)
+                    .renterId(RENTER_ID)
+                    .ownerId(OWNER_ID)
+                    .status(ConversationCreationOutbox.Status.PENDING)
+                    .build();
+            ConversationResponse expected = buildConversationResponse();
+            ResponseEntity<ConversationResponse> responseEntity = new ResponseEntity<>(expected, HttpStatus.OK);
+
+            when(lockService.tryAcquireLock(anyString(), any())).thenReturn(true);
+            when(outboxRepository.findPendingForRetry(any())).thenReturn(java.util.List.of(outbox));
+            when(internalServiceJwtUtil.generateServiceToken("backend")).thenReturn(JWT_TOKEN);
+            when(restTemplate.exchange(
+                    anyString(), eq(HttpMethod.POST), any(HttpEntity.class), eq(ConversationResponse.class)
+            )).thenReturn(responseEntity);
+
+            chatServiceClient.retryConversationCreationOutbox();
+
+            assertThat(outbox.getStatus()).isEqualTo(ConversationCreationOutbox.Status.CREATED);
+            verify(outboxRepository).save(outbox);
+            verify(lockService).releaseLock(anyString());
         }
     }
 }

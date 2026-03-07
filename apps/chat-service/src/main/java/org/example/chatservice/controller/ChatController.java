@@ -6,9 +6,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.example.chatservice.config.RateLimitConfig;
 import org.example.chatservice.dto.*;
 import org.example.chatservice.exception.ContentModerationException;
+import org.example.chatservice.model.AdminAuditEntry;
 import org.example.chatservice.exception.RateLimitExceededException;
 import org.example.chatservice.model.ConversationStatus;
 import org.example.chatservice.model.Message;
+import org.example.chatservice.repository.AdminAuditRepository;
 import org.example.chatservice.repository.MessageRepository;
 import org.example.chatservice.security.ContentModerationFilter;
 import org.example.chatservice.security.ContentModerationFilter.ContentModerationResult;
@@ -59,6 +61,7 @@ public class ChatController {
     private final FileStorageService fileStorageService;
     private final org.example.chatservice.service.IdempotencyService idempotencyService;
     private final MessageRepository messageRepository;
+    private final AdminAuditRepository adminAuditRepository;
 
     /**
      * Extract user ID from SecurityContext principal.
@@ -326,6 +329,13 @@ public class ChatController {
     ) {
         Long userId = extractUserId(authentication);
         Long bookingIdLong = Long.parseLong(bookingId);  // Parse String → Long
+
+        if (status == ConversationStatus.CLOSED) {
+            log.warn("[Security] User {} attempted to close conversation for booking {} - denied (use internal API)",
+                userId, bookingIdLong);
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
         log.info("[Security] User {} attempting to update conversation status for booking {} to {}", 
                 userId, bookingIdLong, status);
         
@@ -403,6 +413,12 @@ public class ChatController {
 
         // Fetch full transcript without participant check (admin override)
         ConversationDTO transcript = chatService.getConversationForAdmin(bookingIdLong);
+        recordAdminAudit(
+            adminUserId,
+            AdminAuditEntry.Action.CONVERSATION_VIEWED,
+            AdminAuditEntry.TargetType.CONVERSATION,
+            String.valueOf(bookingIdLong),
+            String.format("{\"messageCount\":%d}", transcript.getMessages() != null ? transcript.getMessages().size() : 0));
 
         log.info("[Admin][Audit] Admin user {} retrieved {} messages for booking {}",
                 adminUserId,
@@ -614,7 +630,28 @@ public class ChatController {
         msg.setReviewOutcome("DISMISSED");
         // NOTE: moderationFlags are intentionally NOT nulled — preserved for audit history
         messageRepository.save(msg);
+        recordAdminAudit(
+                adminUserId,
+                AdminAuditEntry.Action.REVIEW_DISMISSED,
+                AdminAuditEntry.TargetType.MESSAGE,
+                String.valueOf(messageId),
+                String.format("{\"moderationFlags\":\"%s\"}", msg.getModerationFlags()));
 
         return ResponseEntity.ok(Map.of("message", "Flags dismissed", "reviewedBy", adminUserId));
+    }
+
+    private void recordAdminAudit(
+            Long adminUserId,
+            AdminAuditEntry.Action action,
+            AdminAuditEntry.TargetType targetType,
+            String targetId,
+            String metadata) {
+        adminAuditRepository.save(AdminAuditEntry.builder()
+                .adminUserId(adminUserId)
+                .action(action)
+                .targetType(targetType)
+                .targetId(targetId)
+                .metadata(metadata)
+                .build());
     }
 }

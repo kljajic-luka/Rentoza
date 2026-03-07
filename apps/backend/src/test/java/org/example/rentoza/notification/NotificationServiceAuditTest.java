@@ -19,9 +19,11 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 import java.util.Optional;
+import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -32,6 +34,8 @@ import static org.mockito.Mockito.*;
  *   C4 - Escalation notification uses DISPUTE_ESCALATED (not DISPUTE_RESOLVED)
  *   C5 - Device token unregistration ownership check
  *   C1 - Outbox entry creation on durable-channel failure
+ *   C3 - Soft-delete cleanup and entity behavior
+ *   H2 - Deduplicate notifications per recipient
  */
 @ExtendWith(MockitoExtension.class)
 class NotificationServiceAuditTest {
@@ -264,4 +268,101 @@ class NotificationServiceAuditTest {
             assertThat(outbox.getLastError()).contains("channel down");
         }
     }
+
+        @Nested
+        @DisplayName("C3 - notification soft-delete cleanup")
+        class C3_SoftDeleteCleanup {
+
+                @Test
+                @DisplayName("cleanupExpiredNotifications uses soft-delete repository method")
+                void cleanupUsesSoftDelete() {
+                        when(lockService.tryAcquireLock("notification.cleanup.expired", java.time.Duration.ofHours(23)))
+                                        .thenReturn(true);
+                        when(notificationRepository.softDeleteExpiredNotifications(any(Instant.class))).thenReturn(3);
+
+                        notificationService.cleanupExpiredNotifications();
+
+                        verify(notificationRepository).softDeleteExpiredNotifications(any(Instant.class));
+                        verify(notificationRepository, never()).findById(anyLong());
+                }
+
+                @Test
+                @DisplayName("notification softDelete sets deletedAt timestamp")
+                void notificationSoftDeleteSetsTimestamp() {
+                        Notification notification = Notification.builder().build();
+
+                        notification.softDelete();
+
+                        assertThat(notification.getDeletedAt()).isNotNull();
+                }
+        }
+
+        @Nested
+        @DisplayName("H2 - duplicate suppression")
+        class H2_DuplicateSuppression {
+
+                @Test
+                @DisplayName("createNotification returns existing notification for same type, entity, and recipient")
+                void suppressesDuplicateForSameRecipient() {
+                        Notification existing = Notification.builder()
+                                        .id(77L)
+                                        .recipient(renter)
+                                        .type(NotificationType.BOOKING_CONFIRMED)
+                                        .message("existing")
+                                        .relatedEntityId("booking-100")
+                                        .build();
+
+                        when(userRepository.findById(renter.getId())).thenReturn(Optional.of(renter));
+                        when(notificationRepository.findByTypeAndRelatedEntityId(NotificationType.BOOKING_CONFIRMED, "booking-100"))
+                                        .thenReturn(List.of(existing));
+
+                        CreateNotificationRequestDTO request = CreateNotificationRequestDTO.builder()
+                                        .recipientId(renter.getId())
+                                        .type(NotificationType.BOOKING_CONFIRMED)
+                                        .message("new")
+                                        .relatedEntityId("booking-100")
+                                        .build();
+
+                        var response = notificationService.createNotification(request);
+
+                        assertThat(response.getId()).isEqualTo(77L);
+                        verify(notificationRepository, never()).save(any(Notification.class));
+                }
+
+                @Test
+                @DisplayName("createNotification still saves when duplicate belongs to a different recipient")
+                void doesNotSuppressOtherRecipientDuplicate() {
+                        Notification otherRecipientNotification = Notification.builder()
+                                        .id(88L)
+                                        .recipient(owner)
+                                        .type(NotificationType.BOOKING_CONFIRMED)
+                                        .message("existing")
+                                        .relatedEntityId("booking-100")
+                                        .build();
+                        Notification saved = Notification.builder()
+                                        .id(99L)
+                                        .recipient(renter)
+                                        .type(NotificationType.BOOKING_CONFIRMED)
+                                        .message("new")
+                                        .relatedEntityId("booking-100")
+                                        .build();
+
+                        when(userRepository.findById(renter.getId())).thenReturn(Optional.of(renter));
+                        when(notificationRepository.findByTypeAndRelatedEntityId(NotificationType.BOOKING_CONFIRMED, "booking-100"))
+                                        .thenReturn(List.of(otherRecipientNotification));
+                        when(notificationRepository.save(any(Notification.class))).thenReturn(saved);
+
+                        CreateNotificationRequestDTO request = CreateNotificationRequestDTO.builder()
+                                        .recipientId(renter.getId())
+                                        .type(NotificationType.BOOKING_CONFIRMED)
+                                        .message("new")
+                                        .relatedEntityId("booking-100")
+                                        .build();
+
+                        var response = notificationService.createNotification(request);
+
+                        assertThat(response.getId()).isEqualTo(99L);
+                        verify(notificationRepository).save(any(Notification.class));
+                }
+        }
 }

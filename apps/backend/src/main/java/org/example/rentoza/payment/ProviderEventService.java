@@ -355,13 +355,21 @@ public class ProviderEventService {
             return;
         }
 
-        // H-6: Audit-log when webhook secret is active but no auth-id is provided
+        // AUDIT-M6-FIX: Reject events without providerAuthorizationId when signature
+        // verification is active. Prevents cross-transaction contamination (e.g.,
+        // deposit webhook accidentally advancing charge lifecycle).
         if ((providerAuthorizationId == null || providerAuthorizationId.isBlank())
                 && webhookSecret != null && !webhookSecret.isBlank()) {
-            log.warn("[Webhook][H-6] Missing providerAuthorizationId for event type '{}' bookingId={}. "
-                    + "Transaction-scoped routing unavailable; falling back to booking-scoped scan. "
-                    + "This reduces isolation between charge and deposit transactions on the same booking.",
-                    eventType, bookingId);
+            // Exception: PAYOUT events don't carry an authorization ID — they route via PayoutLedger.
+            String upper = eventType != null ? eventType.toUpperCase() : "";
+            if (!upper.contains("PAYOUT")) {
+            log.error("[Webhook][AUDIT-M6] REJECTING event type '{}' bookingId={} - "
+                    + "providerAuthorizationId is required when webhook signature verification is active. "
+                    + "This prevents cross-transaction contamination.",
+                eventType, bookingId);
+            throw new IllegalArgumentException(
+                "Missing providerAuthorizationId for non-payout event with active webhook secret");
+            }
         }
 
         switch (eventType.toUpperCase()) {

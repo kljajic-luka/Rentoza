@@ -41,6 +41,9 @@ class ProviderEventServiceTest {
     private BookingRepository bookingRepository;
 
     @Mock
+    private PayoutLedgerRepository payoutLedgerRepository;
+
+    @Mock
     private TripExtensionRepository tripExtensionRepository;
 
     @Mock
@@ -266,5 +269,56 @@ class ProviderEventServiceTest {
             verifyNoInteractions(bookingRepository);
             verify(tripExtensionRepository).save(extension);
         }
+    }
+
+    @Test
+    @DisplayName("M6: webhook without authId when secret active rejects non-payout event")
+    void webhookWithoutAuthId_whenSecretActive_rejectsNonPayoutEvent() {
+        ReflectionTestUtils.setField(service, "webhookSecret", "prod-webhook-secret");
+
+        ProviderEvent stored = ProviderEvent.builder()
+                .providerEventId(EVENT_ID)
+                .eventType("PAYMENT_CONFIRMED")
+                .bookingId(BOOKING_ID)
+                .build();
+        when(eventRepository.findByProviderEventId(EVENT_ID)).thenReturn(Optional.of(stored));
+
+        ProviderEventService.IngestResult result = service.ingestEventDetailed(
+                EVENT_ID,
+                "PAYMENT_CONFIRMED",
+                BOOKING_ID,
+                null,
+                "{}",
+                null,
+                null);
+
+        assertThat(result.outcome()).isEqualTo(ProviderEventService.IngestOutcome.RETRYABLE_FAILURE);
+        assertThat(result.reason()).contains("Missing providerAuthorizationId");
+    }
+
+    @Test
+    @DisplayName("M6: webhook without authId when secret active allows payout event")
+    void webhookWithoutAuthId_whenSecretActive_allowsPayoutEvent() {
+        ReflectionTestUtils.setField(service, "webhookSecret", "prod-webhook-secret");
+
+        ProviderEvent stored = ProviderEvent.builder()
+                .providerEventId(EVENT_ID)
+                .eventType("PAYOUT.COMPLETED")
+                .bookingId(BOOKING_ID)
+                .build();
+        when(eventRepository.findByProviderEventId(EVENT_ID)).thenReturn(Optional.of(stored));
+        when(payoutLedgerRepository.findByBookingId(BOOKING_ID)).thenReturn(Optional.empty());
+
+        ProviderEventService.IngestResult result = service.ingestEventDetailed(
+                EVENT_ID,
+                "PAYOUT.COMPLETED",
+                BOOKING_ID,
+                null,
+                "{}",
+                null,
+                null);
+
+        assertThat(result.outcome()).isEqualTo(ProviderEventService.IngestOutcome.PROCESSED);
+        assertThat(result.processed()).isTrue();
     }
 }

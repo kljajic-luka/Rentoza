@@ -53,12 +53,6 @@ public class BookingPaymentService {
 
     private static final String DEFAULT_CURRENCY = "RSD";
 
-    /** Platform fee rate — 15 %. Captured as snapshot in PayoutLedger. */
-    private static final BigDecimal PLATFORM_FEE_RATE = new BigDecimal("0.15");
-
-    /** Serbian PDV (VAT) rate — 20 %. Applied to the platform fee component. */
-    private static final BigDecimal PDV_RATE = new BigDecimal("0.20");
-
     private final PaymentProvider paymentProvider;
     private final BookingRepository bookingRepository;
     private final DamageClaimRepository damageClaimRepository;
@@ -77,6 +71,13 @@ public class BookingPaymentService {
 
     @Value("${app.payment.deposit.amount-rsd:30000}")
     private int defaultDepositAmountRsd = 30000;
+
+    // AUDIT-H2-FIX: Read rates from config to prevent silent divergence when rates change.
+    @Value("${app.payment.service-fee-rate:0.15}")
+    private BigDecimal platformFeeRate;
+
+    @Value("${app.payment.payout.pdv-rate:0.20}")
+    private BigDecimal pdvRate;
 
     @Value("${app.payment.auth.expiry-hours:168}")  // 7 days
     private int authExpiryHours = 168;
@@ -1168,15 +1169,15 @@ public class BookingPaymentService {
 
         return payoutLedgerRepository.findByIdempotencyKey(ikey).orElseGet(() -> {
             BigDecimal trip = booking.getTotalAmount();
-            BigDecimal fee = trip.multiply(PLATFORM_FEE_RATE).setScale(2, RoundingMode.HALF_UP);
-            BigDecimal pdv = fee.multiply(PDV_RATE).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal fee = trip.multiply(platformFeeRate).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal pdv = fee.multiply(pdvRate).setScale(2, RoundingMode.HALF_UP);
             BigDecimal hostAmt = trip.subtract(fee);
 
             PayoutLedger ledger = PayoutLedger.builder()
                     .bookingId(booking.getId())
                     .hostUserId(booking.getCar().getOwner().getId())
                     .tripAmount(trip)
-                    .platformFeeRate(PLATFORM_FEE_RATE)
+                    .platformFeeRate(platformFeeRate)
                     .platformFee(fee)
                     .platformFeePdv(pdv)
                     .hostPayoutAmount(hostAmt)

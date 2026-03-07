@@ -18,6 +18,7 @@ import org.springframework.security.web.authentication.WebAuthenticationDetailsS
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -172,6 +173,16 @@ public class SupabaseJwtAuthFilter extends OncePerRequestFilter {
                 }
 
                 User user = userOpt.get();
+                Date tokenIssuedAt = supabaseJwtUtil.getIssuedAt(token);
+                if (user.getPasswordChangedAt() != null
+                        && tokenIssuedAt != null
+                        && tokenIssuedAt.toInstant().isBefore(user.getPasswordChangedAt())) {
+                    log.warn("Rejected stale Supabase JWT after password reset: user={}", user.getEmail());
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.setContentType("application/json");
+                    response.getWriter().write("{\"error\":\"SESSION_REVOKED\",\"message\":\"Please sign in again.\"}");
+                    return;
+                }
 
                 // Check if user is banned
                 if (user.isBanned()) {

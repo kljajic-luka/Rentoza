@@ -3,5 +3,6 @@ package org.example.rentoza.user;
 public enum Role {
     USER,
     OWNER,
-    ADMIN
+    ADMIN,
+    IDENTITY_REVIEWER
 }

@@ -7,6 +7,8 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.example.rentoza.deprecated.jwt.JwtUtil;
+import org.example.rentoza.user.User;
+import org.example.rentoza.user.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -17,6 +19,7 @@ import org.springframework.security.web.authentication.WebAuthenticationDetailsS
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.Date;
 import java.util.List;
 
 /**
@@ -35,6 +38,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
     private final UserDetailsService userDetailsService;
+    private final UserRepository userRepository;
     
     // Endpoints that should ALWAYS skip JWT authentication (truly public)
     // NOTE: /api/auth includes both legacy (/api/auth/**) and Supabase (/api/auth/supabase/**)
@@ -61,9 +65,14 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     private static final java.util.regex.Pattern PUBLIC_CAR_DETAIL_PATTERN = 
             java.util.regex.Pattern.compile("^/api/cars/\\d+$");  // Only numeric IDs are public
 
-    public JwtAuthFilter(JwtUtil jwtUtil, UserDetailsService userDetailsService) {
+    public JwtAuthFilter(JwtUtil jwtUtil, UserDetailsService userDetailsService, UserRepository userRepository) {
         this.jwtUtil = jwtUtil;
         this.userDetailsService = userDetailsService;
+        this.userRepository = userRepository;
+    }
+
+    public JwtAuthFilter(JwtUtil jwtUtil, UserDetailsService userDetailsService) {
+        this(jwtUtil, userDetailsService, null);
     }
 
     @Override
@@ -110,6 +119,21 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     log.error("JWT subject mismatch: token email={}, loaded user={}, IP={}",
                             email, jwtPrincipal.getUsername(), request.getRemoteAddr());
                     filterChain.doFilter(request, response);
+                    return;
+                }
+                Date tokenIssuedAt = jwtUtil.getIssuedAt(token);
+                User currentUser = userRepository != null
+                    ? userRepository.findByEmailIgnoreCase(email).orElse(null)
+                    : null;
+                if (currentUser != null
+                        && currentUser.getPasswordChangedAt() != null
+                        && tokenIssuedAt != null
+                        && tokenIssuedAt.toInstant().isBefore(currentUser.getPasswordChangedAt())) {
+                    log.warn("Rejected stale legacy JWT after password reset: {}", email);
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.setContentType("application/json");
+                    response.setCharacterEncoding("UTF-8");
+                    response.getWriter().write("{\"error\":\"SESSION_REVOKED\",\"message\":\"Please sign in again.\"}");
                     return;
                 }
 

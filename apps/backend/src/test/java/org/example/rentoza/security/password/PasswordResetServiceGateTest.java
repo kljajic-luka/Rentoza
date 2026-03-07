@@ -1,5 +1,6 @@
 package org.example.rentoza.security.password;
 
+import org.example.rentoza.deprecated.auth.RefreshTokenServiceEnhanced;
 import org.example.rentoza.notification.mail.MailService;
 import org.example.rentoza.security.supabase.SupabaseAuthClient;
 import org.example.rentoza.user.User;
@@ -26,6 +27,7 @@ class PasswordResetServiceGateTest {
     private PasswordPolicyService passwordPolicyService;
     private PasswordHistoryRepository passwordHistoryRepository;
     private SupabaseAuthClient supabaseAuthClient;
+    private RefreshTokenServiceEnhanced refreshTokenService;
     private MailService mailService;
 
     private PasswordResetService passwordResetService;
@@ -37,6 +39,7 @@ class PasswordResetServiceGateTest {
         passwordPolicyService = mock(PasswordPolicyService.class);
         passwordHistoryRepository = mock(PasswordHistoryRepository.class);
         supabaseAuthClient = mock(SupabaseAuthClient.class);
+        refreshTokenService = mock(RefreshTokenServiceEnhanced.class);
         mailService = mock(MailService.class);
 
         passwordResetService = new PasswordResetService(
@@ -45,6 +48,7 @@ class PasswordResetServiceGateTest {
                 passwordPolicyService,
                 passwordHistoryRepository,
                 supabaseAuthClient,
+                refreshTokenService,
                 mailService
         );
 
@@ -115,8 +119,10 @@ class PasswordResetServiceGateTest {
 
         assertThat(resetToken.isUsed()).isTrue();
         assertThat(resetToken.getUsedAt()).isNotNull();
+        assertThat(user.getPasswordChangedAt()).isNotNull();
         verify(passwordPolicyService).recordPassword(eq(42L), anyString());
         verify(supabaseAuthClient).updateUserPassword(eq(user.getAuthUid()), eq("Aa123456!"));
+        verify(refreshTokenService).revokeAll(eq("user@example.com"), eq("PASSWORD_RESET"));
     }
 
     @Test
@@ -134,6 +140,7 @@ class PasswordResetServiceGateTest {
                 passwordPolicyService,
                 passwordHistoryRepository,
                 supabaseAuthClient,
+                refreshTokenService,
                 null
         );
 

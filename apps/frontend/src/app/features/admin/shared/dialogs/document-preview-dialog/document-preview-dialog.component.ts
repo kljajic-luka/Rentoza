@@ -1,6 +1,6 @@
 import { Component, Inject, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { MAT_DIALOG_DATA, MatDialogRef, MatDialogModule } from '@angular/material/dialog';
+import { MAT_DIALOG_DATA, MatDialog, MatDialogRef, MatDialogModule } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
@@ -8,10 +8,12 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { DomSanitizer, SafeUrl } from '@angular/platform-browser';
 
 import { AdminApiService } from '../../../../../core/services/admin-api.service';
+import { AdminNotificationService } from '../../../../../core/services/admin-notification.service';
 import {
   RenterDocumentDto,
   getConfidenceLevel,
 } from '../../../../../core/models/admin-renter-verification.model';
+import { ConfirmDialogComponent } from '../confirm-dialog/confirm-dialog.component';
 
 export interface DocumentPreviewDialogData {
   document: RenterDocumentDto;
@@ -19,7 +21,7 @@ export interface DocumentPreviewDialogData {
 
 /**
  * Document Preview Dialog
- * 
+ *
  * Full-resolution image viewer with OCR/biometric results sidebar.
  * Supports zoom and download functionality.
  */
@@ -52,8 +54,8 @@ export interface DocumentPreviewDialogData {
           <!-- Image Panel -->
           <div class="image-panel">
             <div class="image-container" *ngIf="!imageLoading && imageUrl">
-              <img 
-                [src]="imageUrl" 
+              <img
+                [src]="imageUrl"
                 [alt]="doc.typeDisplay"
                 (load)="onImageLoad()"
                 (error)="onImageError()"
@@ -61,12 +63,12 @@ export interface DocumentPreviewDialogData {
                 draggable="false"
               />
             </div>
-            
+
             <div class="image-loading" *ngIf="imageLoading">
               <mat-spinner diameter="40"></mat-spinner>
               <span>Učitavanje slike...</span>
             </div>
-            
+
             <div class="image-error" *ngIf="imageError">
               <mat-icon>broken_image</mat-icon>
               <span>Greška pri učitavanju slike</span>
@@ -75,11 +77,21 @@ export interface DocumentPreviewDialogData {
 
             <!-- Zoom Controls -->
             <div class="zoom-controls" *ngIf="!imageLoading && !imageError">
-              <button mat-icon-button (click)="zoomOut()" [disabled]="zoomLevel <= 0.5" matTooltip="Umanji">
+              <button
+                mat-icon-button
+                (click)="zoomOut()"
+                [disabled]="zoomLevel <= 0.5"
+                matTooltip="Umanji"
+              >
                 <mat-icon>remove</mat-icon>
               </button>
               <span class="zoom-level">{{ (zoomLevel * 100).toFixed(0) }}%</span>
-              <button mat-icon-button (click)="zoomIn()" [disabled]="zoomLevel >= 3" matTooltip="Uvećaj">
+              <button
+                mat-icon-button
+                (click)="zoomIn()"
+                [disabled]="zoomLevel >= 3"
+                matTooltip="Uvećaj"
+              >
                 <mat-icon>add</mat-icon>
               </button>
               <button mat-icon-button (click)="resetZoom()" matTooltip="Resetuj uvećanje">
@@ -96,7 +108,7 @@ export interface DocumentPreviewDialogData {
                 <mat-icon>document_scanner</mat-icon>
                 OCR rezultati
               </h3>
-              
+
               <div class="results-grid">
                 <div class="result-item" *ngIf="doc.ocrExtractedName">
                   <span class="result-label">Ime</span>
@@ -115,13 +127,16 @@ export interface DocumentPreviewDialogData {
               <div class="confidence-meter" *ngIf="doc.ocrConfidencePercent !== undefined">
                 <span class="confidence-label">Pouzdanost OCR</span>
                 <div class="meter-bar">
-                  <div 
+                  <div
                     class="meter-fill"
                     [class]="'confidence-' + getConfidenceLevel(doc.ocrConfidencePercent)"
                     [style.width.%]="doc.ocrConfidencePercent"
                   ></div>
                 </div>
-                <span class="confidence-value" [class]="'confidence-' + getConfidenceLevel(doc.ocrConfidencePercent)">
+                <span
+                  class="confidence-value"
+                  [class]="'confidence-' + getConfidenceLevel(doc.ocrConfidencePercent)"
+                >
                   {{ doc.ocrConfidencePercent }}%
                 </span>
               </div>
@@ -133,7 +148,7 @@ export interface DocumentPreviewDialogData {
                 <mat-icon>face</mat-icon>
                 Biometrijska analiza
               </h3>
-              
+
               <!-- Liveness Check -->
               <div class="liveness-result" *ngIf="doc.livenessPassed !== undefined">
                 <mat-icon [class]="doc.livenessPassed ? 'success' : 'error'">
@@ -151,13 +166,16 @@ export interface DocumentPreviewDialogData {
               <div class="confidence-meter" *ngIf="doc.faceMatchPercent !== undefined">
                 <span class="confidence-label">Podudarnost lica</span>
                 <div class="meter-bar">
-                  <div 
+                  <div
                     class="meter-fill"
                     [class]="'confidence-' + getConfidenceLevel(doc.faceMatchPercent)"
                     [style.width.%]="doc.faceMatchPercent"
                   ></div>
                 </div>
-                <span class="confidence-value" [class]="'confidence-' + getConfidenceLevel(doc.faceMatchPercent)">
+                <span
+                  class="confidence-value"
+                  [class]="'confidence-' + getConfidenceLevel(doc.faceMatchPercent)"
+                >
                   {{ doc.faceMatchPercent }}%
                 </span>
               </div>
@@ -166,13 +184,16 @@ export interface DocumentPreviewDialogData {
               <div class="confidence-meter" *ngIf="doc.nameMatchPercent !== undefined">
                 <span class="confidence-label">Podudarnost imena</span>
                 <div class="meter-bar">
-                  <div 
+                  <div
                     class="meter-fill"
                     [class]="'confidence-' + getConfidenceLevel(doc.nameMatchPercent)"
                     [style.width.%]="doc.nameMatchPercent"
                   ></div>
                 </div>
-                <span class="confidence-value" [class]="'confidence-' + getConfidenceLevel(doc.nameMatchPercent)">
+                <span
+                  class="confidence-value"
+                  [class]="'confidence-' + getConfidenceLevel(doc.nameMatchPercent)"
+                >
                   {{ doc.nameMatchPercent }}%
                 </span>
               </div>
@@ -190,7 +211,7 @@ export interface DocumentPreviewDialogData {
                 <mat-icon>info</mat-icon>
                 Informacije o dokumentu
               </h3>
-              
+
               <div class="results-grid">
                 <div class="result-item">
                   <span class="result-label">Status</span>
@@ -221,19 +242,19 @@ export interface DocumentPreviewDialogData {
           <mat-icon>download</mat-icon>
           Preuzmi
         </button>
-        <button mat-flat-button color="primary" (click)="close()">
-          Zatvori
-        </button>
+        <button mat-flat-button color="primary" (click)="close()">Zatvori</button>
       </mat-dialog-actions>
     </div>
   `,
 })
 export class DocumentPreviewDialogComponent implements OnInit {
   private api = inject(AdminApiService);
+  private confirmDialog = inject(MatDialog);
+  private notification = inject(AdminNotificationService);
   private sanitizer = inject(DomSanitizer);
 
   doc: RenterDocumentDto;
-  
+
   imageUrl: SafeUrl | null = null;
   imageLoading = true;
   imageError = false;
@@ -241,7 +262,7 @@ export class DocumentPreviewDialogComponent implements OnInit {
 
   constructor(
     private dialogRef: MatDialogRef<DocumentPreviewDialogComponent>,
-    @Inject(MAT_DIALOG_DATA) public data: DocumentPreviewDialogData
+    @Inject(MAT_DIALOG_DATA) public data: DocumentPreviewDialogData,
   ) {
     this.doc = data.document;
   }
@@ -258,17 +279,8 @@ export class DocumentPreviewDialogComponent implements OnInit {
 
     // If we have a download URL, use it directly
     if (this.doc.downloadUrl) {
-      this.api.downloadRenterDocument(this.doc.id).subscribe({
-        next: (blob) => {
-          const url = URL.createObjectURL(blob);
-          this.imageUrl = this.sanitizer.bypassSecurityTrustUrl(url);
-          this.imageLoading = false;
-        },
-        error: () => {
-          this.imageError = true;
-          this.imageLoading = false;
-        },
-      });
+      this.imageUrl = this.sanitizer.bypassSecurityTrustUrl(this.doc.downloadUrl);
+      this.imageLoading = false;
     } else {
       this.imageError = true;
       this.imageLoading = false;
@@ -356,10 +368,10 @@ export class DocumentPreviewDialogComponent implements OnInit {
 
   getRecommendationClass(): string {
     if (!this.hasBiometricData()) return 'neutral';
-    
+
     const liveness = this.doc.livenessPassed ?? false;
     const faceMatch = this.doc.faceMatchPercent ?? 0;
-    
+
     if (liveness && faceMatch >= 85) return 'success';
     if (!liveness || faceMatch < 70) return 'error';
     return 'warn';
@@ -368,36 +380,55 @@ export class DocumentPreviewDialogComponent implements OnInit {
   getRecommendationIcon(): string {
     const cls = this.getRecommendationClass();
     switch (cls) {
-      case 'success': return 'thumb_up';
-      case 'error': return 'thumb_down';
-      default: return 'warning';
+      case 'success':
+        return 'thumb_up';
+      case 'error':
+        return 'thumb_down';
+      default:
+        return 'warning';
     }
   }
 
   getRecommendationText(): string {
     const cls = this.getRecommendationClass();
     switch (cls) {
-      case 'success': return 'Svi provere su uspešne. Bezbedno za odobrenje.';
-      case 'error': return 'Provere nisu uspešne. Preporučuje se odbijanje.';
-      default: return 'Neke provere su na granici. Pregled je potreban.';
+      case 'success':
+        return 'Svi provere su uspešne. Bezbedno za odobrenje.';
+      case 'error':
+        return 'Provere nisu uspešne. Preporučuje se odbijanje.';
+      default:
+        return 'Neke provere su na granici. Pregled je potreban.';
     }
   }
 
   // ==================== ACTIONS ====================
 
   download(): void {
-    if (this.doc.downloadUrl) {
-      this.api.downloadRenterDocument(this.doc.id).subscribe({
-        next: (blob) => {
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = this.doc.filename || `document-${this.doc.id}.jpg`;
-          a.click();
-          URL.revokeObjectURL(url);
+    const dialogRef = this.confirmDialog.open(ConfirmDialogComponent, {
+      width: '460px',
+      data: {
+        title: 'Preuzmi dokument',
+        message: 'Unesite razlog preuzimanja dokumenta. Ova akcija se trajno evidentira.',
+        confirmText: 'Preuzmi',
+        confirmColor: 'warn',
+        requireReason: true,
+        reasonLabel: 'Razlog preuzimanja',
+        reasonMinLength: 8,
+      },
+    });
+
+    dialogRef.afterClosed().subscribe((reason: string | undefined) => {
+      if (!reason) {
+        return;
+      }
+
+      this.api.downloadRenterDocument(this.doc.id, reason).subscribe({
+        next: (grant) => {
+          window.open(grant.url, '_blank', 'noopener');
         },
+        error: () => this.notification.showError('Greška pri dodeli pristupa za preuzimanje'),
       });
-    }
+    });
   }
 
   close(): void {

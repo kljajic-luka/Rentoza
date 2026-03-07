@@ -2,12 +2,11 @@ package org.example.rentoza.user.verification;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.example.rentoza.car.storage.DocumentStorageStrategy;
 import org.example.rentoza.config.timezone.SerbiaTimeZone;
 import org.example.rentoza.scheduler.SchedulerIdempotencyService;
+import org.example.rentoza.storage.SupabaseStorageService;
 import org.example.rentoza.user.document.RenterDocument;
 import org.example.rentoza.user.document.RenterDocumentRepository;
-import org.example.rentoza.user.document.RenterDocumentType;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -48,7 +47,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class RenterDocumentRetentionScheduler {
     
     private final RenterDocumentRepository documentRepository;
-    private final DocumentStorageStrategy storageStrategy;
+    private final SupabaseStorageService storageService;
     private final SchedulerIdempotencyService lockService;
     
     // ==================== RETENTION PERIODS ====================
@@ -123,10 +122,9 @@ public class RenterDocumentRetentionScheduler {
 
             for (RenterDocument selfie : expiredSelfies) {
                 try {
-                    // Delete physical file first
-                    if (selfie.getDocumentUrl() != null) {
-                        storageStrategy.deleteFile(selfie.getDocumentUrl());
-                        log.debug("Deleted selfie file: {}", selfie.getDocumentUrl());
+                    if (!deleteRenterStorageObject(selfie, "selfie retention")) {
+                        errorCount.incrementAndGet();
+                        continue;
                     }
 
                     // Delete database record
@@ -186,9 +184,9 @@ public class RenterDocumentRetentionScheduler {
 
             for (RenterDocument doc : rejectedDocs) {
                 try {
-                    // Delete physical file
-                    if (doc.getDocumentUrl() != null) {
-                        storageStrategy.deleteFile(doc.getDocumentUrl());
+                    if (!deleteRenterStorageObject(doc, "rejected document retention")) {
+                        errorCount.incrementAndGet();
+                        continue;
                     }
 
                     // Delete database record
@@ -246,8 +244,9 @@ public class RenterDocumentRetentionScheduler {
 
             for (RenterDocument doc : oldDocuments) {
                 try {
-                    // Delete physical file but keep database record
-                    storageStrategy.deleteFile(doc.getDocumentUrl());
+                    if (!deleteRenterStorageObject(doc, "document anonymization")) {
+                        continue;
+                    }
 
                     // Anonymize the record
                     doc.setDocumentUrl(null);
@@ -306,5 +305,28 @@ public class RenterDocumentRetentionScheduler {
             "rejectedPendingDeletion", pendingRejected,
             "retentionCleanupEnabled", retentionCleanupEnabled
         );
+    }
+
+    private boolean deleteRenterStorageObject(RenterDocument doc, String operation) {
+        String storagePath = doc.getDocumentUrl();
+        if (storagePath == null || storagePath.isBlank()) {
+            return true;
+        }
+
+        try {
+            if (!storageService.objectExistsInRenterDocuments(storagePath)) {
+                log.warn("Renter document orphan detected during {}: documentId={}, path={}",
+                    operation, doc.getId(), storagePath);
+                return true;
+            }
+
+            storageService.deleteRenterDocument(storagePath);
+            log.debug("Deleted renter storage object during {}: {}", operation, storagePath);
+            return true;
+        } catch (Exception e) {
+            log.error("Failed to delete renter storage object during {}: documentId={}, path={}",
+                operation, doc.getId(), storagePath, e);
+            return false;
+        }
     }
 }

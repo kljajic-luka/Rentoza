@@ -16,6 +16,7 @@ import { AdminNotificationService } from '@core/services/admin-notification.serv
 import { ConfirmDialogComponent } from '../../shared/dialogs/confirm-dialog/confirm-dialog.component';
 import {
   AdminVerificationDetails,
+  DocumentAccessGrant,
   VerificationAuditEvent,
   DriverLicenseStatus,
   RiskLevel,
@@ -173,24 +174,93 @@ export class RenterVerificationDetailComponent implements OnInit {
       return;
     }
 
+    const dialogRef = this.dialog.open(ConfirmDialogComponent, {
+      data: {
+        title: 'Prikaži dokument',
+        message: 'Unesite razlog pregleda dokumenta. Ova akcija se trajno evidentira.',
+        confirmText: 'Prikaži',
+        confirmColor: 'primary',
+        requireReason: true,
+        reasonLabel: 'Razlog pregleda',
+        reasonMinLength: 8,
+      },
+    });
+
+    dialogRef
+      .afterClosed()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((reason) => {
+        if (!reason) {
+          return;
+        }
+
+        this.requestDocumentAccess(docId, 'REVEAL', reason);
+      });
+  }
+
+  requestDocumentDownload(docId: number): void {
+    const dialogRef = this.dialog.open(ConfirmDialogComponent, {
+      data: {
+        title: 'Preuzmi dokument',
+        message: 'Unesite razlog preuzimanja dokumenta. Ova akcija se trajno evidentira.',
+        confirmText: 'Preuzmi',
+        confirmColor: 'warn',
+        requireReason: true,
+        reasonLabel: 'Razlog preuzimanja',
+        reasonMinLength: 8,
+      },
+    });
+
+    dialogRef
+      .afterClosed()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((reason) => {
+        if (!reason) {
+          return;
+        }
+
+        this.requestDocumentAccess(docId, 'DOWNLOAD', reason);
+      });
+  }
+
+  private requestDocumentAccess(docId: number, mode: 'REVEAL' | 'DOWNLOAD', reason: string): void {
     this.loadingDocId.set(docId);
 
-    this.adminService
-      .getDocumentSignedUrl(docId)
+    const access$ =
+      mode === 'REVEAL'
+        ? this.adminService.revealDocument(docId, { reason })
+        : this.adminService.downloadDocument(docId, { reason });
+
+    access$
       .pipe(
         takeUntilDestroyed(this.destroyRef),
         finalize(() => this.loadingDocId.set(null)),
       )
       .subscribe({
         next: (result) => {
-          const urls = new Map(this.documentUrls());
-          urls.set(docId, result.url);
-          this.documentUrls.set(urls);
+          this.applyDocumentAccessResult(docId, mode, result);
         },
         error: () => {
-          this.notification.showError('Failed to load document');
+          this.notification.showError(
+            mode === 'REVEAL' ? 'Failed to load document' : 'Failed to grant download access',
+          );
         },
       });
+  }
+
+  private applyDocumentAccessResult(
+    docId: number,
+    mode: 'REVEAL' | 'DOWNLOAD',
+    result: DocumentAccessGrant,
+  ): void {
+    if (mode === 'REVEAL') {
+      const urls = new Map(this.documentUrls());
+      urls.set(docId, result.url);
+      this.documentUrls.set(urls);
+      return;
+    }
+
+    window.open(result.url, '_blank', 'noopener');
   }
 
   // ============================================================================
@@ -372,12 +442,23 @@ export class RenterVerificationDetailComponent implements OnInit {
 
   getAuditActionLabel(action: string): string {
     const labels: Record<string, string> = {
+      SUBMITTED: 'Dokument podnet',
+      RESUBMITTED: 'Dokument ponovo podnet',
       DOCUMENT_SUBMITTED: 'Dokument podnet',
       AUTO_APPROVED: 'Auto-odobreno',
       AUTO_REJECTED: 'Auto-odbijeno',
       MANUAL_APPROVED: 'Ručno odobreno',
       MANUAL_REJECTED: 'Ručno odbijeno',
       SUSPENDED: 'Suspendovan',
+      UNSUSPENDED: 'Suspenzija uklonjena',
+      ESCALATED_TO_REVIEW: 'Prosleđeno na ručni pregled',
+      PROCESSING_STARTED: 'Obrada započeta',
+      PROCESSING_COMPLETED: 'Obrada završena',
+      PROCESSING_FAILED: 'Obrada neuspešna',
+      LIVENESS_PASSED: 'Provera živosti uspešna',
+      LIVENESS_FAILED: 'Provera živosti neuspešna',
+      FACE_MATCH_PASSED: 'Podudaranje lica uspešno',
+      FACE_MATCH_FAILED: 'Podudaranje lica neuspešno',
       RESUBMISSION_REQUESTED: 'Zatražena ponovna prijava',
       EXPIRED: 'Isteklo',
       REACTIVATED: 'Reaktivirano',

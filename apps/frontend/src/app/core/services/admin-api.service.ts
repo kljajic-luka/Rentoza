@@ -242,17 +242,26 @@ export class AdminApiService {
     );
   }
 
-  getRenterDocumentSignedUrl(documentId: number): Observable<SignedUrlResponse> {
+  getRenterDocumentSignedUrl(
+    documentId: number,
+    reason: string,
+    caseReference?: string,
+  ): Observable<SignedUrlResponse> {
     return this.http.post<SignedUrlResponse>(
-      `${this.apiUrl}/renter-verifications/documents/${documentId}/signed-url`,
-      {},
+      `${this.apiUrl}/renter-verifications/documents/${documentId}/reveal`,
+      { reason, caseReference },
     );
   }
 
-  downloadRenterDocument(documentId: number): Observable<Blob> {
-    return this.http.get(`${this.apiUrl}/renter-verifications/documents/${documentId}/download`, {
-      responseType: 'blob',
-    });
+  downloadRenterDocument(
+    documentId: number,
+    reason: string,
+    caseReference?: string,
+  ): Observable<SignedUrlResponse> {
+    return this.http.post<SignedUrlResponse>(
+      `${this.apiUrl}/renter-verifications/documents/${documentId}/download`,
+      { reason, caseReference },
+    );
   }
 
   approveRenterVerification(

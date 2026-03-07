@@ -265,11 +265,40 @@ export class UserDetailComponent implements OnInit {
    * Open document preview dialog.
    */
   openRenterDocumentPreview(doc: RenterDocumentDto): void {
-    this.dialog.open(DocumentPreviewDialogComponent, {
-      width: '90vw',
-      maxWidth: '1200px',
-      maxHeight: '90vh',
-      data: { document: doc } as DocumentPreviewDialogData,
+    const dialogRef = this.dialog.open(ConfirmDialogComponent, {
+      width: '460px',
+      data: {
+        title: 'Prikaži dokument',
+        message: 'Unesite razlog pregleda dokumenta. Ova akcija se trajno evidentira.',
+        confirmText: 'Prikaži',
+        confirmColor: 'primary',
+        requireReason: true,
+        reasonLabel: 'Razlog pregleda',
+        reasonMinLength: 8,
+      },
+    });
+
+    dialogRef.afterClosed().subscribe((reason: string | undefined) => {
+      if (!reason) {
+        return;
+      }
+
+      this.adminApi.getRenterDocumentSignedUrl(doc.id, reason).subscribe({
+        next: (grant) => {
+          this.dialog.open(DocumentPreviewDialogComponent, {
+            width: '90vw',
+            maxWidth: '1200px',
+            maxHeight: '90vh',
+            data: {
+              document: {
+                ...doc,
+                downloadUrl: grant.url,
+              },
+            } as DocumentPreviewDialogData,
+          });
+        },
+        error: () => this.notification.showError('Greška pri učitavanju dokumenta'),
+      });
     });
   }
 

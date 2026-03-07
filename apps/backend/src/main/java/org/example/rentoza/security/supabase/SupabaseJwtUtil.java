@@ -327,6 +327,9 @@ public class SupabaseJwtUtil {
     public Date getExpirationDateFromToken(String token) {
         return extractClaim(token, Claims::getExpiration);
     }
+    public Date getIssuedAt(String token) {
+        return extractClaim(token, Claims::getIssuedAt);
+    }
 
     /**
      * Extract all claims from the token.

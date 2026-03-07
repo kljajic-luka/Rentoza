@@ -1,5 +1,6 @@
 package org.example.rentoza.security.password;
 
+import org.example.rentoza.deprecated.auth.RefreshTokenServiceEnhanced;
 import org.example.rentoza.notification.mail.MailService;
 import org.example.rentoza.security.supabase.SupabaseAuthClient;
 import org.example.rentoza.security.supabase.SupabaseAuthClient.SupabaseAuthException;
@@ -48,6 +49,7 @@ public class PasswordResetService {
     private final PasswordPolicyService passwordPolicyService;
     private final PasswordHistoryRepository passwordHistoryRepository;
     private final SupabaseAuthClient supabaseClient;
+    private final RefreshTokenServiceEnhanced refreshTokenService;
     private final MailService mailService;          // nullable when notifications.email.enabled=false
     private final SecureRandom secureRandom = new SecureRandom();
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
@@ -61,6 +63,7 @@ public class PasswordResetService {
             PasswordPolicyService passwordPolicyService,
             PasswordHistoryRepository passwordHistoryRepository,
             SupabaseAuthClient supabaseClient,
+            @Autowired(required = false) RefreshTokenServiceEnhanced refreshTokenService,
             @Autowired(required = false) MailService mailService
     ) {
         this.userRepository = userRepository;
@@ -68,6 +71,7 @@ public class PasswordResetService {
         this.passwordPolicyService = passwordPolicyService;
         this.passwordHistoryRepository = passwordHistoryRepository;
         this.supabaseClient = supabaseClient;
+        this.refreshTokenService = refreshTokenService;
         this.mailService = mailService;
     }
 
@@ -194,6 +198,13 @@ public class PasswordResetService {
 
         // Update local password
         user.setPassword(hashedPassword);
+        user.setPasswordChangedAt(Instant.now());
+        user.resetFailedLoginAttempts();
+
+        if (refreshTokenService != null) {
+            refreshTokenService.revokeAll(user.getEmail(), "PASSWORD_RESET");
+        }
+
         userRepository.save(user);
 
         // Record in password history
@@ -202,10 +213,6 @@ public class PasswordResetService {
         // Mark token as used (one-time)
         resetToken.markUsed();
         tokenRepository.save(resetToken);
-
-        // Reset failed login attempts
-        user.resetFailedLoginAttempts();
-        userRepository.save(user);
 
         log.info("Password successfully reset for userId={}", user.getId());
         return true;

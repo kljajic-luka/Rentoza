@@ -7,303 +7,343 @@
     <div class="header-content">
       <h1>Pregled verifikacije</h1>
       @if (details(); as d) {
-      <span class="user-info">{{ d.fullName }} ({{ d.email }})</span>
+        <span class="user-info">{{ d.fullName }} ({{ d.email }})</span>
       }
     </div>
   </div>
 
   <!-- Loading State -->
   @if (loading()) {
-  <div class="loading-container">
-    <mat-progress-spinner mode="indeterminate" diameter="48"></mat-progress-spinner>
-    <span>Učitavanje...</span>
-  </div>
+    <div class="loading-container">
+      <mat-progress-spinner mode="indeterminate" diameter="48"></mat-progress-spinner>
+      <span>Učitavanje...</span>
+    </div>
   }
 
   <!-- Error State -->
   @if (error(); as err) {
-  <mat-card class="error-card">
-    <mat-icon>error_outline</mat-icon>
-    <span>{{ err }}</span>
-    <button mat-stroked-button (click)="loadDetails()">Pokušaj ponovo</button>
-  </mat-card>
+    <mat-card class="error-card">
+      <mat-icon>error_outline</mat-icon>
+      <span>{{ err }}</span>
+      <button mat-stroked-button (click)="loadDetails()">Pokušaj ponovo</button>
+    </mat-card>
   }
 
   <!-- Content -->
   @if (!loading() && !error() && details(); as d) {
-  <div class="detail-content">
-    <!-- Status Card -->
-    <mat-card class="status-card">
-      <mat-card-header>
-        <mat-icon mat-card-avatar class="status-icon {{ statusClass() }}">
-          {{ statusIcon() }}
-        </mat-icon>
-        <mat-card-title>{{ statusLabel() }}</mat-card-title>
-        <mat-card-subtitle>Status verifikacije</mat-card-subtitle>
-      </mat-card-header>
+    <div class="detail-content">
+      <!-- Status Card -->
+      <mat-card class="status-card">
+        <mat-card-header>
+          <mat-icon mat-card-avatar class="status-icon {{ statusClass() }}">
+            {{ statusIcon() }}
+          </mat-icon>
+          <mat-card-title>{{ statusLabel() }}</mat-card-title>
+          <mat-card-subtitle>Status verifikacije</mat-card-subtitle>
+        </mat-card-header>
 
-      <mat-card-content>
-        <div class="status-meta">
-          @if (d.riskLevel) {
-          <div class="meta-item">
-            <span class="label">Nivo rizika:</span>
-            <span class="risk-badge {{ getRiskClass(d.riskLevel) }}">
-              {{ getRiskLabel(d.riskLevel) }}
-            </span>
-          </div>
-          } @if (d.ocrResults?.confidence) {
-          <div class="meta-item">
-            <span class="label">OCR pouzdanost:</span>
-            <span
-              class="confidence {{
-                d.ocrResults!.confidence >= 0.8
-                  ? 'high'
-                  : d.ocrResults!.confidence >= 0.6
-                  ? 'medium'
-                  : 'low'
-              }}"
-            >
-              {{ formatPercent(d.ocrResults!.confidence) }}
-            </span>
-          </div>
-          }
-          <div class="meta-item">
-            <span class="label">Poslednja izmena:</span>
-            <span>{{ formatDate(d.lastStatusChangeAt ?? null) }}</span>
-          </div>
-          @if (d.rejectionReason) {
-          <div class="meta-item rejection-reason">
-            <span class="label">Razlog odbijanja:</span>
-            <span>{{ d.rejectionReason }}</span>
-          </div>
-          }
-        </div>
-      </mat-card-content>
-
-      <mat-card-actions align="end">
-        @if (canApprove()) {
-        <button
-          mat-raised-button
-          color="primary"
-          (click)="onApprove()"
-          [disabled]="actionLoading()"
-        >
-          <mat-icon>check_circle</mat-icon>
-          Odobri
-        </button>
-        } @if (canReject()) {
-        <button mat-stroked-button color="warn" (click)="onReject()" [disabled]="actionLoading()">
-          <mat-icon>cancel</mat-icon>
-          Odbij
-        </button>
-        } @if (canSuspend()) {
-        <button mat-stroked-button color="warn" (click)="onSuspend()" [disabled]="actionLoading()">
-          <mat-icon>block</mat-icon>
-          Suspenduj
-        </button>
-        }
-      </mat-card-actions>
-    </mat-card>
-
-    <!-- Tabs -->
-    <mat-tab-group animationDuration="200ms">
-      <!-- Documents Tab -->
-      <mat-tab>
-        <ng-template mat-tab-label>
-          <mat-icon>description</mat-icon>
-          Dokumenti
-        </ng-template>
-
-        <div class="tab-content documents-tab">
-          @if (documents().length === 0) {
-          <div class="empty-state">
-            <mat-icon>folder_off</mat-icon>
-            <p>Nema priloženih dokumenata</p>
-          </div>
-          } @else {
-          <div class="documents-grid">
-            @for (doc of documents(); track doc.id) {
-            <mat-card class="document-card">
-              <mat-card-header>
-                <mat-card-title>{{ getDocumentTypeLabel(doc.documentType) }}</mat-card-title>
-                <mat-card-subtitle> Podneto: {{ formatDate(doc.uploadedAt) }} </mat-card-subtitle>
-              </mat-card-header>
-
-              <mat-card-content>
-                @if (documentUrls().get(doc.id); as url) {
-                <div class="document-preview">
-                  <img
-                    [src]="url"
-                    [alt]="getDocumentTypeLabel(doc.documentType)"
-                    (error)="onImageError()"
-                  />
-                </div>
-                } @else {
-                <div class="document-placeholder">
-                  @if (loadingDocId() === doc.id) {
-                  <mat-progress-spinner mode="indeterminate" diameter="32"></mat-progress-spinner>
-                  } @else {
-                  <mat-icon>image</mat-icon>
-                  <button mat-stroked-button (click)="loadDocumentUrl(doc.id)">
-                    Prikaži dokument
-                  </button>
-                  }
-                </div>
-                }
-              </mat-card-content>
-
-              <mat-card-actions>
-                @if (documentUrls().get(doc.id); as url) {
-                <a mat-button [href]="url" target="_blank" rel="noopener">
-                  <mat-icon>open_in_new</mat-icon>
-                  Otvori u novom tabu
-                </a>
-                }
-              </mat-card-actions>
-            </mat-card>
+        <mat-card-content>
+          <div class="status-meta">
+            @if (d.riskLevel) {
+              <div class="meta-item">
+                <span class="label">Nivo rizika:</span>
+                <span class="risk-badge {{ getRiskClass(d.riskLevel) }}">
+                  {{ getRiskLabel(d.riskLevel) }}
+                </span>
+              </div>
+            }
+            @if (d.ocrResults?.confidence) {
+              <div class="meta-item">
+                <span class="label">OCR pouzdanost:</span>
+                <span
+                  class="confidence {{
+                    d.ocrResults!.confidence >= 0.8
+                      ? 'high'
+                      : d.ocrResults!.confidence >= 0.6
+                        ? 'medium'
+                        : 'low'
+                  }}"
+                >
+                  {{ formatPercent(d.ocrResults!.confidence) }}
+                </span>
+              </div>
+            }
+            <div class="meta-item">
+              <span class="label">Poslednja izmena:</span>
+              <span>{{ formatDate(d.lastStatusChangeAt ?? null) }}</span>
+            </div>
+            @if (d.rejectionReason) {
+              <div class="meta-item rejection-reason">
+                <span class="label">Razlog odbijanja:</span>
+                <span>{{ d.rejectionReason }}</span>
+              </div>
             }
           </div>
+        </mat-card-content>
+
+        <mat-card-actions align="end">
+          @if (canApprove()) {
+            <button
+              mat-raised-button
+              color="primary"
+              (click)="onApprove()"
+              [disabled]="actionLoading()"
+            >
+              <mat-icon>check_circle</mat-icon>
+              Odobri
+            </button>
           }
-        </div>
-      </mat-tab>
-
-      <!-- OCR Results Tab -->
-      <mat-tab>
-        <ng-template mat-tab-label>
-          <mat-icon>document_scanner</mat-icon>
-          OCR rezultati
-        </ng-template>
-
-        <div class="tab-content ocr-tab">
-          @if (ocrResults(); as ocr) {
-          <div class="ocr-grid">
-            <div class="ocr-item">
-              <span class="label">Ime i prezime:</span>
-              <span class="value">{{ ocr.fullName || 'N/A' }}</span>
-            </div>
-            <div class="ocr-item">
-              <span class="label">Broj dozvole:</span>
-              <span class="value">{{ ocr.licenseNumber || 'N/A' }}</span>
-            </div>
-            <div class="ocr-item">
-              <span class="label">Datum rođenja:</span>
-              <span class="value">{{ ocr.dateOfBirth || 'N/A' }}</span>
-            </div>
-            <div class="ocr-item">
-              <span class="label">Datum izdavanja:</span>
-              <span class="value">{{ ocr.issueDate || 'N/A' }}</span>
-            </div>
-            <div class="ocr-item">
-              <span class="label">Datum isteka:</span>
-              <span class="value">{{ ocr.expiryDate || 'N/A' }}</span>
-            </div>
-            <div class="ocr-item">
-              <span class="label">Kategorije:</span>
-              <span class="value">
-                @if (ocr.categories?.length) {
-                {{ ocr.categories!.join(', ') }}
-                } @else { N/A }
-              </span>
-            </div>
-            <div class="ocr-item">
-              <span class="label">Država izdavanja:</span>
-              <span class="value">{{ ocr.issuingCountry || 'N/A' }}</span>
-            </div>
-            <mat-divider></mat-divider>
-            <div class="ocr-item confidence">
-              <span class="label">Ukupna pouzdanost:</span>
-              <span
-                class="value confidence-value {{
-                  ocr.confidence >= 0.8 ? 'high' : ocr.confidence >= 0.6 ? 'medium' : 'low'
-                }}"
-              >
-                {{ formatPercent(ocr.confidence) }}
-              </span>
-            </div>
-          </div>
-          } @else {
-          <div class="empty-state">
-            <mat-icon>document_scanner</mat-icon>
-            <p>Nema dostupnih OCR rezultata</p>
-          </div>
+          @if (canReject()) {
+            <button
+              mat-stroked-button
+              color="warn"
+              (click)="onReject()"
+              [disabled]="actionLoading()"
+            >
+              <mat-icon>cancel</mat-icon>
+              Odbij
+            </button>
           }
-        </div>
-      </mat-tab>
+          @if (canSuspend()) {
+            <button
+              mat-stroked-button
+              color="warn"
+              (click)="onSuspend()"
+              [disabled]="actionLoading()"
+            >
+              <mat-icon>block</mat-icon>
+              Suspenduj
+            </button>
+          }
+        </mat-card-actions>
+      </mat-card>
 
-      <!-- Audit Trail Tab -->
-      <mat-tab>
-        <ng-template mat-tab-label>
-          <mat-icon>history</mat-icon>
-          Istorija
-        </ng-template>
+      <!-- Tabs -->
+      <mat-tab-group animationDuration="200ms">
+        <!-- Documents Tab -->
+        <mat-tab>
+          <ng-template mat-tab-label>
+            <mat-icon>description</mat-icon>
+            Dokumenti
+          </ng-template>
 
-        <div class="tab-content audit-tab">
-          @if (auditTrail().length === 0) {
-          <div class="empty-state">
-            <mat-icon>history_toggle_off</mat-icon>
-            <p>Nema istorije za ovu verifikaciju</p>
-          </div>
-          } @else {
-          <div class="audit-timeline">
-            @for (event of auditTrail(); track event.id) {
-            <div class="audit-event">
-              <div class="event-dot"></div>
-              <div class="event-content">
-                <div class="event-header">
-                  <span class="event-action">{{ getAuditActionLabel(event.eventType) }}</span>
-                  <span class="event-time">{{ formatDate(event.createdAt) }}</span>
-                </div>
-                @if (event.actorEmail) {
-                <div class="event-actor">
-                  <mat-icon>person</mat-icon>
-                  {{ event.actorEmail }}
-                </div>
-                } @if (event.notes) {
-                <div class="event-notes">{{ event.notes }}</div>
+          <div class="tab-content documents-tab">
+            @if (documents().length === 0) {
+              <div class="empty-state">
+                <mat-icon>folder_off</mat-icon>
+                <p>Nema priloženih dokumenata</p>
+              </div>
+            } @else {
+              <div class="documents-grid">
+                @for (doc of documents(); track doc.id) {
+                  <mat-card class="document-card">
+                    <mat-card-header>
+                      <mat-card-title>{{ getDocumentTypeLabel(doc.documentType) }}</mat-card-title>
+                      <mat-card-subtitle>
+                        Podneto: {{ formatDate(doc.uploadedAt) }}
+                      </mat-card-subtitle>
+                    </mat-card-header>
+
+                    <mat-card-content>
+                      @if (documentUrls().get(doc.id); as url) {
+                        <div class="document-preview">
+                          <img
+                            [src]="url"
+                            [alt]="getDocumentTypeLabel(doc.documentType)"
+                            (error)="onImageError()"
+                          />
+                        </div>
+                      } @else {
+                        <div class="document-placeholder">
+                          @if (loadingDocId() === doc.id) {
+                            <mat-progress-spinner
+                              mode="indeterminate"
+                              diameter="32"
+                            ></mat-progress-spinner>
+                          } @else {
+                            <mat-icon>image</mat-icon>
+                            <button mat-stroked-button (click)="loadDocumentUrl(doc.id)">
+                              Prikaži dokument
+                            </button>
+                          }
+                        </div>
+                      }
+                    </mat-card-content>
+
+                    <mat-card-actions>
+                      @if (documentUrls().get(doc.id); as url) {
+                        <a mat-button [href]="url" target="_blank" rel="noopener">
+                          <mat-icon>open_in_new</mat-icon>
+                          Otvori u novom tabu
+                        </a>
+                        <button
+                          mat-button
+                          color="warn"
+                          type="button"
+                          (click)="requestDocumentDownload(doc.id)"
+                        >
+                          <mat-icon>download</mat-icon>
+                          Preuzmi dokument
+                        </button>
+                      } @else {
+                        <button
+                          mat-button
+                          color="warn"
+                          type="button"
+                          (click)="requestDocumentDownload(doc.id)"
+                        >
+                          <mat-icon>download</mat-icon>
+                          Zatraži preuzimanje
+                        </button>
+                      }
+                    </mat-card-actions>
+                  </mat-card>
                 }
               </div>
-            </div>
             }
           </div>
-          }
-        </div>
-      </mat-tab>
+        </mat-tab>
 
-      <!-- User Info Tab -->
-      <mat-tab>
-        <ng-template mat-tab-label>
-          <mat-icon>person</mat-icon>
-          Korisnik
-        </ng-template>
+        <!-- OCR Results Tab -->
+        <mat-tab>
+          <ng-template mat-tab-label>
+            <mat-icon>document_scanner</mat-icon>
+            OCR rezultati
+          </ng-template>
 
-        <div class="tab-content user-tab">
-          <div class="user-info-grid">
-            <div class="info-item">
-              <span class="label">ID korisnika:</span>
-              <span class="value">{{ d.userId }}</span>
-            </div>
-            <div class="info-item">
-              <span class="label">Ime i prezime:</span>
-              <span class="value">{{ d.fullName }}</span>
-            </div>
-            <div class="info-item">
-              <span class="label">Email:</span>
-              <span class="value">{{ d.email }}</span>
-            </div>
-            @if (d.phoneNumber) {
-            <div class="info-item">
-              <span class="label">Telefon:</span>
-              <span class="value">{{ d.phoneNumber }}</span>
-            </div>
+          <div class="tab-content ocr-tab">
+            @if (ocrResults(); as ocr) {
+              <div class="ocr-grid">
+                <div class="ocr-item">
+                  <span class="label">Ime i prezime:</span>
+                  <span class="value">{{ ocr.fullName || 'N/A' }}</span>
+                </div>
+                <div class="ocr-item">
+                  <span class="label">Broj dozvole:</span>
+                  <span class="value">{{ ocr.licenseNumber || 'N/A' }}</span>
+                </div>
+                <div class="ocr-item">
+                  <span class="label">Datum rođenja:</span>
+                  <span class="value">{{ ocr.dateOfBirth || 'N/A' }}</span>
+                </div>
+                <div class="ocr-item">
+                  <span class="label">Datum izdavanja:</span>
+                  <span class="value">{{ ocr.issueDate || 'N/A' }}</span>
+                </div>
+                <div class="ocr-item">
+                  <span class="label">Datum isteka:</span>
+                  <span class="value">{{ ocr.expiryDate || 'N/A' }}</span>
+                </div>
+                <div class="ocr-item">
+                  <span class="label">Kategorije:</span>
+                  <span class="value">
+                    @if (ocr.categories?.length) {
+                      {{ ocr.categories!.join(', ') }}
+                    } @else {
+                      N/A
+                    }
+                  </span>
+                </div>
+                <div class="ocr-item">
+                  <span class="label">Država izdavanja:</span>
+                  <span class="value">{{ ocr.issuingCountry || 'N/A' }}</span>
+                </div>
+                <mat-divider></mat-divider>
+                <div class="ocr-item confidence">
+                  <span class="label">Ukupna pouzdanost:</span>
+                  <span
+                    class="value confidence-value {{
+                      ocr.confidence >= 0.8 ? 'high' : ocr.confidence >= 0.6 ? 'medium' : 'low'
+                    }}"
+                  >
+                    {{ formatPercent(ocr.confidence) }}
+                  </span>
+                </div>
+              </div>
+            } @else {
+              <div class="empty-state">
+                <mat-icon>document_scanner</mat-icon>
+                <p>Nema dostupnih OCR rezultata</p>
+              </div>
             }
-            <div class="info-item">
-              <span class="label">Registrovan:</span>
-              <span class="value">{{ formatDate(d.registeredAt ?? null) }}</span>
+          </div>
+        </mat-tab>
+
+        <!-- Audit Trail Tab -->
+        <mat-tab>
+          <ng-template mat-tab-label>
+            <mat-icon>history</mat-icon>
+            Istorija
+          </ng-template>
+
+          <div class="tab-content audit-tab">
+            @if (auditTrail().length === 0) {
+              <div class="empty-state">
+                <mat-icon>history_toggle_off</mat-icon>
+                <p>Nema istorije za ovu verifikaciju</p>
+              </div>
+            } @else {
+              <div class="audit-timeline">
+                @for (event of auditTrail(); track event.id) {
+                  <div class="audit-event">
+                    <div class="event-dot"></div>
+                    <div class="event-content">
+                      <div class="event-header">
+                        <span class="event-action">{{ getAuditActionLabel(event.eventType) }}</span>
+                        <span class="event-time">{{ formatDate(event.createdAt) }}</span>
+                      </div>
+                      @if (event.actorName || event.actorEmail) {
+                        <div class="event-actor">
+                          <mat-icon>person</mat-icon>
+                          {{ event.actorName || event.actorEmail }}
+                        </div>
+                      }
+                      @if (event.notes) {
+                        <div class="event-notes">{{ event.notes }}</div>
+                      }
+                    </div>
+                  </div>
+                }
+              </div>
+            }
+          </div>
+        </mat-tab>
+
+        <!-- User Info Tab -->
+        <mat-tab>
+          <ng-template mat-tab-label>
+            <mat-icon>person</mat-icon>
+            Korisnik
+          </ng-template>
+
+          <div class="tab-content user-tab">
+            <div class="user-info-grid">
+              <div class="info-item">
+                <span class="label">ID korisnika:</span>
+                <span class="value">{{ d.userId }}</span>
+              </div>
+              <div class="info-item">
+                <span class="label">Ime i prezime:</span>
+                <span class="value">{{ d.fullName }}</span>
+              </div>
+              <div class="info-item">
+                <span class="label">Email:</span>
+                <span class="value">{{ d.email }}</span>
+              </div>
+              @if (d.phoneNumber) {
+                <div class="info-item">
+                  <span class="label">Telefon:</span>
+                  <span class="value">{{ d.phoneNumber }}</span>
+                </div>
+              }
+              <div class="info-item">
+                <span class="label">Registrovan:</span>
+                <span class="value">{{ formatDate(d.registeredAt ?? null) }}</span>
+              </div>
             </div>
           </div>
-        </div>
-      </mat-tab>
-    </mat-tab-group>
-  </div>
+        </mat-tab>
+      </mat-tab-group>
+    </div>
   }
 </div>

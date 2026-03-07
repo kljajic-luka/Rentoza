@@ -9,8 +9,12 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.example.rentoza.admin.entity.AdminAction;
+import org.example.rentoza.admin.entity.ResourceType;
+import org.example.rentoza.admin.service.AdminAuditService;
 import org.example.rentoza.car.DocumentVerificationStatus;
 import org.example.rentoza.security.CurrentUser;
 import org.example.rentoza.storage.SupabaseStorageService;
@@ -27,6 +31,7 @@ import org.example.rentoza.user.dto.RenterDocumentDTO;
 import org.example.rentoza.user.dto.RenterVerificationProfileDTO;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,6 +40,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -50,12 +56,13 @@ import java.util.stream.Collectors;
  *   <li>View verification analytics</li>
  * </ul>
  * 
- * <p>All endpoints require ADMIN role.
+ * <p>Queue/detail access is limited to ADMIN or IDENTITY_REVIEWER.
+ * Explicit document reveal/download grants are audited immutably.
  */
 @RestController
 @RequestMapping("/api/admin/renter-verifications")
 @Tag(name = "Admin - Renter Verification", description = "Admin management of renter license verification")
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasAnyRole('ADMIN', 'IDENTITY_REVIEWER')")
 @Validated
 @Slf4j
 @RequiredArgsConstructor
@@ -67,6 +74,7 @@ public class AdminRenterVerificationController {
     private final UserRepository userRepository;
     private final SupabaseStorageService storageService;
     private final CurrentUser currentUser;
+    private final AdminAuditService auditService;
     
     // ==================== QUEUE MANAGEMENT ====================
     
@@ -121,7 +129,7 @@ public class AdminRenterVerificationController {
                     .riskLevel(user.getRiskLevel())
                     .documentCount(docs.size())
                     .documents(docs.stream()
-                        .map(d -> RenterDocumentDTO.fromEntityForAdmin(d, getSignedUrl(d)))
+                        .map(RenterDocumentDTO::fromEntityForAdmin)
                         .collect(Collectors.toList()))
                     .build();
             })
@@ -182,17 +190,17 @@ public class AdminRenterVerificationController {
         
         RenterVerificationProfileDTO profile = verificationService.getVerificationProfile(userId);
         
-        // Enhance with admin-specific data (download URLs)
+        // Enhance with admin-specific data without exposing raw document URLs by default
         List<RenterDocument> documents = documentRepository.findByUserIdOrderByCreatedAtDesc(userId);
         List<RenterDocumentDTO> adminDocs = documents.stream()
-            .map(d -> RenterDocumentDTO.fromEntityForAdmin(d, getSignedUrl(d)))
+            .map(RenterDocumentDTO::fromEntityForAdmin)
             .collect(Collectors.toList());
         profile.setDocuments(adminDocs);
         
         return ResponseEntity.ok(profile);
     }
     
-    @Operation(summary = "Get document detail with download URL")
+    @Operation(summary = "Get document detail metadata")
     @GetMapping("/documents/{documentId}")
     @Transactional(readOnly = true)
     public ResponseEntity<RenterDocumentDTO> getDocumentDetail(@PathVariable Long documentId) {
@@ -200,109 +208,75 @@ public class AdminRenterVerificationController {
             .orElseThrow(() -> new org.example.rentoza.exception.ResourceNotFoundException(
                 "Document not found: " + documentId));
         
-        return ResponseEntity.ok(RenterDocumentDTO.fromEntityForAdmin(doc, getSignedUrl(doc)));
+        return ResponseEntity.ok(RenterDocumentDTO.fromEntityForAdmin(doc));
     }
     
     // ==================== DOCUMENT ACCESS ENDPOINTS ====================
     
     @Operation(
-        summary = "Get signed URL for document viewing",
-        description = "Returns a URL to access the renter's verification document. " +
-                      "For local storage, returns a download endpoint URL. " +
-                      "For S3 (future), returns a pre-signed URL with expiry."
+        summary = "Grant explicit document reveal access",
+        description = "Returns a short-lived signed URL for on-screen review. Requires an audit reason."
     )
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "Signed URL generated"),
         @ApiResponse(responseCode = "404", description = "Document not found")
     })
-    @PostMapping("/documents/{documentId}/signed-url")
+    @PostMapping("/documents/{documentId}/reveal")
     @Transactional(readOnly = true)
-    public ResponseEntity<SignedUrlResponse> getDocumentSignedUrl(@PathVariable Long documentId) {
+    public ResponseEntity<DocumentAccessResponse> revealDocument(
+            @PathVariable Long documentId,
+            @RequestBody @Valid DocumentAccessRequest request
+    ) {
         RenterDocument doc = documentRepository.findById(documentId)
             .orElseThrow(() -> new org.example.rentoza.exception.ResourceNotFoundException(
                 "Document not found: " + documentId));
-        
-        log.debug("[AdminRenter] Generating signed URL for documentId={}, user={}", documentId, doc.getUser().getId());
-        
-        // 15-minute signed URL from renter-documents bucket
-        String signedUrl = storageService.getRenterDocumentSignedUrl(doc.getDocumentUrl(), 900);
-        
-        // Calculate expiry (15 minutes from now for security)
-        LocalDateTime expiresAt = LocalDateTime.now().plusSeconds(900);
-        
-        return ResponseEntity.ok(SignedUrlResponse.builder()
+
+        User actor = requireReviewer();
+        logDocumentAccess(actor, doc, request, "REVEAL", AdminAction.DOCUMENT_VIEWED);
+
+        String signedUrl = storageService.getRenterDocumentSignedUrl(doc.getDocumentUrl(), 300);
+        LocalDateTime expiresAt = LocalDateTime.now().plusSeconds(300);
+
+        return ResponseEntity.ok(DocumentAccessResponse.builder()
             .url(signedUrl)
             .expiresAt(expiresAt)
             .documentId(documentId)
+            .accessMode("REVEAL")
             .build());
     }
     
     @Operation(
-        summary = "Download renter verification document",
-        description = "Stream document content for admin preview. " +
-                      "Returns proper MIME type and Content-Disposition headers."
+        summary = "Grant explicit document download access",
+        description = "Returns a short-lived signed URL for document download. Requires an audit reason."
     )
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "Document content"),
         @ApiResponse(responseCode = "404", description = "Document not found"),
         @ApiResponse(responseCode = "500", description = "Error reading document")
     })
-    @GetMapping("/documents/{documentId}/download")
+    @PostMapping("/documents/{documentId}/download")
     @Transactional(readOnly = true)
-    public ResponseEntity<byte[]> downloadDocument(@PathVariable Long documentId) {
+    public ResponseEntity<DocumentAccessResponse> downloadDocument(
+            @PathVariable Long documentId,
+            @RequestBody @Valid DocumentAccessRequest request
+    ) {
         RenterDocument doc = documentRepository.findById(documentId)
             .orElseThrow(() -> new org.example.rentoza.exception.ResourceNotFoundException(
                 "Document not found: " + documentId));
-        
-        log.info("[AdminRenter] Downloading renter document: docId={}, userId={}, bucket=renter-documents, path={}",
-            documentId, doc.getUser().getId(), doc.getDocumentUrl());
-        
-        try {
-            // Get file content from renter-documents bucket
-            byte[] content = storageService.downloadRenterDocument(doc.getDocumentUrl());
-            
-            // Determine MIME type
-            org.springframework.http.MediaType mediaType = org.springframework.http.MediaType.APPLICATION_OCTET_STREAM;
-            if (doc.getMimeType() != null && !doc.getMimeType().isBlank()) {
-                try {
-                    mediaType = org.springframework.http.MediaType.parseMediaType(doc.getMimeType());
-                } catch (Exception ignored) {
-                    // Keep octet-stream fallback
-                }
-            }
-            
-            // Build filename
-            String filename = doc.getOriginalFilename() != null && !doc.getOriginalFilename().isBlank()
-                ? doc.getOriginalFilename()
-                : "document-" + documentId + ".jpg";
-            
-            org.springframework.http.ContentDisposition contentDisposition = 
-                org.springframework.http.ContentDisposition.inline()
-                    .filename(filename, java.nio.charset.StandardCharsets.UTF_8)
-                    .build();
-            
-            return ResponseEntity.ok()
-                .contentType(mediaType)
-                .cacheControl(org.springframework.http.CacheControl.noStore())
-                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, contentDisposition.toString())
-                .header("X-Content-Type-Options", "nosniff")
-                .body(content);
-                
-        } catch (java.io.IOException e) {
-            if (e.getMessage() != null && e.getMessage().toLowerCase().contains("not found")) {
-                log.warn("[AdminRenter] Document file missing in storage: docId={}, bucket=renter-documents, path={}",
-                    documentId, doc.getDocumentUrl());
-                String errorJson = "{\"code\":\"DOCUMENT_FILE_MISSING\","
-                    + "\"message\":\"Document file not found in storage. "
-                    + "The record exists but the file may have been deleted or failed to upload.\","
-                    + "\"documentId\":" + documentId + "}";
-                return ResponseEntity.status(org.springframework.http.HttpStatus.NOT_FOUND)
-                    .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
-                    .body(errorJson.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-            }
-            log.error("[AdminRenter] Failed to read document content: docId={}, path={}", documentId, doc.getDocumentUrl(), e);
-            throw new RuntimeException("Failed to read document: " + e.getMessage());
-        }
+
+        User actor = requireReviewer();
+        logDocumentAccess(actor, doc, request, "DOWNLOAD", AdminAction.DOCUMENT_VIEWED);
+
+        String signedUrl = storageService.getRenterDocumentSignedUrl(doc.getDocumentUrl(), 120);
+        LocalDateTime expiresAt = LocalDateTime.now().plusSeconds(120);
+
+        return ResponseEntity.ok(DocumentAccessResponse.builder()
+            .url(signedUrl)
+            .expiresAt(expiresAt)
+            .documentId(documentId)
+            .accessMode("DOWNLOAD")
+            .filename(resolveFilename(doc))
+            .build());
     }
     
     @Operation(
@@ -345,6 +319,7 @@ public class AdminRenterVerificationController {
         @ApiResponse(responseCode = "404", description = "User not found")
     })
     @PostMapping("/users/{userId}/approve")
+    @PreAuthorize("hasAnyRole('ADMIN', 'IDENTITY_REVIEWER')")
     public ResponseEntity<ApprovalResponse> approveVerification(
             @PathVariable Long userId,
             @RequestBody(required = false) @Valid ApprovalRequest request
@@ -373,6 +348,7 @@ public class AdminRenterVerificationController {
         @ApiResponse(responseCode = "404", description = "User not found")
     })
     @PostMapping("/users/{userId}/reject")
+    @PreAuthorize("hasAnyRole('ADMIN', 'IDENTITY_REVIEWER')")
     public ResponseEntity<ApprovalResponse> rejectVerification(
             @PathVariable Long userId,
             @RequestBody @Valid RejectionRequest request
@@ -396,6 +372,7 @@ public class AdminRenterVerificationController {
         description = "Suspends user for fraud/abuse - requires investigation"
     )
     @PostMapping("/users/{userId}/suspend")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApprovalResponse> suspendVerification(
             @PathVariable Long userId,
             @RequestBody @Valid SuspensionRequest request
@@ -446,6 +423,7 @@ public class AdminRenterVerificationController {
         description = "Retry OCR/biometric processing for a stuck document. Use when document shows processingStatus=PENDING/FAILED."
     )
     @PostMapping("/documents/{documentId}/retry-processing")
+    @PreAuthorize("hasAnyRole('ADMIN', 'IDENTITY_REVIEWER')")
     public ResponseEntity<Map<String, Object>> retryDocumentProcessing(@PathVariable Long documentId) {
         Long adminId = currentUser.id();
         log.info("Admin retrying processing: docId={}, adminId={}", documentId, adminId);
@@ -488,6 +466,7 @@ public class AdminRenterVerificationController {
         description = "Force a stuck document (PENDING/FAILED processing) into COMPLETED status so admin can review manually."
     )
     @PostMapping("/documents/{documentId}/force-ready")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Map<String, Object>> forceDocumentReady(@PathVariable Long documentId) {
         Long adminId = currentUser.id();
         
@@ -514,17 +493,55 @@ public class AdminRenterVerificationController {
     
     // ==================== HELPER METHODS ====================
     
-    private String getSignedUrl(RenterDocument doc) {
-        if (doc.getDocumentUrl() == null || doc.getDocumentUrl().isBlank()) {
-            return null;
+    private User requireReviewer() {
+        Long actorId = currentUser.id();
+        User actor = userRepository.findById(actorId)
+            .orElseThrow(() -> new IllegalStateException("Reviewer not found"));
+
+        if (actor.getRole() != org.example.rentoza.user.Role.ADMIN
+                && actor.getRole() != org.example.rentoza.user.Role.IDENTITY_REVIEWER) {
+            throw new org.springframework.security.access.AccessDeniedException("Document access requires reviewer privileges");
         }
-        try {
-            return storageService.getRenterDocumentSignedUrl(doc.getDocumentUrl(), 900);
-        } catch (Exception e) {
-            log.warn("[AdminRenter] Could not get signed URL for docId={}, path={}: {}",
-                doc.getId(), doc.getDocumentUrl(), e.getMessage());
-            return null;
+        return actor;
+    }
+
+    private void logDocumentAccess(
+            User actor,
+            RenterDocument doc,
+            DocumentAccessRequest request,
+            String accessMode,
+            AdminAction action
+    ) {
+        Map<String, Object> accessEvent = Map.of(
+            "documentId", doc.getId(),
+            "userId", doc.getUser().getId(),
+            "documentType", doc.getType().name(),
+            "mode", accessMode,
+            "reason", request.getReason(),
+            "caseReference", request.getCaseReference() != null ? request.getCaseReference() : "",
+            "storagePath", doc.getDocumentUrl() != null ? doc.getDocumentUrl() : ""
+        );
+
+        auditService.logAction(
+            actor,
+            action,
+            ResourceType.DOCUMENT,
+            doc.getId(),
+            auditService.toJson(RenterDocumentDTO.fromEntityForAdmin(doc)),
+            auditService.toJson(accessEvent),
+            "%s access: %s".formatted(accessMode.toLowerCase(Locale.ROOT), request.getReason())
+        );
+    }
+
+    private String resolveFilename(RenterDocument doc) {
+        if (doc.getOriginalFilename() != null && !doc.getOriginalFilename().isBlank()) {
+            return doc.getOriginalFilename();
         }
+        String extension = ".bin";
+        if (doc.getMimeType() != null && doc.getMimeType().contains("/")) {
+            extension = "." + doc.getMimeType().substring(doc.getMimeType().indexOf('/') + 1);
+        }
+        return "document-" + doc.getId() + extension;
     }
     
     // ==================== REQUEST/RESPONSE DTOs ====================
@@ -625,12 +642,28 @@ public class AdminRenterVerificationController {
     @lombok.Builder
     @lombok.NoArgsConstructor
     @lombok.AllArgsConstructor
-    public static class SignedUrlResponse {
-        /** URL to access the document (download endpoint or pre-signed S3 URL) */
+    public static class DocumentAccessResponse {
+        /** URL to access the document (pre-signed storage URL) */
         private String url;
         /** When the URL expires (for security) */
         private LocalDateTime expiresAt;
         /** Document ID for reference */
         private Long documentId;
+        /** Access mode: REVEAL or DOWNLOAD */
+        private String accessMode;
+        /** Original filename for download flows */
+        private String filename;
+    }
+
+    @lombok.Data
+    @lombok.NoArgsConstructor
+    @lombok.AllArgsConstructor
+    public static class DocumentAccessRequest {
+        @NotBlank(message = "Access reason is required")
+        @Size(min = 8, max = 500, message = "Access reason must be between 8 and 500 characters")
+        private String reason;
+
+        @Size(max = 120, message = "Case reference must be 120 characters or less")
+        private String caseReference;
     }
 }

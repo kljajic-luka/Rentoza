@@ -266,7 +266,7 @@ public interface RenterDocumentRepository extends JpaRepository<RenterDocument, 
      */
     @Query("""
         SELECT d FROM RenterDocument d 
-        WHERE d.processingStatus = org.example.rentoza.user.document.RenterDocument.ProcessingStatus.FAILED 
+        WHERE d.status = org.example.rentoza.car.DocumentVerificationStatus.REJECTED 
         AND d.createdAt < :cutoff
         """)
     List<RenterDocument> findRejectedDocumentsOlderThan(@Param("cutoff") LocalDateTime cutoff);
@@ -300,7 +300,7 @@ public interface RenterDocumentRepository extends JpaRepository<RenterDocument, 
      */
     @Query("""
         SELECT COUNT(d) FROM RenterDocument d 
-        WHERE d.processingStatus = org.example.rentoza.user.document.RenterDocument.ProcessingStatus.FAILED 
+        WHERE d.status = org.example.rentoza.car.DocumentVerificationStatus.REJECTED 
         AND d.createdAt < :cutoff
         """)
     long countRejectedDocumentsOlderThan(@Param("cutoff") LocalDateTime cutoff);

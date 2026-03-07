@@ -117,6 +117,19 @@ export interface RenterDocument {
   rejectionReason: string | null;
   ocrConfidence: number | null; // 0.0-1.0
   nameMatchScore: number | null; // 0.0-1.0
+  typeDisplay?: string | null;
+  filename?: string | null;
+  statusDisplay?: string | null;
+  processingStatus?: string | null;
+  processingError?: string | null;
+  ocrConfidencePercent?: number | null;
+  nameMatchPercent?: number | null;
+  faceMatchScore?: number | null; // 0.0-1.0
+  faceMatchPercent?: number | null;
+  livenessPassed?: boolean | null;
+  ocrExtractedName?: string | null;
+  ocrExtractedNumber?: string | null;
+  ocrExtractedExpiry?: string | null;
 }
 
 /**
@@ -227,12 +240,23 @@ export interface VerificationAuditEvent {
 }
 
 export type VerificationAuditAction =
+  | 'SUBMITTED'
+  | 'RESUBMITTED'
   | 'DOCUMENT_SUBMITTED'
   | 'AUTO_APPROVED'
   | 'AUTO_REJECTED'
   | 'MANUAL_APPROVED'
   | 'MANUAL_REJECTED'
   | 'SUSPENDED'
+  | 'UNSUSPENDED'
+  | 'ESCALATED_TO_REVIEW'
+  | 'PROCESSING_STARTED'
+  | 'PROCESSING_COMPLETED'
+  | 'PROCESSING_FAILED'
+  | 'LIVENESS_PASSED'
+  | 'LIVENESS_FAILED'
+  | 'FACE_MATCH_PASSED'
+  | 'FACE_MATCH_FAILED'
   | 'RESUBMISSION_REQUESTED'
   | 'EXPIRED'
   | 'REACTIVATED';
@@ -271,6 +295,19 @@ export interface RejectVerificationRequest {
  */
 export interface SuspendVerificationRequest {
   reason: string;
+}
+
+export interface DocumentAccessRequest {
+  reason: string;
+  caseReference?: string;
+}
+
+export interface DocumentAccessGrant {
+  url: string;
+  expiresAt: string;
+  documentId: number;
+  accessMode: 'REVEAL' | 'DOWNLOAD';
+  filename?: string | null;
 }
 
 // ============================================================================
@@ -323,7 +360,7 @@ export function requiresDocumentUpload(status: DriverLicenseStatus): boolean {
  */
 export function requiresAdditionalDocuments(
   status: DriverLicenseStatus,
-  requiredDocumentsComplete: boolean
+  requiredDocumentsComplete: boolean,
 ): boolean {
   return status === 'PENDING_REVIEW' && !requiredDocumentsComplete;
 }
@@ -334,7 +371,7 @@ export function requiresAdditionalDocuments(
  */
 export function shouldShowUploadForm(
   status: DriverLicenseStatus,
-  requiredDocumentsComplete: boolean
+  requiredDocumentsComplete: boolean,
 ): boolean {
   // Always show for initial/resubmit states
   if (requiresDocumentUpload(status)) {

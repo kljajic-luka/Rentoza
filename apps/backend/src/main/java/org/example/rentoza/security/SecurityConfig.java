@@ -223,6 +223,7 @@ public class SecurityConfig {
                         
                         // ============ ADMIN ENDPOINTS (Phase 1 Remediation) ============
                         // User moderation: ban/unban users, list banned users
+                        .requestMatchers("/api/admin/renter-verifications/**").hasAnyRole("ADMIN", "IDENTITY_REVIEWER")
                         // RBAC: Strict ROLE_ADMIN requirement
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         

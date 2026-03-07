@@ -66,6 +66,8 @@ public class User {
     @JsonIgnore
     @Column(nullable = false)
     private String password;
+    @Column(name = "password_changed_at")
+    private Instant passwordChangedAt;
 
     @Column(name = "auth_provider", nullable = false, length = 20)
     private AuthProvider authProvider = AuthProvider.LOCAL;

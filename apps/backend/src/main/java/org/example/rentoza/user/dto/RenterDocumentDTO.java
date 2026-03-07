@@ -132,12 +132,6 @@ public class RenterDocumentDTO {
     // ==================== ADMIN VIEW ====================
     
     /**
-     * Signed URL for document download (admin only).
-     * Expires in 5 minutes.
-     */
-    private String downloadUrl;
-    
-    /**
      * User ID (for admin context).
      */
     private Long userId;
@@ -172,9 +166,8 @@ public class RenterDocumentDTO {
     /**
      * Create DTO from entity (admin view with OCR/biometric data).
      */
-    public static RenterDocumentDTO fromEntityForAdmin(RenterDocument doc, String downloadUrl) {
+    public static RenterDocumentDTO fromEntityForAdmin(RenterDocument doc) {
         RenterDocumentDTO dto = fromEntity(doc);
-        dto.setDownloadUrl(downloadUrl);
         dto.setUserId(doc.getUser().getId());
         dto.setUserName(doc.getUser().getFirstName() + " " + doc.getUser().getLastName());
         

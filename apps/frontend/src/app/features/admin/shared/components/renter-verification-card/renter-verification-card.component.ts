@@ -113,7 +113,7 @@ import {
                 class="document-tile"
                 *ngFor="let doc of profile.documents"
                 (click)="onDocumentClick(doc)"
-                [class.clickable]="doc.downloadUrl"
+                [class.clickable]="true"
                 tabindex="0"
                 role="button"
                 [attr.aria-label]="'Pregled: ' + doc.typeDisplay"
@@ -325,9 +325,7 @@ export class RenterVerificationCardComponent implements OnInit, OnDestroy {
   // ==================== EVENT HANDLERS ====================
 
   onDocumentClick(doc: RenterDocumentDto): void {
-    if (doc.downloadUrl) {
-      this.previewDocument.emit(doc);
-    }
+    this.previewDocument.emit(doc);
   }
 
   onApproveClick(): void {

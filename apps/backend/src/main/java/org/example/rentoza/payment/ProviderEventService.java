@@ -58,6 +58,7 @@ import java.util.Optional;
 public class ProviderEventService {
 
     private static final String HMAC_ALGO = "HmacSHA256";
+    private static final int MAX_WEBHOOK_REPLAY_ATTEMPTS = 5;
 
     private final ProviderEventRepository eventRepository;
     private final PaymentTransactionRepository txRepository;
@@ -275,7 +276,7 @@ public class ProviderEventService {
 
     @Transactional
     public int replayStaleEvents(Instant before) {
-        List<ProviderEvent> replayable = eventRepository.findReplayable(before);
+        List<ProviderEvent> replayable = eventRepository.findReplayable(before, MAX_WEBHOOK_REPLAY_ATTEMPTS);
         int replayed = 0;
 
         for (ProviderEvent event : replayable) {
@@ -306,6 +307,14 @@ public class ProviderEventService {
         } catch (Exception ex) {
             log.error("[Webhook] Processing error for providerEventId={}: {}", event.getProviderEventId(), ex.getMessage(), ex);
             event.setProcessedAt(null);
+            int nextReplayCount = event.getReplayCount() + 1;
+            event.setReplayCount(nextReplayCount);
+            if (nextReplayCount >= MAX_WEBHOOK_REPLAY_ATTEMPTS) {
+                // AUDIT-M7-FIX: Stop infinite replay loops after bounded retry attempts.
+                event.setDeadLettered(true);
+                log.error("[Webhook][AUDIT-M7] Dead-lettered providerEventId={} after {} replay attempt(s)",
+                        event.getProviderEventId(), nextReplayCount);
+            }
             event.setProcessingError(ex.getMessage());
             eventRepository.save(event);
             return IngestResult.retryableFailure(event.getProviderEventId(), ex.getMessage());

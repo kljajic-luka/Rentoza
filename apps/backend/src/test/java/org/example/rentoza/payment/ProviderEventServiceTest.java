@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -320,5 +321,67 @@ class ProviderEventServiceTest {
 
         assertThat(result.outcome()).isEqualTo(ProviderEventService.IngestOutcome.PROCESSED);
         assertThat(result.processed()).isTrue();
+    }
+
+    @Test
+    @DisplayName("M7: replay failure increments replay_count")
+    void replayFailure_incrementsReplayCount() {
+        ReflectionTestUtils.setField(service, "webhookSecret", "prod-webhook-secret");
+
+        ProviderEvent stored = ProviderEvent.builder()
+                .providerEventId(EVENT_ID)
+                .eventType("PAYMENT_CONFIRMED")
+                .bookingId(BOOKING_ID)
+                .replayCount(0)
+                .deadLettered(false)
+                .build();
+        when(eventRepository.findByProviderEventId(EVENT_ID)).thenReturn(Optional.of(stored));
+
+        ProviderEventService.IngestResult result = service.ingestEventDetailed(
+                EVENT_ID,
+                "PAYMENT_CONFIRMED",
+                BOOKING_ID,
+                null,
+                "{}",
+                null,
+                null);
+
+        assertThat(result.outcome()).isEqualTo(ProviderEventService.IngestOutcome.RETRYABLE_FAILURE);
+        ArgumentCaptor<ProviderEvent> captor = ArgumentCaptor.forClass(ProviderEvent.class);
+        verify(eventRepository, atLeastOnce()).save(captor.capture());
+        ProviderEvent saved = captor.getValue();
+        assertThat(saved.getReplayCount()).isEqualTo(1);
+        assertThat(saved.isDeadLettered()).isFalse();
+    }
+
+    @Test
+    @DisplayName("M7: replay failure dead-letters event after 5 attempts")
+    void replayFailure_deadLettersAtThreshold() {
+        ReflectionTestUtils.setField(service, "webhookSecret", "prod-webhook-secret");
+
+        ProviderEvent stored = ProviderEvent.builder()
+                .providerEventId(EVENT_ID)
+                .eventType("PAYMENT_CONFIRMED")
+                .bookingId(BOOKING_ID)
+                .replayCount(4)
+                .deadLettered(false)
+                .build();
+        when(eventRepository.findByProviderEventId(EVENT_ID)).thenReturn(Optional.of(stored));
+
+        ProviderEventService.IngestResult result = service.ingestEventDetailed(
+                EVENT_ID,
+                "PAYMENT_CONFIRMED",
+                BOOKING_ID,
+                null,
+                "{}",
+                null,
+                null);
+
+        assertThat(result.outcome()).isEqualTo(ProviderEventService.IngestOutcome.RETRYABLE_FAILURE);
+        ArgumentCaptor<ProviderEvent> captor = ArgumentCaptor.forClass(ProviderEvent.class);
+        verify(eventRepository, atLeastOnce()).save(captor.capture());
+        ProviderEvent saved = captor.getValue();
+        assertThat(saved.getReplayCount()).isEqualTo(5);
+        assertThat(saved.isDeadLettered()).isTrue();
     }
 }

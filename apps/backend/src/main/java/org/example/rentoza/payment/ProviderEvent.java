@@ -79,6 +79,16 @@ public class ProviderEvent {
     @Column(name = "processed_at")
     private Instant processedAt;
 
+    /** Number of replay attempts performed by the stale-webhook scheduler. */
+    @Column(name = "replay_count", nullable = false)
+    @Builder.Default
+    private int replayCount = 0;
+
+    /** Terminal replay state: true means the event should never be retried again. */
+    @Column(name = "dead_lettered", nullable = false)
+    @Builder.Default
+    private boolean deadLettered = false;
+
     @Column(name = "processing_error", length = 500)
     private String processingError;
 

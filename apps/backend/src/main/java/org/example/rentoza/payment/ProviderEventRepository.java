@@ -19,8 +19,11 @@ public interface ProviderEventRepository extends JpaRepository<ProviderEvent, Lo
     @Query("""
            SELECT e FROM ProviderEvent e
            WHERE e.processedAt IS NULL
+             AND e.deadLettered = false
+             AND e.replayCount < :maxReplayCount
              AND e.receivedAt < :before
            ORDER BY e.receivedAt ASC
            """)
-    java.util.List<ProviderEvent> findReplayable(@Param("before") Instant before);
+    java.util.List<ProviderEvent> findReplayable(@Param("before") Instant before,
+                                                 @Param("maxReplayCount") int maxReplayCount);
 }

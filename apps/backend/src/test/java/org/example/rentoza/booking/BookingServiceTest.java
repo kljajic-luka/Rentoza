@@ -25,6 +25,12 @@ import org.example.rentoza.user.DriverLicenseStatus;
 import org.example.rentoza.user.RenterVerificationService;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
+import org.example.rentoza.user.trust.AccountAccessState;
+import org.example.rentoza.user.trust.AccountTrustSnapshot;
+import org.example.rentoza.user.trust.AccountTrustStateService;
+import org.example.rentoza.user.trust.OwnerVerificationState;
+import org.example.rentoza.user.trust.RegistrationCompletionState;
+import org.example.rentoza.user.trust.RenterVerificationState;
 import org.example.rentoza.user.dto.BookingEligibilityDTO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -81,6 +87,7 @@ class BookingServiceTest {
     @Mock private BookingPaymentService bookingPaymentService;
     @Mock private SchedulerIdempotencyService lockService;
     @Mock private BookingEdgeCaseValidator edgeCaseValidator;
+        @Mock private AccountTrustStateService accountTrustStateService;
         @Mock private RentalAgreementService rentalAgreementService;
         @Mock private MarketplaceComplianceService marketplaceComplianceService;
 
@@ -150,6 +157,20 @@ class BookingServiceTest {
         car.setBookingSettings(settings);
 
         lenient().when(marketplaceComplianceService.isMarketplaceVisible(any(Car.class))).thenReturn(true);
+        lenient().when(accountTrustStateService.snapshot(any(User.class)))
+                .thenReturn(new AccountTrustSnapshot(
+                        AccountAccessState.ACTIVE,
+                        org.example.rentoza.user.RegistrationStatus.ACTIVE,
+                        RegistrationCompletionState.COMPLETE,
+                        DriverLicenseStatus.APPROVED,
+                        RenterVerificationState.APPROVED,
+                        OwnerVerificationState.NOT_APPLICABLE,
+                        null,
+                        true,
+                        false,
+                        true,
+                        java.util.List.of()
+                ));
 
         // Create valid booking request (2 days from now, 3-day trip)
         validBookingRequest = new BookingRequestDTO();
@@ -601,6 +622,32 @@ class BookingServiceTest {
     @Nested
     @DisplayName("Error Handling")
     class ErrorHandlingTests {
+
+        @Test
+        @DisplayName("Should block booking when profile is incomplete")
+        void shouldBlockWhenProfileIncomplete() {
+            when(userRepo.findByEmail("renter@test.com")).thenReturn(Optional.of(renter));
+            when(accountTrustStateService.snapshot(renter)).thenReturn(new AccountTrustSnapshot(
+                    AccountAccessState.ACTIVE,
+                    org.example.rentoza.user.RegistrationStatus.INCOMPLETE,
+                    RegistrationCompletionState.INCOMPLETE,
+                    renter.getDriverLicenseStatus(),
+                    RenterVerificationState.APPROVED,
+                    OwnerVerificationState.NOT_APPLICABLE,
+                    null,
+                    true,
+                    true,
+                    true,
+                    java.util.List.of("phone")
+            ));
+
+            assertThatThrownBy(() ->
+                    bookingService.createBooking(validBookingRequest, "renter@test.com"))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Dovršite profil");
+
+            verify(renterVerificationService, never()).checkBookingEligibilityForUser(any(), any());
+        }
 
         @Test
         @DisplayName("Should throw ResourceNotFoundException when user not found")

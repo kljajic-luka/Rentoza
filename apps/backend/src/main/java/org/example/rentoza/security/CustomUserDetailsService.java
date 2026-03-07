@@ -2,6 +2,8 @@ package org.example.rentoza.security;
 
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
+import org.example.rentoza.user.trust.AccountTrustSnapshot;
+import org.example.rentoza.user.trust.AccountTrustStateService;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -20,9 +22,11 @@ import java.util.List;
 public class CustomUserDetailsService implements UserDetailsService {
 
     private final UserRepository repo;
+    private final AccountTrustStateService accountTrustStateService;
 
-    public CustomUserDetailsService(UserRepository repo) {
+    public CustomUserDetailsService(UserRepository repo, AccountTrustStateService accountTrustStateService) {
         this.repo = repo;
+        this.accountTrustStateService = accountTrustStateService;
     }
 
     /**
@@ -40,10 +44,9 @@ public class CustomUserDetailsService implements UserDetailsService {
         User user = repo.findByEmail(email)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found with email: " + email));
 
-        // SECURITY: Check if user is banned before allowing authentication
-        if (user.isBanned()) {
-            throw new DisabledException("Your account has been suspended. Reason: " + 
-                    (user.getBanReason() != null ? user.getBanReason() : "Contact support for details."));
+        AccountTrustSnapshot snapshot = accountTrustStateService.snapshot(user);
+        if (!snapshot.canAuthenticate()) {
+            throw new DisabledException("Your account is not active: " + snapshot.accountAccessState().name());
         }
 
         // Return JwtUserPrincipal instead of default UserDetails

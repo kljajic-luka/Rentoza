@@ -21,6 +21,8 @@ import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.review.ReviewRepository;
 import org.example.rentoza.user.Role;
 import org.example.rentoza.user.User;
+import org.example.rentoza.user.trust.AccountTrustSnapshot;
+import org.example.rentoza.user.trust.AccountTrustStateService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -61,6 +63,7 @@ public class AdminUserService {
     private final DamageClaimRepository damageClaimRepo;
     private final CancellationSettlementService cancellationSettlementService;
     private final AdminAuditService auditService;
+    private final AccountTrustStateService accountTrustStateService;
     
     // ==================== USER LISTING ====================
     
@@ -413,7 +416,13 @@ public class AdminUserService {
      * Convert User to AdminUserDto with booking/car counts.
      */
     private AdminUserDto toAdminUserDto(User user) {
+        AccountTrustSnapshot trustSnapshot = accountTrustStateService.snapshot(user);
         AdminUserDto dto = AdminUserDto.fromEntity(user);
+        dto.setAccountAccessState(trustSnapshot.accountAccessState().name());
+        dto.setRegistrationCompletionState(trustSnapshot.registrationCompletionState().name());
+        dto.setRenterVerificationState(trustSnapshot.renterVerificationState().name());
+        dto.setCanAuthenticate(trustSnapshot.canAuthenticate());
+        dto.setCanBookAsRenter(trustSnapshot.canBookAsRenter());
         dto.setRiskScore(calculateRiskScore(user));
         dto.setBookingsCount(bookingRepo.countByRenterId(user.getId()));
         if (user.getRole() == Role.OWNER || user.getRole() == Role.ADMIN) {

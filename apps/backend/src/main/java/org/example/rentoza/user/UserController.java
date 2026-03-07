@@ -5,6 +5,8 @@ import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.security.CurrentUser;
 import org.example.rentoza.security.JwtUserPrincipal;
+import org.example.rentoza.user.trust.AccountTrustSnapshot;
+import org.example.rentoza.user.trust.AccountTrustStateService;
 
 import org.example.rentoza.user.dto.*;
 import org.springframework.http.HttpStatus;
@@ -24,13 +26,17 @@ public class UserController {
     private final UserService service;
     private final ProfileService profileService;
     private final ProfileCompletionService profileCompletionService;
+    private final AccountTrustStateService accountTrustStateService;
     private final CurrentUser currentUser;
 
     public UserController(UserService service, ProfileService profileService, 
-                          ProfileCompletionService profileCompletionService, CurrentUser currentUser) {
+                          ProfileCompletionService profileCompletionService,
+                          AccountTrustStateService accountTrustStateService,
+                          CurrentUser currentUser) {
         this.service = service;
         this.profileService = profileService;
         this.profileCompletionService = profileCompletionService;
+        this.accountTrustStateService = accountTrustStateService;
         this.currentUser = currentUser;
     }
 
@@ -165,7 +171,7 @@ public class UserController {
      * 
      * <p>This endpoint accepts required fields based on user's role:
      * <ul>
-     *   <li><b>USER (Renter):</b> phone, dateOfBirth, driverLicenseNumber, driverLicenseExpiryDate, driverLicenseCountry</li>
+        *   <li><b>USER (Renter):</b> phone, dateOfBirth</li>
      *   <li><b>OWNER (Individual):</b> phone, dateOfBirth, jmbg, bankAccountNumber (optional), agreements</li>
      *   <li><b>OWNER (Legal Entity):</b> phone, dateOfBirth, pib, bankAccountNumber (required), agreements</li>
      * </ul>
@@ -256,14 +262,19 @@ public class UserController {
             User user = service.getUserById(principal.id())
                     .orElseThrow(() -> new EntityNotFoundException("User not found"));
 
-            boolean isComplete = user.getRegistrationStatus() == RegistrationStatus.ACTIVE;
+                AccountTrustSnapshot snapshot = accountTrustStateService.snapshot(user);
             
             return ResponseEntity.ok(Map.of(
-                    "registrationStatus", user.getRegistrationStatus().name(),
-                    "isComplete", isComplete,
+                    "registrationStatus", snapshot.registrationStatus().name(),
+                    "isComplete", !snapshot.needsProfileCompletion(),
                     "role", user.getRole().name(),
                     "ownerType", user.getOwnerType() != null ? user.getOwnerType().name() : "INDIVIDUAL",
-                    "missingFields", getMissingFields(user)
+                    "missingFields", snapshot.missingProfileFields(),
+                    "accountAccessState", snapshot.accountAccessState().name(),
+                    "canAuthenticate", snapshot.canAuthenticate(),
+                    "canBookAsRenter", snapshot.canBookAsRenter(),
+                    "renterVerificationState", snapshot.renterVerificationState().name(),
+                    "ownerVerificationState", snapshot.ownerVerificationState().name()
             ));
             
         } catch (EntityNotFoundException e) {
@@ -272,49 +283,6 @@ public class UserController {
                     "message", e.getMessage()
             ));
         }
-    }
-
-    /**
-     * Helper to determine which required fields are missing for profile completion.
-     */
-    private List<String> getMissingFields(User user) {
-        List<String> missing = new java.util.ArrayList<>();
-
-        if (user.getPhone() == null || user.getPhone().isBlank()) {
-            missing.add("phone");
-        }
-        if (user.getDateOfBirth() == null) {
-            missing.add("dateOfBirth");
-        }
-
-        if (user.getRole() == Role.USER) {
-            if (user.getDriverLicenseNumber() == null || user.getDriverLicenseNumber().isBlank()) {
-                missing.add("driverLicenseNumber");
-            }
-            if (user.getDriverLicenseExpiryDate() == null) {
-                missing.add("driverLicenseExpiryDate");
-            }
-            if (user.getDriverLicenseCountry() == null || user.getDriverLicenseCountry().isBlank()) {
-                missing.add("driverLicenseCountry");
-            }
-        } else if (user.getRole() == Role.OWNER) {
-            OwnerType ownerType = user.getOwnerType() != null ? user.getOwnerType() : OwnerType.INDIVIDUAL;
-            
-            if (ownerType == OwnerType.INDIVIDUAL) {
-                if (user.getJmbg() == null || user.getJmbg().isBlank()) {
-                    missing.add("jmbg");
-                }
-            } else {
-                if (user.getPib() == null || user.getPib().isBlank()) {
-                    missing.add("pib");
-                }
-                if (user.getBankAccountNumber() == null || user.getBankAccountNumber().isBlank()) {
-                    missing.add("bankAccountNumber");
-                }
-            }
-        }
-
-        return missing;
     }
 
     // ========== DOB CORRECTION REQUEST (M-9) ==========

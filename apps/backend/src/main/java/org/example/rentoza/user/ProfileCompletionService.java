@@ -29,15 +29,15 @@ import org.example.rentoza.config.timezone.SerbiaTimeZone;
  * 
  * <p><b>Field Requirements by Role:</b>
  * <ul>
- *   <li><b>USER:</b> phone, dateOfBirth (21+), driverLicenseNumber, driverLicenseExpiryDate, driverLicenseCountry</li>
+ *   <li><b>USER:</b> phone, dateOfBirth (21+)</li>
  *   <li><b>OWNER (INDIVIDUAL):</b> phone, dateOfBirth (21+), jmbg, agreements, bankAccountNumber (optional)</li>
  *   <li><b>OWNER (LEGAL_ENTITY):</b> phone, dateOfBirth (21+), pib, agreements, bankAccountNumber (required)</li>
  * </ul>
  * 
  * <p><b>Security:</b>
  * <ul>
- *   <li>JMBG, PIB, bankAccountNumber, driverLicenseNumber are stored encrypted via JPA @Convert</li>
- *   <li>Hashes are generated for uniqueness checks (jmbgHash, pibHash, driverLicenseNumberHash)</li>
+ *   <li>JMBG, PIB, bankAccountNumber are stored encrypted via JPA @Convert</li>
+ *   <li>Hashes are generated for uniqueness checks (jmbgHash, pibHash)</li>
  *   <li>Duplicate ID detection returns 409 Conflict</li>
  * </ul>
  */
@@ -329,9 +329,9 @@ public class ProfileCompletionService {
                 .registrationStatus(user.getRegistrationStatus())
                 .ownerType(user.getOwnerType())
                 .hasBankAccount(user.getBankAccountNumber() != null && !user.getBankAccountNumber().isBlank())
-                .hasDriverLicense(user.getDriverLicenseNumber() != null && !user.getDriverLicenseNumber().isBlank())
-                .driverLicenseExpiryDate(user.getDriverLicenseExpiryDate())
-                .driverLicenseCountry(user.getDriverLicenseCountry())
+                .renterVerificationStatus(user.getDriverLicenseStatus() != null
+                    ? user.getDriverLicenseStatus().name()
+                    : DriverLicenseStatus.NOT_STARTED.name())
                 .message(message)
                 .build();
     }

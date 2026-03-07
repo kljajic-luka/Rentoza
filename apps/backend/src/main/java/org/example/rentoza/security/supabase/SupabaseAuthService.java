@@ -8,6 +8,8 @@ import org.example.rentoza.user.RegistrationStatus;
 import org.example.rentoza.user.Role;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
+import org.example.rentoza.user.trust.AccountTrustSnapshot;
+import org.example.rentoza.user.trust.AccountTrustStateService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -62,6 +64,7 @@ public class SupabaseAuthService {
     private final SupabaseUserMappingRepository mappingRepository;
     private final UserRepository userRepository;
     private final SupabaseJwtUtil supabaseJwtUtil;
+    private final AccountTrustStateService accountTrustStateService;
     
     @Value("${supabase.url}")
     private String supabaseUrl;
@@ -76,12 +79,14 @@ public class SupabaseAuthService {
             SupabaseAuthClient supabaseClient,
             SupabaseUserMappingRepository mappingRepository,
             UserRepository userRepository,
-            SupabaseJwtUtil supabaseJwtUtil
+            SupabaseJwtUtil supabaseJwtUtil,
+            AccountTrustStateService accountTrustStateService
     ) {
         this.supabaseClient = supabaseClient;
         this.mappingRepository = mappingRepository;
         this.userRepository = userRepository;
         this.supabaseJwtUtil = supabaseJwtUtil;
+        this.accountTrustStateService = accountTrustStateService;
     }
 
     // =====================================================
@@ -800,9 +805,9 @@ public class SupabaseAuthService {
         User user = userRepository.findById(rentozaUserId)
                 .orElseThrow(() -> new SupabaseAuthException("User account not found"));
 
-        // Validate user status
-        if (user.isBanned()) {
-            throw new SupabaseAuthException("Your account has been suspended");
+        AccountTrustSnapshot snapshot = accountTrustStateService.snapshot(user);
+        if (!snapshot.canAuthenticate()) {
+            throw new SupabaseAuthException("Your account is not active");
         }
 
         return buildAuthResult(supabaseResponse, user, supabaseId);
@@ -838,8 +843,9 @@ public class SupabaseAuthService {
         User user = userRepository.findById(mappingOpt.get().getRentozaUserId())
                 .orElseThrow(() -> new SupabaseAuthException("User not found"));
 
-        if (user.isBanned()) {
-            throw new SupabaseAuthException("Your account has been suspended");
+        AccountTrustSnapshot snapshot = accountTrustStateService.snapshot(user);
+        if (!snapshot.canAuthenticate()) {
+            throw new SupabaseAuthException("Your account is not active");
         }
 
         return buildAuthResult(supabaseResponse, user, supabaseId);

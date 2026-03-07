@@ -14,6 +14,12 @@ import org.example.rentoza.car.CarRepository;
 import org.example.rentoza.review.ReviewRepository;
 import org.example.rentoza.user.Role;
 import org.example.rentoza.user.User;
+import org.example.rentoza.user.trust.AccountAccessState;
+import org.example.rentoza.user.trust.AccountTrustSnapshot;
+import org.example.rentoza.user.trust.AccountTrustStateService;
+import org.example.rentoza.user.trust.OwnerVerificationState;
+import org.example.rentoza.user.trust.RegistrationCompletionState;
+import org.example.rentoza.user.trust.RenterVerificationState;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -24,6 +30,9 @@ import org.mockito.Captor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -74,6 +83,9 @@ class AdminUserServiceTest {
     @Mock
     private AdminAuditService auditService;
 
+    @Mock
+    private AccountTrustStateService accountTrustStateService;
+
     @Captor
     private ArgumentCaptor<AdminAction> actionCaptor;
 
@@ -91,7 +103,14 @@ class AdminUserServiceTest {
     @BeforeEach
     void setUp() {
         adminUserService = new AdminUserService(
-            userRepo, bookingRepo, carRepo, reviewRepo, damageClaimRepo, cancellationSettlementService, auditService
+            userRepo,
+            bookingRepo,
+            carRepo,
+            reviewRepo,
+            damageClaimRepo,
+            cancellationSettlementService,
+            auditService,
+            accountTrustStateService
         );
 
         testAdmin = new User();
@@ -106,9 +125,54 @@ class AdminUserServiceTest {
         testUser.setFirstName("Test");
         testUser.setLastName("User");
         testUser.setCreatedAt(Instant.now().minus(60, ChronoUnit.DAYS));
+
+        org.mockito.Mockito.lenient().when(accountTrustStateService.snapshot(any(User.class)))
+            .thenReturn(new AccountTrustSnapshot(
+                AccountAccessState.ACTIVE,
+                org.example.rentoza.user.RegistrationStatus.ACTIVE,
+                RegistrationCompletionState.COMPLETE,
+                testUser.getDriverLicenseStatus(),
+                RenterVerificationState.NOT_STARTED,
+                OwnerVerificationState.NOT_APPLICABLE,
+                testUser.getRiskLevel(),
+                true,
+                false,
+                false,
+                java.util.List.of()
+            ));
     }
 
     // ==================== deleteUser ====================
+
+    @Test
+    @DisplayName("listUsers maps summary status from centralized trust model")
+    void listUsers_UsesCentralizedTrustStatus() {
+        testUser.setEnabled(true);
+        testUser.setBanned(false);
+        testUser.setLocked(false);
+        testUser.setRegistrationStatus(org.example.rentoza.user.RegistrationStatus.SUSPENDED);
+
+        when(userRepo.findAllUsers(any())).thenReturn(new PageImpl<>(List.of(testUser), PageRequest.of(0, 20), 1));
+        when(accountTrustStateService.snapshot(testUser)).thenReturn(new AccountTrustSnapshot(
+                AccountAccessState.SUSPENDED,
+                org.example.rentoza.user.RegistrationStatus.SUSPENDED,
+                RegistrationCompletionState.COMPLETE,
+                testUser.getDriverLicenseStatus(),
+                RenterVerificationState.NOT_STARTED,
+                OwnerVerificationState.NOT_APPLICABLE,
+                testUser.getRiskLevel(),
+                false,
+                false,
+                false,
+                List.of()
+        ));
+
+        Page<org.example.rentoza.admin.dto.AdminUserDto> result = adminUserService.listUsers(PageRequest.of(0, 20));
+
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().get(0).getAccountAccessState()).isEqualTo("SUSPENDED");
+        assertThat(result.getContent().get(0).getStatusLabel()).isEqualTo("SUSPENDED");
+    }
 
     @Nested
     @DisplayName("deleteUser")

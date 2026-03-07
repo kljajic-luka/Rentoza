@@ -16,6 +16,12 @@ import org.example.rentoza.user.DriverLicenseStatus;
 import org.example.rentoza.user.RenterVerificationService;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
+import org.example.rentoza.user.trust.AccountAccessState;
+import org.example.rentoza.user.trust.AccountTrustSnapshot;
+import org.example.rentoza.user.trust.AccountTrustStateService;
+import org.example.rentoza.user.trust.OwnerVerificationState;
+import org.example.rentoza.user.trust.RegistrationCompletionState;
+import org.example.rentoza.user.trust.RenterVerificationState;
 import org.example.rentoza.user.dto.BookingEligibilityDTO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -57,6 +63,7 @@ class BookingServiceApprovalDeadlinePolicyTest {
     @Mock private org.example.rentoza.booking.validation.BookingEdgeCaseValidator edgeCaseValidator;
     @Mock private RentalAgreementService rentalAgreementService;
     @Mock private MarketplaceComplianceService marketplaceComplianceService;
+    @Mock private AccountTrustStateService accountTrustStateService;
 
     private BookingService bookingService;
 
@@ -77,12 +84,27 @@ class BookingServiceApprovalDeadlinePolicyTest {
                 lockService,
                 edgeCaseValidator,
                 rentalAgreementService,
-                marketplaceComplianceService
+                marketplaceComplianceService,
+                accountTrustStateService
         );
 
         ReflectionTestUtils.setField(bookingService, "approvalSlaHours", 48);
         ReflectionTestUtils.setField(bookingService, "minGuestPreparationHours", 12);
-            org.mockito.Mockito.lenient().when(marketplaceComplianceService.isMarketplaceVisible(any(Car.class))).thenReturn(true);
+        org.mockito.Mockito.lenient().when(marketplaceComplianceService.isMarketplaceVisible(any(Car.class))).thenReturn(true);
+        org.mockito.Mockito.lenient().when(accountTrustStateService.snapshot(any(User.class)))
+            .thenReturn(new AccountTrustSnapshot(
+                AccountAccessState.ACTIVE,
+                org.example.rentoza.user.RegistrationStatus.ACTIVE,
+                RegistrationCompletionState.COMPLETE,
+                DriverLicenseStatus.APPROVED,
+                RenterVerificationState.APPROVED,
+                OwnerVerificationState.NOT_APPLICABLE,
+                null,
+                true,
+                false,
+                true,
+                java.util.List.of()
+            ));
     }
 
     @Test

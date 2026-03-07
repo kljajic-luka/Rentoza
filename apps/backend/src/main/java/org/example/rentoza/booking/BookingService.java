@@ -34,6 +34,8 @@ import org.example.rentoza.user.DriverLicenseStatus;
 import org.example.rentoza.user.RenterVerificationService;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
+import org.example.rentoza.user.trust.AccountTrustSnapshot;
+import org.example.rentoza.user.trust.AccountTrustStateService;
 import org.example.rentoza.user.dto.BookingEligibilityDTO;
 import org.hibernate.Hibernate;
 import org.springframework.cache.annotation.CacheEvict;
@@ -98,6 +100,7 @@ public class BookingService {
     private final BookingEdgeCaseValidator edgeCaseValidator;
     private final RentalAgreementService rentalAgreementService;
     private final MarketplaceComplianceService marketplaceComplianceService;
+    private final AccountTrustStateService accountTrustStateService;
 
     @org.springframework.beans.factory.annotation.Value("${app.booking.host-approval.enabled:false}")
     private boolean approvalEnabled;
@@ -130,7 +133,8 @@ public class BookingService {
                           SchedulerIdempotencyService lockService,
                           BookingEdgeCaseValidator edgeCaseValidator,
                           RentalAgreementService rentalAgreementService,
-                          MarketplaceComplianceService marketplaceComplianceService) {
+                          MarketplaceComplianceService marketplaceComplianceService,
+                          AccountTrustStateService accountTrustStateService) {
         this.repo = repo;
         this.carRepo = carRepo;
         this.userRepo = userRepo;
@@ -144,8 +148,9 @@ public class BookingService {
         this.bookingPaymentService = bookingPaymentService;
         this.lockService = lockService;
         this.edgeCaseValidator = edgeCaseValidator;
-            this.marketplaceComplianceService = marketplaceComplianceService;
+        this.marketplaceComplianceService = marketplaceComplianceService;
         this.rentalAgreementService = rentalAgreementService;
+        this.accountTrustStateService = accountTrustStateService;
     }
 
     @Transactional
@@ -178,6 +183,18 @@ public class BookingService {
 
         User renter = userRepo.findByEmail(renterEmail)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        AccountTrustSnapshot trustSnapshot = accountTrustStateService.snapshot(renter);
+        if (!trustSnapshot.canAuthenticate()) {
+            throw new org.example.rentoza.exception.ValidationException(
+                "Vaš nalog trenutno nije aktivan za rezervacije."
+            );
+        }
+        if (trustSnapshot.needsProfileCompletion()) {
+            throw new org.example.rentoza.exception.ValidationException(
+                "Dovršite profil pre kreiranja rezervacije."
+            );
+        }
 
         // Validate age requirement
         if (renter.getAge() == null || renter.getAge() < 21) {

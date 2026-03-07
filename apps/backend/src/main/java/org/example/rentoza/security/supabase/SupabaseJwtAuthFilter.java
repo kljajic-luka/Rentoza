@@ -10,6 +10,8 @@ import org.example.rentoza.security.JwtUserPrincipal;
 import org.example.rentoza.security.token.TokenDenylistService;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
+import org.example.rentoza.user.trust.AccountTrustSnapshot;
+import org.example.rentoza.user.trust.AccountTrustStateService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -55,6 +57,7 @@ public class SupabaseJwtAuthFilter extends OncePerRequestFilter {
     private final UserRepository userRepository;
     private final SupabaseUserMappingRepository mappingRepository;
     private final TokenDenylistService tokenDenylistService;
+    private final AccountTrustStateService accountTrustStateService;
 
     // Endpoints that bypass JWT authentication
     private static final List<String> PUBLIC_ENDPOINT_PREFIXES = List.of(
@@ -78,12 +81,14 @@ public class SupabaseJwtAuthFilter extends OncePerRequestFilter {
             SupabaseJwtUtil supabaseJwtUtil,
             UserRepository userRepository,
             SupabaseUserMappingRepository mappingRepository,
-            TokenDenylistService tokenDenylistService
+            TokenDenylistService tokenDenylistService,
+            AccountTrustStateService accountTrustStateService
     ) {
         this.supabaseJwtUtil = supabaseJwtUtil;
         this.userRepository = userRepository;
         this.mappingRepository = mappingRepository;
         this.tokenDenylistService = tokenDenylistService;
+        this.accountTrustStateService = accountTrustStateService;
     }
 
     @Override
@@ -184,12 +189,13 @@ public class SupabaseJwtAuthFilter extends OncePerRequestFilter {
                     return;
                 }
 
-                // Check if user is banned
-                if (user.isBanned()) {
-                    log.warn("Banned user attempted access: {}", user.getEmail());
+                AccountTrustSnapshot trustSnapshot = accountTrustStateService.snapshot(user);
+                if (!trustSnapshot.canAuthenticate()) {
+                    log.warn("Blocked user attempted access: {} state={}",
+                            user.getEmail(), trustSnapshot.accountAccessState());
                     response.setStatus(HttpServletResponse.SC_FORBIDDEN);
                     response.setContentType("application/json");
-                    response.getWriter().write("{\"error\":\"ACCOUNT_BANNED\",\"message\":\"Your account has been suspended.\"}");
+                    response.getWriter().write("{\"error\":\"ACCOUNT_BLOCKED\",\"message\":\"Your account is not active.\"}");
                     return;
                 }
 

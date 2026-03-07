@@ -34,6 +34,13 @@ public class AdminUserDto {
     private boolean banned;
     private String banReason;
     private LocalDateTime bannedAt;
+
+    /** Canonical account/trust interpretation. */
+    private String accountAccessState;
+    private String registrationCompletionState;
+    private String renterVerificationState;
+    private boolean canAuthenticate;
+    private boolean canBookAsRenter;
     
     /** Timestamps */
     private Instant createdAt;
@@ -94,6 +101,9 @@ public class AdminUserDto {
      * Get status label for display.
      */
     public String getStatusLabel() {
+        if (accountAccessState != null && !accountAccessState.isBlank()) {
+            return accountAccessState;
+        }
         if (banned) return "BANNED";
         if (locked) return "LOCKED";
         if (!enabled) return "DISABLED";

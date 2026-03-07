@@ -37,10 +37,8 @@ public class CompleteProfileResponseDTO {
     private OwnerType ownerType;
     private boolean hasBankAccount;
     
-    // USER (renter) specific fields (null for OWNER role)
-    private boolean hasDriverLicense;
-    private LocalDate driverLicenseExpiryDate;
-    private String driverLicenseCountry;
+    // USER (renter) verification workflow state (e.g. NOT_STARTED, PENDING_REVIEW)
+    private String renterVerificationStatus;
     
     private String message;
 }

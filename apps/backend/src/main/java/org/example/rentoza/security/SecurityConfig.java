@@ -11,6 +11,7 @@ import org.example.rentoza.security.supabase.SupabaseUserMappingRepository;
 import org.example.rentoza.security.token.TokenDenylistService;
 import org.example.rentoza.deprecated.jwt.JwtAuthenticationEntryPoint;
 import org.example.rentoza.user.UserRepository;
+import org.example.rentoza.user.trust.AccountTrustStateService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
@@ -103,8 +104,15 @@ public class SecurityConfig {
             SupabaseJwtUtil supabaseJwtUtil,
             UserRepository userRepository,
             SupabaseUserMappingRepository mappingRepository,
-            TokenDenylistService tokenDenylistService) {
-        return new SupabaseJwtAuthFilter(supabaseJwtUtil, userRepository, mappingRepository, tokenDenylistService);
+            TokenDenylistService tokenDenylistService,
+            AccountTrustStateService accountTrustStateService) {
+            return new SupabaseJwtAuthFilter(
+                supabaseJwtUtil,
+                userRepository,
+                mappingRepository,
+                tokenDenylistService,
+                accountTrustStateService
+            );
     }
 
     @Bean

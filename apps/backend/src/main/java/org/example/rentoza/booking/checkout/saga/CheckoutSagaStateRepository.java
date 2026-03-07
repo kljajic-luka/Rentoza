@@ -88,6 +88,12 @@ public interface CheckoutSagaStateRepository extends JpaRepository<CheckoutSagaS
         """)
     List<CheckoutSagaState> findSagasNeedingCompensation();
 
+        @Query("SELECT s FROM CheckoutSagaState s JOIN Booking b ON s.bookingId = b.id " +
+            "WHERE s.status = 'SUSPENDED' " +
+            "AND b.securityDepositHoldUntil IS NOT NULL " +
+            "AND b.securityDepositHoldUntil < :now")
+        List<CheckoutSagaState> findSuspendedWithExpiredHold(@Param("now") Instant now);
+
     /**
      * Check if booking has completed saga.
      */

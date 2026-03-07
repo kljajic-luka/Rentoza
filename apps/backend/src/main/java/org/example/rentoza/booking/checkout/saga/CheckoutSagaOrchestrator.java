@@ -635,6 +635,29 @@ public class CheckoutSagaOrchestrator {
 
         Booking booking = loadBooking(saga.getBookingId());
 
+        // AUDIT-C2-FIX: Re-authorize deposit if auth expired before capture attempt.
+        if (booking.getDepositAuthExpiresAt() != null
+                && booking.getDepositAuthExpiresAt().isBefore(Instant.now())
+                && booking.getStoredPaymentMethodId() != null) {
+            log.info("[Saga] Deposit auth expired for booking {} - attempting re-authorization", booking.getId());
+            PaymentResult reauthResult = bookingPaymentService.reauthorizeDeposit(booking.getId());
+            if (reauthResult.isSuccess()) {
+                Long bookingId = booking.getId();
+                booking = bookingRepository.findById(booking.getId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Booking not found: " + bookingId));
+                log.info("[Saga] Deposit re-authorized for booking {} - new authId: {}",
+                        booking.getId(), booking.getDepositAuthorizationId());
+            } else if (reauthResult.isRedirectRequired()) {
+                saga.setStatus(SagaStatus.SUSPENDED);
+                saga.setErrorMessage("Deposit re-authorization requires 3DS - awaiting guest action");
+                sagaRepository.save(saga);
+                return;
+            } else {
+                log.error("[Saga] Deposit re-auth failed for booking {}", booking.getId());
+                // Fall through to capture attempt which will fail and trigger normal retry/escalation.
+            }
+        }
+
         // Idempotency: If deposit was already resolved (e.g. admin dispute resolution
         // handled capture/release before saga started), skip to avoid double-capture.
         if (booking.getSecurityDepositResolvedAt() != null) {

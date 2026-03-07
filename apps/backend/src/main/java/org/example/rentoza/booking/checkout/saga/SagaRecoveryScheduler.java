@@ -36,6 +36,7 @@ public class SagaRecoveryScheduler {
     private static final String LOCK_RECOVER = "saga.recovery.recover-stuck";
     private static final String LOCK_RETRY = "saga.recovery.retry-failed";
     private static final String LOCK_COMPENSATE = "saga.recovery.compensations";
+    private static final String LOCK_DISPUTE_ESCALATION = "saga.recovery.dispute-escalation";
 
     private final CheckoutSagaStateRepository sagaRepository;
     private final CheckoutSagaOrchestrator sagaOrchestrator;
@@ -45,6 +46,7 @@ public class SagaRecoveryScheduler {
     private final Counter recoveryAttemptedCounter;
     private final Counter recoverySucceededCounter;
     private final Counter recoveryFailedCounter;
+    private final Counter disputeEscalationCounter;
 
     private static final int STUCK_THRESHOLD_MINUTES = 30;
     private static final int MAX_RETRY_BATCH_SIZE = 10;
@@ -66,6 +68,42 @@ public class SagaRecoveryScheduler {
         this.recoveryFailedCounter = Counter.builder("checkout.saga.recovery.failed")
                 .description("Failed saga recoveries")
                 .register(meterRegistry);
+        this.disputeEscalationCounter = Counter.builder("checkout.saga.dispute.auto_escalated")
+                .tag("severity", "high")
+                .description("Dispute holds auto-escalated after expiry")
+                .register(meterRegistry);
+    }
+
+    /**
+     * AUDIT-C2-FIX + AUDIT-M1-FIX: Escalate suspended sagas where the dispute hold has expired.
+     * Runs every 6 hours.
+     */
+    @Scheduled(fixedDelayString = "${app.saga.recovery.dispute-escalation-interval:21600000}")
+    @Transactional
+    public void escalateExpiredDisputeHolds() {
+        if (!lockService.tryAcquireLock(LOCK_DISPUTE_ESCALATION, Duration.ofHours(5))) {
+            return;
+        }
+
+        try {
+            List<CheckoutSagaState> expired = sagaRepository.findSuspendedWithExpiredHold(Instant.now());
+
+            for (CheckoutSagaState saga : expired) {
+                try {
+                    log.warn("[Saga][AUDIT-M1] Dispute hold expired for saga {} booking {} - escalating to MANUAL_REVIEW",
+                            saga.getSagaId(), saga.getBookingId());
+                    saga.setStatus(CheckoutSagaState.SagaStatus.FAILED);
+                    saga.setErrorMessage("Dispute hold expired without resolution - escalated to manual review");
+                    sagaRepository.save(saga);
+                    disputeEscalationCounter.increment();
+                } catch (Exception e) {
+                    log.error("[Saga] Failed to escalate expired dispute hold for saga {}: {}",
+                            saga.getSagaId(), e.getMessage());
+                }
+            }
+        } finally {
+            lockService.releaseLock(LOCK_DISPUTE_ESCALATION);
+        }
     }
 
     /**

@@ -73,6 +73,14 @@ public final class PaymentIdempotencyKey {
         return build("dep_capture", bookingId, "checkout", attempt);
     }
 
+    /**
+     * AUDIT-C2-FIX: Deposit re-authorization key - scoped per attempt so each
+     * reauth gets a distinct provider slot.
+     */
+    public static String forDepositReauth(Long bookingId, int attempt) {
+        return build("dep_reauth", bookingId, "checkout", attempt);
+    }
+
     public static String forDepositRelease(Long bookingId, int attempt) {
         return build("dep_release", bookingId, "checkout", attempt);
     }

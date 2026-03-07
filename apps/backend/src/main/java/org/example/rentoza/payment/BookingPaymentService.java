@@ -590,6 +590,89 @@ public class BookingPaymentService {
     }
 
     /**
+     * AUDIT-C2-FIX: Reauthorize an expired security deposit hold using the stored payment method.
+     */
+    @Transactional
+    public PaymentResult reauthorizeDeposit(Long bookingId) {
+        Booking booking = getBooking(bookingId);
+
+        if (booking.getStoredPaymentMethodId() == null || booking.getStoredPaymentMethodId().isBlank()) {
+            log.warn("[Payment] Deposit reauth terminal failure for booking {} - no stored payment method", bookingId);
+            return PaymentResult.builder()
+                    .success(false)
+                    .errorCode("NO_STORED_PAYMENT_METHOD")
+                    .errorMessage("no stored payment method for deposit reauth")
+                    .status(PaymentStatus.FAILED)
+                    .build();
+        }
+
+        BigDecimal depositAmount = booking.getSecurityDeposit() != null
+                ? booking.getSecurityDeposit()
+                : BigDecimal.valueOf(defaultDepositAmountRsd);
+
+        int attempt = booking.getDepositCaptureAttempts() + 1;
+        String ikey = PaymentIdempotencyKey.forDepositReauth(bookingId, attempt);
+
+        Optional<PaymentTransaction> existing = txRepository.findByIdempotencyKey(ikey);
+        final PaymentTransaction tx;
+        if (existing.isPresent()) {
+            PaymentTransaction ex = existing.get();
+            if (ex.getStatus() == PaymentTransactionStatus.SUCCEEDED) {
+                return toSuccess(ex);
+            }
+            if (ex.getStatus() == PaymentTransactionStatus.REDIRECT_REQUIRED
+                    || ex.getStatus() == PaymentTransactionStatus.PENDING_CONFIRMATION) {
+                return toLegacyResult(ex);
+            }
+            if (ex.getStatus() == PaymentTransactionStatus.PROCESSING) {
+                return PaymentResult.builder().success(false).errorCode("IN_PROGRESS")
+                        .errorMessage("Deposit reauthorization already in progress")
+                        .status(PaymentStatus.FAILED).build();
+            }
+            if (ex.getStatus() == PaymentTransactionStatus.FAILED_TERMINAL) {
+                return toLegacyResult(ex);
+            }
+            ex.setStatus(PaymentTransactionStatus.PROCESSING);
+            tx = txRepository.save(ex);
+        } else {
+            tx = createTx(bookingId, booking.getRenter().getId(),
+                    PaymentOperation.AUTHORIZE, ikey, depositAmount);
+        }
+
+        PaymentRequest request = PaymentRequest.builder()
+                .bookingId(bookingId)
+                .userId(booking.getRenter().getId())
+                .amount(depositAmount)
+                .currency(DEFAULT_CURRENCY)
+                .description("Reautorizacija depozita za rezervaciju #" + bookingId)
+                .type(PaymentType.SECURITY_DEPOSIT)
+                .paymentMethodId(booking.getStoredPaymentMethodId())
+                .build();
+
+        ProviderResult result = paymentProvider.authorize(request, ikey);
+
+        updateTx(tx, result);
+
+        if (result.getOutcome() == ProviderOutcome.SUCCESS) {
+            booking.setDepositAuthorizationId(result.getProviderAuthorizationId());
+            booking.setDepositAuthExpiresAt(result.getExpiresAt() != null
+                    ? result.getExpiresAt()
+                    : Instant.now().plusSeconds(authExpiryHours * 3600L));
+            transitionDeposit(booking, DepositLifecycleStatus.AUTHORIZED, "reauthorizeDeposit");
+            bookingRepository.save(booking);
+            log.info("[Payment] Deposit reauthorized for booking {}: {}", bookingId,
+                    result.getProviderAuthorizationId());
+        } else if (result.getOutcome() == ProviderOutcome.REDIRECT_REQUIRED) {
+            log.warn("[Payment] Deposit reauth requires redirect for booking {}", bookingId);
+        } else {
+            log.warn("[Payment] Deposit reauth failed for booking {}: {} ({})", bookingId,
+                    result.getErrorMessage(), result.getErrorCode());
+        }
+
+        return toLegacyResult(result);
+    }
+
+    /**
      * Release security deposit (no damage).
      *
      * <p>Deposit MUST NOT be released if there are pending damage claims.

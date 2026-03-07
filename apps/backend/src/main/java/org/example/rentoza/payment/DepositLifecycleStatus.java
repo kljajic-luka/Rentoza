@@ -82,7 +82,7 @@ public enum DepositLifecycleStatus {
             case PENDING    -> next == AUTHORIZED || next == MANUAL_REVIEW;
             case AUTHORIZED -> next == RELEASED || next == CAPTURED || next == PARTIAL_CAPTURED
                                || next == EXPIRED || next == MANUAL_REVIEW;
-            case EXPIRED    -> next == MANUAL_REVIEW;
+            case EXPIRED    -> next == AUTHORIZED || next == MANUAL_REVIEW;
             case RELEASED, PARTIAL_CAPTURED, CAPTURED, MANUAL_REVIEW -> false;
         };
     }

@@ -137,6 +137,13 @@ public class MockPaymentProvider implements PaymentProvider {
     @Value("${app.payment.mock.auth-expiry-minutes:7200}")
     private int authExpiryMinutes = 7200;
 
+    /**
+     * AUDIT-FA2-FIX: Return absolute ACS redirect URLs to mirror real PSP handoff
+     * where the browser leaves app origin for bank/processor challenge pages.
+     */
+    @Value("${app.payment.mock.acs-base-url:http://localhost:8080}")
+    private String mockAcsBaseUrl = "http://localhost:8080";
+
     // ── State store initialization ────────────────────────────────────────────
 
     /**
@@ -502,7 +509,7 @@ public class MockPaymentProvider implements PaymentProvider {
 
         ProviderResult result = ProviderResult.builder()
                 .outcome(ProviderOutcome.REDIRECT_REQUIRED)
-                .redirectUrl("/mock/acs/challenge?token=" + token)
+            .redirectUrl(buildAbsoluteAcsChallengeUrl(token))
                 .sessionToken("sca_session_" + token)
                 .providerAuthorizationId(authId)
                 .amount(request.getAmount())
@@ -564,6 +571,17 @@ public class MockPaymentProvider implements PaymentProvider {
                 log.error("[Mock] Async confirmation failed for booking={}: {}", bookingId, e.getMessage(), e);
             }
         }, Instant.now().plusSeconds(asyncConfirmDelaySeconds));
+    }
+
+    private String buildAbsoluteAcsChallengeUrl(String token) {
+        String base = mockAcsBaseUrl != null ? mockAcsBaseUrl.trim() : "";
+        if (base.endsWith("/")) {
+            base = base.substring(0, base.length() - 1);
+        }
+        if (base.isBlank()) {
+            base = "http://localhost:8080";
+        }
+        return base + "/mock/acs/challenge?token=" + token;
     }
 
     /**

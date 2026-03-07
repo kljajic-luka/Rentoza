@@ -70,6 +70,26 @@ class MockPaymentProviderTest {
             assertThat(result.getProviderAuthorizationId()).startsWith("mock_auth_");
         }
 
+            @Test
+            @DisplayName("authorize() with SCA card returns absolute redirect URL")
+            void authorizeScaReturnsAbsoluteRedirectUrl() {
+                ReflectionTestUtils.setField(provider, "mockAcsBaseUrl", "https://payments.staging.rentoza.rs");
+
+                PaymentRequest request = PaymentRequest.builder()
+                    .amount(BigDecimal.valueOf(10000))
+                    .currency("RSD")
+                    .bookingId(987L)
+                    .paymentMethodId("pm_card_sca_required")
+                    .build();
+
+                ProviderResult result = provider.authorize(request, "test_auth_sca_absolute");
+
+                assertThat(result.getOutcome()).isEqualTo(ProviderOutcome.REDIRECT_REQUIRED);
+                assertThat(result.getRedirectUrl())
+                    .startsWith("https://payments.staging.rentoza.rs/mock/acs/challenge?token=");
+                assertThat(result.getProviderAuthorizationId()).startsWith("mock_auth_");
+            }
+
         @Test
         @DisplayName("capture() captures authorized amount")
         void captureSucceedsNormally() {

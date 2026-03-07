@@ -154,6 +154,17 @@ export const routes: Routes = [
           ),
       },
       {
+        // FA2: 3DS/SCA payment return callback landing page.
+        // Payment provider redirects here after bank authentication completes.
+        // Handles:  /bookings/payment-return?bookingId=...&status=success|failed
+        path: 'payment-return',
+        title: 'Status plaćanja | Rentoza',
+        loadComponent: () =>
+          import('@features/bookings/pages/payment-return/payment-return.component').then(
+            (m) => m.PaymentReturnComponent,
+          ),
+      },
+      {
         path: ':id',
         canActivate: [RoleGuard, RoleRedirectGuard],
         data: { roles: ['USER', 'OWNER', 'ADMIN'] },
@@ -197,17 +208,6 @@ export const routes: Routes = [
         loadComponent: () =>
           import('@features/bookings/pages/add-review/add-review.component').then(
             (m) => m.AddReviewComponent,
-          ),
-      },
-      {
-        // FA2: 3DS/SCA payment return callback landing page.
-        // Payment provider redirects here after bank authentication completes.
-        // Handles:  /bookings/payment-return?bookingId=...&status=success|failed
-        path: 'payment-return',
-        title: 'Status plaćanja | Rentoza',
-        loadComponent: () =>
-          import('@features/bookings/pages/payment-return/payment-return.component').then(
-            (m) => m.PaymentReturnComponent,
           ),
       },
     ],

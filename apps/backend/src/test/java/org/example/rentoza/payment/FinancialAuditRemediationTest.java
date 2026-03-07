@@ -618,10 +618,10 @@ class FinancialAuditRemediationTest {
         }
 
         @Test
-        @DisplayName("EXPIRED → MANUAL_REVIEW is the only exit from EXPIRED")
-        void expiredOnlyToManualReview() {
+        @DisplayName("EXPIRED exits: MANUAL_REVIEW and AUTHORIZED (reauth)")
+        void expiredExitPaths() {
             assertThat(DepositLifecycleStatus.EXPIRED.canTransitionTo(DepositLifecycleStatus.MANUAL_REVIEW)).isTrue();
-            assertThat(DepositLifecycleStatus.EXPIRED.canTransitionTo(DepositLifecycleStatus.AUTHORIZED)).isFalse();
+            assertThat(DepositLifecycleStatus.EXPIRED.canTransitionTo(DepositLifecycleStatus.AUTHORIZED)).isTrue();
             assertThat(DepositLifecycleStatus.EXPIRED.canTransitionTo(DepositLifecycleStatus.RELEASED)).isFalse();
         }
 

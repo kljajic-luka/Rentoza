@@ -116,10 +116,12 @@ class MockAcsController {
                     session.bookingId, e.getMessage(), e);
         }
 
-        // Redirect browser back to frontend booking page
-        String status = approved ? "confirmed" : "failed";
-        String redirectUrl = frontendUrl + "/bookings/" + session.bookingId
-                + "?payment=" + status;
+        // AUDIT-FA2-FIX: Route mock return through the same callback surface used by
+        // real provider redirects so staging exercises payment-return polling flow.
+        String status = approved ? "success" : "failed";
+        String redirectUrl = frontendUrl + "/bookings/payment-return"
+            + "?bookingId=" + session.bookingId
+            + "&status=" + status;
 
         return ResponseEntity.status(HttpStatus.FOUND)
                 .header(HttpHeaders.LOCATION, redirectUrl)

@@ -20,6 +20,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -81,6 +82,8 @@ public class RenterVerificationService {
         "image/jpeg", "image/jpg", "image/png"
     );
     private static final double MIN_OCR_CONFIDENCE_THRESHOLD = 0.80; // Below this => re-upload
+    private static final String DUPLICATE_LICENSE_FLAG = "DUPLICATE_LICENSE";
+    private static final String DUPLICATE_LICENSE_FRAUD_FLAG = "DUPLICATE_LICENSE_FRAUD";
     
     // JPEG magic bytes: FF D8 FF
     private static final byte[] JPEG_MAGIC = {(byte)0xFF, (byte)0xD8, (byte)0xFF};
@@ -190,34 +193,19 @@ public class RenterVerificationService {
         log.info("[submitDocument] INSERT new document: userId={}, docType={}, hashPrefix={}",
             userId, docType, hashPrefix);
 
-        // Replace existing document of same type (re-submission with a different file)
-        documentRepository.findByUserIdAndType(userId, docType)
-            .ifPresent(existing -> {
-                log.info("[submitDocument] Replacing existing {} docId={} for userId={}",
-                    docType, existing.getId(), userId);
-                documentRepository.delete(existing);
-            });
+        Optional<RenterDocument> existingDocumentOfSameType = documentRepository.findByUserIdAndType(userId, docType);
+        String previousStoragePath = existingDocumentOfSameType
+            .map(RenterDocument::getDocumentUrl)
+            .orElse(null);
         
         // Generate storage path - uses renter-documents bucket (not car-documents)
         // UUID-based filename prevents path traversal attacks
         String documentUrl = storageService.uploadRenterDocument(
             userId, docType.name().toLowerCase(), file);
         
-        // Create document entity
-        RenterDocument document = RenterDocument.builder()
-            .user(user)
-            .type(docType)
-            .documentUrl(documentUrl)
-            .storageBucket(SupabaseStorageService.BUCKET_RENTER_DOCUMENTS)
-            .originalFilename(file.getOriginalFilename())
-            .documentHash(documentHash)
-            .fileSize(file.getSize())
-            .mimeType(file.getContentType())
-            .uploadDate(LocalDateTime.now())
-            .expiryDate(request.getExpiryDate())
-            .status(DocumentVerificationStatus.PENDING)
-            .processingStatus(RenterDocument.ProcessingStatus.PENDING)
-            .build();
+        RenterDocument document = existingDocumentOfSameType
+            .map(existing -> buildReplacementDocument(existing, documentUrl, documentHash, file, request))
+            .orElseGet(() -> buildNewDocument(user, docType, documentUrl, documentHash, file, request));
         
         try {
             document = documentRepository.save(document);
@@ -234,6 +222,20 @@ public class RenterVerificationService {
             }
             throw dbEx;
         }
+
+        if (previousStoragePath != null
+                && !previousStoragePath.isBlank()
+                && !Objects.equals(previousStoragePath, documentUrl)) {
+            try {
+                storageService.deleteRenterDocument(previousStoragePath);
+                log.info("[submitDocument] Deleted replaced renter document from storage: userId={}, oldPath={}",
+                    userId, previousStoragePath);
+            } catch (Exception oldDeleteEx) {
+                log.error("[submitDocument] Replacement committed but old renter document delete failed. "
+                        + "Manual orphan cleanup required: userId={}, oldPath={}, newPath={}",
+                    userId, previousStoragePath, documentUrl, oldDeleteEx);
+            }
+        }
         
         // Transition to pending review on initial submission and re-submissions.
         DriverLicenseStatus previousStatus = user.getDriverLicenseStatus();
@@ -247,10 +249,7 @@ public class RenterVerificationService {
         }
         
         // Store optional metadata
-        if (request.getLicenseNumber() != null) {
-            user.setDriverLicenseNumber(request.getLicenseNumber());
-            user.setDriverLicenseNumberHash(hashUtil.hash(request.getLicenseNumber()));
-        }
+        applyNormalizedDriverLicenseNumber(user, request.getLicenseNumber());
         if (request.getLicenseCountry() != null) {
             user.setDriverLicenseCountry(request.getLicenseCountry());
         }
@@ -355,6 +354,10 @@ public class RenterVerificationService {
                         if (document.getType().isDriversLicense()) {
                             user.setDriverLicenseExpiryDate(ocrResult.getExpiryDate());
                         }
+                    }
+
+                    if (document.getType().isDriversLicense()) {
+                        applyNormalizedDriverLicenseNumber(user, ocrResult.getDocumentNumber());
                     }
                     
                     // ENTERPRISE-GRADE: Store Date of Birth from verified OCR
@@ -504,6 +507,19 @@ public class RenterVerificationService {
         }
         
         RenterDocument licenseDoc = licenseFront.get();
+        DuplicateLicenseConflict duplicateConflict = findDuplicateLicenseConflict(user);
+        if (duplicateConflict != null) {
+            log.warn("Blocking auto-approval due to duplicate driver license: userId={}, conflictingUserId={}, fraudSignal={}",
+                userId, duplicateConflict.conflictingUser().getId(), duplicateConflict.fraudSignal());
+            applicationContext.getBean(RenterVerificationService.class).recordDuplicateLicenseConflict(
+                userId,
+                duplicateConflict.conflictingUser().getId(),
+                null,
+                duplicateConflict.fraudSignal(),
+                "AUTO_APPROVAL"
+            );
+            return;
+        }
         double ocrConfidence = licenseDoc.getOcrConfidence() != null 
             ? licenseDoc.getOcrConfidence().doubleValue() : 0.0;
         double nameMatch = licenseDoc.getNameMatchScore() != null 
@@ -820,6 +836,18 @@ public class RenterVerificationService {
         // If expiry was found in documents but not on user, update it
         if (user.getDriverLicenseExpiryDate() == null) {
             user.setDriverLicenseExpiryDate(expiryDate);
+        }
+
+        DuplicateLicenseConflict duplicateConflict = findDuplicateLicenseConflict(user);
+        if (duplicateConflict != null) {
+            applicationContext.getBean(RenterVerificationService.class).recordDuplicateLicenseConflict(
+                userId,
+                duplicateConflict.conflictingUser().getId(),
+                adminId,
+                duplicateConflict.fraudSignal(),
+                "MANUAL_APPROVAL"
+            );
+            throw new ValidationException(buildDuplicateLicenseExceptionMessage(duplicateConflict));
         }
         
         DriverLicenseStatus previousStatus = user.getDriverLicenseStatus();
@@ -1202,6 +1230,52 @@ public class RenterVerificationService {
             throw new RuntimeException("SHA-256 not available", e);
         }
     }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void recordDuplicateLicenseConflict(
+            Long userId,
+            Long conflictingUserId,
+            Long actorId,
+            boolean fraudSignal,
+            String source
+    ) {
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userId));
+        User conflictingUser = userRepository.findById(conflictingUserId)
+            .orElseThrow(() -> new ResourceNotFoundException("Conflicting user not found: " + conflictingUserId));
+        User actor = actorId != null
+            ? userRepository.findById(actorId)
+                .orElseThrow(() -> new ResourceNotFoundException("Actor not found: " + actorId))
+            : null;
+
+        List<RenterDocument> documents = documentRepository.findByUserId(userId);
+        DriverLicenseStatus previousStatus = user.getDriverLicenseStatus();
+        DriverLicenseStatus newStatus = fraudSignal ? DriverLicenseStatus.SUSPENDED : previousStatus;
+        String reason = buildDuplicateLicenseReason(user, conflictingUser, fraudSignal, source);
+
+        user.setRiskLevel(RiskLevel.HIGH);
+        user.setLastRiskEvaluationAt(LocalDateTime.now());
+        if (fraudSignal) {
+            user.setDriverLicenseStatus(DriverLicenseStatus.SUSPENDED);
+        }
+        userRepository.save(user);
+
+        flagDuplicateLicenseDocuments(documents, reason, fraudSignal);
+
+        createAudit(
+            user,
+            documents.stream()
+                .filter(doc -> doc.getType().isDriversLicense())
+                .findFirst()
+                .orElse(null),
+            actor,
+            fraudSignal ? RenterVerificationAudit.AuditAction.SUSPENDED
+                : RenterVerificationAudit.AuditAction.ESCALATED_TO_REVIEW,
+            previousStatus,
+            newStatus,
+            reason
+        );
+    }
     
     private void createAudit(User user, RenterDocument document, User actor,
                             RenterVerificationAudit.AuditAction action,
@@ -1233,6 +1307,134 @@ public class RenterVerificationService {
             log.warn("Failed to serialize OCR result", e);
             return "{}";
         }
+    }
+
+    private RenterDocument buildNewDocument(
+            User user,
+            RenterDocumentType docType,
+            String documentUrl,
+            String documentHash,
+            MultipartFile file,
+            DriverLicenseSubmissionRequest request
+    ) {
+        return RenterDocument.builder()
+            .user(user)
+            .type(docType)
+            .documentUrl(documentUrl)
+            .storageBucket(SupabaseStorageService.BUCKET_RENTER_DOCUMENTS)
+            .originalFilename(file.getOriginalFilename())
+            .documentHash(documentHash)
+            .fileSize(file.getSize())
+            .mimeType(file.getContentType())
+            .uploadDate(LocalDateTime.now())
+            .expiryDate(request.getExpiryDate())
+            .status(DocumentVerificationStatus.PENDING)
+            .processingStatus(RenterDocument.ProcessingStatus.PENDING)
+            .build();
+    }
+
+    private RenterDocument buildReplacementDocument(
+            RenterDocument existing,
+            String documentUrl,
+            String documentHash,
+            MultipartFile file,
+            DriverLicenseSubmissionRequest request
+    ) {
+        return RenterDocument.builder()
+            .id(existing.getId())
+            .user(existing.getUser())
+            .type(existing.getType())
+            .documentUrl(documentUrl)
+            .storageBucket(SupabaseStorageService.BUCKET_RENTER_DOCUMENTS)
+            .originalFilename(file.getOriginalFilename())
+            .documentHash(documentHash)
+            .fileSize(file.getSize())
+            .mimeType(file.getContentType())
+            .uploadDate(LocalDateTime.now())
+            .expiryDate(request.getExpiryDate())
+            .status(DocumentVerificationStatus.PENDING)
+            .verifiedBy(null)
+            .verifiedAt(null)
+            .rejectionReason(null)
+            .ocrExtractedData(null)
+            .ocrConfidence(null)
+            .livenessPassed(null)
+            .faceMatchScore(null)
+            .nameMatchScore(null)
+            .faceMatchPassed(null)
+            .qualityFlag(null)
+            .qualityFlagReason(null)
+            .processingStatus(RenterDocument.ProcessingStatus.PENDING)
+            .processingError(null)
+            .createdAt(existing.getCreatedAt())
+            .updatedAt(LocalDateTime.now())
+            .build();
+    }
+
+    private void applyNormalizedDriverLicenseNumber(User user, String rawLicenseNumber) {
+        if (rawLicenseNumber == null || rawLicenseNumber.isBlank()) {
+            return;
+        }
+
+        String normalized = DriverLicenseNumberNormalizer.normalize(rawLicenseNumber);
+        if (normalized == null) {
+            throw new ValidationException("Driver license number is invalid");
+        }
+
+        user.setDriverLicenseNumber(normalized);
+        user.setDriverLicenseNumberHash(hashUtil.hash(normalized));
+    }
+
+    private DuplicateLicenseConflict findDuplicateLicenseConflict(User user) {
+        if (user.getDriverLicenseNumberHash() == null || user.getDriverLicenseNumberHash().isBlank()) {
+            return null;
+        }
+
+        return userRepository.findDriverLicenseConflicts(user.getDriverLicenseNumberHash(), user.getId())
+            .stream()
+            .findFirst()
+            .map(conflictingUser -> new DuplicateLicenseConflict(
+                conflictingUser,
+                conflictingUser.isBanned() || conflictingUser.getDriverLicenseStatus() == DriverLicenseStatus.SUSPENDED
+            ))
+            .orElse(null);
+    }
+
+    private void flagDuplicateLicenseDocuments(List<RenterDocument> documents, String reason, boolean fraudSignal) {
+        String flag = fraudSignal ? DUPLICATE_LICENSE_FRAUD_FLAG : DUPLICATE_LICENSE_FLAG;
+        documents.stream()
+            .filter(doc -> doc.getType().isDriversLicense())
+            .forEach(doc -> {
+                doc.setQualityFlag(flag);
+                doc.setQualityFlagReason(reason);
+                documentRepository.save(doc);
+            });
+    }
+
+    private String buildDuplicateLicenseReason(User user, User conflictingUser, boolean fraudSignal, String source) {
+        String conflictingState = conflictingUser.isBanned()
+            ? "BANNED"
+            : conflictingUser.getDriverLicenseStatus().name();
+        return String.format(
+            "%s blocked: duplicate driver license detected for userId=%d against conflictingUserId=%d (status=%s, maskedLicense=%s)%s",
+            source,
+            user.getId(),
+            conflictingUser.getId(),
+            conflictingState,
+            conflictingUser.getMaskedDriverLicenseNumber(),
+            fraudSignal ? " [fraud-signal]" : ""
+        );
+    }
+
+    private String buildDuplicateLicenseExceptionMessage(DuplicateLicenseConflict conflict) {
+        return String.format(
+            "Duplicate driver license detected on conflicting account %d (%s). Approval blocked.",
+            conflict.conflictingUser().getId(),
+            conflict.fraudSignal() ? "fraud signal" : conflict.conflictingUser().getDriverLicenseStatus().name()
+        );
+    }
+
+    private record DuplicateLicenseConflict(User conflictingUser, boolean fraudSignal) {
     }
     
     private void triggerDocumentProcessing(RenterDocument document) {

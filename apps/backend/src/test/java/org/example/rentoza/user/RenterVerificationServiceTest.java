@@ -87,6 +87,7 @@ class RenterVerificationServiceTest {
             eventPublisher,
             applicationContext
         );
+        lenient().when(applicationContext.getBean(RenterVerificationService.class)).thenReturn(service);
         
         // Set default @Value properties
         ReflectionTestUtils.setField(service, "nameMatchThreshold", 0.80);
@@ -378,6 +379,92 @@ class RenterVerificationServiceTest {
             // Compensating delete must be called with the exact uploaded path to prevent orphaned files
             verify(storageService).deleteRenterDocument(uploadedPath);
         }
+
+        @Test
+        @DisplayName("submitDocument replacement deletes previous storage object only after persistence succeeds")
+        void submitDocument_ReplacementDeletesPreviousStorageAfterSuccess() throws Exception {
+            Long userId = 3L;
+            User user = createTestUser(userId, DriverLicenseStatus.REJECTED);
+            RenterDocument existingDoc = createTestDocument(200L, user, RenterDocumentType.DRIVERS_LICENSE_FRONT);
+            existingDoc.setDocumentUrl("renters/3/documents/drivers_license_front/old.jpg");
+
+            when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+            setupValidMockFile("image/jpeg", 1000L);
+            when(documentRepository.findByUserIdAndType(userId, RenterDocumentType.DRIVERS_LICENSE_FRONT))
+                .thenReturn(Optional.of(existingDoc));
+            when(storageService.uploadRenterDocument(anyLong(), any(), any()))
+                .thenReturn("renters/3/documents/drivers_license_front/new.jpg");
+            when(documentRepository.save(any(RenterDocument.class))).thenAnswer(i -> i.getArgument(0));
+
+            DriverLicenseSubmissionRequest request = DriverLicenseSubmissionRequest.builder()
+                .documentType(RenterDocumentType.DRIVERS_LICENSE_FRONT)
+                .build();
+
+            RenterDocumentDTO result = service.submitDocument(userId, mockFile, request);
+
+            assertThat(result.getId()).isEqualTo(200L);
+            verify(documentRepository, never()).delete(any(RenterDocument.class));
+            verify(storageService).deleteRenterDocument("renters/3/documents/drivers_license_front/old.jpg");
+        }
+
+        @Test
+        @DisplayName("submitDocument replacement DB failure cleans only the new upload and keeps old record")
+        void submitDocument_ReplacementDbFailureCleansNewUploadAndKeepsOldRecord() throws Exception {
+            Long userId = 4L;
+            User user = createTestUser(userId, DriverLicenseStatus.REJECTED);
+            RenterDocument existingDoc = createTestDocument(201L, user, RenterDocumentType.DRIVERS_LICENSE_FRONT);
+            existingDoc.setDocumentUrl("renters/4/documents/drivers_license_front/original.jpg");
+
+            when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+            setupValidMockFile("image/jpeg", 1000L);
+            when(documentRepository.findByUserIdAndType(userId, RenterDocumentType.DRIVERS_LICENSE_FRONT))
+                .thenReturn(Optional.of(existingDoc));
+            when(storageService.uploadRenterDocument(anyLong(), any(), any()))
+                .thenReturn("renters/4/documents/drivers_license_front/replacement.jpg");
+            when(documentRepository.save(any(RenterDocument.class)))
+                .thenThrow(new org.springframework.dao.DataAccessResourceFailureException("DB down"));
+
+            DriverLicenseSubmissionRequest request = DriverLicenseSubmissionRequest.builder()
+                .documentType(RenterDocumentType.DRIVERS_LICENSE_FRONT)
+                .build();
+
+            assertThatThrownBy(() -> service.submitDocument(userId, mockFile, request))
+                .isInstanceOf(org.springframework.dao.DataAccessResourceFailureException.class);
+
+            assertThat(existingDoc.getDocumentUrl()).isEqualTo("renters/4/documents/drivers_license_front/original.jpg");
+            verify(storageService).deleteRenterDocument("renters/4/documents/drivers_license_front/replacement.jpg");
+            verify(storageService, never()).deleteRenterDocument("renters/4/documents/drivers_license_front/original.jpg");
+            verify(documentRepository, never()).delete(any(RenterDocument.class));
+        }
+
+        @Test
+        @DisplayName("submitDocument normalizes manual driver license number before hashing")
+        void submitDocument_NormalizesManualDriverLicenseNumber() throws Exception {
+            Long userId = 5L;
+            User user = createTestUser(userId, DriverLicenseStatus.NOT_STARTED);
+
+            when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+            setupValidMockFile("image/jpeg", 1000L);
+            when(storageService.uploadRenterDocument(anyLong(), any(), any()))
+                .thenReturn("renters/5/documents/drivers_license_front/doc.jpg");
+            when(documentRepository.save(any(RenterDocument.class))).thenAnswer(i -> {
+                RenterDocument d = i.getArgument(0);
+                d.setId(555L);
+                return d;
+            });
+            when(hashUtil.hash("AB1234567")).thenReturn("hash-normalized");
+
+            DriverLicenseSubmissionRequest request = DriverLicenseSubmissionRequest.builder()
+                .documentType(RenterDocumentType.DRIVERS_LICENSE_FRONT)
+                .licenseNumber(" ab-123 45.67 ")
+                .build();
+
+            service.submitDocument(userId, mockFile, request);
+
+            assertThat(user.getDriverLicenseNumber()).isEqualTo("AB1234567");
+            assertThat(user.getDriverLicenseNumberHash()).isEqualTo("hash-normalized");
+            verify(hashUtil).hash("AB1234567");
+        }
     }
     
     // ==================== BOOKING ELIGIBILITY TESTS ====================
@@ -643,6 +730,42 @@ class RenterVerificationServiceTest {
                 .isInstanceOf(ValidationException.class)
                 .hasMessageContaining("not pending review");
         }
+
+        @Test
+        @DisplayName("approveVerification blocks duplicate license conflicts before manual approval")
+        void approveVerification_DuplicateLicenseConflict_BlocksApproval() {
+            Long userId = 7L;
+            Long adminId = 99L;
+            User user = createTestUser(userId, DriverLicenseStatus.PENDING_REVIEW);
+            user.setDriverLicenseExpiryDate(LocalDate.now().plusYears(1));
+            user.setDriverLicenseNumber("AB1234567");
+            user.setDriverLicenseNumberHash("hash-123");
+
+            User admin = createTestUser(adminId, DriverLicenseStatus.APPROVED);
+            admin.setEmail("admin@rentoza.rs");
+
+            User conflictingUser = createTestUser(8L, DriverLicenseStatus.SUSPENDED);
+            conflictingUser.setDriverLicenseNumber("AB1234567");
+
+            when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+            when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
+            when(userRepository.findById(8L)).thenReturn(Optional.of(conflictingUser));
+            when(userRepository.findDriverLicenseConflicts("hash-123", userId)).thenReturn(List.of(conflictingUser));
+
+            RenterDocument frontDoc = createTestDocument(20L, user, RenterDocumentType.DRIVERS_LICENSE_FRONT);
+            RenterDocument backDoc = createTestDocument(21L, user, RenterDocumentType.DRIVERS_LICENSE_BACK);
+            RenterDocument selfieDoc = createTestDocument(22L, user, RenterDocumentType.SELFIE);
+            when(documentRepository.findByUserId(userId)).thenReturn(List.of(frontDoc, backDoc, selfieDoc));
+
+            assertThatThrownBy(() -> service.approveVerification(userId, adminId, "Looks good"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("Approval blocked");
+
+            assertThat(user.getDriverLicenseStatus()).isEqualTo(DriverLicenseStatus.SUSPENDED);
+            assertThat(frontDoc.getQualityFlag()).isEqualTo("DUPLICATE_LICENSE_FRAUD");
+            verify(auditRepository, atLeastOnce()).save(any(RenterVerificationAudit.class));
+            verify(eventPublisher, never()).publishEvent(any(VerificationApprovedEvent.class));
+        }
         
         @Test
         @DisplayName("rejectVerification updates status and publishes event")
@@ -705,6 +828,41 @@ class RenterVerificationServiceTest {
         user.setDriverLicenseStatus(status);
         user.setCreatedAt(Instant.now().minus(60, java.time.temporal.ChronoUnit.DAYS)); // Not a new account
         return user;
+    }
+
+    @Test
+    @DisplayName("processDocument normalizes OCR-extracted driver license number before saving user")
+    void processDocument_NormalizesOcrLicenseNumber() throws Exception {
+        Long userId = 9L;
+        Long documentId = 30L;
+        User user = createTestUser(userId, DriverLicenseStatus.NOT_STARTED);
+        RenterDocument document = createTestDocument(documentId, user, RenterDocumentType.DRIVERS_LICENSE_FRONT);
+        document.setDocumentUrl("renters/9/documents/drivers_license_front/ocr.jpg");
+        document.setMimeType("image/jpeg");
+        document.setProcessingStatus(RenterDocument.ProcessingStatus.PENDING);
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(documentRepository.findById(documentId)).thenReturn(Optional.of(document));
+        when(storageService.downloadRenterDocument(document.getDocumentUrl())).thenReturn(new byte[] {1, 2, 3});
+        when(verificationProvider.extractDocumentData(any(), any(), any())).thenReturn(
+            IdVerificationProvider.DocumentExtraction.builder()
+                .success(true)
+                .documentNumber(" ab-123 45.67 ")
+                .firstName("Test")
+                .lastName("User")
+                .confidence(java.math.BigDecimal.valueOf(0.91))
+                .expiryDate(LocalDate.now().plusYears(2))
+                .build()
+        );
+        when(nameNormalizer.normalizeFullName(any(), any())).thenReturn("TEST USER");
+        when(nameNormalizer.jaroWinklerSimilarity(any(), any())).thenReturn(0.99);
+        when(hashUtil.hash("AB1234567")).thenReturn("ocr-hash");
+
+        service.processDocument(documentId);
+
+        assertThat(user.getDriverLicenseNumber()).isEqualTo("AB1234567");
+        assertThat(user.getDriverLicenseNumberHash()).isEqualTo("ocr-hash");
+        verify(hashUtil).hash("AB1234567");
     }
     
     private void setupValidMockFile(String mimeType, long size) throws IOException {

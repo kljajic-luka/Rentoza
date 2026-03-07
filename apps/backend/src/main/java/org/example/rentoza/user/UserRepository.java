@@ -87,6 +87,26 @@ public interface UserRepository extends JpaRepository<User,Long> {
     @Query("SELECT CASE WHEN COUNT(u) > 0 THEN true ELSE false END FROM User u WHERE u.driverLicenseNumberHash = :hash AND u.id != :userId")
     boolean existsByDriverLicenseNumberHashAndIdNot(@org.springframework.data.repository.query.Param("hash") String hash,
                                                      @org.springframework.data.repository.query.Param("userId") Long userId);
+
+    /**
+     * Find conflicting accounts that already use the same normalized driver-license hash.
+     * Fraud-signaled conflicts (banned/suspended) are returned first.
+     */
+    @Query("""
+        SELECT u FROM User u
+        WHERE u.driverLicenseNumberHash = :hash
+        AND u.id != :userId
+        AND u.deleted = false
+        ORDER BY CASE
+            WHEN u.banned = true OR u.driverLicenseStatus = org.example.rentoza.user.DriverLicenseStatus.SUSPENDED THEN 0
+            ELSE 1
+        END,
+        u.id ASC
+        """)
+    List<User> findDriverLicenseConflicts(
+        @org.springframework.data.repository.query.Param("hash") String hash,
+        @org.springframework.data.repository.query.Param("userId") Long userId
+    );
     
     /**
      * Find unverified owners awaiting admin review.

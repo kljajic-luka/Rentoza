@@ -2,6 +2,8 @@ package org.example.rentoza.booking.checkout.saga;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -47,6 +49,7 @@ public class CheckoutSagaState {
     /**
      * Unique saga instance identifier.
      */
+    @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(name = "saga_id", nullable = false, unique = true, length = 36)
     private UUID sagaId;
 

@@ -1127,7 +1127,8 @@ class FinancialAuditRemediationTest {
                     bookingRepository, paymentService, paymentProvider,
                     cancellationRecordRepository, damageClaimRepository,
                     notificationService, schedulerLockStore,
-                    payoutLedgerRepository, mock(ProviderEventService.class), itemProcessor,
+                    payoutLedgerRepository, mock(PaymentTransactionRepository.class),
+                    mock(ProviderEventService.class), itemProcessor,
                     new SimpleMeterRegistry());
         }
 

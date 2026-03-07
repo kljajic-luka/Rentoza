@@ -65,6 +65,7 @@ public class PaymentLifecycleScheduler {
     private static final String LOCK_REAUTH        = "payment.scheduler.reauth";
     private static final String LOCK_DEP_REAUTH    = "payment.scheduler.deposit.reauth";
     private static final String LOCK_WEBHOOK_REPLAY = "payment.scheduler.webhook.replay";
+    private static final String LOCK_RECONCILIATION = "payment.scheduler.reconciliation";
 
     // Conservative TTL: must cover worst-case job duration; must leave gap before next tick
     private static final Duration LOCK_TTL_HOURLY  = Duration.ofMinutes(55);
@@ -89,6 +90,7 @@ public class PaymentLifecycleScheduler {
     private final NotificationService notificationService;
     private final SchedulerLockStore schedulerLockStore;
     private final PayoutLedgerRepository payoutLedgerRepository;
+    private final PaymentTransactionRepository transactionRepository;
     private final ProviderEventService providerEventService;
     /**
      * P1-1: Per-item processor lives in a separate bean so that
@@ -107,6 +109,7 @@ public class PaymentLifecycleScheduler {
     private final Counter refundManualReviewCounter;
     private final Counter payoutScheduledCounter;
     private final Counter payoutExecutedCounter;
+    private final Counter reconciliationFlaggedCounter;
 
     @Value("${app.payment.capture.hours-before-trip:24}")
     private int captureHoursBeforeTrip;
@@ -120,6 +123,9 @@ public class PaymentLifecycleScheduler {
     @Value("${app.payment.refund.retry-backoff-minutes:60}")
     private int refundRetryBackoffMinutes;
 
+    @Value("${app.payment.reconciliation.stale-hours:2}")
+    private int reconciliationStaleHours;
+
     public PaymentLifecycleScheduler(
             BookingRepository bookingRepository,
             BookingPaymentService paymentService,
@@ -129,6 +135,7 @@ public class PaymentLifecycleScheduler {
             NotificationService notificationService,
             SchedulerLockStore schedulerLockStore,
             PayoutLedgerRepository payoutLedgerRepository,
+            PaymentTransactionRepository transactionRepository,
             ProviderEventService providerEventService,
             SchedulerItemProcessor itemProcessor,
             MeterRegistry meterRegistry) {
@@ -140,6 +147,7 @@ public class PaymentLifecycleScheduler {
         this.notificationService = notificationService;
         this.schedulerLockStore = schedulerLockStore;
         this.payoutLedgerRepository = payoutLedgerRepository;
+        this.transactionRepository = transactionRepository;
         this.providerEventService = providerEventService;
         this.itemProcessor = itemProcessor;
 
@@ -152,6 +160,7 @@ public class PaymentLifecycleScheduler {
         this.refundManualReviewCounter  = counter(meterRegistry, "payment.scheduler.refund.manual_review", "Refunds escalated to MANUAL_REVIEW");
         this.payoutScheduledCounter     = counter(meterRegistry, "payment.scheduler.payout.scheduled",  "Host payouts scheduled");
         this.payoutExecutedCounter      = counter(meterRegistry, "payment.scheduler.payout.executed",   "Host payouts executed");
+        this.reconciliationFlaggedCounter = counter(meterRegistry, "payment.scheduler.reconciliation.flagged", "Stale non-terminal transactions flagged for reconciliation");
     }
 
     // ========== JOB 1: IN-TRIP CAPTURE SAFETY-NET ==========
@@ -508,6 +517,32 @@ public class PaymentLifecycleScheduler {
     /** Delegates to {@link SchedulerItemProcessor#markDepositExpiryWarningSafely} for isolated transaction. */
     public void markDepositExpiryWarningSafely(Booking booking) {
         itemProcessor.markDepositExpiryWarningSafely(booking);
+    }
+
+    // ========== JOB 9: TASK10 RECONCILIATION PLACEHOLDER ==========
+
+    /**
+     * Task 10 placeholder: detect stale non-terminal payment transactions and flag for ops review.
+     *
+     * <p>This job intentionally performs no state mutation yet; it only emits structured logs and
+     * metrics so reconciliation implementation can be added in a controlled follow-up.
+     */
+    @Scheduled(cron = "0 */30 * * * *") // Every 30 minutes
+    public void reconcileStaleNonTerminalTransactions() {
+        if (!schedulerLockStore.tryAcquireLock(LOCK_RECONCILIATION, LOCK_TTL_SHORT)) {
+            log.debug("[PaymentScheduler] reconcileStaleNonTerminalTransactions — lock held, skipping");
+            return;
+        }
+        try {
+            Instant staleBefore = Instant.now().minus(reconciliationStaleHours, ChronoUnit.HOURS);
+            List<PaymentTransaction> stale = transactionRepository.findStaleNonTerminalTransactions(staleBefore);
+            if (!stale.isEmpty()) {
+                reconciliationFlaggedCounter.increment(stale.size());
+                log.warn("[PaymentScheduler][AUDIT-T10] Reconciliation placeholder flagged {} stale non-terminal payment transaction(s) older than {}", stale.size(), staleBefore);
+            }
+        } finally {
+            schedulerLockStore.releaseLock(LOCK_RECONCILIATION);
+        }
     }
 
     // ========== HELPERS ==========

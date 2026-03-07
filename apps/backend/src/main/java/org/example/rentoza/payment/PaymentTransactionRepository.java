@@ -35,6 +35,20 @@ public interface PaymentTransactionRepository extends JpaRepository<PaymentTrans
         """)
     List<PaymentTransaction> findStaleProcessing(@Param("staleBefore") Instant staleBefore);
 
+    /**
+     * Task 10 placeholder: stale non-terminal transactions requiring reconciliation review.
+     *
+     * <p>Includes async/in-flight statuses that should normally converge via webhook/scheduler
+     * but remained unresolved past the stale threshold.
+     */
+    @Query("""
+        SELECT t FROM PaymentTransaction t
+        WHERE t.status IN ('PROCESSING', 'REDIRECT_REQUIRED', 'PENDING_CONFIRMATION', 'FAILED_RETRYABLE')
+          AND t.updatedAt < :staleBefore
+        ORDER BY t.updatedAt ASC
+        """)
+    List<PaymentTransaction> findStaleNonTerminalTransactions(@Param("staleBefore") Instant staleBefore);
+
     Optional<PaymentTransaction> findByBookingIdAndOperation(
             Long bookingId, PaymentTransaction.PaymentOperation operation);
 

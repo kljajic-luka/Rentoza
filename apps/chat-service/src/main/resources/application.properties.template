@@ -1,87 +1,128 @@
 # ============================================================================
 # Chat Service - Application Properties Template
 # ============================================================================
-# Copy this to application.properties and customize for your environment
+# Copy this file to application.properties, fill in your local values, and run
+# the chat service with that untracked file. The copied application.properties
+# stays gitignored automatically.
 # ============================================================================
 
-# Server
+# Chat Service Configuration
+spring.application.name=chat-service
 server.port=8081
 
-# Database (PostgreSQL)
-spring.datasource.url=jdbc:postgresql://localhost:5432/rentoza_chat
-spring.datasource.username=postgres
-spring.datasource.password=your_password_here
+# ============================================================================
+# DATABASE CONFIGURATION - SUPABASE (Shared with Main Backend)
+# ============================================================================
+spring.datasource.url=${DB_URL:jdbc:postgresql://localhost:5432/rentoza_chat}
+spring.datasource.username=${DB_USERNAME:postgres}
+spring.datasource.password=${DB_PASSWORD:your_local_db_password}
 spring.datasource.driver-class-name=org.postgresql.Driver
 
-# JPA/Hibernate
-spring.jpa.hibernate.ddl-auto=update
+# Connection Pool Configuration (Conservative for shared database)
+spring.datasource.hikari.maximum-pool-size=5
+spring.datasource.hikari.minimum-idle=1
+spring.datasource.hikari.connection-timeout=30000
+spring.datasource.hikari.idle-timeout=10000
+spring.datasource.hikari.max-lifetime=30000
+spring.datasource.hikari.keepalive-time=0
+spring.datasource.hikari.connection-test-query=SELECT 1
+
+# JPA Configuration
+spring.jpa.hibernate.ddl-auto=none
 spring.jpa.show-sql=false
-spring.jpa.properties.hibernate.format_sql=true
 spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect
+spring.jpa.properties.hibernate.format_sql=true
+spring.jpa.hibernate.naming.physical-strategy=org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy
+spring.jpa.properties.hibernate.type.preferred_enum_jdbc_type=STRING
 
-# Flyway (for production migrations)
-spring.flyway.enabled=false
-spring.flyway.baseline-on-migrate=true
-spring.flyway.locations=classpath:db/migration
+# ============================================================================
+# SUPABASE AUTH CONFIGURATION (ES256 with JWKS)
+# ============================================================================
+supabase.url=${SUPABASE_URL:https://YOUR_PROJECT_REF.supabase.co}
+supabase.jwt.issuer=${SUPABASE_JWT_ISSUER:https://YOUR_PROJECT_REF.supabase.co/auth/v1}
+supabase.jwt.audience=authenticated
 
-# WebSocket
-websocket.allowed-origins=http://localhost:4200,http://localhost:3000
+# JWKS Endpoint - ES256 public key fetching (.well-known path is standard)
+supabase.jwt.jwks-url=${SUPABASE_JWKS_URL:https://YOUR_PROJECT_REF.supabase.co/auth/v1/.well-known/jwks.json}
+supabase.jwt.jwks-cache-ttl=86400
 
-# CORS
-cors.allowed-origins=http://localhost:4200,http://localhost:3000
+# Anon key required for JWKS endpoint authentication
+supabase.anon-key=${SUPABASE_ANON_KEY:your_supabase_anon_key}
 
-# File upload limits (chat attachments)
+# HS256 Secret - NO LONGER USED (Supabase uses ES256, not HS256)
+# supabase.jwt.secret=${SUPABASE_JWT_SECRET}
+
+# ============================================================================
+# LEGACY JWT CONFIGURATION (HS256 - Internal Service Auth Only)
+# ============================================================================
+jwt.secret=${JWT_SECRET:your_jwt_secret_base64}
+jwt.expiration=86400000
+
+internal.service.jwt.secret=${INTERNAL_SERVICE_JWT_SECRET:your_internal_service_jwt_secret_base64}
+internal.service.jwt.expiration=3600000
+
+# Backend API Configuration
+backend.api.base-url=${BACKEND_API_BASE_URL:http://localhost:8080}
+
+# ============================================================================
+# CORS CONFIGURATION
+# ============================================================================
+cors.allowed-origins=${CORS_ALLOWED_ORIGINS:http://localhost:4200}
+cors.allowed-methods=GET,POST,PUT,DELETE,OPTIONS
+cors.allowed-headers=*
+cors.allow-credentials=true
+
+websocket.allowed-origins=${WEBSOCKET_ALLOWED_ORIGINS:http://localhost:4200}
+
+# ============================================================================
+# FILE UPLOAD LIMITS (chat attachments)
+# ============================================================================
 spring.servlet.multipart.max-file-size=10MB
 spring.servlet.multipart.max-request-size=10MB
 
-# JWT (must match main Rentoza backend secret)
-jwt.secret=your_base64_encoded_secret_here
-
-# Internal Service JWT (for service-to-service calls)
-internal.jwt.secret=your_internal_service_secret_here
-
-# Main Backend API URL (for conversation enrichment)
-backend.api.url=http://localhost:8080
+# ============================================================================
+# CHAT STORAGE CONFIGURATION
+# ============================================================================
+chat.storage.provider=${CHAT_STORAGE_PROVIDER:supabase}
+chat.storage.bucket=${CHAT_STORAGE_BUCKET:chat-attachments}
+supabase.service-role-key=${SUPABASE_SERVICE_ROLE_KEY:}
 
 # ============================================================================
-# Redis (Phase 1 - Rate Limiting, Caching, Idempotency)
+# PERFORMANCE SLOs
 # ============================================================================
-spring.data.redis.host=localhost
-spring.data.redis.port=6379
-spring.data.redis.password=
-spring.data.redis.timeout=2000ms
-
-# Connection pooling
-spring.data.redis.lettuce.pool.max-active=8
-spring.data.redis.lettuce.pool.max-idle=4
-spring.data.redis.lettuce.pool.min-idle=1
-spring.data.redis.lettuce.pool.max-wait=1000ms
+slo.api.response.p95.ms=500
+slo.rls.overhead.ms=50
+slo.cache.hit.rate=0.80
+slo.auth.validation.failure.rate=0.01
 
 # ============================================================================
-# Rate Limiting Configuration
-# ============================================================================
-# These values are hardcoded in RateLimitConfig.java but can be externalized
-# rate-limit.messages.hourly=50
-# rate-limit.messages.burst=5
-
-# ============================================================================
-# Logging
+# LOGGING
 # ============================================================================
 logging.level.org.example.chatservice=DEBUG
-logging.level.org.springframework.web=INFO
-logging.level.org.hibernate.SQL=DEBUG
+logging.level.org.springframework.web=DEBUG
+logging.level.org.springframework.security=DEBUG
 
 # ============================================================================
-# Actuator (Health & Metrics)
+# ACTUATOR CONFIGURATION
 # ============================================================================
-management.endpoints.web.exposure.include=health,info,prometheus,metrics
-management.endpoint.health.show-details=when_authorized
+management.endpoints.web.exposure.include=health,info,metrics,prometheus
+management.endpoint.health.show-details=when-authorized
+# Redis is not used by the chat service yet (rate-limiting/idempotency are in-memory).
+# Disable the auto-configured RedisHealthIndicator so it doesn't attempt localhost:6379.
+management.health.redis.enabled=false
+management.metrics.export.prometheus.enabled=true
+management.metrics.distribution.percentiles-histogram.http.server.requests=true
+management.metrics.distribution.percentiles-histogram.auth.jwt.validation=true
+management.metrics.distribution.percentiles-histogram.auth.user.mapping=true
 
 # ============================================================================
-# Resilience4j (Circuit Breaker for Backend API calls)
+# RESILIENCE4J CONFIGURATION
 # ============================================================================
-resilience4j.circuitbreaker.instances.backendApi.failureRateThreshold=50
-resilience4j.circuitbreaker.instances.backendApi.waitDurationInOpenState=30s
-resilience4j.circuitbreaker.instances.backendApi.slidingWindowSize=10
-resilience4j.retry.instances.backendApi.maxAttempts=3
-resilience4j.retry.instances.backendApi.waitDuration=500ms
+resilience4j.circuitbreaker.instances.bookingEnrichment.failure-rate-threshold=50
+resilience4j.circuitbreaker.instances.bookingEnrichment.minimum-number-of-calls=5
+resilience4j.circuitbreaker.instances.bookingEnrichment.wait-duration-in-open-state=10s
+resilience4j.circuitbreaker.instances.bookingEnrichment.permitted-number-of-calls-in-half-open-state=3
+resilience4j.circuitbreaker.instances.bookingEnrichment.sliding-window-size=10
+
+resilience4j.retry.instances.bookingEnrichment.max-attempts=2
+resilience4j.retry.instances.bookingEnrichment.wait-duration=100ms

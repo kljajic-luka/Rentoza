@@ -6,6 +6,9 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.car.Car;
 import org.example.rentoza.exception.ResourceNotFoundException;
+import org.example.rentoza.notification.NotificationService;
+import org.example.rentoza.notification.NotificationType;
+import org.example.rentoza.notification.dto.CreateNotificationRequestDTO;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,15 +33,19 @@ import java.util.Optional;
 public class RentalAgreementService {
 
     private static final String CURRENT_AGREEMENT_VERSION = "1.0.0";
+    private static final String CURRENT_TERMS_TEMPLATE_ID = "sr-intermediary-v1";
 
     private final RentalAgreementRepository agreementRepository;
     private final BookingRepository bookingRepository;
+    private final NotificationService notificationService;
     private final ObjectMapper stableMapper;
 
     public RentalAgreementService(RentalAgreementRepository agreementRepository,
-                                  BookingRepository bookingRepository) {
+                                  BookingRepository bookingRepository,
+                                  NotificationService notificationService) {
         this.agreementRepository = agreementRepository;
         this.bookingRepository = bookingRepository;
+        this.notificationService = notificationService;
 
         // Stable ObjectMapper for deterministic JSON serialization (sorted keys)
         this.stableMapper = new ObjectMapper();
@@ -76,11 +83,35 @@ public class RentalAgreementService {
                 .vehicleSnapshotJson(vehicleSnapshot)
                 .termsSnapshotJson(termsSnapshot)
                 .status(RentalAgreementStatus.PENDING)
+                .termsTemplateId(CURRENT_TERMS_TEMPLATE_ID)
+                .termsTemplateHash("PENDING_COUNSEL_REVIEW")
                 .build();
 
         RentalAgreement saved = agreementRepository.save(agreement);
         log.info("Rental agreement generated: agreementId={}, bookingId={}, hash={}",
                 saved.getId(), booking.getId(), contentHash);
+
+            try {
+                notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                    .recipientId(saved.getOwnerUserId())
+                    .type(NotificationType.RENTAL_AGREEMENT_PENDING)
+                    .message("Ugovor o iznajmljivanju za vašu rezervaciju je spreman. " +
+                        "Molimo pregledajte i prihvatite ugovor pre početka vožnje.")
+                    .relatedEntityId("booking-" + booking.getId() + "-agreement")
+                    .build());
+
+                notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                    .recipientId(saved.getRenterUserId())
+                    .type(NotificationType.RENTAL_AGREEMENT_PENDING)
+                    .message("Ugovor o iznajmljivanju za vašu rezervaciju je spreman. " +
+                        "Molimo pregledajte i prihvatite ugovor pre početka vožnje.")
+                    .relatedEntityId("booking-" + booking.getId() + "-agreement")
+                    .build());
+            } catch (Exception e) {
+                log.error("Failed to send agreement notification for booking {}: {}",
+                    booking.getId(), e.getMessage());
+            }
+
         return saved;
     }
 
@@ -210,6 +241,7 @@ public class RentalAgreementService {
         terms.put("agreementVersion", CURRENT_AGREEMENT_VERSION);
         terms.put("platformRole", "INTERMEDIARY");
         terms.put("contractType", "OWNER_RENTER_DIRECT");
+        terms.put("termsTemplateId", CURRENT_TERMS_TEMPLATE_ID);
         return terms;
     }
 

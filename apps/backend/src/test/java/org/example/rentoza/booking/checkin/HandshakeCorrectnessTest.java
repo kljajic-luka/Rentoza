@@ -4,6 +4,7 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingRepository;
 import org.example.rentoza.booking.BookingStatus;
+import org.example.rentoza.payment.ChargeLifecycleStatus;
 import org.example.rentoza.booking.checkin.dto.CheckInStatusDTO;
 import org.example.rentoza.booking.checkin.dto.HandshakeConfirmationDTO;
 import org.example.rentoza.booking.dispute.DamageClaimRepository;
@@ -12,6 +13,8 @@ import org.example.rentoza.car.Car;
 import org.example.rentoza.config.FeatureFlags;
 import org.example.rentoza.notification.NotificationService;
 import org.example.rentoza.payment.BookingPaymentService;
+import org.example.rentoza.payment.PaymentProvider.PaymentStatus;
+import org.example.rentoza.payment.PaymentProvider.PaymentResult;
 import org.example.rentoza.security.LockboxEncryptionService;
 import org.example.rentoza.user.RenterVerificationService;
 import org.example.rentoza.user.User;
@@ -89,6 +92,7 @@ class HandshakeCorrectnessTest {
         booking.setCheckInEvents(new ArrayList<>());
         booking.setCheckInPhotos(new ArrayList<>());
         booking.setStatus(BookingStatus.CHECK_IN_COMPLETE);
+        booking.setChargeLifecycleStatus(ChargeLifecycleStatus.AUTHORIZED);
 
         // Common stubs
         when(bookingRepository.findByIdWithLock(1L)).thenReturn(Optional.of(booking));
@@ -96,6 +100,13 @@ class HandshakeCorrectnessTest {
         when(geofenceService.getDefaultRadiusMeters()).thenReturn(100);
         when(featureFlags.isDualPartyPhotosRequiredForHandshake()).thenReturn(false);
         when(featureFlags.isStrictCheckinEnabled()).thenReturn(false);
+        when(bookingPaymentService.captureBookingPaymentNow(1L))
+                .thenReturn(PaymentResult.builder()
+                        .success(true)
+                        .transactionId("txn-1")
+                        .amount(booking.getTotalPrice())
+                        .status(PaymentStatus.SUCCESS)
+                        .build());
     }
 
     // ---- helper ----

@@ -46,6 +46,11 @@ public enum NotificationType {
     BOOKING_CANCELLED,
 
     /**
+     * Triggered when a rental agreement is generated and both parties must accept it.
+     */
+    RENTAL_AGREEMENT_PENDING,
+
+    /**
      * Triggered when a new chat message is received (for offline/inactive users).
      */
     NEW_MESSAGE,

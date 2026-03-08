@@ -99,6 +99,12 @@ public class RentalAgreement {
     @Builder.Default
     private RentalAgreementStatus status = RentalAgreementStatus.PENDING;
 
+    @Column(name = "terms_template_id", length = 50)
+    private String termsTemplateId;
+
+    @Column(name = "terms_template_hash", length = 128)
+    private String termsTemplateHash;
+
     // ── Timestamps ───────────────────────────────────────────────────────────
 
     @CreationTimestamp

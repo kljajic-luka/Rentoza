@@ -388,6 +388,8 @@ export interface RentalAgreementDTO {
   ownerAcceptedAt: string | null;
   renterAccepted: boolean;
   renterAcceptedAt: string | null;
+  termsTemplateId: string | null;
+  termsTemplateHash: string | null;
   ownerUserId: number;
   renterUserId: number;
   vehicleSnapshot: Record<string, unknown>;

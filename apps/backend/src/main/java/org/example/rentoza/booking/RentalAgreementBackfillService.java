@@ -2,6 +2,7 @@ package org.example.rentoza.booking;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -74,6 +75,21 @@ public class RentalAgreementBackfillService {
 
         log.info("[Backfill] Complete: created={}, skipped={}, errors={}", created, skipped, errors);
         return new BackfillResult(created, skipped, errors);
+    }
+
+    /**
+     * Scheduled self-heal: backfill agreements for any eligible booking
+     * that is missing one. Runs every 6 hours. Safe to run repeatedly
+     * (idempotent — never overwrites existing agreements).
+     */
+    @Scheduled(cron = "${app.compliance.rental-agreement.backfill-cron:0 0 */6 * * *}")
+    public void scheduledBackfill() {
+        log.info("[Backfill] Scheduled rental agreement backfill triggered");
+        BackfillResult result = backfillAgreements();
+        if (result.created() > 0 || result.errors() > 0) {
+            log.warn("[Backfill] Scheduled backfill result: created={}, skipped={}, errors={}",
+                    result.created(), result.skipped(), result.errors());
+        }
     }
 
     public record BackfillResult(int created, int skipped, int errors) {}

@@ -289,6 +289,32 @@ import {
                 </div>
               }
 
+              <div class="agreement-context">
+                <div class="agreement-context-header">
+                  <mat-icon>info</mat-icon>
+                  <span>Kontekst ugovora</span>
+                </div>
+                <p>
+                  {{ agreementIntermediarySummary() }}
+                </p>
+                <div class="agreement-context-meta">
+                  <div class="terms-section">
+                    <span class="terms-label">Uloga platforme:</span>
+                    <span>{{ agreementPlatformRoleLabel() }}</span>
+                  </div>
+                  <div class="terms-section">
+                    <span class="terms-label">Tip ugovora:</span>
+                    <span>{{ agreementContractTypeLabel() }}</span>
+                  </div>
+                  @if (agreement()?.termsTemplateId) {
+                    <div class="terms-section">
+                      <span class="terms-label">Verzija obrasca:</span>
+                      <span>{{ agreement()?.termsTemplateId }}</span>
+                    </div>
+                  }
+                </div>
+              </div>
+
               <mat-divider></mat-divider>
 
               <div class="agreement-status">
@@ -312,7 +338,7 @@ import {
                     (change)="agreementConfirmed.set($event.checked)"
                     color="primary"
                   >
-                    Pročitao/la sam i prihvatam uslove ugovora
+                      Pročitao/la sam prikazani sažetak uslova i prihvatam ugovor
                   </mat-checkbox>
                 </div>
                 <button
@@ -327,7 +353,7 @@ import {
                   } @else {
                     <ng-container>
                       <mat-icon>gavel</mat-icon>
-                      Prihvatam uslove ugovora
+                      Prihvatam ugovor
                     </ng-container>
                   }
                 </button>
@@ -338,6 +364,24 @@ import {
                   <span>Ugovor prihvaćen od obe strane</span>
                 </div>
               }
+            </mat-card-content>
+          </mat-card>
+        } @else if (shouldShowAgreementPendingNotice()) {
+          <mat-card class="agreement-card agreement-card--pending">
+            <mat-card-content>
+              <h4>Ugovor o iznajmljivanju</h4>
+              <div class="agreement-pending-state">
+                <mat-icon>hourglass_top</mat-icon>
+                <div>
+                  <p>
+                    Ugovor još nije dostupan za ovu rezervaciju. Kada bude generisan, pojaviće se ovde
+                    kako biste mogli da ga pregledate i prihvatite.
+                  </p>
+                  <p>
+                    Check-in će biti omogućen tek kada ugovor bude vidljiv i prihvaćen od obe strane.
+                  </p>
+                </div>
+              </div>
             </mat-card-content>
           </mat-card>
         }
@@ -915,6 +959,43 @@ import {
         font-size: 13px;
       }
 
+      .agreement-context {
+        margin-bottom: 12px;
+        padding: 12px;
+        background: #fff8e1;
+        border: 1px solid #ffe082;
+        border-radius: 8px;
+      }
+
+      .agreement-context-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        color: #8d6e63;
+      }
+
+      .agreement-context-header mat-icon {
+        font-size: 18px;
+        width: 18px;
+        height: 18px;
+      }
+
+      .agreement-context p {
+        margin: 0 0 10px;
+        font-size: 13px;
+        line-height: 1.45;
+        color: rgba(0, 0, 0, 0.75);
+      }
+
+      .agreement-context-meta {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
       .terms-section {
         display: flex;
         justify-content: space-between;
@@ -993,6 +1074,32 @@ import {
         font-size: 20px;
         width: 20px;
         height: 20px;
+      }
+
+      .agreement-card--pending {
+        border: 1px dashed #ffcc80;
+        background: #fffaf3;
+      }
+
+      .agreement-pending-state {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        color: rgba(0, 0, 0, 0.75);
+      }
+
+      .agreement-pending-state mat-icon {
+        color: #ef6c00;
+      }
+
+      .agreement-pending-state p {
+        margin: 0 0 8px;
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .agreement-pending-state p:last-child {
+        margin-bottom: 0;
       }
     `,
   ],
@@ -1439,6 +1546,45 @@ export class BookingDetailComponent implements OnInit {
     }
   }
 
+  shouldShowAgreementPendingNotice(): boolean {
+    const booking = this.booking();
+    if (!booking || this.agreement()) {
+      return false;
+    }
+
+    return [
+      'CONFIRMED',
+      'CHECK_IN_OPEN',
+      'HOST_SUBMITTED',
+      'GUEST_ACKNOWLEDGED',
+      'ACTIVE',
+      'IN_TRIP',
+    ].includes(booking.status);
+  }
+
+  agreementPlatformRoleLabel(): string {
+    const role = this.agreement()?.termsSnapshot?.['platformRole'];
+    return role === 'INTERMEDIARY' ? 'Rentoza je posrednik' : 'Uloga platforme nije navedena';
+  }
+
+  agreementContractTypeLabel(): string {
+    const contractType = this.agreement()?.termsSnapshot?.['contractType'];
+    return contractType === 'OWNER_RENTER_DIRECT'
+      ? 'Direktan ugovor između vlasnika i gosta'
+      : 'Tip ugovora nije naveden';
+  }
+
+  agreementIntermediarySummary(): string {
+    const role = this.agreement()?.termsSnapshot?.['platformRole'];
+    const contractType = this.agreement()?.termsSnapshot?.['contractType'];
+
+    if (role === 'INTERMEDIARY' && contractType === 'OWNER_RENTER_DIRECT') {
+      return 'Rentoza nastupa kao posrednik, dok se ugovor o korišćenju vozila zaključuje direktno između vlasnika vozila i gosta. Prihvatanjem potvrđujete prikazane uslove rezervacije i ovaj odnos između ugovornih strana.';
+    }
+
+    return 'Prihvatanjem potvrđujete prikazane uslove rezervacije i evidenciju prihvatanja ugovora za ovu vožnju.';
+  }
+
   canAcceptAgreement(): boolean {
     const a = this.agreement();
     if (!a || a.status === 'FULLY_ACCEPTED') return false;
@@ -1510,9 +1656,11 @@ export class BookingDetailComponent implements OnInit {
       : false;
     if (!bookingStatusOk) return false;
 
-    // Gate on agreement acceptance — both parties must accept before check-in
+    // Gate on agreement acceptance — both parties must accept before check-in.
+    // If agreement is null (not yet generated or fetch failed), block check-in
+    // to stay aligned with backend enforcement.
     const agreement = this.agreement();
-    if (agreement && agreement.status !== 'FULLY_ACCEPTED') {
+    if (!agreement || agreement.status !== 'FULLY_ACCEPTED') {
       return false;
     }
     return true;

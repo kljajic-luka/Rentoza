@@ -879,7 +879,8 @@ public class CheckInService {
             if (!agreementAccepted) {
                 if (featureFlags.isRentalAgreementCheckinEnforced()) {
                     throw new IllegalStateException(
-                        "Rental agreement must be accepted by both parties before starting the trip.");
+                        "Ugovor o iznajmljivanju mora biti prihvaćen od obe strane pre početka vožnje. " +
+                        "Otvorite detalje rezervacije i prihvatite ugovor.");
                 } else {
                     log.warn("[CheckIn] Rental agreement not fully accepted for booking {} — " +
                             "enforcement disabled, proceeding with trip start", booking.getId());

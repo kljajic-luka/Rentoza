@@ -17,12 +17,17 @@ import org.example.rentoza.booking.cancellation.CancellationSettlementService;
 import org.example.rentoza.booking.dispute.DamageClaimRepository;
 import org.example.rentoza.car.Car;
 import org.example.rentoza.car.CarRepository;
+import org.example.rentoza.deprecated.auth.RefreshTokenServiceEnhanced;
 import org.example.rentoza.exception.ResourceNotFoundException;
+import org.example.rentoza.notification.UserDeviceTokenRepository;
 import org.example.rentoza.review.ReviewRepository;
 import org.example.rentoza.user.Role;
 import org.example.rentoza.user.User;
+import org.example.rentoza.user.gdpr.GdprService;
 import org.example.rentoza.user.trust.AccountTrustSnapshot;
 import org.example.rentoza.user.trust.AccountTrustStateService;
+import org.example.rentoza.security.password.PasswordHistoryRepository;
+import org.example.rentoza.security.password.PasswordResetTokenRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -64,6 +69,11 @@ public class AdminUserService {
     private final CancellationSettlementService cancellationSettlementService;
     private final AdminAuditService auditService;
     private final AccountTrustStateService accountTrustStateService;
+    private final GdprService gdprService;
+    private final RefreshTokenServiceEnhanced refreshTokenService;
+    private final UserDeviceTokenRepository userDeviceTokenRepository;
+    private final PasswordResetTokenRepository passwordResetTokenRepository;
+    private final PasswordHistoryRepository passwordHistoryRepository;
     
     // ==================== USER LISTING ====================
     
@@ -237,14 +247,15 @@ public class AdminUserService {
     }
     
     /**
-     * Delete user with full cascade cleanup.
+    * Delete user with full cascade cleanup.
      * 
      * <p><b>CASCADE OPERATIONS:</b>
      * <ol>
      *   <li>Cancel all pending/confirmed bookings</li>
      *   <li>Anonymize reviews (keep content, remove user reference)</li>
      *   <li>Archive/deactivate user's cars</li>
-     *   <li>Delete user record</li>
+    *   <li>Revoke active sessions and device tokens</li>
+    *   <li>Anonymize retained user row via GDPR tombstone path</li>
      *   <li>Create immutable audit log</li>
      * </ol>
      * 
@@ -290,9 +301,10 @@ public class AdminUserService {
         cancelUserBookings(targetUser);
         deactivateUserCars(targetUser);
         anonymizeUserReviews(targetUser);
-        userRepo.delete(targetUser);
+        revokeLiveAccess(targetUser);
+        gdprService.permanentlyDeleteUser(userId);
 
-        log.info("User {} successfully deleted by admin {}", userId, admin.getId());
+        log.info("User {} successfully anonymized by admin {}", userId, admin.getId());
     }
     
     // ==================== RISK SCORING ====================
@@ -490,5 +502,17 @@ public class AdminUserService {
         
         log.info("Anonymized {} given and {} received reviews for user {}", 
             givenCount, receivedCount, user.getId());
+    }
+
+    /**
+     * Remove active authentication artifacts before the user email/auth mapping is anonymized.
+     */
+    private void revokeLiveAccess(User user) {
+        refreshTokenService.revokeAll(user.getEmail(), "ADMIN_DELETE_TOMBSTONE");
+        userDeviceTokenRepository.deleteByUserId(user.getId());
+        passwordResetTokenRepository.deleteByUserId(user.getId());
+        passwordHistoryRepository.deleteByUserId(user.getId());
+
+        log.info("Revoked live access artifacts for user {}", user.getId());
     }
 }

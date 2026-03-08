@@ -10,6 +10,7 @@ import org.example.rentoza.car.CarRepository;
 import org.example.rentoza.chat.ChatServiceClient;
 import org.example.rentoza.review.Review;
 import org.example.rentoza.review.ReviewRepository;
+import org.example.rentoza.user.RegistrationStatus;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -259,6 +260,13 @@ public class GdprService {
         user.setJmbg(null);
         user.setPib(null);
         user.setAvatarUrl(null);
+        user.setBio(null);
+        user.setGoogleId(null);
+        user.setAuthUid(null);
+        user.setBankAccountNumber(null);
+        user.setMonriRecipientId(null);
+        user.setConsentIp(null);
+        user.setConsentUserAgent(null);
 
         // GAP-6: Clear pseudonymous hash columns — SHA-256 hashes are still
         // linkable identifiers under GDPR Recital 26 if the original value is known.
@@ -269,6 +277,19 @@ public class GdprService {
         // GAP-7: Set password to a valid BCrypt hash of a random UUID.
         // Prevents authentication bypass risks from storing plaintext "DELETED".
         user.setPassword(passwordEncoder.encode(UUID.randomUUID().toString()));
+        user.setPasswordChangedAt(Instant.now());
+        user.setEnabled(false);
+        user.setLocked(true);
+        user.setRegistrationStatus(RegistrationStatus.DELETED);
+        user.setDeletionScheduledAt(null);
+        user.setBanned(false);
+        user.setBanReason(null);
+        user.setBannedAt(null);
+        user.setBannedBy(null);
+        user.setFailedLoginAttempts(0);
+        user.setLockedUntil(null);
+        user.setLastFailedLoginAt(null);
+        user.setLastFailedLoginIp(null);
         user.setDeleted(true);
 
         userRepository.save(user);

@@ -4,6 +4,7 @@ import org.example.rentoza.booking.BookingRepository;
 import org.example.rentoza.car.CarRepository;
 import org.example.rentoza.chat.ChatServiceClient;
 import org.example.rentoza.review.ReviewRepository;
+import org.example.rentoza.user.RegistrationStatus;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -87,6 +88,11 @@ class ChatServiceUserDeletionPropagationTest {
             // User should still be marked as deleted
             verify(userRepository).save(any(User.class));
             assertThat(user.isDeleted()).isTrue();
+            assertThat(user.getRegistrationStatus()).isEqualTo(RegistrationStatus.DELETED);
+            assertThat(user.isEnabled()).isFalse();
+            assertThat(user.isLocked()).isTrue();
+            assertThat(user.getAuthUid()).isNull();
+            assertThat(user.getGoogleId()).isNull();
         }
 
         @Test
@@ -147,6 +153,12 @@ class ChatServiceUserDeletionPropagationTest {
         user.setLastName("User");
         user.setPassword("oldpasswordhash");
         user.setDeleted(false);
+        user.setEnabled(true);
+        user.setLocked(false);
+        user.setRegistrationStatus(RegistrationStatus.ACTIVE);
+        user.setGoogleId("google-subject-123");
+        user.setAuthUid(java.util.UUID.randomUUID());
+        user.setBio("Test bio");
         return user;
     }
 }

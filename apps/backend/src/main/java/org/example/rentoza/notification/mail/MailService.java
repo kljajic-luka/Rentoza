@@ -35,7 +35,7 @@ public class MailService {
     private final JavaMailSender mailSender;
     private final TemplateEngine templateEngine;
 
-    @Value("${spring.mail.from:noreply@rentoza.rs}")
+    @Value("${spring.mail.from:rentozzza@gmail.com}")
     private String fromEmail;
 
     @Value("${spring.mail.username:}")

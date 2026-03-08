@@ -11,15 +11,20 @@ import org.example.rentoza.booking.cancellation.CancellationSettlementService;
 import org.example.rentoza.booking.dispute.DamageClaimRepository;
 import org.example.rentoza.car.Car;
 import org.example.rentoza.car.CarRepository;
+import org.example.rentoza.deprecated.auth.RefreshTokenServiceEnhanced;
+import org.example.rentoza.notification.UserDeviceTokenRepository;
 import org.example.rentoza.review.ReviewRepository;
 import org.example.rentoza.user.Role;
 import org.example.rentoza.user.User;
+import org.example.rentoza.user.gdpr.GdprService;
 import org.example.rentoza.user.trust.AccountAccessState;
 import org.example.rentoza.user.trust.AccountTrustSnapshot;
 import org.example.rentoza.user.trust.AccountTrustStateService;
 import org.example.rentoza.user.trust.OwnerVerificationState;
 import org.example.rentoza.user.trust.RegistrationCompletionState;
 import org.example.rentoza.user.trust.RenterVerificationState;
+import org.example.rentoza.security.password.PasswordHistoryRepository;
+import org.example.rentoza.security.password.PasswordResetTokenRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -86,6 +91,21 @@ class AdminUserServiceTest {
     @Mock
     private AccountTrustStateService accountTrustStateService;
 
+    @Mock
+    private GdprService gdprService;
+
+    @Mock
+    private RefreshTokenServiceEnhanced refreshTokenService;
+
+    @Mock
+    private UserDeviceTokenRepository userDeviceTokenRepository;
+
+    @Mock
+    private PasswordResetTokenRepository passwordResetTokenRepository;
+
+    @Mock
+    private PasswordHistoryRepository passwordHistoryRepository;
+
     @Captor
     private ArgumentCaptor<AdminAction> actionCaptor;
 
@@ -110,7 +130,12 @@ class AdminUserServiceTest {
             damageClaimRepo,
             cancellationSettlementService,
             auditService,
-            accountTrustStateService
+            accountTrustStateService,
+            gdprService,
+            refreshTokenService,
+            userDeviceTokenRepository,
+            passwordResetTokenRepository,
+            passwordHistoryRepository
         );
 
         testAdmin = new User();
@@ -179,7 +204,7 @@ class AdminUserServiceTest {
     class DeleteUser {
 
         @Test
-        @DisplayName("Happy path: cascades bookings, cars, reviews; audits BEFORE delete")
+        @DisplayName("Happy path: cascades bookings, cars, reviews; audits BEFORE tombstone")
         void deleteUser_happyPath_cascadesAndAuditsBeforeDelete() {
             // Arrange
             when(userRepo.findById(2L)).thenReturn(Optional.of(testUser));
@@ -211,8 +236,15 @@ class AdminUserServiceTest {
             // Act
             adminUserService.deleteUser(2L, "Policy violation", testAdmin);
 
-            // Assert - audit is logged BEFORE delete (H-7 fix)
-            InOrder inOrder = inOrder(auditService, userRepo);
+                // Assert - audit is logged BEFORE anonymization and live access cleanup
+                InOrder inOrder = inOrder(
+                    auditService,
+                    refreshTokenService,
+                    userDeviceTokenRepository,
+                    passwordResetTokenRepository,
+                    passwordHistoryRepository,
+                    gdprService
+                );
             inOrder.verify(auditService).logAction(
                     eq(testAdmin),
                     eq(AdminAction.USER_DELETED),
@@ -222,7 +254,11 @@ class AdminUserServiceTest {
                     isNull(),
                     eq("Policy violation")
             );
-            inOrder.verify(userRepo).delete(testUser);
+                    inOrder.verify(refreshTokenService).revokeAll(testUser.getEmail(), "ADMIN_DELETE_TOMBSTONE");
+                    inOrder.verify(userDeviceTokenRepository).deleteByUserId(2L);
+                    inOrder.verify(passwordResetTokenRepository).deleteByUserId(2L);
+                    inOrder.verify(passwordHistoryRepository).deleteByUserId(2L);
+                    inOrder.verify(gdprService).permanentlyDeleteUser(2L);
 
             // Assert - cascade: bookings cancelled
             assertThat(activeBooking.getStatus()).isEqualTo(BookingStatus.CANCELLATION_PENDING_SETTLEMENT);
@@ -235,6 +271,7 @@ class AdminUserServiceTest {
             // Assert - cascade: reviews anonymized
             verify(reviewRepo).anonymizeReviewsByReviewerId(2L);
             verify(reviewRepo).anonymizeReviewsByRevieweeId(2L);
+            verify(userRepo, never()).delete(any());
         }
 
         @Test
@@ -255,7 +292,7 @@ class AdminUserServiceTest {
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessage("Cannot delete other admins");
 
-            verify(userRepo, never()).delete(any());
+            verify(gdprService, never()).permanentlyDeleteUser(anyLong());
             verify(auditService, never()).logAction(any(), any(), any(), any(), any(), any(), any());
         }
 
@@ -272,7 +309,7 @@ class AdminUserServiceTest {
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessage("Cannot delete yourself");
 
-            verify(userRepo, never()).delete(any());
+            verify(gdprService, never()).permanentlyDeleteUser(anyLong());
             verify(auditService, never()).logAction(any(), any(), any(), any(), any(), any(), any());
         }
     }

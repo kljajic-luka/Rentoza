@@ -81,15 +81,18 @@ public class AdminUserController {
         return ResponseEntity.ok().build();
     }
     
+    // AUDIT-C1-FIX: Hard-delete is disabled. Permanently deleted accounts create
+    // evidence gaps for disputes, payment chargebacks, and regulatory inquiries.
+    // Replace with a soft-deactivate/legal-hold workflow when needed.
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteUser(
-            @PathVariable Long id,
-            @RequestParam String reason) {
-        User admin = adminUserRepository.findById(currentUser.id())
-                .orElseThrow(() -> new ResourceNotFoundException("Admin not found"));
-                
-        adminUserService.deleteUser(id, reason, admin);
-        return ResponseEntity.ok().build();
+    public ResponseEntity<Map<String, String>> deleteUser(@PathVariable Long id) {
+        log.warn("[Admin][AUDIT-C1] Hard-delete user endpoint called for userId={} - endpoint is permanently disabled", id);
+        return ResponseEntity.status(org.springframework.http.HttpStatus.GONE)
+                .body(Map.of(
+                        "error", "HARD_DELETE_DISABLED",
+                        "message", "User deletion is not supported. Use account suspension or deactivation workflows.",
+                        "code", "HARD_DELETE_DISABLED"
+                ));
     }
     
     @GetMapping("/banned")

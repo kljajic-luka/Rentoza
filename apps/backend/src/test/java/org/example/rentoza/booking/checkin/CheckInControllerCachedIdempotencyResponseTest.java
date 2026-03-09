@@ -21,6 +21,7 @@ import org.springframework.http.ResponseEntity;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.never;
@@ -72,7 +73,8 @@ class CheckInControllerCachedIdempotencyResponseTest {
                 .build();
 
         when(currentUser.id()).thenReturn(userId);
-        when(idempotencyService.checkIdempotency(key, userId)).thenReturn(Optional.of(result));
+        when(idempotencyService.checkIdempotency(key, userId, "booking:77:HANDSHAKE_CONFIRM"))
+            .thenReturn(Optional.of(result));
 
         HandshakeConfirmationDTO request = new HandshakeConfirmationDTO();
         request.setBookingId(bookingId);
@@ -100,7 +102,8 @@ class CheckInControllerCachedIdempotencyResponseTest {
                 .build();
 
         when(currentUser.id()).thenReturn(userId);
-        when(idempotencyService.checkIdempotency(key, userId)).thenReturn(Optional.of(result));
+        when(idempotencyService.checkIdempotency(key, userId, "booking:77:HANDSHAKE_CONFIRM"))
+            .thenReturn(Optional.of(result));
 
         HandshakeConfirmationDTO request = new HandshakeConfirmationDTO();
         request.setBookingId(bookingId);
@@ -111,5 +114,29 @@ class CheckInControllerCachedIdempotencyResponseTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         assertThat(response.getBody()).isNull();
         verify(checkInService, never()).confirmHandshake(any(), anyLong());
+    }
+
+    @Test
+    @DisplayName("confirmHandshake uses booking-scoped idempotency keys")
+    void confirmHandshake_usesBookingScopedIdempotencyKeys() {
+        Long bookingId = 88L;
+        Long userId = 200L;
+        String key = "550e8400-e29b-41d4-a716-446655440000";
+
+        when(currentUser.id()).thenReturn(userId);
+        when(idempotencyService.checkIdempotency(key, userId, "booking:88:HANDSHAKE_CONFIRM"))
+                .thenReturn(Optional.empty());
+        when(idempotencyService.markProcessing(key, userId, "HANDSHAKE_CONFIRM", "booking:88:HANDSHAKE_CONFIRM"))
+                .thenReturn(false);
+
+        HandshakeConfirmationDTO request = new HandshakeConfirmationDTO();
+        request.setBookingId(bookingId);
+        request.setConfirmed(true);
+
+        ResponseEntity<CheckInStatusDTO> response = controller.confirmHandshake(bookingId, request, key);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        verify(idempotencyService).checkIdempotency(eq(key), eq(userId), eq("booking:88:HANDSHAKE_CONFIRM"));
+        verify(idempotencyService).markProcessing(eq(key), eq(userId), eq("HANDSHAKE_CONFIRM"), eq("booking:88:HANDSHAKE_CONFIRM"));
     }
 }

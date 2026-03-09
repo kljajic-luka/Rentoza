@@ -22,9 +22,16 @@
  * - Respects 429 (Too Many Requests) responses
  */
 
-import { Injectable, signal, computed, OnDestroy } from '@angular/core';
-import { QueuedUpload, CheckInPhotoType } from '@core/models/check-in.model';
+import { Injectable, signal, computed, OnDestroy, inject } from '@angular/core';
+import {
+  QueuedUpload,
+  CheckInPhotoType,
+  GuestConditionAcknowledgmentDTO,
+  HandshakeConfirmationDTO,
+  HostCheckInSubmissionDTO,
+} from '@core/models/check-in.model';
 import { generateUUID } from '../utils/uuid';
+import { LoggerService } from './logger.service';
 
 const DB_NAME = 'rentoza-offline-queue';
 const STORE_NAME = 'pending-uploads';
@@ -42,19 +49,158 @@ const BACKOFF_CONFIG = {
 /**
  * Queued form submission for offline processing.
  */
-export interface QueuedFormSubmission {
+export type QueuedFormSubmissionType = 'HOST_CHECK_IN' | 'GUEST_ACKNOWLEDGE' | 'HANDSHAKE';
+
+export interface QueuedFormPayloadMap {
+  HOST_CHECK_IN: HostCheckInSubmissionDTO;
+  GUEST_ACKNOWLEDGE: GuestConditionAcknowledgmentDTO;
+  HANDSHAKE: HandshakeConfirmationDTO;
+}
+
+export interface QueuedFormSubmission<TType extends QueuedFormSubmissionType = QueuedFormSubmissionType> {
   id: string;
   bookingId: number;
-  type: 'HOST_CHECK_IN' | 'GUEST_ACKNOWLEDGE' | 'HANDSHAKE';
-  payload: any;
+  type: TType;
+  payload: QueuedFormPayloadMap[TType];
   retryCount: number;
   createdAt: string;
   lastAttempt?: string;
   error?: string;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isOptionalFiniteNumber(value: unknown): value is number | undefined {
+  return value === undefined || isFiniteNumber(value);
+}
+
+function isOptionalString(value: unknown): value is string | undefined {
+  return value === undefined || typeof value === 'string';
+}
+
+function isNumberArray(value: unknown): value is number[] {
+  return Array.isArray(value) && value.every(isFiniteNumber);
+}
+
+function isHotspotArray(value: unknown): value is GuestConditionAcknowledgmentDTO['hotspots'] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (item) =>
+        isRecord(item) &&
+        typeof item['location'] === 'string' &&
+        typeof item['description'] === 'string' &&
+        isOptionalFiniteNumber(item['photoId'])
+    )
+  );
+}
+
+export function isHostCheckInSubmissionPayload(payload: unknown): payload is HostCheckInSubmissionDTO {
+  return (
+    isRecord(payload) &&
+    isFiniteNumber(payload['bookingId']) &&
+    isFiniteNumber(payload['odometerReading']) &&
+    isFiniteNumber(payload['fuelLevelPercent']) &&
+    isNumberArray(payload['photoIds']) &&
+    isOptionalString(payload['lockboxCode']) &&
+    isOptionalFiniteNumber(payload['hostLatitude']) &&
+    isOptionalFiniteNumber(payload['hostLongitude'])
+  );
+}
+
+export function isGuestConditionAcknowledgmentPayload(
+  payload: unknown
+): payload is GuestConditionAcknowledgmentDTO {
+  return (
+    isRecord(payload) &&
+    isFiniteNumber(payload['bookingId']) &&
+    typeof payload['conditionAccepted'] === 'boolean' &&
+    isFiniteNumber(payload['guestLatitude']) &&
+    isFiniteNumber(payload['guestLongitude']) &&
+    isOptionalString(payload['conditionComment']) &&
+    (payload['hotspots'] === undefined || isHotspotArray(payload['hotspots'])) &&
+    (payload['disputePreExistingDamage'] === undefined ||
+      typeof payload['disputePreExistingDamage'] === 'boolean') &&
+    isOptionalString(payload['damageDisputeDescription']) &&
+    (payload['disputedPhotoIds'] === undefined || isNumberArray(payload['disputedPhotoIds'])) &&
+    isOptionalString(payload['disputeType'])
+  );
+}
+
+export function isHandshakeConfirmationPayload(payload: unknown): payload is HandshakeConfirmationDTO {
+  return (
+    isRecord(payload) &&
+    isFiniteNumber(payload['bookingId']) &&
+    typeof payload['confirmed'] === 'boolean' &&
+    (payload['hostVerifiedPhysicalId'] === undefined ||
+      typeof payload['hostVerifiedPhysicalId'] === 'boolean') &&
+    isOptionalFiniteNumber(payload['latitude']) &&
+    isOptionalFiniteNumber(payload['longitude']) &&
+    (payload['isMockLocation'] === undefined || typeof payload['isMockLocation'] === 'boolean') &&
+    isOptionalFiniteNumber(payload['horizontalAccuracy']) &&
+    (payload['platform'] === undefined ||
+      payload['platform'] === 'ANDROID' ||
+      payload['platform'] === 'IOS' ||
+      payload['platform'] === 'WEB') &&
+    isOptionalString(payload['deviceFingerprint'])
+  );
+}
+
+export function isQueuedFormSubmission(value: unknown): value is QueuedFormSubmission {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  const commonFieldsValid =
+    typeof value['id'] === 'string' &&
+    isFiniteNumber(value['bookingId']) &&
+    isFiniteNumber(value['retryCount']) &&
+    typeof value['createdAt'] === 'string' &&
+    isOptionalString(value['lastAttempt']) &&
+    isOptionalString(value['error']);
+
+  if (!commonFieldsValid || typeof value['type'] !== 'string') {
+    return false;
+  }
+
+  switch (value['type']) {
+    case 'HOST_CHECK_IN':
+      return isHostCheckInSubmissionPayload(value['payload']);
+    case 'GUEST_ACKNOWLEDGE':
+      return isGuestConditionAcknowledgmentPayload(value['payload']);
+    case 'HANDSHAKE':
+      return isHandshakeConfirmationPayload(value['payload']);
+    default:
+      return false;
+  }
+}
+
+export function isQueuedFormPayloadForType<TType extends QueuedFormSubmissionType>(
+  type: TType,
+  payload: unknown
+): payload is QueuedFormPayloadMap[TType] {
+  switch (type) {
+    case 'HOST_CHECK_IN':
+      return isHostCheckInSubmissionPayload(payload);
+    case 'GUEST_ACKNOWLEDGE':
+      return isGuestConditionAcknowledgmentPayload(payload);
+    case 'HANDSHAKE':
+      return isHandshakeConfirmationPayload(payload);
+    default:
+      return false;
+  }
+}
+
 @Injectable({ providedIn: 'root' })
 export class OfflineQueueService implements OnDestroy {
+  private readonly logger = inject(LoggerService);
+
   // Reactive state for photo uploads
   private readonly _queue = signal<QueuedUpload[]>([]);
   private readonly _isOnline = signal(navigator.onLine);
@@ -117,7 +263,7 @@ export class OfflineQueueService implements OnDestroy {
     await this.saveToDb(item);
     this._queue.update((q) => [...q, item]);
 
-    console.log(`[OfflineQueue] Enqueued: ${photoType} for booking ${bookingId}`);
+    this.logger.log(`[OfflineQueue] Enqueued: ${photoType} for booking ${bookingId}`);
     return id;
   }
 
@@ -127,7 +273,7 @@ export class OfflineQueueService implements OnDestroy {
   async dequeue(id: string): Promise<void> {
     await this.removeFromDb(id);
     this._queue.update((q) => q.filter((item) => item.id !== id));
-    console.log(`[OfflineQueue] Dequeued: ${id}`);
+    this.logger.log(`[OfflineQueue] Dequeued: ${id}`);
   }
 
   /**
@@ -157,7 +303,7 @@ export class OfflineQueueService implements OnDestroy {
     for (const item of items) {
       await this.dequeue(item.id);
     }
-    console.log(`[OfflineQueue] Cleared all items for booking ${bookingId}`);
+    this.logger.log(`[OfflineQueue] Cleared all items for booking ${bookingId}`);
   }
 
   /**
@@ -166,12 +312,12 @@ export class OfflineQueueService implements OnDestroy {
    */
   async processQueue(uploadFn: (item: QueuedUpload) => Promise<boolean>): Promise<string[]> {
     if (this._isSyncing()) {
-      console.log('[OfflineQueue] Sync already in progress');
+      this.logger.log('[OfflineQueue] Sync already in progress');
       return [];
     }
 
     if (!this._isOnline()) {
-      console.log('[OfflineQueue] Offline - skipping sync');
+      this.logger.log('[OfflineQueue] Offline - skipping sync');
       return [];
     }
 
@@ -185,19 +331,19 @@ export class OfflineQueueService implements OnDestroy {
       for (const item of items) {
         // Check if max retries exceeded
         if (item.retryCount >= BACKOFF_CONFIG.maxRetries) {
-          console.warn(`[OfflineQueue] Max retries exceeded for ${item.id}, skipping`);
+          this.logger.warn(`[OfflineQueue] Max retries exceeded for ${item.id}, skipping`);
           continue;
         }
 
         // Apply exponential backoff delay before retry
         if (item.retryCount > 0) {
           const delay = this.calculateBackoffDelay(item.retryCount);
-          console.log(`[OfflineQueue] Waiting ${delay}ms before retry #${item.retryCount + 1}`);
+          this.logger.log(`[OfflineQueue] Waiting ${delay}ms before retry #${item.retryCount + 1}`);
           await this.sleep(delay);
 
           // Re-check online status after delay
           if (!this._isOnline()) {
-            console.log('[OfflineQueue] Lost connection during backoff, stopping sync');
+            this.logger.log('[OfflineQueue] Lost connection during backoff, stopping sync');
             break;
           }
         }
@@ -220,7 +366,7 @@ export class OfflineQueueService implements OnDestroy {
 
           // Check for rate limiting
           if (this.isRateLimitError(error)) {
-            console.warn('[OfflineQueue] Rate limited, applying longer backoff');
+            this.logger.warn('[OfflineQueue] Rate limited, applying longer backoff');
             await this.sleep(BACKOFF_CONFIG.maxDelayMs);
           }
 
@@ -232,11 +378,11 @@ export class OfflineQueueService implements OnDestroy {
         }
       }
 
-      console.log(`[OfflineQueue] Sync complete: ${synced.length}/${items.length} successful`);
+      this.logger.log(`[OfflineQueue] Sync complete: ${synced.length}/${items.length} successful`);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Sync failed';
       this._lastSyncError.set(errorMessage);
-      console.error('[OfflineQueue] Sync error:', error);
+      this.logger.error('[OfflineQueue] Sync error:', error);
     } finally {
       this._isSyncing.set(false);
     }
@@ -295,11 +441,19 @@ export class OfflineQueueService implements OnDestroy {
    * Add a form submission to the offline queue.
    * Used for host check-in completion, guest acknowledgment, and handshake.
    */
-  async enqueueFormSubmission(
+  async enqueueFormSubmission<TType extends QueuedFormSubmissionType>(
     bookingId: number,
-    type: QueuedFormSubmission['type'],
-    payload: any
+    type: TType,
+    payload: QueuedFormPayloadMap[TType]
   ): Promise<string> {
+    if (!isQueuedFormPayloadForType(type, payload)) {
+      throw new Error(`Invalid offline form payload for type ${type}`);
+    }
+
+    if (payload.bookingId !== bookingId) {
+      throw new Error(`Offline form payload bookingId mismatch for type ${type}`);
+    }
+
     const id = generateUUID();
 
     const item: QueuedFormSubmission = {
@@ -314,7 +468,7 @@ export class OfflineQueueService implements OnDestroy {
     await this.saveFormToDb(item);
     this._formQueue.update((q) => [...q, item]);
 
-    console.log(`[OfflineQueue] Enqueued form: ${type} for booking ${bookingId}`);
+    this.logger.log(`[OfflineQueue] Enqueued form: ${type} for booking ${bookingId}`);
     return id;
   }
 
@@ -324,7 +478,7 @@ export class OfflineQueueService implements OnDestroy {
   async dequeueForm(id: string): Promise<void> {
     await this.removeFormFromDb(id);
     this._formQueue.update((q) => q.filter((item) => item.id !== id));
-    console.log(`[OfflineQueue] Dequeued form: ${id}`);
+    this.logger.log(`[OfflineQueue] Dequeued form: ${id}`);
   }
 
   /**
@@ -354,7 +508,7 @@ export class OfflineQueueService implements OnDestroy {
     for (const item of items) {
       await this.dequeueForm(item.id);
     }
-    console.log(`[OfflineQueue] Cleared all form submissions for booking ${bookingId}`);
+    this.logger.log(`[OfflineQueue] Cleared all form submissions for booking ${bookingId}`);
   }
 
   /**
@@ -364,12 +518,12 @@ export class OfflineQueueService implements OnDestroy {
     submitFn: (item: QueuedFormSubmission) => Promise<boolean>
   ): Promise<string[]> {
     if (this._isSyncing()) {
-      console.log('[OfflineQueue] Sync already in progress');
+      this.logger.log('[OfflineQueue] Sync already in progress');
       return [];
     }
 
     if (!this._isOnline()) {
-      console.log('[OfflineQueue] Offline - skipping form sync');
+      this.logger.log('[OfflineQueue] Offline - skipping form sync');
       return [];
     }
 
@@ -382,19 +536,25 @@ export class OfflineQueueService implements OnDestroy {
 
       for (const item of items) {
         if (item.retryCount >= BACKOFF_CONFIG.maxRetries) {
-          console.warn(`[OfflineQueue] Max retries exceeded for form ${item.id}, skipping`);
+          this.logger.warn(`[OfflineQueue] Max retries exceeded for form ${item.id}, skipping`);
+          continue;
+        }
+
+        if (!isQueuedFormPayloadForType(item.type, item.payload)) {
+          this.logger.warn(`[OfflineQueue] Dropping invalid form payload ${item.id}`);
+          await this.dequeueForm(item.id);
           continue;
         }
 
         if (item.retryCount > 0) {
           const delay = this.calculateBackoffDelay(item.retryCount);
-          console.log(
+          this.logger.log(
             `[OfflineQueue] Waiting ${delay}ms before form retry #${item.retryCount + 1}`
           );
           await this.sleep(delay);
 
           if (!this._isOnline()) {
-            console.log('[OfflineQueue] Lost connection during form backoff, stopping sync');
+            this.logger.log('[OfflineQueue] Lost connection during form backoff, stopping sync');
             break;
           }
         }
@@ -416,7 +576,7 @@ export class OfflineQueueService implements OnDestroy {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
           if (this.isRateLimitError(error)) {
-            console.warn('[OfflineQueue] Rate limited on form submit, applying longer backoff');
+            this.logger.warn('[OfflineQueue] Rate limited on form submit, applying longer backoff');
             await this.sleep(BACKOFF_CONFIG.maxDelayMs);
           }
 
@@ -428,11 +588,11 @@ export class OfflineQueueService implements OnDestroy {
         }
       }
 
-      console.log(`[OfflineQueue] Form sync complete: ${synced.length}/${items.length} successful`);
+      this.logger.log(`[OfflineQueue] Form sync complete: ${synced.length}/${items.length} successful`);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Form sync failed';
       this._lastSyncError.set(errorMessage);
-      console.error('[OfflineQueue] Form sync error:', error);
+      this.logger.error('[OfflineQueue] Form sync error:', error);
     } finally {
       this._isSyncing.set(false);
     }
@@ -444,7 +604,7 @@ export class OfflineQueueService implements OnDestroy {
 
   private async initDatabase(): Promise<void> {
     if (!('indexedDB' in window)) {
-      console.warn('[OfflineQueue] IndexedDB not supported, using memory only');
+      this.logger.warn('[OfflineQueue] IndexedDB not supported, using memory only');
       return;
     }
 
@@ -452,7 +612,7 @@ export class OfflineQueueService implements OnDestroy {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
 
       request.onerror = () => {
-        console.error('[OfflineQueue] Failed to open database:', request.error);
+        this.logger.error('[OfflineQueue] Failed to open database:', request.error);
         reject(request.error);
       };
 
@@ -501,14 +661,14 @@ export class OfflineQueueService implements OnDestroy {
 
       request.onsuccess = () => {
         this._queue.set(request.result || []);
-        console.log(
+        this.logger.log(
           `[OfflineQueue] Loaded ${request.result?.length || 0} photo uploads from IndexedDB`
         );
         resolve();
       };
 
       request.onerror = () => {
-        console.error('[OfflineQueue] Failed to load photo uploads:', request.error);
+        this.logger.error('[OfflineQueue] Failed to load photo uploads:', request.error);
         reject(request.error);
       };
     });
@@ -523,15 +683,23 @@ export class OfflineQueueService implements OnDestroy {
       const request = store.getAll();
 
       request.onsuccess = () => {
-        this._formQueue.set(request.result || []);
-        console.log(
-          `[OfflineQueue] Loaded ${request.result?.length || 0} form submissions from IndexedDB`
+        const storedItems = Array.isArray(request.result) ? request.result : [];
+        const validItems = storedItems.filter(isQueuedFormSubmission);
+        const droppedCount = storedItems.length - validItems.length;
+
+        if (droppedCount > 0) {
+          this.logger.warn(`[OfflineQueue] Dropped ${droppedCount} invalid form submissions from IndexedDB`);
+        }
+
+        this._formQueue.set(validItems);
+        this.logger.log(
+          `[OfflineQueue] Loaded ${validItems.length} form submissions from IndexedDB`
         );
         resolve();
       };
 
       request.onerror = () => {
-        console.error('[OfflineQueue] Failed to load form submissions:', request.error);
+        this.logger.error('[OfflineQueue] Failed to load form submissions:', request.error);
         reject(request.error);
       };
     });
@@ -573,13 +741,13 @@ export class OfflineQueueService implements OnDestroy {
 
   private handleOnline(): void {
     this._isOnline.set(true);
-    console.log('[OfflineQueue] Network restored');
+    this.logger.log('[OfflineQueue] Network restored');
     // Could auto-sync here, but we use manual sync for better UX control
   }
 
   private handleOffline(): void {
     this._isOnline.set(false);
-    console.log('[OfflineQueue] Network lost');
+    this.logger.log('[OfflineQueue] Network lost');
   }
 
   // ========== FORM DATABASE METHODS ==========

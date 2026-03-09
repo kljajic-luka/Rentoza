@@ -42,8 +42,8 @@ import java.util.regex.Pattern;
  * 
  * <h2>Redis Key Format</h2>
  * <pre>
- * idempotency:{userId}:{idempotencyKey}
- * Example: idempotency:123:550e8400-e29b-41d4-a716-446655440000
+ * idempotency:{userId}:{scope}:{idempotencyKey}
+ * Example: idempotency:123:booking_77_HANDSHAKE_CONFIRM:550e8400-e29b-41d4-a716-446655440000
  * </pre>
  * 
  * @author Rentoza Platform Team
@@ -75,7 +75,7 @@ public class RedisIdempotencyService implements IdempotencyStore {
     }
 
     @Override
-    public Optional<IdempotencyService.IdempotencyResult> checkIdempotency(String idempotencyKey, Long userId) {
+    public Optional<IdempotencyService.IdempotencyResult> checkIdempotency(String idempotencyKey, Long userId, String scope) {
         if (idempotencyKey == null || idempotencyKey.isBlank()) {
             return Optional.empty();
         }
@@ -86,7 +86,7 @@ public class RedisIdempotencyService implements IdempotencyStore {
             throw new IdempotencyService.InvalidIdempotencyKeyException("Idempotency key must be a valid UUID v4");
         }
 
-        String redisKey = buildRedisKey(idempotencyKey, userId);
+        String redisKey = buildRedisKey(idempotencyKey, userId, scope);
         
         try {
             String cached = redisTemplate.opsForValue().get(redisKey);
@@ -115,12 +115,12 @@ public class RedisIdempotencyService implements IdempotencyStore {
     }
 
     @Override
-    public boolean markProcessing(String idempotencyKey, Long userId, String operationType) {
+    public boolean markProcessing(String idempotencyKey, Long userId, String operationType, String scope) {
         if (idempotencyKey == null || idempotencyKey.isBlank()) {
             return true;
         }
 
-        String redisKey = buildRedisKey(idempotencyKey, userId);
+        String redisKey = buildRedisKey(idempotencyKey, userId, scope);
         
         IdempotencyService.IdempotencyResult processing = IdempotencyService.IdempotencyResult.builder()
                 .status(IdempotencyService.IdempotencyStatus.PROCESSING)
@@ -152,24 +152,24 @@ public class RedisIdempotencyService implements IdempotencyStore {
     }
 
     @Override
-    public void storeSuccess(String idempotencyKey, Long userId, HttpStatus httpStatus, Object responseBody) {
-        storeResult(idempotencyKey, userId, IdempotencyService.IdempotencyStatus.COMPLETED, 
-                httpStatus, responseBody, null);
+    public void storeSuccess(String idempotencyKey, Long userId, HttpStatus httpStatus, Object responseBody, String scope) {
+        storeResult(idempotencyKey, userId, IdempotencyService.IdempotencyStatus.COMPLETED,
+                httpStatus, responseBody, null, scope);
     }
 
     @Override
-    public void storeFailure(String idempotencyKey, Long userId, HttpStatus httpStatus, String errorMessage) {
-        storeResult(idempotencyKey, userId, IdempotencyService.IdempotencyStatus.FAILED, 
-                httpStatus, null, errorMessage);
+    public void storeFailure(String idempotencyKey, Long userId, HttpStatus httpStatus, String errorMessage, String scope) {
+        storeResult(idempotencyKey, userId, IdempotencyService.IdempotencyStatus.FAILED,
+                httpStatus, null, errorMessage, scope);
     }
 
     @Override
-    public void remove(String idempotencyKey, Long userId) {
+    public void remove(String idempotencyKey, Long userId, String scope) {
         if (idempotencyKey == null || idempotencyKey.isBlank()) {
             return;
         }
         
-        String redisKey = buildRedisKey(idempotencyKey, userId);
+        String redisKey = buildRedisKey(idempotencyKey, userId, scope);
         redisTemplate.delete(redisKey);
         log.debug("[Idempotency] Removed key: {} for user: {}", maskKey(idempotencyKey), userId);
     }
@@ -183,12 +183,12 @@ public class RedisIdempotencyService implements IdempotencyStore {
 
     private void storeResult(String idempotencyKey, Long userId, 
                              IdempotencyService.IdempotencyStatus status,
-                             HttpStatus httpStatus, Object responseBody, String errorMessage) {
+                             HttpStatus httpStatus, Object responseBody, String errorMessage, String scope) {
         if (idempotencyKey == null || idempotencyKey.isBlank()) {
             return;
         }
 
-        String redisKey = buildRedisKey(idempotencyKey, userId);
+        String redisKey = buildRedisKey(idempotencyKey, userId, scope);
         
         IdempotencyService.IdempotencyResult result = IdempotencyService.IdempotencyResult.builder()
                 .status(status)
@@ -219,8 +219,19 @@ public class RedisIdempotencyService implements IdempotencyStore {
         }
     }
 
-    private String buildRedisKey(String idempotencyKey, Long userId) {
-        return REDIS_PREFIX + userId + ":" + idempotencyKey;
+    private String buildRedisKey(String idempotencyKey, Long userId, String scope) {
+        String normalizedScope = normalizeScope(scope);
+        if (normalizedScope == null) {
+            return REDIS_PREFIX + userId + ":" + idempotencyKey;
+        }
+        return REDIS_PREFIX + userId + ":" + normalizedScope + ":" + idempotencyKey;
+    }
+
+    private String normalizeScope(String scope) {
+        if (scope == null || scope.isBlank()) {
+            return null;
+        }
+        return scope.replace(':', '_').replace(' ', '_');
     }
 
     private String maskKey(String key) {

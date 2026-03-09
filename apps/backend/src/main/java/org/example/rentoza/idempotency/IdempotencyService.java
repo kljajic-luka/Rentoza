@@ -98,7 +98,11 @@ public class IdempotencyService {
      * @return Optional containing cached result if previously processed
      */
     public Optional<IdempotencyResult> checkIdempotency(String idempotencyKey, Long userId) {
-        return store.checkIdempotency(idempotencyKey, userId);
+        return checkIdempotency(idempotencyKey, userId, null);
+    }
+
+    public Optional<IdempotencyResult> checkIdempotency(String idempotencyKey, Long userId, String scope) {
+        return store.checkIdempotency(idempotencyKey, userId, scope);
     }
 
     /**
@@ -110,7 +114,11 @@ public class IdempotencyService {
      * @return true if lock acquired, false if already processing
      */
     public boolean markProcessing(String idempotencyKey, Long userId, String operationType) {
-        return store.markProcessing(idempotencyKey, userId, operationType);
+        return markProcessing(idempotencyKey, userId, operationType, null);
+    }
+
+    public boolean markProcessing(String idempotencyKey, Long userId, String operationType, String scope) {
+        return store.markProcessing(idempotencyKey, userId, operationType, scope);
     }
 
     /**
@@ -123,7 +131,12 @@ public class IdempotencyService {
      */
     public void storeSuccess(String idempotencyKey, Long userId, 
                              HttpStatus httpStatus, Object responseBody) {
-        store.storeSuccess(idempotencyKey, userId, httpStatus, responseBody);
+        storeSuccess(idempotencyKey, userId, httpStatus, responseBody, null);
+    }
+
+    public void storeSuccess(String idempotencyKey, Long userId,
+                             HttpStatus httpStatus, Object responseBody, String scope) {
+        store.storeSuccess(idempotencyKey, userId, httpStatus, responseBody, scope);
     }
 
     /**
@@ -136,7 +149,12 @@ public class IdempotencyService {
      */
     public void storeFailure(String idempotencyKey, Long userId, 
                              HttpStatus httpStatus, String errorMessage) {
-        store.storeFailure(idempotencyKey, userId, httpStatus, errorMessage);
+        storeFailure(idempotencyKey, userId, httpStatus, errorMessage, null);
+    }
+
+    public void storeFailure(String idempotencyKey, Long userId,
+                             HttpStatus httpStatus, String errorMessage, String scope) {
+        store.storeFailure(idempotencyKey, userId, httpStatus, errorMessage, scope);
     }
 
     /**
@@ -146,7 +164,11 @@ public class IdempotencyService {
      * @param userId Current authenticated user ID
      */
     public void remove(String idempotencyKey, Long userId) {
-        store.remove(idempotencyKey, userId);
+        remove(idempotencyKey, userId, null);
+    }
+
+    public void remove(String idempotencyKey, Long userId, String scope) {
+        store.remove(idempotencyKey, userId, scope);
     }
 
     /**

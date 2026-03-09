@@ -5,6 +5,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.storage.SupabaseStorageService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.stereotype.Service;
 
 import jakarta.annotation.PostConstruct;
@@ -39,6 +41,7 @@ import java.util.Objects;
 public class PhotoUrlService {
 
     private final SupabaseStorageService supabaseStorageService;
+    private final Environment environment;
 
     @Value("${app.photo.signed-url-expiry-seconds:900}")  // 15 minutes default
     private int signedUrlExpirySeconds;
@@ -73,6 +76,9 @@ public class PhotoUrlService {
             }
             log.info("[PhotoURL] Cache TTL validated: cacheTtl={}s < signedUrlExpiry={}s (margin={}s)",
                     cacheTtlSeconds, signedUrlExpirySeconds, signedUrlExpirySeconds - cacheTtlSeconds);
+        } else if (environment.acceptsProfiles(Profiles.of("prod"))) {
+            throw new IllegalStateException("Redis-backed photo signed URL caching is required in production. " +
+                    "Enable app.redis.enabled=true so signed URL TTL guarantees are enforced.");
         } else {
             log.warn("[PhotoURL] Redis is disabled — photoSignedUrls cache uses ConcurrentMapCache " +
                     "with NO TTL enforcement. Expired signed URLs may be served from cache until " +

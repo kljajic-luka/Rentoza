@@ -77,7 +77,7 @@ public class InMemoryIdempotencyService implements IdempotencyStore {
     }
 
     @Override
-    public Optional<IdempotencyService.IdempotencyResult> checkIdempotency(String idempotencyKey, Long userId) {
+    public Optional<IdempotencyService.IdempotencyResult> checkIdempotency(String idempotencyKey, Long userId, String scope) {
         if (idempotencyKey == null || idempotencyKey.isBlank()) {
             return Optional.empty();
         }
@@ -88,7 +88,7 @@ public class InMemoryIdempotencyService implements IdempotencyStore {
             throw new IdempotencyService.InvalidIdempotencyKeyException("Idempotency key must be a valid UUID v4");
         }
 
-        String cacheKey = buildCacheKey(idempotencyKey, userId);
+        String cacheKey = buildCacheKey(idempotencyKey, userId, scope);
         CacheEntry entry = cache.get(cacheKey);
 
         if (entry == null || entry.isExpired()) {
@@ -112,12 +112,12 @@ public class InMemoryIdempotencyService implements IdempotencyStore {
     }
 
     @Override
-    public boolean markProcessing(String idempotencyKey, Long userId, String operationType) {
+    public boolean markProcessing(String idempotencyKey, Long userId, String operationType, String scope) {
         if (idempotencyKey == null || idempotencyKey.isBlank()) {
             return true; // No key = proceed without idempotency
         }
 
-        String cacheKey = buildCacheKey(idempotencyKey, userId);
+        String cacheKey = buildCacheKey(idempotencyKey, userId, scope);
         
         IdempotencyService.IdempotencyResult processing = IdempotencyService.IdempotencyResult.builder()
                 .status(IdempotencyService.IdempotencyStatus.PROCESSING)
@@ -151,24 +151,24 @@ public class InMemoryIdempotencyService implements IdempotencyStore {
     }
 
     @Override
-    public void storeSuccess(String idempotencyKey, Long userId, HttpStatus httpStatus, Object responseBody) {
-        storeResult(idempotencyKey, userId, IdempotencyService.IdempotencyStatus.COMPLETED, 
-                httpStatus, responseBody, null);
+    public void storeSuccess(String idempotencyKey, Long userId, HttpStatus httpStatus, Object responseBody, String scope) {
+        storeResult(idempotencyKey, userId, IdempotencyService.IdempotencyStatus.COMPLETED,
+                httpStatus, responseBody, null, scope);
     }
 
     @Override
-    public void storeFailure(String idempotencyKey, Long userId, HttpStatus httpStatus, String errorMessage) {
-        storeResult(idempotencyKey, userId, IdempotencyService.IdempotencyStatus.FAILED, 
-                httpStatus, null, errorMessage);
+    public void storeFailure(String idempotencyKey, Long userId, HttpStatus httpStatus, String errorMessage, String scope) {
+        storeResult(idempotencyKey, userId, IdempotencyService.IdempotencyStatus.FAILED,
+                httpStatus, null, errorMessage, scope);
     }
 
     @Override
-    public void remove(String idempotencyKey, Long userId) {
+    public void remove(String idempotencyKey, Long userId, String scope) {
         if (idempotencyKey == null || idempotencyKey.isBlank()) {
             return;
         }
         
-        String cacheKey = buildCacheKey(idempotencyKey, userId);
+        String cacheKey = buildCacheKey(idempotencyKey, userId, scope);
         cache.remove(cacheKey);
         log.debug("[Idempotency] Removed key: {} for user: {}", maskKey(idempotencyKey), userId);
     }
@@ -205,12 +205,12 @@ public class InMemoryIdempotencyService implements IdempotencyStore {
 
     private void storeResult(String idempotencyKey, Long userId, 
                              IdempotencyService.IdempotencyStatus status,
-                             HttpStatus httpStatus, Object responseBody, String errorMessage) {
+                             HttpStatus httpStatus, Object responseBody, String errorMessage, String scope) {
         if (idempotencyKey == null || idempotencyKey.isBlank()) {
             return;
         }
 
-        String cacheKey = buildCacheKey(idempotencyKey, userId);
+        String cacheKey = buildCacheKey(idempotencyKey, userId, scope);
         
         IdempotencyService.IdempotencyResult result = IdempotencyService.IdempotencyResult.builder()
                 .status(status)
@@ -236,8 +236,19 @@ public class InMemoryIdempotencyService implements IdempotencyStore {
         }
     }
 
-    private String buildCacheKey(String idempotencyKey, Long userId) {
-        return userId + ":" + idempotencyKey;
+    private String buildCacheKey(String idempotencyKey, Long userId, String scope) {
+        String normalizedScope = normalizeScope(scope);
+        if (normalizedScope == null) {
+            return userId + ":" + idempotencyKey;
+        }
+        return userId + ":" + normalizedScope + ":" + idempotencyKey;
+    }
+
+    private String normalizeScope(String scope) {
+        if (scope == null || scope.isBlank()) {
+            return null;
+        }
+        return scope.replace(':', '_').replace(' ', '_');
     }
 
     private String maskKey(String key) {

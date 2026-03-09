@@ -38,7 +38,11 @@ public interface IdempotencyStore {
      * @param userId Current authenticated user ID (for scoping)
      * @return Optional containing cached result if previously processed
      */
-    Optional<IdempotencyService.IdempotencyResult> checkIdempotency(String idempotencyKey, Long userId);
+    default Optional<IdempotencyService.IdempotencyResult> checkIdempotency(String idempotencyKey, Long userId) {
+        return checkIdempotency(idempotencyKey, userId, null);
+    }
+
+    Optional<IdempotencyService.IdempotencyResult> checkIdempotency(String idempotencyKey, Long userId, String scope);
 
     /**
      * Mark a request as being processed (acquire lock).
@@ -48,7 +52,11 @@ public interface IdempotencyStore {
      * @param operationType Type of operation (for logging)
      * @return true if lock acquired, false if already processing
      */
-    boolean markProcessing(String idempotencyKey, Long userId, String operationType);
+    default boolean markProcessing(String idempotencyKey, Long userId, String operationType) {
+        return markProcessing(idempotencyKey, userId, operationType, null);
+    }
+
+    boolean markProcessing(String idempotencyKey, Long userId, String operationType, String scope);
 
     /**
      * Store successful operation result.
@@ -58,7 +66,11 @@ public interface IdempotencyStore {
      * @param httpStatus Response status code
      * @param responseBody Response body (will be serialized)
      */
-    void storeSuccess(String idempotencyKey, Long userId, HttpStatus httpStatus, Object responseBody);
+    default void storeSuccess(String idempotencyKey, Long userId, HttpStatus httpStatus, Object responseBody) {
+        storeSuccess(idempotencyKey, userId, httpStatus, responseBody, null);
+    }
+
+    void storeSuccess(String idempotencyKey, Long userId, HttpStatus httpStatus, Object responseBody, String scope);
 
     /**
      * Store failed operation result.
@@ -68,7 +80,11 @@ public interface IdempotencyStore {
      * @param httpStatus Response status code
      * @param errorMessage Error message
      */
-    void storeFailure(String idempotencyKey, Long userId, HttpStatus httpStatus, String errorMessage);
+    default void storeFailure(String idempotencyKey, Long userId, HttpStatus httpStatus, String errorMessage) {
+        storeFailure(idempotencyKey, userId, httpStatus, errorMessage, null);
+    }
+
+    void storeFailure(String idempotencyKey, Long userId, HttpStatus httpStatus, String errorMessage, String scope);
 
     /**
      * Remove idempotency record (cleanup after transient errors).
@@ -76,7 +92,11 @@ public interface IdempotencyStore {
      * @param idempotencyKey Client-provided UUID
      * @param userId Current authenticated user ID
      */
-    void remove(String idempotencyKey, Long userId);
+    default void remove(String idempotencyKey, Long userId) {
+        remove(idempotencyKey, userId, null);
+    }
+
+    void remove(String idempotencyKey, Long userId, String scope);
 
     /**
      * Get the storage type description for logging.

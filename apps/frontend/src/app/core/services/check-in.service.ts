@@ -786,7 +786,6 @@ export class CheckInService implements OnDestroy {
       longitude: position?.longitude,
       // P0: Anti-spoofing - send accuracy and platform info
       horizontalAccuracy: position?.accuracy,
-      isMockLocation: false, // Web browsers don't expose mock location flag; handled server-side for native apps
       platform: 'WEB',
       deviceFingerprint: this.generateDeviceFingerprint(),
     };

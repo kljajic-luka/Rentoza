@@ -36,15 +36,15 @@ import java.util.Optional;
  * </pre>
  * 
  * <h2>Security</h2>
- * <p>All endpoints require authentication. Additional role-based checks are performed
- * at the service layer (host vs guest access).
+ * <p>All endpoints require authentication. Sensitive booking actions also enforce
+ * host/guest/admin access at the controller boundary.
  * 
  * <h2>Idempotency (Phase 1 Critical Fix)</h2>
  * <p>Mutation endpoints (POST) support idempotency via {@code X-Idempotency-Key} header:
  * <ul>
  *   <li>Client provides UUID v4 key on first request</li>
  *   <li>Retries with same key return cached response (no duplicate execution)</li>
- *   <li>Keys are scoped per-user (24h TTL)</li>
+ *   <li>Keys are scoped per-user and per booking operation (24h TTL)</li>
  * </ul>
  */
 @RestController
@@ -111,6 +111,7 @@ public class CheckInController {
      * @param fields Optional comma-separated list of fields to return
      */
     @GetMapping("/status")
+    @PreAuthorize("@checkInAuthorization.canAccessStatus(#bookingId, authentication)")
     public ResponseEntity<CheckInStatusDTO> getCheckInStatus(
             @PathVariable Long bookingId,
             @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch,
@@ -155,6 +156,7 @@ public class CheckInController {
      * @return HTTP 201 for accepted photos, HTTP 400 for rejected photos, HTTP 409 if too early
      */
     @PostMapping(value = "/host/photos", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("@checkInAuthorization.canManageHostCheckIn(#bookingId, authentication)")
     public ResponseEntity<PhotoUploadResponse> uploadHostPhoto(
             @PathVariable Long bookingId,
             @RequestPart("file") MultipartFile file,
@@ -237,6 +239,7 @@ public class CheckInController {
      * <p>Supports {@code X-Idempotency-Key} header to prevent duplicate state transitions.
      */
     @PostMapping("/host/complete")
+    @PreAuthorize("@checkInAuthorization.canManageHostCheckIn(#bookingId, authentication)")
     public ResponseEntity<CheckInStatusDTO> completeHostCheckIn(
             @PathVariable Long bookingId,
             @Valid @RequestBody HostCheckInSubmissionDTO submission,
@@ -246,7 +249,8 @@ public class CheckInController {
         log.debug("[CheckIn] Host completing check-in for booking {} by user {}", bookingId, userId);
         
         // Idempotency check
-        Optional<IdempotencyResult> cached = idempotencyService.checkIdempotency(idempotencyKey, userId);
+        String scope = buildIdempotencyScope(bookingId, "HOST_CHECK_IN_COMPLETE");
+        Optional<IdempotencyResult> cached = idempotencyService.checkIdempotency(idempotencyKey, userId, scope);
         if (cached.isPresent()) {
             IdempotencyResult result = cached.get();
             if (result.getStatus() == IdempotencyStatus.PROCESSING) {
@@ -260,7 +264,7 @@ public class CheckInController {
         }
         
         // Mark as processing
-        if (!idempotencyService.markProcessing(idempotencyKey, userId, "HOST_CHECK_IN_COMPLETE")) {
+        if (!idempotencyService.markProcessing(idempotencyKey, userId, "HOST_CHECK_IN_COMPLETE", scope)) {
             return ResponseEntity.status(HttpStatus.CONFLICT).build();
         }
         
@@ -271,12 +275,12 @@ public class CheckInController {
             CheckInStatusDTO status = checkInService.completeHostCheckIn(submission, userId);
             
             // Store successful result
-            idempotencyService.storeSuccess(idempotencyKey, userId, HttpStatus.OK, status);
+            idempotencyService.storeSuccess(idempotencyKey, userId, HttpStatus.OK, status, scope);
             
             return ResponseEntity.ok(status);
         } catch (Exception e) {
             // Remove idempotency record on transient errors to allow retry
-            idempotencyService.remove(idempotencyKey, userId);
+            idempotencyService.remove(idempotencyKey, userId, scope);
             throw e;
         }
     }
@@ -321,6 +325,7 @@ public class CheckInController {
      * @throws IllegalStateException if booking is not in correct state
      */
     @PostMapping("/host/license-verification")
+    @PreAuthorize("@checkInAuthorization.canManageHostCheckIn(#bookingId, authentication)")
     public ResponseEntity<CheckInStatusDTO> confirmLicenseVerifiedInPerson(
             @PathVariable Long bookingId,
             @RequestHeader(value = IDEMPOTENCY_HEADER, required = false) String idempotencyKey) {
@@ -330,7 +335,8 @@ public class CheckInController {
             bookingId, userId);
         
         // Idempotency check
-        Optional<IdempotencyResult> cached = idempotencyService.checkIdempotency(idempotencyKey, userId);
+        String scope = buildIdempotencyScope(bookingId, "LICENSE_VERIFICATION");
+        Optional<IdempotencyResult> cached = idempotencyService.checkIdempotency(idempotencyKey, userId, scope);
         if (cached.isPresent()) {
             IdempotencyResult result = cached.get();
             if (result.getStatus() == IdempotencyStatus.PROCESSING) {
@@ -342,7 +348,7 @@ public class CheckInController {
         }
         
         // Mark as processing
-        if (!idempotencyService.markProcessing(idempotencyKey, userId, "LICENSE_VERIFICATION")) {
+        if (!idempotencyService.markProcessing(idempotencyKey, userId, "LICENSE_VERIFICATION", scope)) {
             return ResponseEntity.status(HttpStatus.CONFLICT).build();
         }
         
@@ -350,11 +356,11 @@ public class CheckInController {
             CheckInStatusDTO status = checkInService.confirmLicenseVerifiedInPerson(bookingId, userId);
             
             // Store successful result
-            idempotencyService.storeSuccess(idempotencyKey, userId, HttpStatus.OK, status);
+            idempotencyService.storeSuccess(idempotencyKey, userId, HttpStatus.OK, status, scope);
             
             return ResponseEntity.ok(status);
         } catch (Exception e) {
-            idempotencyService.remove(idempotencyKey, userId);
+            idempotencyService.remove(idempotencyKey, userId, scope);
             throw e;
         }
     }
@@ -369,6 +375,7 @@ public class CheckInController {
      * <p>Supports {@code X-Idempotency-Key} header to prevent duplicate acknowledgments.
      */
     @PostMapping("/guest/condition-ack")
+    @PreAuthorize("@checkInAuthorization.canAcknowledgeGuestCondition(#bookingId, authentication)")
     public ResponseEntity<CheckInStatusDTO> acknowledgeCondition(
             @PathVariable Long bookingId,
             @Valid @RequestBody GuestConditionAcknowledgmentDTO acknowledgment,
@@ -379,7 +386,8 @@ public class CheckInController {
             bookingId, userId);
         
         // Idempotency check
-        Optional<IdempotencyResult> cached = idempotencyService.checkIdempotency(idempotencyKey, userId);
+        String scope = buildIdempotencyScope(bookingId, "GUEST_CONDITION_ACK");
+        Optional<IdempotencyResult> cached = idempotencyService.checkIdempotency(idempotencyKey, userId, scope);
         if (cached.isPresent()) {
             IdempotencyResult result = cached.get();
             if (result.getStatus() == IdempotencyStatus.PROCESSING) {
@@ -391,7 +399,7 @@ public class CheckInController {
         }
         
         // Mark as processing
-        if (!idempotencyService.markProcessing(idempotencyKey, userId, "GUEST_CONDITION_ACK")) {
+        if (!idempotencyService.markProcessing(idempotencyKey, userId, "GUEST_CONDITION_ACK", scope)) {
             return ResponseEntity.status(HttpStatus.CONFLICT).build();
         }
         
@@ -402,11 +410,11 @@ public class CheckInController {
             CheckInStatusDTO status = checkInService.acknowledgeCondition(acknowledgment, userId);
             
             // Store successful result
-            idempotencyService.storeSuccess(idempotencyKey, userId, HttpStatus.OK, status);
+            idempotencyService.storeSuccess(idempotencyKey, userId, HttpStatus.OK, status, scope);
             
             return ResponseEntity.ok(status);
         } catch (Exception e) {
-            idempotencyService.remove(idempotencyKey, userId);
+            idempotencyService.remove(idempotencyKey, userId, scope);
             throw e;
         }
     }
@@ -428,6 +436,7 @@ public class CheckInController {
      * endpoint for idempotency as it triggers trip start and payment capture.
      */
     @PostMapping("/handshake")
+    @PreAuthorize("@checkInAuthorization.canConfirmHandshake(#bookingId, authentication)")
     public ResponseEntity<CheckInStatusDTO> confirmHandshake(
             @PathVariable Long bookingId,
             @Valid @RequestBody HandshakeConfirmationDTO confirmation,
@@ -438,7 +447,8 @@ public class CheckInController {
             bookingId, userId);
         
         // Idempotency check - critical for handshake to prevent duplicate trip starts
-        Optional<IdempotencyResult> cached = idempotencyService.checkIdempotency(idempotencyKey, userId);
+        String scope = buildIdempotencyScope(bookingId, "HANDSHAKE_CONFIRM");
+        Optional<IdempotencyResult> cached = idempotencyService.checkIdempotency(idempotencyKey, userId, scope);
         if (cached.isPresent()) {
             IdempotencyResult result = cached.get();
             if (result.getStatus() == IdempotencyStatus.PROCESSING) {
@@ -450,7 +460,7 @@ public class CheckInController {
         }
         
         // Mark as processing
-        if (!idempotencyService.markProcessing(idempotencyKey, userId, "HANDSHAKE_CONFIRM")) {
+        if (!idempotencyService.markProcessing(idempotencyKey, userId, "HANDSHAKE_CONFIRM", scope)) {
             return ResponseEntity.status(HttpStatus.CONFLICT).build();
         }
         
@@ -461,11 +471,11 @@ public class CheckInController {
             CheckInStatusDTO status = checkInService.confirmHandshake(confirmation, userId);
             
             // Store successful result
-            idempotencyService.storeSuccess(idempotencyKey, userId, HttpStatus.OK, status);
+            idempotencyService.storeSuccess(idempotencyKey, userId, HttpStatus.OK, status, scope);
             
             return ResponseEntity.ok(status);
         } catch (Exception e) {
-            idempotencyService.remove(idempotencyKey, userId);
+            idempotencyService.remove(idempotencyKey, userId, scope);
             throw e;
         }
     }
@@ -495,6 +505,7 @@ public class CheckInController {
      * @throws IllegalArgumentException if GPS coordinates are missing
      */
     @GetMapping("/lockbox-code")
+    @PreAuthorize("@checkInAuthorization.canRevealLockbox(#bookingId, authentication)")
     public ResponseEntity<Map<String, Object>> revealLockboxCode(
             @PathVariable Long bookingId,
             @RequestParam(value = "latitude", required = true) Double latitude,
@@ -558,7 +569,7 @@ public class CheckInController {
      * @param bookingId The booking to open check-in for
      */
     @PostMapping("/force-open-window")
-    @PreAuthorize("hasRole('ADMIN') or @environment.acceptsProfiles('dev')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Map<String, Object>> forceOpenCheckInWindow(@PathVariable Long bookingId) {
         Long userId = currentUser.id();
         log.warn("[CheckIn] MANUAL WINDOW OPEN requested by user {} for booking {}", userId, bookingId);
@@ -624,6 +635,10 @@ public class CheckInController {
             log.warn("[CheckIn] Failed to deserialize cached idempotency body: {}", ex.getMessage());
             return null;
         }
+    }
+
+    private String buildIdempotencyScope(Long bookingId, String operation) {
+        return "booking:" + bookingId + ":" + operation;
     }
 
     /**

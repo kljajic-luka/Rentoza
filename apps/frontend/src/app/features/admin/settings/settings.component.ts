@@ -167,20 +167,11 @@ import { AdminApiService, AdminSettings } from '../../../core/services/admin-api
           <mat-card-header>
             <mat-icon mat-card-avatar class="section-icon">security</mat-icon>
             <mat-card-title>Security & Privacy</mat-card-title>
-            <mat-card-subtitle>Manage security preferences</mat-card-subtitle>
+            <mat-card-subtitle>Manage notification-based security preferences</mat-card-subtitle>
           </mat-card-header>
           <mat-card-content>
             <form [formGroup]="settingsForm" class="settings-form">
               <div class="form-section">
-                <mat-slide-toggle formControlName="twoFactorEnabled" color="primary">
-                  <div class="toggle-label">
-                    <strong>Two-Factor Authentication</strong>
-                    <span class="toggle-description"
-                      >Add an extra layer of security to your account</span
-                    >
-                  </div>
-                </mat-slide-toggle>
-
                 <mat-slide-toggle formControlName="loginAlerts" color="primary">
                   <div class="toggle-label">
                     <strong>Login Alerts</strong>
@@ -188,18 +179,8 @@ import { AdminApiService, AdminSettings } from '../../../core/services/admin-api
                   </div>
                 </mat-slide-toggle>
 
-                <mat-form-field appearance="outline" class="full-width">
-                  <mat-label>Session Timeout</mat-label>
-                  <mat-select formControlName="sessionTimeout">
-                    <mat-option value="15">15 minutes</mat-option>
-                    <mat-option value="30">30 minutes</mat-option>
-                    <mat-option value="60">1 hour</mat-option>
-                    <mat-option value="120">2 hours</mat-option>
-                    <mat-option value="480">8 hours</mat-option>
-                  </mat-select>
-                  <mat-icon matPrefix>timer</mat-icon>
-                  <mat-hint>Auto-logout after period of inactivity</mat-hint>
-                </mat-form-field>
+                <!-- AUDIT-M5-FIX: Runtime MFA/session timeout controls are hidden until
+                     they are connected to actual auth/session enforcement. -->
               </div>
             </form>
           </mat-card-content>
@@ -253,9 +234,7 @@ export class AdminSettingsComponent implements OnInit {
       currencyFormat: ['RSD', Validators.required],
 
       // Security
-      twoFactorEnabled: [false],
       loginAlerts: [true],
-      sessionTimeout: ['60', Validators.required],
     });
   }
 

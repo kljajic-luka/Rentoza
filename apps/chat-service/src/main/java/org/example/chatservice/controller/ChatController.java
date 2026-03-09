@@ -25,6 +25,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import jakarta.servlet.http.HttpServletRequest;
 
 import java.util.List;
 import java.util.Map;
@@ -378,12 +379,23 @@ public class ChatController {
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/admin/conversations")
     public ResponseEntity<List<ConversationDTO>> getAdminConversations(
-            Authentication authentication
+            Authentication authentication,
+            HttpServletRequest request
     ) {
         Long adminUserId = extractUserId(authentication);
 
         log.info("[Admin][Audit] Admin user {} listing all conversations", adminUserId);
         List<ConversationDTO> conversations = chatService.getAllConversationsForAdmin();
+        // AUDIT-H2-FIX: Every oversight list access must create a structured audit row.
+        recordAdminAudit(
+            adminUserId,
+            AdminAuditEntry.Action.CONVERSATIONS_LISTED,
+            AdminAuditEntry.TargetType.CONVERSATION,
+            "ALL",
+            String.format("{\"conversationCount\":%d}", conversations.size()),
+            null,
+            request,
+            "LISTED");
         return ResponseEntity.ok(conversations);
     }
 
@@ -403,10 +415,18 @@ public class ChatController {
     @GetMapping("/admin/conversations/{bookingId}/transcript")
     public ResponseEntity<ConversationDTO> getAdminTranscript(
             @PathVariable String bookingId,
-            Authentication authentication
+            @RequestParam String reason,
+            Authentication authentication,
+            HttpServletRequest request
     ) {
         Long adminUserId = extractUserId(authentication);
         Long bookingIdLong = Long.parseLong(bookingId);
+
+        if (!hasText(reason)) {
+            log.warn("[Admin][Audit] Admin user {} attempted transcript access for booking {} without justification",
+                    adminUserId, bookingIdLong);
+            return ResponseEntity.badRequest().build();
+        }
 
         log.info("[Admin][Audit] Admin user {} accessing transcript for booking {} (dispute resolution)",
                 adminUserId, bookingIdLong);
@@ -418,7 +438,10 @@ public class ChatController {
             AdminAuditEntry.Action.CONVERSATION_VIEWED,
             AdminAuditEntry.TargetType.CONVERSATION,
             String.valueOf(bookingIdLong),
-            String.format("{\"messageCount\":%d}", transcript.getMessages() != null ? transcript.getMessages().size() : 0));
+            String.format("{\"messageCount\":%d}", transcript.getMessages() != null ? transcript.getMessages().size() : 0),
+            reason.trim(),
+            request,
+            "VIEWED");
 
         log.info("[Admin][Audit] Admin user {} retrieved {} messages for booking {}",
                 adminUserId,
@@ -564,7 +587,8 @@ public class ChatController {
     public ResponseEntity<?> getFlaggedMessages(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
-            Authentication authentication
+            Authentication authentication,
+            HttpServletRequest request
     ) {
         Long adminUserId = extractUserId(authentication);
 
@@ -587,6 +611,21 @@ public class ChatController {
                 .sentAt(msg.getTimestamp())
                 .moderationFlags(msg.getModerationFlags())
                 .build());
+
+            // AUDIT-H2-FIX: Queue access must be queryable with request context.
+            recordAdminAudit(
+                adminUserId,
+                AdminAuditEntry.Action.FLAGGED_MESSAGES_VIEWED,
+                AdminAuditEntry.TargetType.MESSAGE,
+                "FLAGGED_QUEUE",
+                String.format("{\"page\":%d,\"size\":%d,\"returned\":%d,\"total\":%d}",
+                    page,
+                    size,
+                    flaggedDTOs.getNumberOfElements(),
+                    flaggedDTOs.getTotalElements()),
+                null,
+                request,
+                "VIEWED");
         
         return ResponseEntity.ok(flaggedDTOs);
     }
@@ -612,9 +651,17 @@ public class ChatController {
     @PostMapping("/admin/messages/{messageId}/dismiss-flags")
     public ResponseEntity<?> dismissFlags(
             @PathVariable Long messageId,
-            Authentication authentication
+            @RequestParam String reason,
+            Authentication authentication,
+            HttpServletRequest request
     ) {
         Long adminUserId = extractUserId(authentication);
+
+        if (!hasText(reason)) {
+            log.warn("[Admin][Audit] Admin user {} attempted to dismiss flags on message {} without justification",
+                    adminUserId, messageId);
+            return ResponseEntity.badRequest().body(Map.of("error", "Reason is required"));
+        }
 
         Message msg = messageRepository.findById(messageId).orElse(null);
         if (msg == null) {
@@ -635,7 +682,10 @@ public class ChatController {
                 AdminAuditEntry.Action.REVIEW_DISMISSED,
                 AdminAuditEntry.TargetType.MESSAGE,
                 String.valueOf(messageId),
-                String.format("{\"moderationFlags\":\"%s\"}", msg.getModerationFlags()));
+                String.format("{\"moderationFlags\":\"%s\"}", msg.getModerationFlags()),
+                reason.trim(),
+                request,
+                "DISMISSED");
 
         return ResponseEntity.ok(Map.of("message", "Flags dismissed", "reviewedBy", adminUserId));
     }
@@ -645,13 +695,45 @@ public class ChatController {
             AdminAuditEntry.Action action,
             AdminAuditEntry.TargetType targetType,
             String targetId,
-            String metadata) {
+            String metadata,
+            String justification,
+            HttpServletRequest request,
+            String result) {
         adminAuditRepository.save(AdminAuditEntry.builder()
                 .adminUserId(adminUserId)
                 .action(action)
                 .targetType(targetType)
                 .targetId(targetId)
                 .metadata(metadata)
+                .justification(hasText(justification) ? justification.trim() : null)
+                .ipAddress(extractClientIp(request))
+                .userAgent(truncate(request != null ? request.getHeader("User-Agent") : null,
+                        AdminAuditEntry.MAX_USER_AGENT_LENGTH))
+                .result(result)
                 .build());
+    }
+
+    private String extractClientIp(HttpServletRequest request) {
+        if (request == null) {
+            return null;
+        }
+
+        String forwardedFor = request.getHeader("X-Forwarded-For");
+        if (hasText(forwardedFor)) {
+            return truncate(forwardedFor.split(",")[0].trim(), 45);
+        }
+
+        return truncate(request.getRemoteAddr(), 45);
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.trim().isEmpty();
+    }
+
+    private String truncate(String value, int maxLength) {
+        if (value == null || value.length() <= maxLength) {
+            return value;
+        }
+        return value.substring(0, maxLength);
     }
 }

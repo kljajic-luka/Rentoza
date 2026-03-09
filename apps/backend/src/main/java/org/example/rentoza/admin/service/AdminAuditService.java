@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
+import java.util.regex.Pattern;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -51,6 +52,11 @@ import java.util.List;
 @Slf4j
 @Transactional
 public class AdminAuditService {
+
+    private static final int MAX_FORWARDED_CHAIN_ENTRIES = 10;
+    private static final int MAX_FORWARDED_HEADER_LENGTH = 512;
+    private static final Pattern IPV4_PATTERN = Pattern.compile("^(?:\\d{1,3}\\.){3}\\d{1,3}$");
+    private static final Pattern IPV6_PATTERN = Pattern.compile("^[0-9A-Fa-f:]+$");
     
     private final AdminAuditLogRepository auditRepo;
     private final ObjectMapper objectMapper;
@@ -269,20 +275,89 @@ public class AdminAuditService {
             if (attrs == null) {
                 return "unknown";
             }
-            HttpServletRequest request = attrs.getRequest();
-            
-            // Check for forwarded IP (load balancer/proxy)
-            String xForwardedFor = request.getHeader("X-Forwarded-For");
-            if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
-                // Take the first IP in chain (original client)
-                return xForwardedFor.split(",")[0].trim();
-            }
-            
-            return request.getRemoteAddr();
+            return getClientIpAddress(attrs.getRequest());
         } catch (Exception e) {
             log.debug("Failed to extract client IP: {}", e.getMessage());
             return "unknown";
         }
+    }
+
+    private String getClientIpAddress(HttpServletRequest request) {
+        String xForwardedFor = request.getHeader("X-Forwarded-For");
+        if (xForwardedFor != null && !xForwardedFor.isBlank()) {
+            String forwardedIp = extractForwardedClientIp(xForwardedFor);
+            if (forwardedIp != null) {
+                return forwardedIp;
+            }
+        }
+
+        String remoteAddr = normalizeIpCandidate(request.getRemoteAddr());
+        return isValidIp(remoteAddr) ? remoteAddr : "unknown";
+    }
+
+    private String extractForwardedClientIp(String xForwardedFor) {
+        if (xForwardedFor.length() > MAX_FORWARDED_HEADER_LENGTH) {
+            log.warn("[Audit][AUDIT-M7] Suspicious X-Forwarded-For value ignored: {}",
+                    xForwardedFor.substring(0, MAX_FORWARDED_HEADER_LENGTH));
+            return null;
+        }
+
+        String[] chain = xForwardedFor.split(",");
+        if (chain.length > MAX_FORWARDED_CHAIN_ENTRIES) {
+            log.warn("[Audit][AUDIT-M7] Suspicious X-Forwarded-For value ignored: {}",
+                    xForwardedFor.substring(0, Math.min(100, xForwardedFor.length())));
+            return null;
+        }
+
+        String candidateIp = normalizeIpCandidate(chain[0]);
+        if (isValidIp(candidateIp)) {
+            return candidateIp;
+        }
+
+        log.warn("[Audit][AUDIT-M7] Suspicious X-Forwarded-For value ignored: {}",
+                xForwardedFor.substring(0, Math.min(100, xForwardedFor.length())));
+        return null;
+    }
+
+    private String normalizeIpCandidate(String rawIp) {
+        if (rawIp == null) {
+            return null;
+        }
+
+        String candidate = rawIp.trim();
+        if (candidate.isEmpty()) {
+            return null;
+        }
+
+        int firstColon = candidate.indexOf(':');
+        int lastColon = candidate.lastIndexOf(':');
+
+        if (candidate.startsWith("[") && candidate.contains("]")) {
+            candidate = candidate.substring(1, candidate.indexOf(']'));
+        } else if (firstColon > 0 && firstColon == lastColon && candidate.contains(".")) {
+            candidate = candidate.substring(0, lastColon);
+        }
+
+        return candidate.trim();
+    }
+
+    private boolean isValidIp(String ip) {
+        if (ip == null || ip.isBlank() || ip.contains(" ")) {
+            return false;
+        }
+
+        if (IPV4_PATTERN.matcher(ip).matches()) {
+            String[] octets = ip.split("\\.");
+            for (String octet : octets) {
+                int parsed = Integer.parseInt(octet);
+                if (parsed < 0 || parsed > 255) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        return ip.length() >= 2 && ip.length() <= 39 && IPV6_PATTERN.matcher(ip).matches() && ip.contains(":");
     }
     
     /**

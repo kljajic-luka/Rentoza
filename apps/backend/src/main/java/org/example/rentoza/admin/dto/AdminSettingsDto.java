@@ -1,5 +1,6 @@
 package org.example.rentoza.admin.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -20,6 +21,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class AdminSettingsDto {
     
     // ==================== NOTIFICATION SETTINGS ====================
@@ -55,14 +57,7 @@ public class AdminSettingsDto {
     private String currencyFormat;
     
     // ==================== SECURITY SETTINGS ====================
-    
-    @NotNull(message = "twoFactorEnabled is required")
-    private Boolean twoFactorEnabled;
-    
+
     @NotNull(message = "loginAlerts is required")
     private Boolean loginAlerts;
-    
-    @NotBlank(message = "sessionTimeout is required")
-    @Pattern(regexp = "^\\d+$", message = "sessionTimeout must be a number")
-    private String sessionTimeout;
 }

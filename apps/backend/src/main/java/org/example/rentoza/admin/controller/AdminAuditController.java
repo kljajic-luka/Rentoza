@@ -3,7 +3,6 @@ package org.example.rentoza.admin.controller;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.admin.dto.AdminAuditLogDto;
-import org.example.rentoza.admin.dto.AuditLogSearchRequest;
 import org.example.rentoza.admin.entity.AdminAction;
 import org.example.rentoza.admin.entity.AdminAuditLog;
 import org.example.rentoza.admin.entity.ResourceType;
@@ -31,7 +30,6 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Positive;
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -49,7 +47,7 @@ import java.util.stream.Collectors;
  * 
  * <p><b>SECURITY:</b>
  * <ul>
- *   <li>All endpoints require ROLE_ADMIN</li>
+ *   <li>All endpoints require ROLE_ADMIN or ROLE_AUDIT_READER</li>
  *   <li>Audit logs are immutable (read-only via this controller)</li>
  *   <li>Exports are limited to 10,000 records</li>
  * </ul>
@@ -65,7 +63,6 @@ import java.util.stream.Collectors;
 @RequestMapping("/api/admin/audit")
 @RequiredArgsConstructor
 @Slf4j
-@PreAuthorize("hasRole('ADMIN')")
 @Validated
 public class AdminAuditController {
     
@@ -74,8 +71,8 @@ public class AdminAuditController {
     private final AdminAuditService auditService;
     private final UserRepository userRepo;
     
-
-    private static final int MAX_EXPORT_SIZE = 10000;
+    private static final int MAX_EXPORT_SIZE = 1000;
+    private static final String REDACTED_STATE = "[redacted]";
     
     /**
      * Search audit logs with filters.
@@ -96,6 +93,7 @@ public class AdminAuditController {
      * @return Paginated audit log entries
      */
     @GetMapping
+    @PreAuthorize("hasAnyRole('ADMIN', 'AUDIT_READER')")
     public ResponseEntity<Page<AdminAuditLogDto>> searchAuditLogs(
             @RequestParam(required = false) Long adminId,
             @RequestParam(required = false) ResourceType resourceType,
@@ -130,6 +128,7 @@ public class AdminAuditController {
      * Get single audit log entry by ID.
      */
     @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'AUDIT_READER')")
     public ResponseEntity<AdminAuditLogDto> getAuditLogById(@PathVariable @Positive Long id) {
         log.debug("Admin {} requesting audit log {}", currentUser.id(), id);
         
@@ -146,6 +145,7 @@ public class AdminAuditController {
      * Returns all admin actions performed on user 123.
      */
     @GetMapping("/resource/{type}/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'AUDIT_READER')")
     public ResponseEntity<Page<AdminAuditLogDto>> getAuditLogsForResource(
             @PathVariable ResourceType type,
             @PathVariable @Positive Long id,
@@ -172,7 +172,10 @@ public class AdminAuditController {
      * @return CSV file download
      */
     @GetMapping("/export")
+    @PreAuthorize("hasAnyRole('ADMIN', 'AUDIT_READER')")
     public ResponseEntity<String> exportAuditLogs(
+            @RequestParam String exportReason,
+            @RequestParam(defaultValue = "1000") @Min(1) int maxRows,
             @RequestParam(required = false) Long adminId,
             @RequestParam(required = false) ResourceType resourceType,
             @RequestParam(required = false) Long resourceId,
@@ -180,11 +183,17 @@ public class AdminAuditController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant endDate,
             @RequestParam(required = false) String searchTerm) {
+
+        if (exportReason == null || exportReason.isBlank()) {
+            return ResponseEntity.badRequest().body("Export reason is required");
+        }
         
         log.info("Admin {} exporting audit logs: resourceType={}, action={}", 
                  currentUser.id(), resourceType, action);
         
-        Pageable pageable = PageRequest.of(0, MAX_EXPORT_SIZE, Sort.by(Sort.Direction.DESC, "createdAt"));
+        // AUDIT-H3-FIX: Require explicit export justification and cap the export size.
+        int cappedRows = Math.min(maxRows, MAX_EXPORT_SIZE);
+        Pageable pageable = PageRequest.of(0, cappedRows, Sort.by(Sort.Direction.DESC, "createdAt"));
         
         Specification<AdminAuditLog> spec = buildSpecification(
             adminId, resourceType, resourceId, action, startDate, endDate, searchTerm
@@ -197,7 +206,7 @@ public class AdminAuditController {
         // Log the export action to audit trail
         userRepo.findById(currentUser.id()).ifPresent(admin ->
             auditService.logAction(admin, AdminAction.AUDIT_EXPORTED, ResourceType.CONFIG, null, null,
-                auditLogs.getTotalElements() + " audit records exported", "Audit log CSV export")
+                auditLogs.getTotalElements() + " audit records exported", exportReason.trim())
         );
         
         String filename = "audit_logs_" + Instant.now().toEpochMilli() + ".csv";
@@ -214,6 +223,7 @@ public class AdminAuditController {
      * <p>Returns counts grouped by action type, resource type, and admin.
      */
     @GetMapping("/stats")
+    @PreAuthorize("hasAnyRole('ADMIN', 'AUDIT_READER')")
     public ResponseEntity<?> getAuditStats(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant endDate) {
@@ -303,6 +313,7 @@ public class AdminAuditController {
     }
     
     private AdminAuditLogDto toDto(AdminAuditLog log) {
+        boolean auditReaderOnly = currentUser.hasRole("AUDIT_READER") && !currentUser.hasRole("ADMIN");
         return AdminAuditLogDto.builder()
             .id(log.getId())
             .adminId(log.getAdmin().getId())
@@ -310,8 +321,9 @@ public class AdminAuditController {
             .action(log.getAction())
             .resourceType(log.getResourceType())
             .resourceId(log.getResourceId())
-            .beforeState(log.getBeforeState())
-            .afterState(log.getAfterState())
+            // AUDIT-H3-FIX: Narrower audit-reader access must not expose raw state snapshots.
+            .beforeState(auditReaderOnly ? redactStateSnapshot(log.getBeforeState()) : log.getBeforeState())
+            .afterState(auditReaderOnly ? redactStateSnapshot(log.getAfterState()) : log.getAfterState())
             .reason(log.getReason())
             .createdAt(log.getCreatedAt())
             .ipAddress(log.getIpAddress())
@@ -352,5 +364,9 @@ public class AdminAuditController {
         return input.replace("\\", "\\\\")
                     .replace("%", "\\%")
                     .replace("_", "\\_");
+    }
+
+    private String redactStateSnapshot(String stateSnapshot) {
+        return stateSnapshot == null ? null : REDACTED_STATE;
     }
 }

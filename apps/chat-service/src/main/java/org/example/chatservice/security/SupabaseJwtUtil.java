@@ -97,14 +97,14 @@ public class SupabaseJwtUtil {
         }
         
         // Validate required configuration
-        if (jwksUrl == null || jwksUrl.contains("your-project")) {
+        if (jwksUrl == null || jwksUrl.toLowerCase().contains("your_project") || jwksUrl.toLowerCase().contains("your-project")) {
             throw new IllegalStateException(
-                "SUPABASE_JWKS_URL not configured - still contains placeholder or is null");
+                "SUPABASE_JWKS_URL not configured - still contains placeholder or is null. Set the SUPABASE_URL environment variable.");
         }
-        
-        if (issuer == null || issuer.contains("your-project")) {
+
+        if (issuer == null || issuer.toLowerCase().contains("your_project") || issuer.toLowerCase().contains("your-project")) {
             throw new IllegalStateException(
-                "SUPABASE_JWT_ISSUER not configured - still contains placeholder or is null");
+                "SUPABASE_JWT_ISSUER not configured - still contains placeholder or is null. Set the SUPABASE_URL environment variable.");
         }
         
         log.info("✅ Supabase config validated");

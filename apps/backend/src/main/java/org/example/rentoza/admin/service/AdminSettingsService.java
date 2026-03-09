@@ -1,10 +1,16 @@
 package org.example.rentoza.admin.service;
 
+import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.admin.dto.AdminSettingsDto;
+import org.example.rentoza.admin.entity.AdminAction;
 import org.example.rentoza.admin.entity.AdminSettings;
+import org.example.rentoza.admin.entity.ResourceType;
+import org.example.rentoza.admin.repository.AdminUserRepository;
 import org.example.rentoza.admin.repository.AdminSettingsRepository;
+import org.example.rentoza.security.CurrentUser;
+import org.example.rentoza.user.User;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
@@ -24,6 +30,9 @@ import org.springframework.transaction.annotation.Transactional;
 public class AdminSettingsService {
     
     private final AdminSettingsRepository adminSettingsRepository;
+    private final AdminUserRepository adminUserRepository;
+    private final AdminAuditService auditService;
+    private final CurrentUser currentUser;
     
     /**
      * Get current admin settings.
@@ -62,8 +71,12 @@ public class AdminSettingsService {
                     log.info("No admin settings found during update, creating new");
                     return AdminSettings.createDefault();
                 });
+        String beforeState = auditService.toJson(toDto(settings));
         
-        // Update all fields from DTO
+        // Update only fields that have a real operator-visible effect today.
+        // AUDIT-M5-FIX: twoFactorEnabled and sessionTimeout remain in the entity for
+        // low-risk compatibility, but they are intentionally not exposed or mutated
+        // until they are wired to runtime auth/session enforcement.
         settings.setEmailNotifications(dto.getEmailNotifications());
         settings.setPushNotifications(dto.getPushNotifications());
         settings.setSmsNotifications(dto.getSmsNotifications());
@@ -72,14 +85,14 @@ public class AdminSettingsService {
         settings.setReportFormat(dto.getReportFormat());
         settings.setTimezone(dto.getTimezone());
         settings.setCurrencyFormat(dto.getCurrencyFormat());
-        settings.setTwoFactorEnabled(dto.getTwoFactorEnabled());
         settings.setLoginAlerts(dto.getLoginAlerts());
-        settings.setSessionTimeout(dto.getSessionTimeout());
         
         AdminSettings saved = adminSettingsRepository.save(settings);
+        AdminSettingsDto updated = toDto(saved);
+        auditSettingsMutation(beforeState, updated, "Admin settings updated");
         log.info("Admin settings updated successfully");
         
-        return toDto(saved);
+        return updated;
     }
     
     /**
@@ -94,6 +107,7 @@ public class AdminSettingsService {
         
         AdminSettings settings = adminSettingsRepository.findFirst()
                 .orElseGet(AdminSettings::createDefault);
+        String beforeState = auditService.toJson(toDto(settings));
         
         // Reset all fields to defaults
         AdminSettings defaults = AdminSettings.createDefault();
@@ -105,14 +119,14 @@ public class AdminSettingsService {
         settings.setReportFormat(defaults.getReportFormat());
         settings.setTimezone(defaults.getTimezone());
         settings.setCurrencyFormat(defaults.getCurrencyFormat());
-        settings.setTwoFactorEnabled(defaults.getTwoFactorEnabled());
         settings.setLoginAlerts(defaults.getLoginAlerts());
-        settings.setSessionTimeout(defaults.getSessionTimeout());
         
         AdminSettings saved = adminSettingsRepository.save(settings);
+        AdminSettingsDto reset = toDto(saved);
+        auditSettingsMutation(beforeState, reset, "Admin settings reset to defaults");
         log.info("Admin settings reset to defaults");
         
-        return toDto(saved);
+        return reset;
     }
     
     /**
@@ -128,9 +142,23 @@ public class AdminSettingsService {
                 .reportFormat(entity.getReportFormat())
                 .timezone(entity.getTimezone())
                 .currencyFormat(entity.getCurrencyFormat())
-                .twoFactorEnabled(entity.getTwoFactorEnabled())
                 .loginAlerts(entity.getLoginAlerts())
-                .sessionTimeout(entity.getSessionTimeout())
                 .build();
+    }
+
+    private void auditSettingsMutation(String beforeState, AdminSettingsDto afterSettings, @NonNull String reason) {
+        User admin = adminUserRepository.findById(currentUser.id())
+                .orElseThrow(() -> new IllegalStateException("Authenticated admin not found for settings audit"));
+
+        // AUDIT-M5-FIX: Settings mutations are privileged admin actions and must be audited.
+        auditService.logAction(
+                admin,
+                AdminAction.CONFIG_UPDATED,
+                ResourceType.CONFIG,
+                null,
+                beforeState,
+                auditService.toJson(afterSettings),
+                reason
+        );
     }
 }

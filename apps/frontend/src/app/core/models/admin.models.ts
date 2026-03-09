@@ -225,6 +225,33 @@ export interface DisputeResolutionRequest {
   rejectionReason?: string;
 }
 
+export interface DisputeResolutionResult {
+  resolved: boolean;
+  paymentSucceeded: boolean;
+  notificationsSent: boolean;
+  manualReviewRequired: boolean;
+  claimStatus: string;
+  message?: string;
+  paymentError?: string;
+}
+
+export interface CheckoutDisputeResolutionResult {
+  bookingId: number;
+  damageClaimId: number;
+  decision: string;
+  originalClaimAmountRsd: number;
+  approvedAmountRsd: number;
+  depositReleasedRsd: number;
+  depositCapturedRsd: number;
+  resolutionNotes: string;
+  resolvedByAdminId: number;
+  resolvedByAdminName: string;
+  resolvedAt: string;
+  sagaResumed: boolean;
+  newBookingStatus: string;
+  notificationsSent: boolean;
+}
+
 export interface EscalateDisputeRequest {
   reason: string;
 }
@@ -264,7 +291,7 @@ export interface BatchPayoutRequest {
 
 export interface BatchPayoutResult {
   totalRequested: number;
-  successCount: number;
+  queuedCount: number;
   failureCount: number;
   totalAmountProcessed: number;
   failures: PayoutFailure[];
@@ -415,7 +442,5 @@ export interface AdminSettings {
   reportFormat: 'pdf' | 'csv' | 'xlsx';
   timezone: string;
   currencyFormat: string;
-  twoFactorEnabled: boolean;
   loginAlerts: boolean;
-  sessionTimeout: string;
 }

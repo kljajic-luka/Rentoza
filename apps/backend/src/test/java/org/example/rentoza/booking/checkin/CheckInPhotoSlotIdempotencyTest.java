@@ -25,10 +25,14 @@ import org.mockito.quality.Strictness;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionOperations;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.*;
@@ -56,6 +60,8 @@ class CheckInPhotoSlotIdempotencyTest {
     @Mock private PiiPhotoStorageService piiPhotoStorageService;
     @Mock private ExifStrippingService exifStrippingService;
     @Mock private CheckInValidationService validationService;
+        @Mock private org.example.rentoza.booking.photo.PhotoUrlService photoUrlService;
+        @Mock private TransactionOperations transactionOperations;
 
     @InjectMocks
     private CheckInPhotoService photoService;
@@ -63,6 +69,7 @@ class CheckInPhotoSlotIdempotencyTest {
     private Booking booking;
     private User owner;
     private CheckInPhoto existingPhoto;
+        private Map<Long, CheckInPhoto> storedPhotos;
 
     // Minimal valid JPEG header (FF D8 FF E0 + JFIF marker, padded to 12 bytes)
     private static final byte[] JPEG_BYTES = new byte[]{
@@ -75,6 +82,13 @@ class CheckInPhotoSlotIdempotencyTest {
         // @Value defaults
         ReflectionTestUtils.setField(photoService, "maxSizeMb", 10);
         ReflectionTestUtils.setField(photoService, "auditBackupEnabled", false);
+
+        when(transactionOperations.execute(any())).thenAnswer(invocation -> {
+            TransactionCallback<?> callback = invocation.getArgument(0);
+            return callback.doInTransaction(null);
+        });
+        when(photoUrlService.generateSignedUrl(anyString(), anyString(), anyLong()))
+                .thenAnswer(invocation -> "signed:" + invocation.getArgument(1, String.class));
 
         // Owner user
         owner = new User();
@@ -103,9 +117,11 @@ class CheckInPhotoSlotIdempotencyTest {
                 .uploadedBy(owner)
                 .build();
         existingPhoto.setId(99L);
+        storedPhotos = new HashMap<>();
 
         // Common mock stubs
         when(bookingRepository.findByIdWithRelations(1L)).thenReturn(Optional.of(booking));
+        when(bookingRepository.findByIdWithLock(1L)).thenReturn(Optional.of(booking));
         when(userRepository.findById(100L)).thenReturn(Optional.of(owner));
 
         // EXIF validation returns accepted
@@ -122,8 +138,8 @@ class CheckInPhotoSlotIdempotencyTest {
         when(exifStrippingService.stripExifMetadata(any(), any())).thenReturn(JPEG_BYTES);
 
         // Supabase upload: return storage key
-        when(supabaseStorageService.uploadCheckInPhotoBytes(anyLong(), any(), any(), any(), any()))
-                .thenReturn("new-storage-key");
+        doNothing().when(supabaseStorageService)
+                .uploadCheckInPhotoBytesAtPath(anyString(), any(), any());
 
         // Photo save: return the photo with an ID set
         when(photoRepository.save(any(CheckInPhoto.class))).thenAnswer(invocation -> {
@@ -131,8 +147,11 @@ class CheckInPhotoSlotIdempotencyTest {
             if (p.getId() == null) {
                 p.setId(200L);
             }
+                        storedPhotos.put(p.getId(), p);
             return p;
         });
+                when(photoRepository.findById(anyLong())).thenAnswer(invocation ->
+                                Optional.ofNullable(storedPhotos.get(invocation.getArgument(0, Long.class))));
     }
 
     @Test
@@ -140,6 +159,8 @@ class CheckInPhotoSlotIdempotencyTest {
     void shouldSoftDeleteExistingPhotoOnRetake() throws Exception {
         // Arrange: existing active photo for HOST_EXTERIOR_FRONT
         when(photoRepository.findByBookingIdAndPhotoType(1L, CheckInPhotoType.HOST_EXTERIOR_FRONT))
+                .thenReturn(List.of(existingPhoto));
+        when(photoRepository.findCompletedByBookingIdAndPhotoTypeExcludingId(1L, CheckInPhotoType.HOST_EXTERIOR_FRONT, 200L))
                 .thenReturn(List.of(existingPhoto));
 
         MockMultipartFile file = new MockMultipartFile(
@@ -169,7 +190,8 @@ class CheckInPhotoSlotIdempotencyTest {
         });
         // Second save: new photo
         assertThat(savedPhotos).anySatisfy(p -> {
-            assertThat(p.getStorageKey()).isEqualTo("new-storage-key");
+                        assertThat(p.getStorageKey()).contains("bookings/1/host/HOST_EXTERIOR_FRONT/");
+                        assertThat(p.getUploadStatus()).isEqualTo(CheckInPhoto.UploadStatus.COMPLETED);
         });
     }
 
@@ -178,6 +200,8 @@ class CheckInPhotoSlotIdempotencyTest {
     void shouldNotSoftDeleteWhenNoExistingPhoto() throws Exception {
         // Arrange: no existing photo
         when(photoRepository.findByBookingIdAndPhotoType(1L, CheckInPhotoType.HOST_EXTERIOR_FRONT))
+                .thenReturn(List.of());
+        when(photoRepository.findCompletedByBookingIdAndPhotoTypeExcludingId(1L, CheckInPhotoType.HOST_EXTERIOR_FRONT, 200L))
                 .thenReturn(List.of());
 
         MockMultipartFile file = new MockMultipartFile(
@@ -191,8 +215,7 @@ class CheckInPhotoSlotIdempotencyTest {
         // Assert: response is accepted
         assertThat(response.isAccepted()).isTrue();
 
-        // Assert: only one save (the new photo)
-        verify(photoRepository, times(1)).save(any(CheckInPhoto.class));
+        verify(photoRepository, atLeast(3)).save(any(CheckInPhoto.class));
     }
 
     @Test

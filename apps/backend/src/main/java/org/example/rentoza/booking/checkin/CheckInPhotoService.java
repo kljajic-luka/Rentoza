@@ -1,6 +1,7 @@
 package org.example.rentoza.booking.checkin;
 
 import lombok.RequiredArgsConstructor;
+import java.util.Locale;
 import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingRepository;
@@ -24,6 +25,8 @@ import org.example.rentoza.storage.SupabaseStorageService;
 import org.example.rentoza.booking.photo.PiiPhotoStorageService;
 import org.example.rentoza.booking.photo.PhotoUrlService;
 import org.example.rentoza.util.ExifStrippingService;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.transaction.support.TransactionOperations;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -32,6 +35,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.Map;
 import java.util.UUID;
+import java.util.List;
 
 /**
  * Service for handling check-in photo uploads and storage.
@@ -49,6 +53,41 @@ import java.util.UUID;
 @RequiredArgsConstructor
 @Slf4j
 public class CheckInPhotoService {
+
+    private enum UploadReconciliationOutcome {
+        FINALIZED,
+        TERMINAL_FAILURE,
+        RETRYABLE_PENDING,
+        NO_ACTION
+    }
+
+    private enum FinalizeFailureDisposition {
+        TERMINAL,
+        RETRYABLE
+    }
+
+    private static final class PhotoUploadFinalizeException extends IllegalStateException {
+        private final FinalizeFailureDisposition disposition;
+
+        private PhotoUploadFinalizeException(String message,
+                                            FinalizeFailureDisposition disposition,
+                                            Throwable cause) {
+            super(message, cause);
+            this.disposition = disposition;
+        }
+
+        static PhotoUploadFinalizeException terminal(String message, Throwable cause) {
+            return new PhotoUploadFinalizeException(message, FinalizeFailureDisposition.TERMINAL, cause);
+        }
+
+        static PhotoUploadFinalizeException retryable(String message, Throwable cause) {
+            return new PhotoUploadFinalizeException(message, FinalizeFailureDisposition.RETRYABLE, cause);
+        }
+
+        boolean isTerminal() {
+            return disposition == FinalizeFailureDisposition.TERMINAL;
+        }
+    }
 
     private static final ZoneId SERBIA_ZONE = ZoneId.of("Europe/Belgrade");
     
@@ -78,6 +117,7 @@ public class CheckInPhotoService {
     private final ExifStrippingService exifStrippingService;      // VAL-001: EXIF privacy
     private final CheckInValidationService validationService;     // Upload timing gate
     private final PhotoUrlService photoUrlService;                // H-6: Signed URL generation
+    private final TransactionOperations transactionOperations;
 
     @Value("${app.checkin.photo.max-size-mb:10}")
     private int maxSizeMb;
@@ -113,7 +153,6 @@ public class CheckInPhotoService {
      * @param clientLongitude Client-provided longitude (fallback)
      * @return PhotoUploadResponse with accepted=true (HTTP 201) or accepted=false (HTTP 400)
      */
-    @Transactional
     public PhotoUploadResponse uploadPhoto(
             Long bookingId,
             Long userId,
@@ -147,53 +186,7 @@ public class CheckInPhotoService {
         Booking booking = bookingRepository.findByIdWithRelations(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Rezervacija nije pronađena"));
         
-        // Validate access based on photo type and booking status
-        if (photoType.isCheckoutPhoto()) {
-            // Checkout photo authorization
-            if (photoType.isHostCheckoutPhoto()) {
-                // Host checkout photo: only owner can upload
-                if (!booking.getCar().getOwner().getId().equals(userId)) {
-                    throw new AccessDeniedException("Samo vlasnik vozila može otpremiti fotografije za checkout");
-                }
-            } else {
-                // Guest checkout photo: only renter can upload
-                if (!booking.getRenter().getId().equals(userId)) {
-                    throw new AccessDeniedException("Samo gost može otpremiti fotografije za checkout");
-                }
-            }
-        } else {
-            // Check-in photo: only owner can upload
-            if (!booking.getCar().getOwner().getId().equals(userId)) {
-                throw new AccessDeniedException("Samo vlasnik vozila može otpremiti fotografije");
-            }
-        }
-        
-        // Validate status based on photo type
-        if (photoType.isCheckoutPhoto()) {
-            if (photoType.isHostCheckoutPhoto()) {
-                // Host checkout: must be in CHECKOUT_GUEST_COMPLETE
-                if (booking.getStatus() != BookingStatus.CHECKOUT_GUEST_COMPLETE) {
-                    throw new IllegalStateException("Checkout nije spreman za otpremanje fotografija od strane domaćina");
-                }
-            } else {
-                // Guest checkout photos
-                if (booking.getStatus() == BookingStatus.CHECKOUT_DAMAGE_DISPUTE
-                        && (photoType == CheckInPhotoType.CHECKOUT_DAMAGE_NEW
-                            || photoType == CheckInPhotoType.CHECKOUT_CUSTOM)) {
-                    // Allow evidence uploads while guest is disputing a damage claim
-                    log.debug("[CheckIn] Allowing dispute-evidence upload: booking={}, type={}", bookingId, photoType);
-                } else if (booking.getStatus() != BookingStatus.CHECKOUT_OPEN) {
-                    throw new IllegalStateException("Checkout nije otvoren za otpremanje fotografija");
-                }
-            }
-        } else {
-            // Check-in photo: must be in CHECK_IN_OPEN
-            if (booking.getStatus() != BookingStatus.CHECK_IN_OPEN) {
-                throw new IllegalStateException("Prijem nije otvoren za otpremanje fotografija");
-            }
-            // Gate: block uploads before the timing window allows it
-            validationService.validateUploadTiming(booking);
-        }
+        validateUploadAccessAndStatus(booking, userId, photoType);
         
         // P1 FIX: Server-side per-booking photo cap (prevents DoS via mass upload)
         long existingPhotoCount = photoRepository.countByBookingId(bookingId);
@@ -325,35 +318,6 @@ public class CheckInPhotoService {
             log.debug("[CheckIn] Using client GPS as fallback: ({}, {})", clientLatitude, clientLongitude);
         }
         
-        // Generate storage path
-        String sessionId = photoType.isCheckoutPhoto() 
-            ? booking.getCheckoutSessionId() 
-            : booking.getCheckInSessionId();
-            
-        if (sessionId == null) {
-            // Auto-heal: Generate session ID if missing (legacy booking support)
-            sessionId = UUID.randomUUID().toString();
-            if (photoType.isCheckoutPhoto()) {
-                booking.setCheckoutSessionId(sessionId);
-                log.info("[CheckIn] Auto-generated missing checkoutSessionId for booking {}", booking.getId());
-            } else {
-                booking.setCheckInSessionId(sessionId);
-                log.info("[CheckIn] Auto-generated missing checkInSessionId for booking {}", booking.getId());
-            }
-            bookingRepository.save(booking);
-        }
-        
-        String filename = String.format("%s_%s_%s.jpg", 
-            photoType.name().toLowerCase(), 
-            System.currentTimeMillis(),
-            UUID.randomUUID().toString().substring(0, 8)
-        );
-        String storageKey = String.format(
-            photoType.isCheckoutPhoto() ? "checkout/%s/%s" : "checkin/%s/%s", 
-            sessionId, 
-            filename
-        );
-        
         String contentType = file.getContentType();
         
         // Determine storage bucket
@@ -369,8 +333,12 @@ public class CheckInPhotoService {
         // ========== VAL-001: EXIF GPS Privacy Protection ==========
         // Strip EXIF metadata before public upload to prevent GPS exposure
         // Original with EXIF is stored in admin-only audit bucket for disputes
-        String auditStorageKey = null;
         String party = booking.getCar().getOwner().getId().equals(user.getId()) ? "host" : "guest";
+        String uploadToken = UUID.randomUUID().toString().replace("-", "");
+        String reservedStorageKey = buildReservedStorageKey(booking.getId(), party, photoType, uploadToken, contentType, false);
+        String reservedAuditStorageKey = auditBackupEnabled
+            ? buildReservedStorageKey(booking.getId(), party, photoType, uploadToken, contentType, true)
+            : null;
         
         // ========== R1/R2: SHA-256 IMAGE HASH (Trust & Evidence Audit) ==========
         // Compute hash of ORIGINAL bytes BEFORE any storage writes.
@@ -378,45 +346,69 @@ public class CheckInPhotoService {
         // Hash is of the original (pre-EXIF-strip) bytes for chain-of-custody integrity.
         String imageHash = computeSha256(photoBytes);
 
+        // ================================================================
+        // PHASE 4E: PHOTO DEADLINE - EVIDENCE WEIGHT DETERMINATION
+        // ================================================================
+        EvidenceWeightResult evidenceResult = determineEvidenceWeight(booking, photoType);
+
+        CheckInPhoto photo = reservePendingUpload(
+            booking.getId(),
+            user.getId(),
+                CheckInPhoto.builder()
+                        .booking(booking)
+                        .checkInSessionId(photoType.isCheckoutPhoto() ? booking.getCheckoutSessionId() : booking.getCheckInSessionId())
+                        .photoType(photoType)
+                        .storageBucket(bucket)
+                        .storageKey(reservedStorageKey)
+                        .auditStorageKey(reservedAuditStorageKey)
+                        .imageHash(imageHash)
+                        .originalFilename(file.getOriginalFilename())
+                        .mimeType(contentType)
+                        .fileSizeBytes((int) file.getSize())
+                        .exifTimestamp(exifResult.getPhotoTimestamp())
+                        .exifLatitude(finalLatitude)
+                        .exifLongitude(finalLongitude)
+                        .exifDeviceMake(exifResult.getDeviceMake())
+                        .exifDeviceModel(exifResult.getDeviceModel())
+                        .exifValidationStatus(exifResult.getStatus())
+                        .exifValidationMessage(exifResult.getMessage())
+                        .exifValidatedAt(Instant.now())
+                        .evidenceWeight(evidenceResult.weight())
+                        .evidenceWeightDowngradedAt(evidenceResult.isLate() ? Instant.now() : null)
+                        .evidenceWeightDowngradeReason(evidenceResult.isLate() ? evidenceResult.reason() : null)
+                        .uploadedBy(user)
+                        .clientUploadedAt(clientTimestamp)
+                        .build(),
+                auditBackupEnabled
+        );
+
+        String sessionId = photo.getCheckInSessionId();
+        String auditStorageKey = null;
+        CheckInPhoto.AuditUploadStatus auditUploadStatus = auditBackupEnabled
+                ? CheckInPhoto.AuditUploadStatus.PENDING
+                : CheckInPhoto.AuditUploadStatus.NOT_REQUIRED;
+        String auditFailureMessage = null;
+
         // ========== STORAGE: Supabase Storage ==========
         try {
             // Step 1: Upload original to audit bucket (if enabled)
             if (auditBackupEnabled) {
                 try {
-                    auditStorageKey = supabaseStorageService.uploadCheckInPhotoToAuditBucket(
-                        booking.getId(),
-                        party,
-                        photoType.name(),
-                        photoBytes,  // Original with EXIF
-                        contentType
+                    supabaseStorageService.uploadCheckInPhotoToAuditBucketAtPath(
+                            photo.getAuditStorageKey(),
+                            photoBytes,
+                            contentType
                     );
+                    auditStorageKey = photo.getAuditStorageKey();
+                    auditUploadStatus = CheckInPhoto.AuditUploadStatus.COMPLETED;
                     log.info("[VAL-001] Audit backup uploaded: booking={}, type={}, key={}",
                         booking.getId(), photoType, auditStorageKey);
                 } catch (Exception e) {
-                    // ========== R3: AUDIT FAIL-OPEN REMEDIATION ==========
-                    // Record explicit integrity-gap sentinel so ops can detect evidence gaps.
-                    // The photo upload continues (availability > strict consistency for UX),
-                    // but the gap is surfaced via sentinel value + structured log + metric.
-                    auditStorageKey = "AUDIT_UPLOAD_FAILED";
+                    auditUploadStatus = CheckInPhoto.AuditUploadStatus.FAILED;
+                    auditFailureMessage = "Audit bucket upload failed: " + e.getMessage();
                     log.error("[R3-INTEGRITY-GAP] Audit backup FAILED — evidence integrity gap recorded. " +
                             "booking={}, type={}, error={}, imageHash={}",
                         booking.getId(), photoType, e.getMessage(), imageHash);
-
-                    // Record structured event for the integrity gap
-                    eventService.recordEvent(
-                        booking,
-                        sessionId != null ? sessionId : (booking.getCheckInSessionId() != null ? booking.getCheckInSessionId() : "unknown"),
-                        CheckInEventType.HOST_PHOTO_UPLOADED,
-                        user.getId(),
-                        CheckInActorRole.SYSTEM,
-                        Map.of(
-                            "auditIntegrityGap", true,
-                            "photoType", photoType.name(),
-                            "imageHash", imageHash != null ? imageHash : "HASH_FAILED",
-                            "errorMessage", e.getMessage() != null ? e.getMessage() : "unknown",
-                            "auditStorageKey", "AUDIT_UPLOAD_FAILED"
-                        )
-                    );
                 }
             }
             
@@ -426,57 +418,38 @@ public class CheckInPhotoService {
                 booking.getId(), photoBytes.length, strippedBytes.length);
             
             // Step 3: Upload stripped photo to public bucket
-            storageKey = supabaseStorageService.uploadCheckInPhotoBytes(
-                booking.getId(),
-                party,
-                photoType.name(),
-                strippedBytes,  // EXIF removed for privacy
-                contentType
+            supabaseStorageService.uploadCheckInPhotoBytesAtPath(
+                    photo.getStorageKey(),
+                    strippedBytes,
+                    contentType
             );
             log.info("[CheckIn] Photo uploaded to Supabase (EXIF stripped): booking={}, type={}, key={}",
-                booking.getId(), photoType, storageKey);
+                booking.getId(), photoType, photo.getStorageKey());
         } catch (IOException e) {
+            cleanupPartialStorage(photo.getStorageKey(), auditUploadStatus == CheckInPhoto.AuditUploadStatus.COMPLETED ? auditStorageKey : null);
+            markUploadFailedTerminal(photo.getId(), "Standard bucket upload failed: " + e.getMessage());
+            eventService.recordEvent(
+                    booking,
+                    sessionId,
+                    CheckInEventType.PHOTO_UPLOAD_STORAGE_FAILED,
+                    user.getId(),
+                    CheckInActorRole.SYSTEM,
+                    Map.of(
+                            "photoId", photo.getId(),
+                            "photoType", photoType.name(),
+                            "stage", "STANDARD_UPLOAD",
+                            "error", e.getMessage() != null ? e.getMessage() : "unknown",
+                            "uploadStatus", CheckInPhoto.UploadStatus.FAILED_TERMINAL.name()
+                    )
+            );
             log.error("[CheckIn] Supabase upload failed for booking {}: {}",
                 booking.getId(), e.getMessage(), e);
             throw e;
         }
-        
-        // Create photo entity
-        CheckInPhoto photo = CheckInPhoto.builder()
-                .booking(booking)
-                .checkInSessionId(sessionId)
-                .photoType(photoType)
-                .storageBucket(bucket)
-                .storageKey(storageKey)
-                .auditStorageKey(auditStorageKey)  // VAL-001: Original with EXIF (or "AUDIT_UPLOAD_FAILED" sentinel per R3)
-                .imageHash(imageHash)              // R1/R2: SHA-256 of original bytes for chain-of-custody
-                .originalFilename(file.getOriginalFilename())
-                .mimeType(contentType)
-                .fileSizeBytes((int) file.getSize())
-                .exifTimestamp(exifResult.getPhotoTimestamp())
-                .exifLatitude(finalLatitude)
-                .exifLongitude(finalLongitude)
-                .exifDeviceMake(exifResult.getDeviceMake())
-                .exifDeviceModel(exifResult.getDeviceModel())
-                .exifValidationStatus(exifResult.getStatus())
-                .exifValidationMessage(exifResult.getMessage())
-                .exifValidatedAt(Instant.now())
-                .uploadedBy(user)
-                .clientUploadedAt(clientTimestamp)
-                .build();
-        
-        // ================================================================
-        // PHASE 4E: PHOTO DEADLINE - EVIDENCE WEIGHT DETERMINATION
-        // ================================================================
-        // Check if photo is being uploaded past the deadline.
-        // Late uploads get SECONDARY evidence weight for dispute resolution.
-        EvidenceWeightResult evidenceResult = determineEvidenceWeight(booking, photoType);
-        photo.setEvidenceWeight(evidenceResult.weight());
+
+        markPendingFinalize(photo.getId(), auditUploadStatus, auditStorageKey, auditFailureMessage);
         
         if (evidenceResult.isLate()) {
-            photo.setEvidenceWeightDowngradedAt(Instant.now());
-            photo.setEvidenceWeightDowngradeReason(evidenceResult.reason());
-            
             // Log audit event for late upload
             eventService.recordEvent(
                 booking,
@@ -502,20 +475,30 @@ public class CheckInPhotoService {
         // so retakes replace the prior slot photo instead of appending duplicates.
         // Damage/custom types are multi-entry by design and skip this.
         // ================================================================
-        if (photoType.isRequiredForHost() || photoType.isRequiredForCheckout()
-                || photoType.isRequiredForGuestCheckIn() || photoType.isRequiredForHostCheckout()) {
-            java.util.List<CheckInPhoto> existing = photoRepository.findByBookingIdAndPhotoType(booking.getId(), photoType);
-            for (CheckInPhoto old : existing) {
-                if (!old.isDeleted()) {
-                    old.softDelete(user, "REPLACED_BY_RETAKE");
-                    photoRepository.save(old);
-                    log.info("[CheckIn] Replaced existing {} photo for booking {} (old id={})",
-                            photoType, booking.getId(), old.getId());
-                }
+        try {
+            photo = finalizePendingUpload(photo.getId(), user.getId());
+        } catch (PhotoUploadFinalizeException e) {
+            CheckInPhoto latestPhoto = photoRepository.findById(photo.getId()).orElse(photo);
+            if (e.isTerminal()) {
+                cleanupPartialStorage(photo.getStorageKey(), auditUploadStatus == CheckInPhoto.AuditUploadStatus.COMPLETED ? auditStorageKey : null);
             }
+            eventService.recordEvent(
+                    booking,
+                    sessionId,
+                    CheckInEventType.PHOTO_UPLOAD_STORAGE_FAILED,
+                    user.getId(),
+                    CheckInActorRole.SYSTEM,
+                    Map.of(
+                            "photoId", latestPhoto.getId(),
+                            "photoType", photoType.name(),
+                            "stage", e.isTerminal() ? "FINALIZE_TERMINAL" : "FINALIZE_RETRYABLE",
+                            "uploadStatus", latestPhoto.getUploadStatus().name(),
+                            "retryable", !e.isTerminal(),
+                            "error", e.getMessage()
+                    )
+            );
+            throw e;
         }
-
-        photo = photoRepository.save(photo);
 
         // ========== R1: FRAUD DETECTION — Cross-booking duplicate hash check ==========
         if (imageHash != null
@@ -613,7 +596,7 @@ public class CheckInPhotoService {
                 "fileSize", file.getSize(),
                 "usedClientGps", usedClientGps,
                 "imageHash", imageHash != null ? imageHash : "HASH_FAILED",
-                "auditIntegrityGap", "AUDIT_UPLOAD_FAILED".equals(auditStorageKey)
+                "auditIntegrityGap", photo.getAuditUploadStatus() == CheckInPhoto.AuditUploadStatus.FAILED
             )
         );
         
@@ -992,6 +975,321 @@ public class CheckInPhotoService {
     private LocalDateTime toLocalDateTime(Instant instant) {
         if (instant == null) return null;
         return LocalDateTime.ofInstant(instant, SERBIA_ZONE);
+    }
+
+    public UploadReconciliationResult reconcileStaleUploads(Instant staleBefore) {
+        List<Long> stalePhotoIds = photoRepository.findStalePendingUploads(staleBefore).stream()
+                .map(CheckInPhoto::getId)
+                .toList();
+
+        int finalized = 0;
+        int terminalFailures = 0;
+
+        for (Long photoId : stalePhotoIds) {
+            UploadReconciliationOutcome outcome = transactionOperations.execute(status -> reconcileSinglePendingUpload(photoId));
+            if (outcome == null) {
+                continue;
+            }
+            switch (outcome) {
+                case FINALIZED -> finalized++;
+                case TERMINAL_FAILURE -> terminalFailures++;
+                case RETRYABLE_PENDING, NO_ACTION -> {
+                }
+            }
+        }
+
+        return new UploadReconciliationResult(finalized, terminalFailures);
+    }
+
+    public record UploadReconciliationResult(int finalized, int terminalFailures) {}
+
+    private void validateUploadAccessAndStatus(Booking booking, Long userId, CheckInPhotoType photoType) {
+        if (photoType.isCheckoutPhoto()) {
+            if (photoType.isHostCheckoutPhoto()) {
+                if (!booking.getCar().getOwner().getId().equals(userId)) {
+                    throw new AccessDeniedException("Samo vlasnik vozila može otpremiti fotografije za checkout");
+                }
+            } else {
+                if (!booking.getRenter().getId().equals(userId)) {
+                    throw new AccessDeniedException("Samo gost može otpremiti fotografije za checkout");
+                }
+            }
+        } else if (!booking.getCar().getOwner().getId().equals(userId)) {
+            throw new AccessDeniedException("Samo vlasnik vozila može otpremiti fotografije");
+        }
+
+        if (photoType.isCheckoutPhoto()) {
+            if (photoType.isHostCheckoutPhoto()) {
+                if (booking.getStatus() != BookingStatus.CHECKOUT_GUEST_COMPLETE) {
+                    throw new IllegalStateException("Checkout nije spreman za otpremanje fotografija od strane domaćina");
+                }
+            } else if (booking.getStatus() == BookingStatus.CHECKOUT_DAMAGE_DISPUTE
+                    && (photoType == CheckInPhotoType.CHECKOUT_DAMAGE_NEW
+                    || photoType == CheckInPhotoType.CHECKOUT_CUSTOM)) {
+                log.debug("[CheckIn] Allowing dispute-evidence upload: booking={}, type={}", booking.getId(), photoType);
+            } else if (booking.getStatus() != BookingStatus.CHECKOUT_OPEN) {
+                throw new IllegalStateException("Checkout nije otvoren za otpremanje fotografija");
+            }
+        } else {
+            if (booking.getStatus() != BookingStatus.CHECK_IN_OPEN) {
+                throw new IllegalStateException("Prijem nije otvoren za otpremanje fotografija");
+            }
+            validationService.validateUploadTiming(booking);
+        }
+    }
+
+    private CheckInPhoto reservePendingUpload(Long bookingId, Long userId, CheckInPhoto draft, boolean auditRequired) {
+        return transactionOperations.execute(status -> {
+            Booking lockedBooking = bookingRepository.findByIdWithLock(bookingId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Rezervacija nije pronađena"));
+            validateUploadAccessAndStatus(lockedBooking, userId, draft.getPhotoType());
+
+            String sessionId = resolveSessionId(lockedBooking, draft.getPhotoType());
+            User uploader = userRepository.findById(userId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Korisnik nije pronađen"));
+
+            draft.setBooking(lockedBooking);
+            draft.setUploadedBy(uploader);
+            draft.setCheckInSessionId(sessionId);
+            draft.markUploadPending(auditRequired);
+
+            return photoRepository.save(draft);
+        });
+    }
+
+    private void markPendingFinalize(Long photoId,
+                                     CheckInPhoto.AuditUploadStatus auditStatus,
+                                     String auditStorageKey,
+                                     String errorMessage) {
+        transactionOperations.execute(status -> {
+            CheckInPhoto photo = photoRepository.findById(photoId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Fotografija nije pronađena"));
+            photo.recordUploadAttempt();
+            photo.markPendingFinalize(auditStatus, auditStorageKey, errorMessage);
+            photoRepository.save(photo);
+            return null;
+        });
+    }
+
+    private CheckInPhoto finalizePendingUpload(Long photoId, Long userId) {
+        return transactionOperations.execute(status -> {
+            CheckInPhoto photo = photoRepository.findById(photoId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Fotografija nije pronađena"));
+
+            Booking lockedBooking = bookingRepository.findByIdWithLock(photo.getBooking().getId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Rezervacija nije pronađena"));
+            photo.setBooking(lockedBooking);
+
+            if (photo.isCompletedUpload()) {
+                return photo;
+            }
+
+            if (photo.getUploadStatus() != CheckInPhoto.UploadStatus.PENDING_FINALIZE) {
+                throw new IllegalStateException("Otpremanje fotografije nije spremno za finalizaciju.");
+            }
+
+            if (photo.getPhotoType().isRequiredForHost() || photo.getPhotoType().isRequiredForCheckout()
+                    || photo.getPhotoType().isRequiredForGuestCheckIn() || photo.getPhotoType().isRequiredForHostCheckout()) {
+                List<CheckInPhoto> existing = photoRepository.findCompletedByBookingIdAndPhotoTypeExcludingId(
+                        lockedBooking.getId(), photo.getPhotoType(), photo.getId());
+                User replacingUser = userRepository.findById(userId)
+                        .orElseThrow(() -> new ResourceNotFoundException("Korisnik nije pronađen"));
+                for (CheckInPhoto old : existing) {
+                    if (!old.isDeleted()) {
+                        old.softDelete(replacingUser, "REPLACED_BY_RETAKE");
+                        photoRepository.save(old);
+                        log.info("[CheckIn] Replaced existing {} photo for booking {} (old id={})",
+                                photo.getPhotoType(), lockedBooking.getId(), old.getId());
+                    }
+                }
+            }
+
+            try {
+                photo.markCompleted();
+                return photoRepository.save(photo);
+            } catch (DataIntegrityViolationException e) {
+                String detail = e.getMostSpecificCause() != null
+                        ? e.getMostSpecificCause().getMessage()
+                        : e.getMessage();
+                if (isRequiredSlotConflict(detail)) {
+                    photo.markTerminalFailure("Required photo slot conflict during finalize: " + detail);
+                    photoRepository.save(photo);
+                    throw PhotoUploadFinalizeException.terminal(
+                            "Fotografija za ovaj obavezni ugao je upravo zamenjena drugim otpremanjem. Osvežite stranicu i proverite poslednju fotografiju.",
+                            e
+                    );
+                }
+
+                photo.markPendingFinalize(photo.getAuditUploadStatus(), photo.getAuditStorageKey(),
+                        "Finalize pending after database failure: " + detail);
+                photoRepository.save(photo);
+                throw PhotoUploadFinalizeException.retryable(
+                        "Otpremanje fotografije je sačuvano u skladištu, ali finalizacija nije uspela. Sistem će pokušati oporavak.",
+                        e
+                );
+            }
+        });
+    }
+
+    private boolean isRequiredSlotConflict(String detail) {
+        if (detail == null || detail.isBlank()) {
+            return false;
+        }
+        String normalized = detail.toLowerCase(Locale.ROOT);
+        return normalized.contains("uq_checkin_photo_required_slot")
+                || (normalized.contains("check_in_photos")
+                && normalized.contains("booking_id")
+                && normalized.contains("photo_type")
+                && normalized.contains("duplicate"));
+    }
+
+    private void markUploadFailedTerminal(Long photoId, String errorMessage) {
+        transactionOperations.execute(status -> {
+            CheckInPhoto photo = photoRepository.findById(photoId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Fotografija nije pronađena"));
+            photo.recordUploadAttempt();
+            photo.markTerminalFailure(errorMessage);
+            photoRepository.save(photo);
+            return null;
+        });
+    }
+
+    private UploadReconciliationOutcome reconcileSinglePendingUpload(Long photoId) {
+        CheckInPhoto photo = photoRepository.findById(photoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Fotografija nije pronađena"));
+
+        if (photo.isDeleted() || photo.isCompletedUpload() || photo.getUploadStatus() == CheckInPhoto.UploadStatus.FAILED_TERMINAL) {
+            return UploadReconciliationOutcome.NO_ACTION;
+        }
+
+        boolean standardExists = supabaseStorageService.checkInPhotoExists(photo.getStorageKey());
+        boolean auditExists = photo.getAuditStorageKey() != null
+                && photo.getAuditUploadStatus() != CheckInPhoto.AuditUploadStatus.NOT_REQUIRED
+                && supabaseStorageService.checkInAuditPhotoExists(photo.getAuditStorageKey());
+
+        if (!standardExists) {
+            cleanupPartialStorage(photo.getStorageKey(), auditExists ? photo.getAuditStorageKey() : null);
+            photo.recordUploadAttempt();
+            photo.markTerminalFailure("Reconciliation could not find the standard-bucket object for pending upload.");
+            photoRepository.save(photo);
+            eventService.recordSystemEvent(
+                    photo.getBooking(),
+                    photo.getCheckInSessionId(),
+                    CheckInEventType.PHOTO_UPLOAD_STORAGE_FAILED,
+                    Map.of(
+                            "photoId", photo.getId(),
+                            "photoType", photo.getPhotoType().name(),
+                            "stage", "RECONCILIATION",
+                            "uploadStatus", photo.getUploadStatus().name(),
+                            "error", photo.getLastUploadError() != null ? photo.getLastUploadError() : "STANDARD_OBJECT_MISSING"
+                    )
+            );
+                        return UploadReconciliationOutcome.TERMINAL_FAILURE;
+        }
+
+        if (photo.getUploadStatus() == CheckInPhoto.UploadStatus.PENDING_UPLOAD) {
+            photo.recordUploadAttempt();
+            photo.markPendingFinalize(
+                    auditExists ? CheckInPhoto.AuditUploadStatus.COMPLETED :
+                            (photo.getAuditUploadStatus() == CheckInPhoto.AuditUploadStatus.NOT_REQUIRED
+                                    ? CheckInPhoto.AuditUploadStatus.NOT_REQUIRED
+                                    : CheckInPhoto.AuditUploadStatus.FAILED),
+                    auditExists ? photo.getAuditStorageKey() : null,
+                    photo.getAuditUploadStatus() == CheckInPhoto.AuditUploadStatus.PENDING
+                            ? "Audit bucket object missing during reconciliation."
+                            : photo.getLastUploadError()
+            );
+            photoRepository.save(photo);
+        }
+
+        CheckInPhoto finalized;
+        try {
+            finalized = finalizePendingUpload(photoId, photo.getUploadedBy().getId());
+        } catch (PhotoUploadFinalizeException ex) {
+            CheckInPhoto latestPhoto = photoRepository.findById(photoId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Fotografija nije pronađena"));
+            if (ex.isTerminal()) {
+                cleanupPartialStorage(latestPhoto.getStorageKey(), auditExists ? latestPhoto.getAuditStorageKey() : null);
+            }
+            eventService.recordSystemEvent(
+                    latestPhoto.getBooking(),
+                    latestPhoto.getCheckInSessionId(),
+                    CheckInEventType.PHOTO_UPLOAD_STORAGE_FAILED,
+                    Map.of(
+                            "photoId", latestPhoto.getId(),
+                            "photoType", latestPhoto.getPhotoType().name(),
+                            "stage", ex.isTerminal() ? "FINALIZE_TERMINAL" : "FINALIZE_RETRYABLE",
+                            "uploadStatus", latestPhoto.getUploadStatus().name(),
+                            "retryable", !ex.isTerminal(),
+                            "error", ex.getMessage()
+                    )
+            );
+            return ex.isTerminal()
+                    ? UploadReconciliationOutcome.TERMINAL_FAILURE
+                    : UploadReconciliationOutcome.RETRYABLE_PENDING;
+        }
+        eventService.recordSystemEvent(
+                finalized.getBooking(),
+                finalized.getCheckInSessionId(),
+                CheckInEventType.PHOTO_UPLOAD_RECOVERED,
+                Map.of(
+                        "photoId", finalized.getId(),
+                        "photoType", finalized.getPhotoType().name(),
+                        "recoveredBy", "SCHEDULER",
+                        "previousStatus", photo.getUploadStatus().name()
+                )
+        );
+                return UploadReconciliationOutcome.FINALIZED;
+    }
+
+    private String resolveSessionId(Booking booking, CheckInPhotoType photoType) {
+        String sessionId = photoType.isCheckoutPhoto() ? booking.getCheckoutSessionId() : booking.getCheckInSessionId();
+        if (sessionId != null) {
+            return sessionId;
+        }
+
+        sessionId = UUID.randomUUID().toString();
+        if (photoType.isCheckoutPhoto()) {
+            booking.setCheckoutSessionId(sessionId);
+            log.info("[CheckIn] Auto-generated missing checkoutSessionId for booking {}", booking.getId());
+        } else {
+            booking.setCheckInSessionId(sessionId);
+            log.info("[CheckIn] Auto-generated missing checkInSessionId for booking {}", booking.getId());
+        }
+        bookingRepository.save(booking);
+        return sessionId;
+    }
+
+    private String buildReservedStorageKey(Long bookingId,
+                                           String party,
+                                           CheckInPhotoType photoType,
+                                           String uploadToken,
+                                           String contentType,
+                                           boolean auditBucket) {
+        String extension = resolveExtension(contentType);
+        String filename = auditBucket ? "audit_" + uploadToken + "." + extension : uploadToken + "." + extension;
+        return String.format("bookings/%d/%s/%s/%s", bookingId, party.toLowerCase(), photoType.name(), filename);
+    }
+
+    private String resolveExtension(String contentType) {
+        if (contentType == null) {
+            return "jpg";
+        }
+        return switch (contentType.toLowerCase()) {
+            case "image/png" -> "png";
+            case "image/webp" -> "webp";
+            case "image/heic", "image/heif" -> "heic";
+            default -> "jpg";
+        };
+    }
+
+    private void cleanupPartialStorage(String standardStorageKey, String auditStorageKey) {
+        if (standardStorageKey != null && !standardStorageKey.isBlank()) {
+            supabaseStorageService.deleteCheckInPhoto(standardStorageKey);
+        }
+        if (auditStorageKey != null && !auditStorageKey.isBlank()) {
+            supabaseStorageService.deleteCheckInAuditPhoto(auditStorageKey);
+        }
     }
 
     // ========== SECURITY: File Signature Validation (D5 Fix) ==========

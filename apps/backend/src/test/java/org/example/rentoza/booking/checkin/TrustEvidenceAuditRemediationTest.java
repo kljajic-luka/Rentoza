@@ -30,6 +30,8 @@ import org.mockito.quality.Strictness;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionOperations;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -83,6 +85,8 @@ class TrustEvidenceAuditRemediationTest {
     @Mock private PiiPhotoStorageService piiPhotoStorageService;
     @Mock private ExifStrippingService exifStrippingService;
     @Mock private CheckInValidationService validationService;
+        @Mock private org.example.rentoza.booking.photo.PhotoUrlService photoUrlService;
+        @Mock private TransactionOperations transactionOperations;
 
     @InjectMocks
     private CheckInPhotoService photoService;
@@ -105,6 +109,13 @@ class TrustEvidenceAuditRemediationTest {
         ReflectionTestUtils.setField(photoService, "auditBackupEnabled", true);
         ReflectionTestUtils.setField(photoService, "checkinPhotoDeadlineHours", 24);
         ReflectionTestUtils.setField(photoService, "checkoutPhotoDeadlineHours", 24);
+
+        when(transactionOperations.execute(any())).thenAnswer(invocation -> {
+            TransactionCallback<?> callback = invocation.getArgument(0);
+            return callback.doInTransaction(null);
+        });
+        when(photoUrlService.generateSignedUrl(anyString(), anyString(), anyLong()))
+                .thenAnswer(invocation -> "signed:" + invocation.getArgument(1, String.class));
 
         // Owner user
         owner = new User();
@@ -133,6 +144,7 @@ class TrustEvidenceAuditRemediationTest {
 
         // Common mock stubs
         when(bookingRepository.findByIdWithRelations(1L)).thenReturn(Optional.of(booking));
+        when(bookingRepository.findByIdWithLock(1L)).thenReturn(Optional.of(booking));
         when(userRepository.findById(100L)).thenReturn(Optional.of(owner));
         when(userRepository.findById(200L)).thenReturn(Optional.of(renter));
 
@@ -150,22 +162,23 @@ class TrustEvidenceAuditRemediationTest {
         when(exifStrippingService.stripExifMetadata(any(), any())).thenReturn(JPEG_BYTES);
 
         // Supabase uploads
-        when(supabaseStorageService.uploadCheckInPhotoBytes(anyLong(), any(), any(), any(), any()))
-                .thenReturn("new-storage-key");
-        when(supabaseStorageService.uploadCheckInPhotoToAuditBucket(anyLong(), any(), any(), any(), any()))
-                .thenReturn("audit-key-123");
+        doNothing().when(supabaseStorageService).uploadCheckInPhotoBytesAtPath(anyString(), any(), anyString());
+        doNothing().when(supabaseStorageService).uploadCheckInPhotoToAuditBucketAtPath(anyString(), any(), anyString());
 
-        // Photo save: return with ID set
+        // Photo save: return with ID set; also wire findById so durability flow can look it up
         when(photoRepository.save(any(CheckInPhoto.class))).thenAnswer(invocation -> {
             CheckInPhoto p = invocation.getArgument(0);
             if (p.getId() == null) {
                 p.setId(300L);
             }
+            when(photoRepository.findById(p.getId())).thenReturn(Optional.of(p));
             return p;
         });
 
         // No existing photos for this type
         when(photoRepository.findByBookingIdAndPhotoType(anyLong(), any()))
+                .thenReturn(List.of());
+        when(photoRepository.findCompletedByBookingIdAndPhotoTypeExcludingId(anyLong(), any(), anyLong()))
                 .thenReturn(List.of());
         when(photoRepository.countByBookingId(anyLong())).thenReturn(0L);
     }
@@ -313,12 +326,12 @@ class TrustEvidenceAuditRemediationTest {
     class AuditBucketFailureTests {
 
         @Test
-        @DisplayName("R3: Audit bucket failure sets AUDIT_UPLOAD_FAILED sentinel on entity")
+        @DisplayName("R3: Audit bucket failure marks FAILED status on entity")
         void shouldSetSentinelOnAuditBucketFailure() throws Exception {
-            // Arrange: audit upload throws exception
-            when(supabaseStorageService.uploadCheckInPhotoToAuditBucket(
-                    anyLong(), any(), any(), any(), any()))
-                    .thenThrow(new RuntimeException("Supabase audit bucket unavailable"));
+            // Arrange: audit upload throws exception (new path-based method)
+            doThrow(new RuntimeException("Supabase audit bucket unavailable"))
+                    .when(supabaseStorageService)
+                    .uploadCheckInPhotoToAuditBucketAtPath(anyString(), any(), anyString());
 
             MockMultipartFile file = new MockMultipartFile(
                     "file", "front.jpg", "image/jpeg", JPEG_BYTES);
@@ -330,25 +343,22 @@ class TrustEvidenceAuditRemediationTest {
             // Photo upload still succeeds (availability)
             assertThat(response.isAccepted()).isTrue();
 
-            // But the entity has the sentinel value
+            // Entity tracks audit failure via status enum (replaces old sentinel string)
             ArgumentCaptor<CheckInPhoto> captor = ArgumentCaptor.forClass(CheckInPhoto.class);
             verify(photoRepository, atLeastOnce()).save(captor.capture());
 
-            CheckInPhoto savedPhoto = captor.getAllValues().stream()
-                    .filter(p -> "new-storage-key".equals(p.getStorageKey()))
-                    .findFirst()
-                    .orElseGet(() -> captor.getValue());
+            CheckInPhoto savedPhoto = captor.getValue();
 
-            assertThat(savedPhoto.getAuditStorageKey())
-                    .isEqualTo("AUDIT_UPLOAD_FAILED");
+            assertThat(savedPhoto.getAuditUploadStatus())
+                    .isEqualTo(CheckInPhoto.AuditUploadStatus.FAILED);
         }
 
         @Test
         @DisplayName("R3: Audit bucket failure records integrity gap event")
         void shouldRecordIntegrityGapEventOnAuditFailure() throws Exception {
-            when(supabaseStorageService.uploadCheckInPhotoToAuditBucket(
-                    anyLong(), any(), any(), any(), any()))
-                    .thenThrow(new RuntimeException("Connection timeout"));
+            doThrow(new RuntimeException("Connection timeout"))
+                    .when(supabaseStorageService)
+                    .uploadCheckInPhotoToAuditBucketAtPath(anyString(), any(), anyString());
 
             MockMultipartFile file = new MockMultipartFile(
                     "file", "front.jpg", "image/jpeg", JPEG_BYTES);
@@ -360,8 +370,7 @@ class TrustEvidenceAuditRemediationTest {
             java.util.List<Map<String, Object>> allMetadata = captureAllEventMetadata();
 
             boolean integrityGapFound = allMetadata.stream()
-                    .anyMatch(m -> Boolean.TRUE.equals(m.get("auditIntegrityGap"))
-                            && "AUDIT_UPLOAD_FAILED".equals(m.get("auditStorageKey")));
+                    .anyMatch(m -> Boolean.TRUE.equals(m.get("auditIntegrityGap")));
 
             assertThat(integrityGapFound)
                     .as("Expected structured event with auditIntegrityGap=true")
@@ -369,7 +378,7 @@ class TrustEvidenceAuditRemediationTest {
         }
 
         @Test
-        @DisplayName("R3: Successful audit upload sets normal audit key (not sentinel)")
+        @DisplayName("R3: Successful audit upload sets normal audit key (not failed)")
         void shouldSetNormalAuditKeyOnSuccess() throws Exception {
             // Audit upload succeeds (default setup)
             MockMultipartFile file = new MockMultipartFile(
@@ -382,22 +391,21 @@ class TrustEvidenceAuditRemediationTest {
             ArgumentCaptor<CheckInPhoto> captor = ArgumentCaptor.forClass(CheckInPhoto.class);
             verify(photoRepository, atLeastOnce()).save(captor.capture());
 
-            CheckInPhoto savedPhoto = captor.getAllValues().stream()
-                    .filter(p -> "new-storage-key".equals(p.getStorageKey()))
-                    .findFirst()
-                    .orElseGet(() -> captor.getValue());
+            CheckInPhoto savedPhoto = captor.getValue();
 
+            assertThat(savedPhoto.getAuditUploadStatus())
+                    .isEqualTo(CheckInPhoto.AuditUploadStatus.COMPLETED);
             assertThat(savedPhoto.getAuditStorageKey())
-                    .isEqualTo("audit-key-123")
-                    .isNotEqualTo("AUDIT_UPLOAD_FAILED");
+                    .startsWith("bookings/")
+                    .contains("audit_");
         }
 
         @Test
         @DisplayName("R3: auditIntegrityGap flag in main upload event when audit fails")
         void shouldFlagIntegrityGapInMainUploadEvent() throws Exception {
-            when(supabaseStorageService.uploadCheckInPhotoToAuditBucket(
-                    anyLong(), any(), any(), any(), any()))
-                    .thenThrow(new RuntimeException("503 Service Unavailable"));
+            doThrow(new RuntimeException("503 Service Unavailable"))
+                    .when(supabaseStorageService)
+                    .uploadCheckInPhotoToAuditBucketAtPath(anyString(), any(), anyString());
 
             MockMultipartFile file = new MockMultipartFile(
                     "file", "front.jpg", "image/jpeg", JPEG_BYTES);
@@ -434,7 +442,7 @@ class TrustEvidenceAuditRemediationTest {
 
             // Audit upload never called
             verify(supabaseStorageService, never())
-                    .uploadCheckInPhotoToAuditBucket(anyLong(), any(), any(), any(), any());
+                    .uploadCheckInPhotoToAuditBucketAtPath(anyString(), any(), anyString());
 
             ArgumentCaptor<CheckInPhoto> captor = ArgumentCaptor.forClass(CheckInPhoto.class);
             verify(photoRepository, atLeastOnce()).save(captor.capture());

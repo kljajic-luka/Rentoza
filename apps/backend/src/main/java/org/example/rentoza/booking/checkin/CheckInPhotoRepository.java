@@ -19,13 +19,13 @@ public interface CheckInPhotoRepository extends JpaRepository<CheckInPhoto, Long
     /**
      * Find all photos for a booking (excluding soft-deleted).
      */
-    @Query("SELECT p FROM CheckInPhoto p WHERE p.booking.id = :bookingId AND p.deletedAt IS NULL")
+       @Query("SELECT p FROM CheckInPhoto p WHERE p.booking.id = :bookingId AND p.deletedAt IS NULL AND p.uploadStatus = 'COMPLETED'")
     List<CheckInPhoto> findByBookingId(@Param("bookingId") Long bookingId);
 
     /**
      * Find all photos for a check-in session.
      */
-    @Query("SELECT p FROM CheckInPhoto p WHERE p.checkInSessionId = :sessionId AND p.deletedAt IS NULL")
+       @Query("SELECT p FROM CheckInPhoto p WHERE p.checkInSessionId = :sessionId AND p.deletedAt IS NULL AND p.uploadStatus = 'COMPLETED'")
     List<CheckInPhoto> findByCheckInSessionId(@Param("sessionId") String sessionId);
 
     /**
@@ -33,7 +33,7 @@ public interface CheckInPhotoRepository extends JpaRepository<CheckInPhoto, Long
      * Returns the booking ID of the first photo found for this session.
      * Used by photo-serving controllers to authorize participant access.
      */
-    @Query("SELECT p.booking.id FROM CheckInPhoto p WHERE p.checkInSessionId = :sessionId AND p.deletedAt IS NULL ORDER BY p.id ASC")
+       @Query("SELECT p.booking.id FROM CheckInPhoto p WHERE p.checkInSessionId = :sessionId AND p.deletedAt IS NULL AND p.uploadStatus = 'COMPLETED' ORDER BY p.id ASC")
     List<Long> findBookingIdsBySessionId(@Param("sessionId") String sessionId);
 
     /**
@@ -41,7 +41,7 @@ public interface CheckInPhotoRepository extends JpaRepository<CheckInPhoto, Long
      * Used to check if required photos have been uploaded.
      */
     @Query("SELECT p FROM CheckInPhoto p " +
-           "WHERE p.booking.id = :bookingId AND p.photoType = :photoType AND p.deletedAt IS NULL")
+           "WHERE p.booking.id = :bookingId AND p.photoType = :photoType AND p.deletedAt IS NULL AND p.uploadStatus = 'COMPLETED'")
     List<CheckInPhoto> findByBookingIdAndPhotoType(
             @Param("bookingId") Long bookingId, 
             @Param("photoType") CheckInPhotoType photoType);
@@ -50,7 +50,7 @@ public interface CheckInPhotoRepository extends JpaRepository<CheckInPhoto, Long
      * Count photos by type for a booking.
      */
     @Query("SELECT COUNT(p) FROM CheckInPhoto p " +
-           "WHERE p.booking.id = :bookingId AND p.photoType = :photoType AND p.deletedAt IS NULL")
+           "WHERE p.booking.id = :bookingId AND p.photoType = :photoType AND p.deletedAt IS NULL AND p.uploadStatus = 'COMPLETED'")
     long countByBookingIdAndPhotoType(
             @Param("bookingId") Long bookingId, 
             @Param("photoType") CheckInPhotoType photoType);
@@ -60,7 +60,7 @@ public interface CheckInPhotoRepository extends JpaRepository<CheckInPhoto, Long
      * P1 FIX: Used for per-booking photo cap enforcement to prevent DoS.
      */
     @Query("SELECT COUNT(p) FROM CheckInPhoto p " +
-           "WHERE p.booking.id = :bookingId AND p.deletedAt IS NULL")
+           "WHERE p.booking.id = :bookingId AND p.deletedAt IS NULL AND p.uploadStatus <> 'FAILED_TERMINAL'")
     long countByBookingId(@Param("bookingId") Long bookingId);
 
     /**
@@ -70,6 +70,7 @@ public interface CheckInPhotoRepository extends JpaRepository<CheckInPhoto, Long
     @Query("SELECT COUNT(p) FROM CheckInPhoto p " +
            "WHERE p.booking.id = :bookingId " +
            "AND p.deletedAt IS NULL " +
+           "AND p.uploadStatus = 'COMPLETED' " +
            "AND p.exifValidationStatus IN ('VALID', 'VALID_NO_GPS', 'VALID_WITH_WARNINGS')")
     long countValidPhotosByBookingId(@Param("bookingId") Long bookingId);
 
@@ -77,7 +78,7 @@ public interface CheckInPhotoRepository extends JpaRepository<CheckInPhoto, Long
      * Find photos pending EXIF validation.
      * Used by background validation job.
      */
-    @Query("SELECT p FROM CheckInPhoto p WHERE p.exifValidationStatus = 'PENDING' AND p.deletedAt IS NULL")
+       @Query("SELECT p FROM CheckInPhoto p WHERE p.exifValidationStatus = 'PENDING' AND p.deletedAt IS NULL AND p.uploadStatus = 'COMPLETED'")
     List<CheckInPhoto> findPendingValidation();
 
     /**
@@ -85,6 +86,7 @@ public interface CheckInPhotoRepository extends JpaRepository<CheckInPhoto, Long
      */
     @Query("SELECT p FROM CheckInPhoto p " +
            "WHERE p.uploadedBy.id = :userId AND p.deletedAt IS NULL " +
+           "AND p.uploadStatus = 'COMPLETED' " +
            "ORDER BY p.uploadedAt DESC")
     List<CheckInPhoto> findByUploadedById(@Param("userId") Long userId);
 
@@ -95,6 +97,7 @@ public interface CheckInPhotoRepository extends JpaRepository<CheckInPhoto, Long
     @Query("SELECT p FROM CheckInPhoto p " +
            "WHERE p.booking.id = :bookingId " +
            "AND p.deletedAt IS NULL " +
+           "AND p.uploadStatus = 'COMPLETED' " +
            "AND p.exifValidationStatus NOT IN ('VALID', 'VALID_NO_GPS', 'PENDING')")
     List<CheckInPhoto> findRejectedPhotosByBookingId(@Param("bookingId") Long bookingId);
 
@@ -104,6 +107,7 @@ public interface CheckInPhotoRepository extends JpaRepository<CheckInPhoto, Long
     @Query("SELECT p FROM CheckInPhoto p " +
            "WHERE p.booking.id = :bookingId " +
            "AND p.deletedAt IS NULL " +
+           "AND p.uploadStatus = 'COMPLETED' " +
            "AND p.photoType IN (" +
            "  'HOST_EXTERIOR_FRONT', 'HOST_EXTERIOR_REAR', 'HOST_EXTERIOR_LEFT', 'HOST_EXTERIOR_RIGHT', " +
            "  'HOST_INTERIOR_DASHBOARD', 'HOST_INTERIOR_REAR', 'HOST_ODOMETER', 'HOST_FUEL_GAUGE'" +
@@ -117,6 +121,7 @@ public interface CheckInPhotoRepository extends JpaRepository<CheckInPhoto, Long
     @Query("SELECT COUNT(DISTINCT p.photoType) FROM CheckInPhoto p " +
            "WHERE p.booking.id = :bookingId " +
            "AND p.deletedAt IS NULL " +
+           "AND p.uploadStatus = 'COMPLETED' " +
            "AND p.exifValidationStatus IN ('VALID', 'VALID_NO_GPS', 'VALID_WITH_WARNINGS') " +
            "AND p.photoType IN (" +
            "  'HOST_EXTERIOR_FRONT', 'HOST_EXTERIOR_REAR', 'HOST_EXTERIOR_LEFT', 'HOST_EXTERIOR_RIGHT', " +
@@ -158,7 +163,8 @@ public interface CheckInPhotoRepository extends JpaRepository<CheckInPhoto, Long
     @Query("SELECT CASE WHEN COUNT(p) > 0 THEN true ELSE false END FROM CheckInPhoto p " +
            "WHERE p.imageHash = :imageHash " +
            "AND p.booking.id != :excludeBookingId " +
-           "AND p.deletedAt IS NULL")
+           "AND p.deletedAt IS NULL " +
+           "AND p.uploadStatus = 'COMPLETED'")
     boolean existsByImageHashOnOtherBooking(
             @Param("imageHash") String imageHash,
             @Param("excludeBookingId") Long excludeBookingId);
@@ -175,7 +181,8 @@ public interface CheckInPhotoRepository extends JpaRepository<CheckInPhoto, Long
     @Query("SELECT p FROM CheckInPhoto p " +
            "WHERE p.imageHash = :imageHash " +
            "AND p.booking.id != :excludeBookingId " +
-           "AND p.deletedAt IS NULL")
+           "AND p.deletedAt IS NULL " +
+           "AND p.uploadStatus = 'COMPLETED'")
     List<CheckInPhoto> findByImageHashExcludingBooking(
             @Param("imageHash") String imageHash,
             @Param("excludeBookingId") Long excludeBookingId);
@@ -190,6 +197,7 @@ public interface CheckInPhotoRepository extends JpaRepository<CheckInPhoto, Long
     @Query("SELECT COUNT(DISTINCT p.photoType) FROM CheckInPhoto p " +
            "WHERE p.booking.id = :bookingId " +
            "AND p.deletedAt IS NULL " +
+           "AND p.uploadStatus = 'COMPLETED' " +
            "AND p.exifValidationStatus IN ('VALID', 'VALID_NO_GPS', 'VALID_WITH_WARNINGS') " +
            "AND p.photoType IN (" +
            "  'CHECKOUT_EXTERIOR_FRONT', 'CHECKOUT_EXTERIOR_REAR', 'CHECKOUT_EXTERIOR_LEFT', 'CHECKOUT_EXTERIOR_RIGHT', " +
@@ -204,6 +212,7 @@ public interface CheckInPhotoRepository extends JpaRepository<CheckInPhoto, Long
     @Query("SELECT p FROM CheckInPhoto p " +
            "WHERE p.booking.id = :bookingId " +
            "AND p.deletedAt IS NULL " +
+           "AND p.uploadStatus = 'COMPLETED' " +
            "AND p.photoType IN (" +
            "  'CHECKOUT_EXTERIOR_FRONT', 'CHECKOUT_EXTERIOR_REAR', 'CHECKOUT_EXTERIOR_LEFT', 'CHECKOUT_EXTERIOR_RIGHT', " +
            "  'CHECKOUT_INTERIOR_DASHBOARD', 'CHECKOUT_INTERIOR_REAR', 'CHECKOUT_ODOMETER', 'CHECKOUT_FUEL_GAUGE', " +
@@ -217,10 +226,29 @@ public interface CheckInPhotoRepository extends JpaRepository<CheckInPhoto, Long
     @Query("SELECT p FROM CheckInPhoto p " +
            "WHERE p.checkInSessionId = :sessionId " +
            "AND p.deletedAt IS NULL " +
+           "AND p.uploadStatus = 'COMPLETED' " +
            "AND p.photoType IN (" +
            "  'CHECKOUT_EXTERIOR_FRONT', 'CHECKOUT_EXTERIOR_REAR', 'CHECKOUT_EXTERIOR_LEFT', 'CHECKOUT_EXTERIOR_RIGHT', " +
            "  'CHECKOUT_INTERIOR_DASHBOARD', 'CHECKOUT_INTERIOR_REAR', 'CHECKOUT_ODOMETER', 'CHECKOUT_FUEL_GAUGE', " +
            "  'CHECKOUT_DAMAGE_NEW', 'CHECKOUT_CUSTOM', 'HOST_CHECKOUT_CONFIRMATION', 'HOST_CHECKOUT_DAMAGE_EVIDENCE'" +
            ")")
     List<CheckInPhoto> findCheckoutPhotosBySessionId(@Param("sessionId") String sessionId);
+
+    @Query("SELECT p FROM CheckInPhoto p " +
+           "WHERE p.booking.id = :bookingId " +
+           "AND p.photoType = :photoType " +
+           "AND p.deletedAt IS NULL " +
+           "AND p.uploadStatus = 'COMPLETED' " +
+           "AND p.id <> :excludePhotoId")
+    List<CheckInPhoto> findCompletedByBookingIdAndPhotoTypeExcludingId(
+            @Param("bookingId") Long bookingId,
+            @Param("photoType") CheckInPhotoType photoType,
+            @Param("excludePhotoId") Long excludePhotoId);
+
+    @Query("SELECT p FROM CheckInPhoto p " +
+           "WHERE p.deletedAt IS NULL " +
+           "AND p.uploadStatus IN ('PENDING_UPLOAD', 'PENDING_FINALIZE') " +
+           "AND COALESCE(p.lastUploadAttemptAt, p.uploadedAt) < :staleBefore " +
+           "ORDER BY p.uploadedAt ASC")
+    List<CheckInPhoto> findStalePendingUploads(@Param("staleBefore") Instant staleBefore);
 }

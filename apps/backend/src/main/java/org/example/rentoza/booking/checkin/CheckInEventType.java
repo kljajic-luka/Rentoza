@@ -59,6 +59,19 @@ public enum CheckInEventType {
      * @since Phase 1: Rejected Photo Infrastructure
      */
     HOST_PHOTO_REJECTED,
+
+    /**
+     * Storage-backed upload failed or required reconciliation intervention.
+     * Metadata: {@code {"photoId": 123, "stage": "STANDARD_UPLOAD|FINALIZE|RECONCILIATION",
+     *                   "error": "...", "uploadStatus": "FAILED_TERMINAL"}}
+     */
+    PHOTO_UPLOAD_STORAGE_FAILED,
+
+    /**
+     * A stale pending upload was recovered by reconciliation and finalized.
+     * Metadata: {@code {"photoId": 123, "recoveredBy": "SCHEDULER", "previousStatus": "PENDING_FINALIZE"}}
+     */
+    PHOTO_UPLOAD_RECOVERED,
     
     /**
      * Host submitted odometer reading.

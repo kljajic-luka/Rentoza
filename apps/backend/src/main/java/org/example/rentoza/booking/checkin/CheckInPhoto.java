@@ -98,6 +98,60 @@ public class CheckInPhoto {
     @Column(name = "audit_storage_key")
     private String auditStorageKey;
 
+    /**
+     * Durable upload lifecycle for storage-backed photos.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "upload_status", nullable = false, length = 32)
+    @Builder.Default
+    private UploadStatus uploadStatus = UploadStatus.COMPLETED;
+
+    /**
+     * Number of storage/finalize attempts for this photo row.
+     */
+    @Column(name = "upload_attempts", nullable = false)
+    @Builder.Default
+    private Integer uploadAttempts = 0;
+
+    /**
+     * Last time the storage workflow attempted to upload or finalize this photo.
+     */
+    @Column(name = "last_upload_attempt_at")
+    private Instant lastUploadAttemptAt;
+
+    /**
+     * When the stripped standard-bucket photo upload succeeded.
+     */
+    @Column(name = "standard_uploaded_at")
+    private Instant standardUploadedAt;
+
+    /**
+     * When the overall upload workflow was finalized and made visible.
+     */
+    @Column(name = "upload_finalized_at")
+    private Instant uploadFinalizedAt;
+
+    /**
+     * Latest storage/finalize error for reconciliation visibility.
+     */
+    @Column(name = "last_upload_error", length = 1000)
+    private String lastUploadError;
+
+    /**
+     * Audit-bucket upload state, tracked separately because standard upload may succeed
+     * even when the EXIF-preserving audit copy fails.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "audit_upload_status", nullable = false, length = 32)
+    @Builder.Default
+    private AuditUploadStatus auditUploadStatus = AuditUploadStatus.NOT_REQUIRED;
+
+    /**
+     * When the audit-bucket upload succeeded.
+     */
+    @Column(name = "audit_uploaded_at")
+    private Instant auditUploadedAt;
+
     // ========== FILE METADATA ==========
 
     /**
@@ -289,6 +343,20 @@ public class CheckInPhoto {
         CHECKIN_PII
     }
 
+    public enum UploadStatus {
+        PENDING_UPLOAD,
+        PENDING_FINALIZE,
+        COMPLETED,
+        FAILED_TERMINAL
+    }
+
+    public enum AuditUploadStatus {
+        NOT_REQUIRED,
+        PENDING,
+        COMPLETED,
+        FAILED
+    }
+
     // ========== HELPER METHODS ==========
 
     /**
@@ -305,6 +373,10 @@ public class CheckInPhoto {
         return exifValidationStatus.isAccepted();
     }
 
+    public boolean isCompletedUpload() {
+        return uploadStatus == UploadStatus.COMPLETED;
+    }
+
     /**
      * Check if this is a required photo type for host check-in.
      */
@@ -319,5 +391,52 @@ public class CheckInPhoto {
         this.deletedAt = Instant.now();
         this.deletedBy = deletedBy;
         this.deletedReason = reason;
+    }
+
+    public void markUploadPending(boolean auditRequired) {
+        this.uploadStatus = UploadStatus.PENDING_UPLOAD;
+        this.auditUploadStatus = auditRequired ? AuditUploadStatus.PENDING : AuditUploadStatus.NOT_REQUIRED;
+        this.uploadAttempts = 0;
+        this.lastUploadAttemptAt = null;
+        this.standardUploadedAt = null;
+        this.uploadFinalizedAt = null;
+        this.lastUploadError = null;
+        this.auditUploadedAt = null;
+    }
+
+    public void recordUploadAttempt() {
+        this.uploadAttempts = (this.uploadAttempts == null ? 0 : this.uploadAttempts) + 1;
+        this.lastUploadAttemptAt = Instant.now();
+    }
+
+    public void markPendingFinalize(AuditUploadStatus auditStatus, String auditStorageKey, String errorMessage) {
+        this.uploadStatus = UploadStatus.PENDING_FINALIZE;
+        this.standardUploadedAt = Instant.now();
+        this.auditUploadStatus = auditStatus;
+        this.auditStorageKey = auditStorageKey;
+        if (auditStatus == AuditUploadStatus.COMPLETED) {
+            this.auditUploadedAt = Instant.now();
+        }
+        this.lastUploadError = trimUploadError(errorMessage);
+    }
+
+    public void markCompleted() {
+        this.uploadStatus = UploadStatus.COMPLETED;
+        if (this.standardUploadedAt == null) {
+            this.standardUploadedAt = Instant.now();
+        }
+        this.uploadFinalizedAt = Instant.now();
+    }
+
+    public void markTerminalFailure(String errorMessage) {
+        this.uploadStatus = UploadStatus.FAILED_TERMINAL;
+        this.lastUploadError = trimUploadError(errorMessage);
+    }
+
+    private String trimUploadError(String errorMessage) {
+        if (errorMessage == null) {
+            return null;
+        }
+        return errorMessage.length() <= 1000 ? errorMessage : errorMessage.substring(0, 1000);
     }
 }

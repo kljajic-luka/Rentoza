@@ -268,6 +268,15 @@ public class SupabaseStorageService {
         
         return storagePath;
     }
+
+    /**
+     * Upload check-in photo bytes to a pre-reserved storage path.
+     */
+    public void uploadCheckInPhotoBytesAtPath(String storagePath, byte[] photoBytes, String contentType)
+            throws IOException {
+        validateImageBytes(photoBytes, contentType);
+        uploadToSupabase(BUCKET_CHECK_IN_PHOTOS, storagePath, photoBytes, contentType, false);
+    }
     
     private void validateImageBytes(byte[] bytes, String contentType) {
         if (bytes == null || bytes.length == 0) {
@@ -317,6 +326,33 @@ public class SupabaseStorageService {
                 BUCKET_CHECK_IN_AUDIT, storagePath, photoBytes.length);
         
         return storagePath;
+    }
+
+    /**
+     * Upload audit-bucket photo bytes to a pre-reserved storage path.
+     */
+    public void uploadCheckInPhotoToAuditBucketAtPath(String storagePath, byte[] photoBytes, String contentType)
+            throws IOException {
+        validateImageBytes(photoBytes, contentType);
+        uploadToSupabase(BUCKET_CHECK_IN_AUDIT, storagePath, photoBytes, contentType, false);
+        log.info("[Storage] Uploaded audit photo with EXIF: bucket={}, path={}, size={} bytes",
+                BUCKET_CHECK_IN_AUDIT, storagePath, photoBytes.length);
+    }
+
+    public boolean checkInPhotoExists(String storagePath) {
+        return objectExists(BUCKET_CHECK_IN_PHOTOS, storagePath);
+    }
+
+    public boolean checkInAuditPhotoExists(String storagePath) {
+        return objectExists(BUCKET_CHECK_IN_AUDIT, storagePath);
+    }
+
+    public void deleteCheckInPhoto(String storagePath) {
+        deleteFromSupabase(BUCKET_CHECK_IN_PHOTOS, storagePath);
+    }
+
+    public void deleteCheckInAuditPhoto(String storagePath) {
+        deleteFromSupabase(BUCKET_CHECK_IN_AUDIT, storagePath);
     }
     
     // ============================================================================
@@ -542,6 +578,26 @@ public class SupabaseStorageService {
             log.warn("File not found for deletion: {}/{}", bucket, path);
         } catch (HttpClientErrorException e) {
             log.error("❌ Supabase delete failed: {}", e.getMessage());
+        }
+    }
+
+    private boolean objectExists(String bucket, String path) {
+        if (path == null || path.isBlank()) {
+            return false;
+        }
+
+        String url = String.format("%s/storage/v1/object/%s/%s", supabaseUrl, bucket, path);
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Authorization", "Bearer " + serviceRoleKey);
+
+        try {
+            restTemplate.exchange(url, HttpMethod.HEAD, new HttpEntity<>(headers), Void.class);
+            return true;
+        } catch (HttpClientErrorException.NotFound e) {
+            return false;
+        } catch (HttpClientErrorException e) {
+            log.warn("Supabase existence check failed for {}/{}: {}", bucket, path, e.getMessage());
+            return false;
         }
     }
     

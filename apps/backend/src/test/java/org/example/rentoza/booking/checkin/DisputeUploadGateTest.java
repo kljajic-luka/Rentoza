@@ -24,6 +24,8 @@ import org.mockito.quality.Strictness;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionOperations;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -63,6 +65,7 @@ class DisputeUploadGateTest {
     @Mock private ExifStrippingService exifStrippingService;
     @Mock private CheckInValidationService validationService;
     @Mock private PhotoUrlService photoUrlService;
+    @Mock private TransactionOperations transactionOperations;
 
     private CheckInPhotoService service;
 
@@ -80,7 +83,7 @@ class DisputeUploadGateTest {
     };
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
         service = new CheckInPhotoService(
                 bookingRepository,
                 userRepository,
@@ -95,9 +98,17 @@ class DisputeUploadGateTest {
                 piiPhotoStorageService,
                 exifStrippingService,
                 validationService,
-                photoUrlService
+                photoUrlService,
+                transactionOperations
         );
         ReflectionTestUtils.setField(service, "maxSizeMb", 10);
+
+            when(transactionOperations.execute(any())).thenAnswer(invocation -> {
+                TransactionCallback<?> callback = invocation.getArgument(0);
+                return callback.doInTransaction(null);
+            });
+            when(photoUrlService.generateSignedUrl(anyString(), anyString(), anyLong()))
+                .thenAnswer(invocation -> "signed:" + invocation.getArgument(1, String.class));
 
         // Guest user
         guest = new User();
@@ -129,7 +140,7 @@ class DisputeUploadGateTest {
     }
 
     /** Stub post-gate dependencies so the upload progresses past the status gate. */
-    private void stubPostGateDependencies() {
+    private void stubPostGateDependencies() throws Exception {
         when(photoRepository.countByBookingId(1000L)).thenReturn(0L);
         when(userRepository.findById(2L)).thenReturn(Optional.of(guest));
         when(exifValidationService.validate(any(byte[].class), any()))
@@ -137,6 +148,14 @@ class DisputeUploadGateTest {
                         .status(ExifValidationStatus.VALID)
                         .message("ok")
                         .build());
+        when(photoRepository.save(any(CheckInPhoto.class))).thenAnswer(invocation -> {
+            CheckInPhoto photo = invocation.getArgument(0);
+            if (photo.getId() == null) {
+                photo.setId(500L);
+            }
+            return photo;
+        });
+        doNothing().when(supabaseStorageService).uploadCheckInPhotoBytesAtPath(anyString(), any(), anyString());
     }
 
     @Nested
@@ -145,7 +164,7 @@ class DisputeUploadGateTest {
 
         @Test
         @DisplayName("CHECKOUT_DAMAGE_NEW succeeds past upload gate in dispute state")
-        void checkoutDamageNewShouldPassGate() {
+        void checkoutDamageNewShouldPassGate() throws Exception {
             stubPostGateDependencies();
 
             // We only care that IllegalStateException is NOT thrown at the gate.
@@ -166,7 +185,7 @@ class DisputeUploadGateTest {
 
         @Test
         @DisplayName("CHECKOUT_CUSTOM succeeds past upload gate in dispute state")
-        void checkoutCustomShouldPassGate() {
+        void checkoutCustomShouldPassGate() throws Exception {
             stubPostGateDependencies();
 
             try {
@@ -242,7 +261,7 @@ class DisputeUploadGateTest {
 
         @Test
         @DisplayName("Guest uploads pass gate in CHECKOUT_OPEN state (all types)")
-        void guestUploadPassesInCheckoutOpenState() {
+        void guestUploadPassesInCheckoutOpenState() throws Exception {
             booking.setStatus(BookingStatus.CHECKOUT_OPEN);
             stubPostGateDependencies();
 

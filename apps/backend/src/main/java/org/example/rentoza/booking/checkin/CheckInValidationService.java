@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingStatus;
 import org.example.rentoza.config.FeatureFlags;
+import org.example.rentoza.config.timezone.SerbiaTimeZone;
 import org.example.rentoza.user.RenterVerificationService;
 import org.example.rentoza.user.dto.BookingEligibilityDTO;
 import org.example.rentoza.exception.ValidationException;
@@ -14,6 +15,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
@@ -188,13 +190,13 @@ public class CheckInValidationService {
             return;
         }
         
-        LocalDateTime now = LocalDateTime.now(SERBIA_ZONE);
-        LocalDateTime tripStart = booking.getStartTime();
-        LocalDateTime earliestAllowedCheckIn = tripStart.minusHours(maxEarlyCheckInHours);
-        
+        Instant now = Instant.now();
+        Instant tripStart = booking.getCanonicalStartTimeUtc();
+        Instant earliestAllowedCheckIn = tripStart.minus(maxEarlyCheckInHours, ChronoUnit.HOURS);
+
         long minutesUntilTrip = ChronoUnit.MINUTES.between(now, tripStart);
         long maxEarlyMinutes = maxEarlyCheckInHours * 60L;
-        
+
         if (now.isBefore(earliestAllowedCheckIn)) {
             // Log the blocked attempt
             eventService.recordEvent(
@@ -204,11 +206,11 @@ public class CheckInValidationService {
                 userId,
                 actorRole,
                 Map.of(
-                    "tripStartTime", tripStart.toString(),
+                    "tripStartTimeUtc", tripStart.toString(),
                     "attemptTime", now.toString(),
                     "minutesUntilTrip", minutesUntilTrip,
                     "maxEarlyMinutes", maxEarlyMinutes,
-                    "earliestAllowedTime", earliestAllowedCheckIn.toString()
+                    "earliestAllowedTimeUtc", earliestAllowedCheckIn.toString()
                 )
             );
             
@@ -217,9 +219,11 @@ public class CheckInValidationService {
             log.warn("[Validation-Phase4A] Early check-in blocked for booking {}. " +
                     "Attempt at {}, trip starts at {}, earliest allowed at {}",
                     booking.getId(), now, tripStart, earliestAllowedCheckIn);
-            
+
+                LocalDateTime earliestAllowedLocal = SerbiaTimeZone.toLocalDateTime(earliestAllowedCheckIn);
+
             // Format user-friendly message
-            String earliestTimeFormatted = earliestAllowedCheckIn.format(TIME_FORMATTER);
+                String earliestTimeFormatted = earliestAllowedLocal.format(TIME_FORMATTER);
             
             throw new IllegalStateException(String.format(
                 "Prijem nije dozvoljen više od %d sat(a) pre početka putovanja. " +
@@ -238,7 +242,7 @@ public class CheckInValidationService {
             userId,
             actorRole,
             Map.of(
-                "tripStartTime", tripStart.toString(),
+                "tripStartTimeUtc", tripStart.toString(),
                 "attemptTime", now.toString(),
                 "minutesUntilTrip", minutesUntilTrip,
                 "maxEarlyMinutes", maxEarlyMinutes
@@ -264,9 +268,9 @@ public class CheckInValidationService {
         if (!checkInTimingValidationEnabled) {
             return;
         }
-        LocalDateTime now = LocalDateTime.now(SERBIA_ZONE);
-        LocalDateTime tripStart = booking.getStartTime();
-        LocalDateTime earliestAllowed = tripStart.minusHours(maxEarlyCheckInHours);
+        Instant now = Instant.now();
+        Instant tripStart = booking.getCanonicalStartTimeUtc();
+        Instant earliestAllowed = tripStart.minus(maxEarlyCheckInHours, ChronoUnit.HOURS);
 
         log.info("[Validation] Upload timing check: bookingId={}, now(Belgrade)={}, tripStart(DB)={}, " +
                         "maxEarlyHours={}, earliestAllowed={}, blocked={}",
@@ -279,7 +283,7 @@ public class CheckInValidationService {
             log.warn("[Validation] Upload timing BLOCKED for booking {}. now={}, earliestAllowed={}, " +
                             "tripStart={}, maxEarlyHours={}, minutesRemaining={}",
                     booking.getId(), now, earliestAllowed, tripStart, maxEarlyCheckInHours, minutesRemaining);
-            throw new CheckInTimingBlockedException(minutesRemaining, earliestAllowed);
+            throw new CheckInTimingBlockedException(minutesRemaining, SerbiaTimeZone.toLocalDateTime(earliestAllowed));
         }
     }
 
@@ -291,9 +295,9 @@ public class CheckInValidationService {
         if (!checkInTimingValidationEnabled) {
             return null;
         }
-        LocalDateTime now = LocalDateTime.now(SERBIA_ZONE);
-        LocalDateTime tripStart = booking.getStartTime();
-        LocalDateTime earliestAllowed = tripStart.minusHours(maxEarlyCheckInHours);
+        Instant now = Instant.now();
+        Instant tripStart = booking.getCanonicalStartTimeUtc();
+        Instant earliestAllowed = tripStart.minus(maxEarlyCheckInHours, ChronoUnit.HOURS);
 
         log.debug("[Validation] Status timing check: bookingId={}, now(Belgrade)={}, tripStart(DB)={}, " +
                         "maxEarlyHours={}, earliestAllowed={}, blocked={}",

@@ -34,6 +34,7 @@ class CheckInControllerCachedIdempotencyResponseTest {
 
     @Mock private CheckInService checkInService;
     @Mock private CheckInPhotoService photoService;
+    @Mock private CheckInAttestationService checkInAttestationService;
     @Mock private IdempotencyService idempotencyService;
     @Mock private CurrentUser currentUser;
     @Mock private CheckInResponseOptimizer responseOptimizer;
@@ -46,7 +47,7 @@ class CheckInControllerCachedIdempotencyResponseTest {
     void setUp() {
         objectMapper = new ObjectMapper();
         controller = new CheckInController(
-                checkInService, photoService, idempotencyService,
+            checkInService, photoService, checkInAttestationService, idempotencyService,
                 currentUser, responseOptimizer, objectMapper, new SimpleMeterRegistry(),
                 photoRateLimitService);
     }

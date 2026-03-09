@@ -741,5 +741,37 @@ public enum CheckInEventType {
      * 
      * @since VAL-004 Phase 6 - Timeout Handling
      */
-    DISPUTE_TIMEOUT_AUTO_CANCEL
+    DISPUTE_TIMEOUT_AUTO_CANCEL,
+
+    // ========== WAVE 1 HARDENING EVENTS ==========
+
+    /**
+     * Trip-start attestation artifact was generated and persisted.
+     */
+    CHECKIN_ATTESTATION_GENERATED,
+
+    /**
+     * Participant/admin accessed the check-in attestation artifact.
+     */
+    CHECKIN_ATTESTATION_ACCESSED,
+
+    /**
+     * Server-side rejection budget blocked an upload attempt during cooldown.
+     */
+    PHOTO_REJECTION_BUDGET_EXCEEDED,
+
+    /**
+     * Admin force-acknowledged guest condition and advanced check-in state.
+     */
+    ADMIN_FORCE_CONDITION_ACK,
+
+    /**
+     * Admin cancelled a stuck check-in session and restored booking flow.
+     */
+    ADMIN_CANCEL_STUCK_CHECKIN,
+
+    /**
+     * Admin reassigned the active check-in session to a fresh session ID.
+     */
+    ADMIN_REASSIGN_CHECKIN_SESSION
 }

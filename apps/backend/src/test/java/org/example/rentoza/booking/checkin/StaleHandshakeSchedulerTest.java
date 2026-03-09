@@ -145,7 +145,7 @@ class StaleHandshakeSchedulerTest {
             Booking booking = createBooking(BookingStatus.CHECK_IN_COMPLETE);
 
             when(bookingRepository.findStaleCheckInHandshakes(
-                    eq(BookingStatus.CHECK_IN_COMPLETE), any(LocalDateTime.class)))
+                    eq(BookingStatus.CHECK_IN_COMPLETE), any(Instant.class)))
                     .thenReturn(List.of(booking));
 
             CancellationRecord record = new CancellationRecord();

@@ -64,6 +64,7 @@ class HandshakeIdempotencyTest {
     @Mock private PhotoUrlService photoUrlService;
     @Mock private BookingPaymentService bookingPaymentService;
     @Mock private org.example.rentoza.booking.RentalAgreementService rentalAgreementService;
+    @Mock private CheckInAttestationService checkInAttestationService;
 
     private CheckInService checkInService;
     private Booking booking;
@@ -91,7 +92,8 @@ class HandshakeIdempotencyTest {
                 registry,
                 photoUrlService,
                 bookingPaymentService,
-                rentalAgreementService
+                rentalAgreementService,
+                checkInAttestationService
         );
 
         // Users

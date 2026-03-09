@@ -51,6 +51,12 @@ public interface GuestCheckInPhotoRepository extends JpaRepository<GuestCheckInP
             @Param("bookingId") Long bookingId,
             @Param("photoType") CheckInPhotoType photoType);
 
+    @Query("SELECT COUNT(p) FROM GuestCheckInPhoto p " +
+           "WHERE p.checkInSessionId = :sessionId AND p.photoType = :photoType AND p.deletedAt IS NULL")
+    long countByCheckInSessionIdAndPhotoType(
+            @Param("sessionId") String sessionId,
+            @Param("photoType") CheckInPhotoType photoType);
+
     /**
      * Count all valid guest photos for a booking (EXIF validation passed).
      */
@@ -98,6 +104,16 @@ public interface GuestCheckInPhotoRepository extends JpaRepository<GuestCheckInP
            ")")
     long countRequiredGuestPhotoTypes(@Param("bookingId") Long bookingId);
 
+    @Query("SELECT COUNT(DISTINCT p.photoType) FROM GuestCheckInPhoto p " +
+           "WHERE p.checkInSessionId = :sessionId " +
+           "AND p.deletedAt IS NULL " +
+           "AND p.exifValidationStatus IN ('VALID', 'VALID_NO_GPS', 'VALID_WITH_WARNINGS') " +
+           "AND p.photoType IN (" +
+           "  'GUEST_EXTERIOR_FRONT', 'GUEST_EXTERIOR_REAR', 'GUEST_EXTERIOR_LEFT', 'GUEST_EXTERIOR_RIGHT', " +
+           "  'GUEST_INTERIOR_DASHBOARD', 'GUEST_INTERIOR_REAR', 'GUEST_ODOMETER', 'GUEST_FUEL_GAUGE'" +
+           ")")
+    long countRequiredGuestPhotoTypesBySession(@Param("sessionId") String sessionId);
+
     /**
      * Find all guest photos for photo types required for dual-party verification.
      */
@@ -109,6 +125,15 @@ public interface GuestCheckInPhotoRepository extends JpaRepository<GuestCheckInP
            "  'GUEST_INTERIOR_DASHBOARD', 'GUEST_INTERIOR_REAR', 'GUEST_ODOMETER', 'GUEST_FUEL_GAUGE'" +
            ")")
     List<GuestCheckInPhoto> findRequiredGuestPhotos(@Param("bookingId") Long bookingId);
+
+    @Query("SELECT p FROM GuestCheckInPhoto p " +
+           "WHERE p.checkInSessionId = :sessionId " +
+           "AND p.deletedAt IS NULL " +
+           "AND p.photoType IN (" +
+           "  'GUEST_EXTERIOR_FRONT', 'GUEST_EXTERIOR_REAR', 'GUEST_EXTERIOR_LEFT', 'GUEST_EXTERIOR_RIGHT', " +
+           "  'GUEST_INTERIOR_DASHBOARD', 'GUEST_INTERIOR_REAR', 'GUEST_ODOMETER', 'GUEST_FUEL_GAUGE'" +
+           ")")
+    List<GuestCheckInPhoto> findRequiredGuestPhotosBySession(@Param("sessionId") String sessionId);
 
     /**
      * Check if photo exists by storage key (prevents duplicate uploads).

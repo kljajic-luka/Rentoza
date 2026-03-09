@@ -136,6 +136,12 @@ public class GuestCheckInPhoto {
     @Column(name = "image_height")
     private Integer imageHeight;
 
+    /**
+     * SHA-256 hash of uploaded image bytes for evidence integrity binding.
+     */
+    @Column(name = "image_hash", length = 128)
+    private String imageHash;
+
     // ========== EXIF VALIDATION ==========
 
     /**

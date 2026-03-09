@@ -354,6 +354,32 @@ public class SupabaseStorageService {
     public void deleteCheckInAuditPhoto(String storagePath) {
         deleteFromSupabase(BUCKET_CHECK_IN_AUDIT, storagePath);
     }
+
+    /**
+     * Upload immutable check-in attestation HTML artifact.
+     *
+     * <p>Stored in the check-in audit bucket under a dedicated namespace to keep
+     * attestation artifacts isolated from photo evidence objects.
+     */
+    public String uploadCheckInAttestationHtml(Long bookingId, String sessionId, String htmlContent)
+            throws IOException {
+        if (htmlContent == null || htmlContent.isBlank()) {
+            throw new IllegalArgumentException("Attestation HTML content cannot be empty");
+        }
+
+        String filename = "attestation_" + UUID.randomUUID().toString().substring(0, 12) + ".html";
+        String storagePath = String.format("attestations/bookings/%d/%s/%s", bookingId, sessionId, filename);
+
+        uploadToSupabase(
+                BUCKET_CHECK_IN_AUDIT,
+                storagePath,
+                htmlContent.getBytes(StandardCharsets.UTF_8),
+                "text/html; charset=utf-8",
+                false
+        );
+
+        return storagePath;
+    }
     
     // ============================================================================
     // RENTER DOCUMENTS (Private bucket - KYC verification)

@@ -67,6 +67,7 @@ class CheckInPhotoUploadDurabilityTest {
     @Mock private LockboxEncryptionService lockboxEncryptionService;
     @Mock private GeofenceService geofenceService;
     @Mock private PhotoRejectionService photoRejectionService;
+    @Mock private PhotoRejectionBudgetService photoRejectionBudgetService;
     @Mock private ApplicationEventPublisher eventPublisher;
     @Mock private SupabaseStorageService supabaseStorageService;
     @Mock private PiiPhotoStorageService piiPhotoStorageService;

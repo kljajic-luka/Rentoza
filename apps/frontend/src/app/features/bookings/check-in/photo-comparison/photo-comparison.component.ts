@@ -559,9 +559,6 @@ export class PhotoComparisonComponent {
     if (url.startsWith('checkin/')) {
       return `${baseUrl}/checkin/photos/${url.replace(/^checkin\//, '')}`;
     }
-    if (url.startsWith('guest-checkin/')) {
-      return `${baseUrl}/guest-checkin/photos/${url.replace(/^guest-checkin\//, '')}`;
-    }
     if (url.startsWith('checkout/')) {
       return `${baseUrl}/checkout/photos/${url.replace(/^checkout\//, '')}`;
     }

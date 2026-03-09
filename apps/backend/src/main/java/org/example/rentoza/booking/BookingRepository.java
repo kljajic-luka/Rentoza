@@ -671,11 +671,11 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
            "LEFT JOIN FETCH c.owner " +
            "WHERE b.status = 'ACTIVE' " +
            "AND b.checkInSessionId IS NULL " +
-           "AND b.startTime >= :startFrom " +
-           "AND b.startTime <= :startTo")
+          "AND b.startTimeUtc >= :startFrom " +
+          "AND b.startTimeUtc <= :startTo")
     List<Booking> findBookingsForCheckInWindowOpening(
-            @Param("startFrom") LocalDateTime startFrom,
-            @Param("startTo") LocalDateTime startTo
+           @Param("startFrom") Instant startFrom,
+           @Param("startTo") Instant startTo
     );
 
     /**
@@ -711,10 +711,10 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
            "LEFT JOIN FETCH c.owner " +
            "WHERE b.status = :status " +
            "AND b.hostCheckInCompletedAt IS NULL " +
-           "AND b.startTime < :thresholdTime")
+          "AND b.startTimeUtc < :thresholdTime")
     List<Booking> findPotentialHostNoShows(
             @Param("status") BookingStatus status,
-            @Param("thresholdTime") LocalDateTime thresholdTime
+           @Param("thresholdTime") Instant thresholdTime
     );
 
     /**
@@ -732,11 +732,11 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
            "WHERE b.status = :status " +
            "AND b.guestCheckInCompletedAt IS NULL " +
            "AND b.hostCheckInCompletedAt IS NOT NULL " +
-          "AND b.startTime < :tripStartedBefore " +
+          "AND b.startTimeUtc < :tripStartedBefore " +
            "AND b.hostCheckInCompletedAt < :hostCompletedBefore")
     List<Booking> findPotentialGuestNoShows(
             @Param("status") BookingStatus status,
-           @Param("tripStartedBefore") LocalDateTime tripStartedBefore,
+           @Param("tripStartedBefore") Instant tripStartedBefore,
             @Param("hostCompletedBefore") java.time.Instant hostCompletedBefore
     );
 
@@ -751,10 +751,10 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
           "WHERE b.status = :status " +
           "AND b.handshakeCompletedAt IS NULL " +
            "AND b.guestCheckInCompletedAt IS NOT NULL " +
-          "AND b.startTime < :startedBefore")
+          "AND b.startTimeUtc < :startedBefore")
     List<Booking> findStaleCheckInHandshakes(
            @Param("status") BookingStatus status,
-           @Param("startedBefore") LocalDateTime startedBefore
+           @Param("startedBefore") Instant startedBefore
     );
 
     /**

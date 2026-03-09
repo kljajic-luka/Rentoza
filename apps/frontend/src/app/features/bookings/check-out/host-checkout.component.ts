@@ -537,11 +537,6 @@ export class HostCheckoutComponent {
       return `${baseUrl}/checkin/photos/${pathSegment}`;
     }
 
-    if (url.startsWith('guest-checkin/')) {
-      const pathSegment = url.replace(/^guest-checkin\//, '');
-      return `${baseUrl}/guest-checkin/photos/${pathSegment}`;
-    }
-
     if (url.startsWith('checkout/')) {
       const pathSegment = url.replace(/^checkout\//, '');
       return `${baseUrl}/checkout/photos/${pathSegment}`;

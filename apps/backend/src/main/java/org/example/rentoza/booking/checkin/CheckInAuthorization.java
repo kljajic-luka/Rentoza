@@ -37,6 +37,26 @@ public class CheckInAuthorization {
         return hasElevatedAccess(authentication) || isGuest(bookingId, authentication);
     }
 
+    public boolean canUploadGuestCheckInPhoto(Long bookingId, Authentication authentication) {
+        return hasElevatedAccess(authentication) || isGuest(bookingId, authentication);
+    }
+
+    public boolean canReadGuestCheckInPhoto(Long bookingId, Authentication authentication) {
+        return hasElevatedAccess(authentication) || isParticipant(bookingId, authentication);
+    }
+
+    public boolean canReadHostCheckInPhoto(Long bookingId, Authentication authentication) {
+        return hasElevatedAccess(authentication) || isParticipant(bookingId, authentication);
+    }
+
+    public boolean canReadCheckInAttestation(Long bookingId, Authentication authentication) {
+        return hasElevatedAccess(authentication) || isParticipant(bookingId, authentication);
+    }
+
+    public boolean canRunAdminRecovery(Authentication authentication) {
+        return hasAuthority(authentication, ROLE_ADMIN);
+    }
+
     private boolean isParticipant(Long bookingId, Authentication authentication) {
         Booking booking = findBooking(bookingId);
         Long userId = extractUserId(authentication);

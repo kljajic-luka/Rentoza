@@ -56,6 +56,7 @@ class RentalAgreementEnforcementTest {
     @Mock private org.example.rentoza.booking.photo.PhotoUrlService photoUrlService;
     @Mock private BookingPaymentService bookingPaymentService;
     @Mock private RentalAgreementService rentalAgreementService;
+    @Mock private CheckInAttestationService checkInAttestationService;
 
     private CheckInService checkInService;
     private Booking booking;
@@ -79,7 +80,8 @@ class RentalAgreementEnforcementTest {
                 new SimpleMeterRegistry(),
                 photoUrlService,
                 bookingPaymentService,
-                rentalAgreementService
+                rentalAgreementService,
+                checkInAttestationService
         );
 
         User renter = new User();

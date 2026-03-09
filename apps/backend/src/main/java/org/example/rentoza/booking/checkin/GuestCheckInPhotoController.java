@@ -15,19 +15,15 @@ import org.example.rentoza.booking.checkin.dto.GuestCheckInPhotoResponseDTO;
 import org.example.rentoza.booking.checkin.dto.GuestCheckInPhotoSubmissionDTO;
 import org.example.rentoza.security.CurrentUser;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.FileSystemResource;
-import org.springframework.core.io.Resource;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.time.ZoneId;
 import java.util.List;
+import java.util.Map;
 
 /**
  * REST API for guest check-in photo operations (dual-party verification).
@@ -70,7 +66,7 @@ public class GuestCheckInPhotoController {
      * <p>The system will automatically detect discrepancies between host and guest photos.
      */
     @PostMapping("/api/bookings/{bookingId}/guest-checkin-photos")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("@checkInAuthorization.canUploadGuestCheckInPhoto(#bookingId, authentication)")
     @Operation(
         summary = "Upload guest check-in photos",
         description = "Guest uploads photos to confirm vehicle condition at pickup. " +
@@ -115,7 +111,7 @@ public class GuestCheckInPhotoController {
      * Get all guest check-in photos for a booking.
      */
     @GetMapping("/api/bookings/{bookingId}/guest-checkin-photos")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("@checkInAuthorization.canReadGuestCheckInPhoto(#bookingId, authentication)")
     @Operation(
         summary = "Get guest check-in photos",
         description = "Retrieve all photos uploaded by the guest during check-in. " +
@@ -137,77 +133,16 @@ public class GuestCheckInPhotoController {
         return ResponseEntity.ok(photos);
     }
 
-    /**
-     * Serve a guest check-in photo file.
-     */
-    @GetMapping("/api/guest-checkin/photos/{sessionId}/{filename}")
-    @PreAuthorize("isAuthenticated()")
-    @Operation(summary = "Serve guest check-in photo file")
-    public ResponseEntity<Resource> servePhoto(
-            @PathVariable String sessionId,
-            @PathVariable String filename) {
-        
-        // Sanitize inputs to prevent directory traversal
-        if (containsPathTraversal(sessionId) || containsPathTraversal(filename)) {
-            log.warn("[GuestCheckIn] Rejected directory traversal attempt: session={}, file={}", 
-                sessionId, filename);
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
-        }
-        
-        try {
-            // Construct the file path
-            String guestUploadDir = uploadDir.replace("checkin", "guest-checkin");
-            Path filePath = Paths.get(guestUploadDir, sessionId, filename).normalize();
-            
-            // Verify the path is within uploadDir (extra security)
-            Path uploadDirPath = Paths.get(guestUploadDir).toAbsolutePath().normalize();
-            Path absoluteFilePath = filePath.toAbsolutePath().normalize();
-            
-            if (!absoluteFilePath.startsWith(uploadDirPath)) {
-                log.warn("[GuestCheckIn] Path escape attempt: {}", filePath);
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-            }
-            
-            // Check file exists
-            if (!Files.exists(filePath) || !Files.isReadable(filePath)) {
-                log.debug("[GuestCheckIn] Photo not found: {}", filePath);
-                return ResponseEntity.notFound().build();
-            }
-            
-            // Load file as resource
-            Resource resource = new FileSystemResource(filePath);
-            
-            // Determine content type
-            String contentType = Files.probeContentType(filePath);
-            if (contentType == null) {
-                contentType = "image/jpeg";
-            }
-            
-            log.debug("[GuestCheckIn] Serving photo: {}, type: {}", filePath, contentType);
-            
-            return ResponseEntity.ok()
-                    .contentType(MediaType.parseMediaType(contentType))
-                    .header(HttpHeaders.CACHE_CONTROL, "max-age=3600, public")
-                    .body(resource);
-                    
-        } catch (Exception e) {
-            log.error("[GuestCheckIn] Error serving photo: session={}, file={}, error={}",
-                sessionId, filename, e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
-    }
-
-    /**
-     * Check if a string contains path traversal characters.
-     */
-    private boolean containsPathTraversal(String input) {
-        return input == null ||
-               input.contains("..") ||
-               input.contains("/") ||
-               input.contains("\\") ||
-               input.contains("%2e") ||
-               input.contains("%2f") ||
-               input.contains("%5c");
+    @ExceptionHandler(PhotoRejectionBudgetExceededException.class)
+    public ResponseEntity<Map<String, Object>> handleRejectionBudgetExceeded(PhotoRejectionBudgetExceededException ex) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", String.valueOf(ex.getRetryAfterSeconds()))
+                .body(Map.of(
+                        "error", "PHOTO_REJECTION_COOLDOWN",
+                        "message", ex.getMessage(),
+                        "retryAfterSeconds", ex.getRetryAfterSeconds(),
+                        "cooldownUntil", ex.getCooldownUntil().atZone(ZoneId.of("Europe/Belgrade")).toString()
+                ));
     }
 
     /**

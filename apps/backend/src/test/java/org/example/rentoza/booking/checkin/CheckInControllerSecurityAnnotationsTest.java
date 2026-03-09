@@ -34,6 +34,8 @@ class CheckInControllerSecurityAnnotationsTest {
                 "@checkInAuthorization.canConfirmHandshake(#bookingId, authentication)");
         assertPreAuthorize("revealLockboxCode", new Class[]{Long.class, Double.class, Double.class},
                 "@checkInAuthorization.canRevealLockbox(#bookingId, authentication)");
+        assertPreAuthorize("getTripStartAttestation", new Class[]{Long.class},
+                "@checkInAuthorization.canReadCheckInAttestation(#bookingId, authentication)");
     }
 
     private void assertPreAuthorize(String methodName, Class<?>[] parameterTypes, String expectedValue) throws Exception {

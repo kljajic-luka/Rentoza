@@ -16,6 +16,8 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.Instant;
+import java.util.TimeZone;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -33,15 +35,18 @@ class CheckInValidationServiceTimingTest {
 
     private static final ZoneId SERBIA_ZONE = ZoneId.of("Europe/Belgrade");
     private static final LocalDateTime FROZEN_NOW = LocalDateTime.of(2025, 6, 15, 10, 0, 0);
+    private static final Instant FROZEN_NOW_INSTANT = FROZEN_NOW.atZone(SERBIA_ZONE).toInstant();
 
     @Mock private CheckInEventService eventService;
     @Mock private RenterVerificationService renterVerificationService;
     @Mock private FeatureFlags featureFlags;
 
     private CheckInValidationService service;
+    private TimeZone originalDefaultTimeZone;
 
     @BeforeEach
     void setUp() {
+        originalDefaultTimeZone = TimeZone.getDefault();
         service = new CheckInValidationService(
                 eventService, renterVerificationService, featureFlags,
                 new SimpleMeterRegistry());
@@ -49,9 +54,15 @@ class CheckInValidationServiceTimingTest {
         ReflectionTestUtils.setField(service, "maxEarlyCheckInHours", 1);
     }
 
+    @org.junit.jupiter.api.AfterEach
+    void restoreDefaultTimeZone() {
+        TimeZone.setDefault(originalDefaultTimeZone);
+    }
+
     private Booking bookingWithStartTime(LocalDateTime startTime) {
         Booking booking = new Booking();
         booking.setStartTime(startTime);
+        booking.setStartTimeUtc(startTime.atZone(SERBIA_ZONE).toInstant());
         booking.setId(1L);
         return booking;
     }
@@ -71,8 +82,8 @@ class CheckInValidationServiceTimingTest {
             LocalDateTime tripStart = FROZEN_NOW.plusMinutes(61);
             Booking booking = bookingWithStartTime(tripStart);
 
-            try (MockedStatic<LocalDateTime> mockedTime = mockStatic(LocalDateTime.class, CALLS_REAL_METHODS)) {
-                mockedTime.when(() -> LocalDateTime.now(SERBIA_ZONE)).thenReturn(FROZEN_NOW);
+            try (MockedStatic<Instant> mockedTime = mockStatic(Instant.class, CALLS_REAL_METHODS)) {
+                mockedTime.when(Instant::now).thenReturn(FROZEN_NOW_INSTANT);
 
                 assertThatThrownBy(() -> service.validateUploadTiming(booking))
                         .isInstanceOf(CheckInTimingBlockedException.class)
@@ -91,8 +102,8 @@ class CheckInValidationServiceTimingTest {
             LocalDateTime tripStart = FROZEN_NOW.plusMinutes(60);
             Booking booking = bookingWithStartTime(tripStart);
 
-            try (MockedStatic<LocalDateTime> mockedTime = mockStatic(LocalDateTime.class, CALLS_REAL_METHODS)) {
-                mockedTime.when(() -> LocalDateTime.now(SERBIA_ZONE)).thenReturn(FROZEN_NOW);
+            try (MockedStatic<Instant> mockedTime = mockStatic(Instant.class, CALLS_REAL_METHODS)) {
+                mockedTime.when(Instant::now).thenReturn(FROZEN_NOW_INSTANT);
 
                 assertThatCode(() -> service.validateUploadTiming(booking))
                         .doesNotThrowAnyException();
@@ -106,8 +117,8 @@ class CheckInValidationServiceTimingTest {
             LocalDateTime tripStart = FROZEN_NOW.plusMinutes(59);
             Booking booking = bookingWithStartTime(tripStart);
 
-            try (MockedStatic<LocalDateTime> mockedTime = mockStatic(LocalDateTime.class, CALLS_REAL_METHODS)) {
-                mockedTime.when(() -> LocalDateTime.now(SERBIA_ZONE)).thenReturn(FROZEN_NOW);
+            try (MockedStatic<Instant> mockedTime = mockStatic(Instant.class, CALLS_REAL_METHODS)) {
+                mockedTime.when(Instant::now).thenReturn(FROZEN_NOW_INSTANT);
 
                 assertThatCode(() -> service.validateUploadTiming(booking))
                         .doesNotThrowAnyException();
@@ -120,8 +131,8 @@ class CheckInValidationServiceTimingTest {
             LocalDateTime tripStart = FROZEN_NOW.plusHours(3);
             Booking booking = bookingWithStartTime(tripStart);
 
-            try (MockedStatic<LocalDateTime> mockedTime = mockStatic(LocalDateTime.class, CALLS_REAL_METHODS)) {
-                mockedTime.when(() -> LocalDateTime.now(SERBIA_ZONE)).thenReturn(FROZEN_NOW);
+            try (MockedStatic<Instant> mockedTime = mockStatic(Instant.class, CALLS_REAL_METHODS)) {
+                mockedTime.when(Instant::now).thenReturn(FROZEN_NOW_INSTANT);
 
                 assertThatThrownBy(() -> service.validateUploadTiming(booking))
                         .isInstanceOf(CheckInTimingBlockedException.class)
@@ -139,8 +150,8 @@ class CheckInValidationServiceTimingTest {
             // 3 hours before trip — would normally be blocked
             Booking booking = bookingWithStartTime(FROZEN_NOW.plusHours(3));
 
-            try (MockedStatic<LocalDateTime> mockedTime = mockStatic(LocalDateTime.class, CALLS_REAL_METHODS)) {
-                mockedTime.when(() -> LocalDateTime.now(SERBIA_ZONE)).thenReturn(FROZEN_NOW);
+            try (MockedStatic<Instant> mockedTime = mockStatic(Instant.class, CALLS_REAL_METHODS)) {
+                mockedTime.when(Instant::now).thenReturn(FROZEN_NOW_INSTANT);
 
                 assertThatCode(() -> service.validateUploadTiming(booking))
                         .doesNotThrowAnyException();
@@ -162,8 +173,8 @@ class CheckInValidationServiceTimingTest {
             LocalDateTime tripStart = FROZEN_NOW.plusMinutes(61);
             Booking booking = bookingWithStartTime(tripStart);
 
-            try (MockedStatic<LocalDateTime> mockedTime = mockStatic(LocalDateTime.class, CALLS_REAL_METHODS)) {
-                mockedTime.when(() -> LocalDateTime.now(SERBIA_ZONE)).thenReturn(FROZEN_NOW);
+            try (MockedStatic<Instant> mockedTime = mockStatic(Instant.class, CALLS_REAL_METHODS)) {
+                mockedTime.when(Instant::now).thenReturn(FROZEN_NOW_INSTANT);
 
                 assertThatThrownBy(() -> service.validateCheckInTiming(booking, 1L, CheckInActorRole.HOST))
                         .isInstanceOf(IllegalStateException.class)
@@ -177,8 +188,8 @@ class CheckInValidationServiceTimingTest {
             LocalDateTime tripStart = FROZEN_NOW.plusMinutes(60);
             Booking booking = bookingWithStartTime(tripStart);
 
-            try (MockedStatic<LocalDateTime> mockedTime = mockStatic(LocalDateTime.class, CALLS_REAL_METHODS)) {
-                mockedTime.when(() -> LocalDateTime.now(SERBIA_ZONE)).thenReturn(FROZEN_NOW);
+            try (MockedStatic<Instant> mockedTime = mockStatic(Instant.class, CALLS_REAL_METHODS)) {
+                mockedTime.when(Instant::now).thenReturn(FROZEN_NOW_INSTANT);
 
                 assertThatCode(() -> service.validateCheckInTiming(booking, 1L, CheckInActorRole.HOST))
                         .doesNotThrowAnyException();
@@ -191,11 +202,31 @@ class CheckInValidationServiceTimingTest {
             LocalDateTime tripStart = FROZEN_NOW.plusMinutes(59);
             Booking booking = bookingWithStartTime(tripStart);
 
-            try (MockedStatic<LocalDateTime> mockedTime = mockStatic(LocalDateTime.class, CALLS_REAL_METHODS)) {
-                mockedTime.when(() -> LocalDateTime.now(SERBIA_ZONE)).thenReturn(FROZEN_NOW);
+            try (MockedStatic<Instant> mockedTime = mockStatic(Instant.class, CALLS_REAL_METHODS)) {
+                mockedTime.when(Instant::now).thenReturn(FROZEN_NOW_INSTANT);
 
                 assertThatCode(() -> service.validateCheckInTiming(booking, 1L, CheckInActorRole.HOST))
                         .doesNotThrowAnyException();
+            }
+        }
+
+        @Test
+        @DisplayName("Timing enforcement is stable even when JVM default timezone is non-Belgrade")
+        void shouldBeJvmTimezoneIndependent() {
+            TimeZone.setDefault(TimeZone.getTimeZone("America/Los_Angeles"));
+
+            LocalDateTime tripStart = FROZEN_NOW.plusMinutes(61);
+            Booking booking = bookingWithStartTime(tripStart);
+
+            try (MockedStatic<Instant> mockedTime = mockStatic(Instant.class, CALLS_REAL_METHODS)) {
+                mockedTime.when(Instant::now).thenReturn(FROZEN_NOW_INSTANT);
+
+                assertThatThrownBy(() -> service.validateUploadTiming(booking))
+                        .isInstanceOf(CheckInTimingBlockedException.class)
+                        .satisfies(ex -> {
+                            CheckInTimingBlockedException blocked = (CheckInTimingBlockedException) ex;
+                            assertThat(blocked.getMinutesRemaining()).isEqualTo(1);
+                        });
             }
         }
     }

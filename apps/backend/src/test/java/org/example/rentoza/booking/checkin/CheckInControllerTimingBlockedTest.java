@@ -31,6 +31,7 @@ class CheckInControllerTimingBlockedTest {
 
     @Mock private CheckInService checkInService;
     @Mock private CheckInPhotoService photoService;
+        @Mock private CheckInAttestationService checkInAttestationService;
     @Mock private IdempotencyService idempotencyService;
     @Mock private CurrentUser currentUser;
     @Mock private CheckInResponseOptimizer responseOptimizer;
@@ -42,7 +43,7 @@ class CheckInControllerTimingBlockedTest {
     void setUp() {
         when(photoRateLimitService.allowPhotoUpload(anyLong(), any())).thenReturn(true);
         controller = new CheckInController(
-                checkInService, photoService, idempotencyService,
+                checkInService, photoService, checkInAttestationService, idempotencyService,
                 currentUser, responseOptimizer, new ObjectMapper(), new SimpleMeterRegistry(),
                 photoRateLimitService);
     }

@@ -201,7 +201,7 @@ public class CheckInQueryService {
      * @return Bookings ready for check-in window
      */
     @Transactional(readOnly = true)
-    public List<Booking> findBookingsForCheckInWindowOpening(LocalDateTime startFrom, LocalDateTime startTo) {
+    public List<Booking> findBookingsForCheckInWindowOpening(Instant startFrom, Instant startTo) {
         return bookingRepository.findBookingsForCheckInWindowOpening(startFrom, startTo);
     }
 
@@ -225,7 +225,7 @@ public class CheckInQueryService {
      * @return Potential host no-shows
      */
     @Transactional(readOnly = true)
-    public List<Booking> findPotentialHostNoShows(BookingStatus status, LocalDateTime threshold) {
+    public List<Booking> findPotentialHostNoShows(BookingStatus status, Instant threshold) {
         return bookingRepository.findPotentialHostNoShows(status, threshold);
     }
 
@@ -237,8 +237,8 @@ public class CheckInQueryService {
      * @return Potential guest no-shows
      */
     @Transactional(readOnly = true)
-    public List<Booking> findPotentialGuestNoShows(BookingStatus status, LocalDateTime threshold) {
-        Instant hostCompletedBefore = threshold.atZone(SERBIA_ZONE).toInstant();
+    public List<Booking> findPotentialGuestNoShows(BookingStatus status, Instant threshold) {
+        Instant hostCompletedBefore = threshold;
         return bookingRepository.findPotentialGuestNoShows(status, threshold, hostCompletedBefore);
     }
 

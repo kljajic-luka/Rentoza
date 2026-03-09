@@ -10,6 +10,7 @@ import org.example.rentoza.booking.checkin.dto.*;
 import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
+import org.example.rentoza.booking.photo.PhotoAccessLogService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
@@ -25,6 +26,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.security.MessageDigest;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -70,6 +72,8 @@ public class GuestCheckInPhotoService {
     private final PhotoGuidanceService photoGuidanceService;
     private final SupabaseStorageService supabaseStorageService;
     private final PhotoUrlService photoUrlService;
+    private final PhotoRejectionBudgetService photoRejectionBudgetService;
+    private final PhotoAccessLogService photoAccessLogService;
 
     @Value("${app.checkin.photo.max-size-mb:3}")
     private int maxSizeMb;
@@ -124,7 +128,7 @@ public class GuestCheckInPhotoService {
         
         // PHASE 1 IMPROVEMENT: Validate photo types at upload time
         // Prevents duplicate types in same submission and re-uploads of existing types
-        validatePhotoTypesAtUpload(bookingId, submission.getPhotos());
+        validatePhotoTypesAtUpload(sessionId, submission.getPhotos());
         
         List<CheckInPhotoDTO> processedPhotos = new ArrayList<>();
         int acceptedCount = 0;
@@ -151,6 +155,8 @@ public class GuestCheckInPhotoService {
                 } else {
                     rejectedCount++;
                 }
+            } catch (PhotoRejectionBudgetExceededException e) {
+                throw e;
             } catch (Exception e) {
                 log.error("[GuestCheckIn] Failed to process photo type {}: {}",
                     photoItem.getPhotoType(), e.getMessage(), e);
@@ -165,11 +171,11 @@ public class GuestCheckInPhotoService {
         }
         
         // Check completion status
-        long validPhotoTypes = guestPhotoRepository.countRequiredGuestPhotoTypes(bookingId);
+        long validPhotoTypes = guestPhotoRepository.countRequiredGuestPhotoTypesBySession(sessionId);
         boolean complete = validPhotoTypes >= REQUIRED_PHOTO_COUNT;
         
         // Calculate missing photos
-        List<String> missingTypes = getMissingPhotoTypes(bookingId);
+        List<String> missingTypes = getMissingPhotoTypes(sessionId);
         
         // Update booking with guest photo count
         booking.setGuestCheckinPhotoCount(acceptedCount);
@@ -287,6 +293,8 @@ public class GuestCheckInPhotoService {
         }
         
         // EXIF validation
+        photoRejectionBudgetService.assertWithinBudget(booking, user.getId(), CheckInActorRole.GUEST, photoItem.getPhotoType());
+
         ExifValidationResult exifResult = exifValidationService.validate(
             photoBytes,
             clientTimestamp != null ? clientTimestamp : photoItem.getCapturedAt()
@@ -331,6 +339,14 @@ public class GuestCheckInPhotoService {
         
         log.info("[GuestCheckIn] Photo REJECTED: booking={}, type={}, status={}",
             booking.getId(), photoType, exifResult.getStatus());
+
+        photoRejectionBudgetService.registerRejection(
+            booking,
+            userId,
+            CheckInActorRole.GUEST,
+            photoType,
+            rejectionInfo != null ? rejectionInfo.getErrorCode() : "UNKNOWN_REJECTION"
+        );
         
         return CheckInPhotoDTO.builder()
             .photoType(photoType)
@@ -389,6 +405,7 @@ public class GuestCheckInPhotoService {
             .photoType(photoItem.getPhotoType())
             .storageBucket(GuestCheckInPhoto.StorageBucket.CHECKIN_STANDARD)
             .storageKey(storageKey)
+            .imageHash(sha256(photoBytes))
             .originalFilename(photoItem.getOriginalFilename())
             .mimeType(photoItem.getMimeType() != null ? photoItem.getMimeType() : "image/jpeg")
             .fileSizeBytes(photoBytes.length)
@@ -537,8 +554,8 @@ public class GuestCheckInPhotoService {
     /**
      * Get list of required photo types that are still missing.
      */
-    private List<String> getMissingPhotoTypes(Long bookingId) {
-        List<GuestCheckInPhoto> existingPhotos = guestPhotoRepository.findRequiredGuestPhotos(bookingId);
+    private List<String> getMissingPhotoTypes(String sessionId) {
+        List<GuestCheckInPhoto> existingPhotos = guestPhotoRepository.findRequiredGuestPhotosBySession(sessionId);
         Set<CheckInPhotoType> existingTypes = existingPhotos.stream()
             .filter(p -> p.isExifValid())
             .map(GuestCheckInPhoto::getPhotoType)
@@ -575,11 +592,11 @@ public class GuestCheckInPhotoService {
      *   <li>Re-upload of photo types that already exist for this booking</li>
      * </ol>
      * 
-     * @param bookingId the booking ID
+     * @param sessionId active check-in session ID
      * @param photos list of photos being submitted
      * @throws IllegalArgumentException if validation fails
      */
-    private void validatePhotoTypesAtUpload(Long bookingId, List<GuestCheckInPhotoSubmissionDTO.PhotoItem> photos) {
+    private void validatePhotoTypesAtUpload(String sessionId, List<GuestCheckInPhotoSubmissionDTO.PhotoItem> photos) {
         if (photos == null || photos.isEmpty()) {
             return;
         }
@@ -607,7 +624,7 @@ public class GuestCheckInPhotoService {
         // Check for photo types that already exist for this booking
         List<String> alreadyUploaded = new ArrayList<>();
         for (CheckInPhotoType type : submittedTypes) {
-            long existingCount = guestPhotoRepository.countByBookingIdAndPhotoType(bookingId, type);
+            long existingCount = guestPhotoRepository.countByCheckInSessionIdAndPhotoType(sessionId, type);
             if (existingCount > 0) {
                 alreadyUploaded.add(type.name());
             }
@@ -615,15 +632,15 @@ public class GuestCheckInPhotoService {
         
         if (!alreadyUploaded.isEmpty()) {
             String existingTypes = String.join(", ", alreadyUploaded);
-            log.warn("[GuestCheckIn] Attempt to re-upload existing photo types: bookingId={}, types={}", 
-                bookingId, existingTypes);
+            log.warn("[GuestCheckIn] Attempt to re-upload existing photo types: sessionId={}, types={}", 
+                sessionId, existingTypes);
             throw new IllegalArgumentException(
                 String.format("Sledeće vrste fotografija su već otpremljene za ovu rezervaciju: %s. " +
                     "Koristite opciju zamene ako želite da promenite postojeću fotografiju.", existingTypes));
         }
         
-        log.debug("[GuestCheckIn] Photo types validated for upload: bookingId={}, types={}", 
-            bookingId, submittedTypes.stream().map(Enum::name).collect(Collectors.joining(", ")));
+        log.debug("[GuestCheckIn] Photo types validated for upload: sessionId={}, types={}", 
+            sessionId, submittedTypes.stream().map(Enum::name).collect(Collectors.joining(", ")));
     }
 
     /**
@@ -641,18 +658,30 @@ public class GuestCheckInPhotoService {
         if (!isHost && !isGuest) {
             throw new AccessDeniedException("Nemate pristup ovim fotografijama");
         }
+
+        String ipAddress = getClientIp();
+        String userAgent = getUserAgent();
         
-        return guestPhotoRepository.findByBookingId(bookingId).stream()
+        String activeSessionId = booking.getCheckInSessionId();
+        List<CheckInPhotoDTO> photos = (activeSessionId == null || activeSessionId.isBlank()
+            ? Collections.<GuestCheckInPhoto>emptyList()
+            : guestPhotoRepository.findByCheckInSessionId(activeSessionId)).stream()
             .filter(photo -> !photo.isDeleted())
             .map(this::toDTO)
             .collect(Collectors.toList());
+
+        photoAccessLogService.logPhotosListAccess(userId, bookingId, photos.size(), ipAddress, userAgent);
+
+        return photos;
     }
 
     private CheckInPhotoDTO toDTO(GuestCheckInPhoto photo) {
+        String signedUrl = resolveGuestSignedUrl(photo.getStorageKey(), photo.getId());
+
         return CheckInPhotoDTO.builder()
             .photoId(photo.getId())
             .photoType(photo.getPhotoType())
-            .url(photo.getStorageKey())
+            .url(signedUrl)
             .uploadedAt(LocalDateTime.ofInstant(photo.getUploadedAt(), SERBIA_ZONE))
             .exifValidationStatus(photo.getExifValidationStatus())
             .exifValidationMessage(photo.getExifValidationMessage())
@@ -668,5 +697,48 @@ public class GuestCheckInPhotoService {
             .deviceModel(photo.getExifDeviceModel())
             .accepted(true)
             .build();
+    }
+
+    private String getClientIp() {
+        try {
+            org.springframework.web.context.request.ServletRequestAttributes attrs =
+                (org.springframework.web.context.request.ServletRequestAttributes)
+                    org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+            if (attrs == null || attrs.getRequest() == null) {
+                return "UNKNOWN";
+            }
+            return org.example.rentoza.booking.util.ClientIpResolver.resolve(attrs.getRequest());
+        } catch (Exception e) {
+            return "UNKNOWN";
+        }
+    }
+
+    private String getUserAgent() {
+        try {
+            org.springframework.web.context.request.ServletRequestAttributes attrs =
+                (org.springframework.web.context.request.ServletRequestAttributes)
+                    org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+            if (attrs == null || attrs.getRequest() == null) {
+                return null;
+            }
+            String userAgent = attrs.getRequest().getHeader("User-Agent");
+            if (userAgent == null) {
+                return null;
+            }
+            return userAgent.length() > 500 ? userAgent.substring(0, 500) : userAgent;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private String sha256(byte[] bytes) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(bytes);
+            return HexFormat.of().formatHex(hash);
+        } catch (Exception ex) {
+            log.warn("[GuestCheckIn] Failed to hash image payload", ex);
+            return null;
+        }
     }
 }

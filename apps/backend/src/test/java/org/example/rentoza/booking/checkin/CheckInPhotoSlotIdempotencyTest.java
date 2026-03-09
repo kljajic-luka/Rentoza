@@ -55,6 +55,7 @@ class CheckInPhotoSlotIdempotencyTest {
     @Mock private ExifValidationService exifValidationService;
     @Mock private LockboxEncryptionService lockboxEncryptionService;
     @Mock private PhotoRejectionService photoRejectionService;
+        @Mock private PhotoRejectionBudgetService photoRejectionBudgetService;
     @Mock private ApplicationEventPublisher eventPublisher;
     @Mock private SupabaseStorageService supabaseStorageService;
     @Mock private PiiPhotoStorageService piiPhotoStorageService;

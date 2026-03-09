@@ -12,6 +12,7 @@ import org.example.rentoza.booking.checkin.CheckInPhoto;
 import org.example.rentoza.booking.dispute.DamageClaim;
 import org.example.rentoza.car.Car;
 import org.example.rentoza.common.GeoPoint;
+import org.example.rentoza.config.timezone.SerbiaTimeZone;
 import org.example.rentoza.user.User;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
@@ -59,6 +60,21 @@ public class Booking {
      */
     @Column(name = "end_time", nullable = false, columnDefinition = "TIMESTAMP WITHOUT TIME ZONE")
     private LocalDateTime endTime;
+
+    /**
+     * Canonical UTC trip start timestamp.
+     *
+     * <p>Legacy {@code startTime} remains for Belgrade-local API compatibility,
+     * but scheduler/timing-sensitive logic should use this field as source of truth.
+     */
+    @Column(name = "start_time_utc", nullable = false)
+    private Instant startTimeUtc;
+
+    /**
+     * Canonical UTC trip end timestamp.
+     */
+    @Column(name = "end_time_utc", nullable = false)
+    private Instant endTimeUtc;
     
     /**
      * Total booking price in Serbian Dinar (RSD).
@@ -348,6 +364,12 @@ public class Booking {
      */
     @Column(name = "guest_check_in_completed_at")
     private Instant guestCheckInCompletedAt;
+
+    /**
+     * Admin override timestamp when guest condition acknowledgement is forced.
+     */
+    @Column(name = "check_in_admin_override_at")
+    private Instant checkInAdminOverrideAt;
 
     /**
      * Number of accepted photos from guest during dual-party check-in.
@@ -998,6 +1020,64 @@ public class Booking {
      */
     public java.time.LocalDate getEndDate() {
         return endTime != null ? endTime.toLocalDate() : null;
+    }
+
+    /**
+     * Canonical UTC source-of-truth for start time during transition.
+     */
+    public Instant getCanonicalStartTimeUtc() {
+        if (startTimeUtc != null) {
+            return startTimeUtc;
+        }
+        return SerbiaTimeZone.toInstant(startTime);
+    }
+
+    /**
+     * Canonical UTC source-of-truth for end time during transition.
+     */
+    public Instant getCanonicalEndTimeUtc() {
+        if (endTimeUtc != null) {
+            return endTimeUtc;
+        }
+        return SerbiaTimeZone.toInstant(endTime);
+    }
+
+    public void setStartTime(LocalDateTime startTime) {
+        this.startTime = startTime;
+        this.startTimeUtc = startTime != null ? SerbiaTimeZone.toInstant(startTime) : null;
+    }
+
+    public void setEndTime(LocalDateTime endTime) {
+        this.endTime = endTime;
+        this.endTimeUtc = endTime != null ? SerbiaTimeZone.toInstant(endTime) : null;
+    }
+
+    public void setStartTimeUtc(Instant startTimeUtc) {
+        this.startTimeUtc = startTimeUtc;
+        this.startTime = startTimeUtc != null ? SerbiaTimeZone.toLocalDateTime(startTimeUtc) : null;
+    }
+
+    public void setEndTimeUtc(Instant endTimeUtc) {
+        this.endTimeUtc = endTimeUtc;
+        this.endTime = endTimeUtc != null ? SerbiaTimeZone.toLocalDateTime(endTimeUtc) : null;
+    }
+
+    @PrePersist
+    @PreUpdate
+    void synchronizeTripTimeColumns() {
+        // Dual-write transition: keep UTC canonical and local compatibility fields in sync.
+        if (startTimeUtc == null && startTime != null) {
+            startTimeUtc = SerbiaTimeZone.toInstant(startTime);
+        }
+        if (endTimeUtc == null && endTime != null) {
+            endTimeUtc = SerbiaTimeZone.toInstant(endTime);
+        }
+        if (startTime == null && startTimeUtc != null) {
+            startTime = SerbiaTimeZone.toLocalDateTime(startTimeUtc);
+        }
+        if (endTime == null && endTimeUtc != null) {
+            endTime = SerbiaTimeZone.toLocalDateTime(endTimeUtc);
+        }
     }
 
     // ========== GEOSPATIAL HELPER METHODS ==========

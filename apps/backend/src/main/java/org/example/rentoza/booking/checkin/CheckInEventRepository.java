@@ -40,6 +40,11 @@ public interface CheckInEventRepository extends JpaRepository<CheckInEvent, Long
             @Param("bookingId") Long bookingId, 
             @Param("eventType") CheckInEventType eventType);
 
+    @Query("SELECT e FROM CheckInEvent e WHERE e.checkInSessionId = :sessionId AND e.eventType = :eventType ORDER BY e.eventTimestamp ASC")
+    List<CheckInEvent> findByCheckInSessionIdAndEventType(
+            @Param("sessionId") String sessionId,
+            @Param("eventType") CheckInEventType eventType);
+
     /**
      * Check if a specific event type exists for a booking.
      * More efficient than fetching full entities when only existence is needed.

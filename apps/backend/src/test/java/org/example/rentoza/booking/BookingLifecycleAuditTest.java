@@ -29,6 +29,9 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
@@ -271,7 +274,7 @@ class BookingLifecycleAuditTest {
         /**
          * Verifies that {@code autoCompleteOverdueBookings()} passes a
          * Belgrade-zone {@link LocalDateTime} to
-         * {@code BookingRepository.findOverdueBookings()}.
+         * {@code BookingRepository.findOverdueBookingsPaged()}.
          *
          * <p>Before the F-TZ-1 fix, the method used {@code LocalDateTime.now()}
          * (system default, often UTC), which caused bookings to be auto-completed
@@ -286,10 +289,10 @@ class BookingLifecycleAuditTest {
             lenient().when(lockService.tryAcquireLock(anyString(), any(Duration.class)))
                     .thenReturn(true);
 
-            // Capture the LocalDateTime argument passed to findOverdueBookings
+            // Capture the LocalDateTime argument passed to findOverdueBookingsPaged
             ArgumentCaptor<LocalDateTime> timeCaptor = ArgumentCaptor.forClass(LocalDateTime.class);
-            lenient().when(repo.findOverdueBookings(timeCaptor.capture()))
-                    .thenReturn(List.of());
+            lenient().when(repo.findOverdueBookingsPaged(eq(BookingStatus.ACTIVE), timeCaptor.capture(), any(Pageable.class)))
+                    .thenReturn(Page.empty());
 
             // Snapshot the expected Belgrade time before calling the method
             LocalDateTime expectedBelgradeTimeMin = LocalDateTime.now(SERBIA_ZONE).minusSeconds(5);
@@ -328,7 +331,7 @@ class BookingLifecycleAuditTest {
             }
 
             // Verify repository was queried
-            verify(repo).findOverdueBookings(any(LocalDateTime.class));
+            verify(repo).findOverdueBookingsPaged(eq(BookingStatus.ACTIVE), any(LocalDateTime.class), any(Pageable.class));
         }
     }
 
@@ -348,7 +351,7 @@ class BookingLifecycleAuditTest {
         }
 
         /**
-         * Verifies that when {@code findOverdueBookings()} returns an ACTIVE
+         * Verifies that when {@code findOverdueBookingsPaged()} returns an ACTIVE
          * booking past its end time, the auto-complete scheduler marks it as
          * COMPLETED and persists via {@code saveAll()}.
          *
@@ -365,8 +368,9 @@ class BookingLifecycleAuditTest {
             Booking activeOverdue = createBooking(BookingStatus.ACTIVE);
             // endTime is already 6 hours in the past (set in createBooking)
 
-            lenient().when(repo.findOverdueBookings(any(LocalDateTime.class)))
-                    .thenReturn(List.of(activeOverdue));
+            lenient().when(repo.findOverdueBookingsPaged(eq(BookingStatus.ACTIVE), any(LocalDateTime.class), any(Pageable.class)))
+                    .thenReturn(new PageImpl<>(List.of(activeOverdue)))
+                    .thenReturn(Page.empty());
 
             lenient().when(repo.saveAll(any()))
                     .thenAnswer(invocation -> invocation.getArgument(0));
@@ -405,8 +409,8 @@ class BookingLifecycleAuditTest {
         @DisplayName("auto-complete does not call saveAll when no overdue bookings exist")
         void auto_complete_does_not_process_empty_result() {
             // ── Arrange ──────────────────────────────────────────────────────
-            lenient().when(repo.findOverdueBookings(any(LocalDateTime.class)))
-                    .thenReturn(List.of());
+            lenient().when(repo.findOverdueBookingsPaged(eq(BookingStatus.ACTIVE), any(LocalDateTime.class), any(Pageable.class)))
+                    .thenReturn(Page.empty());
 
             // ── Act ──────────────────────────────────────────────────────────
             bookingService.autoCompleteOverdueBookings();
@@ -417,7 +421,7 @@ class BookingLifecycleAuditTest {
 
         /**
          * Documents the F-AC-1 fix at the query level: the repository method
-         * {@code findOverdueBookings} uses {@code WHERE b.status = 'ACTIVE'}
+         * {@code findOverdueBookingsPaged} uses {@code WHERE b.status = 'ACTIVE'}
          * (not IN_TRIP). This test verifies that from the service's perspective,
          * even if an IN_TRIP booking past its end time exists in the database,
          * the mocked query would not return it -- only ACTIVE bookings are
@@ -439,8 +443,9 @@ class BookingLifecycleAuditTest {
             inTripBooking.setId(2L);
 
             // The fixed query only returns ACTIVE bookings
-            lenient().when(repo.findOverdueBookings(any(LocalDateTime.class)))
-                    .thenReturn(List.of(activeBooking));
+            lenient().when(repo.findOverdueBookingsPaged(eq(BookingStatus.ACTIVE), any(LocalDateTime.class), any(Pageable.class)))
+                    .thenReturn(new PageImpl<>(List.of(activeBooking)))
+                    .thenReturn(Page.empty());
 
             lenient().when(repo.saveAll(any()))
                     .thenAnswer(invocation -> invocation.getArgument(0));
@@ -487,7 +492,7 @@ class BookingLifecycleAuditTest {
             bookingService.autoCompleteOverdueBookings();
 
             // ── Assert ───────────────────────────────────────────────────────
-            verify(repo, never()).findOverdueBookings(any());
+                        verify(repo, never()).findOverdueBookingsPaged(eq(BookingStatus.ACTIVE), any(LocalDateTime.class), any(Pageable.class));
             verify(repo, never()).saveAll(any());
         }
     }

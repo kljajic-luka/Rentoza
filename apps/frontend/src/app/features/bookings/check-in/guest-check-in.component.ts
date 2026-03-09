@@ -1267,11 +1267,6 @@ export class GuestCheckInComponent implements OnInit, OnDestroy {
     if (url) {
       const baseUrl = environment.baseApiUrl.replace(/\/$/, '');
 
-      if (url.startsWith('guest-checkin/')) {
-        const pathSegment = url.replace(/^guest-checkin\//, '');
-        return `${baseUrl}/guest-checkin/photos/${pathSegment}`;
-      }
-
       // Strip "checkin/" prefix if present (host storage key format)
       const pathSegment = url.replace(/^checkin\//, '');
       return `${baseUrl}/checkin/photos/${pathSegment}`;

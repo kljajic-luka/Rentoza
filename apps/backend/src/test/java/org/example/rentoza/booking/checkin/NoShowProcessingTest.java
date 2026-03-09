@@ -116,6 +116,9 @@ class NoShowProcessingTest {
     @Mock
     private org.example.rentoza.booking.RentalAgreementService rentalAgreementService;
 
+        @Mock
+        private CheckInAttestationService checkInAttestationService;
+
     private MeterRegistry meterRegistry;
     private CheckInService checkInService;
 
@@ -144,7 +147,8 @@ class NoShowProcessingTest {
                 meterRegistry,
                 photoUrlService,
                 bookingPaymentService,
-                rentalAgreementService
+                rentalAgreementService,
+                checkInAttestationService
         );
 
         owner = new User();

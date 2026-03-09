@@ -22,6 +22,7 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.security.access.AccessDeniedException;
 import org.example.rentoza.storage.SupabaseStorageService;
+import org.example.rentoza.booking.photo.PhotoAccessLogService;
 
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -58,6 +59,8 @@ class GuestCheckInPhotoServiceTest {
     @Mock private PhotoGuidanceService photoGuidanceService;
     @Mock private SupabaseStorageService supabaseStorageService;
     @Mock private org.example.rentoza.booking.photo.PhotoUrlService photoUrlService;
+    @Mock private PhotoRejectionBudgetService photoRejectionBudgetService;
+    @Mock private PhotoAccessLogService photoAccessLogService;
 
     private GuestCheckInPhotoService guestPhotoService;
     
@@ -83,7 +86,9 @@ class GuestCheckInPhotoServiceTest {
             photoRejectionService,
             photoGuidanceService,
             supabaseStorageService,
-            photoUrlService
+            photoUrlService,
+            photoRejectionBudgetService,
+            photoAccessLogService
         );
         
         // Inject @Value properties that Spring would normally inject
@@ -155,6 +160,34 @@ class GuestCheckInPhotoServiceTest {
                 guestPhotoService.uploadGuestPhotos(bookingId, renterId, submission))
                 .isInstanceOf(ResourceNotFoundException.class);
         }
+
+        @Test
+        @DisplayName("Should return signed URLs and log guest photo list access")
+        void shouldReturnSignedUrlsAndLogAccess() {
+            when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(testBooking));
+
+            GuestCheckInPhoto photo = GuestCheckInPhoto.builder()
+                .id(55L)
+                .booking(testBooking)
+                .checkInSessionId("test-session-123")
+                .photoType(CheckInPhotoType.GUEST_EXTERIOR_FRONT)
+                .storageKey("bookings/1/guest/GUEST_EXTERIOR_FRONT/p1.jpg")
+                .mimeType("image/jpeg")
+                .uploadedAt(Instant.now())
+                .uploadedBy(testRenter)
+                .exifValidationStatus(ExifValidationStatus.VALID)
+                .build();
+
+            when(guestPhotoRepository.findByCheckInSessionId("test-session-123")).thenReturn(List.of(photo));
+            when(photoUrlService.generateSignedUrl(anyString(), anyString(), anyLong()))
+                .thenReturn("https://signed.example/photo");
+
+            List<CheckInPhotoDTO> result = guestPhotoService.getGuestPhotos(bookingId, renterId);
+
+            assertThat(result).hasSize(1);
+            assertThat(result.get(0).getUrl()).isEqualTo("https://signed.example/photo");
+            verify(photoAccessLogService).logPhotosListAccess(eq(renterId), eq(bookingId), eq(1), anyString(), any());
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -176,7 +209,7 @@ class GuestCheckInPhotoServiceTest {
                 .thenReturn(Optional.of(testBooking));
             when(userRepository.findById(renterId))
                 .thenReturn(Optional.of(testRenter));
-            when(guestPhotoRepository.countRequiredGuestPhotoTypes(bookingId))
+            when(guestPhotoRepository.countRequiredGuestPhotoTypesBySession(anyString()))
                 .thenReturn(0L);
             when(exifValidationService.validate(any(), any()))
                 .thenReturn(createValidExifResult());
@@ -261,7 +294,7 @@ class GuestCheckInPhotoServiceTest {
                 .thenReturn(Optional.of(testBooking));
             when(userRepository.findById(renterId))
                 .thenReturn(Optional.of(testRenter));
-            when(guestPhotoRepository.countRequiredGuestPhotoTypes(bookingId))
+            when(guestPhotoRepository.countRequiredGuestPhotoTypesBySession(anyString()))
                 .thenReturn(8L); // All photos present
             when(exifValidationService.validate(any(), any()))
                 .thenReturn(createValidExifResult());
@@ -298,7 +331,7 @@ class GuestCheckInPhotoServiceTest {
                 .thenReturn(Optional.of(testBooking));
             when(userRepository.findById(renterId))
                 .thenReturn(Optional.of(testRenter));
-            when(guestPhotoRepository.countRequiredGuestPhotoTypes(bookingId))
+            when(guestPhotoRepository.countRequiredGuestPhotoTypesBySession(anyString()))
                 .thenReturn(3L); // Only 3 of 8 photos
             when(exifValidationService.validate(any(), any()))
                 .thenReturn(createValidExifResult());
@@ -331,7 +364,7 @@ class GuestCheckInPhotoServiceTest {
                 .thenReturn(Optional.of(testBooking));
             when(userRepository.findById(renterId))
                 .thenReturn(Optional.of(testRenter));
-            when(guestPhotoRepository.countRequiredGuestPhotoTypes(bookingId))
+            when(guestPhotoRepository.countRequiredGuestPhotoTypesBySession(anyString()))
                 .thenReturn(0L);
             when(exifValidationService.validate(any(), any()))
                 .thenReturn(createValidExifResult());
@@ -374,7 +407,7 @@ class GuestCheckInPhotoServiceTest {
                 .thenReturn(Optional.of(testBooking));
             when(userRepository.findById(renterId))
                 .thenReturn(Optional.of(testRenter));
-            when(guestPhotoRepository.countRequiredGuestPhotoTypes(bookingId))
+            when(guestPhotoRepository.countRequiredGuestPhotoTypesBySession(anyString()))
                 .thenReturn(0L);
             when(exifValidationService.validate(any(), any()))
                 .thenReturn(createInvalidExifResult());
@@ -402,7 +435,7 @@ class GuestCheckInPhotoServiceTest {
                 .thenReturn(Optional.of(testBooking));
             when(userRepository.findById(renterId))
                 .thenReturn(Optional.of(testRenter));
-            when(guestPhotoRepository.countRequiredGuestPhotoTypes(bookingId))
+            when(guestPhotoRepository.countRequiredGuestPhotoTypesBySession(anyString()))
                 .thenReturn(0L);
             when(exifValidationService.validate(any(), any()))
                 .thenReturn(createValidExifResult());
@@ -429,7 +462,7 @@ class GuestCheckInPhotoServiceTest {
                 .thenReturn(Optional.of(testBooking));
             when(userRepository.findById(renterId))
                 .thenReturn(Optional.of(testRenter));
-            when(guestPhotoRepository.countRequiredGuestPhotoTypes(bookingId))
+            when(guestPhotoRepository.countRequiredGuestPhotoTypesBySession(anyString()))
                 .thenReturn(0L);
             when(exifValidationService.validate(any(), any()))
                 .thenReturn(createValidExifResult());
@@ -496,7 +529,7 @@ class GuestCheckInPhotoServiceTest {
             when(userRepository.findById(renterId))
                 .thenReturn(Optional.of(testRenter));
             // This type already exists in DB
-            when(guestPhotoRepository.countByBookingIdAndPhotoType(bookingId, CheckInPhotoType.GUEST_EXTERIOR_FRONT))
+            when(guestPhotoRepository.countByCheckInSessionIdAndPhotoType("test-session-123", CheckInPhotoType.GUEST_EXTERIOR_FRONT))
                 .thenReturn(1L);
             
             // Act & Assert
@@ -523,9 +556,9 @@ class GuestCheckInPhotoServiceTest {
             when(userRepository.findById(renterId))
                 .thenReturn(Optional.of(testRenter));
             // No existing photos
-            when(guestPhotoRepository.countByBookingIdAndPhotoType(eq(bookingId), any()))
+            when(guestPhotoRepository.countByCheckInSessionIdAndPhotoType(anyString(), any()))
                 .thenReturn(0L);
-            when(guestPhotoRepository.countRequiredGuestPhotoTypes(bookingId))
+            when(guestPhotoRepository.countRequiredGuestPhotoTypesBySession(anyString()))
                 .thenReturn(0L);
             when(exifValidationService.validate(any(), any()))
                 .thenReturn(createValidExifResult());

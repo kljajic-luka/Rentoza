@@ -111,6 +111,7 @@ public class CheckInPhotoService {
     private final LockboxEncryptionService lockboxEncryptionService;
     private final GeofenceService geofenceService;
     private final PhotoRejectionService photoRejectionService;
+    private final PhotoRejectionBudgetService photoRejectionBudgetService;
     private final ApplicationEventPublisher eventPublisher;
     private final SupabaseStorageService supabaseStorageService;
     private final PiiPhotoStorageService piiPhotoStorageService;  // P0-2: PII enforcement
@@ -187,6 +188,9 @@ public class CheckInPhotoService {
                 .orElseThrow(() -> new ResourceNotFoundException("Rezervacija nije pronađena"));
         
         validateUploadAccessAndStatus(booking, userId, photoType);
+
+        CheckInActorRole actorRole = resolveActorRole(booking, userId, photoType);
+        photoRejectionBudgetService.assertWithinBudget(booking, userId, actorRole, photoType);
         
         // P1 FIX: Server-side per-booking photo cap (prevents DoS via mass upload)
         long existingPhotoCount = photoRepository.countByBookingId(bookingId);
@@ -272,6 +276,14 @@ public class CheckInPhotoService {
         log.info("[CheckIn] Photo REJECTED (zero-storage): booking={}, type={}, status={}, reason={}",
             booking.getId(), photoType, exifResult.getStatus(), 
             rejectionInfo != null ? rejectionInfo.getErrorCode() : "UNKNOWN");
+
+        photoRejectionBudgetService.registerRejection(
+            booking,
+            userId,
+            actorRole,
+            photoType,
+            rejectionInfo != null ? rejectionInfo.getErrorCode() : "UNKNOWN_REJECTION"
+        );
         
         // Build rejection DTO (no photoId, no url - not stored)
         CheckInPhotoDTO rejectionDTO = CheckInPhotoDTO.builder()
@@ -287,6 +299,13 @@ public class CheckInPhotoService {
             rejectionDTO, 
             rejectionInfo != null ? rejectionInfo.getErrorCode() : "UNKNOWN_REJECTION"
         );
+    }
+
+    private CheckInActorRole resolveActorRole(Booking booking, Long userId, CheckInPhotoType photoType) {
+        if (photoType.isCheckoutPhoto()) {
+            return photoType.isHostCheckoutPhoto() ? CheckInActorRole.HOST : CheckInActorRole.GUEST;
+        }
+        return booking.getCar().getOwner().getId().equals(userId) ? CheckInActorRole.HOST : CheckInActorRole.GUEST;
     }
     
     /**

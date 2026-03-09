@@ -46,6 +46,12 @@ public interface CheckInPhotoRepository extends JpaRepository<CheckInPhoto, Long
             @Param("bookingId") Long bookingId, 
             @Param("photoType") CheckInPhotoType photoType);
 
+    @Query("SELECT p FROM CheckInPhoto p " +
+           "WHERE p.checkInSessionId = :sessionId AND p.photoType = :photoType AND p.deletedAt IS NULL AND p.uploadStatus = 'COMPLETED'")
+    List<CheckInPhoto> findByCheckInSessionIdAndPhotoType(
+            @Param("sessionId") String sessionId,
+            @Param("photoType") CheckInPhotoType photoType);
+
     /**
      * Count photos by type for a booking.
      */
@@ -128,6 +134,17 @@ public interface CheckInPhotoRepository extends JpaRepository<CheckInPhoto, Long
            "  'HOST_INTERIOR_DASHBOARD', 'HOST_INTERIOR_REAR', 'HOST_ODOMETER', 'HOST_FUEL_GAUGE'" +
            ")")
     long countRequiredHostPhotoTypes(@Param("bookingId") Long bookingId);
+
+    @Query("SELECT COUNT(DISTINCT p.photoType) FROM CheckInPhoto p " +
+           "WHERE p.checkInSessionId = :sessionId " +
+           "AND p.deletedAt IS NULL " +
+           "AND p.uploadStatus = 'COMPLETED' " +
+           "AND p.exifValidationStatus IN ('VALID', 'VALID_NO_GPS', 'VALID_WITH_WARNINGS') " +
+           "AND p.photoType IN (" +
+           "  'HOST_EXTERIOR_FRONT', 'HOST_EXTERIOR_REAR', 'HOST_EXTERIOR_LEFT', 'HOST_EXTERIOR_RIGHT', " +
+           "  'HOST_INTERIOR_DASHBOARD', 'HOST_INTERIOR_REAR', 'HOST_ODOMETER', 'HOST_FUEL_GAUGE'" +
+           ")")
+    long countRequiredHostPhotoTypesBySession(@Param("sessionId") String sessionId);
 
     /**
      * Check if photo exists by storage key (prevents duplicate uploads).

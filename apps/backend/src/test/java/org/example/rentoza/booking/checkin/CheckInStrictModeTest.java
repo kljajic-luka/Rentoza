@@ -96,6 +96,9 @@ class CheckInStrictModeTest {
     @Mock
     private org.example.rentoza.booking.RentalAgreementService rentalAgreementService;
 
+    @Mock
+    private CheckInAttestationService checkInAttestationService;
+
     private MeterRegistry meterRegistry;
     private CheckInService checkInService;
 
@@ -127,7 +130,8 @@ class CheckInStrictModeTest {
             meterRegistry,
             photoUrlService,
             bookingPaymentService,
-            rentalAgreementService
+            rentalAgreementService,
+            checkInAttestationService
         );
 
         // Setup common test fixtures

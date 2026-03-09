@@ -210,8 +210,8 @@ public class CheckInScheduler {
             // Uses exact timestamps for precise timing detection
             // +15 min catch-up buffer matches cron interval so bookings are never missed
             // if the scheduler fires slightly late, without opening windows hours early
-            LocalDateTime windowStart = now; // Open window now
-            LocalDateTime windowEnd = now.plusHours(windowHoursBeforeTrip).plusMinutes(15); // window + cron catch-up
+            Instant windowStart = now.atZone(SERBIA_ZONE).toInstant(); // Open window now
+            Instant windowEnd = now.plusHours(windowHoursBeforeTrip).plusMinutes(15).atZone(SERBIA_ZONE).toInstant(); // window + cron catch-up
             
             // DIAGNOSTIC LOGGING: Help trace PostgreSQL timestamp issues
             log.info("[CheckIn] Query parameters: timezone={}, windowStart={}, windowEnd={}, hoursBeforeTrip={}",
@@ -251,7 +251,7 @@ public class CheckInScheduler {
                         CheckInEventType.CHECK_IN_OPENED,
                         Map.of(
                             "triggeredBy", "SCHEDULER",
-                            "bookingStartTime", booking.getStartTime().toString()
+                            "bookingStartTimeUtc", booking.getCanonicalStartTimeUtc().toString()
                         )
                     );
                     
@@ -279,7 +279,7 @@ public class CheckInScheduler {
 
                     opened++;
                     log.info("[CheckIn] Opened check-in window for booking {} (session: {}, startTime: {})", 
-                        booking.getId(), sessionId, booking.getStartTime());
+                        booking.getId(), sessionId, booking.getCanonicalStartTimeUtc());
                     
                 } catch (Exception e) {
                     log.error("[CheckIn] Failed to open check-in window for booking {}: {}", 
@@ -402,7 +402,7 @@ public class CheckInScheduler {
         
         try {
             LocalDateTime now = LocalDateTime.now(SERBIA_ZONE);
-            LocalDateTime noShowThreshold = now.minusMinutes(noShowMinutesAfterTripStart);
+            Instant noShowThreshold = now.minusMinutes(noShowMinutesAfterTripStart).atZone(SERBIA_ZONE).toInstant();
             
             // Detect Host No-Shows
             // CHECK_IN_OPEN bookings where trip start + 30min has passed
@@ -431,7 +431,7 @@ public class CheckInScheduler {
             );
 
             if (noShowDiagnosticsEnabled) {
-                logNoShowDiagnostics(now, noShowThreshold, hostNoShows, guestNoShows);
+                logNoShowDiagnostics(now, LocalDateTime.ofInstant(noShowThreshold, SERBIA_ZONE), hostNoShows, guestNoShows);
             }
             
             int guestNoShowCount = 0;
@@ -563,7 +563,7 @@ public class CheckInScheduler {
         }
 
         try {
-            LocalDateTime threshold = LocalDateTime.now(SERBIA_ZONE).minusMinutes(handshakeTimeoutMinutes);
+                Instant threshold = Instant.now().minus(handshakeTimeoutMinutes, ChronoUnit.MINUTES);
             List<Booking> staleHandshakes = bookingRepository.findStaleCheckInHandshakes(
                     BookingStatus.CHECK_IN_COMPLETE,
                     threshold

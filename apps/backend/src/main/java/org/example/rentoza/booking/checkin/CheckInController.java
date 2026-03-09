@@ -20,6 +20,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.Map;
 import java.util.Optional;
 
@@ -59,6 +60,7 @@ public class CheckInController {
     private final CheckInPhotoService photoService;
     private final IdempotencyService idempotencyService;
     private final CurrentUser currentUser;
+    private final CheckInAttestationService checkInAttestationService;
     private final CheckInResponseOptimizer responseOptimizer;
     private final ObjectMapper objectMapper;
     private final Counter photoUploadCounter;
@@ -67,6 +69,7 @@ public class CheckInController {
     public CheckInController(
             CheckInService checkInService,
             CheckInPhotoService photoService,
+            CheckInAttestationService checkInAttestationService,
             IdempotencyService idempotencyService,
             CurrentUser currentUser,
             CheckInResponseOptimizer responseOptimizer,
@@ -75,6 +78,7 @@ public class CheckInController {
             org.example.rentoza.booking.photo.PhotoRateLimitService photoRateLimitService) {
         this.checkInService = checkInService;
         this.photoService = photoService;
+        this.checkInAttestationService = checkInAttestationService;
         this.idempotencyService = idempotencyService;
         this.currentUser = currentUser;
         this.responseOptimizer = responseOptimizer;
@@ -130,6 +134,14 @@ public class CheckInController {
         
         // Return optimized response with ETag support
         return responseOptimizer.buildOptimizedResponse(status, ifNoneMatch);
+    }
+
+    @GetMapping("/attestation")
+    @PreAuthorize("@checkInAuthorization.canReadCheckInAttestation(#bookingId, authentication)")
+    public ResponseEntity<CheckInAttestationResponseDTO> getTripStartAttestation(@PathVariable Long bookingId) {
+        Long userId = currentUser.id();
+        CheckInAttestationResponseDTO response = checkInAttestationService.getAttestationForBooking(bookingId, userId);
+        return ResponseEntity.ok(response);
     }
 
     // ========== HOST WORKFLOW ==========
@@ -550,6 +562,18 @@ public class CheckInController {
             "messagesr", ex.getMessage() // Serbian message already in exception
         ));
     }
+
+        @ExceptionHandler(PhotoRejectionBudgetExceededException.class)
+        public ResponseEntity<Map<String, Object>> handleRejectionBudgetExceeded(PhotoRejectionBudgetExceededException ex) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+            .header("Retry-After", String.valueOf(ex.getRetryAfterSeconds()))
+            .body(Map.of(
+                "error", "PHOTO_REJECTION_COOLDOWN",
+                "message", ex.getMessage(),
+                "retryAfterSeconds", ex.getRetryAfterSeconds(),
+                "cooldownUntil", ex.getCooldownUntil().atZone(ZoneId.of("Europe/Belgrade")).toString()
+            ));
+        }
 
     // ========== DEV/ADMIN: MANUAL WINDOW OPENING ==========
 

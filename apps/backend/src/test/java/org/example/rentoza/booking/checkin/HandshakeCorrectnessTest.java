@@ -58,6 +58,7 @@ class HandshakeCorrectnessTest {
     @Mock private PhotoUrlService photoUrlService;
     @Mock private BookingPaymentService bookingPaymentService;
     @Mock private org.example.rentoza.booking.RentalAgreementService rentalAgreementService;
+        @Mock private CheckInAttestationService checkInAttestationService;
 
     private CheckInService checkInService;
     private Booking booking;
@@ -73,7 +74,8 @@ class HandshakeCorrectnessTest {
                 featureFlags, validationService, damageClaimRepository,
                 userRepository, new SimpleMeterRegistry(),
                 photoUrlService, bookingPaymentService,
-                rentalAgreementService
+                rentalAgreementService,
+                checkInAttestationService
         );
         // Disable @Value-injected license verification so trip-start tests don't require it
         ReflectionTestUtils.setField(checkInService, "licenseVerificationEnabled", false);

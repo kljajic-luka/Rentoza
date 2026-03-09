@@ -43,6 +43,7 @@ import org.example.rentoza.user.dto.BookingEligibilityDTO;
 import java.time.*;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -90,6 +91,7 @@ public class CheckInService {
     private final PhotoUrlService photoUrlService;
     private final BookingPaymentService bookingPaymentService;
     private final org.example.rentoza.booking.RentalAgreementService rentalAgreementService;
+    private final CheckInAttestationService checkInAttestationService;
     
     private static final int REQUIRED_GUEST_PHOTO_TYPES = 8;
     
@@ -145,7 +147,8 @@ public class CheckInService {
             MeterRegistry meterRegistry,
             PhotoUrlService photoUrlService,
             BookingPaymentService bookingPaymentService,
-            org.example.rentoza.booking.RentalAgreementService rentalAgreementService) {
+            org.example.rentoza.booking.RentalAgreementService rentalAgreementService,
+            CheckInAttestationService checkInAttestationService) {
         this.bookingRepository = bookingRepository;
         this.eventService = eventService;
         this.photoRepository = photoRepository;
@@ -161,6 +164,7 @@ public class CheckInService {
         this.photoUrlService = photoUrlService;
         this.bookingPaymentService = bookingPaymentService;
         this.rentalAgreementService = rentalAgreementService;
+        this.checkInAttestationService = checkInAttestationService;
         
         this.hostCompletedCounter = Counter.builder("checkin.host.completed")
                 .description("Host check-in completions")
@@ -234,8 +238,13 @@ public class CheckInService {
         // before the policy's effective start time.
         validationService.validateCheckInTiming(booking, userId, CheckInActorRole.HOST);
         
-        // Validate photos
-        long validPhotoTypes = photoRepository.countRequiredHostPhotoTypes(booking.getId());
+        String sessionId = booking.getCheckInSessionId();
+        if (sessionId == null || sessionId.isBlank()) {
+            throw new IllegalStateException("Check-in session nije aktivan za ovu rezervaciju.");
+        }
+
+        // Validate photos for active session only.
+        long validPhotoTypes = photoRepository.countRequiredHostPhotoTypesBySession(sessionId);
         if (validPhotoTypes < REQUIRED_HOST_PHOTO_TYPES) {
             throw new IllegalStateException(String.format(
                 "Potrebno je minimum %d tipova fotografija. Pronađeno: %d", 
@@ -263,7 +272,7 @@ public class CheckInService {
         // Fallback: If no photo has GPS, check-in proceeds anyway (CAR_LOCATION_MISSING event logged)
         
         Optional<CheckInPhoto> firstPhotoWithGps = photoRepository
-                .findByBookingId(booking.getId())
+            .findByCheckInSessionId(sessionId)
                 .stream()
                 .filter(photo -> !photo.isDeleted())
                 .filter(photo -> photo.getExifLatitude() != null && photo.getExifLongitude() != null)
@@ -298,7 +307,7 @@ public class CheckInService {
                     photo.getId(), photo.getPhotoType(), booking.getId());
         } else {
             // No photo with GPS found - log warning but allow check-in (trust model)
-            long photoCount = photoRepository.findByBookingId(booking.getId()).stream()
+                long photoCount = photoRepository.findByCheckInSessionId(sessionId).stream()
                     .filter(p -> !p.isDeleted())
                     .count();
             
@@ -926,6 +935,9 @@ public class CheckInService {
                 log.error("[CheckIn] Failed to record TRIP_STARTED event for booking {}", booking.getId(), e);
             }
 
+            // Generate immutable trip-start attestation exactly once (idempotent).
+            checkInAttestationService.generateTripStartAttestation(booking, userId);
+
             handshakeCompletedCounter.increment();
 
             // Record check-in duration
@@ -1094,7 +1106,7 @@ public class CheckInService {
      * Query uses composite index: idx_booking_checkin_window(status, check_in_session_id, start_time)
      */
     @Transactional(readOnly = true)
-    public List<Booking> findBookingsForCheckInWindowOpening(LocalDateTime startFrom, LocalDateTime startTo) {
+    public List<Booking> findBookingsForCheckInWindowOpening(Instant startFrom, Instant startTo) {
         return bookingRepository.findBookingsForCheckInWindowOpening(startFrom, startTo);
     }
 
@@ -1174,7 +1186,7 @@ public class CheckInService {
      * eliminating O(n) memory allocation from findAll().stream().
      */
     @Transactional(readOnly = true)
-    public List<Booking> findPotentialHostNoShows(BookingStatus status, LocalDateTime threshold) {
+    public List<Booking> findPotentialHostNoShows(BookingStatus status, Instant threshold) {
         return bookingRepository.findPotentialHostNoShows(status, threshold);
     }
 
@@ -1186,8 +1198,8 @@ public class CheckInService {
      * eliminating O(n) memory allocation from findAll().stream().
      */
     @Transactional(readOnly = true)
-    public List<Booking> findPotentialGuestNoShows(BookingStatus status, LocalDateTime threshold) {
-        Instant hostCompletedBefore = threshold.atZone(SERBIA_ZONE).toInstant();
+    public List<Booking> findPotentialGuestNoShows(BookingStatus status, Instant threshold) {
+        Instant hostCompletedBefore = threshold;
         return bookingRepository.findPotentialGuestNoShows(status, threshold, hostCompletedBefore);
     }
 
@@ -1395,7 +1407,10 @@ public class CheckInService {
         List<CheckInPhotoDTO> photos = null;
         // Only show photos to guest after host completes, or always to host
         if (isHost || booking.getStatus().ordinal() >= BookingStatus.CHECK_IN_HOST_COMPLETE.ordinal()) {
-            photos = photoRepository.findByBookingId(booking.getId()).stream()
+            String sessionId = booking.getCheckInSessionId();
+            photos = (sessionId == null || sessionId.isBlank()
+                ? Collections.<CheckInPhoto>emptyList()
+                : photoRepository.findByCheckInSessionId(sessionId)).stream()
                     .filter(p -> !p.isDeleted())
                     .map(this::mapToPhotoDTO)
                     .collect(Collectors.toList());

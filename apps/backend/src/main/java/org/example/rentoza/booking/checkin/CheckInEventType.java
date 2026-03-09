@@ -35,7 +35,17 @@ public enum CheckInEventType {
      * Metadata: {@code {"triggeredBy": "SCHEDULER", "bookingStartDate": "..."}}
      */
     CHECK_IN_OPENED,
-    
+
+    /**
+     * Check-in window force-opened by an admin outside the normal scheduling window.
+     * Distinct from {@link #CHECK_IN_OPENED} so admin overrides are queryable independently
+     * of scheduler-triggered opens — important for insurance and dispute audit trails.
+     *
+     * <p>Metadata: {@code {"requestingUserId": "123", "bookingStartTime": "...",
+     *                       "triggeredBy": "ADMIN_FORCE_OPEN"}}
+     */
+    ADMIN_WINDOW_FORCE_OPENED,
+
     /**
      * Reminder notification sent (T-12h or configurable).
      * Metadata: {@code {"channel": "PUSH|EMAIL", "recipient": "HOST|GUEST"}}

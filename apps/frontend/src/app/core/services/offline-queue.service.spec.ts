@@ -16,7 +16,7 @@ describe('offline queue validators', () => {
         photoIds: [1, 2, 3],
         hostLatitude: 44.8176,
         hostLongitude: 20.4633,
-      })
+      }),
     ).toBeTrue();
   });
 
@@ -27,7 +27,7 @@ describe('offline queue validators', () => {
         conditionAccepted: true,
         guestLatitude: '44.8',
         guestLongitude: 20.4633,
-      })
+      }),
     ).toBeFalse();
   });
 
@@ -41,7 +41,7 @@ describe('offline queue validators', () => {
         horizontalAccuracy: 12,
         platform: 'WEB',
         deviceFingerprint: 'device-123',
-      })
+      }),
     ).toBeTrue();
   });
 
@@ -51,14 +51,14 @@ describe('offline queue validators', () => {
         bookingId: 42,
         confirmed: true,
         platform: 'WEB',
-      })
+      }),
     ).toBeTrue();
 
     expect(
       isQueuedFormPayloadForType('HOST_CHECK_IN', {
         bookingId: 42,
         confirmed: true,
-      })
+      }),
     ).toBeFalse();
   });
 
@@ -74,7 +74,7 @@ describe('offline queue validators', () => {
         },
         retryCount: 0,
         createdAt: new Date().toISOString(),
-      })
+      }),
     ).toBeFalse();
   });
 });

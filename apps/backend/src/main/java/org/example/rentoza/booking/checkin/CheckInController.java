@@ -118,7 +118,7 @@ public class CheckInController {
             @RequestParam(value = "fields", required = false) String fields) {
         
         Long userId = currentUser.id();
-        log.info("[CheckIn] DIAGNOSTIC: Controller status request - bookingId={}, userId={}, fields={}", 
+        log.debug("[CheckIn] Status request: bookingId={}, userId={}, fields={}",
             bookingId, userId, fields);
         
         CheckInStatusDTO status = checkInService.getCheckInStatus(bookingId, userId);
@@ -176,15 +176,10 @@ public class CheckInController {
                     .build();
         }
 
-        log.info("[CheckIn] RAW UPLOAD REQUEST: bookingId={}, photoType={}", bookingId, photoType);
-        log.info("[CheckIn] RAW PARAM: clientTimestampStr='{}'", clientTimestampStr);
-        log.info("[CheckIn] RAW PARAM: clientLatitude={}", clientLatitude);
-        log.info("[CheckIn] RAW PARAM: clientLongitude={}", clientLongitude);
-        log.info("[CheckIn] RAW FILE: name={}, size={}, contentType={}",
+        log.debug("[CheckIn] Upload request: bookingId={}, userId={}, photoType={}, clientTimestamp='{}', lat={}, lon={}",
+            bookingId, userId, photoType, clientTimestampStr, clientLatitude, clientLongitude);
+        log.debug("[CheckIn] Upload file: name={}, size={}, contentType={}",
             file.getOriginalFilename(), file.getSize(), file.getContentType());
-
-        log.debug("[CheckIn] Photo upload for booking {} by user {}, type: {}, clientGPS: ({}, {})",
-            bookingId, userId, photoType, clientLatitude, clientLongitude);
 
         // Manual parsing of timestamp to avoid Spring multipart binding issues
         Instant clientTimestamp = null;

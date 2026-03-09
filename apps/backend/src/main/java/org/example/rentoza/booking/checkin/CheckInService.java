@@ -1133,13 +1133,14 @@ public class CheckInService {
         booking.setCheckInOpenedAt(java.time.Instant.now());
         booking.setStatus(BookingStatus.CHECK_IN_OPEN);
         
-        // Record audit event
+        // Record immutable audit event — distinct type so admin overrides are queryable
+        // independently of scheduler-triggered window opens
         eventService.recordSystemEvent(
             booking,
             sessionId,
-            CheckInEventType.CHECK_IN_OPENED,
+            CheckInEventType.ADMIN_WINDOW_FORCE_OPENED,
             java.util.Map.of(
-                "triggeredBy", "MANUAL_FORCE_OPEN",
+                "triggeredBy", "ADMIN_FORCE_OPEN",
                 "requestingUserId", requestingUserId.toString(),
                 "bookingStartTime", booking.getStartTime().toString()
             )

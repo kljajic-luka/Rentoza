@@ -239,6 +239,11 @@ public class InMemoryIdempotencyService implements IdempotencyStore {
     private String buildCacheKey(String idempotencyKey, Long userId, String scope) {
         String normalizedScope = normalizeScope(scope);
         if (normalizedScope == null) {
+            // Scope should be provided for all resource-scoped operations (e.g. booking endpoints).
+            // A missing scope produces a user-only key that is vulnerable to cross-resource replay.
+            // This is intentional only for non-resource admin operations (e.g. AdminCarController).
+            log.warn("[Idempotency] Building unscoped in-memory key for userId={} key={} — ensure this is an intentional non-resource-scoped call",
+                    userId, maskKey(idempotencyKey));
             return userId + ":" + idempotencyKey;
         }
         return userId + ":" + normalizedScope + ":" + idempotencyKey;

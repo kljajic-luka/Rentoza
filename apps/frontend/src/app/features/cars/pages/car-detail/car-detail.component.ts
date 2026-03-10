@@ -364,6 +364,7 @@ export class CarDetailComponent {
       width: '700px',
       maxWidth: '90vw',
       disableClose: false,
+      panelClass: ['booking-dialog-panel'],
     });
 
     dialogRef.afterClosed().subscribe((result: boolean | { bookingId: string }) => {

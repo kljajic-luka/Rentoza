@@ -1,4 +1,13 @@
+:host {
+  display: block;
+  min-height: 0;
+}
+
 .booking-dialog {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+
   h2[mat-dialog-title] {
     display: flex;
     align-items: center;
@@ -7,9 +16,12 @@
   }
 
   mat-dialog-content {
+    flex: 1 1 auto;
+    min-height: 0;
     padding: var(--space-3) 0;
     max-height: 70vh;
     overflow-y: auto;
+    overscroll-behavior: contain;
   }
 
   mat-dialog-actions {
@@ -19,6 +31,17 @@
       display: flex;
       align-items: center;
       gap: var(--space-1);
+    }
+  }
+}
+
+@media (max-width: 768px) {
+  .booking-dialog {
+    min-height: min(90vh, calc(100dvh - env(safe-area-inset-top, 0px)));
+
+    mat-dialog-content {
+      max-height: none;
+      padding: var(--space-3) 0 calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
     }
   }
 }

@@ -649,6 +649,43 @@ class TripExtensionServiceTest {
         }
     }
 
+        @Nested
+        @DisplayName("getExtensionsForBooking")
+        class GetExtensionsForBooking {
+
+                @Test
+                @DisplayName("17. returns empty list when booking has no extensions")
+                void get_extensions_for_booking_returns_empty_list_when_none_exist() {
+                        Booking booking = createTestBooking(BookingStatus.IN_TRIP);
+
+                        when(bookingRepository.findByIdWithRelations(BOOKING_ID))
+                                        .thenReturn(Optional.of(booking));
+                        when(extensionRepository.findByBookingIdOrderByCreatedAtDesc(BOOKING_ID))
+                                        .thenReturn(java.util.List.of());
+
+                        java.util.List<TripExtensionDTO> result = service.getExtensionsForBooking(BOOKING_ID, GUEST_USER_ID);
+
+                        assertThat(result).isEmpty();
+                        verify(extensionRepository).findByBookingIdOrderByCreatedAtDesc(BOOKING_ID);
+                        verify(bookingPaymentService, never()).findExtensionPaymentAction(anyLong(), anyLong());
+                }
+
+                @Test
+                @DisplayName("18. rejects access when caller is neither host nor guest")
+                void get_extensions_for_booking_rejects_unauthorized_user() {
+                        Booking booking = createTestBooking(BookingStatus.IN_TRIP);
+
+                        when(bookingRepository.findByIdWithRelations(BOOKING_ID))
+                                        .thenReturn(Optional.of(booking));
+
+                        assertThatThrownBy(() -> service.getExtensionsForBooking(BOOKING_ID, 999L))
+                                        .isInstanceOf(AccessDeniedException.class)
+                                        .hasMessageContaining("Nemate pristup ovoj rezervaciji");
+
+                        verify(extensionRepository, never()).findByBookingIdOrderByCreatedAtDesc(anyLong());
+                }
+        }
+
     // ========== HELPER METHODS ==========
 
     /**

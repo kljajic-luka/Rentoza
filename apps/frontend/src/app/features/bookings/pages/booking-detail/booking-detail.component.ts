@@ -1101,6 +1101,88 @@ import {
       .agreement-pending-state p:last-child {
         margin-bottom: 0;
       }
+
+      :host-context(.theme-dark) .payment-status-card h4,
+      :host-context(.theme-dark) .deposit-status-card h4,
+      :host-context(.theme-dark) .extension-card h4,
+      :host-context(.theme-dark) .agreement-card h4,
+      :host-context(.theme-dark) .extension-summary-label,
+      :host-context(.theme-dark) .extension-history-title,
+      :host-context(.theme-dark) .extension-meta-label,
+      :host-context(.theme-dark) .extension-history-subtitle,
+      :host-context(.theme-dark) .terms-label {
+        color: rgba(255, 255, 255, 0.68);
+      }
+
+      :host-context(.theme-dark) .status-color--success,
+      :host-context(.theme-dark) .extension-status-approved,
+      :host-context(.theme-dark) .agreement-accepted-banner {
+        background: rgba(46, 125, 50, 0.2) !important;
+        color: #81c784 !important;
+      }
+
+      :host-context(.theme-dark) .status-color--info,
+      :host-context(.theme-dark) .license-plate {
+        background: rgba(21, 101, 192, 0.22);
+        color: #90caf9;
+      }
+
+      :host-context(.theme-dark) .status-color--warn,
+      :host-context(.theme-dark) .extension-status-pending,
+      :host-context(.theme-dark) .extension-status-payment_pending,
+      :host-context(.theme-dark) .agreement-card--pending {
+        background: rgba(230, 81, 0, 0.18) !important;
+        color: #ffb74d !important;
+        border-color: rgba(255, 183, 77, 0.35);
+      }
+
+      :host-context(.theme-dark) .status-color--error,
+      :host-context(.theme-dark) .extension-status-declined,
+      :host-context(.theme-dark) .extension-status-cancelled,
+      :host-context(.theme-dark) .extension-status-expired {
+        background: rgba(198, 40, 40, 0.2) !important;
+        color: #ef9a9a !important;
+      }
+
+      :host-context(.theme-dark) .status-color--neutral {
+        background: rgba(255, 255, 255, 0.08);
+        color: rgba(255, 255, 255, 0.82);
+      }
+
+      :host-context(.theme-dark) .status-action-hint,
+      :host-context(.theme-dark) .agreement-context-header,
+      :host-context(.theme-dark) .agreement-pending-state mat-icon {
+        color: #ffb74d;
+      }
+
+      :host-context(.theme-dark) .extension-panel {
+        border-color: rgba(255, 255, 255, 0.08);
+      }
+
+      :host-context(.theme-dark) .extension-panel--pending,
+      :host-context(.theme-dark) .agreement-terms {
+        background: rgba(255, 255, 255, 0.05);
+      }
+
+      :host-context(.theme-dark) .agreement-context {
+        background: rgba(255, 193, 7, 0.12);
+        border-color: rgba(255, 213, 79, 0.28);
+      }
+
+      :host-context(.theme-dark) .extension-note,
+      :host-context(.theme-dark) .extension-response,
+      :host-context(.theme-dark) .agreement-context p,
+      :host-context(.theme-dark) .agreement-pending-state {
+        color: rgba(255, 255, 255, 0.82);
+      }
+
+      :host-context(.theme-dark) .agreement-party mat-icon {
+        color: rgba(255, 255, 255, 0.38);
+      }
+
+      :host-context(.theme-dark) .agreement-party mat-icon.accepted {
+        color: #81c784;
+      }
     `,
   ],
 })
@@ -1292,7 +1374,12 @@ export class BookingDetailComponent implements OnInit {
         this.booking.set(booking);
         this.isLoading.set(false);
         this.loadAgreement(booking.id);
-        this.loadExtensions(booking.id);
+        if (this.shouldLoadExtensions(booking.status)) {
+          this.loadExtensions(booking.id);
+        } else {
+          this.extensions.set([]);
+          this.pendingExtension.set(null);
+        }
       },
       error: (err) => {
         this.error.set(err.error?.message || 'Nije moguće učitati rezervaciju');
@@ -1309,6 +1396,10 @@ export class BookingDetailComponent implements OnInit {
         this.agreement.set(null);
       },
     });
+  }
+
+  private shouldLoadExtensions(status: BookingDetails['status']): boolean {
+    return ['ACTIVE', 'IN_TRIP', 'CHECKOUT_OPEN'].includes(status);
   }
 
   loadExtensions(bookingId: number): void {

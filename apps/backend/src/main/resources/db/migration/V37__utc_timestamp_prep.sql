@@ -19,108 +19,18 @@
 -- 
 -- ============================================================================
 
--- ============================================================================
--- BOOKINGS TABLE - Core trip start/end times
--- ============================================================================
+-- PostgreSQL-safe note:
+-- Later migration V97 owns bookings.start_time_utc/end_time_utc creation and
+-- backfill. This migration therefore only keeps the trip_extensions UTC prep
+-- that does not conflict with the later canonical UTC rollout.
 
--- Add UTC equivalent columns (nullable for transition period)
-ALTER TABLE bookings 
-    ADD COLUMN start_time_utc TIMESTAMP NULL COMMENT 'Trip start in UTC (Phase 1 prep)',
-    ADD COLUMN end_time_utc TIMESTAMP NULL COMMENT 'Trip end in UTC (Phase 1 prep)';
+ALTER TABLE IF EXISTS trip_extensions
+    ADD COLUMN IF NOT EXISTS requested_end_date_utc TIMESTAMP WITH TIME ZONE NULL;
 
--- Add index for UTC columns (will be used after migration)
-CREATE INDEX idx_bookings_start_time_utc ON bookings(start_time_utc);
-CREATE INDEX idx_bookings_end_time_utc ON bookings(end_time_utc);
+COMMENT ON COLUMN trip_extensions.requested_end_date_utc IS
+    'Requested new end date in UTC (legacy prep column; canonical booking UTC columns arrive in V97)';
 
--- ============================================================================
--- TRIP_EXTENSIONS TABLE - Extension deadline tracking
--- ============================================================================
-
--- Add UTC column for response deadline
--- Note: response_deadline is already Instant (UTC) in Java, but let's ensure DB alignment
-ALTER TABLE trip_extensions 
-    ADD COLUMN requested_end_date_utc TIMESTAMP NULL COMMENT 'Requested new end date in UTC';
-
--- ============================================================================
--- MIGRATION TRIGGER (Optional - for automated dual-write)
--- ============================================================================
--- 
--- This trigger automatically populates UTC columns when old columns are updated.
--- Assumes Europe/Belgrade timezone (Serbia).
--- 
--- NOTE: This is a SAFETY NET. Application should write both columns directly.
--- Trigger ensures consistency if legacy code path misses UTC column.
--- 
--- ============================================================================
-
-DELIMITER //
-
-CREATE TRIGGER trg_booking_utc_sync_insert
-BEFORE INSERT ON bookings
-FOR EACH ROW
-BEGIN
-    -- If UTC columns not provided, convert from local time
-    -- Assumes start_time/end_time are in Europe/Belgrade
-    -- MySQL CONVERT_TZ handles DST automatically
-    IF NEW.start_time_utc IS NULL AND NEW.start_time IS NOT NULL THEN
-        SET NEW.start_time_utc = CONVERT_TZ(NEW.start_time, 'Europe/Belgrade', 'UTC');
-    END IF;
-    
-    IF NEW.end_time_utc IS NULL AND NEW.end_time IS NOT NULL THEN
-        SET NEW.end_time_utc = CONVERT_TZ(NEW.end_time, 'Europe/Belgrade', 'UTC');
-    END IF;
-END //
-
-CREATE TRIGGER trg_booking_utc_sync_update
-BEFORE UPDATE ON bookings
-FOR EACH ROW
-BEGIN
-    -- Sync UTC columns on update if local time changed
-    IF NEW.start_time <> OLD.start_time OR OLD.start_time_utc IS NULL THEN
-        SET NEW.start_time_utc = CONVERT_TZ(NEW.start_time, 'Europe/Belgrade', 'UTC');
-    END IF;
-    
-    IF NEW.end_time <> OLD.end_time OR OLD.end_time_utc IS NULL THEN
-        SET NEW.end_time_utc = CONVERT_TZ(NEW.end_time, 'Europe/Belgrade', 'UTC');
-    END IF;
-END //
-
-DELIMITER ;
-
--- ============================================================================
--- BACKFILL EXISTING DATA (One-time migration)
--- ============================================================================
--- 
--- Convert existing local times to UTC.
--- IMPORTANT: Run during low-traffic period.
--- 
--- ============================================================================
-
-UPDATE bookings 
-SET start_time_utc = CONVERT_TZ(start_time, 'Europe/Belgrade', 'UTC'),
-    end_time_utc = CONVERT_TZ(end_time, 'Europe/Belgrade', 'UTC')
-WHERE start_time_utc IS NULL;
-
--- Verify conversion (should return 0 rows after backfill)
--- SELECT COUNT(*) FROM bookings WHERE start_time_utc IS NULL AND start_time IS NOT NULL;
-
--- ============================================================================
--- MONITORING QUERY (For post-migration validation)
--- ============================================================================
--- 
--- Run this query daily for 1 week to verify dual-write consistency:
--- 
--- SELECT 
---     id,
---     start_time,
---     start_time_utc,
---     CONVERT_TZ(start_time, 'Europe/Belgrade', 'UTC') AS expected_utc,
---     CASE 
---         WHEN start_time_utc = CONVERT_TZ(start_time, 'Europe/Belgrade', 'UTC') THEN 'OK'
---         ELSE 'MISMATCH'
---     END AS status
--- FROM bookings
--- WHERE updated_at > DATE_SUB(NOW(), INTERVAL 1 DAY)
--- HAVING status = 'MISMATCH';
--- 
--- ============================================================================
+UPDATE trip_extensions
+SET requested_end_date_utc = (requested_end_date::timestamp AT TIME ZONE 'Europe/Belgrade')
+WHERE requested_end_date_utc IS NULL
+  AND requested_end_date IS NOT NULL;

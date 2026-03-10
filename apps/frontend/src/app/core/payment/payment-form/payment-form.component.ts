@@ -108,8 +108,11 @@ type RuntimePaymentMode = 'MOCK' | 'MONRI';
         padding: 14px 16px;
         transition: border-color 200ms ease;
         min-height: 48px;
+        width: 100%;
         display: flex;
         align-items: center;
+        overflow: hidden;
+        background: var(--color-surface, transparent);
 
         &:hover {
           border-color: rgba(0, 0, 0, 0.87);
@@ -127,8 +130,10 @@ type RuntimePaymentMode = 'MOCK' | 'MONRI';
       }
 
       .payment-form__card-element {
+        display: block;
         width: 100%;
         min-height: 24px;
+        background: transparent;
 
         &.hidden {
           display: none;
@@ -160,6 +165,31 @@ type RuntimePaymentMode = 'MOCK' | 'MONRI';
         &--init {
           color: #e65100;
         }
+      }
+
+      :host-context(.theme-dark) .payment-form__label {
+        color: rgba(255, 255, 255, 0.78);
+      }
+
+      :host-context(.theme-dark) .payment-form__card-container {
+        border-color: rgba(255, 255, 255, 0.2);
+        background: rgba(255, 255, 255, 0.04);
+
+        &:hover {
+          border-color: rgba(255, 255, 255, 0.56);
+        }
+
+        &:focus-within {
+          border-color: var(--brand-primary, #593cfb);
+        }
+      }
+
+      :host-context(.theme-dark) .payment-form__loading {
+        color: rgba(255, 255, 255, 0.65);
+      }
+
+      :host-context(.theme-dark) .payment-form__error--init {
+        color: #ffb74d;
       }
     `,
   ],

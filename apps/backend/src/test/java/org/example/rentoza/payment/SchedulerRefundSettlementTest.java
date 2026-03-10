@@ -30,6 +30,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -88,6 +89,15 @@ class SchedulerRefundSettlementTest {
                 new SimpleMeterRegistry()
         );
         ReflectionTestUtils.setField(processor, "refundRetryBackoffMinutes", 60);
+    }
+
+    /**
+     * Stub the re-fetch that processRefundSafely performs inside its REQUIRES_NEW
+     * transaction. Returns the same object reference so test assertions hold.
+     */
+    private void stubRefetch(CancellationRecord record) {
+        when(cancellationRecordRepository.findByIdWithFullDetails(record.getId()))
+                .thenReturn(Optional.of(record));
     }
 
     /**
@@ -157,6 +167,7 @@ class SchedulerRefundSettlementTest {
 
             when(cancellationRecordRepository.save(any(CancellationRecord.class)))
                     .thenAnswer(inv -> inv.getArgument(0));
+            stubRefetch(record);
 
             // Act
             processor.processRefundSafely(record);
@@ -191,6 +202,7 @@ class SchedulerRefundSettlementTest {
 
             when(cancellationRecordRepository.save(any()))
                     .thenAnswer(inv -> inv.getArgument(0));
+            stubRefetch(record);
 
             // Act
             processor.processRefundSafely(record);
@@ -223,6 +235,7 @@ class SchedulerRefundSettlementTest {
                             .success(true)
                             .status(PaymentStatus.SUCCESS)
                             .build());
+            stubRefetch(record);
 
             // Act
             processor.processRefundSafely(record);
@@ -267,6 +280,7 @@ class SchedulerRefundSettlementTest {
 
             when(cancellationRecordRepository.save(any()))
                     .thenAnswer(inv -> inv.getArgument(0));
+            stubRefetch(record);
 
             // Act
             processor.processRefundSafely(record);
@@ -302,6 +316,7 @@ class SchedulerRefundSettlementTest {
 
             when(cancellationRecordRepository.save(any()))
                     .thenAnswer(inv -> inv.getArgument(0));
+            stubRefetch(record);
 
             // Act
             processor.processRefundSafely(record);
@@ -337,6 +352,7 @@ class SchedulerRefundSettlementTest {
 
             when(cancellationRecordRepository.save(any()))
                     .thenAnswer(inv -> inv.getArgument(0));
+            stubRefetch(record);
 
             // Act
             processor.processRefundSafely(record);
@@ -367,6 +383,7 @@ class SchedulerRefundSettlementTest {
 
             when(cancellationRecordRepository.save(any()))
                     .thenAnswer(inv -> inv.getArgument(0));
+            stubRefetch(record);
 
             // Act
             processor.processRefundSafely(record);
@@ -401,6 +418,7 @@ class SchedulerRefundSettlementTest {
 
             when(cancellationRecordRepository.save(any()))
                     .thenAnswer(inv -> inv.getArgument(0));
+            stubRefetch(record);
 
             // Act
             processor.processRefundSafely(record);

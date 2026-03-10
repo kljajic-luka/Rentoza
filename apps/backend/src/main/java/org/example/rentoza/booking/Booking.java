@@ -1026,20 +1026,23 @@ public class Booking {
      * Canonical UTC source-of-truth for start time during transition.
      */
     public Instant getCanonicalStartTimeUtc() {
-        if (startTimeUtc != null) {
-            return startTimeUtc;
+        // Always derive from startTime so that direct DB edits (Supabase, migrations,
+        // admin patches) to start_time are reflected immediately without requiring
+        // start_time_utc to be kept in sync at the DB level.
+        if (startTime != null) {
+            return SerbiaTimeZone.toInstant(startTime);
         }
-        return SerbiaTimeZone.toInstant(startTime);
+        return startTimeUtc;
     }
 
     /**
      * Canonical UTC source-of-truth for end time during transition.
      */
     public Instant getCanonicalEndTimeUtc() {
-        if (endTimeUtc != null) {
-            return endTimeUtc;
+        if (endTime != null) {
+            return SerbiaTimeZone.toInstant(endTime);
         }
-        return SerbiaTimeZone.toInstant(endTime);
+        return endTimeUtc;
     }
 
     public void setStartTime(LocalDateTime startTime) {

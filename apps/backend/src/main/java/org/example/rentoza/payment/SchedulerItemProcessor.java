@@ -400,8 +400,19 @@ public class SchedulerItemProcessor {
      * Handles PENDING + FAILED (retry) + stale PROCESSING records.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void processRefundSafely(CancellationRecord record) {
-        Long bookingId = record.getBooking().getId();
+    public void processRefundSafely(CancellationRecord detachedRecord) {
+        // Re-fetch inside this transaction to get a managed entity with initializable
+        // lazy proxies. The caller's persistence context is closed by the time we run,
+        // so the detachedRecord's LAZY booking proxy would throw LazyInitializationException.
+        CancellationRecord record = cancellationRecordRepository.findByIdWithFullDetails(detachedRecord.getId())
+                .orElse(null);
+        if (record == null) {
+            log.warn("[SchedulerProcessor] CancellationRecord {} no longer exists, skipping", detachedRecord.getId());
+            return;
+        }
+
+        Booking booking = record.getBooking();
+        Long bookingId = booking.getId();
         BigDecimal refundAmount = record.getRefundToGuest();
         int attempt = record.getRetryCount() + 1;
 
@@ -421,8 +432,8 @@ public class SchedulerItemProcessor {
             if (exhausted) {
                 record.setRefundStatus(RefundStatus.MANUAL_REVIEW);
                 record.setNextRetryAt(null);
-                record.getBooking().setStatus(BookingStatus.REFUND_FAILED);
-                bookingRepository.save(record.getBooking());
+                booking.setStatus(BookingStatus.REFUND_FAILED);
+                bookingRepository.save(booking);
                 refundManualReviewCounter.increment();
                 log.error("[ALERT][MANUAL_REVIEW] Refund ESCALATED to MANUAL_REVIEW for booking {} after {} attempts: {}. "
                         + "Runbook: https://wiki.internal/runbooks/refund-manual-review",
@@ -437,8 +448,8 @@ public class SchedulerItemProcessor {
         }
 
         if (result.isSuccess()) {
-            record.getBooking().setStatus(BookingStatus.CANCELLED);
-            bookingRepository.save(record.getBooking());
+            booking.setStatus(BookingStatus.CANCELLED);
+            bookingRepository.save(booking);
             record.setRefundStatus(RefundStatus.COMPLETED);
             record.setRetryCount(attempt);
             cancellationRecordRepository.save(record);
@@ -446,7 +457,6 @@ public class SchedulerItemProcessor {
                     bookingId, refundAmount, attempt);
 
             try {
-                Booking booking = record.getBooking();
                 if (booking.getRenter() != null) {
                     notificationService.createNotification(CreateNotificationRequestDTO.builder()
                             .recipientId(booking.getRenter().getId())
@@ -468,8 +478,8 @@ public class SchedulerItemProcessor {
             if (exhausted) {
                 record.setRefundStatus(RefundStatus.MANUAL_REVIEW);
                 record.setNextRetryAt(null);
-                record.getBooking().setStatus(BookingStatus.REFUND_FAILED);
-                bookingRepository.save(record.getBooking());
+                booking.setStatus(BookingStatus.REFUND_FAILED);
+                bookingRepository.save(booking);
                 refundManualReviewCounter.increment();
                 log.error("[ALERT][MANUAL_REVIEW] Refund ESCALATED to MANUAL_REVIEW for booking {} after {} attempts: {}. "
                         + "Runbook: https://wiki.internal/runbooks/refund-manual-review",

@@ -671,11 +671,11 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
            "LEFT JOIN FETCH c.owner " +
            "WHERE b.status = 'ACTIVE' " +
            "AND b.checkInSessionId IS NULL " +
-          "AND b.startTimeUtc >= :startFrom " +
-          "AND b.startTimeUtc <= :startTo")
+           "AND b.startTime >= :startFrom " +
+           "AND b.startTime <= :startTo")
     List<Booking> findBookingsForCheckInWindowOpening(
-           @Param("startFrom") Instant startFrom,
-           @Param("startTo") Instant startTo
+           @Param("startFrom") LocalDateTime startFrom,
+           @Param("startTo") LocalDateTime startTo
     );
 
     /**
@@ -993,6 +993,17 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
            "JOIN FETCH b.car c " +
            "WHERE b.status IN :statuses")
     List<Booking> findByStatusIn(@Param("statuses") List<BookingStatus> statuses);
+
+    /**
+     * Find bookings with multiple statuses, eagerly fetching car, renter, and car owner.
+     * Used by scheduled backfill jobs that pass detached entities across transaction boundaries.
+     */
+    @Query("SELECT b FROM Booking b " +
+           "JOIN FETCH b.car c " +
+           "JOIN FETCH b.renter r " +
+           "LEFT JOIN FETCH c.owner o " +
+           "WHERE b.status IN :statuses")
+    List<Booking> findByStatusInWithRelations(@Param("statuses") List<BookingStatus> statuses);
     
     /**
      * Find bookings by status and updated between dates (for analytics).

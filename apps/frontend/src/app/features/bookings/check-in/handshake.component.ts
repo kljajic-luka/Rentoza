@@ -33,6 +33,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 
 import { CheckInService } from '../../../core/services/check-in.service';
+import { BookingService, RentalAgreementDTO } from '../../../core/services/booking.service';
 import { GeolocationService } from '../../../core/services/geolocation.service';
 import { CheckInStatusDTO } from '../../../core/models/check-in.model';
 
@@ -194,9 +195,87 @@ import { CheckInStatusDTO } from '../../../core/models/check-in.model';
         </mat-card>
       }
 
+      <!-- Rental Agreement Gate -->
+      @if (agreementNeeded()) {
+        <mat-card class="agreement-gate-card">
+          <mat-card-content>
+            <div class="agreement-gate-header">
+              <mat-icon>gavel</mat-icon>
+              <h3>Ugovor o iznajmljivanju</h3>
+            </div>
+            <p class="agreement-gate-desc">
+              Pre potvrde primopredaje, morate prihvatiti ugovor o iznajmljivanju za ovu vožnju.
+            </p>
+
+            @if (agreement()?.termsSnapshot) {
+              <div class="agreement-gate-terms">
+                <div class="terms-row">
+                  <span class="terms-key">Ukupna cena:</span>
+                  <span>{{ agreement()?.termsSnapshot?.['totalPrice'] }} RSD</span>
+                </div>
+                @if (agreement()?.termsSnapshot?.['securityDeposit']) {
+                  <div class="terms-row">
+                    <span class="terms-key">Depozit:</span>
+                    <span>{{ agreement()?.termsSnapshot?.['securityDeposit'] }} RSD</span>
+                  </div>
+                }
+                <div class="terms-row">
+                  <span class="terms-key">Osiguranje:</span>
+                  <span>{{ agreement()?.termsSnapshot?.['insuranceType'] || 'Osnovno' }}</span>
+                </div>
+              </div>
+            }
+
+            @if (agreement()?.vehicleSnapshot) {
+              <div class="terms-row">
+                <span class="terms-key">Vozilo:</span>
+                <span>{{ agreement()?.vehicleSnapshot?.['brand'] }} {{ agreement()?.vehicleSnapshot?.['model'] }}
+                  ({{ agreement()?.vehicleSnapshot?.['year'] }})</span>
+              </div>
+            }
+
+            <mat-divider></mat-divider>
+
+            <mat-checkbox
+              [checked]="agreementCheckboxChecked()"
+              (change)="agreementCheckboxChecked.set($event.checked)"
+              color="primary"
+              class="agreement-gate-checkbox"
+            >
+              Pročitao/la sam i prihvatam uslove ugovora za ovu vožnju
+            </mat-checkbox>
+
+            <button
+              mat-raised-button
+              color="primary"
+              [disabled]="!agreementCheckboxChecked() || isAcceptingAgreement()"
+              (click)="acceptAgreementInline()"
+              class="agreement-gate-btn"
+            >
+              @if (isAcceptingAgreement()) {
+                <mat-spinner diameter="20"></mat-spinner>
+              } @else {
+                <ng-container>
+                  <mat-icon>gavel</mat-icon>
+                  Prihvatam ugovor
+                </ng-container>
+              }
+            </button>
+          </mat-card-content>
+        </mat-card>
+      }
+
+      @if (agreement()?.status === 'FULLY_ACCEPTED') {
+        <div class="agreement-accepted-inline">
+          <mat-icon>verified</mat-icon>
+          <span>Ugovor prihvaćen od obe strane</span>
+        </div>
+      }
+
       <!-- Swipe to confirm -->
       <div
         class="swipe-container"
+        [class.disabled]="agreementNeeded()"
         (touchstart)="onTouchStart($event)"
         (touchmove)="onTouchMove($event)"
         (touchend)="onTouchEnd()"
@@ -559,6 +638,81 @@ import { CheckInStatusDTO } from '../../../core/models/check-in.model';
         font-size: 12px;
       }
 
+      /* Agreement Gate */
+      .agreement-gate-card {
+        width: 100%;
+        border: 2px solid var(--warning-color, #ff9800);
+        background: rgba(255, 152, 0, 0.05);
+      }
+
+      .agreement-gate-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+
+      .agreement-gate-header mat-icon {
+        color: var(--warning-color, #ff9800);
+      }
+
+      .agreement-gate-header h3 {
+        margin: 0;
+        font-size: 16px;
+      }
+
+      .agreement-gate-desc {
+        font-size: 13px;
+        color: var(--color-text-muted, #757575);
+        margin: 0 0 12px;
+      }
+
+      .agreement-gate-terms {
+        background: var(--color-surface, #ffffff);
+        border-radius: 8px;
+        padding: 12px;
+        margin-bottom: 12px;
+      }
+
+      .terms-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 4px 0;
+        font-size: 13px;
+      }
+
+      .terms-key {
+        color: var(--color-text-muted, #757575);
+      }
+
+      .agreement-gate-checkbox {
+        margin: 12px 0;
+      }
+
+      .agreement-gate-btn {
+        width: 100%;
+        margin-top: 8px;
+      }
+
+      .agreement-accepted-inline {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 16px;
+        background: rgba(76, 175, 80, 0.1);
+        border-radius: 8px;
+        color: var(--success-color, #4caf50);
+        font-size: 13px;
+        font-weight: 500;
+        width: 100%;
+        box-sizing: border-box;
+      }
+
+      .swipe-container.disabled {
+        opacity: 0.4;
+        pointer-events: none;
+      }
+
       /* Geofence Distance Badge */
       .geofence-badge {
         display: flex;
@@ -641,6 +795,7 @@ export class HandshakeComponent implements OnInit, OnDestroy {
 
   private snackBar = inject(MatSnackBar);
   checkInService = inject(CheckInService);
+  private bookingService = inject(BookingService);
   private geolocationService = inject(GeolocationService);
 
   // Geofence threshold in meters (50m = Turo standard)
@@ -654,6 +809,18 @@ export class HandshakeComponent implements OnInit, OnDestroy {
   private _licenseVerificationConfirmed = signal(false);
   private startX = 0;
   private maxSwipe = 0;
+
+  // Rental agreement state
+  agreement = signal<RentalAgreementDTO | null>(null);
+  agreementCheckboxChecked = signal(false);
+  isAcceptingAgreement = signal(false);
+
+  /** True when the current user still needs to accept the agreement. */
+  agreementNeeded = computed(() => {
+    const a = this.agreement();
+    if (!a) return false; // No agreement record → legacy booking, don't block
+    return a.status !== 'FULLY_ACCEPTED';
+  });
 
   swipeProgress = this._swipeProgress.asReadonly();
   isSwiping = this._isSwiping.asReadonly();
@@ -712,6 +879,11 @@ export class HandshakeComponent implements OnInit, OnDestroy {
   });
 
   canConfirm = computed(() => {
+    // Block if rental agreement not yet accepted by both parties
+    if (this.agreementNeeded()) {
+      return false;
+    }
+
     // Phase 4B: Block confirmation if license verification is required but not done
     if (
       this.status?.host &&
@@ -975,10 +1147,52 @@ export class HandshakeComponent implements OnInit, OnDestroy {
     // Start polling for other party's confirmation
     if (this.bookingId) {
       this.checkInService.startPolling(this.bookingId, 5000);
+      this.loadAgreement();
     }
   }
 
   ngOnDestroy(): void {
     this.checkInService.stopPolling();
+  }
+
+  // =========================================================================
+  // Rental Agreement Gate
+  // =========================================================================
+
+  private loadAgreement(): void {
+    this.bookingService.getAgreement(this.bookingId).subscribe({
+      next: (a) => this.agreement.set(a),
+      error: () => this.agreement.set(null), // Legacy booking — no agreement record
+    });
+  }
+
+  acceptAgreementInline(): void {
+    this.isAcceptingAgreement.set(true);
+    this.bookingService.acceptAgreement(this.bookingId).subscribe({
+      next: (updated) => {
+        this.agreement.set(updated);
+        this.isAcceptingAgreement.set(false);
+        this.agreementCheckboxChecked.set(false);
+
+        if (updated.status === 'FULLY_ACCEPTED') {
+          this.snackBar.open('Ugovor prihvaćen od obe strane', 'OK', {
+            duration: 3000,
+            panelClass: 'success-snackbar',
+          });
+        } else {
+          this.snackBar.open(
+            'Vaše prihvatanje je zabeleženo. Čekamo drugu stranu.',
+            'OK',
+            { duration: 4000 },
+          );
+        }
+      },
+      error: (err) => {
+        this.isAcceptingAgreement.set(false);
+        const message =
+          err.error?.message || 'Prihvatanje ugovora nije uspelo. Pokušajte ponovo.';
+        this.snackBar.open(message, 'Zatvori', { duration: 5000 });
+      },
+    });
   }
 }

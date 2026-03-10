@@ -336,6 +336,9 @@
                         --add-opens java.base/java.lang.reflect=ALL-UNNAMED
                         --add-opens java.base/java.util=ALL-UNNAMED
                     </argLine>
+                    <environmentVariables>
+                        <PII_ENCRYPTION_KEY>SecretKeyToEncryptPIIData1234567</PII_ENCRYPTION_KEY>
+                    </environmentVariables>
                     <includes>
                         <include>**/*Test.java</include>
                         <include>**/*Tests.java</include>

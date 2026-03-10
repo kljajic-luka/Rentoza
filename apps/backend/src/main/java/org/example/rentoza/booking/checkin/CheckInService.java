@@ -1106,7 +1106,7 @@ public class CheckInService {
      * Query uses composite index: idx_booking_checkin_window(status, check_in_session_id, start_time)
      */
     @Transactional(readOnly = true)
-    public List<Booking> findBookingsForCheckInWindowOpening(Instant startFrom, Instant startTo) {
+    public List<Booking> findBookingsForCheckInWindowOpening(LocalDateTime startFrom, LocalDateTime startTo) {
         return bookingRepository.findBookingsForCheckInWindowOpening(startFrom, startTo);
     }
 

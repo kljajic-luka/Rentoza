@@ -1230,6 +1230,16 @@ public class BookingPaymentService {
             return PaymentResult.builder().success(true).amount(BigDecimal.ZERO).status(PaymentStatus.SUCCESS).build();
         }
 
+        if (lifecycle == ChargeLifecycleStatus.RELEASE_FAILED || lifecycle == ChargeLifecycleStatus.CAPTURE_FAILED) {
+            log.error("[Payment] Booking {} in terminal failure state {} — cannot settle via automated path. "
+                    + "Escalating to manual review.", bookingId, lifecycle);
+            return PaymentResult.builder()
+                    .success(false)
+                    .status(PaymentStatus.FAILED)
+                    .errorMessage("Booking in " + lifecycle + " state — requires manual review")
+                    .build();
+        }
+
         log.warn("[Payment] Unexpected lifecycle {} for booking {} cancellation settlement", lifecycle, bookingId);
         return processRefund(bookingId, refundAmount, reason);
     }

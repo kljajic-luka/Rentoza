@@ -41,7 +41,7 @@ public class RentalAgreementBackfillService {
     public BackfillResult backfillAgreements() {
         log.info("[Backfill] Starting rental agreement backfill...");
 
-        List<Booking> activeBookings = bookingRepository.findByStatusIn(
+        List<Booking> activeBookings = bookingRepository.findByStatusInWithRelations(
                 BACKFILL_ELIGIBLE_STATUSES.stream().toList());
 
         if (activeBookings.isEmpty()) {

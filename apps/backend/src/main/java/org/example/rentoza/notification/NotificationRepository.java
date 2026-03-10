@@ -46,7 +46,7 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
         * Used by scheduled cleanup task to retain evidence while hiding expired rows.
      */
     @Modifying
-        @Query("UPDATE Notification n SET n.deletedAt = CURRENT_TIMESTAMP WHERE n.createdAt < :expirationDate AND n.deletedAt IS NULL")
+        @Query("UPDATE Notification n SET n.deletedAt = :expirationDate WHERE n.createdAt < :expirationDate AND n.deletedAt IS NULL")
         int softDeleteExpiredNotifications(@Param("expirationDate") Instant expirationDate);
 
     /**

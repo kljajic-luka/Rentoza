@@ -230,8 +230,8 @@ export class FinancialDashboardComponent implements OnInit {
       .subscribe({
         next: (result) => {
           const message = dryRun
-            ? `Validation complete: ${result.successCount} valid, ${result.failureCount} invalid`
-            : `Processed: ${result.successCount} success, ${result.failureCount} failed`;
+            ? `Validation complete: ${result.queuedCount} valid, ${result.failureCount} invalid`
+            : `Processed: ${result.queuedCount} success, ${result.failureCount} failed`;
 
           this.notification.showSuccess(message);
 

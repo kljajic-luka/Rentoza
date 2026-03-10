@@ -97,13 +97,10 @@ public class CheckInEventService {
         );
         
         event = eventRepository.save(event);
-        
-        log.info("[Audit] Event recorded: booking={}, type={}, actor={}/{}, session={}", 
+
+        log.info("[Audit] Event recorded: booking={}, type={}, actor={}/{}, session={}",
             booking.getId(), eventType, actorRole, actorId, sessionId);
-        
-        // Add event to booking's collection for in-memory access
-        booking.getCheckInEvents().add(event);
-        
+
         return event;
     }
 
@@ -133,12 +130,10 @@ public class CheckInEventService {
         
         CheckInEvent event = CheckInEvent.createSystemEvent(booking, sessionId, eventType, metadata);
         event = eventRepository.save(event);
-        
-        log.info("[Audit] System event recorded: booking={}, type={}, session={}", 
+
+        log.info("[Audit] System event recorded: booking={}, type={}, session={}",
             booking.getId(), eventType, sessionId);
-        
-        booking.getCheckInEvents().add(event);
-        
+
         return event;
     }
 

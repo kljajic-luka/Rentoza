@@ -207,16 +207,16 @@ public class CheckInScheduler {
         
         try {
             // Find bookings starting within configured window (default: 1 hour before trip)
-            // Uses exact timestamps for precise timing detection
-            // +15 min catch-up buffer matches cron interval so bookings are never missed
-            // if the scheduler fires slightly late, without opening windows hours early
-            Instant windowStart = now.atZone(SERBIA_ZONE).toInstant(); // Open window now
-            Instant windowEnd = now.plusHours(windowHoursBeforeTrip).plusMinutes(15).atZone(SERBIA_ZONE).toInstant(); // window + cron catch-up
-            
+            // Uses start_time (Belgrade-local LocalDateTime) — always reliable, even when
+            // start_time_utc is stale due to direct Supabase edits bypassing JPA setters.
+            // +15 min catch-up buffer matches cron interval so bookings are never missed.
+            LocalDateTime windowStart = now; // Belgrade local — now
+            LocalDateTime windowEnd = now.plusHours(windowHoursBeforeTrip).plusMinutes(15); // window + cron catch-up
+
             // DIAGNOSTIC LOGGING: Help trace PostgreSQL timestamp issues
             log.info("[CheckIn] Query parameters: timezone={}, windowStart={}, windowEnd={}, hoursBeforeTrip={}",
                 SERBIA_ZONE, windowStart, windowEnd, windowHoursBeforeTrip);
-            
+
             List<Booking> eligibleBookings = checkInService.findBookingsForCheckInWindowOpening(windowStart, windowEnd);
             
             // DIAGNOSTIC LOGGING: Show what was found

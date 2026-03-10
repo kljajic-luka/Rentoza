@@ -201,7 +201,7 @@ public class CheckInQueryService {
      * @return Bookings ready for check-in window
      */
     @Transactional(readOnly = true)
-    public List<Booking> findBookingsForCheckInWindowOpening(Instant startFrom, Instant startTo) {
+    public List<Booking> findBookingsForCheckInWindowOpening(LocalDateTime startFrom, LocalDateTime startTo) {
         return bookingRepository.findBookingsForCheckInWindowOpening(startFrom, startTo);
     }
 

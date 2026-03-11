@@ -13,6 +13,7 @@ import org.example.rentoza.storage.SupabaseStorageService;
 import org.example.rentoza.user.User;
 import org.example.rentoza.user.UserRepository;
 import org.example.rentoza.util.ExifStrippingService;
+import org.hibernate.LazyInitializationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -51,6 +52,7 @@ import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -331,5 +333,30 @@ class CheckInPhotoUploadDurabilityTest {
             assertThat(photo.getLastUploadError()).contains("Audit bucket upload failed");
         });
         verify(eventService).recordEvent(eq(booking), eq("00000000-0000-0000-0000-000000000001"), eq(CheckInEventType.HOST_PHOTO_UPLOADED), eq(100L), eq(CheckInActorRole.HOST), any(), argThat(metadata -> Boolean.TRUE.equals(metadata.get("auditIntegrityGap"))));
+    }
+
+    @Test
+    @DisplayName("upload does not touch detached booking photo collection after finalize")
+    void uploadPhoto_doesNotTouchDetachedBookingPhotoCollectionAfterFinalize() throws Exception {
+        Booking detachedBooking = spy(booking);
+        doThrow(new LazyInitializationException("failed to lazily initialize a collection of role: org.example.rentoza.booking.Booking.checkInPhotos"))
+                .when(detachedBooking)
+                .getCheckInPhotos();
+
+        assertThatThrownBy(detachedBooking::getCheckInPhotos)
+            .isInstanceOf(LazyInitializationException.class)
+            .hasMessageContaining("Booking.checkInPhotos");
+
+        when(bookingRepository.findByIdWithRelations(1L)).thenReturn(Optional.of(detachedBooking));
+        when(bookingRepository.findByIdWithLock(1L)).thenReturn(Optional.of(detachedBooking));
+
+        MockMultipartFile file = new MockMultipartFile("file", "front.jpg", "image/jpeg", JPEG_BYTES);
+
+        PhotoUploadResponse response = photoService.uploadPhoto(
+                1L, 100L, file, CheckInPhotoType.HOST_EXTERIOR_FRONT, Instant.now(), null, null);
+
+        assertThat(response.isAccepted()).isTrue();
+        assertThat(saveSnapshots).anySatisfy(photo ->
+                assertThat(photo.getUploadStatus()).isEqualTo(CheckInPhoto.UploadStatus.COMPLETED));
     }
 }

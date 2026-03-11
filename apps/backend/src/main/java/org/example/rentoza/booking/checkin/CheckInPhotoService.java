@@ -622,9 +622,6 @@ public class CheckInPhotoService {
         log.info("[CheckIn] Photo ACCEPTED: booking={}, type={}, photoId={}, exifStatus={}", 
             booking.getId(), photoType, photo.getId(), exifResult.getStatus());
         
-        // Add to booking's photo collection
-        booking.getCheckInPhotos().add(photo);
-        
         // Publish CQRS event for real-time photo count updates in dashboard
         publishPhotoUploadedEvent(booking, photo, photoType, sessionId);
         

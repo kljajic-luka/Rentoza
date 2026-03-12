@@ -66,6 +66,13 @@
                   <span>{{ getTimeIndicator(booking, 'upcoming') }}</span>
                 </div>
 
+                @if (getAgreementSummary(booking)) {
+                  <div class="booking-card__timer upcoming">
+                    <mat-icon>gavel</mat-icon>
+                    <span>{{ getAgreementBannerText(booking) }}</span>
+                  </div>
+                }
+
                 <div class="booking-card__details">
                   <div class="detail-row">
                     <span class="label">Početak:</span>
@@ -106,7 +113,12 @@
               </mat-card-content>
 
               <mat-card-actions>
-                @if (canGuestCheckIn(booking)) {
+                @if (shouldShowAgreementPrimaryAction(booking)) {
+                  <button mat-raised-button color="warn" (click)="openAgreement(booking.id)">
+                    <mat-icon>gavel</mat-icon>
+                    {{ getAgreementActionLabel(booking) }}
+                  </button>
+                } @else if (canGuestCheckIn(booking)) {
                   <button mat-raised-button color="accent" (click)="goToGuestCheckIn(booking.id)">
                     <mat-icon>camera_alt</mat-icon>
                     Pregledaj vozilo i potvrdi
@@ -286,6 +298,13 @@
                   <span>{{ getTimeIndicator(booking, 'ongoing') }}</span>
                 </div>
 
+                @if (getAgreementSummary(booking)) {
+                  <div class="booking-card__timer ongoing">
+                    <mat-icon>gavel</mat-icon>
+                    <span>{{ getAgreementBannerText(booking) }}</span>
+                  </div>
+                }
+
                 <div class="booking-card__details">
                   <div class="detail-row">
                     <span class="label">Početak:</span>
@@ -320,7 +339,12 @@
               </mat-card-content>
 
               <mat-card-actions>
-                @if (canGuestCheckIn(booking)) {
+                @if (shouldShowAgreementPrimaryAction(booking)) {
+                  <button mat-raised-button color="warn" (click)="openAgreement(booking.id)">
+                    <mat-icon>gavel</mat-icon>
+                    {{ getAgreementActionLabel(booking) }}
+                  </button>
+                } @else if (canGuestCheckIn(booking)) {
                   <button mat-raised-button color="accent" (click)="goToGuestCheckIn(booking.id)">
                     <mat-icon>camera_alt</mat-icon>
                     Pregledaj vozilo i potvrdi

@@ -64,6 +64,16 @@
         </div>
       </div>
 
+      @if (getAgreementSummary()) {
+      <div class="section-card">
+        <h3>Ugovor o iznajmljivanju</h3>
+        <div class="info-row">
+          <span class="label">Status</span>
+          <span class="value">{{ getAgreementBannerText() }}</span>
+        </div>
+      </div>
+      }
+
       <!-- Pickup Location Section -->
       @if (pickupLocationData()) {
       <div class="section-card pickup-section">
@@ -158,10 +168,22 @@
       <mat-icon>photo_library</mat-icon> Slike
     </button>
     <button mat-stroked-button (click)="openReceipt()"><mat-icon>receipt</mat-icon> Račun</button>
+    @if (shouldShowAgreementPrimaryAction()) {
+    <button mat-raised-button color="warn" (click)="openAgreement()">
+      <mat-icon>gavel</mat-icon>
+      {{ getAgreementActionLabel() }}
+    </button>
+    } @else if (canOpenCheckIn()) {
+    <button mat-raised-button color="accent" (click)="openCheckIn()">
+      <mat-icon>camera_alt</mat-icon>
+      Otvori check-in
+    </button>
+    } @else {
     <button mat-stroked-button color="primary" (click)="openFullBookingPage()">
       <mat-icon>open_in_new</mat-icon>
       Upravljaj rezervacijom
     </button>
+    }
     <button mat-flat-button color="primary" (click)="close()">Zatvori</button>
   </mat-dialog-actions>
 </div>

@@ -45,6 +45,30 @@ export type CheckInStatus =
   | 'COMPLETED'
   | 'DISPUTED';
 
+export interface AgreementSummary {
+  workflowStatus:
+    | 'LEGACY'
+    | 'AGREEMENT_PENDING_BOTH'
+    | 'AGREEMENT_PENDING_OWNER'
+    | 'AGREEMENT_PENDING_RENTER'
+    | 'AGREEMENT_COMPLETE'
+    | 'AGREEMENT_EXPIRED_OWNER_BREACH'
+    | 'AGREEMENT_EXPIRED_RENTER_BREACH'
+    | 'AGREEMENT_EXPIRED_BOTH_PARTIES';
+  ownerAccepted: boolean;
+  renterAccepted: boolean;
+  currentActorNeedsAcceptance: boolean;
+  currentActorCanProceedToCheckIn: boolean;
+  legacyBooking: boolean;
+  acceptanceDeadlineAt: string | null;
+  urgencyLevel: 'NONE' | 'NORMAL' | 'URGENT' | 'OVERDUE';
+  recommendedPrimaryAction:
+    | 'ACCEPT_RENTAL_AGREEMENT'
+    | 'OPEN_CHECK_IN'
+    | 'WAIT_FOR_OTHER_PARTY'
+    | 'VIEW_BOOKING_DETAILS';
+}
+
 /**
  * Booking interface.
  *
@@ -91,6 +115,7 @@ export interface Booking {
   declineReason?: string;
   decisionDeadlineAt?: string;
   version?: number; // Optimistic locking version
+  agreementSummary?: AgreementSummary | null;
   // Check-in fields
   checkInStatus?: CheckInStatus;
   checkInOpenAt?: string;
@@ -195,6 +220,7 @@ export interface UserBooking {
   approvedAt?: string;
   declinedAt?: string;
   declineReason?: string;
+  agreementSummary?: AgreementSummary | null;
   hasReview: boolean;
   reviewRating: number | null;
   reviewComment: string | null;

@@ -2,6 +2,7 @@ import type {
   ChargeLifecycleStatus,
   DepositLifecycleStatus,
 } from '../payment/payment-status.mapper';
+import type { AgreementSummary } from './booking.model';
 
 /**
  * Location variance status for check-in phase.
@@ -140,4 +141,6 @@ export interface BookingDetails {
    * e.g. 'AUTHORIZED', 'CAPTURED', 'REAUTH_REQUIRED'
    */
   paymentStatus?: string;
+
+  agreementSummary?: AgreementSummary | null;
 }

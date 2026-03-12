@@ -47,6 +47,7 @@ public class UserBookingResponseDTO {
     private LocalDateTime approvedAt;
     private LocalDateTime declinedAt;
     private String declineReason;
+    private AgreementSummaryDTO agreementSummary;
 
     // Review information
     private Boolean hasReview;

@@ -44,6 +44,9 @@ import { HandshakeComponent } from './handshake.component';
 import { CheckInCompleteComponent } from './check-in-complete.component';
 import { CheckInWaitingComponent } from './check-in-waiting.component';
 import { environment } from '@environments/environment';
+import { BookingService } from '@core/services/booking.service';
+import { AgreementSummary } from '@core/models/booking.model';
+import { canProceedToCheckInFromSummary } from '@core/utils/agreement-summary.utils';
 
 @Component({
   selector: 'app-check-in-wizard',
@@ -118,8 +121,26 @@ import { environment } from '@environments/environment';
         </div>
       }
 
+      @if (!checkInService.error() && agreementGateState() === 'blocked') {
+        <div class="waiting-container agreement-blocked">
+          <mat-icon>gavel</mat-icon>
+          <h2>Check-in je blokiran dok se ugovor ne reši</h2>
+          <p>{{ agreementGateMessage() }}</p>
+          <div class="blocked-actions">
+            <button mat-raised-button color="primary" (click)="openBookingAgreement()">
+              <mat-icon>receipt_long</mat-icon>
+              Otvori rezervaciju
+            </button>
+            <button mat-stroked-button color="primary" (click)="retryLoad()">
+              <mat-icon>refresh</mat-icon>
+              Osveži status
+            </button>
+          </div>
+        </div>
+      }
+
       <!-- Main content - Role-Aware State Machine via renderDecision -->
-      @if (checkInService.renderDecision() !== 'LOADING' && !checkInService.error()) {
+      @if (checkInService.renderDecision() !== 'LOADING' && !checkInService.error() && agreementGateState() === 'ready') {
         <div class="wizard-content" aria-live="polite">
           <!-- Progress indicator -->
           <div class="progress-steps">
@@ -578,6 +599,7 @@ export class CheckInWizardComponent implements OnInit, OnDestroy {
   private dialog = inject(MatDialog);
   private authService = inject(AuthService);
   private verificationService = inject(RenterVerificationService);
+  private bookingService = inject(BookingService);
 
   checkInService = inject(CheckInService);
   geolocationService = inject(GeolocationService);
@@ -588,6 +610,8 @@ export class CheckInWizardComponent implements OnInit, OnDestroy {
 
   // Review mode: Host can review their submitted data in read-only mode
   showingReview = signal(false);
+  agreementGateState = signal<'loading' | 'ready' | 'blocked'>('loading');
+  agreementGateMessage = signal('');
 
   // Step text for waiting screens
   readonly guestWaitingSteps = [
@@ -654,6 +678,7 @@ export class CheckInWizardComponent implements OnInit, OnDestroy {
       this.checkInService.loadStatus(this.bookingId()).subscribe({
         next: (status) => {
           console.log('[CheckInWizard] Status loaded:', status);
+          this.loadAgreementGate(status.host === true, status.guest === true);
 
           // Re-validate driver license eligibility at check-in time
           // Only for guests (renters) - hosts don't need license validation
@@ -741,9 +766,11 @@ export class CheckInWizardComponent implements OnInit, OnDestroy {
   }
 
   retryLoad(): void {
+    this.agreementGateState.set('loading');
     this.checkInService.loadStatus(this.bookingId()).subscribe({
       next: (status) => {
         console.log('[CheckInWizard] Status refreshed:', status.status);
+        this.loadAgreementGate(status.host === true, status.guest === true);
       },
       error: (err) => {
         console.error('[CheckInWizard] Failed to refresh status:', err);
@@ -894,5 +921,61 @@ export class CheckInWizardComponent implements OnInit, OnDestroy {
 
   exitReviewMode(): void {
     this.showingReview.set(false);
+  }
+
+  openBookingAgreement(): void {
+    this.router.navigate(['/bookings', this.bookingId()], {
+      queryParams: { agreementRequired: '1' },
+    });
+  }
+
+  private loadAgreementGate(isHost: boolean, isGuest: boolean): void {
+    this.bookingService.resolveCheckInAgreementGate(this.bookingId()).subscribe({
+      next: (gate) => {
+        if (gate.state === 'allowed') {
+          this.agreementGateState.set('ready');
+          this.agreementGateMessage.set('');
+          return;
+        }
+
+        this.agreementGateState.set('blocked');
+        if (gate.state === 'retry') {
+          this.agreementGateMessage.set(
+            'Trenutno ne možemo da proverimo status ugovora o iznajmljivanju. Osvežite podatke i pokušajte ponovo pre nastavka check-in procesa.',
+          );
+          return;
+        }
+
+        this.agreementGateMessage.set(
+          this.buildAgreementGateMessage(gate.summary, isHost, isGuest),
+        );
+      },
+    });
+  }
+
+  private buildAgreementGateMessage(
+    summary: AgreementSummary | null | undefined,
+    isHost: boolean,
+    isGuest: boolean,
+  ): string {
+    if (!summary) {
+      return 'Status ugovora o iznajmljivanju još nije dostupan za ovu rezervaciju.';
+    }
+    if (summary.workflowStatus === 'AGREEMENT_EXPIRED_OWNER_BREACH') {
+      return 'Ugovor o iznajmljivanju je istekao jer domaćin nije prihvatio uslove na vreme.';
+    }
+    if (summary.workflowStatus === 'AGREEMENT_EXPIRED_RENTER_BREACH') {
+      return 'Ugovor o iznajmljivanju je istekao i check-in više nije dostupan iz ove rute.';
+    }
+    if (summary.workflowStatus === 'AGREEMENT_EXPIRED_BOTH_PARTIES') {
+      return 'Ugovor o iznajmljivanju je istekao jer nije prihvaćen na vreme od obe strane.';
+    }
+    if (isHost && summary.currentActorNeedsAcceptance) {
+      return 'Kao domaćin prvo morate prihvatiti ugovor o iznajmljivanju pre pripreme vozila.';
+    }
+    if (isGuest && summary.currentActorNeedsAcceptance) {
+      return 'Kao gost prvo morate prihvatiti ugovor o iznajmljivanju pre nastavka check-in procesa.';
+    }
+    return 'Druga strana još nije prihvatila ugovor o iznajmljivanju. Check-in ostaje blokiran dok se ugovor ne reši.';
   }
 }

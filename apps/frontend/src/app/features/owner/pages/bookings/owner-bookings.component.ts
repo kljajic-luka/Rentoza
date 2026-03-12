@@ -12,9 +12,13 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatDividerModule } from '@angular/material/divider';
 
-import { Booking } from '@core/models/booking.model';
+import { AgreementSummary, Booking } from '@core/models/booking.model';
 import { BookingService } from '@core/services/booking.service';
 import { AuthService } from '@core/auth/auth.service';
+import {
+  canProceedToCheckInFromSummary,
+  shouldShowAgreementPrimaryActionFromSummary,
+} from '@core/utils/agreement-summary.utils';
 import { isBookingCompleted, canOwnerReviewRenter } from '@core/utils/booking.utils';
 import { formatDateSerbiaValue, parseSerbiaDateTime } from '@core/utils/serbia-time.util';
 import {
@@ -286,10 +290,58 @@ export class OwnerBookingsComponent implements OnInit {
   protected canCheckIn(booking: Booking): boolean {
     // Check-in available if booking is in any check-in related status
     return (
-      booking.status === 'CHECK_IN_OPEN' ||
-      booking.status === 'CHECK_IN_HOST_COMPLETE' ||
-      booking.status === 'CHECK_IN_COMPLETE'
+      canProceedToCheckInFromSummary(booking.agreementSummary) &&
+      (
+        booking.status === 'CHECK_IN_OPEN' ||
+        booking.status === 'CHECK_IN_HOST_COMPLETE' ||
+        booking.status === 'CHECK_IN_COMPLETE'
+      )
     );
+  }
+
+  protected shouldShowAgreementPrimaryAction(booking: Booking): boolean {
+    return shouldShowAgreementPrimaryActionFromSummary(booking.agreementSummary);
+  }
+
+  protected getAgreementSummary(booking: Booking): AgreementSummary | null {
+    return booking.agreementSummary ?? null;
+  }
+
+  protected getAgreementBannerText(booking: Booking): string {
+    const summary = booking.agreementSummary;
+    if (!summary || summary.legacyBooking) {
+      return '';
+    }
+
+    switch (summary.workflowStatus) {
+      case 'AGREEMENT_PENDING_OWNER':
+      case 'AGREEMENT_PENDING_BOTH':
+        return summary.currentActorNeedsAcceptance
+          ? 'Prihvatite ugovor o iznajmljivanju pre pripreme vozila.'
+          : 'Čekamo da druga strana prihvati ugovor o iznajmljivanju.';
+      case 'AGREEMENT_PENDING_RENTER':
+        return 'Gost još nije prihvatio ugovor. Priprema vozila može da ostane dostupna.';
+      case 'AGREEMENT_EXPIRED_OWNER_BREACH':
+        return 'Ugovor je istekao jer nije prihvaćen na vreme sa strane domaćina.';
+      case 'AGREEMENT_EXPIRED_RENTER_BREACH':
+        return 'Ugovor je istekao jer gost nije prihvatio uslove na vreme.';
+      case 'AGREEMENT_EXPIRED_BOTH_PARTIES':
+        return 'Ugovor je istekao jer nije prihvaćen na vreme.';
+      default:
+        return 'Ugovor o iznajmljivanju je spreman za pregled.';
+    }
+  }
+
+  protected getAgreementActionLabel(booking: Booking): string {
+    return booking.agreementSummary?.currentActorNeedsAcceptance
+      ? 'Pregledaj i prihvati ugovor'
+      : 'Status ugovora';
+  }
+
+  protected openAgreement(booking: Booking): void {
+    this.router.navigate(['/bookings', booking.id], {
+      queryParams: { agreementRequired: '1' },
+    });
   }
 
   /**

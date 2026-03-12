@@ -54,6 +54,13 @@
                   <span>{{ getTimeUntil(booking.startTime) }}</span>
                 </div>
 
+                @if (getAgreementSummary(booking)) {
+                  <div class="booking-card__timer upcoming">
+                    <mat-icon>gavel</mat-icon>
+                    <span>{{ getAgreementBannerText(booking) }}</span>
+                  </div>
+                }
+
                 <div class="booking-card__details">
                   <div class="detail-row">
                     <span class="label">Zakupac:</span>
@@ -98,7 +105,12 @@
                   </button>
                 }
 
-                @if (canCheckIn(booking)) {
+                @if (shouldShowAgreementPrimaryAction(booking)) {
+                  <button mat-raised-button color="warn" (click)="openAgreement(booking)">
+                    <mat-icon>gavel</mat-icon>
+                    {{ getAgreementActionLabel(booking) }}
+                  </button>
+                } @else if (canCheckIn(booking)) {
                   <button mat-raised-button color="accent" (click)="goToCheckIn(booking)">
                     <mat-icon>{{ getCheckInIcon(booking) }}</mat-icon>
                     {{ getCheckInLabel(booking) }}
@@ -153,6 +165,13 @@
                   <span>U toku</span>
                 </div>
 
+                @if (getAgreementSummary(booking)) {
+                  <div class="booking-card__timer ongoing">
+                    <mat-icon>gavel</mat-icon>
+                    <span>{{ getAgreementBannerText(booking) }}</span>
+                  </div>
+                }
+
                 <div class="booking-card__details">
                   <div class="detail-row">
                     <span class="label">Zakupac:</span>
@@ -174,7 +193,12 @@
                   <mat-icon>receipt_long</mat-icon>
                   Detalji
                 </button>
-                @if (canCheckIn(booking)) {
+                @if (shouldShowAgreementPrimaryAction(booking)) {
+                  <button mat-raised-button color="warn" (click)="openAgreement(booking)">
+                    <mat-icon>gavel</mat-icon>
+                    {{ getAgreementActionLabel(booking) }}
+                  </button>
+                } @else if (canCheckIn(booking)) {
                   <button mat-raised-button color="accent" (click)="goToCheckIn(booking)">
                     <mat-icon>{{ getCheckInIcon(booking) }}</mat-icon>
                     {{ getCheckInLabel(booking) }}

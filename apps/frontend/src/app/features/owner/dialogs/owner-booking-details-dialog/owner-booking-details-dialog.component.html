@@ -84,6 +84,16 @@
                 <span>{{ durationDays() }} dana</span>
               </div>
             </div>
+
+            @if (getAgreementSummary()) {
+              <div class="section-card vehicle-card">
+                <h3>Ugovor o iznajmljivanju</h3>
+                <div class="vehicle-row">
+                  <mat-icon>gavel</mat-icon>
+                  <span>{{ getAgreementBannerText() }}</span>
+                </div>
+              </div>
+            }
           </div>
         </mat-tab>
 
@@ -176,10 +186,22 @@
   </mat-dialog-content>
 
   <mat-dialog-actions align="end">
+    @if (shouldShowAgreementPrimaryAction()) {
+      <button mat-raised-button color="warn" (click)="openAgreement()">
+        <mat-icon>gavel</mat-icon>
+        {{ getAgreementActionLabel() }}
+      </button>
+    } @else if (canOpenCheckIn()) {
+      <button mat-raised-button color="accent" (click)="openCheckIn()">
+        <mat-icon>camera_alt</mat-icon>
+        Otvori check-in
+      </button>
+    } @else {
     <button mat-stroked-button color="primary" (click)="openFullBookingPage()">
       <mat-icon>open_in_new</mat-icon>
       Upravljaj produženjem
     </button>
+    }
     <button mat-button (click)="close()">Zatvori</button>
   </mat-dialog-actions>
 </div>

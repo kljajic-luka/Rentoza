@@ -54,8 +54,9 @@ describe('BookingDetailComponent', () => {
     const component = TestBed.runInInjectionContext(() => new BookingDetailComponent());
     component.loadBooking();
 
-    expect(bookingService.getAgreement).toHaveBeenCalledWith(42);
+    expect(bookingService.getAgreement).not.toHaveBeenCalled();
     expect(bookingService.getBookingExtensions).not.toHaveBeenCalled();
+    expect(component.agreement()).toBeNull();
     expect(component.extensions()).toEqual([]);
     expect(component.pendingExtension()).toBeNull();
   });
@@ -69,9 +70,35 @@ describe('BookingDetailComponent', () => {
 
     expect(bookingService.getBookingExtensions).toHaveBeenCalledWith(42);
   });
+
+  it('allows owner check-in when agreement summary says host prep can proceed', () => {
+    bookingService.getBookingDetails.and.returnValue(of(makeBookingDetails('CHECK_IN_OPEN')));
+
+    const component = TestBed.runInInjectionContext(() => new BookingDetailComponent());
+    component.booking.set(
+      makeBookingDetails('CHECK_IN_OPEN', {
+        agreementSummary: {
+          workflowStatus: 'AGREEMENT_PENDING_RENTER',
+          ownerAccepted: true,
+          renterAccepted: false,
+          currentActorNeedsAcceptance: false,
+          currentActorCanProceedToCheckIn: true,
+          legacyBooking: false,
+          acceptanceDeadlineAt: '2026-03-10T11:00:00Z',
+          urgencyLevel: 'URGENT',
+          recommendedPrimaryAction: 'OPEN_CHECK_IN',
+        },
+      }),
+    );
+
+    expect(component.canCheckIn()).toBeTrue();
+  });
 });
 
-function makeBookingDetails(status: BookingDetails['status']): BookingDetails {
+function makeBookingDetails(
+  status: BookingDetails['status'],
+  overrides: Partial<BookingDetails> = {},
+): BookingDetails {
   return {
     id: 42,
     status,
@@ -90,6 +117,7 @@ function makeBookingDetails(status: BookingDetails['status']): BookingDetails {
     hostRating: 5,
     hostTotalTrips: 10,
     hostJoinedDate: '2025-01-01',
+    ...overrides,
   };
 }
 
@@ -106,8 +134,15 @@ function makeAgreement(): RentalAgreementDTO {
     ownerAcceptedAt: null,
     renterAccepted: false,
     renterAcceptedAt: null,
+    acceptanceDeadlineAt: '2026-03-10T11:00:00Z',
+    requiredNextActor: 'BOTH',
+    expiredDueToActor: null,
+    expiredReason: null,
+    settlementPolicyApplied: null,
+    settlementRecordId: null,
     termsTemplateId: null,
     termsTemplateHash: null,
+    enforcementEnabled: true,
     ownerUserId: 7,
     renterUserId: 8,
     vehicleSnapshot: {},

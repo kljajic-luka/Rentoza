@@ -4,6 +4,8 @@ import lombok.RequiredArgsConstructor;
 import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingRepository;
 import org.example.rentoza.booking.BookingStatus;
+import org.example.rentoza.booking.RentalAgreementWorkflowService;
+import org.example.rentoza.booking.dto.AgreementSummaryDTO;
 import org.example.rentoza.booking.dto.BookingResponseDTO;
 import org.example.rentoza.booking.cancellation.HostCancellationStats;
 import org.example.rentoza.booking.cancellation.HostCancellationStatsRepository;
@@ -40,6 +42,7 @@ public class OwnerService {
     private final ReviewRepository reviewRepo;
     private final HostCancellationStatsRepository cancellationStatsRepo;
     private final PayoutLedgerRepository payoutLedgerRepo;
+    private final RentalAgreementWorkflowService rentalAgreementWorkflowService;
 
     /**
      * Get comprehensive statistics for owner dashboard
@@ -105,11 +108,14 @@ public class OwnerService {
             hasOwnerReviewMap.put(review.getBooking().getId(), true);
         }
 
+        Map<Long, AgreementSummaryDTO> agreementSummaries = rentalAgreementWorkflowService.buildSummaries(allBookings, owner.getId());
+
         // Convert to DTOs and set review flags
         List<BookingResponseDTO> result = new ArrayList<>();
         for (Booking booking : allBookings) {
             BookingResponseDTO dto = new BookingResponseDTO(booking);
             dto.setHasOwnerReview(hasOwnerReviewMap.getOrDefault(booking.getId(), false));
+            dto.setAgreementSummary(agreementSummaries.get(booking.getId()));
             result.add(dto);
         }
 

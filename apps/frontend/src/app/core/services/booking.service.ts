@@ -1,16 +1,22 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { Observable } from 'rxjs';
-import { tap } from 'rxjs/operators';
+import { Observable, of } from 'rxjs';
+import { catchError, map, switchMap, tap } from 'rxjs/operators';
 
 import { environment } from '@environments/environment';
 import {
+  AgreementSummary,
   Booking,
   BookingCreateResponse,
   BookingRequest,
   UserBooking,
   BookingSlotDto,
 } from '@core/models/booking.model';
+import {
+  canProceedToCheckInFromAgreement,
+  canProceedToCheckInFromSummary,
+  isAgreementEnforcementEnabled,
+} from '@core/utils/agreement-summary.utils';
 import { GuestBookingPreview } from '@core/models/guest-preview.model';
 import { AnalyticsService } from './analytics.service';
 import {
@@ -294,6 +300,69 @@ export class BookingService {
       .pipe(tap(() => this.analytics.track('agreement.accepted', { bookingId })));
   }
 
+  resolveCheckInAgreementGate(
+    bookingId: number | string,
+  ): Observable<CheckInAgreementGateResult> {
+    return this.getBookingById(bookingId).pipe(
+      switchMap((booking) => {
+        const summary = booking.agreementSummary;
+        if (!summary) {
+          return this.resolveCheckInAgreementGateFromAgreement(bookingId);
+        }
+
+        return of<CheckInAgreementGateResult>({
+          state: canProceedToCheckInFromSummary(summary)
+            ? 'allowed'
+            : 'blocked',
+          summary,
+          agreement: null,
+          legacyBooking: summary.legacyBooking,
+          enforcementEnabled: !summary.legacyBooking,
+          source: 'summary' as const,
+        });
+      }),
+      catchError(() => this.resolveCheckInAgreementGateFromAgreement(bookingId)),
+    );
+  }
+
+  private resolveCheckInAgreementGateFromAgreement(
+    bookingId: number | string,
+  ): Observable<CheckInAgreementGateResult> {
+    return this.getAgreement(bookingId).pipe(
+      map((agreement): CheckInAgreementGateResult => ({
+        state: canProceedToCheckInFromAgreement(agreement)
+          ? 'allowed'
+          : 'blocked',
+        summary: null,
+        agreement,
+        legacyBooking: false,
+        enforcementEnabled: isAgreementEnforcementEnabled(agreement.enforcementEnabled),
+        source: 'agreement' as const,
+      })),
+      catchError((error) => {
+        if (error?.status === 404) {
+          return of<CheckInAgreementGateResult>({
+            state: 'allowed' as const,
+            summary: null,
+            agreement: null,
+            legacyBooking: true,
+            enforcementEnabled: false,
+            source: 'legacy' as const,
+          });
+        }
+
+        return of<CheckInAgreementGateResult>({
+          state: 'retry' as const,
+          summary: null,
+          agreement: null,
+          legacyBooking: false,
+          enforcementEnabled: true,
+          source: 'unavailable' as const,
+        });
+      }),
+    );
+  }
+
   getBookingExtensions(bookingId: number | string): Observable<TripExtension[]> {
     return this.http.get<TripExtension[]>(`${this.baseUrl}/${bookingId}/extensions`, {
       withCredentials: true,
@@ -388,10 +457,28 @@ export interface RentalAgreementDTO {
   ownerAcceptedAt: string | null;
   renterAccepted: boolean;
   renterAcceptedAt: string | null;
+  acceptanceDeadlineAt: string | null;
+  requiredNextActor: 'OWNER' | 'RENTER' | 'BOTH' | 'NONE' | null;
+  expiredDueToActor: 'OWNER' | 'RENTER' | 'BOTH' | 'NONE' | null;
+  expiredReason: string | null;
+  settlementPolicyApplied: string | null;
+  settlementRecordId: number | null;
   termsTemplateId: string | null;
   termsTemplateHash: string | null;
+  enforcementEnabled: boolean;
   ownerUserId: number;
   renterUserId: number;
   vehicleSnapshot: Record<string, unknown>;
   termsSnapshot: Record<string, unknown>;
 }
+
+export interface CheckInAgreementGateResult {
+  state: 'allowed' | 'blocked' | 'retry';
+  summary: AgreementSummary | null;
+  agreement: RentalAgreementDTO | null;
+  legacyBooking: boolean;
+  enforcementEnabled: boolean;
+  source: 'summary' | 'agreement' | 'legacy' | 'unavailable';
+}
+
+export type { AgreementSummary };

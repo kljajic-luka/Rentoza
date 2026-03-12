@@ -8,6 +8,7 @@ import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.Map;
 
 /**
@@ -35,6 +36,9 @@ public class RentalAgreement {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Version
+    private Long version;
 
     @Column(name = "booking_id", nullable = false, unique = true)
     private Long bookingId;
@@ -98,6 +102,26 @@ public class RentalAgreement {
     @Column(name = "status", nullable = false, length = 20)
     @Builder.Default
     private RentalAgreementStatus status = RentalAgreementStatus.PENDING;
+
+    @Column(name = "acceptance_deadline_at")
+    private LocalDateTime acceptanceDeadlineAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "required_next_actor", length = 20)
+    private RentalAgreementActor requiredNextActor;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "expired_due_to_actor", length = 20)
+    private RentalAgreementActor expiredDueToActor;
+
+    @Column(name = "expired_reason", length = 100)
+    private String expiredReason;
+
+    @Column(name = "settlement_policy_applied", length = 100)
+    private String settlementPolicyApplied;
+
+    @Column(name = "settlement_record_id")
+    private Long settlementRecordId;
 
     @Column(name = "terms_template_id", length = 50)
     private String termsTemplateId;

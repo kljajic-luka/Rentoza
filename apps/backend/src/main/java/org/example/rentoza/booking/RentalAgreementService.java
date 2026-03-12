@@ -9,7 +9,9 @@ import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.notification.NotificationService;
 import org.example.rentoza.notification.NotificationType;
 import org.example.rentoza.notification.dto.CreateNotificationRequestDTO;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,6 +19,8 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.HexFormat;
 import java.util.TreeMap;
 import java.util.Map;
@@ -33,6 +37,7 @@ import java.util.Optional;
 @Slf4j
 public class RentalAgreementService {
 
+    private static final ZoneId SERBIA_ZONE = ZoneId.of("Europe/Belgrade");
     private static final String CURRENT_AGREEMENT_VERSION = "1.0.0";
     private static final String CURRENT_TERMS_TEMPLATE_ID = "sr-intermediary-v1";
 
@@ -40,6 +45,9 @@ public class RentalAgreementService {
     private final BookingRepository bookingRepository;
     private final NotificationService notificationService;
     private final ObjectMapper stableMapper;
+
+    @Value("${app.checkin.no-show-minutes-after-trip-start:120}")
+    private int acceptanceDeadlineMinutesAfterTripStart;
 
     public RentalAgreementService(RentalAgreementRepository agreementRepository,
                                   BookingRepository bookingRepository,
@@ -88,6 +96,8 @@ public class RentalAgreementService {
                 .vehicleSnapshotJson(vehicleSnapshot)
                 .termsSnapshotJson(termsSnapshot)
                 .status(RentalAgreementStatus.PENDING)
+                .acceptanceDeadlineAt(resolveAcceptanceDeadline(booking))
+                .requiredNextActor(RentalAgreementActor.BOTH)
                 .termsTemplateId(CURRENT_TERMS_TEMPLATE_ID)
                 .termsTemplateHash("PENDING_COUNSEL_REVIEW")
                 .build();
@@ -146,9 +156,12 @@ public class RentalAgreementService {
      */
     @Transactional
     public RentalAgreement acceptAsOwner(Long bookingId, Long userId, String ip, String userAgent) {
-        RentalAgreement agreement = agreementRepository.findByBookingId(bookingId)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "No rental agreement found for booking: " + bookingId));
+        RentalAgreement agreement = loadAgreementForMutation(bookingId);
+        Booking booking = bookingRepository.findByIdWithRelations(bookingId)
+            .orElseThrow(() -> new ResourceNotFoundException(
+                "Booking not found for agreement: " + bookingId));
+
+        ensureAcceptanceDeadlinePersisted(agreement, booking);
 
         if (!agreement.getOwnerUserId().equals(userId)) {
             throw new org.springframework.security.access.AccessDeniedException(
@@ -161,6 +174,8 @@ public class RentalAgreementService {
             return agreement;
         }
 
+        ensureAcceptanceStillOpen(agreement);
+
         agreement.setOwnerAcceptedAt(Instant.now());
         agreement.setOwnerIp(ip);
         agreement.setOwnerUserAgent(truncate(userAgent, 500));
@@ -168,13 +183,15 @@ public class RentalAgreementService {
         // Transition status
         if (agreement.getRenterAcceptedAt() != null) {
             agreement.setStatus(RentalAgreementStatus.FULLY_ACCEPTED);
+            agreement.setRequiredNextActor(RentalAgreementActor.NONE);
             log.info("Agreement fully accepted: bookingId={}", bookingId);
         } else {
             agreement.setStatus(RentalAgreementStatus.OWNER_ACCEPTED);
+            agreement.setRequiredNextActor(RentalAgreementActor.RENTER);
             log.info("Agreement accepted by owner: bookingId={}", bookingId);
         }
 
-        return agreementRepository.save(agreement);
+        return agreementRepository.saveAndFlush(agreement);
     }
 
     /**
@@ -182,9 +199,12 @@ public class RentalAgreementService {
      */
     @Transactional
     public RentalAgreement acceptAsRenter(Long bookingId, Long userId, String ip, String userAgent) {
-        RentalAgreement agreement = agreementRepository.findByBookingId(bookingId)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "No rental agreement found for booking: " + bookingId));
+        RentalAgreement agreement = loadAgreementForMutation(bookingId);
+        Booking booking = bookingRepository.findByIdWithRelations(bookingId)
+            .orElseThrow(() -> new ResourceNotFoundException(
+                "Booking not found for agreement: " + bookingId));
+
+        ensureAcceptanceDeadlinePersisted(agreement, booking);
 
         if (!agreement.getRenterUserId().equals(userId)) {
             throw new org.springframework.security.access.AccessDeniedException(
@@ -197,6 +217,8 @@ public class RentalAgreementService {
             return agreement;
         }
 
+        ensureAcceptanceStillOpen(agreement);
+
         agreement.setRenterAcceptedAt(Instant.now());
         agreement.setRenterIp(ip);
         agreement.setRenterUserAgent(truncate(userAgent, 500));
@@ -204,13 +226,15 @@ public class RentalAgreementService {
         // Transition status
         if (agreement.getOwnerAcceptedAt() != null) {
             agreement.setStatus(RentalAgreementStatus.FULLY_ACCEPTED);
+            agreement.setRequiredNextActor(RentalAgreementActor.NONE);
             log.info("Agreement fully accepted: bookingId={}", bookingId);
         } else {
             agreement.setStatus(RentalAgreementStatus.RENTER_ACCEPTED);
+            agreement.setRequiredNextActor(RentalAgreementActor.OWNER);
             log.info("Agreement accepted by renter (awaiting owner): bookingId={}", bookingId);
         }
 
-        return agreementRepository.save(agreement);
+        return agreementRepository.saveAndFlush(agreement);
     }
 
     /**
@@ -243,10 +267,7 @@ public class RentalAgreementService {
         }
 
         Booking booking = bookingOpt.get();
-        // Only generate for bookings past the approval gate and not in terminal states
-        if (booking.getStatus() == BookingStatus.PENDING_APPROVAL
-                || booking.getStatus() == BookingStatus.DECLINED
-                || booking.getStatus().isTerminal()) {
+        if (!shouldHaveAgreement(booking)) {
             return Optional.empty();
         }
 
@@ -263,6 +284,28 @@ public class RentalAgreementService {
         return agreementRepository.findByBookingId(bookingId)
                 .map(RentalAgreement::isFullyAccepted)
                 .orElse(false);
+    }
+
+    private RentalAgreement loadAgreementForMutation(Long bookingId) {
+        try {
+            return agreementRepository.findByBookingIdForUpdate(bookingId)
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "No rental agreement found for booking: " + bookingId));
+        } catch (PessimisticLockingFailureException e) {
+            throw new RentalAgreementConflictException(
+                    "RENTAL_AGREEMENT_STATE_CHANGED",
+                    "Status ugovora o iznajmljivanju je upravo promenjen. Osvežite stranicu i pokušajte ponovo."
+            );
+        }
+    }
+
+    public boolean shouldHaveAgreement(Booking booking) {
+        if (booking == null || booking.getStatus() == null) {
+            return false;
+        }
+        return booking.getStatus() != BookingStatus.PENDING_APPROVAL
+                && booking.getStatus() != BookingStatus.DECLINED
+                && !booking.getStatus().isTerminal();
     }
 
     // ── Snapshot builders ────────────────────────────────────────────────────
@@ -337,5 +380,50 @@ public class RentalAgreementService {
     private static String truncate(String value, int maxLength) {
         if (value == null) return null;
         return value.length() <= maxLength ? value : value.substring(0, maxLength);
+    }
+
+    private void ensureAcceptanceDeadlinePersisted(RentalAgreement agreement, Booking booking) {
+        if (agreement.getAcceptanceDeadlineAt() == null) {
+            agreement.setAcceptanceDeadlineAt(resolveAcceptanceDeadline(booking));
+        }
+        if (agreement.getRequiredNextActor() == null) {
+            if (agreement.getOwnerAcceptedAt() != null && agreement.getRenterAcceptedAt() != null) {
+                agreement.setRequiredNextActor(RentalAgreementActor.NONE);
+            } else if (agreement.getOwnerAcceptedAt() == null && agreement.getRenterAcceptedAt() == null) {
+                agreement.setRequiredNextActor(RentalAgreementActor.BOTH);
+            } else {
+                agreement.setRequiredNextActor(
+                        agreement.getOwnerAcceptedAt() == null ? RentalAgreementActor.OWNER : RentalAgreementActor.RENTER
+                );
+            }
+        }
+    }
+
+    private void ensureAcceptanceStillOpen(RentalAgreement agreement) {
+        if (agreement.getStatus() == RentalAgreementStatus.EXPIRED) {
+            throw new RentalAgreementConflictException(
+                    "RENTAL_AGREEMENT_EXPIRED",
+                    "Rok za prihvatanje ugovora o iznajmljivanju je istekao za ovu rezervaciju."
+            );
+        }
+
+        LocalDateTime deadline = agreement.getAcceptanceDeadlineAt();
+        if (deadline != null && !deadline.isAfter(LocalDateTime.now(SERBIA_ZONE))) {
+            throw new RentalAgreementConflictException(
+                    "RENTAL_AGREEMENT_ACCEPTANCE_CLOSED",
+                    "Rok za prihvatanje ugovora o iznajmljivanju je istekao za ovu rezervaciju."
+            );
+        }
+    }
+
+    private LocalDateTime resolveAcceptanceDeadline(Booking booking) {
+        LocalDateTime startTime = booking.getStartTime();
+        if (startTime == null && booking.getStartDate() != null) {
+            startTime = booking.getStartDate().atStartOfDay();
+        }
+        if (startTime == null) {
+            return LocalDateTime.now(SERBIA_ZONE).plusMinutes(acceptanceDeadlineMinutesAfterTripStart);
+        }
+        return startTime.plusMinutes(acceptanceDeadlineMinutesAfterTripStart);
     }
 }

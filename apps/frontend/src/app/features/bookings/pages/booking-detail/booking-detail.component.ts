@@ -52,6 +52,8 @@ import {
   getSerbiaDateInputValue,
   parseSerbiaDateTime,
 } from '@core/utils/serbia-time.util';
+import { canProceedToCheckInFromSummary } from '@core/utils/agreement-summary.utils';
+import { getHttpErrorMessage } from '@core/utils/api-error.utils';
 
 @Component({
   selector: 'app-booking-detail',
@@ -1415,6 +1417,14 @@ export class BookingDetailComponent implements OnInit {
     this.loadBooking();
     this.handlePaymentReturnState();
 
+    if (this.route.snapshot.queryParamMap.get('agreementRequired') === '1') {
+      this.snackBar.open(
+        'Pre nastavka check-in procesa prvo rešite status ugovora o iznajmljivanju.',
+        'U redu',
+        { duration: 5000 },
+      );
+    }
+
     // Live countdown ticker
     this.tickIntervalId = setInterval(() => this.tick.update((t) => t + 1), 60_000);
     this.destroyRef.onDestroy(() => {
@@ -1451,7 +1461,7 @@ export class BookingDetailComponent implements OnInit {
         }
       },
       error: (err) => {
-        this.error.set(err.error?.message || 'Nije moguće učitati rezervaciju');
+        this.error.set(getHttpErrorMessage(err) || 'Nije moguće učitati rezervaciju');
         this.isLoading.set(false);
       },
     });
@@ -1728,6 +1738,10 @@ export class BookingDetailComponent implements OnInit {
       return false;
     }
 
+    if (booking.agreementSummary && !booking.agreementSummary.legacyBooking) {
+      return !canProceedToCheckInFromSummary(booking.agreementSummary);
+    }
+
     return [
       'ACTIVE',
       'CHECK_IN_OPEN',
@@ -1796,7 +1810,7 @@ export class BookingDetailComponent implements OnInit {
       },
       error: (err) => {
         this.isAcceptingAgreement.set(false);
-        this.error.set(err.error?.message || 'Prihvatanje ugovora nije uspelo. Pokušajte ponovo.');
+        this.error.set(getHttpErrorMessage(err) || 'Prihvatanje ugovora nije uspelo. Pokušajte ponovo.');
       },
     });
   }
@@ -1838,6 +1852,11 @@ export class BookingDetailComponent implements OnInit {
       ? ['CHECK_IN_OPEN', 'CHECK_IN_HOST_COMPLETE'].includes(status)
       : false;
     if (!bookingStatusOk) return false;
+
+    const summary = this.booking()?.agreementSummary;
+    if (summary && !summary.legacyBooking) {
+      return summary.currentActorCanProceedToCheckIn;
+    }
 
     // Gate on agreement acceptance — both parties must accept before check-in.
     // If agreement is null (not yet generated or fetch failed), block check-in

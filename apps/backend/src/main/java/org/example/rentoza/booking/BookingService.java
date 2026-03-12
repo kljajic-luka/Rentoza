@@ -13,6 +13,7 @@ import org.example.rentoza.booking.dto.BookingResponseDTO;
 import org.example.rentoza.booking.dto.CancellationPreviewDTO;
 import org.example.rentoza.booking.dto.CancellationRequestDTO;
 import org.example.rentoza.booking.dto.CancellationResultDTO;
+import org.example.rentoza.booking.dto.AgreementSummaryDTO;
 import org.example.rentoza.booking.dto.UserBookingResponseDTO;
 import org.example.rentoza.car.Car;
 import org.example.rentoza.car.MarketplaceComplianceService;
@@ -99,6 +100,7 @@ public class BookingService {
     private final SchedulerIdempotencyService lockService;
     private final BookingEdgeCaseValidator edgeCaseValidator;
     private final RentalAgreementService rentalAgreementService;
+    private final RentalAgreementWorkflowService rentalAgreementWorkflowService;
     private final MarketplaceComplianceService marketplaceComplianceService;
     private final AccountTrustStateService accountTrustStateService;
 
@@ -133,6 +135,7 @@ public class BookingService {
                           SchedulerIdempotencyService lockService,
                           BookingEdgeCaseValidator edgeCaseValidator,
                           RentalAgreementService rentalAgreementService,
+                          RentalAgreementWorkflowService rentalAgreementWorkflowService,
                           MarketplaceComplianceService marketplaceComplianceService,
                           AccountTrustStateService accountTrustStateService) {
         this.repo = repo;
@@ -148,8 +151,9 @@ public class BookingService {
         this.bookingPaymentService = bookingPaymentService;
         this.lockService = lockService;
         this.edgeCaseValidator = edgeCaseValidator;
-        this.marketplaceComplianceService = marketplaceComplianceService;
         this.rentalAgreementService = rentalAgreementService;
+        this.rentalAgreementWorkflowService = rentalAgreementWorkflowService;
+        this.marketplaceComplianceService = marketplaceComplianceService;
         this.accountTrustStateService = accountTrustStateService;
     }
 
@@ -1157,13 +1161,15 @@ public class BookingService {
                         (existing, replacement) -> existing // Keep first if duplicate
                 ));
 
+        Map<Long, AgreementSummaryDTO> agreementSummaries = rentalAgreementWorkflowService.buildSummaries(bookings, user.getId());
+
         // Map to DTOs
         return bookings.stream()
                 .map(booking -> {
                     Car car = booking.getCar();
                     Review review = reviewsByBookingId.get(booking.getId());
 
-                    return new UserBookingResponseDTO(
+                        return new UserBookingResponseDTO(
                             booking.getId(),
                             car.getId(),
                             car.getBrand(),
@@ -1180,6 +1186,7 @@ public class BookingService {
                             booking.getApprovedAt(),
                             booking.getDeclinedAt(),
                             booking.getDeclineReason(),
+                            agreementSummaries.get(booking.getId()),
                             review != null,
                             review != null ? review.getRating() : null,
                             review != null ? review.getComment() : null
@@ -1223,6 +1230,11 @@ public class BookingService {
                         (existing, replacement) -> existing
                 ));
 
+        Map<Long, AgreementSummaryDTO> agreementSummaries = rentalAgreementWorkflowService.buildSummaries(
+            bookingPage.getContent(),
+            user.getId()
+        );
+
         return bookingPage.map(booking -> {
             Car car = booking.getCar();
             Review review = reviewsByBookingId.get(booking.getId());
@@ -1244,6 +1256,7 @@ public class BookingService {
                     booking.getApprovedAt(),
                     booking.getDeclinedAt(),
                     booking.getDeclineReason(),
+                    agreementSummaries.get(booking.getId()),
                     review != null,
                     review != null ? review.getRating() : null,
                     review != null ? review.getComment() : null
@@ -1606,6 +1619,11 @@ public class BookingService {
                 .depositLifecycleStatus(booking.getDepositLifecycleStatus())
                 .securityDeposit(booking.getSecurityDeposit())
                 .paymentStatus(booking.getPaymentStatus())
+                .agreementSummary(rentalAgreementWorkflowService.buildSummary(
+                    booking,
+                    rentalAgreementService.getOrGenerateAgreement(booking.getId()).orElse(null),
+                    currentUserId
+                ))
                 .build();
     }
 

@@ -22,6 +22,11 @@ import {
   CancellationPreviewDialogResult,
 } from '@shared/components/cancellation-preview-dialog/cancellation-preview-dialog.component';
 import { ReadOnlyPickupLocationComponent } from '../components/readonly-pickup-location';
+import { AgreementSummary } from '@core/models/booking.model';
+import {
+  canProceedToCheckInFromSummary,
+  shouldShowAgreementPrimaryActionFromSummary,
+} from '@core/utils/agreement-summary.utils';
 import {
   formatDateSerbiaValue,
   formatDateTimeSerbiaValue,
@@ -121,6 +126,64 @@ export class BookingDetailsDialogComponent implements OnInit {
 
   close(): void {
     this.dialogRef.close();
+  }
+
+  protected getAgreementSummary(): AgreementSummary | null {
+    return this.booking()?.agreementSummary ?? null;
+  }
+
+  protected shouldShowAgreementPrimaryAction(): boolean {
+    return shouldShowAgreementPrimaryActionFromSummary(this.getAgreementSummary());
+  }
+
+  protected canOpenCheckIn(): boolean {
+    const booking = this.booking();
+    return !!booking
+      && booking.status === 'CHECK_IN_HOST_COMPLETE'
+      && canProceedToCheckInFromSummary(booking.agreementSummary);
+  }
+
+  protected getAgreementBannerText(): string {
+    const summary = this.getAgreementSummary();
+    if (!summary || summary.legacyBooking) {
+      return '';
+    }
+
+    switch (summary.workflowStatus) {
+      case 'AGREEMENT_PENDING_OWNER':
+        return 'Domaćin još nije prihvatio ugovor o iznajmljivanju.';
+      case 'AGREEMENT_PENDING_RENTER':
+      case 'AGREEMENT_PENDING_BOTH':
+        return summary.currentActorNeedsAcceptance
+          ? 'Prihvatite ugovor o iznajmljivanju pre check-in procesa.'
+          : 'Čekamo da druga strana prihvati ugovor o iznajmljivanju.';
+      case 'AGREEMENT_EXPIRED_OWNER_BREACH':
+        return 'Ugovor je istekao jer domaćin nije prihvatio uslove na vreme.';
+      case 'AGREEMENT_EXPIRED_RENTER_BREACH':
+        return 'Ugovor je istekao jer nije prihvaćen na vreme sa vaše strane.';
+      case 'AGREEMENT_EXPIRED_BOTH_PARTIES':
+        return 'Ugovor je istekao jer nije prihvaćen na vreme od obe strane.';
+      default:
+        return 'Ugovor o iznajmljivanju je spreman za pregled.';
+    }
+  }
+
+  protected getAgreementActionLabel(): string {
+    return this.getAgreementSummary()?.currentActorNeedsAcceptance
+      ? 'Pregledaj i prihvati ugovor'
+      : 'Status ugovora';
+  }
+
+  protected openAgreement(): void {
+    this.dialogRef.close();
+    void this.router.navigate(['/bookings', this.data.bookingId], {
+      queryParams: { agreementRequired: '1' },
+    });
+  }
+
+  protected openCheckIn(): void {
+    this.dialogRef.close();
+    void this.router.navigate(['/bookings', this.data.bookingId, 'check-in']);
   }
 
   openFullBookingPage(): void {

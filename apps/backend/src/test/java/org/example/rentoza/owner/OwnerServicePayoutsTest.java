@@ -3,6 +3,7 @@ package org.example.rentoza.owner;
 import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingRepository;
 import org.example.rentoza.booking.BookingStatus;
+import org.example.rentoza.booking.RentalAgreementWorkflowService;
 import org.example.rentoza.car.Car;
 import org.example.rentoza.owner.dto.OwnerPayoutsDTO;
 import org.example.rentoza.payment.PayoutLedger;
@@ -47,6 +48,9 @@ class OwnerServicePayoutsTest {
     @Mock
     private BookingRepository bookingRepo;
 
+    @Mock
+    private RentalAgreementWorkflowService rentalAgreementWorkflowService;
+
     private OwnerService ownerService;
 
     private static final Long HOST_ID = 42L;
@@ -62,7 +66,8 @@ class OwnerServicePayoutsTest {
                 bookingRepo,
                 null,  // reviewRepo
                 null,  // cancellationStatsRepo
-                payoutLedgerRepo
+                payoutLedgerRepo,
+                rentalAgreementWorkflowService
         );
     }
 

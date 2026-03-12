@@ -159,6 +159,8 @@ public class BookingDetailsDTO {
      */
     private String paymentStatus;
 
+    private AgreementSummaryDTO agreementSummary;
+
     /**
      * Location variance status for pickup location validation.
      * Used at check-in to indicate car position relative to agreed pickup.

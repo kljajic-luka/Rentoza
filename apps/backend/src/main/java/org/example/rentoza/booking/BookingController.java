@@ -15,7 +15,11 @@ import org.example.rentoza.booking.dto.BookingResponseDTO;
 import org.example.rentoza.booking.dto.CancellationPreviewDTO;
 import org.example.rentoza.booking.dto.CancellationRequestDTO;
 import org.example.rentoza.booking.dto.CancellationResultDTO;
+import org.example.rentoza.booking.dto.RentalAgreementDTO;
 import org.example.rentoza.booking.dto.UserBookingResponseDTO;
+import org.example.rentoza.config.FeatureFlags;
+import org.example.rentoza.config.logging.RequestLoggingContextFilter;
+import org.example.rentoza.exception.ApiErrorResponse;
 import org.example.rentoza.exception.ResourceNotFoundException;
 
 import org.slf4j.Logger;
@@ -45,12 +49,18 @@ public class BookingController {
     private final BookingService service;
     private final BookingApprovalService approvalService;
     private final RentalAgreementService rentalAgreementService;
+    private final RentalAgreementWorkflowService rentalAgreementWorkflowService;
+    private final FeatureFlags featureFlags;
 
     public BookingController(BookingService service, BookingApprovalService approvalService,
-                             RentalAgreementService rentalAgreementService) {
+                             RentalAgreementService rentalAgreementService,
+                             RentalAgreementWorkflowService rentalAgreementWorkflowService,
+                             FeatureFlags featureFlags) {
         this.service = service;
         this.approvalService = approvalService;
         this.rentalAgreementService = rentalAgreementService;
+        this.rentalAgreementWorkflowService = rentalAgreementWorkflowService;
+        this.featureFlags = featureFlags;
     }
 
     /**
@@ -285,9 +295,16 @@ public class BookingController {
     @PreAuthorize("@bookingSecurity.canAccessBooking(#id, authentication.principal.id) or hasRole('ADMIN')")
     public ResponseEntity<?> getBookingById(
             @Parameter(description = "Booking ID", example = "456")
-            @PathVariable Long id) {
+            @PathVariable Long id,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal org.example.rentoza.security.JwtUserPrincipal principal) {
         Booking booking = service.getBookingById(id);
-        return ResponseEntity.ok(new BookingResponseDTO(booking));
+        BookingResponseDTO dto = new BookingResponseDTO(booking);
+        dto.setAgreementSummary(rentalAgreementWorkflowService.buildSummary(
+                booking,
+                rentalAgreementService.getOrGenerateAgreement(id).orElse(null),
+                principal.id()
+        ));
+        return ResponseEntity.ok(dto);
     }
 
     /**
@@ -662,13 +679,24 @@ public class BookingController {
             var agreement = rentalAgreementService.getOrGenerateAgreement(bookingId);
             if (agreement.isEmpty()) {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                        .body(Map.of("error", "No rental agreement found for this booking"));
+                        .body(ApiErrorResponse.notFound(
+                                "Ugovor o iznajmljivanju nije pronađen za ovu rezervaciju.",
+                                RequestLoggingContextFilter.getCurrentRequestId(),
+                                "/api/bookings/" + bookingId + "/agreement"
+                        ));
             }
-            return ResponseEntity.ok(org.example.rentoza.booking.dto.RentalAgreementDTO.from(agreement.get()));
+                    return ResponseEntity.ok(RentalAgreementDTO.from(
+                        agreement.get(),
+                        featureFlags.isRentalAgreementCheckinEnforced()
+                    ));
         } catch (Exception e) {
             log.error("Error fetching agreement for booking {}", bookingId, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("error", "An unexpected error occurred"));
+                    .body(ApiErrorResponse.internalError(
+                            "Došlo je do greške pri učitavanju ugovora o iznajmljivanju.",
+                            RequestLoggingContextFilter.getCurrentRequestId(),
+                            "/api/bookings/" + bookingId + "/agreement"
+                    ));
         }
     }
 
@@ -690,7 +718,11 @@ public class BookingController {
             var agreement = rentalAgreementService.getAgreementForBooking(bookingId);
             if (agreement.isEmpty()) {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                        .body(Map.of("error", "No rental agreement found for this booking"));
+                    .body(ApiErrorResponse.notFound(
+                        "Ugovor o iznajmljivanju nije pronađen za ovu rezervaciju.",
+                        RequestLoggingContextFilter.getCurrentRequestId(),
+                        "/api/bookings/" + bookingId + "/agreement/accept"
+                    ));
             }
 
             RentalAgreement updated;
@@ -700,21 +732,70 @@ public class BookingController {
                 updated = rentalAgreementService.acceptAsRenter(bookingId, userId, ip, userAgent);
             } else {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                        .body(Map.of("error", "Only booking parties can accept the agreement"));
+                    .body(ApiErrorResponse.forbidden(
+                        "Samo učesnici rezervacije mogu prihvatiti ugovor o iznajmljivanju.",
+                        RequestLoggingContextFilter.getCurrentRequestId(),
+                        "/api/bookings/" + bookingId + "/agreement/accept"
+                    ));
             }
 
-            return ResponseEntity.ok(org.example.rentoza.booking.dto.RentalAgreementDTO.from(updated));
+        return ResponseEntity.ok(RentalAgreementDTO.from(
+            updated,
+            featureFlags.isRentalAgreementCheckinEnforced()
+        ));
 
         } catch (org.springframework.security.access.AccessDeniedException e) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body(Map.of("error", e.getMessage()));
+                .body(ApiErrorResponse.forbidden(
+                    e.getMessage(),
+                    RequestLoggingContextFilter.getCurrentRequestId(),
+                    "/api/bookings/" + bookingId + "/agreement/accept"
+                ));
         } catch (org.example.rentoza.exception.ResourceNotFoundException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(Map.of("error", e.getMessage()));
+                .body(ApiErrorResponse.notFound(
+                    e.getMessage(),
+                    RequestLoggingContextFilter.getCurrentRequestId(),
+                    "/api/bookings/" + bookingId + "/agreement/accept"
+                ));
+        } catch (RentalAgreementConflictException e) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiErrorResponse.conflict(
+                    e.getCode(),
+                    e.getMessage(),
+                    null,
+                    RequestLoggingContextFilter.getCurrentRequestId(),
+                    "/api/bookings/" + bookingId + "/agreement/accept"
+                ));
+        } catch (org.springframework.dao.ConcurrencyFailureException |
+                 jakarta.persistence.OptimisticLockException |
+                 jakarta.persistence.PessimisticLockException |
+                 jakarta.persistence.LockTimeoutException e) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiErrorResponse.conflict(
+                    "RENTAL_AGREEMENT_STATE_CHANGED",
+                    "Status ugovora o iznajmljivanju je upravo promenjen. Osvežite stranicu i pokušajte ponovo.",
+                    null,
+                    RequestLoggingContextFilter.getCurrentRequestId(),
+                    "/api/bookings/" + bookingId + "/agreement/accept"
+                ));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiErrorResponse.conflict(
+                    "RENTAL_AGREEMENT_CONFLICT",
+                    e.getMessage(),
+                    null,
+                    RequestLoggingContextFilter.getCurrentRequestId(),
+                    "/api/bookings/" + bookingId + "/agreement/accept"
+                ));
         } catch (Exception e) {
             log.error("Error accepting agreement for booking {}", bookingId, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("error", "An unexpected error occurred"));
+                .body(ApiErrorResponse.internalError(
+                    "Došlo je do greške pri prihvatanju ugovora o iznajmljivanju.",
+                    RequestLoggingContextFilter.getCurrentRequestId(),
+                    "/api/bookings/" + bookingId + "/agreement/accept"
+                ));
         }
     }
 

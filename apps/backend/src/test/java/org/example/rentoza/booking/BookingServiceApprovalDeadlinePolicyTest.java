@@ -62,6 +62,7 @@ class BookingServiceApprovalDeadlinePolicyTest {
     @Mock private org.example.rentoza.scheduler.SchedulerIdempotencyService lockService;
     @Mock private org.example.rentoza.booking.validation.BookingEdgeCaseValidator edgeCaseValidator;
     @Mock private RentalAgreementService rentalAgreementService;
+    @Mock private RentalAgreementWorkflowService rentalAgreementWorkflowService;
     @Mock private MarketplaceComplianceService marketplaceComplianceService;
     @Mock private AccountTrustStateService accountTrustStateService;
 
@@ -84,6 +85,7 @@ class BookingServiceApprovalDeadlinePolicyTest {
                 lockService,
                 edgeCaseValidator,
                 rentalAgreementService,
+                rentalAgreementWorkflowService,
                 marketplaceComplianceService,
                 accountTrustStateService
         );

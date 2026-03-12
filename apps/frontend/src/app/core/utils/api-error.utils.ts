@@ -1,14 +1,16 @@
 import { HttpErrorResponse } from '@angular/common/http';
 
 type ApiErrorEnvelope = {
-  error?: {
-    code?: string;
-    message?: string;
-    details?: Record<string, unknown>;
-    path?: string;
-    requestId?: string;
-    retryAfter?: number;
-  };
+  error?:
+    | {
+        code?: string;
+        message?: string;
+        details?: Record<string, unknown>;
+        path?: string;
+        requestId?: string;
+        retryAfter?: number;
+      }
+    | string;
   code?: string;
   message?: string;
   details?: Record<string, unknown>;
@@ -20,6 +22,9 @@ type ApiErrorEnvelope = {
 };
 
 function getPayload(source: unknown): ApiErrorEnvelope {
+  if (typeof source === 'string') {
+    return { message: source };
+  }
   if (!source || typeof source !== 'object') {
     return {};
   }
@@ -28,11 +33,17 @@ function getPayload(source: unknown): ApiErrorEnvelope {
 
 export function getApiErrorCode(source: unknown): string | undefined {
   const payload = getPayload(source);
+  if (typeof payload.error === 'string') {
+    return payload.code;
+  }
   return payload.error?.code ?? payload.code;
 }
 
 export function getApiErrorMessage(source: unknown): string | undefined {
   const payload = getPayload(source);
+  if (typeof payload.error === 'string') {
+    return payload.error;
+  }
   return payload.error?.message ?? payload.message ?? payload.userMessage;
 }
 

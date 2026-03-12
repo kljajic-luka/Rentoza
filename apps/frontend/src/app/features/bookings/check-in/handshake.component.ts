@@ -36,6 +36,11 @@ import { CheckInService } from '../../../core/services/check-in.service';
 import { BookingService, RentalAgreementDTO } from '../../../core/services/booking.service';
 import { GeolocationService } from '../../../core/services/geolocation.service';
 import { CheckInStatusDTO } from '../../../core/models/check-in.model';
+import { getHttpErrorMessage } from '@core/utils/api-error.utils';
+import {
+  canProceedToCheckInFromAgreement,
+  isAgreementEnforcementEnabled,
+} from '@core/utils/agreement-summary.utils';
 
 @Component({
   selector: 'app-handshake',
@@ -203,64 +208,74 @@ import { CheckInStatusDTO } from '../../../core/models/check-in.model';
               <mat-icon>gavel</mat-icon>
               <h3>Ugovor o iznajmljivanju</h3>
             </div>
-            <p class="agreement-gate-desc">
-              Pre potvrde primopredaje, morate prihvatiti ugovor o iznajmljivanju za ovu vožnju.
-            </p>
+            @if (agreementLookupState() === 'error') {
+              <p class="agreement-gate-desc">
+                Nismo uspeli da proverimo status ugovora. Osvežite podatke pre potvrde primopredaje.
+              </p>
+              <button mat-stroked-button color="primary" (click)="loadAgreement()" class="agreement-gate-btn">
+                <mat-icon>refresh</mat-icon>
+                Osveži status ugovora
+              </button>
+            } @else {
+              <p class="agreement-gate-desc">
+                Pre potvrde primopredaje, morate prihvatiti ugovor o iznajmljivanju za ovu vožnju.
+              </p>
 
-            @if (agreement()?.termsSnapshot) {
-              <div class="agreement-gate-terms">
-                <div class="terms-row">
-                  <span class="terms-key">Ukupna cena:</span>
-                  <span>{{ agreement()?.termsSnapshot?.['totalPrice'] }} RSD</span>
-                </div>
-                @if (agreement()?.termsSnapshot?.['securityDeposit']) {
+              @if (agreement()?.termsSnapshot) {
+                <div class="agreement-gate-terms">
                   <div class="terms-row">
-                    <span class="terms-key">Depozit:</span>
-                    <span>{{ agreement()?.termsSnapshot?.['securityDeposit'] }} RSD</span>
+                    <span class="terms-key">Ukupna cena:</span>
+                    <span>{{ agreement()?.termsSnapshot?.['totalPrice'] }} RSD</span>
                   </div>
-                }
-                <div class="terms-row">
-                  <span class="terms-key">Osiguranje:</span>
-                  <span>{{ agreement()?.termsSnapshot?.['insuranceType'] || 'Osnovno' }}</span>
+                  @if (agreement()?.termsSnapshot?.['securityDeposit']) {
+                    <div class="terms-row">
+                      <span class="terms-key">Depozit:</span>
+                      <span>{{ agreement()?.termsSnapshot?.['securityDeposit'] }} RSD</span>
+                    </div>
+                  }
+                  <div class="terms-row">
+                    <span class="terms-key">Osiguranje:</span>
+                    <span>{{ agreement()?.termsSnapshot?.['insuranceType'] || 'Osnovno' }}</span>
+                  </div>
                 </div>
-              </div>
-            }
-
-            @if (agreement()?.vehicleSnapshot) {
-              <div class="terms-row">
-                <span class="terms-key">Vozilo:</span>
-                <span>{{ agreement()?.vehicleSnapshot?.['brand'] }} {{ agreement()?.vehicleSnapshot?.['model'] }}
-                  ({{ agreement()?.vehicleSnapshot?.['year'] }})</span>
-              </div>
-            }
-
-            <mat-divider></mat-divider>
-
-            <mat-checkbox
-              [checked]="agreementCheckboxChecked()"
-              (change)="agreementCheckboxChecked.set($event.checked)"
-              color="primary"
-              class="agreement-gate-checkbox"
-            >
-              Pročitao/la sam i prihvatam uslove ugovora za ovu vožnju
-            </mat-checkbox>
-
-            <button
-              mat-raised-button
-              color="primary"
-              [disabled]="!agreementCheckboxChecked() || isAcceptingAgreement()"
-              (click)="acceptAgreementInline()"
-              class="agreement-gate-btn"
-            >
-              @if (isAcceptingAgreement()) {
-                <mat-spinner diameter="20"></mat-spinner>
-              } @else {
-                <ng-container>
-                  <mat-icon>gavel</mat-icon>
-                  Prihvatam ugovor
-                </ng-container>
               }
-            </button>
+
+              @if (agreement()?.vehicleSnapshot) {
+                <div class="terms-row">
+                  <span class="terms-key">Vozilo:</span>
+                  <span>{{ agreement()?.vehicleSnapshot?.['brand'] }} {{ agreement()?.vehicleSnapshot?.['model'] }}
+                    ({{ agreement()?.vehicleSnapshot?.['year'] }})</span>
+                </div>
+              }
+
+              <mat-divider></mat-divider>
+
+              <mat-checkbox
+                [checked]="agreementCheckboxChecked()"
+                (change)="agreementCheckboxChecked.set($event.checked)"
+                color="primary"
+                class="agreement-gate-checkbox"
+              >
+                Pročitao/la sam i prihvatam uslove ugovora za ovu vožnju
+              </mat-checkbox>
+
+              <button
+                mat-raised-button
+                color="primary"
+                [disabled]="!agreementCheckboxChecked() || isAcceptingAgreement()"
+                (click)="acceptAgreementInline()"
+                class="agreement-gate-btn"
+              >
+                @if (isAcceptingAgreement()) {
+                  <mat-spinner diameter="20"></mat-spinner>
+                } @else {
+                  <ng-container>
+                    <mat-icon>gavel</mat-icon>
+                    Prihvatam ugovor
+                  </ng-container>
+                }
+              </button>
+            }
           </mat-card-content>
         </mat-card>
       }
@@ -812,14 +827,19 @@ export class HandshakeComponent implements OnInit, OnDestroy {
 
   // Rental agreement state
   agreement = signal<RentalAgreementDTO | null>(null);
+  agreementLookupState = signal<'loading' | 'ready' | 'legacy' | 'disabled' | 'error'>('loading');
   agreementCheckboxChecked = signal(false);
   isAcceptingAgreement = signal(false);
 
   /** True when the current user still needs to accept the agreement. */
   agreementNeeded = computed(() => {
+    const state = this.agreementLookupState();
+    if (state === 'loading' || state === 'error') return true;
+    if (state === 'legacy' || state === 'disabled') return false;
     const a = this.agreement();
-    if (!a) return false; // No agreement record → legacy booking, don't block
-    return a.status !== 'FULLY_ACCEPTED';
+    if (!a) return false;
+    return isAgreementEnforcementEnabled(a.enforcementEnabled)
+      && !canProceedToCheckInFromAgreement(a);
   });
 
   swipeProgress = this._swipeProgress.asReadonly();
@@ -954,24 +974,23 @@ export class HandshakeComponent implements OnInit, OnDestroy {
     }
 
     this.checkInService.confirmLicenseVerifiedInPerson(this.bookingId).subscribe({
-      next: (response) => {
+      next: () => {
         this._licenseVerificationConfirmed.set(true);
-        this.verifyPhysicalId = false; // Reset checkbox after confirmation
+        this.verifyPhysicalId = false;
 
         this.snackBar.open('✓ Verifikacija vozačke dozvole je zabeležena', 'Odlično', {
           duration: 4000,
           panelClass: 'success-snackbar',
         });
 
-        // Auto-focus on swipe area
         setTimeout(() => {
-          const swipeElement = document.querySelector('.swipe-container') as HTMLElement;
-          if (swipeElement) swipeElement.focus();
+          const swipeElement = document.querySelector('.swipe-container') as HTMLElement | null;
+          swipeElement?.focus();
         }, 500);
       },
       error: (err) => {
         const errorMsg =
-          err.error?.message ||
+          getHttpErrorMessage(err) ||
           'Verifikacija nije uspela. Pokušajte ponovo ili kontaktirajte podršku.';
 
         this.snackBar.open(errorMsg, 'Zatvori', {
@@ -979,7 +998,6 @@ export class HandshakeComponent implements OnInit, OnDestroy {
           panelClass: 'error-snackbar',
         });
 
-        // Log for debugging
         console.error('[License Verification Error]', err);
       },
     });
@@ -991,7 +1009,6 @@ export class HandshakeComponent implements OnInit, OnDestroy {
    */
   onLicenseCheckboxChange(): void {
     if (this.verifyPhysicalId && this.isLicenseVerificationRequired()) {
-      // User just checked the box - provide confirmation
       console.log('[License Verification] Host confirmed they checked the license');
     }
   }
@@ -1002,7 +1019,7 @@ export class HandshakeComponent implements OnInit, OnDestroy {
    */
   isWithinGeofence(): boolean {
     const distance = this.status?.geofenceDistanceMeters;
-    if (distance === null || distance === undefined) return true; // Assume OK if no data
+    if (distance === null || distance === undefined) return true;
     return distance < this.GEOFENCE_THRESHOLD_METERS;
   }
 
@@ -1130,7 +1147,7 @@ export class HandshakeComponent implements OnInit, OnDestroy {
         error: (err) => {
           this._isConfirmed.set(false);
           this._swipeProgress.set(0);
-          const message = err.error?.message || 'Potvrda nije uspela. Pokušajte ponovo.';
+          const message = getHttpErrorMessage(err) || 'Potvrda nije uspela. Pokušajte ponovo.';
           this.snackBar.open(message, 'OK', { duration: 5000 });
         },
       });
@@ -1159,10 +1176,37 @@ export class HandshakeComponent implements OnInit, OnDestroy {
   // Rental Agreement Gate
   // =========================================================================
 
-  private loadAgreement(): void {
+  loadAgreement(): void {
+    this.agreementLookupState.set('loading');
     this.bookingService.getAgreement(this.bookingId).subscribe({
-      next: (a) => this.agreement.set(a),
-      error: () => this.agreement.set(null), // Legacy booking — no agreement record
+      next: (a) => {
+        this.agreement.set(a);
+        this.agreementLookupState.set(a.enforcementEnabled ? 'ready' : 'disabled');
+      },
+      error: (agreementError) => {
+        this.bookingService.resolveCheckInAgreementGate(this.bookingId).subscribe({
+          next: (gate) => {
+            if (gate.legacyBooking) {
+              this.agreement.set(null);
+              this.agreementLookupState.set('legacy');
+              return;
+            }
+
+            if (gate.state === 'allowed' && !gate.enforcementEnabled) {
+              this.agreement.set(gate.agreement);
+              this.agreementLookupState.set('disabled');
+              return;
+            }
+
+            this.agreement.set(null);
+            this.agreementLookupState.set(agreementError?.status === 404 ? 'legacy' : 'error');
+          },
+          error: () => {
+            this.agreement.set(null);
+            this.agreementLookupState.set(agreementError?.status === 404 ? 'legacy' : 'error');
+          },
+        });
+      },
     });
   }
 
@@ -1189,8 +1233,7 @@ export class HandshakeComponent implements OnInit, OnDestroy {
       },
       error: (err) => {
         this.isAcceptingAgreement.set(false);
-        const message =
-          err.error?.message || 'Prihvatanje ugovora nije uspelo. Pokušajte ponovo.';
+        const message = getHttpErrorMessage(err) || 'Prihvatanje ugovora nije uspelo. Pokušajte ponovo.';
         this.snackBar.open(message, 'Zatvori', { duration: 5000 });
       },
     });

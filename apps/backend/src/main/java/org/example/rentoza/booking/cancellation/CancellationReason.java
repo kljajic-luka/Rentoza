@@ -51,6 +51,11 @@ public enum CancellationReason {
      * time has passed without guest contact.
      */
     GUEST_NO_SHOW,
+
+    /**
+     * Guest failed to accept the rental agreement before the enforcement deadline.
+     */
+    GUEST_AGREEMENT_BREACH,
     
     // ==================== HOST REASONS ====================
     
@@ -92,6 +97,11 @@ public enum CancellationReason {
      * Platform may declare a "Force Majeure" period.
      */
     HOST_FORCE_MAJEURE,
+
+    /**
+     * Host failed to accept the rental agreement before the enforcement deadline.
+     */
+    HOST_AGREEMENT_BREACH,
     
     // ==================== SYSTEM REASONS ====================
     
@@ -131,5 +141,11 @@ public enum CancellationReason {
      * Insurance verification failed or was revoked.
      * No penalty to either party.
      */
-    SYSTEM_INSURANCE_FAILURE
+    SYSTEM_INSURANCE_FAILURE,
+
+    /**
+     * Both parties failed to accept the rental agreement before the enforcement deadline.
+     * Full refund applies, with neutral audit metadata.
+     */
+    SYSTEM_MUTUAL_AGREEMENT_BREACH
 }

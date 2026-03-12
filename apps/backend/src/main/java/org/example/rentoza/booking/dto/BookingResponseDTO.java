@@ -48,6 +48,7 @@ public class BookingResponseDTO {
     private LocalDateTime approvedAt;
     private LocalDateTime declinedAt;
     private String declineReason;
+    private AgreementSummaryDTO agreementSummary;
 
     // ========== PRICE BREAKDOWN (Turo Standard) ==========
     

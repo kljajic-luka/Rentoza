@@ -2,6 +2,7 @@ import { Routes } from '@angular/router';
 
 import { RoleGuard } from '@core/guards/role.guard';
 import { RoleRedirectGuard } from '@core/guards/role-redirect.guard';
+import { checkInAgreementGuard } from '@core/guards/check-in-agreement.guard';
 import { guestGuard } from '@core/guards/guest.guard';
 import { ProfileCompletionGuard } from '@core/guards/profile-completion.guard';
 
@@ -185,7 +186,7 @@ export const routes: Routes = [
       },
       {
         path: ':id/check-in',
-        canActivate: [RoleGuard, RoleRedirectGuard],
+        canActivate: [RoleGuard, RoleRedirectGuard, checkInAgreementGuard],
         data: { roles: ['USER', 'OWNER', 'ADMIN'] },
         loadComponent: () =>
           import('@features/bookings/check-in/check-in-wizard.component').then(

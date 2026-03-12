@@ -91,6 +91,11 @@ function shouldDisplayError(url: string, status: number): boolean {
     return false;
   }
 
+  // Booking detail handles missing agreements locally for pre-approval / legacy cases.
+  if (status === 404 && isExpectedAgreementNotFound(url)) {
+    return false;
+  }
+
   // For other endpoints, only show errors for certain status codes
   // Don't show 401/403 errors - these are expected for guest users
   if (SILENT_ERROR_CODES.includes(status)) {
@@ -106,6 +111,10 @@ function shouldDisplayError(url: string, status: number): boolean {
  */
 function isSilentEndpoint(url: string): boolean {
   return SILENT_ERROR_ENDPOINTS.some((endpoint) => url.includes(endpoint));
+}
+
+function isExpectedAgreementNotFound(url: string): boolean {
+  return /\/bookings\/\d+\/agreement(?:\?|$)/.test(url);
 }
 
 /**

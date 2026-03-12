@@ -248,11 +248,11 @@ import {
                 <div class="agreement-terms">
                   <div class="terms-section">
                     <span class="terms-label">Početak:</span>
-                    <span>{{ agreement()?.termsSnapshot?.['startTime'] }}</span>
+                    <span>{{ formatAgreementDateTime(agreement()?.termsSnapshot?.['startTime']) }}</span>
                   </div>
                   <div class="terms-section">
                     <span class="terms-label">Kraj:</span>
-                    <span>{{ agreement()?.termsSnapshot?.['endTime'] }}</span>
+                    <span>{{ formatAgreementDateTime(agreement()?.termsSnapshot?.['endTime']) }}</span>
                   </div>
                   <div class="terms-section">
                     <span class="terms-label">Ukupna cena:</span>
@@ -315,6 +315,22 @@ import {
                 </div>
               </div>
 
+              <!-- Audit metadata -->
+              <div class="agreement-audit">
+                <div class="terms-section">
+                  <span class="terms-label">Generisan:</span>
+                  <span>{{ formatAgreementDateTime(agreement()?.generatedAt) }}</span>
+                </div>
+                <div class="terms-section">
+                  <span class="terms-label">Verzija ugovora:</span>
+                  <span>{{ agreement()?.agreementVersion }}</span>
+                </div>
+                <div class="terms-section">
+                  <span class="terms-label">Otisak sadržaja:</span>
+                  <span class="content-hash">{{ agreement()?.contentHash?.slice(0, 12) }}...</span>
+                </div>
+              </div>
+
               <mat-divider></mat-divider>
 
               <div class="agreement-status">
@@ -366,6 +382,24 @@ import {
               }
             </mat-card-content>
           </mat-card>
+        } @else if (agreementLoadFailed()) {
+          <mat-card class="agreement-card agreement-card--pending">
+            <mat-card-content>
+              <h4>Ugovor o iznajmljivanju</h4>
+              <div class="agreement-pending-state">
+                <mat-icon>error_outline</mat-icon>
+                <div>
+                  <p>
+                    Učitavanje ugovora nije uspelo. Proverite internet konekciju i pokušajte ponovo.
+                  </p>
+                </div>
+              </div>
+              <button mat-stroked-button color="primary" (click)="retryLoadAgreement()">
+                <mat-icon>refresh</mat-icon>
+                Pokušaj ponovo
+              </button>
+            </mat-card-content>
+          </mat-card>
         } @else if (shouldShowAgreementPendingNotice()) {
           <mat-card class="agreement-card agreement-card--pending">
             <mat-card-content>
@@ -382,6 +416,10 @@ import {
                   </p>
                 </div>
               </div>
+              <button mat-stroked-button color="primary" (click)="retryLoadAgreement()">
+                <mat-icon>refresh</mat-icon>
+                Osveži
+              </button>
             </mat-card-content>
           </mat-card>
         }
@@ -996,6 +1034,23 @@ import {
         gap: 6px;
       }
 
+      .agreement-audit {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin-top: 12px;
+        padding: 8px 12px;
+        background: rgba(0, 0, 0, 0.02);
+        border-radius: 6px;
+        font-size: 12px;
+      }
+
+      .content-hash {
+        font-family: monospace;
+        font-size: 11px;
+        color: rgba(0, 0, 0, 0.5);
+      }
+
       .terms-section {
         display: flex;
         justify-content: space-between;
@@ -1183,6 +1238,14 @@ import {
       :host-context(.theme-dark) .agreement-party mat-icon.accepted {
         color: #81c784;
       }
+
+      :host-context(.theme-dark) .agreement-audit {
+        background: rgba(255, 255, 255, 0.05);
+      }
+
+      :host-context(.theme-dark) .content-hash {
+        color: rgba(255, 255, 255, 0.4);
+      }
     `,
   ],
 })
@@ -1202,6 +1265,7 @@ export class BookingDetailComponent implements OnInit {
 
   // Rental agreement state
   agreement = signal<RentalAgreementDTO | null>(null);
+  agreementLoadFailed = signal(false);
   isAcceptingAgreement = signal(false);
   agreementConfirmed = signal(false);
   extensions = signal<TripExtension[]>([]);
@@ -1373,7 +1437,12 @@ export class BookingDetailComponent implements OnInit {
       next: (booking) => {
         this.booking.set(booking);
         this.isLoading.set(false);
-        this.loadAgreement(booking.id);
+        if (this.shouldLoadAgreement(booking.status)) {
+          this.loadAgreement(booking.id);
+        } else {
+          this.agreement.set(null);
+          this.agreementLoadFailed.set(false);
+        }
         if (this.shouldLoadExtensions(booking.status)) {
           this.loadExtensions(booking.id);
         } else {
@@ -1389,13 +1458,29 @@ export class BookingDetailComponent implements OnInit {
   }
 
   loadAgreement(bookingId: number): void {
+    this.agreementLoadFailed.set(false);
     this.bookingService.getAgreement(bookingId).subscribe({
-      next: (agreement) => this.agreement.set(agreement),
-      error: () => {
-        // Agreement may not exist yet for legacy bookings — ignore
+      next: (agreement) => {
+        this.agreement.set(agreement);
+        this.agreementLoadFailed.set(false);
+      },
+      error: (err) => {
         this.agreement.set(null);
+        // 404 = agreement genuinely not found; other errors = transient failure
+        this.agreementLoadFailed.set(err.status !== 404);
       },
     });
+  }
+
+  retryLoadAgreement(): void {
+    const bookingId = this.booking()?.id;
+    if (bookingId) {
+      this.loadAgreement(bookingId);
+    }
+  }
+
+  private shouldLoadAgreement(status: BookingDetails['status']): boolean {
+    return !['PENDING_APPROVAL', 'DECLINED', 'EXPIRED', 'EXPIRED_SYSTEM'].includes(status);
   }
 
   private shouldLoadExtensions(status: BookingDetails['status']): boolean {
@@ -1644,13 +1729,20 @@ export class BookingDetailComponent implements OnInit {
     }
 
     return [
-      'CONFIRMED',
-      'CHECK_IN_OPEN',
-      'HOST_SUBMITTED',
-      'GUEST_ACKNOWLEDGED',
       'ACTIVE',
+      'CHECK_IN_OPEN',
+      'CHECK_IN_HOST_COMPLETE',
+      'CHECK_IN_COMPLETE',
       'IN_TRIP',
+      'CHECKOUT_OPEN',
+      'CHECKOUT_GUEST_COMPLETE',
+      'CHECKOUT_HOST_COMPLETE',
     ].includes(booking.status);
+  }
+
+  formatAgreementDateTime(value: unknown): string {
+    if (!value || typeof value !== 'string') return '—';
+    return formatDateTimeSerbiaValue(value);
   }
 
   agreementPlatformRoleLabel(): string {
@@ -1743,7 +1835,7 @@ export class BookingDetailComponent implements OnInit {
   canCheckIn(): boolean {
     const status = this.booking()?.status;
     const bookingStatusOk = status
-      ? ['CONFIRMED', 'CHECK_IN_OPEN', 'HOST_SUBMITTED', 'GUEST_ACKNOWLEDGED'].includes(status)
+      ? ['CHECK_IN_OPEN', 'CHECK_IN_HOST_COMPLETE'].includes(status)
       : false;
     if (!bookingStatusOk) return false;
 

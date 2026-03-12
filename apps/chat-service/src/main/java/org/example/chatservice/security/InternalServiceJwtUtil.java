@@ -47,13 +47,13 @@ public class InternalServiceJwtUtil {
         Date expiration = new Date(now.getTime() + expirationMs);
 
         String token = Jwts.builder()
-                .claims(Map.of(
+            .setClaims(Map.of(
                         "service", serviceName,
                         "type", "INTERNAL_SERVICE"
                 ))
-                .issuedAt(now)
-                .expiration(expiration)
-                .signWith(key)
+            .setIssuedAt(now)
+            .setExpiration(expiration)
+            .signWith(key, SignatureAlgorithm.HS256)
                 .compact();
 
         logger.debug("Generated internal service token for service: {}, expires: {}", serviceName, expiration);
@@ -76,11 +76,11 @@ public class InternalServiceJwtUtil {
             // Ensure token is trimmed
             String cleanToken = token.trim();
 
-            Claims claims = Jwts.parser()
-                    .verifyWith(key)
+                Claims claims = Jwts.parserBuilder()
+                    .setSigningKey(key)
                     .build()
-                    .parseSignedClaims(cleanToken)
-                    .getPayload();
+                    .parseClaimsJws(cleanToken)
+                    .getBody();
 
             // Verify this is an internal service token
             String tokenType = claims.get("type", String.class);
@@ -119,11 +119,11 @@ public class InternalServiceJwtUtil {
         try {
             if (token == null) return null;
             
-            Claims claims = Jwts.parser()
-                    .verifyWith(key)
+                Claims claims = Jwts.parserBuilder()
+                    .setSigningKey(key)
                     .build()
-                    .parseSignedClaims(token.trim())
-                    .getPayload();
+                    .parseClaimsJws(token.trim())
+                    .getBody();
 
             return claims.get("service", String.class);
         } catch (Exception e) {

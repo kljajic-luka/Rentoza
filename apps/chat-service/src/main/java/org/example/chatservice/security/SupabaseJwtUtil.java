@@ -155,13 +155,13 @@ public class SupabaseJwtUtil {
             }
 
             // Parse and verify token
-            Claims claims = Jwts.parser()
-                    .verifyWith(publicKey)  // ES256 signature verification
+                Claims claims = Jwts.parserBuilder()
+                    .setSigningKey(publicKey)
                     .requireIssuer(issuer)
                     .requireAudience(audience)
                     .build()
-                    .parseSignedClaims(token.trim())
-                    .getPayload();
+                    .parseClaimsJws(token.trim())
+                    .getBody();
 
             // Check expiration
             if (isTokenExpired(claims)) {
@@ -436,12 +436,12 @@ public class SupabaseJwtUtil {
             throw new IllegalArgumentException("No public key found for token");
         }
 
-        return Jwts.parser()
-                .verifyWith(publicKey)
+        return Jwts.parserBuilder()
+            .setSigningKey(publicKey)
                 .requireIssuer(issuer)
                 .build()
-                .parseSignedClaims(token.trim())
-                .getPayload();
+            .parseClaimsJws(token.trim())
+            .getBody();
     }
 
     private boolean isTokenExpired(Claims claims) {

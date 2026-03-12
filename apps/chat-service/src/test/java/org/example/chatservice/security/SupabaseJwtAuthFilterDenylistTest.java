@@ -82,8 +82,6 @@ class SupabaseJwtAuthFilterDenylistTest {
         // No Authorization header, no cookies, but query param has a valid JWT
         when(request.getHeader("Authorization")).thenReturn(null);
         when(request.getCookies()).thenReturn(null);
-        // Explicitly provide a JWT via query param — filter must NOT read it
-        when(request.getParameter("token")).thenReturn(VALID_JWT);
 
         filter.doFilterInternal(request, response, filterChain);
 

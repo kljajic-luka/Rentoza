@@ -20,6 +20,7 @@
 
     <properties>
         <java.version>17</java.version>
+        <jjwt.version>0.11.5</jjwt.version>
         <!-- Override Boot 3.2.0 BOM default (1.18.30) — required for JDK 21 compatibility -->
         <lombok.version>1.18.40</lombok.version>
     </properties>
@@ -72,18 +73,18 @@
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt-api</artifactId>
-            <version>0.12.3</version>
+            <version>${jjwt.version}</version>
         </dependency>
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt-impl</artifactId>
-            <version>0.12.3</version>
+            <version>${jjwt.version}</version>
             <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt-jackson</artifactId>
-            <version>0.12.3</version>
+            <version>${jjwt.version}</version>
             <scope>runtime</scope>
         </dependency>
 

@@ -49,11 +49,11 @@ public class JwtTokenProvider {
     }
 
     private Claims extractAllClaims(String token) {
-        return Jwts.parser()
-                .verifyWith(key)
+        return Jwts.parserBuilder()
+            .setSigningKey(key)
                 .build()
-                .parseSignedClaims(token.trim())
-                .getPayload();
+            .parseClaimsJws(token.trim())
+            .getBody();
     }
 
     public boolean validateToken(String token) {

@@ -282,7 +282,12 @@ public class ChatService {
     }
 
         private void notifyRecipientOfNewMessage(Long recipientId, Long bookingId, Long senderId, String messagePreview) {
-        backendApiClient.getUserDetails(senderId)
+        Mono<UserDetailsDTO> senderDetails = backendApiClient.getUserDetails(senderId);
+        if (senderDetails == null) {
+            senderDetails = Mono.empty();
+        }
+
+        senderDetails
             .switchIfEmpty(Mono.fromSupplier(() -> {
                 UserDetailsDTO fallback = new UserDetailsDTO();
                 fallback.setId(senderId);

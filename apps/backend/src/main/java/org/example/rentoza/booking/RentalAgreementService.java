@@ -9,6 +9,7 @@ import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.notification.NotificationService;
 import org.example.rentoza.notification.NotificationType;
 import org.example.rentoza.notification.dto.CreateNotificationRequestDTO;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -58,6 +59,10 @@ public class RentalAgreementService {
      */
     @Transactional
     public RentalAgreement generateAgreement(Booking booking) {
+        return generateAgreement(booking, true);
+    }
+
+    private RentalAgreement generateAgreement(Booking booking, boolean notifyParties) {
         // Idempotency: return existing agreement if present
         Optional<RentalAgreement> existing = agreementRepository.findByBookingId(booking.getId());
         if (existing.isPresent()) {
@@ -87,32 +92,53 @@ public class RentalAgreementService {
                 .termsTemplateHash("PENDING_COUNSEL_REVIEW")
                 .build();
 
-        RentalAgreement saved = agreementRepository.save(agreement);
+        RentalAgreement saved = saveHandlingConcurrentInsert(agreement, booking.getId());
         log.info("Rental agreement generated: agreementId={}, bookingId={}, hash={}",
                 saved.getId(), booking.getId(), contentHash);
 
-            try {
-                notificationService.createNotification(CreateNotificationRequestDTO.builder()
-                    .recipientId(saved.getOwnerUserId())
-                    .type(NotificationType.RENTAL_AGREEMENT_PENDING)
-                    .message("Ugovor o iznajmljivanju za vašu rezervaciju je spreman. " +
-                        "Molimo pregledajte i prihvatite ugovor pre početka vožnje.")
-                    .relatedEntityId("booking-" + booking.getId() + "-agreement")
-                    .build());
-
-                notificationService.createNotification(CreateNotificationRequestDTO.builder()
-                    .recipientId(saved.getRenterUserId())
-                    .type(NotificationType.RENTAL_AGREEMENT_PENDING)
-                    .message("Ugovor o iznajmljivanju za vašu rezervaciju je spreman. " +
-                        "Molimo pregledajte i prihvatite ugovor pre početka vožnje.")
-                    .relatedEntityId("booking-" + booking.getId() + "-agreement")
-                    .build());
-            } catch (Exception e) {
-                log.error("Failed to send agreement notification for booking {}: {}",
-                    booking.getId(), e.getMessage());
-            }
+        if (notifyParties) {
+            sendPendingNotifications(saved, booking.getId());
+        } else {
+            log.info("Rental agreement generated without notifications: bookingId={}", booking.getId());
+        }
 
         return saved;
+    }
+
+    private RentalAgreement saveHandlingConcurrentInsert(RentalAgreement agreement, Long bookingId) {
+        try {
+            return agreementRepository.save(agreement);
+        } catch (DataIntegrityViolationException e) {
+            return agreementRepository.findByBookingId(bookingId)
+                    .map(existing -> {
+                        log.info("Agreement insert raced for booking {}, returning existing row", bookingId);
+                        return existing;
+                    })
+                    .orElseThrow(() -> e);
+        }
+    }
+
+    private void sendPendingNotifications(RentalAgreement agreement, Long bookingId) {
+        try {
+            notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                    .recipientId(agreement.getOwnerUserId())
+                    .type(NotificationType.RENTAL_AGREEMENT_PENDING)
+                    .message("Ugovor o iznajmljivanju za vašu rezervaciju je spreman. " +
+                            "Molimo pregledajte i prihvatite ugovor pre početka vožnje.")
+                    .relatedEntityId("booking-" + bookingId + "-agreement")
+                    .build());
+
+            notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                    .recipientId(agreement.getRenterUserId())
+                    .type(NotificationType.RENTAL_AGREEMENT_PENDING)
+                    .message("Ugovor o iznajmljivanju za vašu rezervaciju je spreman. " +
+                            "Molimo pregledajte i prihvatite ugovor pre početka vožnje.")
+                    .relatedEntityId("booking-" + bookingId + "-agreement")
+                    .build());
+        } catch (Exception e) {
+            log.error("Failed to send agreement notification for booking {}: {}",
+                    bookingId, e.getMessage());
+        }
     }
 
     /**
@@ -193,6 +219,40 @@ public class RentalAgreementService {
     @Transactional(readOnly = true)
     public Optional<RentalAgreement> getAgreementForBooking(Long bookingId) {
         return agreementRepository.findByBookingId(bookingId);
+    }
+
+    /**
+     * Get or lazily generate the agreement for a booking.
+     *
+     * <p>Covers the gap where agreement generation failed silently during
+     * booking approval (try-catch in BookingApprovalService) or the backfill
+     * hasn't run yet. Only generates for non-terminal bookings that should
+     * have an agreement.
+     */
+    @Transactional
+    public Optional<RentalAgreement> getOrGenerateAgreement(Long bookingId) {
+        Optional<RentalAgreement> existing = agreementRepository.findByBookingId(bookingId);
+        if (existing.isPresent()) {
+            return existing;
+        }
+
+        // Lazy generation: load booking with relations and generate if eligible
+        Optional<Booking> bookingOpt = bookingRepository.findByIdWithRelations(bookingId);
+        if (bookingOpt.isEmpty()) {
+            return Optional.empty();
+        }
+
+        Booking booking = bookingOpt.get();
+        // Only generate for bookings past the approval gate and not in terminal states
+        if (booking.getStatus() == BookingStatus.PENDING_APPROVAL
+                || booking.getStatus() == BookingStatus.DECLINED
+                || booking.getStatus().isTerminal()) {
+            return Optional.empty();
+        }
+
+        log.info("Lazy-generating agreement for booking {} (status={})", bookingId, booking.getStatus());
+        RentalAgreement agreement = generateAgreement(booking, false);
+        return Optional.of(agreement);
     }
 
     /**

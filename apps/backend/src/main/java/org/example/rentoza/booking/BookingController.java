@@ -659,7 +659,7 @@ public class BookingController {
     @PreAuthorize("isAuthenticated() and @bookingSecurity.canAccessBooking(#bookingId, authentication?.principal?.id)")
     public ResponseEntity<?> getAgreement(@PathVariable Long bookingId) {
         try {
-            var agreement = rentalAgreementService.getAgreementForBooking(bookingId);
+            var agreement = rentalAgreementService.getOrGenerateAgreement(bookingId);
             if (agreement.isEmpty()) {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND)
                         .body(Map.of("error", "No rental agreement found for this booking"));

@@ -22,11 +22,17 @@ public class RentalAgreementBackfillService {
 
     private static final Set<BookingStatus> BACKFILL_ELIGIBLE_STATUSES = Set.of(
             BookingStatus.ACTIVE,
+            BookingStatus.APPROVED,
             BookingStatus.CHECK_IN_OPEN,
             BookingStatus.CHECK_IN_HOST_COMPLETE,
             BookingStatus.CHECK_IN_COMPLETE,
+            BookingStatus.CHECK_IN_DISPUTE,
             BookingStatus.IN_TRIP,
-            BookingStatus.PENDING_APPROVAL
+            BookingStatus.CHECKOUT_OPEN,
+            BookingStatus.CHECKOUT_GUEST_COMPLETE,
+            BookingStatus.CHECKOUT_HOST_COMPLETE,
+            BookingStatus.CHECKOUT_SETTLEMENT_PENDING,
+            BookingStatus.CHECKOUT_DAMAGE_DISPUTE
     );
 
     private final BookingRepository bookingRepository;

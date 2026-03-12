@@ -94,7 +94,7 @@
         <h3>Troškovi i zaštita</h3>
         <div class="info-row">
           <span class="label">Ukupna cena</span>
-          <span class="value price">€{{ b.totalPrice }}</span>
+          <span class="value price">{{ b.totalPrice | currency: 'RSD' : 'symbol' : '1.0-0' }}</span>
         </div>
         <div class="info-row">
           <span class="label">Osiguranje</span>

@@ -173,7 +173,7 @@ import { getHttpErrorMessage } from '@core/utils/api-error.utils';
             <h4>Cena</h4>
             <div class="price-row">
               <span>Ukupno</span>
-              <span class="price">{{ booking()?.totalPrice | currency: 'EUR' }}</span>
+              <span class="price">{{ booking()?.totalPrice | currency: 'RSD' : 'symbol' : '1.0-0' }}</span>
             </div>
           </mat-card-content>
         </mat-card>

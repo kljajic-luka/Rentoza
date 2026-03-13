@@ -33,6 +33,10 @@ $dark-theme: mat.define-theme((
 }
 
 /* 🧱 Base styles */
+:root {
+  --cookie-consent-offset: 0px;
+}
+
 html,
 body {
   height: 100%;
@@ -46,6 +50,8 @@ body {
   background: var(--color-bg);
   color: var(--color-text-primary);
   min-height: 100vh;
+  padding-bottom: var(--cookie-consent-offset);
+  scroll-padding-bottom: var(--cookie-consent-offset);
   transition: background-color 200ms ease, color 200ms ease;
 }
 

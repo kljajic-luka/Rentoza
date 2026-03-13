@@ -39,6 +39,7 @@ const DEFAULT_RETRY_OPTIONS: RetryOptions = {
 const NO_RETRY_ENDPOINTS = [
   '/auth/login',
   '/auth/register',
+  '/auth/supabase/google/authorize',
   '/bookings', // POST creates new booking - not idempotent
   '/payments',
   '/disputes/guest-claim',

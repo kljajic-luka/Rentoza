@@ -1,11 +1,15 @@
 import {
   Component,
   ChangeDetectionStrategy,
+  DestroyRef,
+  ElementRef,
+  ViewChild,
   signal,
-  computed,
   OnInit,
   inject,
+  input,
 } from '@angular/core';
+import { DOCUMENT } from '@angular/common';
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { MatButtonModule } from '@angular/material/button';
@@ -15,6 +19,8 @@ import { RouterLink } from '@angular/router';
 import { animate, state, style, transition, trigger } from '@angular/animations';
 import { EMPTY, catchError } from 'rxjs';
 import { AuthService } from '../../../core/auth/auth.service';
+
+type CookieConsentRenderMode = 'fixed' | 'inline';
 
 /**
  * Cookie Consent Banner Component
@@ -35,8 +41,16 @@ import { AuthService } from '../../../core/auth/auth.service';
   standalone: true,
   imports: [CommonModule, MatButtonModule, MatIconModule, MatSlideToggleModule, RouterLink],
   template: `
-    @if (showBanner()) {
-      <div class="cookie-banner" [@slideUp]>
+    @if (showBanner() && !suspended()) {
+      <div
+        #banner
+        class="cookie-banner"
+        [class.cookie-banner--fixed]="renderMode() === 'fixed'"
+        [class.cookie-banner--inline]="renderMode() === 'inline'"
+        [@slideUp]
+        role="region"
+        aria-label="Podešavanja kolačića"
+      >
         <div class="banner-content">
           <div class="banner-icon">
             <mat-icon>cookie</mat-icon>
@@ -98,15 +112,27 @@ import { AuthService } from '../../../core/auth/auth.service';
   styles: [
     `
       .cookie-banner {
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
         background: white;
         box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
-        z-index: 9999;
         padding: 16px 24px;
         border-top: 3px solid var(--brand-primary);
+      }
+
+      .cookie-banner--fixed {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 950;
+        padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+      }
+
+      .cookie-banner--inline {
+        position: relative;
+        z-index: auto;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+        border-top: 0;
+        border-bottom: 3px solid var(--brand-primary);
       }
 
       .banner-content {
@@ -202,6 +228,10 @@ import { AuthService } from '../../../core/auth/auth.service';
           padding: 12px 16px;
         }
 
+        .cookie-banner--fixed {
+          padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+        }
+
         .banner-content {
           flex-direction: column;
         }
@@ -235,18 +265,40 @@ export class CookieConsentComponent implements OnInit {
   private readonly CONSENT_VERSION = 1; // Increment to re-show banner
   private readonly http = inject(HttpClient);
   private readonly authService = inject(AuthService);
+  private readonly document = inject(DOCUMENT);
+  private readonly destroyRef = inject(DestroyRef);
+
+  @ViewChild('banner') private bannerElement?: ElementRef<HTMLElement>;
+
+  readonly renderMode = input<CookieConsentRenderMode>('fixed');
+  readonly suspended = input(false);
 
   readonly showBanner = signal(false);
   readonly showSettings = signal(false);
   readonly analyticsEnabled = signal(false);
   readonly marketingEnabled = signal(false);
 
+  private resizeObserver: ResizeObserver | null = null;
+  private observedBanner: HTMLElement | null = null;
+  private reservedSpace = 0;
+
+  constructor() {
+    this.destroyRef.onDestroy(() => {
+      this.disconnectResizeObserver();
+      this.setReservedSpace(0);
+    });
+  }
+
   ngOnInit(): void {
     this.checkConsentStatus();
   }
 
+  ngAfterViewChecked(): void {
+    this.syncReservedSpace();
+  }
+
   private checkConsentStatus(): void {
-    const stored = localStorage.getItem(this.STORAGE_KEY);
+    const stored = this.readStoredConsent();
 
     if (!stored) {
       this.showBanner.set(true);
@@ -298,9 +350,16 @@ export class CookieConsentComponent implements OnInit {
   }
 
   private saveConsent(consent: CookieConsent): void {
-    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(consent));
+    try {
+      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(consent));
+    } catch {
+      // Keep the current session usable even if storage is unavailable.
+    }
+
     this.applyConsentPreferences(consent);
     this.showBanner.set(false);
+    this.showSettings.set(false);
+    this.setReservedSpace(0);
 
     // Also sync to backend for GDPR records
     this.syncConsentToBackend(consent);
@@ -344,6 +403,60 @@ export class CookieConsentComponent implements OnInit {
       })
       .pipe(catchError(() => EMPTY))
       .subscribe();
+  }
+
+  private readStoredConsent(): string | null {
+    try {
+      return localStorage.getItem(this.STORAGE_KEY);
+    } catch {
+      return null;
+    }
+  }
+
+  private syncReservedSpace(): void {
+    const shouldReserveSpace = this.showBanner() && !this.suspended() && this.renderMode() === 'fixed';
+
+    if (!shouldReserveSpace) {
+      this.disconnectResizeObserver();
+      this.setReservedSpace(0);
+      return;
+    }
+
+    const banner = this.bannerElement?.nativeElement;
+    if (!banner) {
+      return;
+    }
+
+    this.observeBannerSize(banner);
+    this.setReservedSpace(Math.ceil(banner.getBoundingClientRect().height));
+  }
+
+  private observeBannerSize(banner: HTMLElement): void {
+    if (this.observedBanner === banner || typeof ResizeObserver === 'undefined') {
+      return;
+    }
+
+    this.disconnectResizeObserver();
+    this.observedBanner = banner;
+    this.resizeObserver = new ResizeObserver(() => {
+      this.setReservedSpace(Math.ceil(banner.getBoundingClientRect().height));
+    });
+    this.resizeObserver.observe(banner);
+  }
+
+  private disconnectResizeObserver(): void {
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
+    this.observedBanner = null;
+  }
+
+  private setReservedSpace(value: number): void {
+    if (this.reservedSpace === value) {
+      return;
+    }
+
+    this.reservedSpace = value;
+    this.document.documentElement.style.setProperty('--cookie-consent-offset', `${value}px`);
   }
 }
 

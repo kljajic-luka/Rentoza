@@ -134,6 +134,93 @@ describe('ChatService', () => {
       // Simulate receiving typing indicator through private method
       (service as any).handleTypingIndicator(typingData);
     });
+
+    it('should suppress self-typing events (echoed by backend)', () => {
+      const selfTyping: TypingIndicatorDTO = {
+        conversationId: 1,
+        userId: mockUser.id, // Same as current user
+        userName: 'Test User',
+        isTyping: true,
+        timestamp: new Date().toISOString(),
+      };
+
+      const emissions: TypingIndicatorDTO[] = [];
+      service.typingIndicators$.subscribe((t) => emissions.push(t));
+
+      (service as any).handleTypingIndicator(selfTyping);
+
+      expect(emissions.length).toBe(0);
+    });
+
+    it('should emit typing from other participant even when self-events are suppressed', () => {
+      const selfTyping: TypingIndicatorDTO = {
+        conversationId: 1,
+        userId: mockUser.id,
+        userName: 'Test User',
+        isTyping: true,
+        timestamp: new Date().toISOString(),
+      };
+
+      const otherTyping: TypingIndicatorDTO = {
+        conversationId: 1,
+        userId: 'other-user',
+        userName: 'Other User',
+        isTyping: true,
+        timestamp: new Date().toISOString(),
+      };
+
+      const emissions: TypingIndicatorDTO[] = [];
+      service.typingIndicators$.subscribe((t) => emissions.push(t));
+
+      (service as any).handleTypingIndicator(selfTyping);
+      (service as any).handleTypingIndicator(otherTyping);
+
+      expect(emissions.length).toBe(1);
+      expect(emissions[0].userId).toBe('other-user');
+      expect(emissions[0].userName).toBe('Other User');
+    });
+
+    it('should not suppress typing when no user is logged in', () => {
+      authServiceMock.getCurrentUser.and.returnValue(null);
+
+      const typingData: TypingIndicatorDTO = {
+        conversationId: 1,
+        userId: 'any-user',
+        userName: 'Any User',
+        isTyping: true,
+        timestamp: new Date().toISOString(),
+      };
+
+      const emissions: TypingIndicatorDTO[] = [];
+      service.typingIndicators$.subscribe((t) => emissions.push(t));
+
+      (service as any).handleTypingIndicator(typingData);
+
+      expect(emissions.length).toBe(1);
+    });
+
+    it('should auto-clear typing after timeout', fakeAsync(() => {
+      const typingData: TypingIndicatorDTO = {
+        conversationId: 1,
+        userId: 'other-user',
+        userName: 'Other User',
+        isTyping: true,
+        timestamp: new Date().toISOString(),
+      };
+
+      const emissions: TypingIndicatorDTO[] = [];
+      service.typingIndicators$.subscribe((t) => emissions.push(t));
+
+      (service as any).handleTypingIndicator(typingData);
+      expect(emissions.length).toBe(1);
+      expect(emissions[0].isTyping).toBe(true);
+
+      tick(5000);
+
+      expect(emissions.length).toBe(2);
+      expect(emissions[1].isTyping).toBe(false);
+      expect(emissions[1].userId).toBe('other-user');
+    }));
   });
 
   describe('optimistic updates', () => {

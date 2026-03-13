@@ -299,6 +299,12 @@ export class ChatService implements OnDestroy {
   }
 
   private handleTypingIndicator(typing: TypingIndicatorDTO): void {
+    // Suppress self-typing events (backend echoes to all subscribers including sender)
+    const currentUser = this.authService.getCurrentUser();
+    if (currentUser && typing.userId === currentUser.id?.toString()) {
+      return;
+    }
+
     // Clear existing timeout for this conversation
     const existingTimeout = this.typingTimeouts.get(typing.conversationId);
     if (existingTimeout) {

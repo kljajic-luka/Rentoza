@@ -240,7 +240,10 @@ export class MessagesComponent implements OnInit, OnDestroy {
 
     // Subscribe to typing indicators
     this.chatService.typingIndicators$.pipe(takeUntil(this.destroy$)).subscribe((typing) => {
-      if (typing.conversationId === this.selectedConversationId()) {
+      if (
+        typing.conversationId === this.selectedConversationId() &&
+        typing.userId !== this.currentUserId()
+      ) {
         this.isTyping.set(typing.isTyping);
         this.typingUserName.set(typing.userName);
       }

@@ -170,15 +170,15 @@ public class GuestCheckInPhotoService {
             }
         }
         
-        // Check completion status
+        // Check completion status for the active session only.
         long validPhotoTypes = guestPhotoRepository.countRequiredGuestPhotoTypesBySession(sessionId);
         boolean complete = validPhotoTypes >= REQUIRED_PHOTO_COUNT;
         
         // Calculate missing photos
         List<String> missingTypes = getMissingPhotoTypes(sessionId);
         
-        // Update booking with guest photo count
-        booking.setGuestCheckinPhotoCount(acceptedCount);
+        // Persist the authoritative active-session summary on the booking.
+        booking.setGuestCheckinPhotoCount((int) validPhotoTypes);
         if (complete) {
             booking.setGuestCheckinPhotosCompletedAt(Instant.now());
             
@@ -196,6 +196,8 @@ public class GuestCheckInPhotoService {
                     "discrepancyCount", discrepancies.size()
                 )
             );
+        } else {
+            booking.setGuestCheckinPhotosCompletedAt(null);
         }
         bookingRepository.save(booking);
         

@@ -47,6 +47,16 @@ public class CheckInStatusDTO {
     private boolean hostConfirmedHandshake;
     /** Guest has confirmed their side of the handshake */
     private boolean guestConfirmedHandshake;
+    /** Server-authoritative feature flag for dual-party guest photo capture */
+    private Boolean guestPhotoVerificationEnabled;
+    /** Server-authoritative requirement flag for guest photos before handshake */
+    private Boolean guestPhotosRequired;
+    /** Count of confirmed required guest photo types for the active check-in session */
+    private Integer guestConfirmedPhotoCount;
+    /** True when the active check-in session already has all required guest photo types */
+    private Boolean guestPhotosConfirmedComplete;
+    /** Missing required guest photo types for the active check-in session */
+    private List<String> missingGuestPhotoTypes;
 
     // Timestamps
     private LocalDateTime checkInOpenedAt;

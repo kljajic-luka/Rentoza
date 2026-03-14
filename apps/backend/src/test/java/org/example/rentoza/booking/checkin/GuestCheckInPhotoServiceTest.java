@@ -572,6 +572,30 @@ class GuestCheckInPhotoServiceTest {
         }
 
         @Test
+        @DisplayName("Should allow same photo type when it only exists in a prior session")
+        void shouldAllowSamePhotoTypeFromPriorSession() {
+            testBooking.setStatus(BookingStatus.CHECK_IN_HOST_COMPLETE);
+            testBooking.setCheckInSessionId("active-session-456");
+            GuestCheckInPhotoSubmissionDTO submission = createValidSubmission();
+
+            when(bookingRepository.findByIdWithRelations(bookingId)).thenReturn(Optional.of(testBooking));
+            when(userRepository.findById(renterId)).thenReturn(Optional.of(testRenter));
+            when(guestPhotoRepository.countByCheckInSessionIdAndPhotoType("active-session-456", CheckInPhotoType.GUEST_EXTERIOR_FRONT))
+                .thenReturn(0L);
+            when(guestPhotoRepository.countRequiredGuestPhotoTypesBySession("active-session-456"))
+                .thenReturn(0L);
+            when(exifValidationService.validate(any(), any())).thenReturn(createValidExifResult());
+            when(photoRejectionService.shouldReject(any())).thenReturn(true);
+
+            assertThatCode(() ->
+                guestPhotoService.uploadGuestPhotos(bookingId, renterId, submission))
+                .doesNotThrowAnyException();
+
+            verify(guestPhotoRepository).countByCheckInSessionIdAndPhotoType(
+                "active-session-456", CheckInPhotoType.GUEST_EXTERIOR_FRONT);
+        }
+
+        @Test
         @DisplayName("Should report all duplicate types in error message")
         void shouldReportAllDuplicateTypesInErrorMessage() {
             // Arrange

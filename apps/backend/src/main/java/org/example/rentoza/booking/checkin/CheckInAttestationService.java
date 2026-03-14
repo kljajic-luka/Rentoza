@@ -10,8 +10,12 @@ import org.example.rentoza.booking.checkin.dto.CheckInAttestationResponseDTO;
 import org.example.rentoza.booking.photo.PhotoUrlService;
 import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.storage.SupabaseStorageService;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -37,6 +41,39 @@ public class CheckInAttestationService {
     private final SupabaseStorageService supabaseStorageService;
     private final PhotoUrlService photoUrlService;
     private final ObjectMapper objectMapper;
+    private final ApplicationEventPublisher applicationEventPublisher;
+
+    public void requestTripStartAttestation(Long bookingId, String checkInSessionId, Long actorId) {
+        applicationEventPublisher.publishEvent(
+                new CheckInAttestationRequestedEvent(bookingId, checkInSessionId, actorId));
+    }
+
+    @Async("notificationExecutor")
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void handleTripStartAttestationRequested(CheckInAttestationRequestedEvent event) {
+        try {
+            Booking booking = bookingRepository.findById(event.bookingId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Rezervacija nije pronađena"));
+
+            String activeSessionId = booking.getCheckInSessionId();
+            if (activeSessionId == null || activeSessionId.isBlank()) {
+                log.warn("[CheckInAttestation] Skipping attestation generation for bookingId={} actorId={} because no active session exists",
+                        event.bookingId(), event.actorId());
+                return;
+            }
+
+            if (!activeSessionId.equals(event.checkInSessionId())) {
+                log.warn("[CheckInAttestation] Skipping stale attestation request for bookingId={} expectedSessionId={} activeSessionId={} actorId={}",
+                        event.bookingId(), event.checkInSessionId(), activeSessionId, event.actorId());
+                return;
+            }
+
+            generateTripStartAttestation(booking, event.actorId());
+        } catch (Exception e) {
+            log.error("[CheckInAttestation] Failed to generate trip-start attestation for bookingId={} sessionId={} actorId={}",
+                    event.bookingId(), event.checkInSessionId(), event.actorId(), e);
+        }
+    }
 
     @Transactional
     public CheckInAttestation generateTripStartAttestation(Booking booking, Long actorId) {
@@ -48,7 +85,7 @@ public class CheckInAttestationService {
                 .orElseGet(() -> createAttestation(booking, actorId));
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public CheckInAttestationResponseDTO getAttestationForBooking(Long bookingId, Long requestingUserId) {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Rezervacija nije pronađena"));
@@ -57,7 +94,12 @@ public class CheckInAttestationService {
         CheckInAttestation attestation;
         if (activeSessionId != null && !activeSessionId.isBlank()) {
             attestation = attestationRepository.findByBookingIdAndCheckInSessionId(bookingId, activeSessionId)
-                    .orElseThrow(() -> new ResourceNotFoundException("Check-in attestation not found for active session"));
+                    .orElseGet(() -> {
+                        if (booking.getTripStartedAt() == null) {
+                            throw new ResourceNotFoundException("Check-in attestation not found for active session");
+                        }
+                        return generateTripStartAttestation(booking, requestingUserId);
+                    });
         } else {
             attestation = attestationRepository.findLatestFirstByBookingId(bookingId).stream()
                     .findFirst()

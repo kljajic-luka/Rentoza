@@ -763,6 +763,14 @@ export class CheckInService implements OnDestroy {
       .pipe(takeUntil(this.destroy$));
   }
 
+  getGuestPhotos(bookingId: number): Observable<CheckInPhotoDTO[]> {
+    return this.http
+      .get<CheckInPhotoDTO[]>(`${this.baseUrl}/${bookingId}/guest-checkin-photos`, {
+        withCredentials: true,
+      })
+      .pipe(takeUntil(this.destroy$));
+  }
+
   /**
    * Confirm handshake (both host and guest call this) with optimistic UI update.
    */

@@ -14,11 +14,15 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -34,6 +38,7 @@ class CheckInAttestationServiceTest {
     @Mock private RentalAgreementService rentalAgreementService;
     @Mock private SupabaseStorageService storageService;
     @Mock private PhotoUrlService photoUrlService;
+    @Mock private ApplicationEventPublisher applicationEventPublisher;
 
     private CheckInAttestationService service;
 
@@ -49,7 +54,8 @@ class CheckInAttestationServiceTest {
                 rentalAgreementService,
                 storageService,
                 photoUrlService,
-                new ObjectMapper()
+                new ObjectMapper(),
+                applicationEventPublisher
         );
     }
 
@@ -96,12 +102,42 @@ class CheckInAttestationServiceTest {
         verify(checkInEventService).recordEvent(eq(booking), eq("session-1"), eq(CheckInEventType.CHECKIN_ATTESTATION_ACCESSED), eq(11L), eq(CheckInActorRole.HOST), anyMap());
     }
 
+    @Test
+    void shouldPublishAttestationRequestEvent() {
+        service.requestTripStartAttestation(1L, "session-1", 99L);
+
+        verify(applicationEventPublisher).publishEvent(new CheckInAttestationRequestedEvent(1L, "session-1", 99L));
+    }
+
+    @Test
+    void shouldSwallowAsyncGenerationFailuresAndKeepThemObservable() throws Exception {
+        Booking booking = booking();
+
+        when(bookingRepository.findById(1L)).thenReturn(Optional.of(booking));
+        when(attestationRepository.findByCheckInSessionId("session-1")).thenReturn(Optional.empty());
+        when(checkInPhotoRepository.findByCheckInSessionId("session-1")).thenReturn(List.of());
+        when(guestCheckInPhotoRepository.findByCheckInSessionId("session-1")).thenReturn(List.of());
+        when(checkInEventRepository.findByCheckInSessionIdAndEventType(anyString(), any())).thenReturn(List.of());
+        when(checkInEventRepository.findByCheckInSessionIdOrderByEventTimestampAsc("session-1")).thenReturn(List.of());
+
+        assertThatCode(() -> service.handleTripStartAttestationRequested(
+                new CheckInAttestationRequestedEvent(1L, "session-1", 77L)))
+                .doesNotThrowAnyException();
+
+        verify(attestationRepository).findByCheckInSessionId("session-1");
+        verify(attestationRepository, never()).save(any(CheckInAttestation.class));
+    }
+
     private Booking booking() {
         Booking booking = new Booking();
         booking.setId(1L);
         booking.setCheckInSessionId("session-1");
+        booking.setStartTime(LocalDateTime.now().plusHours(1));
+        booking.setEndTime(LocalDateTime.now().plusHours(5));
+        booking.setTripStartedAt(Instant.now());
 
         Car car = new Car();
+        car.setId(101L);
         User host = new User();
         host.setId(11L);
         car.setOwner(host);

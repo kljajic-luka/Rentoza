@@ -8,6 +8,7 @@ import org.example.rentoza.booking.RentalAgreementService;
 import org.example.rentoza.booking.checkin.dto.HandshakeConfirmationDTO;
 import org.example.rentoza.car.Car;
 import org.example.rentoza.config.FeatureFlags;
+import org.example.rentoza.exception.ValidationException;
 import org.example.rentoza.notification.NotificationService;
 import org.example.rentoza.payment.BookingPaymentService;
 import org.example.rentoza.payment.ChargeLifecycleStatus;
@@ -36,6 +37,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -178,6 +180,8 @@ class CheckInFinancialGuardsTest {
         checkInService.confirmHandshake(dto, 20L);
 
         assertThat(booking.getStatus()).isEqualTo(BookingStatus.IN_TRIP);
+        verify(checkInAttestationService).requestTripStartAttestation(1L, "session-1", 20L);
+        verify(checkInAttestationService, never()).generateTripStartAttestation(any(Booking.class), anyLong());
     }
 
     @Test
@@ -225,5 +229,26 @@ class CheckInFinancialGuardsTest {
 
         assertThat(booking.getStatus()).isEqualTo(BookingStatus.IN_TRIP);
         verify(bookingRepository).save(booking);
+    }
+
+    @Test
+    @DisplayName("Handshake blocks when only a prior-session guest photo set exists")
+    void prior_session_guest_photos_do_not_satisfy_current_handshake() {
+        booking.setChargeLifecycleStatus(ChargeLifecycleStatus.AUTHORIZED);
+        booking.setBookingAuthorizationId("auth-1");
+        booking.setBookingAuthExpiresAt(Instant.now().plusSeconds(3600));
+        booking.setDepositLifecycleStatus(DepositLifecycleStatus.AUTHORIZED);
+        booking.setDepositAuthorizationId("dep-auth");
+        booking.setDepositAuthExpiresAt(Instant.now().plusSeconds(3600));
+
+        when(featureFlags.isDualPartyPhotosEnabledForBooking(1L)).thenReturn(true);
+        when(featureFlags.isDualPartyPhotosRequiredForHandshake()).thenReturn(true);
+        when(guestCheckInPhotoRepository.countRequiredGuestPhotoTypesBySession("session-1")).thenReturn(0L);
+
+        assertThatThrownBy(() -> checkInService.confirmHandshake(dto, 10L))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("Morate otpremiti sve obavezne fotografije");
+
+        verify(guestCheckInPhotoRepository).countRequiredGuestPhotoTypesBySession("session-1");
     }
 }

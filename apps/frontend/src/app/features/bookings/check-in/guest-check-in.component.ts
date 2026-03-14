@@ -18,8 +18,10 @@ import {
   ChangeDetectionStrategy,
   OnInit,
   OnDestroy,
+  OnChanges,
   HostListener,
   effect,
+  SimpleChanges,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -34,7 +36,7 @@ import { MatChipsModule } from '@angular/material/chips';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { Subject, debounceTime } from 'rxjs';
+import { Subject, debounceTime, firstValueFrom } from 'rxjs';
 
 import { CheckInService } from '../../../core/services/check-in.service';
 import { GeolocationService } from '../../../core/services/geolocation.service';
@@ -62,6 +64,13 @@ import { environment } from '../../../../environments/environment';
 import { ReadOnlyPickupLocationComponent } from '../components/readonly-pickup-location/readonly-pickup-location.component';
 import { PickupLocationData } from '../../../core/models/booking-details.model';
 
+type GuestPhotoWorkflowState =
+  | 'not_started'
+  | 'local_draft_resumable'
+  | 'uploading'
+  | 'uploaded_confirmed'
+  | 'upload_failed_retryable';
+
 @Component({
   selector: 'app-guest-check-in',
   standalone: true,
@@ -82,7 +91,6 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
     GuidedPhotoCaptureComponent,
     PhotoComparisonComponent,
     ReadOnlyPickupLocationComponent,
-    CheckInRecoveryDialogComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -139,7 +147,7 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
            PHASE 2: DUAL-PARTY PHOTO CAPTURE
            Guest takes their own comparison photos for dispute resolution
            ═══════════════════════════════════════════════════════════════════════════ -->
-      @if (dualPartyPhotosEnabled && !guestPhotosComplete()) {
+      @if (serverGuestPhotoVerificationEnabled() && !guestPhotosComplete()) {
         <div class="dual-party-section">
           <div class="section-header">
             <mat-icon>add_a_photo</mat-icon>
@@ -147,12 +155,24 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
               <h2>Vaše fotografije vozila</h2>
               <p>Uslikajte vozilo za dodatnu dokumentaciju</p>
             </div>
-            @if (!dualPartyPhotosRequired) {
+            @if (!serverGuestPhotosRequired()) {
               <mat-chip class="optional-badge">Opciono</mat-chip>
             }
           </div>
 
-          @if (!showGuidedCapture()) {
+          @if (guestPhotoWorkflowState() === 'uploading') {
+            <mat-card class="capture-prompt-card uploading-state-card">
+              <mat-card-content>
+                <div class="capture-prompt">
+                  <mat-spinner diameter="40"></mat-spinner>
+                  <div class="prompt-text">
+                    <h4>Otpremanje je u toku</h4>
+                    <p>{{ guestPhotoStatusMessage() }}</p>
+                  </div>
+                </div>
+              </mat-card-content>
+            </mat-card>
+          } @else if (!showGuidedCapture()) {
             <!-- Start capture button -->
             <mat-card class="capture-prompt-card">
               <mat-card-content>
@@ -170,18 +190,25 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
                   <button
                     mat-raised-button
                     color="primary"
-                    (click)="startGuidedCapture()"
+                    (click)="continueGuestPhotoFlow()"
                     class="start-capture-btn"
                   >
                     <mat-icon>photo_camera</mat-icon>
-                    Započni snimanje
+                    {{ guestPhotoPrimaryActionLabel() }}
                   </button>
-                  @if (!dualPartyPhotosRequired) {
+                  @if (guestPhotoWorkflowState() === 'upload_failed_retryable') {
+                    <button mat-stroked-button (click)="startGuidedCapture()" class="skip-btn">
+                      Ponovo snimi
+                    </button>
+                  } @else if (!serverGuestPhotosRequired()) {
                     <button mat-stroked-button (click)="skipGuestPhotos()" class="skip-btn">
                       Preskoči
                     </button>
                   }
                 </div>
+                @if (guestPhotoStatusMessage()) {
+                  <p class="upload-status-hint">{{ guestPhotoStatusMessage() }}</p>
+                }
                 @if (guestPhotosProgress() > 0) {
                   <div class="progress-indicator">
                     <mat-icon>check_circle</mat-icon>
@@ -196,6 +223,7 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
               [bookingId]="bookingId"
               [mode]="'guest-checkin'"
               [restoredState]="restoredCaptureState()"
+              [preCompletedPhotoTypes]="preCompletedGuestPhotoTypes()"
               (captureComplete)="onGuestPhotosComplete($event)"
               (captureCancelled)="onGuestPhotosCancelled()"
             />
@@ -204,7 +232,7 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
       }
 
       <!-- Photo comparison (PRIVACY-FIRST: opt-in after guest photos complete) -->
-      @if (dualPartyPhotosEnabled && guestPhotosComplete() && hasPhotosToCompare()) {
+      @if (serverGuestPhotoVerificationEnabled() && guestPhotosComplete() && hasPhotosToCompare()) {
         <div class="comparison-section">
           @if (!showPhotoComparison()) {
             <!-- Collapsed state - show toggle button -->
@@ -882,6 +910,12 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
         color: var(--success-color, #4caf50);
       }
 
+      .upload-status-hint {
+        margin: 0 0 12px;
+        font-size: 13px;
+        color: var(--color-text-muted, #757575);
+      }
+
       .progress-indicator mat-icon {
         font-size: 18px;
         width: 18px;
@@ -968,7 +1002,7 @@ import { PickupLocationData } from '../../../core/models/booking-details.model';
     `,
   ],
 })
-export class GuestCheckInComponent implements OnInit, OnDestroy {
+export class GuestCheckInComponent implements OnInit, OnDestroy, OnChanges {
   @Input() bookingId!: number;
   @Input() status!: CheckInStatusDTO | null;
   @Output() completed = new EventEmitter<void>();
@@ -982,23 +1016,19 @@ export class GuestCheckInComponent implements OnInit, OnDestroy {
   private persistenceService = inject(CheckInPersistenceService);
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // FEATURE FLAGS
-  // ═══════════════════════════════════════════════════════════════════════════
-  protected readonly dualPartyPhotosEnabled = environment.checkIn?.dualPartyPhotosEnabled ?? false;
-  protected readonly dualPartyPhotosRequired =
-    environment.checkIn?.dualPartyPhotosRequired ?? false;
-
-  // ═══════════════════════════════════════════════════════════════════════════
   // STATE SIGNALS
   // ═══════════════════════════════════════════════════════════════════════════
   private _lockboxCode = signal<string | null>(null);
   private _conditionAccepted = signal<boolean>(false);
+  private _status = signal<CheckInStatusDTO | null>(null);
 
   // Dual-party photo capture state
   private _showGuidedCapture = signal(false);
-  private _guestPhotosComplete = signal(false);
   private _guestPhotosSkipped = signal(false);
   private _guestCapturedPhotos = signal<CheckInPhotoDTO[]>([]);
+  private _guestPhotoWorkflowState = signal<GuestPhotoWorkflowState>('not_started');
+  private _pendingGuestSubmission = signal<GuestCheckInPhotoSubmissionDTO | null>(null);
+  private _preCompletedGuestPhotoTypes = signal<CheckInPhotoType[]>([]);
 
   // Persistence state
   private _restoredCaptureState = signal<CaptureState | undefined>(undefined);
@@ -1012,16 +1042,53 @@ export class GuestCheckInComponent implements OnInit, OnDestroy {
   conditionAccepted = this._conditionAccepted.asReadonly();
   showGuidedCapture = this._showGuidedCapture.asReadonly();
   showPhotoComparison = this._showPhotoComparison.asReadonly();
-  guestPhotosComplete = computed(() => this._guestPhotosComplete() || this._guestPhotosSkipped());
+  guestPhotoWorkflowState = this._guestPhotoWorkflowState.asReadonly();
+  guestPhotosComplete = computed(
+    () =>
+      this._guestPhotoWorkflowState() === 'uploaded_confirmed' ||
+      this._guestPhotosSkipped(),
+  );
   guestCapturedPhotos = this._guestCapturedPhotos.asReadonly();
   restoredCaptureState = this._restoredCaptureState.asReadonly();
+  preCompletedGuestPhotoTypes = this._preCompletedGuestPhotoTypes.asReadonly();
+  serverGuestPhotoVerificationEnabled = computed(
+    () => this._status()?.guestPhotoVerificationEnabled === true,
+  );
+  serverGuestPhotosRequired = computed(() => this._status()?.guestPhotosRequired === true);
+  serverGuestPhotoCount = computed(() => this._status()?.guestConfirmedPhotoCount ?? 0);
+  serverGuestPhotoMissingTypes = computed(() => this._status()?.missingGuestPhotoTypes ?? []);
+  guestPhotoPrimaryActionLabel = computed(() => {
+    const state = this._guestPhotoWorkflowState();
+    if (state === 'upload_failed_retryable') return 'Pokušaj ponovo';
+    if (this.hasDraftReadyForUpload()) return 'Pošalji sačuvane fotografije';
+    if (state === 'local_draft_resumable') return 'Nastavi snimanje';
+    return 'Započni snimanje';
+  });
+  guestPhotoStatusMessage = computed(() => {
+    const state = this._guestPhotoWorkflowState();
+    if (state === 'uploading') {
+      return 'Fotografije se otpremaju. Sačekajte potvrdu servera.';
+    }
+    if (state === 'upload_failed_retryable') {
+      return 'Otpremanje nije potvrđeno. Sačuvani nacrt ostaje dostupan za ponovni pokušaj.';
+    }
+    if (state === 'local_draft_resumable' && this.hasDraftReadyForUpload()) {
+      return 'Sačuvane fotografije čekaju potvrdu servera. Možete odmah nastaviti slanje.';
+    }
+    return null;
+  });
 
   /** Progress percentage for guest photo capture */
-  guestPhotosProgress = computed(() => this.photoGuidanceService.progress());
+  guestPhotosProgress = computed(() => {
+    if (this.serverGuestPhotoVerificationEnabled()) {
+      return Math.round((this.serverGuestPhotoCount() / 8) * 100);
+    }
+    return this.photoGuidanceService.progress();
+  });
 
   /** Whether there are photos to compare (host photos exist) */
   hasPhotosToCompare = computed(() => {
-    const hostPhotos = this.status?.vehiclePhotos ?? [];
+    const hostPhotos = this._status()?.vehiclePhotos ?? [];
     const guestPhotos = this._guestCapturedPhotos();
     return hostPhotos.length > 0 && guestPhotos.length > 0;
   });
@@ -1065,12 +1132,25 @@ export class GuestCheckInComponent implements OnInit, OnDestroy {
   // LIFECYCLE HOOKS
   // ═══════════════════════════════════════════════════════════════════════════
 
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['status']) {
+      this._status.set(this.status ?? null);
+      void this.reconcileGuestPhotoStateFromServer();
+    }
+  }
+
   async ngOnInit(): Promise<void> {
+    this._status.set(this.status ?? null);
+
     // CRITICAL: Wait for persistence service to be ready before any DB operations
     await this.persistenceService.waitForReady();
 
+    await this.reconcileGuestPhotoStateFromServer();
+
     // Check for saved session and show recovery dialog if found
-    await this.checkForSavedSession();
+    if (!this.guestPhotosComplete()) {
+      await this.checkForSavedSession();
+    }
 
     // Acquire lock for this booking
     const lockAcquired = await this.persistenceService.acquireLock(this.bookingId);
@@ -1093,7 +1173,9 @@ export class GuestCheckInComponent implements OnInit, OnDestroy {
    */
   @HostListener('window:beforeunload', ['$event'])
   onBeforeUnload(event: BeforeUnloadEvent): void {
-    const hasPhotos = this._guestCapturedPhotos().length > 0 && !this._guestPhotosComplete();
+    const hasPhotos =
+      (this._guestCapturedPhotos().length > 0 || this._pendingGuestSubmission() !== null) &&
+      !this.guestPhotosComplete();
 
     if (hasPhotos || this._showGuidedCapture()) {
       event.preventDefault();
@@ -1110,12 +1192,18 @@ export class GuestCheckInComponent implements OnInit, OnDestroy {
    * Check for a saved session and show recovery dialog if found.
    */
   private async checkForSavedSession(): Promise<void> {
+    if (this.guestPhotosComplete()) {
+      return;
+    }
+
     const sessionInfo = await this.persistenceService.checkForSavedSession(
       this.bookingId,
       'guest-checkin',
     );
 
     if (sessionInfo.exists) {
+      this._guestPhotoWorkflowState.set('local_draft_resumable');
+
       const dialogRef = this.dialog.open(CheckInRecoveryDialogComponent, {
         data: {
           sessionInfo,
@@ -1132,17 +1220,109 @@ export class GuestCheckInComponent implements OnInit, OnDestroy {
         // Resume from saved state
         this._restoredCaptureState.set(result.captureState);
         this._showGuidedCapture.set(true);
+        this._guestPhotoWorkflowState.set('local_draft_resumable');
         console.log('[GuestCheckIn] Resuming from saved state');
       } else if (result?.action === 'takeover' && result.captureState) {
         // Takeover from another tab
         this._restoredCaptureState.set(result.captureState);
         this._showGuidedCapture.set(true);
+        this._guestPhotoWorkflowState.set('local_draft_resumable');
         console.log('[GuestCheckIn] Took over session from another tab');
       } else if (result?.action === 'start-fresh') {
+        this._guestPhotoWorkflowState.set('not_started');
         console.log('[GuestCheckIn] Starting fresh');
       }
       // 'cancel' action - do nothing, stay on page
     }
+  }
+
+  private async reconcileGuestPhotoStateFromServer(): Promise<void> {
+    if (!this.persistenceService.isReady) {
+      return;
+    }
+
+    const status = this._status();
+    if (!status?.guestPhotoVerificationEnabled) {
+      this._guestPhotoWorkflowState.set('not_started');
+      this._preCompletedGuestPhotoTypes.set([]);
+      return;
+    }
+
+    if (status.guestPhotosConfirmedComplete) {
+      await this.persistenceService.deleteCaptureState(this.bookingId, 'guest-checkin');
+      this._pendingGuestSubmission.set(null);
+      this._restoredCaptureState.set(undefined);
+      this._showGuidedCapture.set(false);
+      this._guestPhotoWorkflowState.set('uploaded_confirmed');
+      await this.loadConfirmedGuestPhotos();
+      return;
+    }
+
+    if ((status.guestConfirmedPhotoCount ?? 0) > 0) {
+      await this.loadConfirmedGuestPhotos();
+    }
+
+    if (this._guestPhotoWorkflowState() !== 'uploading') {
+      const savedState = await this.persistenceService.loadCaptureState(this.bookingId, 'guest-checkin');
+      if (savedState?.capturedPhotos.length) {
+        this._restoredCaptureState.set(savedState);
+        if (this._guestPhotoWorkflowState() !== 'upload_failed_retryable') {
+          this._guestPhotoWorkflowState.set('local_draft_resumable');
+        }
+      } else if ((status.guestConfirmedPhotoCount ?? 0) === 0) {
+        this._guestPhotoWorkflowState.set('not_started');
+      }
+    }
+  }
+
+  private async loadConfirmedGuestPhotos(): Promise<void> {
+    try {
+      const photos = await firstValueFrom(this.checkInService.getGuestPhotos(this.bookingId));
+      this._guestCapturedPhotos.set(photos);
+      this._preCompletedGuestPhotoTypes.set(photos.map((photo) => photo.photoType));
+    } catch (error) {
+      console.warn('[GuestCheckIn] Failed to load confirmed guest photos:', error);
+    }
+  }
+
+  private hasDraftReadyForUpload(): boolean {
+    const pendingSubmission = this._pendingGuestSubmission();
+    if (pendingSubmission && pendingSubmission.photos.length > 0) {
+      return true;
+    }
+
+    const restoredState = this._restoredCaptureState();
+    return (restoredState?.capturedPhotos.length ?? 0) >= 8;
+  }
+
+  private async buildSubmissionFromPersistedDraft(): Promise<GuestCheckInPhotoSubmissionDTO | null> {
+    const captureState =
+      this._restoredCaptureState() ??
+      (await this.persistenceService.loadCaptureState(this.bookingId, 'guest-checkin'));
+    if (!captureState?.capturedPhotos.length) {
+      return null;
+    }
+
+    const confirmedTypes = new Set(this._preCompletedGuestPhotoTypes());
+    const photos = captureState.capturedPhotos
+      .filter((photo) => !confirmedTypes.has(photo.photoType))
+      .map((photo) => ({
+        photoType: photo.photoType,
+        base64Data: photo.base64Data,
+        filename: `${photo.photoType}_${Date.now()}.jpg`,
+        mimeType: photo.mimeType,
+        capturedAt: photo.capturedAt,
+      }));
+
+    if (photos.length === 0) {
+      return null;
+    }
+
+    return {
+      photos,
+      clientCapturedAt: new Date().toISOString(),
+      deviceInfo: navigator.userAgent,
+    };
   }
 
   /**
@@ -1176,7 +1356,7 @@ export class GuestCheckInComponent implements OnInit, OnDestroy {
 
   // Computed
   vehicleTitle = computed(() => {
-    const car = this.status?.car;
+    const car = this._status()?.car;
     if (!car) return 'Vozilo';
     return `${car.brand} ${car.model} (${car.year})`;
   });
@@ -1186,7 +1366,7 @@ export class GuestCheckInComponent implements OnInit, OnDestroy {
    * Maps CheckInStatusDTO fields to PickupLocationData interface.
    */
   pickupLocationData = computed<PickupLocationData | null>(() => {
-    const s = this.status;
+    const s = this._status();
     if (!s?.pickupLatitude || !s?.pickupLongitude) {
       return null;
     }
@@ -1205,7 +1385,7 @@ export class GuestCheckInComponent implements OnInit, OnDestroy {
    * Used to show warning banner to guest about incomplete documentation.
    */
   hasPhotosWithIssues(): boolean {
-    const photos = this.status?.vehiclePhotos;
+    const photos = this._status()?.vehiclePhotos;
     if (!photos || photos.length === 0) return false;
     return photos.some(
       (photo: CheckInPhotoDTO) =>
@@ -1276,7 +1456,7 @@ export class GuestCheckInComponent implements OnInit, OnDestroy {
   }
 
   openPhotoViewer(photo: CheckInPhotoDTO): void {
-    const photos: CheckInPhotoDTO[] = this.status?.vehiclePhotos || [];
+    const photos: CheckInPhotoDTO[] = this._status()?.vehiclePhotos || [];
     const startIndex = photos.findIndex((p: CheckInPhotoDTO) => p.photoId === photo.photoId);
 
     this.dialog.open(PhotoViewerDialogComponent, {
@@ -1363,15 +1543,27 @@ export class GuestCheckInComponent implements OnInit, OnDestroy {
    * Loads the guest check-in sequence from the backend.
    */
   startGuidedCapture(): void {
+    this._guestPhotoWorkflowState.set('local_draft_resumable');
     this._showGuidedCapture.set(true);
-    this.photoGuidanceService.startGuestCheckInCapture().subscribe({
-      next: () => console.log('[GuestCheckIn] Guided capture started'),
-      error: (err) => {
-        console.error('[GuestCheckIn] Failed to start guided capture:', err);
-        this.snackBar.open('Greška pri pokretanju kamere', 'OK', { duration: 3000 });
-        this._showGuidedCapture.set(false);
-      },
-    });
+  }
+
+  continueGuestPhotoFlow(): void {
+    if (this.hasDraftReadyForUpload()) {
+      void this.retryPendingGuestPhotoUpload();
+      return;
+    }
+
+    this.startGuidedCapture();
+  }
+
+  private async retryPendingGuestPhotoUpload(): Promise<void> {
+    const submission = this._pendingGuestSubmission() ?? (await this.buildSubmissionFromPersistedDraft());
+    if (!submission) {
+      this.startGuidedCapture();
+      return;
+    }
+
+    this.submitGuestPhotoSubmission(submission);
   }
 
   /**
@@ -1413,14 +1605,19 @@ export class GuestCheckInComponent implements OnInit, OnDestroy {
     this._guestCapturedPhotos.set(localPhotos);
     this._showGuidedCapture.set(false);
 
+    this.submitGuestPhotoSubmission(submission);
+  }
+
+  private submitGuestPhotoSubmission(submission: GuestCheckInPhotoSubmissionDTO): void {
+    this._pendingGuestSubmission.set(submission);
+    this._guestPhotoWorkflowState.set('uploading');
     this.snackBar.open(`Otpremanje ${submission.photos.length} fotografija...`, '', {
-      duration: 0, // Keep open until upload completes
+      duration: 0,
     });
 
-    // Upload to backend (stores in Supabase, validates EXIF, creates DB records)
     this.checkInService.uploadGuestPhotos(this.bookingId, submission).subscribe({
       next: (response) => {
-        if (response.success && response.processedPhotos?.length > 0) {
+        if (response.success && response.processedPhotos?.length > 0 && response.rejectedCount === 0) {
           // Replace local previews with backend-confirmed photos (with signed URLs)
           const confirmedPhotos: CheckInPhotoDTO[] = response.processedPhotos.map((p) => ({
             photoId: p.photoId ?? 0,
@@ -1441,25 +1638,33 @@ export class GuestCheckInComponent implements OnInit, OnDestroy {
           this._guestCapturedPhotos.set(confirmedPhotos);
         }
 
-        this._guestPhotosComplete.set(true);
         this.snackBar.dismiss();
-        this.snackBar.open(`${response.acceptedCount} fotografija uspešno otpremljeno!`, 'OK', {
-          duration: 3000,
-          panelClass: 'success-snackbar',
-        });
-
-        if (response.rejectedCount > 0) {
-          console.warn(`[GuestCheckIn] ${response.rejectedCount} photos rejected by backend`);
+        if (response.guestPhotosComplete && response.rejectedCount === 0) {
+          this._pendingGuestSubmission.set(null);
+          this._guestPhotoWorkflowState.set('uploaded_confirmed');
+          this._preCompletedGuestPhotoTypes.set(response.processedPhotos.map((photo) => photo.photoType));
+          this.persistenceService
+            .deleteCaptureState(this.bookingId, 'guest-checkin')
+            .catch((err) => console.warn('[GuestCheckIn] Failed to clear capture state:', err));
+          this.snackBar.open(`${response.acceptedCount} fotografija uspešno otpremljeno!`, 'OK', {
+            duration: 3000,
+            panelClass: 'success-snackbar',
+          });
+        } else {
+          this._guestPhotoWorkflowState.set('upload_failed_retryable');
+          void this.loadConfirmedGuestPhotos();
+          this.snackBar.open(response.userMessage, 'OK', {
+            duration: 5000,
+          });
+          console.warn(`[GuestCheckIn] Guest photo upload incomplete: ${response.rejectedCount} rejected`);
         }
       },
       error: (err) => {
         console.error('[GuestCheckIn] Failed to upload photos to backend:', err);
-        // Keep local photos for display but mark as not uploaded
-        // User can still proceed with acknowledgment but photos won't be in Supabase
-        this._guestPhotosComplete.set(true);
+        this._guestPhotoWorkflowState.set('upload_failed_retryable');
         this.snackBar.dismiss();
         this.snackBar.open(
-          'Greška pri otpremanju fotografija. Pokušajte ponovo ili nastavite bez.',
+          'Greška pri otpremanju fotografija. Sačuvani nacrt je dostupan za ponovni pokušaj.',
           'OK',
           { duration: 5000 },
         );
@@ -1472,6 +1677,9 @@ export class GuestCheckInComponent implements OnInit, OnDestroy {
    */
   onGuestPhotosCancelled(): void {
     this._showGuidedCapture.set(false);
+    if (!this.guestPhotosComplete() && this._guestCapturedPhotos().length > 0) {
+      this._guestPhotoWorkflowState.set('local_draft_resumable');
+    }
     this.photoGuidanceService.resetCapture();
   }
 

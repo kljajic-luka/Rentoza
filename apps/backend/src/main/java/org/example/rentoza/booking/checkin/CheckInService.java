@@ -43,10 +43,12 @@ import org.example.rentoza.user.dto.BookingEligibilityDTO;
 import java.time.*;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -398,7 +400,7 @@ public class CheckInService {
         // Notify guest
         notifyGuestCheckInReady(booking);
         
-        return mapToStatusDTO(booking, userId);
+        return buildHostSubmitAckStatus(booking, userId);
     }
 
     // ========== GUEST WORKFLOW ==========
@@ -685,7 +687,7 @@ public class CheckInService {
             if (featureFlags.isDualPartyPhotosRequiredForHandshake() &&
                 featureFlags.isDualPartyPhotosEnabledForBooking(booking.getId())) {
                 
-                long guestPhotoCount = guestPhotoRepository.countRequiredGuestPhotoTypes(booking.getId());
+                long guestPhotoCount = countConfirmedGuestPhotoTypesForActiveSession(booking);
                 
                 if (guestPhotoCount < REQUIRED_GUEST_PHOTO_TYPES) {
                     log.warn("[CheckIn] Handshake blocked - guest photos incomplete: bookingId={}, uploadedCount={}, requiredCount={}", 
@@ -878,6 +880,7 @@ public class CheckInService {
         boolean guestConfirmed = isGuestHandshakeConfirmed(booking);
         CheckInActorRole actorRole = isHost ? CheckInActorRole.HOST : CheckInActorRole.GUEST;
 
+        boolean tripStarted = false;
         if (hostConfirmed && guestConfirmed) {
             // ====================================================================
             // COMPLIANCE: RENTAL AGREEMENT ACCEPTANCE GATE
@@ -935,9 +938,6 @@ public class CheckInService {
                 log.error("[CheckIn] Failed to record TRIP_STARTED event for booking {}", booking.getId(), e);
             }
 
-            // Generate immutable trip-start attestation exactly once (idempotent).
-            checkInAttestationService.generateTripStartAttestation(booking, userId);
-
             handshakeCompletedCounter.increment();
 
             // Record check-in duration
@@ -947,6 +947,7 @@ public class CheckInService {
             }
 
             log.info("[CheckIn] Trip started for booking {} - handshake complete", booking.getId());
+            tripStarted = true;
 
             // Notify both parties
             try {
@@ -966,6 +967,11 @@ public class CheckInService {
         }
         
         bookingRepository.save(booking);
+
+        if (tripStarted) {
+            checkInAttestationService.requestTripStartAttestation(
+                    booking.getId(), booking.getCheckInSessionId(), userId);
+        }
         
         return mapToStatusDTO(booking, userId);
     }
@@ -1390,7 +1396,16 @@ public class CheckInService {
         boolean hostConfirmedHandshake = isHostHandshakeConfirmed(booking);
         boolean guestConfirmedHandshake = isGuestHandshakeConfirmed(booking);
         boolean handshakeComplete = booking.getStatus() == BookingStatus.IN_TRIP;
-        boolean canStartTrip = booking.getStatus() == BookingStatus.CHECK_IN_COMPLETE;
+        boolean guestPhotoVerificationEnabled = isGuestPhotoVerificationEnabled(booking);
+        boolean guestPhotosRequired = isGuestPhotosRequiredForHandshake(booking);
+        int guestConfirmedPhotoCount = countConfirmedGuestPhotoTypesForActiveSession(booking);
+        List<String> missingGuestPhotoTypes = guestPhotoVerificationEnabled
+            ? getMissingGuestPhotoTypesForActiveSession(booking)
+            : List.of();
+        boolean guestPhotosConfirmedComplete = guestConfirmedPhotoCount >= REQUIRED_GUEST_PHOTO_TYPES;
+        boolean guestPhotoGateSatisfied = !guestPhotosRequired || guestPhotosConfirmedComplete;
+        boolean handshakeReady = booking.getStatus() == BookingStatus.CHECK_IN_COMPLETE && guestPhotoGateSatisfied;
+        boolean canStartTrip = booking.getStatus() == BookingStatus.CHECK_IN_COMPLETE && guestPhotoGateSatisfied;
         String handoffType = booking.getLockboxCodeEncrypted() != null ? "REMOTE" : "IN_PERSON";
         String geofenceStatus = determineGeofenceStatus(booking);
         LocalDateTime lastUpdated = determineLastUpdated(booking);
@@ -1444,11 +1459,16 @@ public class CheckInService {
                 .status(booking.getStatus())
                 .hostCheckInComplete(booking.getHostCheckInCompletedAt() != null)
                 .guestCheckInComplete(booking.getGuestCheckInCompletedAt() != null)
-                .handshakeReady(booking.getStatus() == BookingStatus.CHECK_IN_COMPLETE)
+                .handshakeReady(handshakeReady)
                 .guestConditionAcknowledged(booking.getGuestCheckInCompletedAt() != null)
                 .handshakeComplete(handshakeComplete)
                 .hostConfirmedHandshake(hostConfirmedHandshake)
                 .guestConfirmedHandshake(guestConfirmedHandshake)
+                .guestPhotoVerificationEnabled(guestPhotoVerificationEnabled)
+                .guestPhotosRequired(guestPhotosRequired)
+                .guestConfirmedPhotoCount(guestConfirmedPhotoCount)
+                .guestPhotosConfirmedComplete(guestPhotosConfirmedComplete)
+                .missingGuestPhotoTypes(missingGuestPhotoTypes)
                 .checkInOpenedAt(toLocalDateTime(booking.getCheckInOpenedAt()))
                 .hostCompletedAt(toLocalDateTime(booking.getHostCheckInCompletedAt()))
                 .guestCompletedAt(toLocalDateTime(booking.getGuestCheckInCompletedAt()))
@@ -1512,6 +1532,97 @@ public class CheckInService {
                         .imageUrl(booking.getCar().getImageUrl())
                         .build())
                 .build();
+    }
+
+            private CheckInStatusDTO buildHostSubmitAckStatus(Booking booking, Long userId) {
+            boolean isHost = isHost(booking, userId);
+            boolean guestPhotoVerificationEnabled = isGuestPhotoVerificationEnabled(booking);
+            boolean guestPhotosRequired = isGuestPhotosRequiredForHandshake(booking);
+            int guestConfirmedPhotoCount = countConfirmedGuestPhotoTypesForActiveSession(booking);
+            boolean guestPhotosConfirmedComplete = guestConfirmedPhotoCount >= REQUIRED_GUEST_PHOTO_TYPES;
+
+            return CheckInStatusDTO.builder()
+                .bookingId(booking.getId())
+                .checkInSessionId(booking.getCheckInSessionId())
+                .status(booking.getStatus())
+                .hostCheckInComplete(true)
+                .guestCheckInComplete(booking.getGuestCheckInCompletedAt() != null)
+                .guestConditionAcknowledged(booking.getGuestCheckInCompletedAt() != null)
+                .handshakeReady(false)
+                .handshakeComplete(false)
+                .hostConfirmedHandshake(false)
+                .guestConfirmedHandshake(false)
+                .guestPhotoVerificationEnabled(guestPhotoVerificationEnabled)
+                .guestPhotosRequired(guestPhotosRequired)
+                .guestConfirmedPhotoCount(guestConfirmedPhotoCount)
+                .guestPhotosConfirmedComplete(guestPhotosConfirmedComplete)
+                .missingGuestPhotoTypes(guestPhotoVerificationEnabled
+                    ? getMissingGuestPhotoTypesForActiveSession(booking)
+                    : List.of())
+                .hostCompletedAt(toLocalDateTime(booking.getHostCheckInCompletedAt()))
+                .checkInOpenedAt(toLocalDateTime(booking.getCheckInOpenedAt()))
+                .lastUpdated(determineLastUpdated(booking))
+                .odometerReading(booking.getStartOdometer())
+                .fuelLevelPercent(booking.getStartFuelLevel())
+                .hostCheckInPhotoCount(REQUIRED_HOST_PHOTO_TYPES)
+                .odometerStart(booking.getStartOdometer())
+                .fuelLevelStart(booking.getStartFuelLevel())
+                .lockboxAvailable(booking.getLockboxCodeEncrypted() != null)
+                .geofenceValid(booking.getLockboxCodeEncrypted() == null)
+                .geofenceDistanceMeters(booking.getGeofenceDistanceMeters())
+                .handoffType(booking.getLockboxCodeEncrypted() != null ? "REMOTE" : "IN_PERSON")
+                .geofenceStatus(determineGeofenceStatus(booking))
+                .tripStartScheduled(booking.getStartTime())
+                .isHost(isHost)
+                .isGuest(!isHost)
+                .canHostComplete(false)
+                .canGuestAcknowledge(true)
+                .canStartTrip(false)
+                .car(CheckInStatusDTO.CarSummaryDTO.builder()
+                    .id(booking.getCar().getId())
+                    .brand(booking.getCar().getBrand())
+                    .model(booking.getCar().getModel())
+                    .year(booking.getCar().getYear())
+                    .imageUrl(booking.getCar().getImageUrl())
+                    .build())
+                .build();
+            }
+
+    private boolean isGuestPhotoVerificationEnabled(Booking booking) {
+        return featureFlags.isDualPartyPhotosEnabledForBooking(booking.getId());
+    }
+
+    private boolean isGuestPhotosRequiredForHandshake(Booking booking) {
+        return isGuestPhotoVerificationEnabled(booking) && featureFlags.isDualPartyPhotosRequiredForHandshake();
+    }
+
+    private int countConfirmedGuestPhotoTypesForActiveSession(Booking booking) {
+        String sessionId = booking.getCheckInSessionId();
+        if (sessionId == null || sessionId.isBlank()) {
+            return 0;
+        }
+        return Math.toIntExact(guestPhotoRepository.countRequiredGuestPhotoTypesBySession(sessionId));
+    }
+
+    private List<String> getMissingGuestPhotoTypesForActiveSession(Booking booking) {
+        String sessionId = booking.getCheckInSessionId();
+        if (sessionId == null || sessionId.isBlank()) {
+            return Arrays.stream(CheckInPhotoType.getRequiredGuestCheckInTypes())
+                    .map(Enum::name)
+                    .toList();
+        }
+
+        Set<CheckInPhotoType> confirmedTypes = guestPhotoRepository.findRequiredGuestPhotosBySession(sessionId).stream()
+                .filter(photo -> photo.getExifValidationStatus() == ExifValidationStatus.VALID
+                        || photo.getExifValidationStatus() == ExifValidationStatus.VALID_NO_GPS
+                        || photo.getExifValidationStatus() == ExifValidationStatus.VALID_WITH_WARNINGS)
+                .map(GuestCheckInPhoto::getPhotoType)
+                .collect(Collectors.toSet());
+
+        return Arrays.stream(CheckInPhotoType.getRequiredGuestCheckInTypes())
+                .filter(type -> !confirmedTypes.contains(type))
+                .map(Enum::name)
+                .toList();
     }
 
     private String determineGeofenceStatus(Booking booking) {

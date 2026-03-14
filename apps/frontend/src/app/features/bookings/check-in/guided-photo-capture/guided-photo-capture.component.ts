@@ -72,15 +72,16 @@ interface PhotoCaptureState {
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="guided-capture-container" [class.dark-mode]="isDarkMode()">
+      @if (currentGuidance(); as guidance) {
       <!-- Header with Progress -->
       <header class="capture-header">
         <div class="progress-info">
           <span class="step-indicator">
             Korak {{ currentIndex() + 1 }} od {{ totalPhotos() }}
           </span>
-          @if (currentGuidance()?.category) {
-          <span class="category-badge" [attr.data-category]="currentGuidance()?.category">
-            {{ getCategoryLabel(currentGuidance()?.category) }}
+          @if (guidance.category) {
+          <span class="category-badge" [attr.data-category]="guidance.category">
+            {{ getCategoryLabel(guidance.category) }}
           </span>
           }
         </div>
@@ -100,14 +101,14 @@ interface PhotoCaptureState {
           <!-- Photo Type Title -->
           <div class="photo-header">
             <mat-icon class="photo-icon">{{ getPhotoIcon() }}</mat-icon>
-            <h2>{{ currentGuidance()?.displayName }}</h2>
+            <h2>{{ guidance.displayName }}</h2>
           </div>
 
           <!-- Silhouette Preview Card -->
           <div class="silhouette-card">
-            @if (currentGuidance()?.silhouetteUrl) {
+            @if (guidance.silhouetteUrl) {
             <img
-              [src]="currentGuidance()!.silhouetteUrl"
+              [src]="guidance.silhouetteUrl"
               alt="Primer pravilnog kadra"
               class="silhouette-image"
             />
@@ -120,31 +121,31 @@ interface PhotoCaptureState {
           </div>
 
           <!-- Instructions -->
-          <p class="instructions">{{ currentGuidance()?.instructionsSr }}</p>
+          <p class="instructions">{{ guidance.instructionsSr }}</p>
 
           <!-- Distance Hint -->
-          @if (currentGuidance()?.minDistanceMeters) {
+          @if (guidance.minDistanceMeters) {
           <div class="hint-card distance-hint">
             <mat-icon>straighten</mat-icon>
             <div class="hint-content">
               <span class="hint-label">Preporučena udaljenost</span>
               <span class="hint-value">
-                {{ currentGuidance()!.minDistanceMeters }} -
-                {{ currentGuidance()!.maxDistanceMeters }} metara
+                {{ guidance.minDistanceMeters }} -
+                {{ guidance.maxDistanceMeters }} metara
               </span>
             </div>
           </div>
           }
 
           <!-- Visibility Checklist -->
-          @if (currentGuidance()?.visibilityChecklistSr?.length) {
+          @if (guidance.visibilityChecklistSr.length) {
           <div class="checklist-section">
             <span class="checklist-title">
               <mat-icon>checklist</mat-icon>
               Proverite da je vidljivo:
             </span>
             <div class="checklist-items">
-              @for (item of currentGuidance()!.visibilityChecklistSr; track item) {
+              @for (item of guidance.visibilityChecklistSr; track item) {
               <mat-chip highlighted>
                 <mat-icon matChipAvatar>check_circle</mat-icon>
                 {{ item }}
@@ -155,14 +156,14 @@ interface PhotoCaptureState {
           }
 
           <!-- Common Mistakes Warning -->
-          @if (currentGuidance()?.commonMistakesSr?.length) {
+          @if (guidance.commonMistakesSr.length) {
           <div class="warning-card">
             <div class="warning-header">
               <mat-icon>warning</mat-icon>
               <span>Česte greške - izbegavajte:</span>
             </div>
             <ul class="warning-list">
-              @for (mistake of currentGuidance()!.commonMistakesSr; track mistake) {
+              @for (mistake of guidance.commonMistakesSr; track mistake) {
               <li>{{ mistake }}</li>
               }
             </ul>
@@ -180,7 +181,7 @@ interface PhotoCaptureState {
             type="file"
             accept="image/*"
             capture="environment"
-            [id]="'camera-input-' + currentGuidance()?.photoType"
+            [id]="'camera-input-' + guidance.photoType"
             (change)="onPhotoSelected($event)"
             hidden
           />
@@ -192,7 +193,7 @@ interface PhotoCaptureState {
         <div class="verification-phase">
           <div class="photo-header">
             <h2>Proverite fotografiju</h2>
-            <p class="subtitle">{{ currentGuidance()?.displayName }}</p>
+            <p class="subtitle">{{ guidance.displayName }}</p>
           </div>
 
           <!-- Captured Photo Preview -->
@@ -207,11 +208,11 @@ interface PhotoCaptureState {
           </div>
 
           <!-- Verification Checklist -->
-          @if (currentGuidance()?.visibilityChecklistSr?.length) {
+          @if (guidance.visibilityChecklistSr.length) {
           <div class="verification-checklist">
             <span class="verification-title">Da li fotografija prikazuje:</span>
             <div class="checklist-items verification">
-              @for (item of currentGuidance()!.visibilityChecklistSr; track item) {
+              @for (item of guidance.visibilityChecklistSr; track item) {
               <div class="verification-item">
                 <mat-icon>check</mat-icon>
                 <span>{{ item }}</span>
@@ -237,6 +238,16 @@ interface PhotoCaptureState {
         } }
       </main>
 
+      } @else {
+      <main class="capture-main">
+        <div class="guidance-phase">
+          <div class="photo-header">
+            <mat-icon class="photo-icon">hourglass_top</mat-icon>
+            <h2>Učitavanje uputstava</h2>
+          </div>
+        </div>
+      </main>
+      }
       <!-- Navigation Pills -->
       <nav class="navigation-pills" aria-label="Photo navigation">
         @for (guidance of allGuidance(); track guidance.photoType; let i = $index) {
@@ -930,6 +941,7 @@ export class GuidedPhotoCaptureComponent implements OnInit, OnDestroy, OnChanges
 
   /** Restored capture state from persistence service (passed from parent) */
   @Input() restoredState?: CaptureState;
+  @Input() preCompletedPhotoTypes: CheckInPhotoType[] = [];
 
   // Flag to prevent double initialization
   private hasInitializedFromRestore = false;
@@ -963,6 +975,9 @@ export class GuidedPhotoCaptureComponent implements OnInit, OnDestroy, OnChanges
   protected readonly currentIndex = this.guidanceService.currentIndex;
   protected readonly allGuidance = this.guidanceService.captureSequence;
   protected readonly totalPhotos = computed(() => this.allGuidance().length);
+  private readonly preCompletedPhotoTypeSet = computed(
+    () => new Set<CheckInPhotoType>(this.preCompletedPhotoTypes),
+  );
 
   // PHASE 1 IMPROVEMENT: Photo type status for completion checklist
   protected readonly photoTypeStatusList = computed(() => {
@@ -975,7 +990,7 @@ export class GuidedPhotoCaptureComponent implements OnInit, OnDestroy, OnChanges
       return {
         type: g.photoType,
         displayName: g.displayName,
-        completed: state?.verified ?? false,
+        completed: state?.verified === true || this.preCompletedPhotoTypeSet().has(g.photoType),
         isCurrent: idx === currentIdx,
       };
     });
@@ -988,7 +1003,7 @@ export class GuidedPhotoCaptureComponent implements OnInit, OnDestroy, OnChanges
     captured.forEach((state) => {
       if (state.verified) count++;
     });
-    return count;
+    return count + this.preCompletedPhotoTypeSet().size;
   });
 
   // Progress computation
@@ -1050,7 +1065,10 @@ export class GuidedPhotoCaptureComponent implements OnInit, OnDestroy, OnChanges
     switch (this.mode) {
       case 'guest-checkin':
         this.guidanceService.startGuestCheckInCapture().subscribe({
-          next: () => this.restoreState(),
+          next: () => {
+            this.restoreState();
+            this.goToFirstIncompletePhoto();
+          },
           error: (err) => {
             this.snackBar.open('Greška pri učitavanju uputstava', 'OK', { duration: 3000 });
             console.error('Failed to start guest capture', err);
@@ -1065,6 +1083,7 @@ export class GuidedPhotoCaptureComponent implements OnInit, OnDestroy, OnChanges
             console.log('[GuidedCapture] Current guidance:', this.currentGuidance());
             console.log('[GuidedCapture] Silhouette URL:', this.currentGuidance()?.silhouetteUrl);
             this.restoreState();
+            this.goToFirstIncompletePhoto();
           },
           error: (err) => {
             this.snackBar.open('Greška pri učitavanju uputstava', 'OK', { duration: 3000 });
@@ -1075,7 +1094,10 @@ export class GuidedPhotoCaptureComponent implements OnInit, OnDestroy, OnChanges
 
       case 'host-checkout':
         this.guidanceService.startCheckoutCapture().subscribe({
-          next: () => this.restoreState(),
+          next: () => {
+            this.restoreState();
+            this.goToFirstIncompletePhoto();
+          },
           error: (err) => {
             this.snackBar.open('Greška pri učitavanju uputstava', 'OK', { duration: 3000 });
             console.error('Failed to start checkout capture', err);
@@ -1133,6 +1155,8 @@ export class GuidedPhotoCaptureComponent implements OnInit, OnDestroy, OnChanges
           this.guidanceService.goToPhoto(this.restoredState!.currentIndex);
         }
 
+        this.goToFirstIncompletePhoto();
+
         // Restore current phase
         this.currentPhase.set(this.restoredState!.currentPhase);
 
@@ -1157,6 +1181,16 @@ export class GuidedPhotoCaptureComponent implements OnInit, OnDestroy, OnChanges
         this.snackBar.open('Greška pri vraćanju sesije', 'OK', { duration: 3000 });
       },
     });
+  }
+
+  private goToFirstIncompletePhoto(): void {
+    const firstIncompleteIndex = this.allGuidance().findIndex(
+      (guidance) => !this.isPhotoCompleted(guidance.photoType),
+    );
+
+    if (firstIncompleteIndex > 0) {
+      this.guidanceService.goToPhoto(firstIncompleteIndex);
+    }
   }
 
   /**
@@ -1360,7 +1394,7 @@ export class GuidedPhotoCaptureComponent implements OnInit, OnDestroy, OnChanges
 
   protected isPhotoCompleted(photoType: CheckInPhotoType): boolean {
     const state = this.capturedPhotos().get(photoType);
-    return state?.verified === true;
+    return state?.verified === true || this.preCompletedPhotoTypeSet().has(photoType);
   }
 
   protected isLastPhoto(): boolean {
@@ -1368,7 +1402,10 @@ export class GuidedPhotoCaptureComponent implements OnInit, OnDestroy, OnChanges
   }
 
   protected getCompletedCount(): number {
-    return Array.from(this.capturedPhotos().values()).filter((s) => s.verified).length;
+    return (
+      Array.from(this.capturedPhotos().values()).filter((s) => s.verified).length +
+      this.preCompletedPhotoTypeSet().size
+    );
   }
 
   protected getCategoryLabel(category: string | undefined): string {
@@ -1403,16 +1440,18 @@ export class GuidedPhotoCaptureComponent implements OnInit, OnDestroy, OnChanges
   private async finishCapture(): Promise<void> {
     const photos = this.capturedPhotos();
 
-    if (photos.size < 8) {
-      const missing = 8 - photos.size;
+    if (this.getCompletedCount() < this.totalPhotos()) {
+      const missing = this.totalPhotos() - this.getCompletedCount();
       this.snackBar.open(`Nedostaje još ${missing} fotografija`, 'OK', { duration: 3000 });
       return;
     }
 
     // Build submission DTO
     const photoItems: GuestCheckInPhotoSubmissionDTO['photos'] = [];
+    const preCompleted = this.preCompletedPhotoTypeSet();
 
     for (const [photoType, state] of photos) {
+      if (preCompleted.has(photoType)) continue;
       if (!state.blob) continue;
 
       const base64 = await this.blobToBase64(state.blob);
@@ -1430,10 +1469,6 @@ export class GuidedPhotoCaptureComponent implements OnInit, OnDestroy, OnChanges
       clientCapturedAt: new Date().toISOString(),
       deviceInfo: navigator.userAgent,
     };
-
-    // Clear persisted state on successful completion
-    await this.persistenceService.clearBookingData(this.bookingId, this.mode);
-    console.log('[GuidedCapture] Cleared persistence data after successful capture');
 
     this.guidanceService.endCapture();
     this.captureComplete.emit(submission);

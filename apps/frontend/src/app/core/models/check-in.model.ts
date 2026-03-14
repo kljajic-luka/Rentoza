@@ -136,6 +136,11 @@ export interface CheckInStatusDTO {
   handshakeComplete: boolean;
   hostConfirmedHandshake?: boolean;
   guestConfirmedHandshake?: boolean;
+  guestPhotoVerificationEnabled?: boolean;
+  guestPhotosRequired?: boolean;
+  guestConfirmedPhotoCount?: number;
+  guestPhotosConfirmedComplete?: boolean;
+  missingGuestPhotoTypes?: string[];
 
   // Timestamps (ISO strings from backend)
   checkInOpenedAt: string | null;

@@ -37,7 +37,6 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.example.rentoza.security.jwt.SupabaseTokenValidator;
-
 /**
  * Supabase JWT Utility for ES256 Token Validation
  * 

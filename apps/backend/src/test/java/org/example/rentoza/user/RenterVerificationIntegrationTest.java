@@ -1,5 +1,8 @@
 package org.example.rentoza.user;
 
+import org.example.rentoza.booking.checkin.CheckInIdVerification;
+import org.example.rentoza.booking.checkin.verification.IdVerificationProvider;
+import org.example.rentoza.storage.SupabaseStorageService;
 import org.example.rentoza.user.document.RenterDocument;
 import org.example.rentoza.user.document.RenterDocumentRepository;
 import org.example.rentoza.user.document.RenterDocumentType;
@@ -18,8 +21,13 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 
 import static org.assertj.core.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.when;
 
 /**
  * Integration tests for RenterVerificationService.
@@ -49,18 +57,43 @@ class RenterVerificationIntegrationTest {
     @Autowired
     private RenterDocumentRepository documentRepository;
 
+    @MockBean
+    private SupabaseStorageService storageService;
+
+    @MockBean
+    private IdVerificationProvider idVerificationProvider;
+
     private User testUser;
     private User adminUser;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
+        when(storageService.uploadRenterDocument(anyLong(), anyString(), any()))
+            .thenAnswer(invocation -> "renter-documents/" + invocation.getArgument(1) + ".jpg");
+        when(storageService.downloadRenterDocument(anyString()))
+            .thenReturn(validJpegBytes((byte) 0x0A));
+        when(idVerificationProvider.getProviderName()).thenReturn("MOCK");
+        when(idVerificationProvider.extractDocumentData(any(), any(), anyString()))
+            .thenReturn(IdVerificationProvider.DocumentExtraction.builder()
+                .success(true)
+                .documentType(CheckInIdVerification.DocumentType.DRIVERS_LICENSE)
+                .firstName("Marko")
+                .lastName("Petrovic")
+                .documentNumber("DL-123456")
+                .expiryDate(LocalDate.now().plusYears(2))
+                .dateOfBirth(LocalDate.now().minusYears(25))
+                .issueDate(LocalDate.now().minusYears(3))
+                .confidence(java.math.BigDecimal.valueOf(0.95))
+                .build());
+
         // Create test user
         testUser = new User();
         testUser.setFirstName("Marko");
         testUser.setLastName("Petrović");
         testUser.setEmail("marko@test.rs");
+        testUser.setPassword("securePassword123");
         testUser.setDriverLicenseStatus(DriverLicenseStatus.NOT_STARTED);
-        testUser.setCreatedAt(Instant.from(LocalDateTime.now().minusDays(60)));
+        testUser.setCreatedAt(Instant.now().minus(60, ChronoUnit.DAYS));
         testUser.setAge(25);
         testUser = userRepository.save(testUser);
 
@@ -69,8 +102,10 @@ class RenterVerificationIntegrationTest {
         adminUser.setFirstName("Admin");
         adminUser.setLastName("User");
         adminUser.setEmail("admin@rentoza.rs");
+        adminUser.setPassword("securePassword123");
         adminUser.setDriverLicenseStatus(DriverLicenseStatus.APPROVED);
-        adminUser.setCreatedAt(Instant.from(LocalDateTime.now().minusYears(1)));
+        adminUser.setCreatedAt(Instant.now().minus(365, ChronoUnit.DAYS));
+        adminUser.setAge(40);
         adminUser = userRepository.save(adminUser);
     }
 
@@ -89,7 +124,7 @@ class RenterVerificationIntegrationTest {
             
             // Step 2: Submit front of license
             MockMultipartFile frontFile = new MockMultipartFile(
-                "licenseFront", "front.jpg", "image/jpeg", "fake-image-data".getBytes()
+                "licenseFront", "front.jpg", "image/jpeg", validJpegBytes((byte) 0x01)
             );
             DriverLicenseSubmissionRequest frontRequest = DriverLicenseSubmissionRequest.builder()
                 .documentType(RenterDocumentType.DRIVERS_LICENSE_FRONT)
@@ -103,7 +138,7 @@ class RenterVerificationIntegrationTest {
             
             // Step 3: Submit back of license
             MockMultipartFile backFile = new MockMultipartFile(
-                "licenseBack", "back.jpg", "image/jpeg", "fake-image-data".getBytes()
+                "licenseBack", "back.jpg", "image/jpeg", validJpegBytes((byte) 0x02)
             );
             DriverLicenseSubmissionRequest backRequest = DriverLicenseSubmissionRequest.builder()
                 .documentType(RenterDocumentType.DRIVERS_LICENSE_BACK)
@@ -111,25 +146,35 @@ class RenterVerificationIntegrationTest {
                 .build();
             
             verificationService.submitDocument(testUser.getId(), backFile, backRequest);
-            
-            // Step 4: Verify status is PENDING_REVIEW
+
+            // Step 4: Submit selfie required for face matching
+            MockMultipartFile selfieFile = new MockMultipartFile(
+                "selfie", "selfie.jpg", "image/jpeg", validJpegBytes((byte) 0x05)
+            );
+            DriverLicenseSubmissionRequest selfieRequest = DriverLicenseSubmissionRequest.builder()
+                .documentType(RenterDocumentType.SELFIE)
+                .build();
+
+            verificationService.submitDocument(testUser.getId(), selfieFile, selfieRequest);
+
+            // Step 5: Verify status is PENDING_REVIEW
             RenterVerificationProfileDTO pendingProfile = verificationService.getVerificationProfile(testUser.getId());
             assertThat(pendingProfile.getStatus()).isEqualTo(DriverLicenseStatus.PENDING_REVIEW);
             
-            // Step 5: Check NOT eligible for booking yet
+            // Step 6: Check NOT eligible for booking yet
             BookingEligibilityDTO notYetEligible = verificationService.checkBookingEligibility(
                 testUser.getId(), LocalDate.now().plusDays(7)
             );
             assertThat(notYetEligible.isEligible()).isFalse();
             
-            // Step 6: Admin approves
+            // Step 7: Admin approves
             verificationService.approveVerification(testUser.getId(), adminUser.getId(), "Documents look valid");
             
-            // Step 7: Verify status is APPROVED
+            // Step 8: Verify status is APPROVED
             RenterVerificationProfileDTO approvedProfile = verificationService.getVerificationProfile(testUser.getId());
             assertThat(approvedProfile.getStatus()).isEqualTo(DriverLicenseStatus.APPROVED);
             
-            // Step 8: Check NOW eligible for booking
+            // Step 9: Check NOW eligible for booking
             BookingEligibilityDTO nowEligible = verificationService.checkBookingEligibility(
                 testUser.getId(), LocalDate.now().plusDays(7)
             );
@@ -141,7 +186,7 @@ class RenterVerificationIntegrationTest {
         void rejectionWorkflow_ResubmitSuccess() throws Exception {
             // Step 1: Submit documents
             MockMultipartFile file = new MockMultipartFile(
-                "license", "license.jpg", "image/jpeg", "fake-image-data".getBytes()
+                "license", "license.jpg", "image/jpeg", validJpegBytes((byte) 0x03)
             );
             DriverLicenseSubmissionRequest request = DriverLicenseSubmissionRequest.builder()
                 .documentType(RenterDocumentType.DRIVERS_LICENSE_FRONT)
@@ -149,6 +194,23 @@ class RenterVerificationIntegrationTest {
                 .build();
             
             verificationService.submitDocument(testUser.getId(), file, request);
+
+            MockMultipartFile backFile = new MockMultipartFile(
+                "licenseBack", "license-back.jpg", "image/jpeg", validJpegBytes((byte) 0x06)
+            );
+            DriverLicenseSubmissionRequest backRequest = DriverLicenseSubmissionRequest.builder()
+                .documentType(RenterDocumentType.DRIVERS_LICENSE_BACK)
+                .expiryDate(LocalDate.now().plusYears(1))
+                .build();
+            verificationService.submitDocument(testUser.getId(), backFile, backRequest);
+
+            MockMultipartFile selfieFile = new MockMultipartFile(
+                "selfie", "selfie.jpg", "image/jpeg", validJpegBytes((byte) 0x07)
+            );
+            DriverLicenseSubmissionRequest selfieRequest = DriverLicenseSubmissionRequest.builder()
+                .documentType(RenterDocumentType.SELFIE)
+                .build();
+            verificationService.submitDocument(testUser.getId(), selfieFile, selfieRequest);
             
             // Step 2: Admin rejects
             verificationService.rejectVerification(
@@ -163,7 +225,7 @@ class RenterVerificationIntegrationTest {
             
             // Step 4: User resubmits (after fixing document)
             MockMultipartFile newFile = new MockMultipartFile(
-                "license", "license-clear.jpg", "image/jpeg", "better-image-data".getBytes()
+                "license", "license-clear.jpg", "image/jpeg", validJpegBytes((byte) 0x04)
             );
             
             verificationService.submitDocument(testUser.getId(), newFile, request);
@@ -284,5 +346,9 @@ class RenterVerificationIntegrationTest {
             // Assert
             assertThat(profile.getDaysUntilExpiry()).isBetween(29L, 31L); // Account for test timing
         }
+    }
+
+    private byte[] validJpegBytes(byte marker) {
+        return new byte[] {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, marker, 0x00, 0x10};
     }
 }

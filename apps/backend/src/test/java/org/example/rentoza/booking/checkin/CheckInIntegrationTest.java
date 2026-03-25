@@ -22,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -29,24 +30,46 @@ import static org.mockito.Mockito.when;
 
 import org.springframework.test.context.TestPropertySource;
 import org.example.rentoza.car.storage.DocumentStorageStrategy;
+import org.example.rentoza.booking.checkin.verification.IdVerificationProvider;
+import org.example.rentoza.security.InternalServiceJwtUtil;
+import org.example.rentoza.security.supabase.SupabaseJwtUtil;
 
 @SpringBootTest
 @ActiveProfiles("test")
 @Transactional
 @TestPropertySource(properties = {
-    "spring.datasource.url=jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;MODE=PostgreSQL",
+    "spring.datasource.url=jdbc:h2:mem:checkin_integration_test;DB_CLOSE_DELAY=-1;MODE=PostgreSQL;NON_KEYWORDS=YEAR",
     "spring.datasource.driver-class-name=org.h2.Driver",
     "spring.datasource.username=sa",
     "spring.datasource.password=",
     "spring.jpa.hibernate.ddl-auto=create-drop",
     "spring.jpa.generate-ddl=true",
     "spring.jpa.database-platform=org.hibernate.dialect.H2Dialect",
-    "spring.jpa.show-sql=true"
+    "spring.jpa.show-sql=true",
+    "supabase.url=https://example.supabase.co",
+    "supabase.anon-key=test-anon-key",
+    "supabase.service-role-key=test-service-role-key",
+    "supabase.jwt-secret=test-secret",
+    "internal.service.jwt.secret=test-internal-secret",
+    "SUPABASE_URL=https://example.supabase.co",
+    "SUPABASE_ANON_KEY=test-anon-key",
+    "SUPABASE_SERVICE_ROLE_KEY=test-service-role-key",
+    "SUPABASE_JWT_SECRET=test-secret",
+    "INTERNAL_SERVICE_JWT_SECRET=test-internal-secret"
 })
 class CheckInIntegrationTest {
 
     @MockBean
     private DocumentStorageStrategy documentStorageStrategy;
+
+    @MockBean
+    private SupabaseJwtUtil supabaseJwtUtil;
+
+    @MockBean
+    private InternalServiceJwtUtil internalServiceJwtUtil;
+
+    @MockBean
+    private IdVerificationProvider idVerificationProvider;
 
     @Autowired
     private CheckInService checkInService;
@@ -59,6 +82,9 @@ class CheckInIntegrationTest {
     
     @Autowired
     private CarRepository carRepository;
+
+    @Autowired
+    private GuestCheckInPhotoRepository guestCheckInPhotoRepository;
 
     @MockBean
     private FeatureFlags featureFlags;
@@ -104,6 +130,7 @@ class CheckInIntegrationTest {
         booking.setRenter(renter);
         booking.setCar(car);
         booking.setStatus(BookingStatus.CHECK_IN_COMPLETE);
+        booking.setCheckInSessionId(UUID.randomUUID().toString());
         booking.setStartTime(LocalDateTime.now().plusHours(1));
         booking.setEndTime(LocalDateTime.now().plusDays(2));
         booking = bookingRepository.save(booking);
@@ -153,5 +180,39 @@ class CheckInIntegrationTest {
         assertNotNull(result);
         // Status might still be CHECK_IN_COMPLETE if host hasn't confirmed, 
         // but important part is no exception thrown.
+    }
+
+    @Test
+    @DisplayName("Integration: Prior-session guest photos do not satisfy the active handshake session")
+    void testPriorSessionGuestPhotosDoNotSatisfyActiveHandshakeSession() {
+        booking.setCheckInSessionId("session-current");
+        bookingRepository.save(booking);
+
+        GuestCheckInPhoto priorSessionPhoto = GuestCheckInPhoto.builder()
+                .booking(booking)
+                .checkInSessionId("session-old")
+                .photoType(CheckInPhotoType.GUEST_EXTERIOR_FRONT)
+                .storageBucket(GuestCheckInPhoto.StorageBucket.CHECKIN_STANDARD)
+                .storageKey("guest-checkin/session-old/front.jpg")
+                .originalFilename("front.jpg")
+                .mimeType("image/jpeg")
+                .fileSizeBytes(1024)
+                .imageHash("hash-front")
+                .exifValidationStatus(ExifValidationStatus.VALID)
+                .uploadedBy(renter)
+                .build();
+        guestCheckInPhotoRepository.save(priorSessionPhoto);
+
+        when(featureFlags.isStrictCheckinEnabled()).thenReturn(false);
+        when(featureFlags.isDualPartyPhotosEnabledForBooking(booking.getId())).thenReturn(true);
+        when(featureFlags.isDualPartyPhotosRequiredForHandshake()).thenReturn(true);
+
+        HandshakeConfirmationDTO dto = new HandshakeConfirmationDTO();
+        dto.setBookingId(booking.getId());
+        dto.setConfirmed(true);
+
+        assertThrows(org.example.rentoza.exception.ValidationException.class, () -> {
+            checkInService.confirmHandshake(dto, renter.getId());
+        });
     }
 }

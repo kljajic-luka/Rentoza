@@ -205,7 +205,8 @@ public enum BookingStatus {
             CHECKOUT_OPEN,
             CHECKOUT_GUEST_COMPLETE,
             CHECKOUT_HOST_COMPLETE,
-            CHECKOUT_SETTLEMENT_PENDING
+            CHECKOUT_SETTLEMENT_PENDING,
+            CHECKOUT_DAMAGE_DISPUTE
         );
 
         /**
@@ -225,7 +226,8 @@ public enum BookingStatus {
             CHECKOUT_OPEN,
             CHECKOUT_GUEST_COMPLETE,
             CHECKOUT_HOST_COMPLETE,
-            CHECKOUT_SETTLEMENT_PENDING
+            CHECKOUT_SETTLEMENT_PENDING,
+            CHECKOUT_DAMAGE_DISPUTE
     );
 
     // ========== HELPER METHODS ==========

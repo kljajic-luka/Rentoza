@@ -29,6 +29,7 @@ import {
   GuestConditionAcknowledgmentDTO,
   HandshakeConfirmationDTO,
   HostCheckInSubmissionDTO,
+  PHOTO_TYPE_LABELS,
 } from '@core/models/check-in.model';
 import { generateUUID } from '../utils/uuid';
 import { LoggerService } from './logger.service';
@@ -246,7 +247,31 @@ export class OfflineQueueService implements OnDestroy {
   }
 
   /**
+   * Maximum file size for queued photo uploads (10 MB).
+   */
+  private static readonly MAX_PHOTO_SIZE_BYTES = 10 * 1024 * 1024;
+
+  /**
+   * Allowed MIME types for photo uploads.
+   */
+  private static readonly ALLOWED_MIME_TYPES = new Set([
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'image/heic',
+    'image/heif',
+  ]);
+
+  /**
+   * Runtime-valid photo types for offline queue persistence.
+   */
+  private static readonly VALID_PHOTO_TYPES = new Set(
+    Object.keys(PHOTO_TYPE_LABELS) as CheckInPhotoType[],
+  );
+
+  /**
    * Add an upload to the offline queue.
+   * F7 FIX: Validates file size, MIME type, and photoType before enqueue.
    */
   async enqueue(
     bookingId: number,
@@ -254,6 +279,8 @@ export class OfflineQueueService implements OnDestroy {
     file: Blob,
     clientTimestamp: string,
   ): Promise<string> {
+    this.validatePhotoUpload(photoType, file);
+
     const id = generateUUID();
 
     const item: QueuedUpload = {
@@ -668,9 +695,21 @@ export class OfflineQueueService implements OnDestroy {
       const request = store.getAll();
 
       request.onsuccess = () => {
-        this._queue.set(request.result || []);
+        const storedItems = Array.isArray(request.result) ? request.result : [];
+        const validItems = storedItems.filter((item): item is QueuedUpload =>
+          this.isQueuedUpload(item),
+        );
+        const droppedCount = storedItems.length - validItems.length;
+
+        if (droppedCount > 0) {
+          this.logger.warn(
+            `[OfflineQueue] Dropped ${droppedCount} invalid photo uploads from IndexedDB`,
+          );
+        }
+
+        this._queue.set(validItems);
         this.logger.log(
-          `[OfflineQueue] Loaded ${request.result?.length || 0} photo uploads from IndexedDB`,
+          `[OfflineQueue] Loaded ${validItems.length} photo uploads from IndexedDB`,
         );
         resolve();
       };
@@ -680,6 +719,65 @@ export class OfflineQueueService implements OnDestroy {
         reject(request.error);
       };
     });
+  }
+
+  private validatePhotoUpload(
+    photoType: unknown,
+    file: Blob,
+  ): asserts photoType is CheckInPhotoType {
+    if (!OfflineQueueService.VALID_PHOTO_TYPES.has(photoType as CheckInPhotoType)) {
+      throw new Error(`Nevažeći tip fotografije: ${String(photoType)}`);
+    }
+
+    if (file.size <= 0) {
+      throw new Error('Fotografija je prazna ili oštećena.');
+    }
+
+    if (file.size > OfflineQueueService.MAX_PHOTO_SIZE_BYTES) {
+      throw new Error(
+        `Fotografija je prevelika (${(file.size / 1024 / 1024).toFixed(1)} MB). Maksimalna veličina: 10 MB.`,
+      );
+    }
+
+    const normalizedMimeType = file.type.toLowerCase();
+    if (
+      normalizedMimeType &&
+      !OfflineQueueService.ALLOWED_MIME_TYPES.has(normalizedMimeType)
+    ) {
+      throw new Error(
+        `Nepodržan format fotografije: ${file.type}. Podržani formati: JPEG, PNG, WebP, HEIC.`,
+      );
+    }
+  }
+
+  private isQueuedUpload(value: unknown): value is QueuedUpload {
+    if (!isRecord(value)) {
+      return false;
+    }
+
+    if (
+      typeof value['id'] !== 'string' ||
+      !isFiniteNumber(value['bookingId']) ||
+      !isFiniteNumber(value['retryCount']) ||
+      typeof value['createdAt'] !== 'string' ||
+      typeof value['clientTimestamp'] !== 'string' ||
+      !isOptionalString(value['lastAttempt']) ||
+      !isOptionalString(value['error'])
+    ) {
+      return false;
+    }
+
+    const file = value['file'];
+    if (!(file instanceof Blob)) {
+      return false;
+    }
+
+    try {
+      this.validatePhotoUpload(value['photoType'], file);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private async loadFormSubmissions(): Promise<void> {

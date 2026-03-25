@@ -40,6 +40,7 @@ public class PhotoAccessService {
     private final BookingRepository bookingRepository;
     private final UserRepository userRepository;
     private final PhotoVisibilityMatrix visibilityMatrix;
+    private final PhotoAccessLogService accessLogService;
 
     /**
      * Simplified version: check if user can access any photo in a booking.
@@ -55,6 +56,8 @@ public class PhotoAccessService {
             log.info("[PhotoAccess] Admin bypass for photo access: userId={}, bookingId={}", userId, bookingId);
             bookingRepository.findById(bookingId)
                     .orElseThrow(() -> new ResourceNotFoundException("Rezervacija nije pronađena"));
+            // S2 FIX: Persist admin access to audit log (async, non-blocking)
+            accessLogService.logPhotoAccess(userId, bookingId, null, "ADMIN_BYPASS", null, null);
             return;
         }
 
@@ -80,6 +83,8 @@ public class PhotoAccessService {
     public boolean canUserAccessBooking(Long bookingId, Long userId) {
         if (isAdmin(userId)) {
             log.info("[PhotoAccess] Admin bypass for booking access check: userId={}, bookingId={}", userId, bookingId);
+            // S2 FIX: Persist admin access to audit log (async, non-blocking)
+            accessLogService.logPhotoAccess(userId, bookingId, null, "ADMIN_BYPASS", null, null);
             return true;
         }
 

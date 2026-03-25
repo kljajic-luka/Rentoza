@@ -459,6 +459,23 @@ class DamageClaimServiceTest {
                     DisputeType.CHECKOUT_DAMAGE, List.of(1L), other.getId()))
                     .isInstanceOf(AccessDeniedException.class);
         }
+
+        @Test
+        @DisplayName("Should reject guest claim above security deposit")
+        void shouldRejectGuestClaimAboveSecurityDeposit() {
+            booking.setSecurityDeposit(BigDecimal.valueOf(10000));
+
+            when(bookingRepository.findByIdWithRelations(1000L)).thenReturn(Optional.of(booking));
+            when(userRepository.findById(guest.getId())).thenReturn(Optional.of(guest));
+            when(claimRepository.hasActiveClaim(eq(1000L), any(), any())).thenReturn(false);
+
+            assertThatThrownBy(() -> damageClaimService.createGuestClaim(
+                    1000L, "Pre-existing scratch",
+                    BigDecimal.valueOf(15000), DisputeType.PRE_EXISTING_DAMAGE,
+                    List.of(1L, 2L), guest.getId()))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("ne može biti veći od depozita");
+        }
     }
 
     @Nested

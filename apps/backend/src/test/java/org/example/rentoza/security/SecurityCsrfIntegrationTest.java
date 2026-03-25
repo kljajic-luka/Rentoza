@@ -4,11 +4,13 @@ import org.example.rentoza.config.AppProperties;
 import org.example.rentoza.deprecated.jwt.JwtAuthenticationEntryPoint;
 import org.example.rentoza.deprecated.jwt.JwtUtil;
 import org.example.rentoza.monitoring.MissingResourceMetrics;
+import org.example.rentoza.security.network.TrustedProxyIpExtractor;
 import org.example.rentoza.security.ratelimit.RateLimitService;
 import org.example.rentoza.security.supabase.SupabaseJwtUtil;
 import org.example.rentoza.security.supabase.SupabaseUserMappingRepository;
 import org.example.rentoza.security.token.TokenDenylistService;
 import org.example.rentoza.user.UserRepository;
+import org.example.rentoza.user.trust.AccountTrustStateService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -70,6 +72,8 @@ class SecurityCsrfIntegrationTest {
     @MockBean private SupabaseUserMappingRepository supabaseUserMappingRepository;
     @MockBean private TokenDenylistService tokenDenylistService;
     @MockBean private MissingResourceMetrics missingResourceMetrics;
+    @MockBean private TrustedProxyIpExtractor trustedProxyIpExtractor;
+    @MockBean private AccountTrustStateService accountTrustStateService;
 
     @BeforeEach
     void setUp() {

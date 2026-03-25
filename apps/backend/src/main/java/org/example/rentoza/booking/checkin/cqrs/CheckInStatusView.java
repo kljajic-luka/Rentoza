@@ -295,6 +295,7 @@ public class CheckInStatusView implements Serializable {
         view.setGuestCheckInComplete(false);
         view.setHandshakeComplete(false);
         view.setTripStarted(false);
+        view.setPhotoCount(0);
         view.setLockboxAvailable(false);
         view.setLastSyncAt(Instant.now());
         return view;

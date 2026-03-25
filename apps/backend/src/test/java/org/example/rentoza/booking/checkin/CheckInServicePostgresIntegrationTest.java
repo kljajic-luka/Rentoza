@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -46,6 +47,18 @@ import static org.mockito.Mockito.when;
  */
 @DisplayName("CheckInService - PostgreSQL Integration Tests")
 @Transactional
+@TestPropertySource(properties = {
+    "supabase.url=https://example.supabase.co",
+    "supabase.anon-key=test-anon-key",
+    "supabase.service-role-key=test-service-role-key",
+    "supabase.jwt-secret=test-secret",
+    "internal.service.jwt.secret=test-internal-secret",
+    "SUPABASE_URL=https://example.supabase.co",
+    "SUPABASE_ANON_KEY=test-anon-key",
+    "SUPABASE_SERVICE_ROLE_KEY=test-service-role-key",
+    "SUPABASE_JWT_SECRET=test-secret",
+    "INTERNAL_SERVICE_JWT_SECRET=test-internal-secret"
+})
 class CheckInServicePostgresIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
@@ -60,11 +73,23 @@ class CheckInServicePostgresIntegrationTest extends AbstractIntegrationTest {
     @Autowired
     private CarRepository carRepository;
 
+    @Autowired
+    private GuestCheckInPhotoRepository guestCheckInPhotoRepository;
+
     @MockBean
     private FeatureFlags featureFlags;
 
     @MockBean
     private org.example.rentoza.car.storage.DocumentStorageStrategy documentStorageStrategy;
+
+    @MockBean
+    private org.example.rentoza.security.supabase.SupabaseJwtUtil supabaseJwtUtil;
+
+    @MockBean
+    private org.example.rentoza.security.InternalServiceJwtUtil internalServiceJwtUtil;
+
+    @MockBean
+    private org.example.rentoza.booking.checkin.verification.IdVerificationProvider idVerificationProvider;
 
     private User host;
     private User renter;
@@ -175,6 +200,40 @@ class CheckInServicePostgresIntegrationTest extends AbstractIntegrationTest {
             // Act & Assert
             assertThatThrownBy(() -> checkInService.confirmHandshake(dto, renter.getId()))
                 .isInstanceOf(ValidationException.class);
+        }
+
+        @Test
+        @DisplayName("Prior-session guest photos do not satisfy the active-session handshake gate")
+        void priorSessionGuestPhotosDoNotSatisfyActiveSessionHandshakeGate() {
+            booking.setCheckInSessionId("session-current");
+            bookingRepository.saveAndFlush(booking);
+
+            GuestCheckInPhoto priorSessionPhoto = GuestCheckInPhoto.builder()
+                .booking(booking)
+                .checkInSessionId("session-prior")
+                .photoType(CheckInPhotoType.GUEST_EXTERIOR_FRONT)
+                .storageBucket(GuestCheckInPhoto.StorageBucket.CHECKIN_STANDARD)
+                .storageKey("guest-checkin/session-prior/front.jpg")
+                .originalFilename("front.jpg")
+                .mimeType("image/jpeg")
+                .fileSizeBytes(1024)
+                .imageHash("hash-front")
+                .exifValidationStatus(ExifValidationStatus.VALID)
+                .uploadedBy(renter)
+                .build();
+            guestCheckInPhotoRepository.saveAndFlush(priorSessionPhoto);
+
+            when(featureFlags.isStrictCheckinEnabled()).thenReturn(false);
+            when(featureFlags.isDualPartyPhotosEnabledForBooking(booking.getId())).thenReturn(true);
+            when(featureFlags.isDualPartyPhotosRequiredForHandshake()).thenReturn(true);
+
+            HandshakeConfirmationDTO dto = new HandshakeConfirmationDTO();
+            dto.setBookingId(booking.getId());
+            dto.setConfirmed(true);
+
+            assertThatThrownBy(() -> checkInService.confirmHandshake(dto, renter.getId()))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("Morate otpremiti sve obavezne fotografije");
         }
 
         @Test

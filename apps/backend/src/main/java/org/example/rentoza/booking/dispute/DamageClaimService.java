@@ -230,6 +230,14 @@ public class DamageClaimService {
         if (claimRepository.hasActiveClaim(bookingId, DisputeStage.CHECKOUT, ClaimInitiator.USER)) {
             throw new IllegalStateException("Već postoji aktivna reklamacija gosta za ovu rezervaciju");
         }
+
+        // Validate claimed amount does not exceed security deposit (mirrors createClaim validation)
+        BigDecimal depositAmount = booking.getSecurityDeposit();
+        if (depositAmount != null && claimedAmount.compareTo(depositAmount) > 0) {
+            throw new IllegalArgumentException(String.format(
+                    "Iznos reklamacije (%.0f RSD) ne može biti veći od depozita (%.0f RSD)",
+                    claimedAmount.doubleValue(), depositAmount.doubleValue()));
+        }
         
         DamageClaim claim = DamageClaim.builder()
                 .booking(booking)

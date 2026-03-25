@@ -21,6 +21,8 @@ import org.example.rentoza.exception.ResourceNotFoundException;
 import org.example.rentoza.notification.NotificationService;
 import org.example.rentoza.notification.NotificationType;
 import org.example.rentoza.notification.dto.CreateNotificationRequestDTO;
+import org.example.rentoza.payment.BookingPaymentService;
+import org.example.rentoza.payment.PaymentProvider.PaymentResult;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.access.AccessDeniedException;
@@ -74,6 +76,7 @@ public class CheckOutService {
     private final ApplicationEventPublisher eventPublisher;
     private final DamageClaimRepository damageClaimRepository;
     private final PhotoUrlService photoUrlService;
+    private final BookingPaymentService bookingPaymentService;
     
     // Metrics
     private final Counter checkoutInitiatedCounter;
@@ -121,7 +124,8 @@ public class CheckOutService {
             DamageClaimRepository damageClaimRepository,
             MeterRegistry meterRegistry,
             ApplicationEventPublisher eventPublisher,
-            PhotoUrlService photoUrlService) {
+            PhotoUrlService photoUrlService,
+            BookingPaymentService bookingPaymentService) {
         this.bookingRepository = bookingRepository;
         this.eventService = eventService;
         this.photoRepository = photoRepository;
@@ -131,6 +135,7 @@ public class CheckOutService {
         this.damageClaimRepository = damageClaimRepository;
         this.eventPublisher = eventPublisher;
         this.photoUrlService = photoUrlService;
+        this.bookingPaymentService = bookingPaymentService;
         
         this.checkoutInitiatedCounter = Counter.builder("checkout.initiated")
                 .description("Checkout processes initiated")
@@ -322,7 +327,7 @@ public class CheckOutService {
      */
     @Transactional
     public CheckOutStatusDTO completeGuestCheckout(GuestCheckOutSubmissionDTO dto, Long userId) {
-        Booking booking = bookingRepository.findByIdWithRelations(dto.getBookingId())
+        Booking booking = bookingRepository.findByIdWithLock(dto.getBookingId())
                 .orElseThrow(() -> new ResourceNotFoundException("Rezervacija nije pronađena"));
         
         // Validate guest access
@@ -453,7 +458,7 @@ public class CheckOutService {
      */
     @Transactional
     public CheckOutStatusDTO confirmHostCheckout(HostCheckOutConfirmationDTO dto, Long userId) {
-        Booking booking = bookingRepository.findByIdWithRelations(dto.getBookingId())
+        Booking booking = bookingRepository.findByIdWithLock(dto.getBookingId())
                 .orElseThrow(() -> new ResourceNotFoundException("Rezervacija nije pronađena"));
         
         // Validate host access
@@ -734,6 +739,127 @@ public class CheckOutService {
     @Transactional(readOnly = true)
     public List<Booking> findBookingsForCheckoutOpening(LocalDateTime thresholdTime) {
         return bookingRepository.findBookingsForCheckoutWindowOpening(thresholdTime);
+    }
+
+    /**
+     * Explicit ghost-trip settlement flow.
+     *
+     * <p>Runs under a pessimistic booking lock so scheduler retries or concurrent admin actions
+     * cannot double-process the same return window.
+     *
+     * @return true when the booking was transitioned into NO_SHOW_GUEST in this call
+     */
+    @Transactional
+    public boolean processGhostTripNoShow(Long bookingId, long hoursOverdueHint) {
+        Booking booking = bookingRepository.findByIdWithLock(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Rezervacija nije pronađena"));
+
+        if (booking.getStatus() != BookingStatus.CHECKOUT_OPEN || booking.getCheckoutOpenedAt() == null) {
+            log.debug("[CheckOut] Skipping ghost-trip processing for booking {} - status is {}", bookingId,
+                    booking.getStatus());
+            return false;
+        }
+
+        long hoursOverdue = Duration.between(booking.getCheckoutOpenedAt(), Instant.now()).toHours();
+        if (hoursOverdue < 48) {
+            log.debug("[CheckOut] Skipping ghost-trip processing for booking {} - only {} hours overdue",
+                    bookingId, hoursOverdue);
+            return false;
+        }
+
+        log.warn("[CheckOut] GHOST TRIP: booking {} open for {} hours (scheduler estimate: {})",
+                bookingId, hoursOverdue, hoursOverdueHint);
+
+        booking.setStatus(BookingStatus.NO_SHOW_GUEST);
+        booking.setTripEndedAt(Instant.now());
+        booking.setCheckoutCompletedAt(Instant.now());
+        booking.setSecurityDepositReleased(false);
+        booking.setSecurityDepositHoldUntil(null);
+
+        String paymentOutcome;
+        String paymentDetail;
+        String depositAuthId = booking.getDepositAuthorizationId();
+
+        if (depositAuthId != null && !depositAuthId.isBlank()) {
+            try {
+                PaymentResult captureResult = bookingPaymentService.captureSecurityDeposit(bookingId);
+                if (captureResult.isSuccess()) {
+                    paymentOutcome = "CAPTURED";
+                    paymentDetail = captureResult.getTransactionId() != null
+                            ? captureResult.getTransactionId()
+                            : "DEPOSIT_CAPTURED";
+                    booking.setSecurityDepositHoldReason(
+                            "Ghost trip: depozit naplaćen nakon " + hoursOverdue + " sati bez checkout-a");
+                } else if (captureResult.isRedirectRequired()) {
+                    paymentOutcome = "REDIRECT_REQUIRED";
+                    paymentDetail = "Deposit capture requires guest action";
+                    booking.setSecurityDepositHoldReason(
+                            "Ghost trip: naplata depozita zahteva dodatnu potvrdu gosta");
+                } else {
+                    paymentOutcome = "CAPTURE_FAILED";
+                    paymentDetail = captureResult.getErrorMessage() != null
+                            ? captureResult.getErrorMessage()
+                            : "Deposit capture failed";
+                    booking.setSecurityDepositHoldReason(
+                            "Ghost trip: naplata depozita neuspešna - potreban admin pregled");
+                }
+            } catch (Exception e) {
+                paymentOutcome = "CAPTURE_EXCEPTION";
+                paymentDetail = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                booking.setSecurityDepositHoldReason(
+                        "Ghost trip: greška pri naplati depozita - potreban admin pregled");
+                log.error("[CheckOut] Ghost-trip deposit capture exception for booking {}: {}",
+                        bookingId, paymentDetail, e);
+            }
+        } else {
+            paymentOutcome = "NO_DEPOSIT_AUTH";
+            paymentDetail = "No deposit authorization present";
+            booking.setSecurityDepositHoldReason(
+                    "Ghost trip: nema autorizacije depozita - potreban admin pregled");
+        }
+
+        eventService.recordSystemEvent(
+                booking,
+                booking.getCheckoutSessionId(),
+                CheckInEventType.GHOST_TRIP_NO_SHOW,
+                Map.of(
+                        "hoursOverdue", String.valueOf(hoursOverdue),
+                        "paymentOutcome", paymentOutcome,
+                        "paymentDetail", paymentDetail,
+                        "triggeredBy", "SCHEDULER"
+                )
+        );
+
+        bookingRepository.save(booking);
+
+        try {
+            notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                    .recipientId(booking.getCar().getOwner().getId())
+                    .type(NotificationType.LATE_RETURN_DETECTED)
+                    .message(String.format("⚠️ Gost nije završio checkout za rezervaciju #%d nakon %d sati. " +
+                            "Rezervacija je označena kao nepojavljanje. Kontaktirajte podršku za rešavanje.",
+                            booking.getId(), hoursOverdue))
+                    .relatedEntityId(String.valueOf(booking.getId()))
+                    .build());
+        } catch (Exception e) {
+            log.error("[CheckOut] Failed to notify host about ghost trip {}: {}", bookingId, e.getMessage());
+        }
+
+        try {
+            notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                    .recipientId(booking.getRenter().getId())
+                    .type(NotificationType.LATE_RETURN_DETECTED)
+                    .message(String.format("⚠️ Niste završili checkout za rezervaciju #%d. " +
+                            "Molimo kontaktirajte podršku hitno radi daljeg rešavanja.", booking.getId()))
+                    .relatedEntityId(String.valueOf(booking.getId()))
+                    .build());
+        } catch (Exception e) {
+            log.error("[CheckOut] Failed to notify guest about ghost trip {}: {}", bookingId, e.getMessage());
+        }
+
+        log.warn("[CheckOut] Ghost trip processed for booking {} with paymentOutcome={}",
+                bookingId, paymentOutcome);
+        return true;
     }
 
     // ========== NOTIFICATION METHODS ==========
@@ -1313,8 +1439,13 @@ public class CheckOutService {
             claim.setDisputeReason(disputeReason);
             claim.setEscalated(true);
             claim.setEscalatedAt(Instant.now());
-            // [P2] Persist guest evidence photo IDs if provided
+            // S-checkout2 FIX: Validate evidence photo IDs belong to this booking
             if (evidencePhotoIds != null && !evidencePhotoIds.isEmpty()) {
+                long validCount = photoRepository.countByBookingIdAndIdIn(bookingId, evidencePhotoIds);
+                if (validCount != evidencePhotoIds.size()) {
+                    throw new IllegalArgumentException(
+                            "Neke fotografije dokaza ne pripadaju ovoj rezervaciji");
+                }
                 try {
                     claim.setEvidencePhotoIds(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(evidencePhotoIds));
                 } catch (com.fasterxml.jackson.core.JsonProcessingException e) {

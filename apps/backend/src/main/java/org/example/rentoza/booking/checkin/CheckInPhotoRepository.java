@@ -70,6 +70,14 @@ public interface CheckInPhotoRepository extends JpaRepository<CheckInPhoto, Long
     long countByBookingId(@Param("bookingId") Long bookingId);
 
     /**
+     * S-checkout2 FIX: Count how many of the given photo IDs belong to this booking.
+     * Used to validate evidence photo ownership in dispute endpoints.
+     */
+    @Query("SELECT COUNT(p) FROM CheckInPhoto p " +
+           "WHERE p.booking.id = :bookingId AND p.id IN :photoIds AND p.deletedAt IS NULL")
+    long countByBookingIdAndIdIn(@Param("bookingId") Long bookingId, @Param("photoIds") List<Long> photoIds);
+
+    /**
      * Count all valid photos for a booking (EXIF validation passed).
      * Includes VALID_WITH_WARNINGS for HEIC/modern formats validated via sidecar.
      */

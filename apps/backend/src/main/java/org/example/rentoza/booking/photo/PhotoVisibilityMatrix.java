@@ -110,6 +110,17 @@ public class PhotoVisibilityMatrix {
                 // Both see all photos (final state, trip finished)
                 yield true;
             }
+
+            // DISPUTE STATES — both parties need full photo access for evidence
+            case CHECKOUT_DAMAGE_DISPUTE -> {
+                // Both parties need full photo access for dispute resolution
+                yield true;
+            }
+
+            case CHECK_IN_DISPUTE -> {
+                // Both parties need full photo access for dispute resolution
+                yield true;
+            }
             
             // Other terminal/error states
             case CANCELLED -> {
@@ -119,9 +130,9 @@ public class PhotoVisibilityMatrix {
             
             // No-show and other states
             case NO_SHOW_HOST, NO_SHOW_GUEST, EXPIRED, EXPIRED_SYSTEM, PENDING_APPROVAL,
-                 ACTIVE, APPROVED, PENDING_CHECKOUT, DECLINED -> {
-                // These are not relevant for photo access
-                yield false;
+                 ACTIVE, APPROVED, PENDING_CHECKOUT, DECLINED,
+                 CANCELLATION_PENDING_SETTLEMENT, REFUND_FAILED -> {
+                 yield false;
             }
             
             // Paranoid default

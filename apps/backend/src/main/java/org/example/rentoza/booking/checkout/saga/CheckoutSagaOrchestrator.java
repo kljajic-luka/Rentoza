@@ -935,6 +935,7 @@ public class CheckoutSagaOrchestrator {
 
         switch (step) {
             case CAPTURE_DEPOSIT -> compensateCaptureDeposit(saga);
+            case RELEASE_DEPOSIT -> compensateReleaseDeposit(saga);
             case COMPLETE_BOOKING -> compensateCompleteBooking(saga);
             default -> log.debug("[Saga] No compensation needed for step {}", step);
         }
@@ -978,6 +979,32 @@ public class CheckoutSagaOrchestrator {
         bookingRepository.save(booking);
 
         log.info("[Saga] Reverted booking {} status to CHECKOUT_HOST_COMPLETE", saga.getBookingId());
+    }
+
+    /**
+     * Compensate the local side effects of RELEASE_DEPOSIT.
+     *
+     * <p>The release step does not call the provider immediately. It either schedules a
+     * deferred release (48h hold) or marks the deposit as fully resolved when the whole
+     * deposit was captured. Compensation therefore needs to undo those local markers so
+     * earlier steps can be safely rolled back.
+     */
+    private void compensateReleaseDeposit(CheckoutSagaState saga) {
+        Booking booking = loadBooking(saga.getBookingId());
+
+        if (saga.getReleaseTransactionId() != null && saga.getReleaseTransactionId().startsWith("DEFERRED-48H-")) {
+            booking.setSecurityDepositHoldUntil(null);
+            if ("48h post-checkout hold period (standard policy)".equals(booking.getSecurityDepositHoldReason())) {
+                booking.setSecurityDepositHoldReason(null);
+            }
+            log.info("[Saga] Cleared deferred deposit release markers for booking {}", saga.getBookingId());
+        } else {
+            booking.setSecurityDepositReleased(false);
+            booking.setSecurityDepositResolvedAt(null);
+            log.info("[Saga] Re-opened deposit resolution markers for booking {}", saga.getBookingId());
+        }
+
+        bookingRepository.save(booking);
     }
 
     // ========== HELPER METHODS ==========

@@ -29,7 +29,7 @@ import java.util.UUID;
  * @see CheckInStatusViewSyncListener for write operations
  */
 @Repository
-public interface CheckInStatusViewRepository extends JpaRepository<CheckInStatusView, Long> {
+public interface CheckInStatusViewRepository extends JpaRepository<CheckInStatusView, Long>, CheckInStatusViewRepositoryCustom {
 
     // ========== SINGLE BOOKING QUERIES ==========
 
@@ -287,77 +287,4 @@ public interface CheckInStatusViewRepository extends JpaRepository<CheckInStatus
         """)
     int deleteNoShowsOlderThan(@Param("threshold") Instant threshold);
 
-    // ========== ATOMIC UPSERT (RACE CONDITION FIX) ==========
-
-    /**
-     * Atomic insert-or-update for photo count increment.
-     * PostgreSQL ON CONFLICT prevents race conditions entirely.
-     * 
-     * <p><b>INSERT:</b> First photo creates view with all denormalized fields
-     * <p><b>UPDATE:</b> Subsequent photos increment photo_count atomically
-     * 
-     * <p><b>Why This Works:</b> PostgreSQL's ON CONFLICT is atomic at the database level.
-     * Two concurrent threads cannot both see "row doesn't exist" - one will insert,
-     * the other will update. No retry logic needed.
-     * 
-     * @param bookingId Booking ID (unique constraint)
-     * @param sessionId Check-in session UUID
-     * @param hostUserId Host's user ID
-     * @param hostName Host's full name
-     * @param hostPhone Host's phone number
-     * @param guestUserId Guest's user ID
-     * @param guestName Guest's full name
-     * @param guestPhone Guest's phone number
-     * @param carId Car ID
-     * @param carBrand Car brand (e.g., "BMW")
-     * @param carModel Car model (e.g., "X5")
-     * @param carYear Car year
-     * @param carImageUrl Car image URL
-     * @param carLicensePlate Car license plate
-     * @param status Booking status as string
-     * @param statusDisplay User-friendly status text
-     * @param scheduledStartTime Trip start time
-     * @param lockboxAvailable Whether lockbox code is available
-     * @param geofenceDistanceMeters Distance to geofence in meters
-     */
-    @Modifying
-    @Query(value = """
-        INSERT INTO checkin_status_view 
-        (booking_id, session_id, host_user_id, host_name, host_phone, 
-         guest_user_id, guest_name, guest_phone, car_id, car_brand, car_model, 
-         car_year, car_image_url, car_license_plate, status, status_display, 
-         scheduled_start_time, lockbox_available, geofence_distance_meters,
-         photo_count, version, last_sync_at)
-        VALUES (
-            :bookingId, :sessionId, :hostUserId, :hostName, :hostPhone,
-            :guestUserId, :guestName, :guestPhone, :carId, :carBrand, :carModel,
-            :carYear, :carImageUrl, :carLicensePlate, :status, :statusDisplay,
-            :scheduledStartTime, :lockboxAvailable, :geofenceDistanceMeters,
-            1, 0, CURRENT_TIMESTAMP(6)
-        )
-        ON CONFLICT (booking_id) DO UPDATE SET 
-            photo_count = checkin_status_view.photo_count + 1,
-            version = checkin_status_view.version + 1,
-            last_sync_at = CURRENT_TIMESTAMP(6)
-        """, nativeQuery = true)
-    void upsertPhotoCount(
-            @Param("bookingId") Long bookingId,
-            @Param("sessionId") UUID sessionId,
-            @Param("hostUserId") Long hostUserId,
-            @Param("hostName") String hostName,
-            @Param("hostPhone") String hostPhone,
-            @Param("guestUserId") Long guestUserId,
-            @Param("guestName") String guestName,
-            @Param("guestPhone") String guestPhone,
-            @Param("carId") Long carId,
-            @Param("carBrand") String carBrand,
-            @Param("carModel") String carModel,
-            @Param("carYear") Integer carYear,
-            @Param("carImageUrl") String carImageUrl,
-            @Param("carLicensePlate") String carLicensePlate,
-            @Param("status") String status,
-            @Param("statusDisplay") String statusDisplay,
-            @Param("scheduledStartTime") LocalDateTime scheduledStartTime,
-            @Param("lockboxAvailable") Boolean lockboxAvailable,
-            @Param("geofenceDistanceMeters") Integer geofenceDistanceMeters);
 }

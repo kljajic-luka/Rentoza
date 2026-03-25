@@ -302,18 +302,11 @@ public class CheckOutController {
     @PostMapping("/damage/dispute")
     public ResponseEntity<Map<String, Object>> disputeDamageClaim(
             @PathVariable Long bookingId,
-            @RequestBody Map<String, Object> body) {
+            @Valid @RequestBody DisputeDamageClaimRequest request) {
         
         Long userId = currentUser.id();
-        String reason = body.containsKey("reason") ? String.valueOf(body.get("reason")) : "";
-        
-        // [P2] Accept optional evidence photo IDs from guest
-        List<Long> evidencePhotoIds = null;
-        if (body.containsKey("evidencePhotoIds") && body.get("evidencePhotoIds") instanceof List<?> rawList) {
-            evidencePhotoIds = rawList.stream()
-                    .map(item -> Long.valueOf(String.valueOf(item)))
-                    .toList();
-        }
+        String reason = request.getReason();
+        List<Long> evidencePhotoIds = request.getEvidencePhotoIds();
         
         log.info("[CheckOut] Guest {} disputing damage claim for booking {}: {} (evidencePhotos: {})",
                 userId, bookingId, reason, evidencePhotoIds != null ? evidencePhotoIds.size() : 0);

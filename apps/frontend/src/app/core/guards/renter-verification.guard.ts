@@ -7,7 +7,7 @@ import {
   UrlTree,
 } from '@angular/router';
 import { Observable, of } from 'rxjs';
-import { map, catchError, take, switchMap } from 'rxjs/operators';
+import { map, catchError, take, switchMap, filter, timeout } from 'rxjs/operators';
 
 import { RenterVerificationService } from '@core/services/renter-verification.service';
 import { AuthService } from '@core/auth/auth.service';
@@ -67,33 +67,35 @@ export class RenterVerificationGuard implements CanActivate {
     this.verificationService.loadStatus();
 
     return this.verificationService.status$.pipe(
+      filter((status) => status !== null && status !== undefined),
       take(1),
+      timeout({ first: 5000 }),
       map((status) => {
-        // If status not loaded yet, allow navigation (backend will catch it)
-        if (!status) {
-          return true;
-        }
-
         // If approved, allow navigation
-        if (isApproved(status.status)) {
+        if (isApproved(status!.status)) {
           return true;
         }
 
         // If not approved, redirect to verification page
         console.log(
-          `🔒 RenterVerificationGuard: License status is ${status.status}, redirecting to verification`
+          `🔒 RenterVerificationGuard: License status is ${status!.status}, redirecting to verification`
         );
 
         return this.router.createUrlTree(['/verify-license'], {
           queryParams: {
             returnUrl,
-            reason: this.getRedirectReason(status.status),
+            reason: this.getRedirectReason(status!.status),
           },
         });
       }),
       catchError(() => {
-        // On error, allow navigation (backend will enforce)
-        return of(true);
+        // On error, redirect to verification page (fail-closed)
+        return of(this.router.createUrlTree(['/verify-license'], {
+          queryParams: {
+            returnUrl,
+            reason: 'verification_required',
+          },
+        }));
       })
     );
   }

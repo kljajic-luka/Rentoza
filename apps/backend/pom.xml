@@ -336,6 +336,21 @@
                         --add-opens java.base/java.lang.reflect=ALL-UNNAMED
                         --add-opens java.base/java.util=ALL-UNNAMED
                     </argLine>
+                    <systemPropertyVariables>
+                        <app.id-verification.provider>MOCK</app.id-verification.provider>
+                        <internal.service.jwt.secret>MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=</internal.service.jwt.secret>
+                        <INTERNAL_SERVICE_JWT_SECRET>MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=</INTERNAL_SERVICE_JWT_SECRET>
+                        <supabase.url>https://example.supabase.co</supabase.url>
+                        <SUPABASE_URL>https://example.supabase.co</SUPABASE_URL>
+                        <supabase.anon-key>test-anon-key</supabase.anon-key>
+                        <SUPABASE_ANON_KEY>test-anon-key</SUPABASE_ANON_KEY>
+                        <supabase.service-role-key>test-service-role-key</supabase.service-role-key>
+                        <SUPABASE_SERVICE_ROLE_KEY>test-service-role-key</SUPABASE_SERVICE_ROLE_KEY>
+                        <supabase.jwt-secret>MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=</supabase.jwt-secret>
+                        <SUPABASE_JWT_SECRET>MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=</SUPABASE_JWT_SECRET>
+                        <app.cookie.domain>localhost</app.cookie.domain>
+                        <COOKIE_DOMAIN>localhost</COOKIE_DOMAIN>
+                    </systemPropertyVariables>
                     <environmentVariables>
                         <PII_ENCRYPTION_KEY>SecretKeyToEncryptPIIData1234567</PII_ENCRYPTION_KEY>
                     </environmentVariables>
@@ -361,6 +376,21 @@
                         --add-opens java.base/java.lang.reflect=ALL-UNNAMED
                         --add-opens java.base/java.util=ALL-UNNAMED
                     </argLine>
+                    <systemPropertyVariables>
+                        <app.id-verification.provider>MOCK</app.id-verification.provider>
+                        <internal.service.jwt.secret>MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=</internal.service.jwt.secret>
+                        <INTERNAL_SERVICE_JWT_SECRET>MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=</INTERNAL_SERVICE_JWT_SECRET>
+                        <supabase.url>https://example.supabase.co</supabase.url>
+                        <SUPABASE_URL>https://example.supabase.co</SUPABASE_URL>
+                        <supabase.anon-key>test-anon-key</supabase.anon-key>
+                        <SUPABASE_ANON_KEY>test-anon-key</SUPABASE_ANON_KEY>
+                        <supabase.service-role-key>test-service-role-key</supabase.service-role-key>
+                        <SUPABASE_SERVICE_ROLE_KEY>test-service-role-key</SUPABASE_SERVICE_ROLE_KEY>
+                        <supabase.jwt-secret>MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=</supabase.jwt-secret>
+                        <SUPABASE_JWT_SECRET>MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=</SUPABASE_JWT_SECRET>
+                        <app.cookie.domain>localhost</app.cookie.domain>
+                        <COOKIE_DOMAIN>localhost</COOKIE_DOMAIN>
+                    </systemPropertyVariables>
                     <includes>
                         <include>**/*IntegrationTest.java</include>
                         <include>**/*IT.java</include>

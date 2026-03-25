@@ -41,8 +41,8 @@ public class FeatureFlags {
     @Value("${" + DUAL_PARTY_PHOTOS_REQUIRED_FOR_HANDSHAKE + ":false}")
     private boolean dualPartyPhotosRequiredForHandshake;
 
-    // Rental Agreement Enforcement
-    @Value("${" + RENTAL_AGREEMENT_CHECKIN_ENFORCED + ":false}")
+    // Rental Agreement Enforcement (fail-safe: true prevents trips without signed agreements)
+    @Value("${" + RENTAL_AGREEMENT_CHECKIN_ENFORCED + ":true}")
     private boolean rentalAgreementCheckinEnforced;
 
     public boolean isRenterVerificationEnabled() {

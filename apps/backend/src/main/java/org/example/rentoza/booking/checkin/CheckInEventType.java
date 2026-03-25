@@ -246,6 +246,15 @@ public enum CheckInEventType {
     NO_SHOW_ADMIN_ALERT_SENT,
 
     /**
+     * Ghost trip detected — no check-in activity by either party after window opened.
+     * Scheduler auto-cancels booking and releases deposit.
+     * Metadata: {@code {"bookingId": 123, "hoursOpen": 4, "reason": "NO_CHECKIN_ACTIVITY"}}
+     *
+     * @since Audit Remediation - S-checkout3
+     */
+    GHOST_TRIP_NO_SHOW,
+
+    /**
      * Booking auto-cancelled due to stale handshake timeout.
      * Metadata: {@code {"timeoutMinutes": 45, "reason": "HANDSHAKE_NOT_CONFIRMED"}}
      */

@@ -39,7 +39,7 @@ import java.sql.Statement;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("testcontainers")
-@Testcontainers
+@Testcontainers(disabledWithoutDocker = true)
 public abstract class AbstractPostGisIntegrationTest {
 
     @Container

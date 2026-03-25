@@ -63,6 +63,7 @@ class BookingApprovalDeadlineIntegrationTest {
         host.setFirstName("Host");
         host.setLastName("Deadline");
         host.setAge(35);
+        host.setPassword("pass");
         host = userRepository.save(host);
 
         renter = new User();
@@ -70,6 +71,7 @@ class BookingApprovalDeadlineIntegrationTest {
         renter.setFirstName("Renter");
         renter.setLastName("Deadline");
         renter.setAge(29);
+        renter.setPassword("pass");
         renter.setDriverLicenseStatus(DriverLicenseStatus.APPROVED);
         renter = userRepository.save(renter);
 

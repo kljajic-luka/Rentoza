@@ -4,7 +4,11 @@ import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingRepository;
 import org.example.rentoza.booking.BookingStatus;
 import org.example.rentoza.car.Car;
+import org.example.rentoza.car.CarRepository;
+import org.example.rentoza.car.FuelType;
+import org.example.rentoza.car.TransmissionType;
 import org.example.rentoza.user.User;
+import org.example.rentoza.user.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -13,8 +17,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -58,7 +62,6 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @SpringBootTest
 @ActiveProfiles("test")
-@Transactional
 class CheckInStatusViewConcurrencyTest {
 
     private static final Logger log = LoggerFactory.getLogger(CheckInStatusViewConcurrencyTest.class);
@@ -68,6 +71,12 @@ class CheckInStatusViewConcurrencyTest {
 
     @Autowired
     private BookingRepository bookingRepository;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private CarRepository carRepository;
 
     private Long testBookingId;
     private UUID testSessionId;
@@ -79,6 +88,9 @@ class CheckInStatusViewConcurrencyTest {
     void setUp() {
         // Clean up
         viewRepository.deleteAll();
+        bookingRepository.deleteAll();
+        carRepository.deleteAll();
+        userRepository.deleteAll();
 
         // Create test data
         User host = createTestUser("host@test.com", "Host", "User");
@@ -176,8 +188,8 @@ class CheckInStatusViewConcurrencyTest {
                 .isEqualTo(10);
 
         assertThat(view.getVersion())
-                .as("Version should be incremented 10 times")
-                .isEqualTo(10);
+                .as("Insert initializes version at 0, then the remaining 9 updates increment it")
+                .isEqualTo(9);
 
         log.debug("Race condition fix validated: 10 concurrent upserts succeeded, photo_count={}, version={}",
                 view.getPhotoCount(), view.getVersion());
@@ -357,7 +369,9 @@ class CheckInStatusViewConcurrencyTest {
         user.setEmail(email);
         user.setFirstName(firstName);
         user.setLastName(lastName);
-        return user;
+        user.setPassword("pass");
+        user.setAge(30);
+        return userRepository.save(user);
     }
 
     private Car createTestCar(User owner) {
@@ -366,7 +380,12 @@ class CheckInStatusViewConcurrencyTest {
         car.setBrand("Tesla");
         car.setModel("Model 3");
         car.setYear(2024);
-        return car;
+        car.setPricePerDay(new BigDecimal("7500.00"));
+        car.setLocation("Belgrade");
+        car.setSeats(5);
+        car.setFuelType(FuelType.BENZIN);
+        car.setTransmissionType(TransmissionType.AUTOMATIC);
+        return carRepository.save(car);
     }
 
     private Booking createTestBooking(Car car, User renter) {
@@ -377,6 +396,7 @@ class CheckInStatusViewConcurrencyTest {
         booking.setStartTime(LocalDateTime.now().plusDays(1));
         booking.setEndTime(LocalDateTime.now().plusDays(2));
         booking.setCheckInSessionId(UUID.randomUUID().toString());
+        booking.setTotalPrice(new BigDecimal("15000.00"));
         return bookingRepository.save(booking);
     }
 }

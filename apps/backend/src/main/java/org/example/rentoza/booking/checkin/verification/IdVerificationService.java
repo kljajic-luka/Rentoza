@@ -64,7 +64,7 @@ public class IdVerificationService {
     @Value("${app.id-verification.max-attempts:3}")
     private int maxLivenessAttempts;
 
-    @Value("${app.id-verification.skip-if-previously-verified:true}")
+    @Value("${app.id-verification.skip-if-previously-verified:false}")
     private boolean skipIfPreviouslyVerified;
 
     public IdVerificationService(

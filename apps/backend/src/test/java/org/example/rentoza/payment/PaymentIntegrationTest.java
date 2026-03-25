@@ -100,6 +100,8 @@ class PaymentIntegrationTest {
         ReflectionTestUtils.setField(paymentService, "authExpiryHours", 168);    // 7 days
         ReflectionTestUtils.setField(paymentService, "defaultDepositAmountRsd", 30000); // RSD
         ReflectionTestUtils.setField(paymentService, "payoutDisputeHoldHours", 48);    // 48 h
+        ReflectionTestUtils.setField(paymentService, "platformFeeRate", new BigDecimal("0.15"));
+        ReflectionTestUtils.setField(paymentService, "pdvRate", new BigDecimal("0.20"));
 
         // Allow txRepository.save() to return the object passed to it (in-memory simulation)
         // Using lenient() since not all tests invoke save via the service
@@ -329,6 +331,7 @@ class PaymentIntegrationTest {
                 .build();
 
         when(bookingRepository.findByIdWithRelations(1L)).thenReturn(Optional.of(booking));
+        when(cancellationRecordRepository.findByIdWithFullDetails(10L)).thenReturn(Optional.of(record));
         when(cancellationRecordRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         // Simulate payment failure by injecting a failing scenario into the booking

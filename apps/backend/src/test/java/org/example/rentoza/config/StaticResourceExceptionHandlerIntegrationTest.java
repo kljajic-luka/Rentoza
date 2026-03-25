@@ -12,6 +12,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.io.File;
@@ -48,12 +49,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "spring.mvc.throw-exception-if-no-handler-found=true",
         "spring.web.resources.add-mappings=true",
         // H2 in-memory database for test
-        "spring.datasource.url=jdbc:h2:mem:testdb",
+        "spring.datasource.url=jdbc:h2:mem:static_resource_exception_test;DB_CLOSE_DELAY=-1;MODE=PostgreSQL;NON_KEYWORDS=YEAR",
         "spring.datasource.driver-class-name=org.h2.Driver",
         "spring.jpa.hibernate.ddl-auto=create-drop",
         "spring.jpa.database-platform=org.hibernate.dialect.H2Dialect"
 })
 @AutoConfigureMockMvc
+@ActiveProfiles("test")
 @Import(StaticResourceExceptionHandlerIntegrationTest.TestConfig.class)
 class StaticResourceExceptionHandlerIntegrationTest {
 

@@ -6,10 +6,12 @@ import org.example.rentoza.booking.Booking;
 import org.example.rentoza.booking.BookingRepository;
 import org.example.rentoza.booking.BookingStatus;
 import org.example.rentoza.car.Car;
+import org.example.rentoza.booking.checkin.CheckInEventType;
 import org.example.rentoza.user.User;
 import org.example.rentoza.booking.checkin.CheckInEventService;
 import org.example.rentoza.booking.checkin.CheckInPhotoRepository;
 import org.example.rentoza.booking.checkin.GuestCheckInPhotoRepository;
+import org.example.rentoza.booking.checkout.saga.CheckoutSagaStep;
 import org.example.rentoza.booking.checkout.saga.CheckoutSagaOrchestrator;
 import org.example.rentoza.booking.checkout.saga.CheckoutSagaState;
 import org.example.rentoza.booking.checkout.saga.CheckoutSagaStateRepository;
@@ -27,13 +29,16 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
@@ -106,7 +111,8 @@ class CheckoutSagaIntegrationTest {
             damageClaimRepository,
             meterRegistry,
             eventPublisher,
-            photoUrlService
+            photoUrlService,
+            bookingPaymentService
         );
     }
 
@@ -153,6 +159,65 @@ class CheckoutSagaIntegrationTest {
         assertThat(savedBooking.getLateFeeAmount())
             .describedAs("Service should NOT set late fee - saga is single source of truth")
             .isNull();
+    }
+
+    @Test
+    @DisplayName("Ghost trip flow captures deposit, records audit event, and notifies both parties")
+    void testGhostTripFlowCapturesDepositAndRecordsAuditEvent() {
+        Booking booking = createTestBooking(0);
+        booking.setId(8000L);
+        booking.setStatus(BookingStatus.CHECKOUT_OPEN);
+        booking.setCheckoutOpenedAt(Instant.now().minus(49, ChronoUnit.HOURS));
+        booking.setDepositAuthorizationId("dep_auth_ghost");
+        booking.setSecurityDeposit(BigDecimal.valueOf(30000));
+        booking.setCheckoutSessionId("ghost-session");
+
+        when(bookingRepository.findByIdWithLock(8000L)).thenReturn(Optional.of(booking));
+        when(bookingRepository.save(any(Booking.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(bookingPaymentService.captureSecurityDeposit(8000L)).thenReturn(
+                PaymentProvider.PaymentResult.builder()
+                        .success(true)
+                        .transactionId("cap_ghost_123")
+                        .amount(BigDecimal.valueOf(30000))
+                        .build()
+        );
+
+        boolean processed = checkOutService.processGhostTripNoShow(8000L, 72);
+
+        assertThat(processed).isTrue();
+        assertThat(booking.getStatus()).isEqualTo(BookingStatus.NO_SHOW_GUEST);
+        assertThat(booking.getCheckoutCompletedAt()).isNotNull();
+        assertThat(booking.getTripEndedAt()).isNotNull();
+        assertThat(booking.getSecurityDepositReleased()).isFalse();
+        assertThat(booking.getSecurityDepositHoldReason()).contains("depozit naplaćen");
+
+        verify(eventService).recordSystemEvent(
+                eq(booking),
+                eq("ghost-session"),
+                eq(CheckInEventType.GHOST_TRIP_NO_SHOW),
+                argThat((java.util.Map<String, Object> metadata) ->
+                        "CAPTURED".equals(metadata.get("paymentOutcome")) &&
+                                "cap_ghost_123".equals(metadata.get("paymentDetail")) &&
+                                "SCHEDULER".equals(metadata.get("triggeredBy")))
+        );
+        verify(notificationService, times(2)).createNotification(any());
+    }
+
+    @Test
+    @DisplayName("Ghost trip flow skips bookings that are no longer checkout-open")
+    void testGhostTripFlowSkipsAlreadyProcessedBookings() {
+        Booking booking = createTestBooking(0);
+        booking.setId(8100L);
+        booking.setStatus(BookingStatus.COMPLETED);
+        booking.setCheckoutOpenedAt(Instant.now().minus(72, ChronoUnit.HOURS));
+
+        when(bookingRepository.findByIdWithLock(8100L)).thenReturn(Optional.of(booking));
+
+        boolean processed = checkOutService.processGhostTripNoShow(8100L, 72);
+
+        assertThat(processed).isFalse();
+        verifyNoInteractions(bookingPaymentService, eventService, notificationService);
+        verify(bookingRepository, never()).save(any(Booking.class));
     }
 
     @Test
@@ -218,6 +283,47 @@ class CheckoutSagaIntegrationTest {
             }
             throw e;
         }
+    }
+
+    @Test
+    @DisplayName("Saga compensation clears deferred release markers instead of pretending to re-hold funds")
+    void testReleaseDepositCompensationClearsDeferredReleaseMarkers() {
+        Booking booking = createTestBooking(0);
+        booking.setId(8200L);
+        booking.setStatus(BookingStatus.CHECKOUT_SETTLEMENT_PENDING);
+        booking.setSecurityDepositHoldUntil(Instant.now().plus(48, ChronoUnit.HOURS));
+        booking.setSecurityDepositHoldReason("48h post-checkout hold period (standard policy)");
+
+        CheckoutSagaState saga = CheckoutSagaState.builder()
+                .sagaId(UUID.randomUUID())
+                .bookingId(8200L)
+                .status(CheckoutSagaState.SagaStatus.RUNNING)
+                .lastCompletedStep(CheckoutSagaStep.RELEASE_DEPOSIT)
+                .failedAtStep(CheckoutSagaStep.COMPLETE_BOOKING)
+                .releaseTransactionId("DEFERRED-48H-8200")
+                .build();
+
+        when(bookingRepository.findById(8200L)).thenReturn(Optional.of(booking));
+        when(sagaRepository.save(any(CheckoutSagaState.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        CheckoutSagaOrchestrator orchestrator = new CheckoutSagaOrchestrator(
+                sagaRepository,
+                bookingRepository,
+                photoRepository,
+                notificationService,
+                eventService,
+                eventPublisher,
+                bookingPaymentService,
+                paymentProvider,
+                meterRegistry
+        );
+
+        orchestrator.startCompensation(saga);
+
+        assertThat(booking.getSecurityDepositHoldUntil()).isNull();
+        assertThat(booking.getSecurityDepositHoldReason()).isNull();
+        assertThat(saga.getStatus()).isEqualTo(CheckoutSagaState.SagaStatus.COMPENSATED);
+        verify(paymentProvider, never()).refund(anyString(), any(BigDecimal.class), anyString(), anyString());
     }
 
     @Test

@@ -62,11 +62,13 @@ public enum CheckoutSagaStep {
     /**
      * Step 4: Release remaining deposit.
      * 
-     * <p>Returns unused deposit portion to guest.
+     * <p>Schedules the unused deposit for deferred release, or marks the deposit
+     * as fully resolved when the entire deposit was captured.
      * 
-     * <p>Compensation: None (release is final)
+     * <p>Compensation: CLEAR_RELEASE_MARKERS - undo deferred-release/resolution flags
+     * if a later step fails
      */
-    RELEASE_DEPOSIT(4, "Povrat depozita", false),
+    RELEASE_DEPOSIT(4, "Povrat depozita", true),
 
     /**
      * Step 5: Complete booking.

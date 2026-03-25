@@ -182,8 +182,8 @@ class EnhancedRegistrationIntegrationTest {
     }
 
     @Test
-    @DisplayName("registerUser: Duplicate email → 409 CONFLICT")
-    void registerUser_duplicateEmail_returns409() throws Exception {
+    @DisplayName("registerUser: Duplicate email returns anti-enumeration 200")
+    void registerUser_duplicateEmail_returnsAntiEnumeration200() throws Exception {
         when(userRepository.findByEmail("taken@example.com")).thenReturn(
                 Optional.of(createUser(99L, "taken@example.com", Role.USER)));
 
@@ -202,8 +202,12 @@ class EnhancedRegistrationIntegrationTest {
                                   "confirmsAgeEligibility": true
                                 }
                                 """.formatted(dob)))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error").value("EMAIL_ALREADY_REGISTERED"));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.emailConfirmationRequired").value(true))
+                .andExpect(jsonPath("$.message")
+                        .value("If this email is available, a confirmation link has been sent."));
+
+        verify(supabaseAuthService, never()).register(anyString(), anyString(), anyString(), anyString(), any());
     }
 
     @Test

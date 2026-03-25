@@ -24,6 +24,8 @@ import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -404,12 +406,15 @@ public class BookingApprovalService {
                 thresholdHour
         );
 
-        notificationService.createNotification(CreateNotificationRequestDTO.builder()
+        sendNotificationAfterCommit(CreateNotificationRequestDTO.builder()
                 .recipientId(booking.getCar().getOwner().getId())
                 .type(NotificationType.BOOKING_APPROVAL_REMINDER)
                 .message(message)
                 .relatedEntityId(relatedEntityId)
-                .build());
+                .build(),
+                "approval reminder",
+                booking.getId(),
+                booking.getCar().getOwner().getId());
 
         log.info("Approval reminder sent: bookingId={}, threshold={}h, ownerId={}",
                 booking.getId(), thresholdHour, booking.getCar().getOwner().getId());
@@ -430,12 +435,15 @@ public class BookingApprovalService {
                 booking.getEndDate()
         );
 
-        notificationService.createNotification(CreateNotificationRequestDTO.builder()
+        sendNotificationAfterCommit(CreateNotificationRequestDTO.builder()
                 .recipientId(booking.getRenter().getId())
                 .type(NotificationType.BOOKING_APPROVED)
                 .message(message)
                 .relatedEntityId("booking-" + booking.getId())
-                .build());
+                .build(),
+                "approval",
+                booking.getId(),
+                booking.getRenter().getId());
 
         log.debug("[ApprovalService] Sent approval notification to renterId={}", booking.getRenter().getId());
     }
@@ -452,12 +460,15 @@ public class BookingApprovalService {
                 booking.getDeclineReason()
         );
 
-        notificationService.createNotification(CreateNotificationRequestDTO.builder()
+        sendNotificationAfterCommit(CreateNotificationRequestDTO.builder()
                 .recipientId(booking.getRenter().getId())
                 .type(NotificationType.BOOKING_DECLINED)
                 .message(message)
                 .relatedEntityId("booking-" + booking.getId())
-                .build());
+                .build(),
+                "decline",
+                booking.getId(),
+                booking.getRenter().getId());
 
         log.debug("[ApprovalService] Sent decline notification to renterId={}", booking.getRenter().getId());
     }
@@ -473,14 +484,49 @@ public class BookingApprovalService {
                 booking.getCar().getYear()
         );
 
-        notificationService.createNotification(CreateNotificationRequestDTO.builder()
+        sendNotificationAfterCommit(CreateNotificationRequestDTO.builder()
                 .recipientId(booking.getRenter().getId())
                 .type(NotificationType.BOOKING_EXPIRED)
                 .message(message)
                 .relatedEntityId("booking-" + booking.getId())
-                .build());
+                .build(),
+                "expiry",
+                booking.getId(),
+                booking.getRenter().getId());
 
         log.debug("[ApprovalService] Sent expiry notification to renterId={}", booking.getRenter().getId());
+    }
+
+    private void sendNotificationAfterCommit(CreateNotificationRequestDTO request,
+                                             String workflow,
+                                             Long bookingId,
+                                             Long recipientId) {
+        Runnable sendAction = () -> sendNotificationSafely(request, workflow, bookingId, recipientId);
+
+        if (TransactionSynchronizationManager.isSynchronizationActive()
+                && TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    sendAction.run();
+                }
+            });
+            return;
+        }
+
+        sendAction.run();
+    }
+
+    private void sendNotificationSafely(CreateNotificationRequestDTO request,
+                                        String workflow,
+                                        Long bookingId,
+                                        Long recipientId) {
+        try {
+            notificationService.createNotification(request);
+        } catch (Exception e) {
+            log.error("[ApprovalService] Failed to send {} notification for booking {} to recipient {}: {}",
+                    workflow, bookingId, recipientId, e.getMessage(), e);
+        }
     }
 
     /**

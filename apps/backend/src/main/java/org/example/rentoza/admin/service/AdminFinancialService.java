@@ -62,6 +62,7 @@ public class AdminFinancialService {
     private final BookingRepository bookingRepo;
     private final BookingPaymentService paymentService;
     private final AdminAuditService auditService;
+    private final AdminBatchItemProcessor batchItemProcessor;
     
     private static final int MAX_RETRY_COUNT = 3;
     private static final int PAYOUT_DELAY_DAYS = 2; // Hold funds for 2 days after trip
@@ -153,7 +154,9 @@ public class AdminFinancialService {
      * @param admin Admin user executing the batch
      * @return Result with success/failure counts
      */
-    @Transactional
+    // F-2 FIX: No @Transactional — each payout runs in its own REQUIRES_NEW transaction
+    // via AdminBatchItemProcessor, following the SchedulerItemProcessor isolation pattern.
+    // One item failure no longer rolls back the entire batch.
     @PreAuthorize("hasRole('ADMIN')")
     public BatchPayoutResult processBatchPayouts(BatchPayoutRequest request, User admin) {
         log.info("Processing batch payout: {} bookings, dryRun: {}", 
@@ -163,49 +166,20 @@ public class AdminFinancialService {
         List<BatchPayoutResult.PayoutFailure> failures = new ArrayList<>();
         int successCount = 0;
         BigDecimal totalProcessed = BigDecimal.ZERO;
+        boolean dryRun = request.getDryRun() != null && request.getDryRun();
         
         for (Long bookingId : request.getBookingIds()) {
             try {
-                Booking booking = bookingRepo.findByIdWithLockForPayout(bookingId)
-                    .orElseThrow(() -> new ResourceNotFoundException("Booking not found: " + bookingId));
-                
-                // Validation
-                if (booking.getStatus() != BookingStatus.COMPLETED) {
-                    failures.add(BatchPayoutResult.PayoutFailure.builder()
-                        .bookingId(bookingId)
-                        .reason("Booking not completed")
-                        .errorCode("INVALID_STATUS")
-                        .build());
-                    continue;
+                AdminBatchItemProcessor.BatchPayoutItemResult result =
+                        batchItemProcessor.processPayoutItem(bookingId, batchReference,
+                                dryRun, admin, request.getNotes());
+
+                if (result.success()) {
+                    successCount++;
+                    totalProcessed = totalProcessed.add(result.amount());
+                } else {
+                    failures.add(result.failure());
                 }
-                
-                if (booking.getPaymentReference() != null) {
-                    failures.add(BatchPayoutResult.PayoutFailure.builder()
-                        .bookingId(bookingId)
-                        .reason("Payout already processed")
-                        .errorCode("DUPLICATE_PAYOUT")
-                        .build());
-                    continue;
-                }
-                
-                if (request.getDryRun() == null || !request.getDryRun()) {
-                    // Execute actual payout
-                    paymentService.processHostPayout(booking, batchReference);
-                    
-                    auditService.logAction(
-                        admin,
-                        AdminAction.PAYOUT_PROCESSED,
-                        ResourceType.BOOKING,
-                        bookingId,
-                        null,
-                        auditService.toJson(booking),
-                        "Batch payout: " + request.getNotes()
-                    );
-                }
-                
-                successCount++;
-                totalProcessed = totalProcessed.add(booking.getTotalAmount());
-                
             } catch (Exception e) {
                 log.error("Failed to process payout for booking {}: {}", bookingId, e.getMessage(), e);
                 failures.add(BatchPayoutResult.PayoutFailure.builder()

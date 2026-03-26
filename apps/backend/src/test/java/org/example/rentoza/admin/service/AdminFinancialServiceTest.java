@@ -10,6 +10,7 @@ import org.example.rentoza.booking.BookingRepository;
 import org.example.rentoza.booking.BookingStatus;
 import org.example.rentoza.car.Car;
 import org.example.rentoza.payment.BookingPaymentService;
+import org.example.rentoza.admin.service.AdminBatchItemProcessor;
 import org.example.rentoza.user.User;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -55,6 +56,9 @@ class AdminFinancialServiceTest {
     @Mock
     private AdminAuditService auditService;
 
+    @Mock
+    private AdminBatchItemProcessor batchItemProcessor;
+
     private AdminFinancialService adminFinancialService;
 
     @Captor
@@ -64,7 +68,7 @@ class AdminFinancialServiceTest {
 
     @BeforeEach
     void setUp() {
-        adminFinancialService = new AdminFinancialService(bookingRepo, paymentService, auditService);
+        adminFinancialService = new AdminFinancialService(bookingRepo, paymentService, auditService, batchItemProcessor);
 
         testAdmin = new User();
         testAdmin.setId(99L);
@@ -103,12 +107,10 @@ class AdminFinancialServiceTest {
     class ProcessBatchPayoutsTests {
 
         @Test
-        @DisplayName("Should process payout for completed booking with no prior payment reference")
+        @DisplayName("Should process payout for completed booking via batchItemProcessor")
         void shouldProcessPayoutSuccessfully() {
-            Booking booking = createCompletedBooking();
-            booking.setPaymentReference(null);
-
-            when(bookingRepo.findByIdWithLockForPayout(1L)).thenReturn(Optional.of(booking));
+            when(batchItemProcessor.processPayoutItem(eq(1L), anyString(), eq(false), eq(testAdmin), eq("Monthly payout")))
+                    .thenReturn(AdminBatchItemProcessor.BatchPayoutItemResult.success(1L, BigDecimal.valueOf(5000)));
 
             BatchPayoutRequest request = BatchPayoutRequest.builder()
                     .bookingIds(List.of(1L))
@@ -125,23 +127,14 @@ class AdminFinancialServiceTest {
             assertThat(result.getBatchReference()).isNotBlank();
             assertThat(result.getTotalRequested()).isEqualTo(1);
 
-            verify(paymentService).processHostPayout(eq(booking), anyString());
-            verify(auditService).logAction(
-                    eq(testAdmin),
-                    actionCaptor.capture(),
-                    eq(ResourceType.BOOKING),
-                    eq(1L),
-                    any(),
-                    any(),
-                    any()
-            );
-            assertThat(actionCaptor.getValue()).isEqualTo(AdminAction.PAYOUT_PROCESSED);
+            verify(batchItemProcessor).processPayoutItem(eq(1L), anyString(), eq(false), eq(testAdmin), eq("Monthly payout"));
         }
 
         @Test
-        @DisplayName("Should record failure when booking is not found")
+        @DisplayName("Should record failure when batchItemProcessor throws (e.g. booking not found)")
         void shouldRecordFailureWhenBookingNotFound() {
-            when(bookingRepo.findByIdWithLockForPayout(1L)).thenReturn(Optional.empty());
+            when(batchItemProcessor.processPayoutItem(eq(1L), anyString(), eq(false), eq(testAdmin), eq("Batch run")))
+                    .thenThrow(new org.example.rentoza.exception.ResourceNotFoundException("Booking not found: 1"));
 
             BatchPayoutRequest request = BatchPayoutRequest.builder()
                     .bookingIds(List.of(1L))
@@ -159,18 +152,13 @@ class AdminFinancialServiceTest {
             assertThat(failure.getBookingId()).isEqualTo(1L);
             assertThat(failure.getErrorCode()).isEqualTo("PROCESSING_ERROR");
             assertThat(failure.getReason()).contains("Booking not found");
-
-            verify(paymentService, never()).processHostPayout(any(), any());
         }
 
         @Test
-        @DisplayName("Should record failure when booking is not COMPLETED")
+        @DisplayName("Should record failure when batchItemProcessor returns INVALID_STATUS")
         void shouldRecordFailureWhenBookingNotCompleted() {
-            Booking booking = createCompletedBooking();
-            booking.setStatus(BookingStatus.ACTIVE);
-            booking.setPaymentReference(null);
-
-            when(bookingRepo.findByIdWithLockForPayout(1L)).thenReturn(Optional.of(booking));
+            when(batchItemProcessor.processPayoutItem(eq(1L), anyString(), eq(false), eq(testAdmin), eq("Batch run")))
+                    .thenReturn(AdminBatchItemProcessor.BatchPayoutItemResult.failure(1L, "Booking not completed", "INVALID_STATUS"));
 
             BatchPayoutRequest request = BatchPayoutRequest.builder()
                     .bookingIds(List.of(1L))
@@ -187,17 +175,13 @@ class AdminFinancialServiceTest {
             assertThat(failure.getBookingId()).isEqualTo(1L);
             assertThat(failure.getReason()).isEqualTo("Booking not completed");
             assertThat(failure.getErrorCode()).isEqualTo("INVALID_STATUS");
-
-            verify(paymentService, never()).processHostPayout(any(), any());
         }
 
         @Test
-        @DisplayName("Should record failure with DUPLICATE_PAYOUT when paymentReference already set")
+        @DisplayName("Should record failure with DUPLICATE_PAYOUT when batchItemProcessor returns it")
         void shouldRecordFailureWhenPaymentReferenceAlreadySet() {
-            Booking booking = createCompletedBooking();
-            booking.setPaymentReference("existing-ref-123");
-
-            when(bookingRepo.findByIdWithLockForPayout(1L)).thenReturn(Optional.of(booking));
+            when(batchItemProcessor.processPayoutItem(eq(1L), anyString(), eq(false), eq(testAdmin), eq("Batch run")))
+                    .thenReturn(AdminBatchItemProcessor.BatchPayoutItemResult.failure(1L, "Payout already processed", "DUPLICATE_PAYOUT"));
 
             BatchPayoutRequest request = BatchPayoutRequest.builder()
                     .bookingIds(List.of(1L))
@@ -214,8 +198,6 @@ class AdminFinancialServiceTest {
             assertThat(failure.getBookingId()).isEqualTo(1L);
             assertThat(failure.getReason()).isEqualTo("Payout already processed");
             assertThat(failure.getErrorCode()).isEqualTo("DUPLICATE_PAYOUT");
-
-            verify(paymentService, never()).processHostPayout(any(), any());
         }
     }
 
@@ -309,7 +291,7 @@ class AdminFinancialServiceTest {
                 BookingStatus.CHECK_IN_OPEN, BookingStatus.CHECK_IN_HOST_COMPLETE,
                 BookingStatus.CHECK_IN_COMPLETE, BookingStatus.IN_TRIP,
                 BookingStatus.CHECKOUT_OPEN, BookingStatus.CHECKOUT_GUEST_COMPLETE,
-                BookingStatus.CHECKOUT_HOST_COMPLETE);
+                BookingStatus.CHECKOUT_HOST_COMPLETE, BookingStatus.CHECKOUT_SETTLEMENT_PENDING);
 
         /** The exact dispute statuses passed by AdminFinancialService.getEscrowBalance() */
         private final List<BookingStatus> DISPUTE_STATUSES = List.of(

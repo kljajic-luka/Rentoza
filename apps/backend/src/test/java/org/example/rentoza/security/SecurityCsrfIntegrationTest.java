@@ -177,6 +177,17 @@ class SecurityCsrfIntegrationTest {
                     .andReturn();
             assertThat(result.getResponse().getStatus()).isNotEqualTo(403);
         }
+
+        @Test
+        @DisplayName("Internal service POST with X-Internal-Service-Token bypasses CSRF")
+        void internalServicePost_withoutCsrf_isOk() throws Exception {
+            when(internalServiceJwtUtil.validateServiceToken("svc-token")).thenReturn(true);
+            when(internalServiceJwtUtil.getServiceNameFromToken("svc-token")).thenReturn("chat-service");
+
+            mockMvc.perform(post("/api/csrf-test/mutate")
+                            .header("X-Internal-Service-Token", "svc-token"))
+                    .andExpect(status().isOk());
+        }
     }
 
     // =========================================================================

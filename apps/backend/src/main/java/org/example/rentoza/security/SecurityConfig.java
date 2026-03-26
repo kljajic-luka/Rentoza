@@ -29,6 +29,8 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.security.web.authentication.session.NullAuthenticatedSessionStrategy;
 import org.springframework.security.web.csrf.CsrfTokenRepository;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.web.cors.*;
 import java.util.Arrays;
 import java.util.List;
@@ -37,6 +39,12 @@ import java.util.List;
 public class SecurityConfig {
 
     private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
+    private static final String INTERNAL_SERVICE_TOKEN_HEADER = "X-Internal-Service-Token";
+    private static final RequestMatcher INTERNAL_SERVICE_REQUEST_MATCHER =
+            request -> {
+                String token = request.getHeader(INTERNAL_SERVICE_TOKEN_HEADER);
+                return token != null && !token.isBlank();
+            };
 
     private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
     private final AppProperties appProperties;
@@ -130,15 +138,18 @@ public class SecurityConfig {
                     .csrfTokenRequestHandler(loggingCsrfTokenRequestHandler())
                     .sessionAuthenticationStrategy(new NullAuthenticatedSessionStrategy())
                     .ignoringRequestMatchers(
-                        "/api/auth/logout",  // Idempotent - safe without CSRF
-                        "/api/auth/supabase/forgot-password", // Anonymous password recovery (rate-limited)
-                        "/api/auth/supabase/reset-password",  // One-time token flow; CSRF adds no security value
-                        "/api/auth/supabase/google/callback",  // OAuth callback from Supabase (PKCE)
-                        "/api/auth/supabase/google/token-callback",  // OAuth token callback (implicit flow)
-                        "/uploads/**",        // Static files - no state change
+                        new AntPathRequestMatcher("/api/auth/logout"),  // Idempotent - safe without CSRF
+                        new AntPathRequestMatcher("/api/auth/supabase/forgot-password"), // Anonymous password recovery (rate-limited)
+                        new AntPathRequestMatcher("/api/auth/supabase/reset-password"),  // One-time token flow; CSRF adds no security value
+                        new AntPathRequestMatcher("/api/auth/supabase/google/callback"),  // OAuth callback from Supabase (PKCE)
+                        new AntPathRequestMatcher("/api/auth/supabase/google/token-callback"),  // OAuth token callback (implicit flow)
+                        new AntPathRequestMatcher("/uploads/**"),        // Static files - no state change
                         // Webhook endpoint: auth delegated to HMAC signature verification
                         // in ProviderEventService. Must be CSRF-exempt for external gateway callbacks.
-                        "/api/webhooks/payment"
+                        new AntPathRequestMatcher("/api/webhooks/payment"),
+                        // Service-to-service requests use explicit token auth, not browser cookies.
+                        // CSRF would otherwise reject internal POST/PATCH calls before service auth runs.
+                        INTERNAL_SERVICE_REQUEST_MATCHER
                     )
                 )
                 .authorizeHttpRequests(auth -> auth

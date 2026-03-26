@@ -519,13 +519,21 @@ public class PaymentLifecycleScheduler {
         itemProcessor.markDepositExpiryWarningSafely(booking);
     }
 
-    // ========== JOB 9: TASK10 RECONCILIATION PLACEHOLDER ==========
+    // ========== JOB 9: RECONCILIATION — STALE TRANSACTION ESCALATION ==========
 
     /**
-     * Task 10 placeholder: detect stale non-terminal payment transactions and flag for ops review.
+     * Detect stale non-terminal payment transactions and escalate to appropriate terminal states.
      *
-     * <p>This job intentionally performs no state mutation yet; it only emits structured logs and
-     * metrics so reconciliation implementation can be added in a controlled follow-up.
+     * <p><b>PROCESSING / FAILED_RETRYABLE</b> transactions older than {@code reconciliationStaleHours}
+     * are transitioned to {@code MANUAL_REVIEW} — the provider call either timed out with no webhook,
+     * or retry attempts were exhausted without scheduler pickup.
+     *
+     * <p><b>REDIRECT_REQUIRED / PENDING_CONFIRMATION</b> (3DS redirects the guest never completed)
+     * are transitioned to {@code FAILED_TERMINAL} — the authorization window has passed and the
+     * guest must restart the payment flow.
+     *
+     * <p>Each transaction is processed in its own {@code REQUIRES_NEW} transaction via
+     * {@link SchedulerItemProcessor} so one failure doesn't affect others.
      */
     @Scheduled(cron = "0 */30 * * * *") // Every 30 minutes
     public void reconcileStaleNonTerminalTransactions() {
@@ -536,9 +544,16 @@ public class PaymentLifecycleScheduler {
         try {
             Instant staleBefore = Instant.now().minus(reconciliationStaleHours, ChronoUnit.HOURS);
             List<PaymentTransaction> stale = transactionRepository.findStaleNonTerminalTransactions(staleBefore);
-            if (!stale.isEmpty()) {
-                reconciliationFlaggedCounter.increment(stale.size());
-                log.warn("[PaymentScheduler][AUDIT-T10] Reconciliation placeholder flagged {} stale non-terminal payment transaction(s) older than {}", stale.size(), staleBefore);
+            if (stale.isEmpty()) {
+                return;
+            }
+
+            reconciliationFlaggedCounter.increment(stale.size());
+            log.warn("[PaymentScheduler][AUDIT-T10] Reconciliation escalating {} stale non-terminal payment transaction(s) older than {}",
+                    stale.size(), staleBefore);
+
+            for (PaymentTransaction tx : stale) {
+                itemProcessor.reconcileStaleTransactionSafely(tx);
             }
         } finally {
             schedulerLockStore.releaseLock(LOCK_RECONCILIATION);

@@ -52,12 +52,14 @@ public class SchedulerItemProcessor {
     private final DamageClaimRepository damageClaimRepository;
     private final NotificationService notificationService;
     private final PayoutLedgerRepository payoutLedgerRepository;
+    private final PaymentTransactionRepository transactionRepository;
 
     // H-15: Dedicated alerting counters for MANUAL_REVIEW escalations
     private final io.micrometer.core.instrument.Counter captureManualReviewCounter;
     private final io.micrometer.core.instrument.Counter refundManualReviewCounter;
     private final io.micrometer.core.instrument.Counter payoutManualReviewCounter;
     private final io.micrometer.core.instrument.Counter depositExpiryCounter;
+    private final io.micrometer.core.instrument.Counter reconciliationEscalatedCounter;
 
     @Value("${app.payment.refund.retry-backoff-minutes:60}")
     private int refundRetryBackoffMinutes;
@@ -70,6 +72,7 @@ public class SchedulerItemProcessor {
             DamageClaimRepository damageClaimRepository,
             NotificationService notificationService,
             PayoutLedgerRepository payoutLedgerRepository,
+            PaymentTransactionRepository transactionRepository,
             io.micrometer.core.instrument.MeterRegistry meterRegistry) {
         this.bookingRepository = bookingRepository;
         this.paymentService = paymentService;
@@ -78,6 +81,7 @@ public class SchedulerItemProcessor {
         this.damageClaimRepository = damageClaimRepository;
         this.notificationService = notificationService;
         this.payoutLedgerRepository = payoutLedgerRepository;
+        this.transactionRepository = transactionRepository;
 
         // H-15: Alert-grade counters — configure alerting rules to fire on increment > 0
         // Runbook: https://wiki.internal/runbooks/manual-review-escalation
@@ -99,6 +103,11 @@ public class SchedulerItemProcessor {
         this.depositExpiryCounter = io.micrometer.core.instrument.Counter.builder(
                 "payment.alert.deposit.auth_expiry")
                 .description("Deposit authorization expiry events")
+                .tag("severity", "high")
+                .register(meterRegistry);
+        this.reconciliationEscalatedCounter = io.micrometer.core.instrument.Counter.builder(
+                "payment.alert.reconciliation.escalated")
+                .description("Stale transactions escalated by reconciliation job")
                 .tag("severity", "high")
                 .register(meterRegistry);
     }
@@ -686,6 +695,44 @@ public class SchedulerItemProcessor {
         } catch (Exception e) {
             log.error("[SchedulerProcessor] Failed to process deposit auth expiry for booking {}: {}",
                     booking.getId(), e.getMessage(), e);
+        }
+    }
+
+    // ── Reconciliation ────────────────────────────────────────────────────────
+
+    /**
+     * Escalate a single stale non-terminal transaction to an appropriate terminal state.
+     *
+     * <p>PROCESSING / FAILED_RETRYABLE → MANUAL_REVIEW (provider may have charged; needs human review).
+     * <p>REDIRECT_REQUIRED / PENDING_CONFIRMATION → FAILED_TERMINAL (3DS never completed; safe to fail).
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void reconcileStaleTransactionSafely(PaymentTransaction tx) {
+        try {
+            PaymentTransaction.PaymentTransactionStatus currentStatus = tx.getStatus();
+            PaymentTransaction.PaymentTransactionStatus targetStatus;
+
+            if (currentStatus == PaymentTransaction.PaymentTransactionStatus.REDIRECT_REQUIRED
+                    || currentStatus == PaymentTransaction.PaymentTransactionStatus.PENDING_CONFIRMATION) {
+                // 3DS redirect never completed or async confirmation never arrived — safe to terminate
+                targetStatus = PaymentTransaction.PaymentTransactionStatus.FAILED_TERMINAL;
+            } else {
+                // PROCESSING or FAILED_RETRYABLE — provider may have processed; needs operator review
+                targetStatus = PaymentTransaction.PaymentTransactionStatus.MANUAL_REVIEW;
+            }
+
+            tx.setStatus(targetStatus);
+            tx.setErrorMessage("Reconciliation: stale " + currentStatus + " escalated to " + targetStatus);
+            tx.setCompletedAt(Instant.now());
+            transactionRepository.save(tx);
+
+            reconciliationEscalatedCounter.increment();
+            log.warn("[ALERT][RECONCILIATION] Transaction {} (booking={}, op={}) escalated {} → {}. "
+                    + "Runbook: https://wiki.internal/runbooks/reconciliation-escalation",
+                    tx.getId(), tx.getBookingId(), tx.getOperation(), currentStatus, targetStatus);
+        } catch (Exception e) {
+            log.error("[SchedulerProcessor] Failed to reconcile stale transaction {}: {}",
+                    tx.getId(), e.getMessage(), e);
         }
     }
 }

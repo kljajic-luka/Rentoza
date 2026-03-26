@@ -73,6 +73,7 @@ class SchedulerRefundSettlementTest {
     @Mock private DamageClaimRepository damageClaimRepository;
     @Mock private NotificationService notificationService;
     @Mock private PayoutLedgerRepository payoutLedgerRepository;
+    @Mock private PaymentTransactionRepository txRepository;
 
     private SchedulerItemProcessor processor;
 
@@ -86,6 +87,7 @@ class SchedulerRefundSettlementTest {
                 damageClaimRepository,
                 notificationService,
                 payoutLedgerRepository,
+                txRepository,
                 new SimpleMeterRegistry()
         );
         ReflectionTestUtils.setField(processor, "refundRetryBackoffMinutes", 60);

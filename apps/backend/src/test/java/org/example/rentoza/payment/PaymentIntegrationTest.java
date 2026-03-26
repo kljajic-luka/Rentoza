@@ -705,6 +705,7 @@ class PaymentIntegrationTest {
                 damageClaimRepository,
                 notificationService,
                 payoutLedgerRepository,
+                txRepository,
                 new SimpleMeterRegistry());
         // @Value fields are not injected for manually constructed beans — supply defaults
         ReflectionTestUtils.setField(processor, "refundRetryBackoffMinutes", 60);

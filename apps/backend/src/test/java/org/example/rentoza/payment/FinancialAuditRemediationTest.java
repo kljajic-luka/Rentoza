@@ -803,6 +803,7 @@ class FinancialAuditRemediationTest {
         @Mock DamageClaimRepository damageClaimRepository;
         @Mock NotificationService notificationService;
         @Mock PayoutLedgerRepository payoutLedgerRepository;
+        @Mock PaymentTransactionRepository txRepository;
 
         SchedulerItemProcessor processor;
 
@@ -812,7 +813,7 @@ class FinancialAuditRemediationTest {
                     bookingRepository, paymentService, paymentProvider,
                     cancellationRecordRepository, damageClaimRepository,
                     notificationService, payoutLedgerRepository,
-                    new SimpleMeterRegistry());
+                    txRepository, new SimpleMeterRegistry());
         }
 
         @Test
@@ -1004,6 +1005,7 @@ class FinancialAuditRemediationTest {
         @Mock DamageClaimRepository damageClaimRepository;
         @Mock NotificationService notificationService;
         @Mock PayoutLedgerRepository payoutLedgerRepository;
+        @Mock PaymentTransactionRepository txRepository;
 
         SchedulerItemProcessor processor;
 
@@ -1013,7 +1015,7 @@ class FinancialAuditRemediationTest {
                     bookingRepository, paymentService, paymentProvider,
                     cancellationRecordRepository, damageClaimRepository,
                     notificationService, payoutLedgerRepository,
-                    new SimpleMeterRegistry());
+                    txRepository, new SimpleMeterRegistry());
         }
 
         @Test

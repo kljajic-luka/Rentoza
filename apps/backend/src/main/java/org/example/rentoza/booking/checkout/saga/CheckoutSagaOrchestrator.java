@@ -114,9 +114,12 @@ public class CheckoutSagaOrchestrator {
     @Value("${app.checkout.vehicle-not-returned-threshold-hours:24}")
     private int vehicleNotReturnedThresholdHours;
     
-    // Overage rates in RSD (configurable via properties in the future)
-    private static final BigDecimal MILEAGE_RATE_PER_KM = new BigDecimal("25");   // RSD per km
-    private static final BigDecimal FUEL_RATE_PER_PERCENT = new BigDecimal("50"); // RSD per %
+    @Value("${app.checkout.surcharge.mileage-rate-per-km:25}")
+    private BigDecimal mileageRatePerKm;
+
+    @Value("${app.checkout.surcharge.fuel-rate-per-percent:50}")
+    private BigDecimal fuelRatePerPercent;
+
     private static final int LATE_GRACE_MINUTES = 15;  // Grace period before fees apply
     private static final int MAX_LATE_HOURS = 24;  // Maximum billable hours
 
@@ -406,14 +409,14 @@ public class CheckoutSagaOrchestrator {
 
         if (extraKm > 0) {
             saga.setExtraMileageKm(extraKm);
-            saga.setExtraMileageCharge(MILEAGE_RATE_PER_KM.multiply(BigDecimal.valueOf(extraKm)));
+            saga.setExtraMileageCharge(mileageRatePerKm.multiply(BigDecimal.valueOf(extraKm)));
         }
 
         // Calculate fuel difference
         int fuelDiff = booking.getStartFuelLevel() - booking.getEndFuelLevel();
         if (fuelDiff > 0) {
             saga.setFuelDifferencePercent(fuelDiff);
-            saga.setFuelCharge(FUEL_RATE_PER_PERCENT.multiply(BigDecimal.valueOf(fuelDiff)));
+            saga.setFuelCharge(fuelRatePerPercent.multiply(BigDecimal.valueOf(fuelDiff)));
         }
 
         // ================================================================

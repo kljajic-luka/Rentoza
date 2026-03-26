@@ -29,7 +29,7 @@ public class PaymentProviderStartupValidator {
     @Value("${app.payment.provider}")
     private String paymentProvider;
 
-    @Value("${spring.profiles.active:dev}")
+    @Value("${spring.profiles.active:}")
     private String activeProfile;
 
     @Value("${app.payment.enforce-real-provider:false}")
@@ -37,8 +37,25 @@ public class PaymentProviderStartupValidator {
 
     @PostConstruct
     void validatePaymentProvider() {
+        boolean isProd = activeProfile != null && activeProfile.contains("prod");
+
+        // AUDIT-F11-FIX: Also catch empty/blank provider in production — Spring resolves
+        // empty env vars as set-but-empty, which bypasses the MOCK check.
+        if (isProd && (paymentProvider == null || paymentProvider.isBlank())) {
+            String message = "CRITICAL: app.payment.provider is empty/unset in production. " +
+                    "No payment processing is configured — guests will NOT be charged. " +
+                    "Set PAYMENT_PROVIDER to a real provider (e.g., MONRI) in Cloud Run environment variables.";
+            if (enforceRealProvider) {
+                throw new IllegalStateException(message);
+            }
+            log.error("========================================================");
+            log.error(message);
+            log.error("========================================================");
+            return;
+        }
+
         if ("MOCK".equalsIgnoreCase(paymentProvider)) {
-            if (activeProfile != null && activeProfile.contains("prod")) {
+            if (isProd) {
                 String message = "CRITICAL: app.payment.provider is set to MOCK in production. " +
                         "Real payment processing is disabled — guests will NOT be charged. " +
                         "Set PAYMENT_PROVIDER to a real provider (e.g., MONRI) in Cloud Run environment variables.";

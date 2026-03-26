@@ -210,15 +210,8 @@ public class AdminDisputeService {
         try {
             damageClaimRepo.save(claim);
             
-            // Critical: Send notifications
-            try {
-                notificationService.notifyDisputeResolved(claim, admin);
-            } catch (Exception e) {
-                log.warn("Failed to notify users about dispute resolution: {}", e.getMessage());
-                // Don't fail the whole operation, but log for manual follow-up
-            }
-            
-            // Process payment if approved
+            // AUDIT-F3-FIX: Process payment BEFORE notifying parties.
+            // If payment fails, parties should NOT receive "resolved" notifications.
             if (resolution.getDecision() == DisputeDecision.APPROVED && 
                 resolution.getApprovedAmount() != null && resolution.getApprovedAmount() > 0) {
                 try {
@@ -241,6 +234,14 @@ public class AdminDisputeService {
                     
                     throw new RuntimeException("Payment processing failed - marked for manual review", e);
                 }
+            }
+            
+            // Only notify parties AFTER payment succeeds (or if no payment needed)
+            try {
+                notificationService.notifyDisputeResolved(claim, admin);
+            } catch (Exception e) {
+                log.warn("Failed to notify users about dispute resolution: {}", e.getMessage());
+                // Don't fail the whole operation, but log for manual follow-up
             }
             
             auditService.logAction(

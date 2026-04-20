@@ -76,4 +76,3 @@ cd apps/frontend && npm run deploy:staging
 
 ---
 
-Built with ❤️ for the Serbian car rental market

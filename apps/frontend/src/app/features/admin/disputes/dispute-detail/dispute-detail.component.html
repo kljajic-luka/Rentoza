@@ -1,0 +1,385 @@
+<div class="dispute-detail-container">
+  <!-- Loading State -->
+  @if (loading()) {
+    <div class="loading-container">
+      <mat-spinner diameter="50"></mat-spinner>
+      <p>Loading dispute details...</p>
+    </div>
+  }
+
+  <!-- Dispute Details -->
+  @if (!loading() && dispute()) {
+    <div class="detail-header">
+      <button mat-icon-button (click)="goBack()" class="back-button">
+        <mat-icon>arrow_back</mat-icon>
+      </button>
+      <h1>Dispute #{{ dispute()!.id }}</h1>
+      <mat-chip [color]="getStatusColor(dispute()!.status)" highlighted>
+        {{ dispute()!.status }}
+      </mat-chip>
+    </div>
+
+    <div class="split-view">
+      <!-- LEFT: Context Panel (scrollable) -->
+      <div class="context-panel">
+        <!-- Overview Card -->
+        <mat-card class="overview-card">
+          <mat-card-header>
+            <mat-card-title>Overview</mat-card-title>
+          </mat-card-header>
+          <mat-card-content>
+            <div class="info-row">
+              <span class="label">Guest:</span>
+              <span class="value">{{ dispute()!.guestName }}</span>
+            </div>
+            <div class="info-row">
+              <span class="label">Host:</span>
+              <span class="value">{{ dispute()!.hostName }}</span>
+            </div>
+            <div class="info-row">
+              <span class="label">Booking ID:</span>
+              <span class="value">#{{ dispute()!.bookingId }}</span>
+            </div>
+            <div class="info-row">
+              <span class="label">Claimed Amount:</span>
+              <span class="value amount">{{ formatCurrency(dispute()!.claimedAmount) }}</span>
+            </div>
+            @if (dispute()!.approvedAmount) {
+              <div class="info-row">
+                <span class="label">Approved Amount:</span>
+                <span class="value amount">{{ formatCurrency(dispute()!.approvedAmount!) }}</span>
+              </div>
+            }
+            <div class="info-row">
+              <span class="label">Created:</span>
+              <span class="value">{{ formatDate(dispute()!.createdAt) }}</span>
+            </div>
+          </mat-card-content>
+        </mat-card>
+
+        <!-- Claim Description -->
+        <mat-card class="description-card">
+          <mat-card-header>
+            <mat-card-title>Host's Claim</mat-card-title>
+          </mat-card-header>
+          <mat-card-content>
+            <p>{{ dispute()!.description }}</p>
+          </mat-card-content>
+        </mat-card>
+
+        <!-- Guest Response -->
+        @if (dispute()!.guestResponse) {
+          <mat-card class="response-card">
+            <mat-card-header>
+              <mat-card-title>Guest's Response</mat-card-title>
+            </mat-card-header>
+            <mat-card-content>
+              <p>{{ dispute()!.guestResponse }}</p>
+              <small class="timestamp"
+                >Responded: {{ formatDate(dispute()!.guestRespondedAt) }}</small
+              >
+            </mat-card-content>
+          </mat-card>
+        }
+
+        <!-- Evidence Photos -->
+        @if (hasEvidence()) {
+          <mat-card class="evidence-card">
+            <mat-card-header>
+              <mat-card-title>Evidence Photos</mat-card-title>
+              <button mat-icon-button matTooltip="Open Gallery" (click)="openEvidenceGallery()">
+                <mat-icon>photo_library</mat-icon>
+              </button>
+            </mat-card-header>
+            <mat-card-content>
+              <div class="photo-section">
+                @if (dispute()!.checkinPhotoIds) {
+                  <div class="photo-group">
+                    <h4>Check-in Photos</h4>
+                    <div class="evidence-thumbs">
+                      @for (
+                        id of parsePhotoIds(dispute()!.checkinPhotoIds);
+                        track id;
+                        let i = $index
+                      ) {
+                        <img
+                          [src]="getPhotoUrl(dispute()!.bookingId, 'checkin', id)"
+                          class="evidence-thumb"
+                          [alt]="'Check-in photo ' + (i + 1)"
+                          (click)="openEvidenceGallery()"
+                          (keydown.enter)="openEvidenceGallery()"
+                          tabindex="0"
+                          role="button"
+                          loading="lazy"
+                        />
+                      }
+                    </div>
+                  </div>
+                }
+                @if (dispute()!.checkoutPhotoIds) {
+                  <div class="photo-group">
+                    <h4>Check-out Photos (Damage)</h4>
+                    <div class="evidence-thumbs">
+                      @for (
+                        id of parsePhotoIds(dispute()!.checkoutPhotoIds);
+                        track id;
+                        let i = $index
+                      ) {
+                        <img
+                          [src]="getPhotoUrl(dispute()!.bookingId, 'checkout', id)"
+                          class="evidence-thumb"
+                          [alt]="'Check-out photo ' + (i + 1)"
+                          (click)="openEvidenceGallery()"
+                          (keydown.enter)="openEvidenceGallery()"
+                          tabindex="0"
+                          role="button"
+                          loading="lazy"
+                        />
+                      }
+                    </div>
+                  </div>
+                }
+                @if (dispute()!.evidencePhotoIds) {
+                  <div class="photo-group">
+                    <h4>Additional Evidence</h4>
+                    <div class="evidence-thumbs">
+                      @for (
+                        id of parsePhotoIds(dispute()!.evidencePhotoIds);
+                        track id;
+                        let i = $index
+                      ) {
+                        <img
+                          [src]="getPhotoUrl(dispute()!.bookingId, 'evidence', id)"
+                          class="evidence-thumb"
+                          [alt]="'Evidence photo ' + (i + 1)"
+                          (click)="openEvidenceGallery()"
+                          (keydown.enter)="openEvidenceGallery()"
+                          tabindex="0"
+                          role="button"
+                          loading="lazy"
+                        />
+                      }
+                    </div>
+                  </div>
+                }
+              </div>
+            </mat-card-content>
+          </mat-card>
+        }
+
+        <!-- Admin Review -->
+        @if (dispute()!.reviewedBy) {
+          <mat-card class="review-card">
+            <mat-card-header>
+              <mat-card-title>Admin Review</mat-card-title>
+            </mat-card-header>
+            <mat-card-content>
+              <div class="info-row">
+                <span class="label">Reviewed By:</span>
+                <span class="value">{{ dispute()!.reviewedBy }}</span>
+              </div>
+              <div class="info-row">
+                <span class="label">Reviewed At:</span>
+                <span class="value">{{ formatDate(dispute()!.reviewedAt) }}</span>
+              </div>
+              @if (dispute()!.adminNotes) {
+                <mat-divider class="section-divider"></mat-divider>
+                <p class="admin-notes">{{ dispute()!.adminNotes }}</p>
+              }
+            </mat-card-content>
+          </mat-card>
+        }
+      </div>
+
+      <!-- RIGHT: Resolution Panel (sticky) -->
+      <div class="resolution-panel">
+        <!-- Action Buttons -->
+        @if (canResolve()) {
+          <mat-card class="actions-card">
+            <mat-card-header>
+              <mat-card-title>Actions</mat-card-title>
+            </mat-card-header>
+            <mat-card-content>
+              <div class="action-buttons">
+                <button
+                  mat-raised-button
+                  color="primary"
+                  (click)="toggleResolutionForm()"
+                  [disabled]="submitting()"
+                  class="action-btn"
+                >
+                  <mat-icon>check_circle</mat-icon>
+                  Resolve Dispute
+                </button>
+                <button
+                  mat-raised-button
+                  color="accent"
+                  (click)="toggleEscalateForm()"
+                  [disabled]="submitting()"
+                  class="action-btn"
+                >
+                  <mat-icon>arrow_upward</mat-icon>
+                  Escalate
+                </button>
+              </div>
+            </mat-card-content>
+          </mat-card>
+        }
+
+        <!-- Resolution Form -->
+        @if (showResolutionForm()) {
+          <mat-card class="form-card">
+            <mat-card-header>
+              <mat-card-title>Resolve Dispute</mat-card-title>
+            </mat-card-header>
+            <mat-card-content>
+              <form [formGroup]="resolutionForm" (ngSubmit)="submitResolution()">
+                <mat-form-field appearance="outline" class="full-width">
+                  <mat-label>Decision</mat-label>
+                  <mat-select formControlName="decision">
+                    <mat-option value="APPROVED">Approve (Full Amount)</mat-option>
+                    <mat-option value="PARTIAL">Approve (Partial Amount)</mat-option>
+                    <mat-option value="REJECTED">Reject</mat-option>
+                    <mat-option value="MEDIATED">Mediated Settlement</mat-option>
+                  </mat-select>
+                </mat-form-field>
+
+                @if (
+                  resolutionForm.get('decision')?.value === 'APPROVED' ||
+                  resolutionForm.get('decision')?.value === 'PARTIAL' ||
+                  resolutionForm.get('decision')?.value === 'MEDIATED'
+                ) {
+                  <mat-form-field appearance="outline" class="full-width">
+                    <mat-label>Approved Amount (R)</mat-label>
+                    <input matInput type="number" formControlName="approvedAmount" step="0.01" />
+                    <mat-error>Approved amount is required</mat-error>
+                  </mat-form-field>
+                }
+
+                <mat-form-field appearance="outline" class="full-width">
+                  <mat-label>Quick template</mat-label>
+                  <mat-select (selectionChange)="applyTemplate($event.value)">
+                    @for (t of resolutionTemplates; track t.label) {
+                      <mat-option [value]="t">{{ t.label }}</mat-option>
+                    }
+                  </mat-select>
+                </mat-form-field>
+
+                <mat-form-field appearance="outline" class="full-width">
+                  <mat-label>Notes (explain your decision)</mat-label>
+                  <textarea
+                    matInput
+                    formControlName="notes"
+                    rows="4"
+                    placeholder="Provide detailed reasoning for your decision..."
+                  ></textarea>
+                  <mat-error>Notes are required (minimum 10 characters)</mat-error>
+                </mat-form-field>
+
+                @if (resolutionForm.get('decision')?.value === 'REJECTED') {
+                  <mat-form-field appearance="outline" class="full-width">
+                    <mat-label>Rejection Reason</mat-label>
+                    <textarea
+                      matInput
+                      formControlName="rejectionReason"
+                      rows="3"
+                      placeholder="Why was this claim rejected?"
+                    ></textarea>
+                  </mat-form-field>
+                }
+
+                <div class="form-actions">
+                  <button
+                    mat-button
+                    type="button"
+                    (click)="showResolutionForm.set(false)"
+                    [disabled]="submitting()"
+                  >
+                    Cancel
+                  </button>
+                  <button mat-raised-button color="primary" type="submit" [disabled]="submitting()">
+                    @if (submitting()) {
+                      <mat-spinner diameter="20"></mat-spinner>
+                    } @else {
+                      Submit Resolution
+                    }
+                  </button>
+                </div>
+              </form>
+            </mat-card-content>
+          </mat-card>
+        }
+
+        <!-- Escalate Form -->
+        @if (showEscalateForm()) {
+          <mat-card class="form-card">
+            <mat-card-header>
+              <mat-card-title>Escalate Dispute</mat-card-title>
+            </mat-card-header>
+            <mat-card-content>
+              <form [formGroup]="escalateForm" (ngSubmit)="submitEscalation()">
+                <mat-form-field appearance="outline" class="full-width">
+                  <mat-label>Escalation Reason</mat-label>
+                  <textarea
+                    matInput
+                    formControlName="reason"
+                    rows="4"
+                    placeholder="Why does this dispute need escalation?"
+                  ></textarea>
+                  <mat-error>Reason is required (minimum 10 characters)</mat-error>
+                </mat-form-field>
+
+                <div class="form-actions">
+                  <button
+                    mat-button
+                    type="button"
+                    (click)="showEscalateForm.set(false)"
+                    [disabled]="submitting()"
+                  >
+                    Cancel
+                  </button>
+                  <button mat-raised-button color="accent" type="submit" [disabled]="submitting()">
+                    @if (submitting()) {
+                      <mat-spinner diameter="20"></mat-spinner>
+                    } @else {
+                      Escalate
+                    }
+                  </button>
+                </div>
+              </form>
+            </mat-card-content>
+          </mat-card>
+        }
+
+        <!-- Resolution Summary (when already resolved) -->
+        @if (!canResolve() && dispute()!.status !== 'DISPUTED') {
+          <mat-card class="resolution-summary-card">
+            <mat-card-header>
+              <mat-card-title>Resolution</mat-card-title>
+            </mat-card-header>
+            <mat-card-content>
+              <div class="info-row">
+                <span class="label">Status:</span>
+                <mat-chip [color]="getStatusColor(dispute()!.status)" highlighted>
+                  {{ dispute()!.status }}
+                </mat-chip>
+              </div>
+              @if (dispute()!.approvedAmount) {
+                <div class="info-row">
+                  <span class="label">Approved Amount:</span>
+                  <span class="value amount">{{ formatCurrency(dispute()!.approvedAmount!) }}</span>
+                </div>
+              }
+              @if (dispute()!.adminNotes) {
+                <div class="info-row">
+                  <span class="label">Admin Notes:</span>
+                  <span class="value">{{ dispute()!.adminNotes }}</span>
+                </div>
+              }
+            </mat-card-content>
+          </mat-card>
+        }
+      </div>
+    </div>
+  }
+</div>

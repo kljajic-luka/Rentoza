@@ -1,0 +1,275 @@
+<div class="admin-page">
+  <button mat-button color="primary" class="back-btn" (click)="goBack()">
+    <mat-icon>arrow_back</mat-icon>
+    Back to Users
+  </button>
+
+  <div *ngIf="loading$ | async" class="loading-block">
+    <mat-spinner diameter="48"></mat-spinner>
+  </div>
+
+  <div *ngIf="!(loading$ | async) && (user$ | async) as user" class="detail-grid">
+    <div class="profile-column">
+      <mat-card class="surface-card surface-wide profile-card">
+        <div class="profile-hero"></div>
+        <div class="profile-body">
+          <div class="avatar-large">{{ user.firstName[0] }}{{ user.lastName[0] }}</div>
+          <div class="stack stack--xs">
+            <h2 class="section-heading">{{ user.firstName }} {{ user.lastName }}</h2>
+            <span class="muted">{{ user.email }}</span>
+            <span class="muted" *ngIf="user.phone">{{ user.phone }}</span>
+          </div>
+
+          <div class="row wrap">
+            <span class="chip-pill" [ngClass]="user.role === 'ADMIN' ? 'warn' : 'primary'">{{
+              user.role
+            }}</span>
+            <span *ngIf="user.banned" class="badge badge-error">Banned</span>
+            <span *ngIf="!user.banned" class="badge badge-success">Active</span>
+          </div>
+
+          <div class="risk-panel">
+            <div class="row between">
+              <span class="mini-label">Risk score</span>
+              <span
+                class="risk-score"
+                [ngClass]="user.riskScore && user.riskScore > 60 ? 'risk-high' : 'risk-low'"
+                >{{ user.riskScore }}/100</span
+              >
+            </div>
+            <div class="risk-bar">
+              <div
+                class="risk-fill"
+                [style.width.%]="user.riskScore || 0"
+                [ngClass]="{
+                  'risk-low': (user.riskScore || 0) < 30,
+                  'risk-med': (user.riskScore || 0) >= 30 && (user.riskScore || 0) < 70,
+                  'risk-high': (user.riskScore || 0) >= 70,
+                }"
+              ></div>
+            </div>
+          </div>
+
+          <div class="stack stack--spaced">
+            <button *ngIf="!user.banned" mat-flat-button color="warn" (click)="openBanDialog()">
+              <mat-icon>block</mat-icon>
+              Ban User
+            </button>
+            <button *ngIf="user.banned" mat-flat-button color="primary" (click)="unbanUser()">
+              <mat-icon>check_circle</mat-icon>
+              Unban User
+            </button>
+
+            <!-- 
+              ⚠️ COMPLIANCE: Delete Account button REMOVED (Dec 18, 2025)
+              
+              Reason: Violated enterprise best practices and GDPR compliance:
+              - No confirmation dialog or legal review workflow
+              - Would destroy evidence needed for disputes/investigations  
+              - Orphans booking history and payment records
+              - No audit trail of deletions
+              - Violates data retention requirements (7 years)
+              
+              TODO: Implement enterprise-grade account lifecycle management:
+              - Suspend Account (reversible, temporary block)
+              - Initiate Deletion (legal review required, soft delete)
+              - See: ADMIN_USER_MANAGEMENT_BEST_PRACTICES_UPGRADE.md
+              - Track implementation: Task #UserManagement-001
+            -->
+          </div>
+        </div>
+      </mat-card>
+
+      <mat-card class="surface-card surface-roomy">
+        <mat-card-header>
+          <mat-icon mat-card-avatar>info</mat-icon>
+          <mat-card-title>Details</mat-card-title>
+        </mat-card-header>
+        <mat-card-content class="stack">
+          <div class="row between">
+            <span class="muted">Member Since</span>
+            <span class="strong">{{ user.createdAt | date: 'mediumDate' }}</span>
+          </div>
+          <div class="row between">
+            <span class="muted">Last Updated</span>
+            <span class="strong">{{ user.updatedAt | date: 'mediumDate' }}</span>
+          </div>
+          <div class="row between" *ngIf="user.totalBookings !== undefined">
+            <span class="muted">Total Bookings</span>
+            <span class="strong"
+              >{{ user.totalBookings }} ({{ user.completedBookings }} completed)</span
+            >
+          </div>
+          <div class="row between" *ngIf="user.averageRating">
+            <span class="muted">Rating</span>
+            <span class="strong"
+              >★ {{ user.averageRating | number: '1.1-1' }} ({{
+                user.reviewsReceived
+              }}
+              reviews)</span
+            >
+          </div>
+          <div class="row between">
+            <span class="muted">ID Verification</span>
+            <span [class]="getOwnerVerificationBadge(user.ownerVerificationStatus)">
+              {{ getOwnerVerificationLabel(user.ownerVerificationStatus) }}
+            </span>
+          </div>
+
+          <div class="row between" *ngIf="user.ownerType">
+            <span class="muted">Owner Type</span>
+            <span class="strong">{{ user.ownerType }}</span>
+          </div>
+
+          <div class="row between" *ngIf="user.maskedJmbg">
+            <span class="muted">JMBG (masked)</span>
+            <span class="strong">{{ user.maskedJmbg }}</span>
+          </div>
+
+          <div class="row between" *ngIf="user.maskedPib">
+            <span class="muted">PIB (masked)</span>
+            <span class="strong">{{ user.maskedPib }}</span>
+          </div>
+
+          <div class="row between" *ngIf="user.ownerVerificationSubmittedAt">
+            <span class="muted">Submitted</span>
+            <span class="strong">{{ user.ownerVerificationSubmittedAt | date: 'medium' }}</span>
+          </div>
+
+          <div class="row between" *ngIf="user.maskedBankAccountNumber">
+            <span class="muted">Bank Account (masked)</span>
+            <span class="strong">{{ user.maskedBankAccountNumber }}</span>
+          </div>
+
+          <div class="stack stack--sm" *ngIf="user.ownerVerificationStatus === 'PENDING_REVIEW'">
+            <button mat-flat-button color="primary" (click)="approveOwnerVerification()">
+              <mat-icon>verified</mat-icon>
+              Approve Verification
+            </button>
+            <button mat-stroked-button color="warn" (click)="rejectOwnerVerification()">
+              <mat-icon>cancel</mat-icon>
+              Reject Verification
+            </button>
+          </div>
+
+          <!-- Identity Rejection Details (shown when verification was rejected) -->
+          <div *ngIf="user.ownerVerificationStatus === 'REJECTED'" class="rejection-panel">
+            <div class="row between" *ngIf="user.identityRejectionReason">
+              <span class="muted">Rejection Reason</span>
+              <span class="strong text-error">{{ user.identityRejectionReason }}</span>
+            </div>
+            <div class="row between" *ngIf="user.identityRejectedAt">
+              <span class="muted">Rejected At</span>
+              <span class="strong">{{ user.identityRejectedAt | date: 'medium' }}</span>
+            </div>
+          </div>
+        </mat-card-content>
+      </mat-card>
+
+      <!-- DOB Correction Request Card -->
+      <mat-card class="surface-card surface-roomy" *ngIf="user.dobCorrectionStatus">
+        <mat-card-header>
+          <mat-icon mat-card-avatar>calendar_today</mat-icon>
+          <mat-card-title>DOB Correction Request</mat-card-title>
+        </mat-card-header>
+        <mat-card-content class="stack">
+          <div class="row between">
+            <span class="muted">Status</span>
+            <span
+              [ngClass]="{
+                'badge badge-warn': user.dobCorrectionStatus === 'PENDING',
+                'badge badge-success': user.dobCorrectionStatus === 'APPROVED',
+                'badge badge-error': user.dobCorrectionStatus === 'REJECTED',
+              }"
+              >{{ user.dobCorrectionStatus }}</span
+            >
+          </div>
+          <div class="row between" *ngIf="user.dobCorrectionRequestedValue">
+            <span class="muted">Requested DOB</span>
+            <span class="strong">{{ user.dobCorrectionRequestedValue | date: 'mediumDate' }}</span>
+          </div>
+          <div class="row between" *ngIf="user.dobCorrectionReason">
+            <span class="muted">Reason</span>
+            <span class="strong">{{ user.dobCorrectionReason }}</span>
+          </div>
+          <div class="row between" *ngIf="user.dobCorrectionRequestedAt">
+            <span class="muted">Requested At</span>
+            <span class="strong">{{ user.dobCorrectionRequestedAt | date: 'medium' }}</span>
+          </div>
+
+          <div class="stack stack--sm" *ngIf="user.dobCorrectionStatus === 'PENDING'">
+            <button mat-flat-button color="primary" (click)="approveDobCorrection()">
+              <mat-icon>check_circle</mat-icon>
+              Approve DOB Correction
+            </button>
+            <button mat-stroked-button color="warn" (click)="rejectDobCorrection()">
+              <mat-icon>cancel</mat-icon>
+              Reject DOB Correction
+            </button>
+          </div>
+        </mat-card-content>
+      </mat-card>
+
+      <!-- NEW: Renter License Verification Card -->
+      <app-renter-verification-card
+        *ngIf="userId"
+        [userId]="userId"
+        (approve)="approveRenterVerification()"
+        (reject)="rejectRenterVerification()"
+        (previewDocument)="openRenterDocumentPreview($event)"
+      ></app-renter-verification-card>
+
+      <!-- NEW: Modern Risk Score Card (replaced bare number display) -->
+      <app-risk-score-card
+        [totalScore]="user.riskScore || 0"
+        [riskLevel]="getRiskLevel(user.riskScore)"
+        [factors]="getRiskFactors(user)"
+        [calculatedAt]="user.ownerVerificationSubmittedAt"
+      ></app-risk-score-card>
+    </div>
+
+    <div class="content-column">
+      <div class="stat-grid">
+        <div class="stat-tile">
+          <div class="stat-value">{{ user.totalBookings || 0 }}</div>
+          <div class="stat-label">Bookings</div>
+        </div>
+        <div class="stat-tile">
+          <div class="stat-value">{{ user.completedBookings || 0 }}</div>
+          <div class="stat-label">Completed</div>
+        </div>
+        <div class="stat-tile">
+          <div class="stat-value">{{ user.cancelledBookings || 0 }}</div>
+          <div class="stat-label">Cancelled</div>
+        </div>
+        <div class="stat-tile">
+          <div class="stat-value">0</div>
+          <div class="stat-label">Disputes</div>
+        </div>
+      </div>
+
+      <mat-card class="surface-card surface-wide">
+        <mat-tab-group>
+          <mat-tab label="Recent Bookings">
+            <div class="empty-tab">
+              <mat-icon>event_note</mat-icon>
+              <p>No recent bookings found.</p>
+            </div>
+          </mat-tab>
+          <mat-tab label="Cars (Owner)" *ngIf="user.role !== 'USER'">
+            <div class="empty-tab">
+              <mat-icon>directions_car</mat-icon>
+              <p>No cars listed.</p>
+            </div>
+          </mat-tab>
+          <mat-tab label="Audit Log">
+            <div class="empty-tab">
+              <mat-icon>history</mat-icon>
+              <p>No audit history available.</p>
+            </div>
+          </mat-tab>
+        </mat-tab-group>
+      </mat-card>
+    </div>
+  </div>
+</div>

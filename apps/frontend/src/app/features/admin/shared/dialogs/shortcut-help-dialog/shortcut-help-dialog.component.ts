@@ -1,0 +1,112 @@
+import { Component, inject } from '@angular/core';
+import { MAT_DIALOG_DATA, MatDialogModule } from '@angular/material/dialog';
+import { MatButtonModule } from '@angular/material/button';
+import { MatIconModule } from '@angular/material/icon';
+import { ShortcutEntry } from '../../services/admin-keyboard.service';
+
+@Component({
+  selector: 'app-shortcut-help-dialog',
+  standalone: true,
+  imports: [MatDialogModule, MatButtonModule, MatIconModule],
+  template: `
+    <h2 mat-dialog-title>
+      <mat-icon class="title-icon">keyboard</mat-icon>
+      Keyboard Shortcuts
+    </h2>
+    <mat-dialog-content>
+      @for (category of categories; track category) {
+        <div class="shortcut-category">
+          <div class="category-label">{{ category }}</div>
+          @for (s of shortcutsByCategory[category]; track s.keys) {
+            <div class="shortcut-row">
+              <span class="shortcut-keys">
+                @for (k of parseKeys(s.keys); track k) {
+                  <kbd>{{ k }}</kbd>
+                }
+              </span>
+              <span class="shortcut-desc">{{ s.description }}</span>
+            </div>
+          }
+        </div>
+      }
+    </mat-dialog-content>
+    <mat-dialog-actions align="end">
+      <button mat-button mat-dialog-close>Close</button>
+    </mat-dialog-actions>
+  `,
+  styles: [
+    `
+      h2 {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .title-icon {
+        color: var(--icon-color, #593cfb);
+      }
+      .shortcut-category {
+        margin-bottom: 16px;
+      }
+      .category-label {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--color-text-muted, #94a3b8);
+        margin-bottom: 8px;
+        padding-bottom: 4px;
+        border-bottom: 1px solid var(--color-border-subtle, #e2e8f0);
+      }
+      .shortcut-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 6px 0;
+      }
+      .shortcut-keys {
+        display: flex;
+        gap: 4px;
+        align-items: center;
+      }
+      kbd {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 26px;
+        height: 26px;
+        padding: 0 6px;
+        background: var(--color-surface-muted, #f1f5f9);
+        border: 1px solid var(--color-border-subtle, #e2e8f0);
+        border-radius: 6px;
+        font-family: inherit;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--color-text-primary, #0f172a);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+      }
+      .shortcut-desc {
+        font-size: 13px;
+        color: var(--color-text-primary, #0f172a);
+      }
+    `,
+  ],
+})
+export class ShortcutHelpDialogComponent {
+  private data = inject<{ shortcuts: ShortcutEntry[] }>(MAT_DIALOG_DATA);
+
+  readonly categories: string[];
+  readonly shortcutsByCategory: Record<string, ShortcutEntry[]>;
+
+  constructor() {
+    const cats = new Set(this.data.shortcuts.map((s) => s.category));
+    this.categories = Array.from(cats);
+    this.shortcutsByCategory = {};
+    for (const cat of this.categories) {
+      this.shortcutsByCategory[cat] = this.data.shortcuts.filter((s) => s.category === cat);
+    }
+  }
+
+  parseKeys(keys: string): string[] {
+    return keys.split(' → ').map((k) => k.trim());
+  }
+}

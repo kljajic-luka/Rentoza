@@ -1,0 +1,1241 @@
+/**
+ * Handshake Component
+ *
+ * Final confirmation step where both host and guest confirm the handoff.
+ * Features:
+ * - Swipe-to-confirm gesture for physical handoff
+ * - Optional physical ID verification (host verifies guest's ID)
+ * - Confirmation evidence captured (timestamp, geolocation, device context)
+ * - **Geofence Distance Indicator** (Phase 2: Trust UI)
+ */
+import {
+  Component,
+  Input,
+  Output,
+  EventEmitter,
+  inject,
+  signal,
+  computed,
+  ElementRef,
+  ViewChild,
+  ChangeDetectionStrategy,
+  OnInit,
+  OnDestroy,
+} from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { MatButtonModule } from '@angular/material/button';
+import { MatIconModule } from '@angular/material/icon';
+import { MatCardModule } from '@angular/material/card';
+import { MatCheckboxModule } from '@angular/material/checkbox';
+import { MatDividerModule } from '@angular/material/divider';
+import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+
+import { CheckInService } from '../../../core/services/check-in.service';
+import { BookingService, RentalAgreementDTO } from '../../../core/services/booking.service';
+import { GeolocationService } from '../../../core/services/geolocation.service';
+import { CheckInStatusDTO } from '../../../core/models/check-in.model';
+import { getHttpErrorMessage } from '@core/utils/api-error.utils';
+import {
+  canProceedToCheckInFromAgreement,
+  isAgreementEnforcementEnabled,
+} from '@core/utils/agreement-summary.utils';
+
+@Component({
+  selector: 'app-handshake',
+  standalone: true,
+  imports: [
+    CommonModule,
+    FormsModule,
+    MatButtonModule,
+    MatIconModule,
+    MatCardModule,
+    MatCheckboxModule,
+    MatDividerModule,
+    MatSnackBarModule,
+    MatProgressSpinnerModule,
+  ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <div class="handshake">
+      <!-- Header -->
+      <div class="handshake-header">
+        <mat-icon class="handshake-icon">handshake</mat-icon>
+        <h2>Potvrda primopredaje</h2>
+        <p>{{ roleInstructions() }}</p>
+      </div>
+
+      <!-- Geofence Distance Badge -->
+      @if (
+        status?.geofenceDistanceMeters !== null && status?.geofenceDistanceMeters !== undefined
+      ) {
+        <div
+          class="geofence-badge"
+          [class.close]="isWithinGeofence()"
+          [class.far]="!isWithinGeofence()"
+        >
+          <mat-icon>{{ isWithinGeofence() ? 'location_on' : 'location_off' }}</mat-icon>
+          <span class="distance-text">
+            Udaljenost do vozila: {{ formatDistance(status!.geofenceDistanceMeters!) }}
+          </span>
+          @if (isWithinGeofence()) {
+            <mat-icon class="status-icon">check_circle</mat-icon>
+          } @else {
+            <mat-icon class="status-icon warning-icon">warning</mat-icon>
+          }
+        </div>
+      }
+
+      <!-- Status indicators -->
+      <mat-card class="status-card">
+        <mat-card-content>
+          <div class="status-item" [class.completed]="hostHandshakeConfirmed()">
+            <mat-icon>{{ hostHandshakeConfirmed() ? 'check_circle' : 'pending' }}</mat-icon>
+            <div>
+              <span class="status-label">Domaćin</span>
+              <span class="status-text">{{ hostHandshakeConfirmed() ? 'Potvrdio rukovanje' : 'Čeka potvrdu rukovanja' }}</span>
+            </div>
+          </div>
+
+          <mat-divider vertical></mat-divider>
+
+          <div class="status-item" [class.completed]="guestHandshakeConfirmed()">
+            <mat-icon>{{ guestHandshakeConfirmed() ? 'check_circle' : 'pending' }}</mat-icon>
+            <div>
+              <span class="status-label">Gost</span>
+              <span class="status-text">{{ guestHandshakeConfirmed() ? 'Potvrdio rukovanje' : 'Čeka potvrdu rukovanja' }}</span>
+            </div>
+          </div>
+        </mat-card-content>
+      </mat-card>
+
+      <!-- Host: ID verification option -->
+      @if (status?.host) {
+        <mat-card
+          class="id-verification-card"
+          [class.required]="isLicenseVerificationRequired()"
+          [class.verified]="isLicenseVerified()"
+        >
+          <mat-card-content>
+            <!-- Phase 4B: License Verification Required Banner -->
+            @if (isLicenseVerificationRequired() && !isLicenseVerified()) {
+              <div class="license-required-banner">
+                <mat-icon class="warning-icon">gpp_maybe</mat-icon>
+                <div class="banner-text">
+                  <span class="banner-title">⚠️ Obavezna provera vozačke dozvole</span>
+                  <span class="banner-hint">
+                    Za siguran proces i validnost osiguranja, morate fizički proveriti vozačku
+                    dozvolu gosta.
+                    <br /><strong>Proverite:</strong>
+                    <ul style="margin: 8px 0 0 0; padding-left: 20px; font-size: 12px;">
+                      <li>Fotografiju na dozvoli se poklapa sa gostom</li>
+                      <li>Datum isteka dozvole</li>
+                      <li>Kategoriju vozača (B za osovinske automobile)</li>
+                    </ul>
+                  </span>
+                </div>
+              </div>
+            }
+
+            <!-- Phase 4B: License Verified Success Banner -->
+            @if (isLicenseVerified()) {
+              <div class="license-verified-banner">
+                <mat-icon class="success-icon">verified_user</mat-icon>
+                <div class="banner-text">
+                  <span class="banner-title">✓ Vozačka dozvola verifikovana</span>
+                  <span class="banner-hint">{{ formatLicenseVerifiedAt() }}</span>
+                </div>
+              </div>
+            }
+
+            <!-- License Verification Section (Only show if NOT yet verified) -->
+            @if (!isLicenseVerified()) {
+              <div class="license-verification-section">
+                <mat-checkbox
+                  [(ngModel)]="verifyPhysicalId"
+                  color="primary"
+                  [required]="isLicenseVerificationRequired()"
+                  (change)="onLicenseCheckboxChange()"
+                  class="license-checkbox"
+                >
+                  <div class="checkbox-content">
+                    <span class="checkbox-label">
+                      {{
+                        isLicenseVerificationRequired()
+                          ? '✓ Potvrdite da ste proverili vozačku dozvolu'
+                          : '✓ Verifikovao sam identitet gosta'
+                      }}
+                    </span>
+                    <span class="checkbox-hint">
+                      {{
+                        isLicenseVerificationRequired()
+                          ? 'Obavezno - fotografija, datum važnosti, podudaranje sa gostom'
+                          : 'Proverio sam ličnu kartu ili vozačku dozvolu'
+                      }}
+                    </span>
+                  </div>
+                </mat-checkbox>
+
+                <!-- Confirm Button (Shows after checkbox ticked) -->
+                @if (
+                  verifyPhysicalId &&
+                  !isLicenseVerificationConfirmedState() &&
+                  isLicenseVerificationRequired()
+                ) {
+                  <button
+                    mat-raised-button
+                    color="primary"
+                    [disabled]="checkInService.isLoading()"
+                    (click)="confirmLicenseVerification()"
+                    class="confirm-license-btn"
+                  >
+                    <mat-icon>verified</mat-icon>
+                    Potvrdi verifikaciju dozvole
+                  </button>
+                }
+              </div>
+            }
+          </mat-card-content>
+        </mat-card>
+      }
+
+      <!-- Rental Agreement Gate -->
+      @if (agreementNeeded()) {
+        <mat-card class="agreement-gate-card">
+          <mat-card-content>
+            <div class="agreement-gate-header">
+              <mat-icon>gavel</mat-icon>
+              <h3>Ugovor o iznajmljivanju</h3>
+            </div>
+            @if (agreementLookupState() === 'error') {
+              <p class="agreement-gate-desc">
+                Nismo uspeli da proverimo status ugovora. Osvežite podatke pre potvrde primopredaje.
+              </p>
+              <button mat-stroked-button color="primary" (click)="loadAgreement()" class="agreement-gate-btn">
+                <mat-icon>refresh</mat-icon>
+                Osveži status ugovora
+              </button>
+            } @else {
+              <p class="agreement-gate-desc">
+                Pre potvrde primopredaje, morate prihvatiti ugovor o iznajmljivanju za ovu vožnju.
+              </p>
+
+              @if (agreement()?.termsSnapshot) {
+                <div class="agreement-gate-terms">
+                  <div class="terms-row">
+                    <span class="terms-key">Ukupna cena:</span>
+                    <span>{{ agreement()?.termsSnapshot?.['totalPrice'] }} RSD</span>
+                  </div>
+                  @if (agreement()?.termsSnapshot?.['securityDeposit']) {
+                    <div class="terms-row">
+                      <span class="terms-key">Depozit:</span>
+                      <span>{{ agreement()?.termsSnapshot?.['securityDeposit'] }} RSD</span>
+                    </div>
+                  }
+                  <div class="terms-row">
+                    <span class="terms-key">Zastita:</span>
+                    <span>{{ agreement()?.termsSnapshot?.['insuranceType'] || 'Osnovno' }}</span>
+                  </div>
+                </div>
+              }
+
+              @if (agreement()?.vehicleSnapshot) {
+                <div class="terms-row">
+                  <span class="terms-key">Vozilo:</span>
+                  <span>{{ agreement()?.vehicleSnapshot?.['brand'] }} {{ agreement()?.vehicleSnapshot?.['model'] }}
+                    ({{ agreement()?.vehicleSnapshot?.['year'] }})</span>
+                </div>
+              }
+
+              <mat-divider></mat-divider>
+
+              <mat-checkbox
+                [checked]="agreementCheckboxChecked()"
+                (change)="agreementCheckboxChecked.set($event.checked)"
+                color="primary"
+                class="agreement-gate-checkbox"
+              >
+                Pročitao/la sam i prihvatam uslove ugovora za ovu vožnju
+              </mat-checkbox>
+
+              <button
+                mat-raised-button
+                color="primary"
+                [disabled]="!agreementCheckboxChecked() || isAcceptingAgreement()"
+                (click)="acceptAgreementInline()"
+                class="agreement-gate-btn"
+              >
+                @if (isAcceptingAgreement()) {
+                  <mat-spinner diameter="20"></mat-spinner>
+                } @else {
+                  <ng-container>
+                    <mat-icon>gavel</mat-icon>
+                    Prihvatam ugovor
+                  </ng-container>
+                }
+              </button>
+            }
+          </mat-card-content>
+        </mat-card>
+      }
+
+      @if (agreement()?.status === 'FULLY_ACCEPTED') {
+        <div class="agreement-accepted-inline">
+          <mat-icon>verified</mat-icon>
+          <span>Ugovor prihvaćen od obe strane</span>
+        </div>
+      }
+
+      <!-- Swipe to confirm -->
+      <div
+        class="swipe-container"
+        [class.disabled]="agreementNeeded()"
+        (touchstart)="onTouchStart($event)"
+        (touchmove)="onTouchMove($event)"
+        (touchend)="onTouchEnd()"
+        (mousedown)="onMouseDown($event)"
+      >
+        <div class="swipe-track">
+          <div
+            class="swipe-thumb"
+            [style.transform]="'translateX(' + swipeProgress() + 'px)'"
+            [class.active]="isSwiping()"
+            [class.confirmed]="isConfirmed()"
+          >
+            @if (isConfirmed()) {
+              <mat-icon>check</mat-icon>
+            } @else {
+              <mat-icon>arrow_forward</mat-icon>
+            }
+          </div>
+
+          <div class="swipe-text" [class.hidden]="swipeProgress() > 50">
+            {{ isConfirmed() ? 'Potvrđeno!' : 'Prevucite za potvrdu →' }}
+          </div>
+
+          <div class="swipe-bg" [style.width.px]="swipeProgress() + 48"></div>
+        </div>
+      </div>
+
+      <!-- Waiting message -->
+      @if (isWaitingForOther()) {
+        <div class="waiting-message">
+          <mat-progress-spinner mode="indeterminate" diameter="24"></mat-progress-spinner>
+          <span>{{ waitingMessage() }}</span>
+        </div>
+      }
+
+      <!-- Alternative button (for accessibility) -->
+      <button
+        mat-stroked-button
+        color="primary"
+        [disabled]="!canConfirm() || checkInService.isLoading()"
+        (click)="confirmViaButton()"
+        class="alternative-button"
+      >
+        Alternativno: Potvrdi dodirom
+      </button>
+    </div>
+  `,
+  styles: [
+    `
+      .handshake {
+        padding: 24px 16px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 24px;
+      }
+
+      /* Header */
+      .handshake-header {
+        text-align: center;
+      }
+
+      .handshake-icon {
+        font-size: 64px;
+        width: 64px;
+        height: 64px;
+        color: var(--brand-primary);
+        margin-bottom: 16px;
+      }
+
+      .handshake-header h2 {
+        margin: 0 0 8px;
+        font-size: 24px;
+        color: var(--color-text-primary, #212121);
+      }
+
+      .handshake-header p {
+        margin: 0;
+        color: var(--color-text-muted, #757575);
+        max-width: 280px;
+      }
+
+      /* Status card */
+      .status-card {
+        width: 100%;
+        background: var(--color-surface, #ffffff);
+      }
+
+      .status-card mat-card-content {
+        display: flex;
+        justify-content: space-around;
+        align-items: center;
+        padding: 16px !important;
+      }
+
+      .status-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .status-item mat-icon {
+        font-size: 32px;
+        width: 32px;
+        height: 32px;
+        color: var(--color-text-muted, #bdbdbd);
+      }
+
+      .status-item.completed mat-icon {
+        color: var(--success-color, #4caf50);
+      }
+
+      .status-label {
+        display: block;
+        font-weight: 500;
+        font-size: 14px;
+        color: var(--color-text-primary, #212121);
+      }
+
+      .status-text {
+        display: block;
+        font-size: 12px;
+        color: var(--color-text-muted, #757575);
+      }
+
+      /* ID verification */
+      .id-verification-card {
+        width: 100%;
+        background: var(--color-surface, #ffffff);
+      }
+
+      .id-verification-card.required {
+        border: 2px solid var(--warning-color, #ff9800);
+        background: rgba(255, 152, 0, 0.05);
+      }
+
+      .id-verification-card.required.verified {
+        border-color: var(--success-color, #4caf50);
+        background: rgba(76, 175, 80, 0.05);
+      }
+
+      /* License Verification Section */
+      .license-verification-section {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        margin-top: 16px;
+        padding-top: 16px;
+        border-top: 1px solid var(--color-border-subtle, #e0e0e0);
+      }
+
+      .license-checkbox {
+        width: 100%;
+        padding: 12px;
+        border-radius: 8px;
+        background: rgba(25, 118, 210, 0.05);
+        transition: all 0.2s ease;
+      }
+
+      .license-checkbox:hover {
+        background: rgba(25, 118, 210, 0.08);
+      }
+
+      .license-checkbox.mat-mdc-checkbox-checked {
+        background: rgba(76, 175, 80, 0.1);
+      }
+
+      /* Phase 4B: License Verification Banners */
+      .license-required-banner {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 12px;
+        margin-bottom: 16px;
+        background: rgba(255, 152, 0, 0.1);
+        border-radius: 8px;
+        border-left: 4px solid var(--warning-color, #ff9800);
+      }
+
+      .license-required-banner mat-icon {
+        color: var(--warning-color, #ff9800);
+        font-size: 28px;
+        width: 28px;
+        height: 28px;
+      }
+
+      .license-verified-banner {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 12px;
+        margin-bottom: 16px;
+        background: rgba(76, 175, 80, 0.1);
+        border-radius: 8px;
+        border-left: 4px solid var(--success-color, #4caf50);
+      }
+
+      .license-verified-banner mat-icon {
+        color: var(--success-color, #4caf50);
+        font-size: 28px;
+        width: 28px;
+        height: 28px;
+      }
+
+      .banner-text {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .banner-title {
+        font-weight: 600;
+        font-size: 14px;
+        color: var(--color-text-primary, #212121);
+      }
+
+      .banner-hint {
+        font-size: 12px;
+        color: var(--color-text-muted, #757575);
+      }
+
+      .confirm-license-btn {
+        margin-top: 16px;
+        width: 100%;
+        background: linear-gradient(
+          135deg,
+          var(--brand-primary) 0%,
+          var(--color-primary-hover) 100%
+        );
+        font-weight: 600;
+        letter-spacing: 0.5px;
+        animation: slideUp 0.3s ease;
+      }
+
+      .confirm-license-btn mat-icon {
+        margin-right: 8px;
+      }
+
+      @keyframes slideUp {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      /* Icon colors */
+      .success-icon {
+        color: #4caf50 !important;
+      }
+
+      .warning-icon {
+        color: #ff9800 !important;
+      }
+
+      .checkbox-content {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .checkbox-label {
+        font-weight: 500;
+        color: var(--color-text-primary, #212121);
+      }
+
+      .checkbox-hint {
+        font-size: 12px;
+        color: var(--color-text-muted, #757575);
+      }
+
+      /* Swipe to confirm */
+      .swipe-container {
+        width: 100%;
+        touch-action: pan-y;
+        user-select: none;
+      }
+
+      .swipe-track {
+        position: relative;
+        height: 56px;
+        background: var(--color-border-subtle, #e0e0e0);
+        border-radius: 28px;
+        overflow: hidden;
+      }
+
+      .swipe-bg {
+        position: absolute;
+        top: 0;
+        left: 0;
+        height: 100%;
+        background: var(--brand-primary);
+        border-radius: 28px;
+        transition: width 0.1s ease;
+      }
+
+      .swipe-thumb {
+        position: absolute;
+        top: 4px;
+        left: 4px;
+        width: 48px;
+        height: 48px;
+        background: var(--color-surface, #ffffff);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        z-index: 10;
+        transition: transform 0.1s ease;
+        color: var(--color-text-primary, #212121);
+      }
+
+      .swipe-thumb.active {
+        transform: scale(1.1);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      }
+
+      .swipe-thumb.confirmed {
+        background: var(--success-color, #4caf50);
+        color: white;
+      }
+
+      .swipe-thumb mat-icon {
+        font-size: 24px;
+      }
+
+      .swipe-text {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: var(--color-text-muted, #757575);
+        font-weight: 500;
+        white-space: nowrap;
+        transition: opacity 0.2s ease;
+        z-index: 5;
+      }
+
+      .swipe-text.hidden {
+        opacity: 0;
+      }
+
+      /* Waiting message */
+      .waiting-message {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 16px 24px;
+        background: var(--color-surface-muted, #e3f2fd);
+        border-radius: 12px;
+        color: var(--info-color, #1565c0);
+      }
+
+      /* Alternative button */
+      .alternative-button {
+        margin-top: 8px;
+        font-size: 12px;
+      }
+
+      /* Agreement Gate */
+      .agreement-gate-card {
+        width: 100%;
+        border: 2px solid var(--warning-color, #ff9800);
+        background: rgba(255, 152, 0, 0.05);
+      }
+
+      .agreement-gate-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+
+      .agreement-gate-header mat-icon {
+        color: var(--warning-color, #ff9800);
+      }
+
+      .agreement-gate-header h3 {
+        margin: 0;
+        font-size: 16px;
+      }
+
+      .agreement-gate-desc {
+        font-size: 13px;
+        color: var(--color-text-muted, #757575);
+        margin: 0 0 12px;
+      }
+
+      .agreement-gate-terms {
+        background: var(--color-surface, #ffffff);
+        border-radius: 8px;
+        padding: 12px;
+        margin-bottom: 12px;
+      }
+
+      .terms-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 4px 0;
+        font-size: 13px;
+      }
+
+      .terms-key {
+        color: var(--color-text-muted, #757575);
+      }
+
+      .agreement-gate-checkbox {
+        margin: 12px 0;
+      }
+
+      .agreement-gate-btn {
+        width: 100%;
+        margin-top: 8px;
+      }
+
+      .agreement-accepted-inline {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 16px;
+        background: rgba(76, 175, 80, 0.1);
+        border-radius: 8px;
+        color: var(--success-color, #4caf50);
+        font-size: 13px;
+        font-weight: 500;
+        width: 100%;
+        box-sizing: border-box;
+      }
+
+      .swipe-container.disabled {
+        opacity: 0.4;
+        pointer-events: none;
+      }
+
+      /* Geofence Distance Badge */
+      .geofence-badge {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 16px;
+        border-radius: 12px;
+        font-size: 14px;
+        font-weight: 500;
+        width: 100%;
+        box-sizing: border-box;
+      }
+
+      .geofence-badge.close {
+        background: rgba(34, 197, 94, 0.15);
+        color: #166534;
+        border: 1px solid rgba(34, 197, 94, 0.3);
+      }
+
+      .geofence-badge.far {
+        background: rgba(239, 68, 68, 0.15);
+        color: #b91c1c;
+        border: 1px solid rgba(239, 68, 68, 0.3);
+      }
+
+      .geofence-badge mat-icon {
+        font-size: 20px;
+        width: 20px;
+        height: 20px;
+      }
+
+      .geofence-badge .distance-text {
+        flex: 1;
+      }
+
+      .geofence-badge .status-icon {
+        font-size: 18px;
+        width: 18px;
+        height: 18px;
+      }
+
+      .geofence-badge.close .status-icon {
+        color: #16a34a;
+      }
+
+      .geofence-badge .warning-icon {
+        color: #dc2626;
+        animation: pulse-warning 1.5s ease-in-out infinite;
+      }
+
+      @keyframes pulse-warning {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.5;
+        }
+      }
+
+      /* Dark theme adjustments */
+      :host-context(.theme-dark) .geofence-badge.close {
+        background: rgba(34, 197, 94, 0.2);
+        color: #86efac;
+      }
+
+      :host-context(.theme-dark) .geofence-badge.far {
+        background: rgba(239, 68, 68, 0.2);
+        color: #fca5a5;
+      }
+    `,
+  ],
+})
+export class HandshakeComponent implements OnInit, OnDestroy {
+  @Input() bookingId!: number;
+  @Input() status!: CheckInStatusDTO | null;
+  @Output() completed = new EventEmitter<void>();
+
+  @ViewChild('swipeContainer') swipeContainer!: ElementRef;
+
+  private snackBar = inject(MatSnackBar);
+  checkInService = inject(CheckInService);
+  private bookingService = inject(BookingService);
+  private geolocationService = inject(GeolocationService);
+
+  // Geofence threshold in meters (50m = Turo standard)
+  private readonly GEOFENCE_THRESHOLD_METERS = 50;
+
+  // State
+  verifyPhysicalId = false;
+  private _swipeProgress = signal(0);
+  private _isSwiping = signal(false);
+  private _isConfirmed = signal(false);
+  private _licenseVerificationConfirmed = signal(false);
+  private startX = 0;
+  private maxSwipe = 0;
+
+  // Rental agreement state
+  agreement = signal<RentalAgreementDTO | null>(null);
+  agreementLookupState = signal<'loading' | 'ready' | 'legacy' | 'disabled' | 'error'>('loading');
+  agreementCheckboxChecked = signal(false);
+  isAcceptingAgreement = signal(false);
+
+  /** True when the current user still needs to accept the agreement. */
+  agreementNeeded = computed(() => {
+    const state = this.agreementLookupState();
+    if (state === 'loading' || state === 'error') return true;
+    if (state === 'legacy' || state === 'disabled') return false;
+    const a = this.agreement();
+    if (!a) return false;
+    return isAgreementEnforcementEnabled(a.enforcementEnabled)
+      && !canProceedToCheckInFromAgreement(a);
+  });
+
+  swipeProgress = this._swipeProgress.asReadonly();
+  isSwiping = this._isSwiping.asReadonly();
+  isConfirmed = this._isConfirmed.asReadonly();
+  isLicenseVerificationConfirmed = this._licenseVerificationConfirmed.asReadonly();
+
+  // Computed
+  roleInstructions = computed(() => {
+    if (this.isCurrentActorConfirmed()) {
+      return 'Vaša potvrda je zabeležena. Čekamo drugu stranu.';
+    }
+    if (this.status?.host) {
+      return 'Kada predate ključeve gostu, prevucite za potvrdu';
+    }
+    return 'Kada primite ključeve, prevucite za potvrdu';
+  });
+
+  hostHandshakeConfirmed = computed(() => {
+    return (
+      this.status?.hostConfirmedHandshake === true ||
+      this.status?.handshakeComplete === true ||
+      this.status?.status === 'IN_TRIP'
+    );
+  });
+
+  guestHandshakeConfirmed = computed(() => {
+    return (
+      this.status?.guestConfirmedHandshake === true ||
+      this.status?.handshakeComplete === true ||
+      this.status?.status === 'IN_TRIP'
+    );
+  });
+
+  isCurrentActorConfirmed = computed(() => {
+    if (!this.status) return false;
+    return this.status.host ? this.hostHandshakeConfirmed() : this.guestHandshakeConfirmed();
+  });
+
+  isWaitingForOther = computed(() => {
+    if (!this.status) return false;
+    if (this.status.handshakeComplete || this.status.handshakeCompletedAt || this.status.status === 'IN_TRIP') {
+      return false;
+    }
+
+    if (this.status.host) {
+      return this.hostHandshakeConfirmed() && !this.guestHandshakeConfirmed();
+    }
+    return this.guestHandshakeConfirmed() && !this.hostHandshakeConfirmed();
+  });
+
+  waitingMessage = computed(() => {
+    if (this.status?.host) {
+      return 'Čekanje potvrde gosta...';
+    }
+    return 'Čekanje potvrde domaćina...';
+  });
+
+  canConfirm = computed(() => {
+    // Block if rental agreement not yet accepted by both parties
+    if (this.agreementNeeded()) {
+      return false;
+    }
+
+    // Phase 4B: Block confirmation if license verification is required but not done
+    if (
+      this.status?.host &&
+      this.isLicenseVerificationRequired() &&
+      !this.status?.licenseVerifiedInPerson
+    ) {
+      return false;
+    }
+
+    if (this.status?.handshakeComplete || this.status?.status === 'IN_TRIP') {
+      return false;
+    }
+
+    if (this.isCurrentActorConfirmed()) {
+      return false;
+    }
+
+    return !this._isConfirmed() && !this.checkInService.isLoading();
+  });
+
+  // =========================================================================
+  // Phase 4B: License Verification Helper Methods
+  // =========================================================================
+
+  /**
+   * Check if license verification is required for this booking.
+   * Backend sets licenseVerificationRequired=true for in-person handoffs.
+   */
+  isLicenseVerificationRequired(): boolean {
+    return this.status?.licenseVerificationRequired === true;
+  }
+
+  /**
+   * Check if license has been verified by host.
+   * Uses explicit boolean comparison for safety.
+   */
+  isLicenseVerified(): boolean {
+    return this.status?.licenseVerifiedInPerson === true;
+  }
+
+  /**
+   * Check if license verification is confirmed by the current component state.
+   */
+  isLicenseVerificationConfirmedState(): boolean {
+    return this._licenseVerificationConfirmed() || this.isLicenseVerified();
+  }
+
+  /**
+   * Format the license verification timestamp for display.
+   */
+  formatLicenseVerifiedAt(): string {
+    if (!this.status?.licenseVerifiedInPersonAt) return '';
+    const date = new Date(this.status.licenseVerifiedInPersonAt);
+    return `Verifikovano ${date.toLocaleTimeString('sr-RS', {
+      hour: '2-digit',
+      minute: '2-digit',
+    })}`;
+  }
+
+  /**
+   * Confirm license verification with backend.
+   * Called when host clicks the confirm button after checking the checkbox.
+   */
+  confirmLicenseVerification(): void {
+    if (!this.verifyPhysicalId || !this.bookingId) {
+      this.snackBar.open('Molim vas proverite polje za verifikaciju', 'OK', { duration: 3000 });
+      return;
+    }
+
+    this.checkInService.confirmLicenseVerifiedInPerson(this.bookingId).subscribe({
+      next: () => {
+        this._licenseVerificationConfirmed.set(true);
+        this.verifyPhysicalId = false;
+
+        this.snackBar.open('✓ Verifikacija vozačke dozvole je zabeležena', 'Odlično', {
+          duration: 4000,
+          panelClass: 'success-snackbar',
+        });
+
+        setTimeout(() => {
+          const swipeElement = document.querySelector('.swipe-container') as HTMLElement | null;
+          swipeElement?.focus();
+        }, 500);
+      },
+      error: (err) => {
+        const errorMsg =
+          getHttpErrorMessage(err) ||
+          'Verifikacija nije uspela. Pokušajte ponovo ili kontaktirajte podršku.';
+
+        this.snackBar.open(errorMsg, 'Zatvori', {
+          duration: 5000,
+          panelClass: 'error-snackbar',
+        });
+
+        console.error('[License Verification Error]', err);
+      },
+    });
+  }
+
+  /**
+   * Called when checkbox state changes.
+   * Used for analytics and UX feedback.
+   */
+  onLicenseCheckboxChange(): void {
+    if (this.verifyPhysicalId && this.isLicenseVerificationRequired()) {
+      console.log('[License Verification] Host confirmed they checked the license');
+    }
+  }
+
+  /**
+   * Check if user is within geofence threshold (close to vehicle).
+   * Green if < 50m, Red if >= 50m.
+   */
+  isWithinGeofence(): boolean {
+    const distance = this.status?.geofenceDistanceMeters;
+    if (distance === null || distance === undefined) return true;
+    return distance < this.GEOFENCE_THRESHOLD_METERS;
+  }
+
+  /**
+   * Format distance for display.
+   * Shows meters if < 1000m, otherwise km.
+   */
+  formatDistance(meters: number): string {
+    if (meters < 1000) {
+      return `${Math.round(meters)}m`;
+    }
+    return `${(meters / 1000).toFixed(1)}km`;
+  }
+
+  // Touch handlers
+  onTouchStart(event: TouchEvent): void {
+    if (!this.canConfirm()) return;
+
+    this.startX = event.touches[0].clientX;
+    this._isSwiping.set(true);
+    this.calculateMaxSwipe();
+  }
+
+  onTouchMove(event: TouchEvent): void {
+    if (!this._isSwiping()) return;
+
+    const currentX = event.touches[0].clientX;
+    const diff = currentX - this.startX;
+    const progress = Math.max(0, Math.min(diff, this.maxSwipe));
+    this._swipeProgress.set(progress);
+
+    // Prevent page scroll while swiping
+    if (diff > 10) {
+      event.preventDefault();
+    }
+  }
+
+  onTouchEnd(): void {
+    this.finalizeSwipe();
+  }
+
+  // Mouse handlers (for desktop testing)
+  onMouseDown(event: MouseEvent): void {
+    if (!this.canConfirm()) return;
+
+    this.startX = event.clientX;
+    this._isSwiping.set(true);
+    this.calculateMaxSwipe();
+
+    const onMouseMove = (e: MouseEvent) => {
+      const diff = e.clientX - this.startX;
+      const progress = Math.max(0, Math.min(diff, this.maxSwipe));
+      this._swipeProgress.set(progress);
+    };
+
+    const onMouseUp = () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      this.finalizeSwipe();
+    };
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  }
+
+  private calculateMaxSwipe(): void {
+    // Track width minus thumb width and padding
+    this.maxSwipe = window.innerWidth - 32 - 48 - 8; // container padding, thumb, extra padding
+  }
+
+  private finalizeSwipe(): void {
+    this._isSwiping.set(false);
+
+    const threshold = this.maxSwipe * 0.7;
+
+    if (this._swipeProgress() >= threshold) {
+      // Confirm
+      this._swipeProgress.set(this.maxSwipe);
+      this.confirmHandshake();
+    } else {
+      // Reset
+      this._swipeProgress.set(0);
+    }
+  }
+
+  confirmViaButton(): void {
+    if (!this.canConfirm()) return;
+    this.confirmHandshake();
+  }
+
+  private confirmHandshake(): void {
+    this._isConfirmed.set(true);
+
+    this.checkInService
+      .confirmHandshake(this.bookingId, this.status?.host ? this.verifyPhysicalId : undefined)
+      .subscribe({
+        next: (status) => {
+          const handshakeComplete =
+            status.handshakeCompletedAt !== null ||
+            status.handshakeComplete === true ||
+            status.status === 'IN_TRIP';
+
+          if (handshakeComplete) {
+            this.snackBar.open('Primopredaja uspešno završena! 🎉', 'Odlično', {
+              duration: 5000,
+              panelClass: 'success-snackbar',
+            });
+            this.completed.emit();
+            return;
+          }
+
+          if (this.isActorConfirmedInStatus(status)) {
+            this._isConfirmed.set(true);
+            this.snackBar.open('Vaša potvrda je zabeležena. Čekamo drugu stranu.', '', {
+              duration: 3000,
+            });
+          } else {
+            this._isConfirmed.set(false);
+            this._swipeProgress.set(0);
+            this.snackBar.open('Potvrda nije sačuvana. Pokušajte ponovo.', 'OK', {
+              duration: 3000,
+            });
+          }
+        },
+        error: (err) => {
+          this._isConfirmed.set(false);
+          this._swipeProgress.set(0);
+          const message = getHttpErrorMessage(err) || 'Potvrda nije uspela. Pokušajte ponovo.';
+          this.snackBar.open(message, 'OK', { duration: 5000 });
+        },
+      });
+  }
+
+  private isActorConfirmedInStatus(status: CheckInStatusDTO): boolean {
+    if (status.host) {
+      return status.hostConfirmedHandshake === true || status.handshakeComplete === true;
+    }
+    return status.guestConfirmedHandshake === true || status.handshakeComplete === true;
+  }
+
+  ngOnInit(): void {
+    // Start polling for other party's confirmation
+    if (this.bookingId) {
+      this.checkInService.startPolling(this.bookingId, 5000);
+      this.loadAgreement();
+    }
+  }
+
+  ngOnDestroy(): void {
+    this.checkInService.stopPolling();
+  }
+
+  // =========================================================================
+  // Rental Agreement Gate
+  // =========================================================================
+
+  loadAgreement(): void {
+    this.agreementLookupState.set('loading');
+    this.bookingService.getAgreement(this.bookingId).subscribe({
+      next: (a) => {
+        this.agreement.set(a);
+        this.agreementLookupState.set(a.enforcementEnabled ? 'ready' : 'disabled');
+      },
+      error: (agreementError) => {
+        this.bookingService.resolveCheckInAgreementGate(this.bookingId).subscribe({
+          next: (gate) => {
+            if (gate.legacyBooking) {
+              this.agreement.set(null);
+              this.agreementLookupState.set('legacy');
+              return;
+            }
+
+            if (gate.state === 'allowed' && !gate.enforcementEnabled) {
+              this.agreement.set(gate.agreement);
+              this.agreementLookupState.set('disabled');
+              return;
+            }
+
+            this.agreement.set(null);
+            this.agreementLookupState.set(agreementError?.status === 404 ? 'legacy' : 'error');
+          },
+          error: () => {
+            this.agreement.set(null);
+            this.agreementLookupState.set(agreementError?.status === 404 ? 'legacy' : 'error');
+          },
+        });
+      },
+    });
+  }
+
+  acceptAgreementInline(): void {
+    this.isAcceptingAgreement.set(true);
+    this.bookingService.acceptAgreement(this.bookingId).subscribe({
+      next: (updated) => {
+        this.agreement.set(updated);
+        this.isAcceptingAgreement.set(false);
+        this.agreementCheckboxChecked.set(false);
+
+        if (updated.status === 'FULLY_ACCEPTED') {
+          this.snackBar.open('Ugovor prihvaćen od obe strane', 'OK', {
+            duration: 3000,
+            panelClass: 'success-snackbar',
+          });
+        } else {
+          this.snackBar.open(
+            'Vaše prihvatanje je zabeleženo. Čekamo drugu stranu.',
+            'OK',
+            { duration: 4000 },
+          );
+        }
+      },
+      error: (err) => {
+        this.isAcceptingAgreement.set(false);
+        const message = getHttpErrorMessage(err) || 'Prihvatanje ugovora nije uspelo. Pokušajte ponovo.';
+        this.snackBar.open(message, 'Zatvori', { duration: 5000 });
+      },
+    });
+  }
+}

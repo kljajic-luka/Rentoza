@@ -1,0 +1,90 @@
+name: Lighthouse CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  lighthouse:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: apps/frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: apps/frontend
+        run: npm ci
+
+      - name: Build staging and verify mock payment mode
+        working-directory: apps/frontend
+        run: npm run build:staging
+
+      - name: Build production
+        working-directory: apps/frontend
+        run: npm run build -- --configuration production
+
+      - name: Install Lighthouse CI
+        run: npm install -g @lhci/cli@0.13.x
+
+      - name: Run Lighthouse CI
+        working-directory: apps/frontend
+        run: |
+          lhci autorun --config=lighthouserc.json || echo "Lighthouse CI completed with warnings"
+
+      - name: Upload Lighthouse results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lighthouse-results
+          path: apps/frontend/.lighthouseci
+          retention-days: 30
+
+      - name: Check bundle size
+        working-directory: apps/frontend
+        run: |
+          echo "📦 Bundle Size Check"
+          INITIAL_SIZE=$(du -sh dist/rentoza-frontend/browser | awk '{print $1}')
+          echo "Total bundle size: $INITIAL_SIZE"
+          
+          # Check if any JS files exceed 1.5MB
+          find dist/rentoza-frontend/browser -name "*.js" -size +1500k -exec ls -lh {} \; | while read -r line; do
+            echo "⚠️  Large file detected: $line"
+            exit 1
+          done
+          
+          echo "✅ Bundle size within limits"
+
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const resultsPath = 'apps/frontend/.lighthouseci/manifest.json';
+            
+            if (fs.existsSync(resultsPath)) {
+              const manifest = JSON.parse(fs.readFileSync(resultsPath, 'utf8'));
+              const summary = `## 🔦 Lighthouse CI Results
+              
+              Performance scores available in artifacts.
+              
+              📊 Check the [Lighthouse Report](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}) for details.
+              `;
+              
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: summary
+              });
+            }

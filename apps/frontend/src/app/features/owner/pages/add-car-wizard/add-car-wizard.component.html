@@ -1,0 +1,648 @@
+<div class="add-car-wizard">
+  <header class="add-car-wizard__header">
+    <button mat-icon-button [routerLink]="['/owner/cars']" aria-label="Nazad">
+      <mat-icon>arrow_back</mat-icon>
+    </button>
+    <div>
+      <p class="eyebrow">NOVO VOZILO</p>
+      <h1>Dodaj vozilo</h1>
+      <p class="subtitle">Popunite sve informacije kako biste objavili vozilo</p>
+    </div>
+  </header>
+
+  <mat-stepper #stepper linear class="wizard-stepper">
+    <!-- Step 1: Basic Information -->
+    <mat-step [stepControl]="basicInfoForm" label="Osnovne informacije">
+      <form [formGroup]="basicInfoForm" class="step-form">
+        <h2 class="step-title">Osnovne informacije</h2>
+        <p class="step-description">Unesite osnovne podatke o vašem vozilu</p>
+
+        <div class="form-grid">
+          <mat-form-field appearance="outline" class="form-field">
+            <mat-label>Marka</mat-label>
+            <input matInput formControlName="brand" required />
+            <mat-icon matPrefix>directions_car</mat-icon>
+            <ng-container
+              *ngIf="
+                basicInfoForm.controls.brand.hasError('required') &&
+                (basicInfoForm.controls.brand.dirty || basicInfoForm.controls.brand.touched)
+              "
+            >
+              <mat-error>Marka je obavezna</mat-error>
+            </ng-container>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="form-field">
+            <mat-label>Model</mat-label>
+            <input matInput formControlName="model" required />
+            <mat-icon matPrefix>drive_eta</mat-icon>
+            <ng-container
+              *ngIf="
+                basicInfoForm.controls.model.hasError('required') &&
+                (basicInfoForm.controls.model.dirty || basicInfoForm.controls.model.touched)
+              "
+            >
+              <mat-error>Model je obavezan</mat-error>
+            </ng-container>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="form-field">
+            <mat-label>Godina</mat-label>
+            <input matInput type="number" formControlName="year" required />
+            <mat-icon matPrefix>calendar_today</mat-icon>
+            <ng-container
+              *ngIf="
+                (basicInfoForm.controls.year.hasError('min') ||
+                  basicInfoForm.controls.year.hasError('max')) &&
+                (basicInfoForm.controls.year.dirty || basicInfoForm.controls.year.touched)
+              "
+            >
+              <mat-error>Godina mora biti između 1950 i 2050</mat-error>
+            </ng-container>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="form-field">
+            <mat-label>Registarska oznaka</mat-label>
+            <input
+              matInput
+              formControlName="licensePlate"
+              required
+              placeholder="BG-123-AB"
+              maxlength="13"
+            />
+            <mat-icon matPrefix>badge</mat-icon>
+            <mat-hint>Format: BG-123-AB ili BG-1234-AB</mat-hint>
+            <!-- Only show error on form submission attempt, not while typing -->
+            <ng-container
+              *ngIf="
+                basicInfoForm.controls.licensePlate.hasError('required') &&
+                (basicInfoForm.controls.licensePlate.dirty ||
+                  basicInfoForm.controls.licensePlate.touched)
+              "
+            >
+              <mat-error>Registarska oznaka je obavezna</mat-error>
+            </ng-container>
+            <ng-container
+              *ngIf="
+                basicInfoForm.controls.licensePlate.hasError('invalidPlate') &&
+                (basicInfoForm.controls.licensePlate.dirty ||
+                  basicInfoForm.controls.licensePlate.touched)
+              "
+            >
+              <mat-error>Unesite validnu registarsku oznaku (npr. BG-123-AB)</mat-error>
+            </ng-container>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="form-field">
+            <mat-label>Cena po danu (RSD)</mat-label>
+            <input matInput type="number" formControlName="pricePerDay" required />
+            <mat-icon matPrefix>payments</mat-icon>
+            <ng-container
+              *ngIf="
+                basicInfoForm.controls.pricePerDay.hasError('required') &&
+                (basicInfoForm.controls.pricePerDay.dirty ||
+                  basicInfoForm.controls.pricePerDay.touched)
+              "
+            >
+              <mat-error>Cena po danu je obavezna</mat-error>
+            </ng-container>
+            <ng-container
+              *ngIf="
+                basicInfoForm.controls.pricePerDay.hasError('min') &&
+                (basicInfoForm.controls.pricePerDay.dirty ||
+                  basicInfoForm.controls.pricePerDay.touched)
+              "
+            >
+              <mat-error>Minimalna cena je 10 RSD</mat-error>
+            </ng-container>
+            <ng-container
+              *ngIf="
+                basicInfoForm.controls.pricePerDay.hasError('max') &&
+                (basicInfoForm.controls.pricePerDay.dirty ||
+                  basicInfoForm.controls.pricePerDay.touched)
+              "
+            >
+              <mat-error>Maksimalna cena je 50.000 RSD</mat-error>
+            </ng-container>
+          </mat-form-field>
+        </div>
+
+        <mat-form-field appearance="outline" class="form-field full-width">
+          <mat-label>Opis (opciono)</mat-label>
+          <textarea
+            matInput
+            formControlName="description"
+            rows="4"
+            maxlength="1000"
+            placeholder="Opišite vaše vozilo..."
+          ></textarea>
+          <mat-hint align="end">{{ basicInfoForm.value.description?.length || 0 }} / 1000</mat-hint>
+        </mat-form-field>
+
+        <div class="step-actions">
+          <button mat-button (click)="cancelWizard()">Otkaži</button>
+          <button mat-raised-button color="primary" matStepperNext>
+            Dalje <mat-icon>arrow_forward</mat-icon>
+          </button>
+        </div>
+      </form>
+    </mat-step>
+
+    <!-- Step 2: Location (NEW - Geospatial Phase 2.4) -->
+    <mat-step label="Lokacija" [completed]="isLocationValid()">
+      <div class="step-form">
+        <app-location-step
+          #locationStep
+          (locationSelected)="onLocationSelected($event)"
+          (validityChanged)="onLocationValidityChanged($event)"
+        ></app-location-step>
+
+        <div class="step-actions">
+          <button mat-button matStepperPrevious><mat-icon>arrow_back</mat-icon> Nazad</button>
+          <button mat-raised-button color="primary" matStepperNext [disabled]="!isLocationValid()">
+            Dalje <mat-icon>arrow_forward</mat-icon>
+          </button>
+        </div>
+      </div>
+    </mat-step>
+
+    <!-- Step 3: Specifications -->
+    <mat-step [stepControl]="specificationsForm" label="Specifikacije">
+      <form [formGroup]="specificationsForm" class="step-form">
+        <h2 class="step-title">Tehničke specifikacije</h2>
+        <p class="step-description">Definišite tehničke karakteristike vozila</p>
+
+        <div class="form-grid">
+          <mat-form-field appearance="outline" class="form-field">
+            <mat-label>Broj sedišta</mat-label>
+            <input matInput type="number" formControlName="seats" min="2" max="9" required />
+            <mat-icon matPrefix>event_seat</mat-icon>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="form-field">
+            <mat-label>Vrsta goriva</mat-label>
+            <mat-select formControlName="fuelType" required>
+              <mat-option *ngFor="let fuel of fuelTypes" [value]="fuel">
+                {{ translateFuelType(fuel) }}
+              </mat-option>
+            </mat-select>
+            <mat-icon matPrefix>local_gas_station</mat-icon>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="form-field">
+            <mat-label>Potrošnja (L/100km)</mat-label>
+            <input matInput type="number" formControlName="fuelConsumption" step="0.1" />
+            <mat-icon matPrefix>speed</mat-icon>
+            <mat-hint>Opciono</mat-hint>
+          </mat-form-field>
+        </div>
+
+        <div class="radio-group">
+          <label class="radio-group__label">Menjač *</label>
+          <mat-radio-group formControlName="transmissionType" class="radio-group__options">
+            <mat-radio-button [value]="TransmissionType.MANUAL">Manuelni</mat-radio-button>
+            <mat-radio-button [value]="TransmissionType.AUTOMATIC">Automatik</mat-radio-button>
+          </mat-radio-group>
+        </div>
+
+        <div class="step-actions">
+          <button mat-button matStepperPrevious><mat-icon>arrow_back</mat-icon> Nazad</button>
+          <button mat-raised-button color="primary" matStepperNext>
+            Dalje <mat-icon>arrow_forward</mat-icon>
+          </button>
+        </div>
+      </form>
+    </mat-step>
+
+    <!-- Step 3: Features -->
+    <mat-step label="Karakteristike">
+      <div class="step-form">
+        <h2 class="step-title">Karakteristike vozila</h2>
+        <p class="step-description">Izaberite sve opcije kojima vozilo raspolaže</p>
+
+        <!-- Safety Features -->
+        <div class="feature-group">
+          <h3 class="feature-group__title">
+            <mat-icon>shield</mat-icon>
+            Sigurnost
+          </h3>
+          <div class="feature-chips">
+            <mat-chip-option
+              *ngFor="let feature of featureGroups.safety"
+              [selected]="isFeatureSelected(feature)"
+              (click)="toggleFeature(feature)"
+            >
+              {{ translateFeature(feature) }}
+            </mat-chip-option>
+          </div>
+        </div>
+
+        <!-- Connectivity Features -->
+        <div class="feature-group">
+          <h3 class="feature-group__title">
+            <mat-icon>cast_connected</mat-icon>
+            Povezivost
+          </h3>
+          <div class="feature-chips">
+            <mat-chip-option
+              *ngFor="let feature of featureGroups.connectivity"
+              [selected]="isFeatureSelected(feature)"
+              (click)="toggleFeature(feature)"
+            >
+              {{ translateFeature(feature) }}
+            </mat-chip-option>
+          </div>
+        </div>
+
+        <!-- Comfort Features -->
+        <div class="feature-group">
+          <h3 class="feature-group__title">
+            <mat-icon>airline_seat_recline_extra</mat-icon>
+            Komfor
+          </h3>
+          <div class="feature-chips">
+            <mat-chip-option
+              *ngFor="let feature of featureGroups.comfort"
+              [selected]="isFeatureSelected(feature)"
+              (click)="toggleFeature(feature)"
+            >
+              {{ translateFeature(feature) }}
+            </mat-chip-option>
+          </div>
+        </div>
+
+        <!-- Additional Features -->
+        <div class="feature-group">
+          <h3 class="feature-group__title">
+            <mat-icon>add_circle</mat-icon>
+            Dodatno
+          </h3>
+          <div class="feature-chips">
+            <mat-chip-option
+              *ngFor="let feature of featureGroups.additional"
+              [selected]="isFeatureSelected(feature)"
+              (click)="toggleFeature(feature)"
+            >
+              {{ translateFeature(feature) }}
+            </mat-chip-option>
+          </div>
+        </div>
+
+        <p class="selected-count">Izabrano: {{ selectedFeatures().length }} karakteristika</p>
+
+        <div class="step-actions">
+          <button mat-button matStepperPrevious><mat-icon>arrow_back</mat-icon> Nazad</button>
+          <button mat-raised-button color="primary" matStepperNext>
+            Dalje <mat-icon>arrow_forward</mat-icon>
+          </button>
+        </div>
+      </div>
+    </mat-step>
+
+    <!-- Step 4: Add-ons -->
+    <mat-step label="Dodatna oprema">
+      <div class="step-form">
+        <h2 class="step-title">Dodatna oprema</h2>
+        <p class="step-description">Dodajte prilagođenu opremu koja dolazi sa vozilom</p>
+
+        <mat-form-field appearance="outline" class="form-field full-width">
+          <mat-label>Dodaj opremu</mat-label>
+          <input
+            matInput
+            #addOnInput
+            placeholder="Npr. Dečije sedište, Zimske gume..."
+            (keyup.enter)="addAddOn(addOnInput)"
+          />
+          <button mat-icon-button matSuffix (click)="addAddOn(addOnInput)" type="button">
+            <mat-icon>add</mat-icon>
+          </button>
+          <mat-hint>Pritisnite Enter ili kliknite + da dodate</mat-hint>
+        </mat-form-field>
+
+        <ng-container *ngIf="addOns().length > 0; else noAddOns">
+          <div class="add-ons-list">
+            <mat-chip
+              *ngFor="let addOn of addOns()"
+              class="add-on-chip"
+              (removed)="removeAddOn(addOn)"
+            >
+              {{ addOn }}
+              <button matChipRemove>
+                <mat-icon>cancel</mat-icon>
+              </button>
+            </mat-chip>
+          </div>
+        </ng-container>
+        <ng-template #noAddOns>
+          <p class="empty-message">Još nemate dodatne opcije</p>
+        </ng-template>
+
+        <div class="step-actions">
+          <button mat-button matStepperPrevious><mat-icon>arrow_back</mat-icon> Nazad</button>
+          <button mat-raised-button color="primary" matStepperNext>
+            Dalje <mat-icon>arrow_forward</mat-icon>
+          </button>
+        </div>
+      </div>
+    </mat-step>
+
+    <!-- Step 5: Policies -->
+    <mat-step [stepControl]="policiesForm" label="Politike">
+      <form [formGroup]="policiesForm" class="step-form">
+        <h2 class="step-title">Pravila iznajmljivanja</h2>
+        <p class="step-description">Definišite uslove iznajmljivanja</p>
+
+        <!-- Platform Cancellation Policy Notice -->
+        <div class="platform-policy-notice">
+          <mat-icon>info</mat-icon>
+          <div>
+            <strong>Politika otkazivanja</strong>
+            <p>Platforma koristi standardnu politiku otkazivanja za sve rezervacije:</p>
+            <ul>
+              <li>Besplatno otkazivanje do 24h pre početka putovanja</li>
+              <li>Nakon toga se primenjuje penal u zavisnosti od dužine putovanja</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="form-grid">
+          <mat-form-field appearance="outline" class="form-field">
+            <mat-label>Minimalno dana</mat-label>
+            <input matInput type="number" formControlName="minRentalDays" min="1" required />
+            <mat-icon matPrefix>event</mat-icon>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="form-field">
+            <mat-label>Maksimalno dana</mat-label>
+            <input matInput type="number" formControlName="maxRentalDays" min="1" required />
+            <mat-icon matPrefix>event</mat-icon>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="form-field">
+            <mat-label>Dnevni limit kilometraže (km)</mat-label>
+            <input
+              matInput
+              type="number"
+              formControlName="dailyMileageLimitKm"
+              min="50"
+              max="1000"
+              required
+            />
+            <mat-icon matPrefix>speed</mat-icon>
+            <mat-hint>50-1000 km/dan (podrazumevano: 200)</mat-hint>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="form-field">
+            <mat-label>Trenutna kilometraža (km)</mat-label>
+            <input matInput type="number" formControlName="currentMileageKm" min="0" max="300000" />
+            <mat-icon matPrefix>straighten</mat-icon>
+            <mat-hint>Opciono. Maksimalno 300.000 km</mat-hint>
+          </mat-form-field>
+        </div>
+
+        <!-- Instant Book Toggle -->
+        <div class="instant-book-section">
+          <mat-checkbox formControlName="instantBookEnabled" color="primary">
+            <div class="instant-book-label">
+              <strong>Instant Book</strong>
+              <span> — Gosti mogu odmah rezervisati bez vašeg odobrenja</span>
+            </div>
+          </mat-checkbox>
+          <p class="instant-book-hint" *ngIf="!policiesForm.value.instantBookEnabled">
+            <mat-icon>info</mat-icon>
+            Kada je isključeno, svaka rezervacija zahteva vaše odobrenje pre potvrde.
+          </p>
+          <p
+            class="instant-book-hint instant-book-enabled"
+            *ngIf="policiesForm.value.instantBookEnabled"
+          >
+            <mat-icon>flash_on</mat-icon>
+            Gosti mogu odmah rezervisati. Dobićete obaveštenje o novoj rezervaciji.
+          </p>
+        </div>
+
+        <div class="rules-section">
+          <h3>Osnovna pravila iznajmljivanja</h3>
+          <ul class="rules-list">
+            <li *ngFor="let rule of rentalRules">
+              <mat-icon>check_circle</mat-icon>
+              {{ rule }}
+            </li>
+          </ul>
+        </div>
+
+        <div class="step-actions">
+          <button mat-button matStepperPrevious><mat-icon>arrow_back</mat-icon> Nazad</button>
+          <button mat-raised-button color="primary" matStepperNext>
+            Dalje <mat-icon>arrow_forward</mat-icon>
+          </button>
+        </div>
+      </form>
+    </mat-step>
+
+    <!-- Step 6: Photos -->
+    <mat-step label="Slike">
+      <div class="step-form">
+        <h2 class="step-title">Slike vozila</h2>
+        <p class="step-description">Dodajte 5–10 slika (max 5MB po slici). Minimum 5 obavezno.</p>
+
+        <div class="photo-upload">
+          <input
+            #fileInput
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            multiple
+            (change)="handleFileSelect($event)"
+            hidden
+          />
+          <button
+            mat-raised-button
+            color="accent"
+            (click)="fileInput.click()"
+            [disabled]="imageUrls().length >= 10"
+          >
+            <mat-icon>add_photo_alternate</mat-icon>
+            Dodaj slike
+          </button>
+          <p class="photo-count">{{ imageUrls().length }} / 10 slika</p>
+        </div>
+
+        <ng-container *ngIf="imageUrls().length > 0; else noPhotos">
+          <div class="photo-grid">
+            <div *ngFor="let url of imageUrls(); let i = index" class="photo-preview">
+              <img [src]="url" [alt]="'Preview ' + (i + 1)" />
+              <button mat-mini-fab color="warn" class="delete-photo" (click)="removeImage(i)">
+                <mat-icon>delete</mat-icon>
+              </button>
+              <span *ngIf="i === 0" class="primary-badge">Glavna</span>
+            </div>
+          </div>
+        </ng-container>
+        <ng-template #noPhotos>
+          <div class="empty-photos">
+            <mat-icon>image</mat-icon>
+            <p>Još nemate slika</p>
+          </div>
+        </ng-template>
+
+        <div class="step-actions">
+          <button mat-button matStepperPrevious><mat-icon>arrow_back</mat-icon> Nazad</button>
+          <button
+            mat-raised-button
+            color="primary"
+            matStepperNext
+            [disabled]="imageUrls().length < 5"
+          >
+            Dalje <mat-icon>arrow_forward</mat-icon>
+          </button>
+        </div>
+      </div>
+    </mat-step>
+
+    <!-- Step 7: Documents (Serbian Legal Compliance) -->
+    <mat-step label="Dokumenti" [completed]="isDocumentsComplete()">
+      <div class="step-form">
+        <h2 class="step-title">Zakonski dokumenti</h2>
+        <p class="step-description">
+          Otpremite obaveznu dokumentaciju za vozilo (srpski propisi). Sva dokumenta su obavezna pre
+          nastavka.
+        </p>
+
+        <div class="document-upload-grid">
+          <div class="document-upload-item" *ngFor="let docType of requiredDocTypes">
+            <app-document-upload
+              [documentType]="docType"
+              [label]="getDocumentLabel(docType)"
+              [required]="true"
+              (fileSelected)="onDocumentFileSelected(docType, $event)"
+              (expiryDateSelected)="onDocumentExpiryDateSelected(docType, $event)"
+              (removed)="onDocumentFileRemoved(docType)"
+            ></app-document-upload>
+          </div>
+        </div>
+
+        <div class="step-actions">
+          <button mat-button matStepperPrevious><mat-icon>arrow_back</mat-icon> Nazad</button>
+          <button
+            mat-raised-button
+            color="primary"
+            matStepperNext
+            [disabled]="!isDocumentsComplete()"
+          >
+            Dalje <mat-icon>arrow_forward</mat-icon>
+          </button>
+        </div>
+      </div>
+    </mat-step>
+
+    <!-- Step 8: Review & Submit -->
+    <mat-step label="Pregled">
+      <div class="step-form">
+        <h2 class="step-title">Pregled i potvrda</h2>
+        <p class="step-description">Proverite sve informacije pre objave</p>
+
+        <mat-card class="summary-card">
+          <mat-card-header>
+            <mat-card-title
+              >{{ basicInfoForm.value.brand }} {{ basicInfoForm.value.model }}</mat-card-title
+            >
+            <mat-card-subtitle
+              >{{ basicInfoForm.value.year }} •
+              {{
+                locationData()?.city || locationData()?.address || 'Lokacija nije uneta'
+              }}</mat-card-subtitle
+            >
+          </mat-card-header>
+
+          <mat-card-content>
+            <div class="summary-section">
+              <h4>Lokacija</h4>
+              <p>{{ locationData()?.address || 'Nije uneta' }}</p>
+              @if (locationData()) {
+                <p class="coordinates-hint">
+                  ({{ locationData()!.latitude | number: '1.4-4' }},
+                  {{ locationData()!.longitude | number: '1.4-4' }})
+                </p>
+              }
+            </div>
+
+            <div class="summary-section">
+              <h4>Cena</h4>
+              <p class="price">
+                {{ basicInfoForm.value.pricePerDay | currency: 'RSD' : 'symbol' : '1.0-0' }} / dan
+              </p>
+            </div>
+
+            <div class="summary-section">
+              <h4>Specifikacije</h4>
+              <p>
+                {{ specificationsForm.value.seats }} sedišta •
+                {{ translateFuelType(specificationsForm.value.fuelType!) }} •
+                {{ translateTransmission(specificationsForm.value.transmissionType!) }}
+              </p>
+            </div>
+
+            <div class="summary-section">
+              <h4>Karakteristike</h4>
+              <p>{{ selectedFeatures().length }} izabrano</p>
+            </div>
+
+            <div class="summary-section">
+              <h4>Dodatna oprema</h4>
+              <p>{{ addOns().length > 0 ? addOns().join(', ') : 'Nema' }}</p>
+            </div>
+
+            <div class="summary-section">
+              <h4>Dužina iznajmljivanja</h4>
+              <p>
+                {{ policiesForm.value.minRentalDays }}-{{ policiesForm.value.maxRentalDays }} dana
+              </p>
+            </div>
+
+            <div class="summary-section">
+              <h4>Limit kilometraže</h4>
+              <p>{{ policiesForm.value.dailyMileageLimitKm }} km/dan</p>
+            </div>
+
+            <div class="summary-section">
+              <h4>Instant Book</h4>
+              <p>
+                {{
+                  policiesForm.value.instantBookEnabled
+                    ? 'Uključeno'
+                    : 'Isključeno (zahteva odobrenje)'
+                }}
+              </p>
+            </div>
+
+            <div class="summary-section">
+              <h4>Slike</h4>
+              <p>{{ imageUrls().length }} slika</p>
+            </div>
+          </mat-card-content>
+        </mat-card>
+
+        <div class="step-actions">
+          <button mat-button matStepperPrevious [disabled]="isSubmitting()">
+            <mat-icon>arrow_back</mat-icon> Nazad
+          </button>
+          <button
+            mat-raised-button
+            color="primary"
+            (click)="submitForm()"
+            [disabled]="isSubmitting()"
+          >
+            <ng-container *ngIf="isSubmitting(); else notSubmitting">
+              <mat-spinner diameter="20"></mat-spinner>
+              Objava...
+            </ng-container>
+            <ng-template #notSubmitting>
+              <mat-icon>check</mat-icon>
+              Objavi vozilo
+            </ng-template>
+          </button>
+        </div>
+      </div>
+    </mat-step>
+  </mat-stepper>
+</div>

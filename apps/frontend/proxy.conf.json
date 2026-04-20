@@ -1,0 +1,22 @@
+{
+  "/api": {
+    "target": "http://192.168.1.151:8080",
+    "secure": false,
+    "changeOrigin": true,
+    "logLevel": "debug",
+    "cookieDomainRewrite": "",
+    "cookiePathRewrite": "/"
+  },
+  "/uploads": {
+    "target": "http://192.168.1.151:8080",
+    "secure": false,
+    "changeOrigin": true,
+    "logLevel": "debug"
+  },
+  "/car-images": {
+    "target": "http://192.168.1.151:8080",
+    "secure": false,
+    "changeOrigin": true,
+    "logLevel": "debug"
+  }
+}

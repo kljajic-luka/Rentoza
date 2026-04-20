@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="sr-Latn-RS">
+  <head>
+    <meta charset="utf-8" />
+    <title>Rentoza</title>
+    <base href="/" />
+
+    <!-- 📱 MOBILE UX FOUNDATION: Native Shell Configuration -->
+    <!-- viewport-fit=cover: Extends content behind notch/home indicator -->
+    <!-- maximum-scale=1: Prevents unwanted zoom on input focus (accessibility preserved via user-scalable) -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5, user-scalable=yes"
+    />
+
+    <!-- 🎨 Theme Color: Seamless browser chrome integration -->
+    <!-- Matches toolbar gradient primary color for unified native feel -->
+    <meta name="theme-color" content="#593CFB" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#1e1640" media="(prefers-color-scheme: dark)" />
+
+    <!-- 🍎 iOS-Specific: Standalone mode + status bar styling -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Rentoza" />
+
+    <!-- 📋 SEO & PWA -->
+    <meta
+      name="description"
+      content="Rentoza. Rent premium cars from verified hosts across Serbia."
+    />
+    <link rel="icon" type="image/webp" href="assets/rentoza-logo.webp" />
+    <link rel="icon" type="image/png" href="assets/rentoza-logo.png" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="assets/icons/icon-192x192.png" />
+
+    <!-- Preconnect to font origins FIRST — starts DNS + TLS before parsing font links -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
+    <link rel="dns-prefetch" href="https://fonts.gstatic.com" />
+
+    <!-- Inter Font (body/UI) — display=swap: fallback renders immediately -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <!--
+      Material Icons — NON-BLOCKING load via the print/onload trick.
+      media="print" makes the browser fetch this sheet without blocking rendering;
+      the inline onload instantly upgrades it to media="all" once loaded.
+      Net effect: ~300-500ms saved on FCP (icons paint after content, not before).
+    -->
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/icon?family=Material+Icons"
+      media="print"
+      onload="this.media = 'all'"
+    />
+    <noscript>
+      <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons" />
+    </noscript>
+  </head>
+  <body>
+    <app-root></app-root>
+  </body>
+</html>

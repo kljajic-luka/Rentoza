@@ -1,0 +1,303 @@
+<section class="car-list-page" aria-labelledby="car-list-heading">
+  <!-- Page Header -->
+  <header class="page-header">
+    <div class="page-header__copy">
+      <div class="eyebrow">Dostupna vozila</div>
+      <h1 id="car-list-heading">Pronađite savršeno vozilo</h1>
+      <p>Pregledajte vozila od proverenih domaćina i rezervišite odmah.</p>
+    </div>
+  </header>
+
+  <div class="search-bar-wrapper">
+    <div class="search-bar">
+      <div class="search-segment search-segment--location">
+        <mat-form-field appearance="outline" class="search-field">
+          <mat-label>Gde</mat-label>
+          <mat-icon matPrefix>location_on</mat-icon>
+          <input
+            matInput
+            placeholder="Grad, aerodrom, adresa ili hotel"
+            [matAutocomplete]="locationAuto"
+            autocomplete="off"
+            [value]="searchLocation"
+            (input)="onLocationInput($event)"
+            (keyup.enter)="searchAvailability()"
+          />
+          <mat-autocomplete
+            #locationAuto="matAutocomplete"
+            [displayWith]="displayGeocodeSuggestion"
+            (optionSelected)="onGeocodeSuggestionSelected($event.option.value)"
+          >
+            <mat-option *ngIf="isLoadingGeocoding" disabled class="geocode-loading-option">
+              <mat-spinner diameter="20"></mat-spinner>
+              <span class="geocode-loading-label">Pretraga...</span>
+            </mat-option>
+            <mat-option *ngFor="let suggestion of geocodeSuggestions" [value]="suggestion">
+              <div class="geocode-suggestion">
+                <mat-icon class="suggestion-icon">place</mat-icon>
+                <span class="suggestion-text">{{ suggestion.formattedAddress }}</span>
+              </div>
+            </mat-option>
+          </mat-autocomplete>
+          <button
+            mat-icon-button
+            matSuffix
+            type="button"
+            (click)="useCurrentLocation()"
+            [disabled]="isLoadingCurrentLocation"
+            matTooltip="Koristi trenutnu lokaciju"
+            aria-label="Koristi moju trenutnu lokaciju"
+            class="geolocation-btn"
+          >
+            <mat-icon *ngIf="!isLoadingCurrentLocation">my_location</mat-icon>
+            <mat-spinner *ngIf="isLoadingCurrentLocation" diameter="20"></mat-spinner>
+          </button>
+        </mat-form-field>
+        <span class="validation-hint" *ngIf="locationError">{{ locationError }}</span>
+      </div>
+
+      <div class="search-segment">
+        <mat-form-field appearance="outline" class="search-field">
+          <mat-label>Početak</mat-label>
+          <mat-icon matPrefix>event</mat-icon>
+          <input
+            matInput
+            [matDatepicker]="startPicker"
+            [min]="today"
+            placeholder="Dodajte datum"
+            readonly
+            (keydown)="$event.preventDefault()"
+            [(ngModel)]="searchStartDate"
+            (dateChange)="onStartDateChange($event, endPicker)"
+          />
+          <mat-datepicker-toggle matSuffix [for]="startPicker"></mat-datepicker-toggle>
+          <mat-datepicker #startPicker startView="month"></mat-datepicker>
+        </mat-form-field>
+        <span class="validation-hint" *ngIf="startDateError">{{ startDateError }}</span>
+      </div>
+
+      <div class="search-segment">
+        <mat-form-field appearance="outline" class="search-field">
+          <mat-label>Početno vreme</mat-label>
+          <mat-select
+            [(ngModel)]="searchStartTime"
+            placeholder="Dodajte vreme"
+            [disabled]="!datesSelected"
+            (selectionChange)="startTimeError = ''"
+          >
+            <mat-option *ngFor="let time of timeOptions" [value]="time">{{ time }}</mat-option>
+          </mat-select>
+          <mat-icon matPrefix>schedule</mat-icon>
+        </mat-form-field>
+        <span class="validation-hint" *ngIf="startTimeError">{{ startTimeError }}</span>
+      </div>
+
+      <div class="search-segment">
+        <mat-form-field appearance="outline" class="search-field">
+          <mat-label>Kraj</mat-label>
+          <mat-icon matPrefix>event</mat-icon>
+          <input
+            matInput
+            [matDatepicker]="endPicker"
+            [min]="searchStartDate || today"
+            placeholder="Dodajte datum"
+            readonly
+            (keydown)="$event.preventDefault()"
+            [(ngModel)]="searchEndDate"
+            (dateChange)="onEndDateChange($event)"
+          />
+          <mat-datepicker-toggle matSuffix [for]="endPicker"></mat-datepicker-toggle>
+          <mat-datepicker #endPicker startView="month"></mat-datepicker>
+        </mat-form-field>
+        <span class="validation-hint" *ngIf="endDateError">{{ endDateError }}</span>
+        <span class="validation-hint" *ngIf="dateRangeError && !endDateError">{{
+          dateRangeError
+        }}</span>
+      </div>
+
+      <div class="search-segment">
+        <mat-form-field appearance="outline" class="search-field">
+          <mat-label>Krajnje vreme</mat-label>
+          <mat-select
+            [(ngModel)]="searchEndTime"
+            placeholder="Dodajte vreme"
+            [disabled]="!datesSelected"
+            (selectionChange)="endTimeError = ''"
+          >
+            <mat-option *ngFor="let time of timeOptions" [value]="time">{{ time }}</mat-option>
+          </mat-select>
+          <mat-icon matPrefix>schedule</mat-icon>
+        </mat-form-field>
+        <span class="validation-hint" *ngIf="endTimeError">{{ endTimeError }}</span>
+      </div>
+
+      <div class="search-segment search-segment--cta">
+        <div class="search-actions">
+          <button
+            type="button"
+            mat-icon-button
+            color="primary"
+            class="search-cta"
+            (click)="searchAvailability()"
+            [disabled]="!datesSelected || !searchStartTime || !searchEndTime || !searchLocation"
+            aria-label="Pretraži dostupnost"
+          >
+            <mat-icon>search</mat-icon>
+          </button>
+          <button
+            *ngIf="hasActiveState"
+            type="button"
+            mat-stroked-button
+            color="primary"
+            class="reset-all-btn"
+            (click)="resetAll()"
+          >
+            <mat-icon>restart_alt</mat-icon>
+            Resetuj sve
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filters Component (Now with Drawer) -->
+  <ng-container *ngIf="searchResults$ | async as results">
+    <app-car-filters
+      [totalResults]="results.totalElements"
+      [initialCriteria]="searchCriteria$.value"
+      (filtersChanged)="onFiltersChanged($event)"
+      (resetTriggered)="onResetFilters()"
+    ></app-car-filters>
+  </ng-container>
+
+  <!-- Main Content -->
+  <div class="content-grid">
+    <!-- Results Area (role=region, NOT main — avoids duplicate landmark) -->
+    <div class="results" role="region" aria-labelledby="car-list-heading">
+      <!-- Loading Overlay (Turo-style dim effect) -->
+      <div
+        class="loading-overlay"
+        *ngIf="isLoading$ | async"
+        role="status"
+        aria-live="polite"
+        aria-label="Učitavanje vozila, molimo sačekaj"
+      >
+        <mat-progress-spinner
+          mode="indeterminate"
+          diameter="40"
+          aria-hidden="true"
+        ></mat-progress-spinner>
+      </div>
+
+      <ng-container *ngIf="searchResults$ | async as results; else loading">
+        <!-- Availability Filter Display (only shown in availability mode) -->
+        <div class="availability-filters" *ngIf="availabilityFilterDisplay$ | async as availFilter">
+          <div class="availability-filters__header">
+            <mat-icon>event_available</mat-icon>
+            <span class="label">Pretraga dostupnosti</span>
+          </div>
+          <div class="availability-filters__content">
+            <div class="filter-item">
+              <mat-icon>place</mat-icon>
+              <span><strong>Lokacija:</strong> {{ availFilter.location }}</span>
+            </div>
+            <div class="filter-item">
+              <mat-icon>schedule</mat-icon>
+              <span><strong>Period:</strong> {{ availFilter.dateTimeRange }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Standard Filter Chips (only shown in standard mode) -->
+        <div class="filter-chips" *ngIf="(activeFilterChips$ | async)?.length">
+          <div class="filter-chips__header">
+            <span class="label">Aktivni filteri:</span>
+            <button mat-button (click)="onClearAllFiltersClick()" class="clear-all">
+              <mat-icon>close</mat-icon>
+              Obriši sve
+            </button>
+          </div>
+          <mat-chip-set>
+            <ng-container *ngFor="let chip of activeFilterChips$ | async">
+              <!-- Removable chip for the free-text query (q) -->
+              <mat-chip
+                *ngIf="chip.key === 'q'"
+                class="filter-chip--query"
+                (removed)="clearQuerySearch()"
+              >
+                <mat-icon matChipAvatar>search</mat-icon>
+                <strong>{{ chip.label }}:</strong>&nbsp;{{ chip.value }}
+                <button matChipRemove aria-label="Ukloni tekstualnu pretragu">
+                  <mat-icon>cancel</mat-icon>
+                </button>
+              </mat-chip>
+              <!-- Static chip for all other filters -->
+              <mat-chip *ngIf="chip.key !== 'q'">
+                <strong>{{ chip.label }}:</strong> {{ chip.value }}
+              </mat-chip>
+            </ng-container>
+          </mat-chip-set>
+        </div>
+
+        <!-- Results Count — announced to screen readers on update -->
+        <div class="results-header">
+          <h2>
+            {{ results.totalElements }}
+            {{ results.totalElements === 1 ? 'vozilo pronađeno' : 'vozila pronađeno' }}
+          </h2>
+          <!-- sr-only live region announces count to screen readers when results change -->
+          <p aria-live="polite" aria-atomic="true" class="sr-only">
+            {{ results.totalElements }}
+            {{ results.totalElements === 1 ? 'vozilo pronađeno' : 'vozila pronađena' }}
+          </p>
+        </div>
+
+        <!-- Car Grid — uses extracted app-car-card component -->
+        <div class="cars-grid" *ngIf="results.content.length > 0; else noResults">
+          <app-car-card
+            *ngFor="let car of results.content; trackBy: trackByCarId"
+            [car]="car"
+            class="fade-in-card"
+          ></app-car-card>
+        </div>
+
+        <!-- Empty State -->
+        <!-- Empty State -->
+        <ng-template #noResults>
+          <app-empty-state
+            variant="search"
+            [headline]="
+              (isAvailabilityMode$ | async) ? 'Nema dostupnih automobila' : 'Nema rezultata'
+            "
+            [subtext]="
+              (isAvailabilityMode$ | async)
+                ? 'Nema dostupnih automobila za ove datume. Pokušajte promeniti datume ili odabrati drugu lokaciju.'
+                : 'Pokušajte da promenite filtere ili obrišete neke od postojećih.'
+            "
+            [ctaLabel]="
+              (isAvailabilityMode$ | async) ? 'Prikaži sve automobile' : 'Obriši sve filtere'
+            "
+            [ctaRoute]="(isAvailabilityMode$ | async) ? '/cars' : null"
+            (ctaClicked)="onClearAllFiltersClick()"
+          />
+        </ng-template>
+
+        <!-- Pagination -->
+        <mat-paginator
+          *ngIf="results.content.length > 0"
+          [length]="results.totalElements"
+          [pageSize]="results.pageSize"
+          [pageIndex]="results.currentPage"
+          [pageSizeOptions]="[10, 20, 50]"
+          (page)="onPageChange($event)"
+          showFirstLastButtons
+        ></mat-paginator>
+      </ng-container>
+
+      <!-- Loading State -->
+      <ng-template #loading>
+        <app-loading-skeleton type="card" [count]="6" />
+      </ng-template>
+    </div>
+  </div>
+</section>

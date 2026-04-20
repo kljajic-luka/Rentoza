@@ -1,0 +1,597 @@
+.admin-page {
+  color: var(--admin-strong);
+}
+
+.review-grid {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 24px;
+  
+  @media (max-width: 1200px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.review-main {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.review-side {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.sticky-card {
+  position: sticky;
+  top: 100px;
+  
+  @media (max-width: 1200px) {
+    position: static;
+  }
+}
+
+// ========== CAR PHOTOS ==========
+
+.car-photos {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.photo-main {
+  width: 100%;
+  height: 400px;
+  border-radius: 8px;
+  background-size: cover;
+  background-position: center;
+  background-color: var(--color-surface-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  position: relative;
+  
+  &:hover {
+    opacity: 0.95;
+  }
+}
+
+.photo-overlay {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  padding: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  
+  mat-icon {
+    font-size: 80px;
+    width: 80px;
+    height: 80px;
+    color: rgba(255, 255, 255, 0.6);
+  }
+}
+
+.photo-thumbs {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding: 8px 0;
+  
+  .thumb {
+    flex-shrink: 0;
+    width: 80px;
+    height: 80px;
+    border-radius: 6px;
+    background-size: cover;
+    background-position: center;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: all 0.2s ease;
+    
+    &:hover {
+      border-color: var(--color-border-subtle);
+      transform: scale(1.05);
+    }
+    
+    &.active {
+      border-color: var(--primary-color, var(--brand-primary-dark));
+    }
+  }
+}
+
+// ========== PHOTO COMPARISON ==========
+
+.compare-toggle {
+  display: flex;
+  justify-content: center;
+
+  button {
+    mat-icon {
+      margin-right: 8px;
+    }
+  }
+}
+
+.comparison-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.comparison-slot {
+  border: 1px solid var(--color-border-subtle, #e0e0e0);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.comparison-label {
+  margin: 0;
+  padding: 8px 12px;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--admin-muted, #666);
+  background: var(--color-surface-muted, #f5f5f5);
+  border-bottom: 1px solid var(--color-border-subtle, #e0e0e0);
+}
+
+.comparison-photo {
+  width: 100%;
+  max-height: 400px;
+  object-fit: contain;
+  cursor: zoom-in;
+  background: var(--color-surface-muted, #fafafa);
+}
+
+.comparison-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  gap: 8px;
+  color: var(--admin-muted, #999);
+
+  mat-icon {
+    font-size: 48px;
+    width: 48px;
+    height: 48px;
+    opacity: 0.4;
+  }
+
+  span {
+    font-size: var(--font-size-sm);
+  }
+}
+
+.comparison-picker {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 8px 0;
+}
+
+.picker-thumb-wrap {
+  flex-shrink: 0;
+  position: relative;
+  width: 80px;
+}
+
+.picker-thumb {
+  width: 80px;
+  height: 60px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 2px solid transparent;
+  cursor: pointer;
+
+  &.selected-left {
+    border-color: var(--color-info, #3b82f6);
+    box-shadow: 0 0 0 2px var(--color-info-subtle, rgba(59, 130, 246, 0.3));
+  }
+
+  &.selected-right {
+    border-color: var(--color-success, #10b981);
+    box-shadow: 0 0 0 2px var(--color-success-subtle, rgba(16, 185, 129, 0.3));
+  }
+}
+
+.picker-actions {
+  display: flex;
+  justify-content: center;
+  gap: 0;
+  margin-top: 2px;
+
+  .picker-btn {
+    width: 28px;
+    height: 28px;
+    font-size: 14px;
+
+    mat-icon {
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
+    }
+  }
+}
+
+// ========== CAR OVERVIEW ==========
+
+.spec-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  
+  @media (max-width: 600px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.spec-item {
+  padding: 12px;
+  background: var(--color-surface-muted);
+  border-radius: 6px;
+}
+
+// ========== DATES SECTION ==========
+
+.dates-section {
+  .section-title {
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    margin-bottom: 16px;
+    text-transform: uppercase;
+    color: var(--admin-muted);
+  }
+}
+
+.dates-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  
+  @media (max-width: 600px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.date-item {
+  padding: 12px;
+  border-radius: 6px;
+  background: var(--color-surface-muted);
+}
+
+.date-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  
+  &.date-expired {
+    color: var(--color-danger, #d32f2f);
+  }
+
+  &.date-valid {
+    color: var(--color-success, #388e3c);
+  }
+
+  .success-icon {
+    font-size: 20px;
+    width: 20px;
+    height: 20px;
+    color: var(--color-success, #388e3c);
+  }
+
+  .error-icon {
+    font-size: 20px;
+    width: 20px;
+    height: 20px;
+    color: var(--color-danger, #d32f2f);
+  }
+}
+
+// ========== OWNER SECTION ==========
+
+.owner-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--color-border-subtle);
+  
+  &:last-child {
+    border-bottom: none;
+  }
+  
+  .mini-label {
+    font-size: var(--font-size-xs);
+    color: var(--admin-muted);
+    font-weight: 500;
+    min-width: 120px;
+  }
+  
+  .strong {
+    font-weight: 600;
+    text-align: right;
+  }
+}
+
+// ========== DOCUMENTS SECTION ==========
+
+.doc-summary {
+  font-size: var(--font-size-sm);
+  color: var(--admin-muted);
+  font-style: italic;
+}
+
+.documents-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.document-card {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  padding: 16px;
+  background: var(--color-surface-muted);
+  
+  &:hover {
+    background: var(--admin-surface);
+  }
+}
+
+.document-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.document-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.document-type {
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  margin: 0;
+  flex-basis: 100%;
+  color: var(--admin-strong);
+}
+
+.status-badge {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.expiry-badge {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.document-details {
+  margin-bottom: 12px;
+  padding: 8px 0;
+  font-size: var(--font-size-sm);
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  
+  .label {
+    font-weight: 600;
+    min-width: 120px;
+    color: var(--admin-muted);
+  }
+  
+  .error-text {
+    color: var(--color-danger, #d32f2f);
+    font-style: italic;
+  }
+}
+
+.document-actions {
+  display: flex;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border-subtle);
+  
+  button {
+    flex: 1;
+  }
+}
+
+// ========== APPROVAL STATE SUMMARY ==========
+
+.approval-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.approval-indicator {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 8px;
+  font-weight: 600;
+  
+  &.can-approve {
+    background: var(--color-success-bg, rgba(56, 142, 60, 0.1));
+    color: var(--color-success, #388e3c);
+    border: 1px solid var(--color-success-border, rgba(56, 142, 60, 0.3));
+  }
+
+  &.cannot-approve {
+    background: var(--color-danger-bg, rgba(211, 47, 47, 0.1));
+    color: var(--color-danger, #d32f2f);
+    border: 1px solid var(--color-danger-border, rgba(211, 47, 47, 0.3));
+  }
+  
+  mat-icon {
+    font-size: var(--font-size-xl);
+    width: 24px;
+    height: 24px;
+  }
+}
+
+.issues-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.issue-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  border-radius: 4px;
+  font-size: var(--font-size-sm);
+  background: var(--color-surface-muted);
+  color: var(--color-danger, #d32f2f);
+
+  &.resolved {
+    color: var(--color-success, #388e3c);
+    background: var(--color-success-bg, rgba(56, 142, 60, 0.05));
+  }
+  
+  .issue-icon {
+    font-size: var(--font-size-lg);
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+  }
+}
+
+// ========== REJECT SECTION ==========
+
+.reject-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  background: var(--color-surface-muted);
+  border-radius: 6px;
+}
+
+.full-width {
+  width: 100%;
+}
+
+.reason-helper {
+  font-size: var(--font-size-xs);
+  color: var(--admin-muted);
+  text-align: right;
+  
+  .success {
+    color: var(--color-success, #388e3c);
+    font-weight: 600;
+  }
+}
+
+// ========== UTILITIES ==========
+
+.my-3 {
+  margin: 16px 0 !important;
+}
+
+.section-title {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--admin-muted);
+  margin: 16px 0 8px;
+}
+
+.loading-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  gap: 16px;
+  
+  p {
+    color: var(--admin-muted);
+  }
+}
+
+.error-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  gap: 16px;
+  color: var(--color-danger, #d32f2f);
+  
+  mat-icon {
+    font-size: var(--font-size-3xl);
+    width: 48px;
+    height: 48px;
+  }
+  
+  p {
+    text-align: center;
+  }
+}
+
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 24px;
+  
+  button {
+    flex-shrink: 0;
+  }
+  
+  > div {
+    flex: 1;
+  }
+}
+
+.page-title {
+  font-size: 28px;
+  font-weight: 700;
+  margin: 0;
+  color: var(--admin-strong);
+}
+
+.page-subtitle {
+  font-size: var(--font-size-sm);
+  color: var(--admin-muted);
+  margin: 4px 0 0 0;
+}
+
+// ========== MATERIAL OVERRIDES ==========
+
+::ng-deep {
+  mat-card-header {
+    align-items: flex-start;
+  }
+  
+  mat-form-field {
+    &.full-width {
+      width: 100% !important;
+    }
+  }
+}

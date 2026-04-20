@@ -1,0 +1,400 @@
+<section class="hero">
+  <div class="hero__overlay"></div>
+  <div class="hero__container">
+    <div class="hero__content">
+      <div class="hero__badge-pill">
+        <mat-icon>verified_user</mat-icon>
+        <span>Verifikovan ID i vozacka</span>
+      </div>
+      <p class="hero__eyebrow">Potpisan ugovor • Foto check-in • Depozit zastita</p>
+      <h1>Iznajmite auto od proverenih vlasnika — svaka voznja je zasticena ugovorom i inspekcijom.</h1>
+      <p class="hero__lede">
+        Verifikacija licne karte i vozacke, potpisani ugovor o zakupu, foto-inspekcija pri
+        preuzimanju i vracanju, i zastita depozitom — sve ugradjeno u svaku rezervaciju.
+      </p>
+      <div class="hero__search-bar">
+        <div class="search-segment search-segment--location">
+          <mat-form-field appearance="outline" class="hero__search-field">
+            <mat-label>Gde</mat-label>
+            <mat-icon matPrefix>location_on</mat-icon>
+            <input
+              matInput
+              placeholder="Grad, aerodrom, adresa ili hotel"
+              [matAutocomplete]="locationAuto"
+              autocomplete="off"
+              [(ngModel)]="searchLocation"
+              (input)="onLocationInput($event)"
+              (blur)="validateField('location')"
+              (keyup.enter)="searchCars()"
+            />
+            <button
+              *ngIf="!isLoadingGeocode && !isGettingLocation"
+              mat-icon-button
+              matSuffix
+              type="button"
+              (click)="useCurrentLocation()"
+              matTooltip="Koristi moju lokaciju"
+              aria-label="Koristi moju trenutnu lokaciju"
+              class="geolocation-btn"
+            >
+              <mat-icon>my_location</mat-icon>
+            </button>
+            <mat-spinner
+              *ngIf="isLoadingGeocode || isGettingLocation"
+              diameter="20"
+              matSuffix
+            ></mat-spinner>
+            <mat-autocomplete
+              #locationAuto="matAutocomplete"
+              (optionSelected)="onGeocodeSuggestionSelected($event.option.value)"
+              [displayWith]="displayGeocodeSuggestion"
+            >
+              <mat-option *ngFor="let suggestion of geocodeSuggestions" [value]="suggestion">
+                <mat-icon>place</mat-icon>
+                <span>{{ suggestion.formattedAddress }}</span>
+              </mat-option>
+            </mat-autocomplete>
+          </mat-form-field>
+          <span class="validation-hint" *ngIf="locationError">{{ locationError }}</span>
+        </div>
+
+        <div class="search-segment">
+          <mat-form-field appearance="outline" class="hero__search-field">
+            <mat-label>Početak</mat-label>
+            <mat-icon matPrefix>event</mat-icon>
+            <input
+              matInput
+              [matDatepicker]="startPicker"
+              [min]="today"
+              placeholder="Dodajte datum"
+              readonly
+              (keydown)="$event.preventDefault()"
+              [(ngModel)]="searchStartDate"
+              (dateChange)="onStartDateChange($event, endPicker)"
+            />
+            <mat-datepicker-toggle matSuffix [for]="startPicker"></mat-datepicker-toggle>
+            <mat-datepicker #startPicker startView="month"></mat-datepicker>
+          </mat-form-field>
+          <span class="validation-hint" *ngIf="startDateError">{{ startDateError }}</span>
+        </div>
+
+        <div class="search-segment">
+          <mat-form-field appearance="outline" class="hero__search-field">
+            <mat-label>Početno vreme</mat-label>
+            <mat-select
+              [(ngModel)]="searchStartTime"
+              placeholder="Dodajte vreme"
+              [disabled]="!datesSelected"
+              (selectionChange)="startTimeError = ''"
+            >
+              <mat-option *ngFor="let time of timeOptions" [value]="time">{{ time }}</mat-option>
+            </mat-select>
+            <mat-icon matPrefix>schedule</mat-icon>
+          </mat-form-field>
+          <span class="validation-hint" *ngIf="startTimeError">{{ startTimeError }}</span>
+        </div>
+
+        <div class="search-segment">
+          <mat-form-field appearance="outline" class="hero__search-field">
+            <mat-label>Kraj</mat-label>
+            <mat-icon matPrefix>event</mat-icon>
+            <input
+              matInput
+              [matDatepicker]="endPicker"
+              [min]="searchStartDate || today"
+              placeholder="Dodajte datum"
+              readonly
+              (keydown)="$event.preventDefault()"
+              [(ngModel)]="searchEndDate"
+              (dateChange)="onEndDateChange($event)"
+            />
+            <mat-datepicker-toggle matSuffix [for]="endPicker"></mat-datepicker-toggle>
+            <mat-datepicker #endPicker startView="month"></mat-datepicker>
+          </mat-form-field>
+          <span class="validation-hint" *ngIf="endDateError">{{ endDateError }}</span>
+          <span class="validation-hint" *ngIf="dateRangeError && !endDateError">{{
+            dateRangeError
+          }}</span>
+        </div>
+
+        <div class="search-segment">
+          <mat-form-field appearance="outline" class="hero__search-field">
+            <mat-label>Krajnje vreme</mat-label>
+            <mat-select
+              [(ngModel)]="searchEndTime"
+              placeholder="Dodajte vreme"
+              [disabled]="!datesSelected"
+              (selectionChange)="endTimeError = ''"
+            >
+              <mat-option *ngFor="let time of timeOptions" [value]="time">{{ time }}</mat-option>
+            </mat-select>
+            <mat-icon matPrefix>schedule</mat-icon>
+          </mat-form-field>
+          <span class="validation-hint" *ngIf="endTimeError">{{ endTimeError }}</span>
+        </div>
+
+        <div class="search-segment search-segment--cta">
+          <button
+            type="button"
+            mat-icon-button
+            color="primary"
+            class="hero__search-cta"
+            (click)="searchCars()"
+            [disabled]="!datesSelected || !searchStartTime || !searchEndTime || !searchLocation"
+            aria-label="Pretraži dostupnost"
+          >
+            <mat-icon>search</mat-icon>
+          </button>
+        </div>
+      </div>
+      <div class="hero__actions">
+        <a mat-raised-button color="primary" routerLink="/cars">Pregledaj automobile</a>
+        <a
+          mat-stroked-button
+          color="accent"
+          [routerLink]="['/auth/register']"
+          [queryParams]="{ role: 'OWNER' }"
+        >
+          Postani domaćin
+        </a>
+      </div>
+      <div class="hero__stats">
+        <div *ngIf="homeStats?.guestSatisfactionRating">
+          <span class="stat__value">{{ formatRating(homeStats?.guestSatisfactionRating) }}</span>
+          <span class="stat__label">Zadovoljstvo gostiju</span>
+        </div>
+        <div *ngIf="homeStats?.verifiedVehiclesCount">
+          <span class="stat__value">{{
+            formatVerifiedCount(homeStats?.verifiedVehiclesCount)
+          }}</span>
+          <span class="stat__label">Verifikovanih vozila</span>
+        </div>
+        <div>
+          <span class="stat__value">
+            <mat-icon class="stat__icon">gavel</mat-icon>
+          </span>
+          <span class="stat__label">Ugovor o zakupu</span>
+        </div>
+        <div>
+          <span class="stat__value">
+            <mat-icon class="stat__icon">camera_alt</mat-icon>
+          </span>
+          <span class="stat__label">Foto check-in</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     🗺️ GEOSPATIAL SEARCH RESULTS (Phase 2.4)
+     Shows search results on map or as list after user performs search
+     ═══════════════════════════════════════════════════════════════════════════ -->
+<section class="search-results" *ngIf="hasSearched">
+  <div class="search-results__header">
+    <div class="search-results__info">
+      <h2 *ngIf="!isSearching && searchResults.length > 0">
+        {{ searchResults.length }} vozila u krugu od {{ searchRadius }} km
+      </h2>
+      <h2 *ngIf="!isSearching && searchResults.length === 0">
+        Nema dostupnih vozila u ovom području
+      </h2>
+      <h2 *ngIf="isSearching">Pretraga u toku...</h2>
+      <p class="search-results__location" *ngIf="selectedGeocodeSuggestion">
+        <mat-icon>place</mat-icon>
+        {{ selectedGeocodeSuggestion.formattedAddress }}
+      </p>
+    </div>
+    <div class="search-results__controls">
+      <!-- Radius slider -->
+      <div class="radius-control">
+        <mat-icon>radar</mat-icon>
+        <mat-slider [min]="5" [max]="100" [step]="5" [displayWith]="formatRadius" discrete>
+          <input matSliderThumb [(ngModel)]="searchRadius" (valueChange)="onRadiusChange($event)" />
+        </mat-slider>
+        <span class="radius-label">{{ searchRadius }} km</span>
+      </div>
+      <!-- View toggle -->
+      <mat-button-toggle-group [value]="viewMode" (change)="viewMode = $event.value">
+        <mat-button-toggle value="list" aria-label="Lista">
+          <mat-icon>view_list</mat-icon>
+        </mat-button-toggle>
+        <mat-button-toggle value="map" aria-label="Mapa">
+          <mat-icon>map</mat-icon>
+        </mat-button-toggle>
+      </mat-button-toggle-group>
+    </div>
+  </div>
+
+  <!-- Loading spinner -->
+  <div class="search-results__loading" *ngIf="isSearching"
+    role="status" aria-live="polite" aria-label="Pretraga vozila u toku">
+    <mat-spinner diameter="48" aria-hidden="true"></mat-spinner>
+    <p>Tražimo vozila u vašoj blizini...</p>
+  </div>
+
+  <!-- Map View -->
+  <div class="search-results__map" *ngIf="!isSearching && viewMode === 'map'">
+    <app-location-picker
+      [latitude]="searchCenter.latitude"
+      [longitude]="searchCenter.longitude"
+      [markers]="carMarkers"
+      [clusterMarkers]="true"
+      [showRadiusCircle]="true"
+      [markerRadius]="searchRadius"
+      [editable]="true"
+      [height]="'500px'"
+      [zoom]="11"
+      (locationChanged)="onMapLocationSelected($event)"
+      (markerSelected)="onCarMarkerSelected($event)"
+    >
+    </app-location-picker>
+  </div>
+
+  <!-- List View -->
+  <div
+    class="search-results__list"
+    *ngIf="!isSearching && viewMode === 'list' && searchResults.length > 0"
+  >
+    <div class="search-results__grid">
+      <mat-card
+        *ngFor="let car of searchResults"
+        class="search-result-card"
+        [routerLink]="['/cars', car.id]"
+      >
+        <div class="search-result-card__media">
+          <img
+            *ngIf="car.imageUrl; else placeholderImg"
+            [src]="car.imageUrl"
+            [alt]="car.brand + ' ' + car.model"
+            loading="lazy"
+          />
+          <ng-template #placeholderImg>
+            <div class="image-placeholder">
+              <mat-icon>directions_car</mat-icon>
+            </div>
+          </ng-template>
+          <span class="chip">{{ car.year }}</span>
+          <div class="distance-badge" *ngIf="car.distanceKm">
+            <mat-icon>near_me</mat-icon>
+            {{ car.distanceKm | number: '1.1-1' }} km
+          </div>
+        </div>
+        <div class="search-result-card__body">
+          <h3>{{ car.brand }} {{ car.model }}</h3>
+          <p class="meta">
+            <mat-icon class="meta-icon">place</mat-icon>
+            {{ car.locationGeoPoint.city || 'Srbija' }}
+            <span *ngIf="car.locationGeoPoint.obfuscationApplied" class="approx-location">
+              (približna lokacija)
+            </span>
+          </p>
+          <div class="search-result-card__features" *ngIf="car.features?.length">
+            <span *ngFor="let feature of car.features?.slice(0, 3)" class="feature-chip">
+              {{ feature }}
+            </span>
+          </div>
+        </div>
+        <div class="search-result-card__footer">
+          <span class="price">{{ car.pricePerDay | number: '1.0-0' }} RSD/dan</span>
+          <span class="delivery-badge" *ngIf="car.deliveryAvailable">
+            <mat-icon>local_shipping</mat-icon>
+            Dostava
+          </span>
+        </div>
+      </mat-card>
+    </div>
+  </div>
+
+  <!-- No results -->
+  <div class="search-results__empty" *ngIf="!isSearching && searchResults.length === 0">
+    <mat-icon>search_off</mat-icon>
+    <h3>Nema vozila u ovom području</h3>
+    <p>Pokušajte da povećate radijus pretrage ili promenite lokaciju.</p>
+    <button mat-stroked-button color="primary" (click)="searchRadius = 50; onRadiusChange(50)">
+      Povećaj radijus na 50 km
+    </button>
+  </div>
+</section>
+
+<section class="featured" *ngIf="featuredCars$ | async as cars">
+  <header data-animate>
+    <div>
+      <p class="eyebrow">Istaknuti izbori</p>
+      <h2 id="featured-heading">Ručno odabrani automobili spremni za vašu sledeću avanturu</h2>
+    </div>
+    <a mat-stroked-button color="accent" routerLink="/cars">
+      Istražite flotu
+      <mat-icon>arrow_forward</mat-icon>
+    </a>
+  </header>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════════
+       📱 PHASE 2.2: CSS Grid Layout (replaces fxLayout for mobile parity)
+       Matches car-list.component grid structure exactly
+       ═══════════════════════════════════════════════════════════════════════════ -->
+  <div class="featured__grid">
+    <mat-card *ngFor="let car of cars" class="featured__card" [routerLink]="['/cars', car.id]">
+      <div class="featured__media">
+        <img
+          *ngIf="car.imageUrl; else placeholder"
+          [src]="car.imageUrl"
+          [alt]="car.make + ' ' + car.model"
+          loading="lazy"
+        />
+        <ng-template #placeholder>
+          <div class="image-placeholder">
+            <mat-icon>directions_car</mat-icon>
+          </div>
+        </ng-template>
+        <span class="chip">{{ car.year }}</span>
+
+        <!-- 📱 Favorite Button (Thumb Zone) - Same component as CarListComponent -->
+        <div class="favorite-zone" (click)="$event.stopPropagation()">
+          <app-favorite-button [carId]="+car.id"></app-favorite-button>
+        </div>
+      </div>
+
+      <div class="featured__body">
+        <div class="featured__header">
+          <h3>{{ car.make }} {{ car.model }}</h3>
+          <span class="price">{{ car.pricePerDay | number: '1.0-0' }} RSD/dan</span>
+        </div>
+        <p class="meta">
+          <mat-icon class="meta-icon">place</mat-icon>
+          {{ car.location }}
+        </p>
+        <p class="description">{{ car.description || 'Opis trenutno nije dostupan.' }}</p>
+      </div>
+
+      <div class="featured__footer">
+        <a
+          mat-flat-button
+          color="primary"
+          [routerLink]="['/cars', car.id]"
+          (click)="$event.stopPropagation()"
+        >
+          Pogledaj detalje
+        </a>
+      </div>
+    </mat-card>
+  </div>
+</section>
+
+<section class="cta-strip" data-animate>
+  <div class="cta-strip__content">
+    <!-- h2 here (not h3): no parent h2 in this section — heading hierarchy must not skip levels -->
+    <h2>Podelite svoj automobil, zarađujte bez napora.</h2>
+    <p>
+      Postavite svoje vozilo za nekoliko minuta i pridružite se rastućoj zajednici premium domaćina.
+    </p>
+  </div>
+  <a
+    mat-raised-button
+    color="accent"
+    [routerLink]="['/auth/register']"
+    [queryParams]="{ role: 'OWNER' }"
+  >
+    Počnite sa iznajmljivanjem
+  </a>
+</section>

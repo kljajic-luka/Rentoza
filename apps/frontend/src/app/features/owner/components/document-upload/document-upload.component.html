@@ -1,0 +1,90 @@
+<div class="document-upload-container">
+  <!-- Label -->
+  <label class="upload-label">
+    {{ label }}
+    <span *ngIf="required" class="required-star">*</span>
+  </label>
+
+  <!-- Drop Zone -->
+  <div
+    class="drop-zone"
+    [class.drag-over]="dragOver()"
+    [class.has-file]="file()"
+    [class.uploading]="uploading()"
+    (dragover)="onDragOver($event)"
+    (dragleave)="onDragLeave($event)"
+    (drop)="onDrop($event)"
+  >
+    <!-- Empty State -->
+    <div *ngIf="!file() && !uploading()" class="empty-state">
+      <div class="icon">📄</div>
+      <p class="primary-text">Prevucite dokument ovde</p>
+      <p class="secondary-text">ili</p>
+      <label class="browse-button">
+        <input type="file" accept=".pdf,.jpg,.jpeg,.png" (change)="onFileSelected($event)" hidden />
+        Izaberite fajl
+      </label>
+      <p class="hint">PDF, JPEG, PNG • Maks. 10MB</p>
+    </div>
+
+    <!-- File Preview -->
+    <div *ngIf="file() && !uploading()" class="file-preview">
+      <!-- Image Preview -->
+      <img *ngIf="previewUrl()" [src]="previewUrl()" alt="Preview" class="preview-image" />
+
+      <!-- PDF Icon -->
+      <div *ngIf="!previewUrl()" class="pdf-icon">📑</div>
+
+      <div class="file-info">
+        <span class="file-name">{{ file()?.name }}</span>
+        <span class="file-size">{{ formatFileSize(file()?.size || 0) }}</span>
+      </div>
+
+      <button type="button" class="remove-button" (click)="remove()">✕</button>
+    </div>
+
+    <!-- Upload Progress -->
+    <div *ngIf="uploading()" class="progress-container">
+      <div class="progress-bar">
+        <div class="progress-fill" [style.width.%]="uploadProgress()"></div>
+      </div>
+      <span class="progress-text">{{ uploadProgress() }}%</span>
+    </div>
+  </div>
+
+  <!-- Expiry Date (optional) -->
+  <div class="expiry-date-container" *ngIf="file() && !uploading()">
+    <label [for]="'expiry-date-' + documentType">
+      Datum isteka
+      <span *ngIf="required" class="required-star">*</span>
+    </label>
+    <input
+      type="date"
+      lang="en-GB"
+      [id]="'expiry-date-' + documentType"
+      [ngModel]="expiryDate()"
+      (ngModelChange)="onExpiryDateChange($event)"
+      [min]="'2024-01-01'"
+      [required]="required"
+    />
+    <div *ngIf="required && !expiryDate()" class="hint">Obavezno je uneti datum isteka</div>
+  </div>
+
+  <!-- Error Message -->
+  <div *ngIf="error()" class="error-message">⚠️ {{ error() }}</div>
+
+  <!-- Upload Button -->
+  <button
+    *ngIf="carId && file() && !uploading() && uploadProgress() < 100"
+    type="button"
+    class="upload-button"
+    (click)="upload()"
+  >
+    Otpremi dokument
+  </button>
+
+  <!-- Success State -->
+  <div *ngIf="uploadProgress() === 100 && !uploading()" class="success-message">
+    ✅ Dokument uspešno otpremljen
+  </div>
+</div>

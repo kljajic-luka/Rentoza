@@ -1,0 +1,148 @@
+package org.example.rentoza.payment;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.time.Instant;
+import java.util.Map;
+import java.util.UUID;
+
+/**
+ * Receives asynchronous payment provider webhook callbacks.
+ *
+ * <h2>Design</h2>
+ * <ul>
+ *   <li>No authentication — the endpoint is intentionally public so that payment providers
+ *       can call it without credentials. Security is enforced via HMAC signature
+ *       verification inside {@link ProviderEventService}.</li>
+ *   <li>Returns {@code 200 OK} only for accepted/idempotent events. Retryable transport
+ *       or processing failures return {@code 503} so the provider can retry safely.</li>
+ *   <li>The raw body is forwarded as-is without parsing — the service layer owns
+ *       interpretation logic.</li>
+ * </ul>
+ *
+ * <h2>Expected Headers</h2>
+ * <ul>
+ *   <li>{@code X-Monri-Event-Id} — provider-assigned globally unique event ID (required)</li>
+ *   <li>{@code X-Monri-Event-Type} — event type string (required)</li>
+ *   <li>{@code X-Monri-Booking-Id} — booking ID if determinable by the provider (optional)</li>
+ *   <li>{@code X-Monri-Signature} — HMAC-SHA256 of the request body (optional in dev/test)</li>
+ * </ul>
+ */
+@RestController
+@RequestMapping("/api/webhooks/payment")
+@RequiredArgsConstructor
+@Slf4j
+public class WebhookPaymentController {
+
+    private final ProviderEventService providerEventService;
+    private final ObjectMapper objectMapper;
+
+    /** Mirrors ProviderEventService config — used to enforce event-ID requirement when auth is active. */
+    @Value("${app.payment.webhook.secret:}")
+    private String webhookSecret;
+
+    /**
+     * Entry point for all provider webhook notifications.
+     *
+     * @param eventId       {@code X-Monri-Event-Id} header
+     * @param eventType     {@code X-Monri-Event-Type} header
+     * @param bookingIdStr  {@code X-Monri-Booking-Id} header (numeric, optional)
+     * @param authId        {@code X-Monri-Auth-Id} header — provider authorization ID
+     *                      (optional but required for accurate transaction-scoped routing)
+     * @param signature     {@code X-Monri-Signature} header (HMAC, optional)
+     * @param rawBody       raw JSON request body
+    * @return 200 for accepted/idempotent events, non-2xx for retryable failures or invalid requests
+     */
+    @PostMapping(consumes = "application/json")
+    public ResponseEntity<Map<String, Object>> handleWebhook(
+            @RequestHeader(value = "X-Monri-Event-Id",  required = false) String eventId,
+            @RequestHeader(value = "X-Monri-Event-Type", required = false) String eventType,
+            @RequestHeader(value = "X-Monri-Booking-Id", required = false) String bookingIdStr,
+            @RequestHeader(value = "X-Monri-Auth-Id",   required = false) String authId,
+            @RequestHeader(value = "X-Monri-Signature",  required = false) String signature,
+            @RequestBody String rawBody) {
+
+        // P0-FIX: When HMAC verification is active, a missing event-id cannot be safely
+        // deduplicated and is structurally invalid — reject it rather than synthesising an ID
+        // that would bypass deduplication on replays.
+        if (eventId == null || eventId.isBlank()) {
+            if (webhookSecret != null && !webhookSecret.isBlank()) {
+                log.error("[Webhook] REJECTED: Missing X-Monri-Event-Id while signature verification is active");
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                        "status",    "rejected",
+                        "reason",    "MISSING_EVENT_ID",
+                        "processed", false
+                ));
+            }
+            // Dev/test mode: synthesise an ID so the handler can proceed without a real provider.
+            eventId = "synthetic_" + UUID.randomUUID().toString().replace("-", "");
+            log.warn("[Webhook] Missing X-Monri-Event-Id (dev/test only) — assigned synthetic id={}", eventId);
+        }
+
+        // Parse optional booking id
+        Long bookingId = null;
+        if (bookingIdStr != null && !bookingIdStr.isBlank()) {
+            try {
+                bookingId = Long.parseLong(bookingIdStr);
+            } catch (NumberFormatException ex) {
+                log.warn("[Webhook] Invalid X-Monri-Booking-Id '{}' — ignoring", bookingIdStr);
+            }
+        }
+
+        log.info("[Webhook] Received event={} type={} bookingId={} authId={}", eventId, eventType, bookingId, authId);
+
+        // H-13: Extract event timestamp from the JSON body for replay-window validation
+        Instant eventTimestamp = null;
+        try {
+            JsonNode bodyNode = objectMapper.readTree(rawBody);
+            if (bodyNode.has("created_at")) {
+                eventTimestamp = Instant.parse(bodyNode.get("created_at").asText());
+            } else if (bodyNode.has("timestamp")) {
+                eventTimestamp = Instant.parse(bodyNode.get("timestamp").asText());
+            }
+        } catch (Exception ex) {
+            log.debug("[Webhook] Could not extract event timestamp from body: {}", ex.getMessage());
+            // Not fatal — the ingestEvent method handles null timestamps gracefully
+        }
+
+        try {
+                ProviderEventService.IngestResult result = providerEventService.ingestEventDetailed(
+                    eventId, eventType, bookingId, authId, rawBody, signature, eventTimestamp);
+
+                return switch (result.outcome()) {
+                case PROCESSED, DUPLICATE -> ResponseEntity.ok(Map.of(
+                    "status", result.outcome() == ProviderEventService.IngestOutcome.DUPLICATE ? "duplicate" : "ok",
+                    "eventId", eventId,
+                    "processed", result.processed()
+                ));
+                case REJECTED -> ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                    "status", "rejected",
+                    "eventId", eventId,
+                    "reason", result.reason(),
+                    "processed", false
+                ));
+                case RETRYABLE_FAILURE -> ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(
+                    "status", "retry",
+                    "eventId", eventId,
+                    "reason", result.reason(),
+                    "processed", false
+                ));
+                };
+        } catch (Exception ex) {
+            log.error("[Webhook] Unhandled error processing event={}: {}", eventId, ex.getMessage(), ex);
+                return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(
+                    "status",    "retry",
+                    "eventId",   eventId,
+                    "reason",    ex.getMessage(),
+                    "processed", false
+            ));
+        }
+    }
+}

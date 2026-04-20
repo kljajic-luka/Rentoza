@@ -1,0 +1,411 @@
+<div class="booking-dialog">
+  <h2 mat-dialog-title id="booking-dialog-title">
+    <mat-icon>event_available</mat-icon>
+    Rezervišite vozilo
+  </h2>
+
+  <mat-dialog-content aria-labelledby="booking-dialog-title">
+    <form [formGroup]="bookingForm" class="booking-form">
+      <!-- Trip Details Section - Start -->
+      <section class="form-section">
+        <h3 class="section-title">
+          <mat-icon>flight_takeoff</mat-icon>
+          Početak putovanja
+        </h3>
+
+        <div class="form-row datetime-row">
+          <mat-form-field appearance="outline" class="form-field date-field">
+            <mat-label>Datum</mat-label>
+            <input
+              matInput
+              [matDatepicker]="startPicker"
+              formControlName="startDate"
+              [min]="startDateMin"
+              (dateChange)="handleStartDateChange($event.value)"
+              [matDatepickerFilter]="startDateFilter"
+            />
+            <mat-datepicker-toggle matIconSuffix [for]="startPicker"></mat-datepicker-toggle>
+            <mat-datepicker #startPicker></mat-datepicker>
+            <mat-error *ngIf="bookingForm.controls.startDate.invalid">
+              Datum je obavezan
+            </mat-error>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="form-field time-field">
+            <mat-label>Vreme</mat-label>
+            <mat-select formControlName="startTime">
+              @for (slot of timeSlots; track slot.value) {
+                <mat-option
+                  [value]="slot.value"
+                  [disabled]="
+                    bookingForm.controls.startDate.value &&
+                    isTimeSlotDisabled(bookingForm.controls.startDate.value, slot)
+                  "
+                >
+                  {{ slot.label }}
+                </mat-option>
+              }
+            </mat-select>
+            <mat-icon matPrefix>schedule</mat-icon>
+            <mat-error *ngIf="bookingForm.controls.startTime.invalid">
+              Vreme je obavezno
+            </mat-error>
+          </mat-form-field>
+        </div>
+      </section>
+
+      <!-- Trip Details Section - End -->
+      <section class="form-section">
+        <h3 class="section-title">
+          <mat-icon>flight_land</mat-icon>
+          Kraj putovanja
+        </h3>
+
+        <div class="form-row datetime-row">
+          <mat-form-field appearance="outline" class="form-field date-field">
+            <mat-label>Datum</mat-label>
+            <input
+              matInput
+              [matDatepicker]="endPicker"
+              formControlName="endDate"
+              [min]="endDateMin"
+              (dateChange)="handleEndDateChange($event.value)"
+              [matDatepickerFilter]="endDateFilter"
+            />
+            <mat-datepicker-toggle matIconSuffix [for]="endPicker"></mat-datepicker-toggle>
+            <mat-datepicker #endPicker></mat-datepicker>
+            <mat-error *ngIf="bookingForm.controls.endDate.invalid"> Datum je obavezan </mat-error>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="form-field time-field">
+            <mat-label>Vreme</mat-label>
+            <mat-select formControlName="endTime">
+              @for (slot of timeSlots; track slot.value) {
+                <mat-option
+                  [value]="slot.value"
+                  [disabled]="
+                    bookingForm.controls.endDate.value &&
+                    isTimeSlotDisabled(bookingForm.controls.endDate.value, slot)
+                  "
+                >
+                  {{ slot.label }}
+                </mat-option>
+              }
+            </mat-select>
+            <mat-icon matPrefix>schedule</mat-icon>
+            <mat-error *ngIf="bookingForm.controls.endTime.invalid"> Vreme je obavezno </mat-error>
+          </mat-form-field>
+        </div>
+      </section>
+
+      <!-- Rental Duration Info -->
+      @if (rentalDays() > 0) {
+        <div
+          class="rental-summary"
+          [class.rental-summary--error]="durationTooShort() || durationTooLong()"
+        >
+          <mat-icon>schedule</mat-icon>
+          <span
+            >Trajanje: <strong>{{ formatDuration() }}</strong></span
+          >
+        </div>
+      }
+
+      <!-- Car-specific constraints hint -->
+      @if (minRentalDays > 1 || maxRentalDays < 30) {
+        <p class="constraints-hint">
+          <mat-icon class="hint-icon">info</mat-icon>
+          <span>
+            Vlasnik zahteva
+            @if (minRentalDays > 1) {
+              min. <strong>{{ minRentalDays }} dana</strong>
+            }
+            @if (minRentalDays > 1 && maxRentalDays < 30) {
+              i
+            }
+            @if (maxRentalDays < 30) {
+              max. <strong>{{ maxRentalDays }} dana</strong>
+            }
+            iznajmljivanja.
+          </span>
+        </p>
+      }
+
+      <!-- Duration validation errors -->
+      @if (durationTooShort()) {
+        <p class="validation-error">
+          <mat-icon>error_outline</mat-icon>
+          <span>Minimalno trajanje iznajmljivanja je <strong>24 sata</strong>.</span>
+        </p>
+      }
+      @if (durationTooLong()) {
+        <p class="validation-error">
+          <mat-icon>error_outline</mat-icon>
+          <span
+            >Maksimalno trajanje iznajmljivanja je <strong>{{ maxRentalDays }} dana</strong>.</span
+          >
+        </p>
+      }
+
+      <mat-divider></mat-divider>
+
+      <!-- Pickup Location Section (Phase 2.4) -->
+      @if (carGeoPoint) {
+        <section class="form-section">
+          <app-pickup-location-selector
+            [carId]="data.car.id"
+            [carLocation]="carGeoPoint"
+            [deliveryAvailable]="deliveryAvailable"
+            [deliveryMaxRadius]="deliveryMaxRadius"
+            (pickupLocationChanged)="onPickupLocationChanged($event)"
+            (deliveryFeeCalculated)="onDeliveryFeeCalculated($event)"
+            (validityChanged)="onPickupValidityChanged($event)"
+          />
+        </section>
+
+        <mat-divider></mat-divider>
+      }
+
+      <!-- Driver Details Section -->
+      <section class="form-section">
+        <h3 class="section-title">
+          <mat-icon>person</mat-icon>
+          Podaci vozača
+        </h3>
+
+        <div class="form-row">
+          <mat-form-field appearance="outline" class="form-field">
+            <mat-label>Ime</mat-label>
+            <input matInput formControlName="driverName" readonly />
+            <mat-icon matPrefix>badge</mat-icon>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="form-field">
+            <mat-label>Prezime</mat-label>
+            <input matInput formControlName="driverSurname" readonly />
+            <mat-icon matPrefix>badge</mat-icon>
+          </mat-form-field>
+        </div>
+
+        <div class="form-row">
+          <mat-form-field appearance="outline" class="form-field">
+            <mat-label>Starost</mat-label>
+            <input matInput type="number" formControlName="driverAge" readonly />
+            <mat-icon matPrefix>cake</mat-icon>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="form-field">
+            <mat-label>Telefon</mat-label>
+            <input matInput formControlName="driverPhone" readonly />
+            <mat-icon matPrefix>phone</mat-icon>
+          </mat-form-field>
+        </div>
+
+        <p class="driver-info-hint">
+          <mat-icon class="hint-icon">info</mat-icon>
+          <span
+            >Ovi podaci su preuzeti sa vašeg profila. Za izmenu, posetite stranicu profila.</span
+          >
+        </p>
+      </section>
+
+      <mat-divider></mat-divider>
+
+      <!-- Protection Plan Section -->
+      <section class="form-section">
+        <h3 class="section-title">
+          <mat-icon>shield</mat-icon>
+          Tip zastite
+        </h3>
+
+        <mat-radio-group formControlName="insuranceType" class="protection-options">
+          <mat-radio-button value="BASIC" class="protection-option">
+            <div class="option-content">
+              <div class="option-header">
+                <strong>Basic</strong>
+                <span class="option-badge">Included</span>
+              </div>
+              <p class="option-description">Osnovna zastita ukljucena u cenu</p>
+            </div>
+          </mat-radio-button>
+
+          <mat-radio-button value="STANDARD" class="protection-option">
+            <div class="option-content">
+              <div class="option-header">
+                <strong>Standard</strong>
+                <span class="option-badge option-badge--premium">+10%</span>
+              </div>
+              <p class="option-description">Prosirena zastita — smanjeni depozit</p>
+            </div>
+          </mat-radio-button>
+
+          <mat-radio-button value="PREMIUM" class="protection-option">
+            <div class="option-content">
+              <div class="option-header">
+                <strong>Premium</strong>
+                <span class="option-badge option-badge--premium">+20%</span>
+              </div>
+              <p class="option-description">Potpuna zastita — bez depozita</p>
+            </div>
+          </mat-radio-button>
+        </mat-radio-group>
+      </section>
+
+      <mat-divider></mat-divider>
+
+      <!-- Optional Add-on Section -->
+      <section class="form-section">
+        <h3 class="section-title">
+          <mat-icon>local_gas_station</mat-icon>
+          Dodatne opcije
+        </h3>
+
+        <mat-checkbox formControlName="prepaidRefuel" class="addon-checkbox">
+          <div class="addon-content">
+            <strong>Prepaid Refuel</strong>
+            <p class="addon-description">
+              Gorivo unapred plaćeno - vratite vozilo sa bilo kojom količinom goriva
+              @if (data.car.fuelConsumption) {
+                <br />
+                <span class="addon-cost"
+                  >(Approx. {{ refuelCost() | currency: 'RSD' : 'symbol' : '1.0-0' }})</span
+                >
+              }
+            </p>
+          </div>
+        </mat-checkbox>
+      </section>
+
+      <mat-divider></mat-divider>
+
+      <!-- Payment Card Section -->
+      <section class="form-section">
+        <h3 class="section-title">
+          <mat-icon>payment</mat-icon>
+          Podatci o kartici
+        </h3>
+
+        <div
+          class="payment-mode-badge"
+          [class.payment-mode-badge--mock]="paymentMode() === 'MOCK'"
+          [class.payment-mode-badge--monri]="paymentMode() === 'MONRI'"
+        >
+          <mat-icon>{{ paymentMode() === 'MOCK' ? 'science' : 'verified' }}</mat-icon>
+          <span>Payment mode: {{ paymentMode() }}</span>
+        </div>
+
+        <app-payment-form
+          (validityChange)="onCardValidityChanged($event)"
+          (providerModeResolved)="onPaymentModeResolved($event)"
+        />
+
+        <p class="payment-info-hint">
+          <mat-icon class="hint-icon">lock</mat-icon>
+          <span>Vasi podatci su zasticeni. Naplacivanje se vrsi tek nakon odobrenja domacina.</span>
+        </p>
+      </section>
+
+      <mat-divider></mat-divider>
+
+      <!-- Price Summary Section -->
+      <section class="form-section summary-section" aria-live="polite" aria-atomic="true">
+        <h3 class="section-title">
+          <mat-icon>receipt</mat-icon>
+          Rezime cene
+        </h3>
+
+        @if (rentalDays() > 0) {
+          <div class="price-breakdown">
+            <div class="price-line">
+              <span
+                >Osnovna cena ({{ rentalDays() }} {{ rentalDays() === 1 ? 'dan' : 'dana' }})</span
+              >
+              <span>{{ basePrice() | currency: 'RSD' : 'symbol' : '1.0-0' }}</span>
+            </div>
+
+            @if (serviceFeeAmount() > 0) {
+              <div class="price-line">
+                <span>Naknada za uslugu (15%)</span>
+                <span>+{{ serviceFeeAmount() | currency: 'RSD' : 'symbol' : '1.0-0' }}</span>
+              </div>
+            }
+
+            @if (protectionCost() > 0) {
+              <div class="price-line">
+                <span>Zastita ({{ bookingForm.value.insuranceType }})</span>
+                <span>+{{ protectionCost() | currency: 'RSD' : 'symbol' : '1.0-0' }}</span>
+              </div>
+            }
+            @if (refuelCost() > 0) {
+              <div class="price-line">
+                <span>Prepaid Refuel</span>
+                <span>+{{ refuelCost() | currency: 'RSD' : 'symbol' : '1.0-0' }}</span>
+              </div>
+            }
+            @if (deliveryFeeCost() > 0) {
+              <div class="price-line">
+                <span>Naknada za dostavu</span>
+                <span>+{{ deliveryFeeCost() | currency: 'RSD' : 'symbol' : '1.0-0' }}</span>
+              </div>
+            }
+
+            <mat-divider></mat-divider>
+
+            <div class="price-line price-total">
+              <strong>Ukupno</strong>
+              <strong>{{ totalPrice() | currency: 'RSD' : 'symbol' : '1.0-0' }}</strong>
+            </div>
+
+            @if (depositAmount() > 0) {
+              <div class="price-line deposit-line">
+                <span>Sigurnosni depozit (zadržano)</span>
+                <span>{{ depositAmount() | currency: 'RSD' : 'symbol' : '1.0-0' }}</span>
+              </div>
+              <p class="deposit-note">Depozit se vraca nakon putovanja ukoliko nema stete.</p>
+            } @else {
+              <div class="price-line deposit-line">
+                <span>Sigurnosni depozit</span>
+                <span>Pokriveno Premium zastita planom</span>
+              </div>
+            }
+          </div>
+        } @else {
+          <p class="no-price-message">Izaberite datume i vremena da vidite cenu</p>
+        }
+      </section>
+    </form>
+  </mat-dialog-content>
+
+  <mat-dialog-actions align="end">
+    <button mat-button (click)="cancel()" [disabled]="isSubmitting()">Otkaži</button>
+    <button
+      mat-raised-button
+      color="primary"
+      (click)="submitBooking()"
+      [disabled]="
+        bookingForm.invalid ||
+        isSubmitting() ||
+        rentalDays() === 0 ||
+        durationTooShort() ||
+        durationTooLong() ||
+        !pickupLocationValid() ||
+        !cardValid()
+      "
+    >
+      <ng-container matButtonIcon>
+        @if (isSubmitting()) {
+          <mat-spinner diameter="20"></mat-spinner>
+        } @else {
+          <mat-icon>send</mat-icon>
+        }
+      </ng-container>
+      <span>
+        @if (isSubmitting()) {
+          Slanje zahteva...
+        } @else {
+          Pošalji zahtev za rezervaciju
+        }
+      </span>
+    </button>
+  </mat-dialog-actions>
+</div>

@@ -1,0 +1,6 @@
+<!-- Filter Toggle Button -->
+<button mat-raised-button class="filter-toggle-btn" (click)="openFiltersDialog()" [@fadeInOut]>
+  <mat-icon>tune</mat-icon>
+  <span>Filteri</span>
+  <span class="filter-badge" *ngIf="activeFiltersCount > 0">{{ activeFiltersCount }}</span>
+</button>

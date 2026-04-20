@@ -1,0 +1,267 @@
+.dispute-detail-container {
+  padding: 24px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+// Loading State
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+  gap: 16px;
+
+  p {
+    color: var(--color-text-muted, #666);
+    margin: 0;
+  }
+}
+
+// Header
+.detail-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+
+  .back-button {
+    mat-icon {
+      font-size: var(--font-size-xl);
+    }
+  }
+
+  h1 {
+    flex: 1;
+    margin: 0;
+    font-size: 28px;
+    font-weight: 500;
+    color: var(--color-heading, #1a237e);
+  }
+
+  mat-chip {
+    font-size: var(--font-size-sm);
+  }
+}
+
+// Split-View Layout
+.split-view {
+  display: grid;
+  grid-template-columns: 1fr 400px;
+  gap: 24px;
+  align-items: start;
+}
+
+.context-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0; // prevent grid blowout
+}
+
+.resolution-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  position: sticky;
+  top: 24px;
+  align-self: start;
+}
+
+// Cards
+mat-card {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+
+  mat-card-header {
+    mat-card-title {
+      font-size: var(--font-size-lg);
+      font-weight: 600;
+      color: var(--color-heading, #1a237e);
+    }
+  }
+
+  mat-card-content {
+    padding-top: 16px;
+  }
+}
+
+// Info Rows
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--color-border-subtle, #f0f0f0);
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  .label {
+    font-weight: 600;
+    color: var(--color-text-muted, #666);
+  }
+
+  .value {
+    color: var(--color-text-primary, #333);
+
+    &.amount {
+      font-weight: 600;
+      color: var(--color-heading, #1a237e);
+      font-size: var(--font-size-base);
+    }
+  }
+}
+
+// Description & Response
+.description-card,
+.response-card,
+.review-card {
+  p {
+    margin: 0;
+    line-height: 1.6;
+    color: var(--color-text-secondary, #555);
+  }
+
+  .timestamp {
+    display: block;
+    margin-top: 12px;
+    color: var(--color-text-disabled, #999);
+    font-style: italic;
+  }
+
+  .admin-notes {
+    margin-top: 12px;
+    padding: 12px;
+    background: var(--color-surface-muted, #f5f5f5);
+    border-radius: 4px;
+  }
+}
+
+// Evidence Section
+.evidence-card {
+  .photo-section {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .photo-group {
+    h4 {
+      margin: 0 0 8px;
+      font-size: var(--font-size-base);
+      font-weight: 600;
+      color: var(--color-heading, #1a237e);
+    }
+  }
+
+  .evidence-thumbs {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 8px;
+  }
+
+  .evidence-thumb {
+    width: 100%;
+    aspect-ratio: 4/3;
+    object-fit: cover;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    background: var(--color-surface-muted, #f5f5f5);
+
+    &:hover {
+      transform: scale(1.04);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+  }
+}
+
+// Action Buttons (right panel)
+.actions-card {
+  .action-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .action-btn {
+    width: 100%;
+    height: 44px;
+    font-size: var(--font-size-sm);
+
+    mat-icon {
+      margin-right: 8px;
+    }
+  }
+}
+
+// Forms (right panel)
+.form-card {
+  form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .full-width {
+    width: 100%;
+  }
+
+  .form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 8px;
+
+    button {
+      min-width: 100px;
+    }
+
+    mat-spinner {
+      display: inline-block;
+      margin: 0;
+    }
+  }
+}
+
+// Resolution summary card
+.resolution-summary-card {
+  border-left: 4px solid var(--color-heading, #1a237e);
+}
+
+.section-divider { margin: var(--space-3) 0; }
+
+// Responsive — stack panels on tablet/mobile
+@media (max-width: 1024px) {
+  .split-view {
+    grid-template-columns: 1fr;
+  }
+
+  .resolution-panel {
+    position: static;
+  }
+}
+
+@media (max-width: 768px) {
+  .dispute-detail-container {
+    padding: 16px;
+  }
+
+  .detail-header {
+    flex-wrap: wrap;
+
+    h1 {
+      font-size: 22px;
+    }
+  }
+
+  .info-row {
+    flex-direction: column;
+    gap: 4px;
+
+    .value {
+      text-align: left;
+    }
+  }
+}

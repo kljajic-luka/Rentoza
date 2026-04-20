@@ -1,0 +1,374 @@
+.document-upload-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.upload-label {
+  font-weight: 500;
+  color: #374151;
+  font-size: var(--font-size-sm);
+  
+  .required-star {
+    color: var(--color-error-text);
+    margin-left: 0.25rem;
+  }
+}
+
+.drop-zone {
+  border: 2px dashed #d1d5db;
+  border-radius: 12px;
+  padding: var(--space-4);
+  text-align: center;
+  transition: all 0.2s ease;
+  background: #fafafa;
+  min-height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  
+  &.drag-over {
+    border-color: var(--color-primary);
+    background: #eff6ff;
+  }
+  
+  &.has-file {
+    border-style: solid;
+    border-color: var(--color-success);
+    background: #f0fdf4;
+  }
+  
+  &.uploading {
+    border-color: var(--color-primary);
+    background: #f5f8ff;
+  }
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  
+  .icon {
+    font-size: var(--font-size-3xl);
+    opacity: 0.5;
+  }
+  
+  .primary-text {
+    font-weight: 500;
+    color: #374151;
+    margin: 0;
+  }
+  
+  .secondary-text {
+    color: #9ca3af;
+    font-size: var(--font-size-sm);
+    margin: 0;
+  }
+  
+  .hint {
+    color: #9ca3af;
+    font-size: var(--font-size-xs);
+    margin: var(--space-1) 0 0;
+  }
+}
+
+.browse-button {
+  background: linear-gradient(135deg, var(--color-primary), var(--brand-primary-dark));
+  color: white;
+  padding: var(--space-1) 1.25rem;
+  border-radius: 8px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: transform 0.2s;
+  
+  &:hover {
+    transform: translateY(-1px);
+  }
+}
+
+.file-preview {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-1);
+  
+  .preview-image {
+    width: 80px;
+    height: 80px;
+    object-fit: cover;
+    border-radius: 8px;
+    border: 1px solid #e5e7eb;
+  }
+  
+  .pdf-icon {
+    width: 80px;
+    height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #fef3c7;
+    border-radius: 8px;
+    font-size: var(--font-size-2xl);
+  }
+  
+  .file-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    text-align: left;
+    
+    .file-name {
+      font-weight: 500;
+      color: #374151;
+      word-break: break-all;
+    }
+    
+    .file-size {
+      color: #9ca3af;
+      font-size: var(--font-size-xs);
+    }
+  }
+  
+  .remove-button {
+    background: #fee2e2;
+    color: var(--color-error-text);
+    border: none;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: var(--font-size-base);
+    
+    &:hover {
+      background: #fecaca;
+    }
+  }
+}
+
+.progress-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  width: 100%;
+  
+  .progress-bar {
+    width: 100%;
+    height: 8px;
+    background: #e5e7eb;
+    border-radius: 4px;
+    overflow: hidden;
+    
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--color-primary), #10b981);
+      transition: width 0.3s ease;
+    }
+  }
+  
+  .progress-text {
+    font-size: var(--font-size-sm);
+    color: var(--color-primary);
+    font-weight: 500;
+  }
+}
+
+.expiry-date-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  
+  label {
+    font-size: var(--font-size-xs);
+    color: #6b7280;
+  }
+  
+  input[type="date"] {
+    padding: var(--space-1);
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: var(--font-size-sm);
+    
+    &:focus {
+      outline: none;
+      border-color: var(--color-primary);
+      box-shadow: 0 0 0 3px var(--brand-primary-10);
+    }
+  }
+}
+
+.error-message {
+  color: var(--color-error-text);
+  font-size: var(--font-size-sm);
+  background: #fef2f2;
+  padding: var(--space-1) 0.75rem;
+  border-radius: 8px;
+}
+
+.upload-button {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+  border: none;
+  padding: 0.75rem var(--space-3);
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+  }
+}
+
+.success-message {
+  color: var(--color-success);
+  font-weight: 500;
+  background: #f0fdf4;
+  padding: 0.75rem;
+  border-radius: 8px;
+  text-align: center;
+}
+
+// ============================================================================
+// DARK MODE SUPPORT
+// ============================================================================
+:host-context(.theme-dark) {
+  .upload-label {
+    color: #e5e7eb;
+  }
+
+  .drop-zone {
+    border-color: #4b5563;
+    background: #1f2937;
+
+    &.drag-over {
+      border-color: var(--brand-primary-light);
+      background: #1e3a5f;
+    }
+
+    &.has-file {
+      border-color: var(--color-success);
+      background: #064e3b;
+    }
+
+    &.uploading {
+      border-color: var(--brand-primary-light);
+      background: #1e3a5f;
+    }
+  }
+
+  .empty-state {
+    .icon {
+      opacity: 0.7;
+    }
+
+    .primary-text {
+      color: #e5e7eb;
+    }
+
+    .secondary-text {
+      color: #9ca3af;
+    }
+
+    .hint {
+      color: #6b7280;
+    }
+  }
+
+  .browse-button {
+    background: linear-gradient(135deg, var(--color-primary), var(--brand-primary-dark));
+    color: white;
+
+    &:hover {
+      background: linear-gradient(135deg, var(--brand-primary-light), var(--color-primary));
+    }
+  }
+
+  .file-preview {
+    .preview-image {
+      border-color: #4b5563;
+    }
+
+    .pdf-icon {
+      background: #78350f;
+    }
+
+    .file-info {
+      .file-name {
+        color: #e5e7eb;
+      }
+
+      .file-size {
+        color: #9ca3af;
+      }
+    }
+
+    .remove-button {
+      background: #7f1d1d;
+      color: #fca5a5;
+
+      &:hover {
+        background: #991b1b;
+      }
+    }
+  }
+
+  .progress-container {
+    .progress-bar {
+      background: #374151;
+    }
+
+    .progress-text {
+      color: var(--brand-primary-light);
+    }
+  }
+
+  .expiry-date-container {
+    label {
+      color: #9ca3af;
+    }
+
+    input[type="date"] {
+      background: #374151;
+      border-color: #4b5563;
+      color: #e5e7eb;
+
+      &:focus {
+        border-color: var(--brand-primary-light);
+        box-shadow: 0 0 0 3px rgba(123, 99, 252, 0.2);
+      }
+
+      // Style the calendar icon in dark mode
+      &::-webkit-calendar-picker-indicator {
+        filter: invert(1);
+      }
+    }
+
+    .hint {
+      color: #6b7280;
+    }
+  }
+
+  .error-message {
+    color: #fca5a5;
+    background: #7f1d1d;
+  }
+
+  .upload-button {
+    background: linear-gradient(135deg, #10b981, #059669);
+
+    &:hover {
+      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+    }
+  }
+
+  .success-message {
+    color: var(--color-success);
+    background: #064e3b;
+  }
+}

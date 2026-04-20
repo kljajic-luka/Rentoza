@@ -1,0 +1,685 @@
+package org.example.rentoza.booking.checkin;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import jakarta.validation.Valid;
+import lombok.extern.slf4j.Slf4j;
+import org.example.rentoza.booking.checkin.dto.*;
+import org.example.rentoza.idempotency.IdempotencyService;
+import org.example.rentoza.idempotency.IdempotencyService.IdempotencyResult;
+import org.example.rentoza.idempotency.IdempotencyService.IdempotencyStatus;
+import org.example.rentoza.security.CurrentUser;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.util.Map;
+import java.util.Optional;
+
+/**
+ * REST controller for check-in workflow endpoints.
+ * 
+ * <h2>Endpoints</h2>
+ * <pre>
+ * GET  /api/bookings/{bookingId}/check-in/status     - Get check-in status
+ * POST /api/bookings/{bookingId}/check-in/host/photos - Upload host photo
+ * POST /api/bookings/{bookingId}/check-in/host/complete - Complete host check-in
+ * POST /api/bookings/{bookingId}/check-in/guest/condition-ack - Guest acknowledges condition
+ * POST /api/bookings/{bookingId}/check-in/handshake  - Confirm handshake
+ * </pre>
+ * 
+ * <h2>Security</h2>
+ * <p>All endpoints require authentication. Sensitive booking actions also enforce
+ * host/guest/admin access at the controller boundary.
+ * 
+ * <h2>Idempotency (Phase 1 Critical Fix)</h2>
+ * <p>Mutation endpoints (POST) support idempotency via {@code X-Idempotency-Key} header:
+ * <ul>
+ *   <li>Client provides UUID v4 key on first request</li>
+ *   <li>Retries with same key return cached response (no duplicate execution)</li>
+ *   <li>Keys are scoped per-user and per booking operation (24h TTL)</li>
+ * </ul>
+ */
+@RestController
+@RequestMapping("/api/bookings/{bookingId}/check-in")
+@PreAuthorize("isAuthenticated()")
+@Slf4j
+public class CheckInController {
+
+    private static final String IDEMPOTENCY_HEADER = "X-Idempotency-Key";
+
+    private final CheckInService checkInService;
+    private final CheckInPhotoService photoService;
+    private final IdempotencyService idempotencyService;
+    private final CurrentUser currentUser;
+    private final CheckInAttestationService checkInAttestationService;
+    private final CheckInResponseOptimizer responseOptimizer;
+    private final ObjectMapper objectMapper;
+    private final Counter photoUploadCounter;
+    private final org.example.rentoza.booking.photo.PhotoRateLimitService photoRateLimitService;
+
+    public CheckInController(
+            CheckInService checkInService,
+            CheckInPhotoService photoService,
+            CheckInAttestationService checkInAttestationService,
+            IdempotencyService idempotencyService,
+            CurrentUser currentUser,
+            CheckInResponseOptimizer responseOptimizer,
+            ObjectMapper objectMapper,
+            MeterRegistry meterRegistry,
+            org.example.rentoza.booking.photo.PhotoRateLimitService photoRateLimitService) {
+        this.checkInService = checkInService;
+        this.photoService = photoService;
+        this.checkInAttestationService = checkInAttestationService;
+        this.idempotencyService = idempotencyService;
+        this.currentUser = currentUser;
+        this.responseOptimizer = responseOptimizer;
+        this.objectMapper = objectMapper;
+        this.photoRateLimitService = photoRateLimitService;
+
+        this.photoUploadCounter = Counter.builder("checkin.photo.upload")
+                .description("Check-in photo uploads")
+                .register(meterRegistry);
+    }
+
+    // ========== STATUS ==========
+
+    /**
+     * Get current check-in status for a booking.
+     * 
+     * <p>Returns the complete check-in state including:
+     * <ul>
+     *   <li>Current status and phase completion</li>
+     *   <li>Photos (visible to guest only after host completes)</li>
+     *   <li>Odometer/fuel readings</li>
+     *   <li>No-show deadline countdown</li>
+     * </ul>
+     * 
+     * <h3>Phase 3: API Optimizations</h3>
+     * <ul>
+     *   <li><b>ETag:</b> Supports If-None-Match header for 304 Not Modified</li>
+     *   <li><b>Sparse Fieldsets:</b> ?fields=status,photos to reduce payload</li>
+     *   <li><b>Compression:</b> Supports gzip via Accept-Encoding</li>
+     * </ul>
+     * 
+     * @param bookingId The booking ID
+     * @param ifNoneMatch ETag from previous response for conditional GET
+     * @param fields Optional comma-separated list of fields to return
+     */
+    @GetMapping("/status")
+    @PreAuthorize("@checkInAuthorization.canAccessStatus(#bookingId, authentication)")
+    public ResponseEntity<CheckInStatusDTO> getCheckInStatus(
+            @PathVariable Long bookingId,
+            @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch,
+            @RequestParam(value = "fields", required = false) String fields) {
+        
+        Long userId = currentUser.id();
+        log.debug("[CheckIn] Status request: bookingId={}, userId={}, fields={}",
+            bookingId, userId, fields);
+        
+        CheckInStatusDTO status = checkInService.getCheckInStatus(bookingId, userId);
+        
+        // Apply sparse fieldset if requested
+        if (fields != null && !fields.isBlank()) {
+            status = responseOptimizer.applySparseFieldset(status, fields);
+        }
+        
+        // Return optimized response with ETag support
+        return responseOptimizer.buildOptimizedResponse(status, ifNoneMatch);
+    }
+
+    @GetMapping("/attestation")
+    @PreAuthorize("@checkInAuthorization.canReadCheckInAttestation(#bookingId, authentication)")
+    public ResponseEntity<CheckInAttestationResponseDTO> getTripStartAttestation(@PathVariable Long bookingId) {
+        Long userId = currentUser.id();
+        CheckInAttestationResponseDTO response = checkInAttestationService.getAttestationForBooking(bookingId, userId);
+        return ResponseEntity.ok(response);
+    }
+
+    // ========== HOST WORKFLOW ==========
+
+    /**
+     * Upload a check-in photo.
+     * 
+     * <p>Photos are validated for EXIF metadata to prevent fraud:
+     * <ul>
+     *   <li>Must have EXIF timestamp (no screenshots)</li>
+     *   <li>Must be recent (within 24 hours)</li>
+     *   <li>GPS coordinates extracted if present</li>
+     * </ul>
+     * 
+     * <p>Client GPS coordinates (clientLatitude/clientLongitude) are accepted as a
+     * fallback for location verification when EXIF GPS is missing (e.g., Canvas
+     * compression scenarios). This is defense-in-depth; piexifjs should preserve
+     * EXIF in the frontend.
+     * 
+     * <h3>Zero-Storage Policy (Phase 1)</h3>
+     * <p>Rejected photos return HTTP 400 with rejection details. They are NOT stored
+     * to the database or filesystem. Only an audit event is logged.
+     * 
+     * @return HTTP 201 for accepted photos, HTTP 400 for rejected photos, HTTP 409 if too early
+     */
+    @PostMapping(value = "/host/photos", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("@checkInAuthorization.canManageHostCheckIn(#bookingId, authentication)")
+    public ResponseEntity<PhotoUploadResponse> uploadHostPhoto(
+            @PathVariable Long bookingId,
+            @RequestPart("file") MultipartFile file,
+            @RequestParam("photoType") CheckInPhotoType photoType,
+            @RequestParam(value = "clientTimestamp", required = false) String clientTimestampStr,
+            @RequestParam(value = "clientLatitude", required = false) BigDecimal clientLatitude,
+            @RequestParam(value = "clientLongitude", required = false) BigDecimal clientLongitude) throws IOException {
+
+        Long userId = currentUser.id();
+
+        // WI-12: Rate limit photo uploads
+        String clientIp = getClientIp();
+        if (!photoRateLimitService.allowPhotoUpload(userId, clientIp)) {
+            log.warn("[CheckIn] Upload rate limit exceeded: userId={}, ip={}", userId, clientIp);
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                    .header("Retry-After", "600")
+                    .build();
+        }
+
+        log.debug("[CheckIn] Upload request: bookingId={}, userId={}, photoType={}, clientTimestamp='{}', lat={}, lon={}",
+            bookingId, userId, photoType, clientTimestampStr, clientLatitude, clientLongitude);
+        log.debug("[CheckIn] Upload file: name={}, size={}, contentType={}",
+            file.getOriginalFilename(), file.getSize(), file.getContentType());
+
+        // Manual parsing of timestamp to avoid Spring multipart binding issues
+        Instant clientTimestamp = null;
+        if (clientTimestampStr != null && !clientTimestampStr.isBlank()) {
+            try {
+                clientTimestamp = Instant.parse(clientTimestampStr);
+            } catch (Exception e) {
+                log.warn("[CheckIn] Failed to parse clientTimestamp: {}", clientTimestampStr);
+            }
+        }
+
+        PhotoUploadResponse response;
+        try {
+            response = photoService.uploadPhoto(
+                bookingId,
+                userId,
+                file,
+                photoType,
+                clientTimestamp,
+                clientLatitude,
+                clientLongitude
+            );
+        } catch (CheckInTimingBlockedException e) {
+            log.info("[CheckIn] Upload blocked by timing gate: booking={}, minutesRemaining={}",
+                bookingId, e.getMinutesRemaining());
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(PhotoUploadResponse.timingBlocked(e.getMinutesRemaining(), e.getEarliestAllowedTime()));
+        }
+
+        photoUploadCounter.increment();
+        
+        // Return appropriate HTTP status based on acceptance
+        if (response.isAccepted()) {
+            return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        } else {
+            // Rejected photo - return HTTP 400 with rejection details
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+        }
+    }
+
+    /**
+     * Complete host check-in with odometer/fuel readings.
+     * 
+     * <p>Validates that:
+     * <ul>
+     *   <li>User is the car owner</li>
+     *   <li>Booking is in CHECK_IN_OPEN status</li>
+     *   <li>Required photos are uploaded (8 minimum)</li>
+     * </ul>
+     * 
+     * <h3>Idempotency</h3>
+     * <p>Supports {@code X-Idempotency-Key} header to prevent duplicate state transitions.
+     */
+    @PostMapping("/host/complete")
+    @PreAuthorize("@checkInAuthorization.canManageHostCheckIn(#bookingId, authentication)")
+    public ResponseEntity<CheckInStatusDTO> completeHostCheckIn(
+            @PathVariable Long bookingId,
+            @Valid @RequestBody HostCheckInSubmissionDTO submission,
+            @RequestHeader(value = IDEMPOTENCY_HEADER, required = false) String idempotencyKey) {
+        
+        Long userId = currentUser.id();
+        log.debug("[CheckIn] Host completing check-in for booking {} by user {}", bookingId, userId);
+        
+        // Idempotency check
+        String scope = buildIdempotencyScope(bookingId, "HOST_CHECK_IN_COMPLETE");
+        Optional<IdempotencyResult> cached = idempotencyService.checkIdempotency(idempotencyKey, userId, scope);
+        if (cached.isPresent()) {
+            IdempotencyResult result = cached.get();
+            if (result.getStatus() == IdempotencyStatus.PROCESSING) {
+                return ResponseEntity.status(HttpStatus.CONFLICT)
+                        .body(null); // Request is still processing
+            }
+            // Return cached successful response
+            log.info("[CheckIn] Returning cached host-complete response for key: {}", 
+                    idempotencyKey != null ? idempotencyKey.substring(0, 8) + "..." : "N/A");
+            return buildCachedStatusResponse(result);
+        }
+        
+        // Mark as processing
+        if (!idempotencyService.markProcessing(idempotencyKey, userId, "HOST_CHECK_IN_COMPLETE", scope)) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).build();
+        }
+        
+        try {
+            // Ensure bookingId matches
+            submission.setBookingId(bookingId);
+            
+            CheckInStatusDTO status = checkInService.completeHostCheckIn(submission, userId);
+            
+            // Store successful result
+            idempotencyService.storeSuccess(idempotencyKey, userId, HttpStatus.OK, status, scope);
+            
+            return ResponseEntity.ok(status);
+        } catch (Exception e) {
+            // Remove idempotency record on transient errors to allow retry
+            idempotencyService.remove(idempotencyKey, userId, scope);
+            throw e;
+        }
+    }
+
+    // ========== GUEST WORKFLOW ==========
+
+    // ========== PHASE 4B: IN-PERSON LICENSE VERIFICATION ==========
+
+    /**
+     * Host confirms they have visually verified the guest's driver's license.
+     * 
+     * <p><b>Purpose (Phase 4B):</b> For in-person handshakes (no lockbox), hosts MUST
+     * confirm they have visually verified that the guest's physical driver's license:
+     * <ul>
+     *   <li>Matches the ID verification photos on file</li>
+     *   <li>Is valid (not expired)</li>
+     *   <li>Belongs to the person picking up the vehicle</li>
+     * </ul>
+     * 
+     * <p><b>Insurance Compliance:</b> This verification is critical for insurance
+     * coverage. Without it, claims may be denied if the driver was not properly
+     * identified at trip start.
+     * 
+     * <p><b>When Required:</b> Only for in-person handshakes. Remote handoff (lockbox)
+     * trips skip this requirement since license is verified during ID verification.
+     * 
+     * <p><b>Flow:</b>
+     * <ol>
+     *   <li>Guest arrives at pickup location</li>
+     *   <li>Host visually compares physical license to ID verification photos</li>
+     *   <li>Host calls this endpoint to confirm verification</li>
+     *   <li>Both parties can now proceed to handshake</li>
+     * </ol>
+     * 
+     * <h3>Idempotency</h3>
+     * <p>Supports {@code X-Idempotency-Key} header to prevent duplicate verifications.
+     * 
+     * @param bookingId The booking ID
+     * @param idempotencyKey Optional idempotency key
+     * @return Updated check-in status
+     * @throws AccessDeniedException if user is not the car owner (host)
+     * @throws IllegalStateException if booking is not in correct state
+     */
+    @PostMapping("/host/license-verification")
+    @PreAuthorize("@checkInAuthorization.canManageHostCheckIn(#bookingId, authentication)")
+    public ResponseEntity<CheckInStatusDTO> confirmLicenseVerifiedInPerson(
+            @PathVariable Long bookingId,
+            @RequestHeader(value = IDEMPOTENCY_HEADER, required = false) String idempotencyKey) {
+        
+        Long userId = currentUser.id();
+        log.info("[CheckIn] Host confirming license verification for booking {} by user {}", 
+            bookingId, userId);
+        
+        // Idempotency check
+        String scope = buildIdempotencyScope(bookingId, "LICENSE_VERIFICATION");
+        Optional<IdempotencyResult> cached = idempotencyService.checkIdempotency(idempotencyKey, userId, scope);
+        if (cached.isPresent()) {
+            IdempotencyResult result = cached.get();
+            if (result.getStatus() == IdempotencyStatus.PROCESSING) {
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(null);
+            }
+            log.info("[CheckIn] Returning cached license-verification response for key: {}", 
+                    idempotencyKey != null ? idempotencyKey.substring(0, 8) + "..." : "N/A");
+            return buildCachedStatusResponse(result);
+        }
+        
+        // Mark as processing
+        if (!idempotencyService.markProcessing(idempotencyKey, userId, "LICENSE_VERIFICATION", scope)) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).build();
+        }
+        
+        try {
+            CheckInStatusDTO status = checkInService.confirmLicenseVerifiedInPerson(bookingId, userId);
+            
+            // Store successful result
+            idempotencyService.storeSuccess(idempotencyKey, userId, HttpStatus.OK, status, scope);
+            
+            return ResponseEntity.ok(status);
+        } catch (Exception e) {
+            idempotencyService.remove(idempotencyKey, userId, scope);
+            throw e;
+        }
+    }
+
+    /**
+     * Guest acknowledges vehicle condition.
+     * 
+     * <p>Guest reviews host photos and confirms the vehicle condition.
+     * Can optionally mark damage hotspots.
+     * 
+     * <h3>Idempotency</h3>
+     * <p>Supports {@code X-Idempotency-Key} header to prevent duplicate acknowledgments.
+     */
+    @PostMapping("/guest/condition-ack")
+    @PreAuthorize("@checkInAuthorization.canAcknowledgeGuestCondition(#bookingId, authentication)")
+    public ResponseEntity<CheckInStatusDTO> acknowledgeCondition(
+            @PathVariable Long bookingId,
+            @Valid @RequestBody GuestConditionAcknowledgmentDTO acknowledgment,
+            @RequestHeader(value = IDEMPOTENCY_HEADER, required = false) String idempotencyKey) {
+        
+        Long userId = currentUser.id();
+        log.debug("[CheckIn] Guest acknowledging condition for booking {} by user {}", 
+            bookingId, userId);
+        
+        // Idempotency check
+        String scope = buildIdempotencyScope(bookingId, "GUEST_CONDITION_ACK");
+        Optional<IdempotencyResult> cached = idempotencyService.checkIdempotency(idempotencyKey, userId, scope);
+        if (cached.isPresent()) {
+            IdempotencyResult result = cached.get();
+            if (result.getStatus() == IdempotencyStatus.PROCESSING) {
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(null);
+            }
+            log.info("[CheckIn] Returning cached condition-ack response for key: {}", 
+                    idempotencyKey != null ? idempotencyKey.substring(0, 8) + "..." : "N/A");
+            return buildCachedStatusResponse(result);
+        }
+        
+        // Mark as processing
+        if (!idempotencyService.markProcessing(idempotencyKey, userId, "GUEST_CONDITION_ACK", scope)) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).build();
+        }
+        
+        try {
+            // Ensure bookingId matches
+            acknowledgment.setBookingId(bookingId);
+            
+            CheckInStatusDTO status = checkInService.acknowledgeCondition(acknowledgment, userId);
+            
+            // Store successful result
+            idempotencyService.storeSuccess(idempotencyKey, userId, HttpStatus.OK, status, scope);
+            
+            return ResponseEntity.ok(status);
+        } catch (Exception e) {
+            idempotencyService.remove(idempotencyKey, userId, scope);
+            throw e;
+        }
+    }
+
+    // ========== HANDSHAKE ==========
+
+    /**
+     * Confirm handshake to start the trip.
+     * 
+     * <p>Both host and guest must confirm. For remote handoff (lockbox),
+     * guest must pass geofence validation (within 50m of car).
+     * GPS coordinates are MANDATORY for remote handoff.
+     * 
+     * <p><b>P0 Security:</b> Anti-spoofing enforcement (mock location detection,
+     * GPS accuracy validation) runs before geofence check.
+     * 
+     * <h3>Idempotency (Critical)</h3>
+     * <p>Supports {@code X-Idempotency-Key} header. This is the most critical
+     * endpoint for idempotency as it triggers trip start and payment capture.
+     */
+    @PostMapping("/handshake")
+    @PreAuthorize("@checkInAuthorization.canConfirmHandshake(#bookingId, authentication)")
+    public ResponseEntity<CheckInStatusDTO> confirmHandshake(
+            @PathVariable Long bookingId,
+            @Valid @RequestBody HandshakeConfirmationDTO confirmation,
+            @RequestHeader(value = IDEMPOTENCY_HEADER, required = false) String idempotencyKey) {
+        
+        Long userId = currentUser.id();
+        log.debug("[CheckIn] Handshake confirmation for booking {} by user {}", 
+            bookingId, userId);
+        
+        // Idempotency check - critical for handshake to prevent duplicate trip starts
+        String scope = buildIdempotencyScope(bookingId, "HANDSHAKE_CONFIRM");
+        Optional<IdempotencyResult> cached = idempotencyService.checkIdempotency(idempotencyKey, userId, scope);
+        if (cached.isPresent()) {
+            IdempotencyResult result = cached.get();
+            if (result.getStatus() == IdempotencyStatus.PROCESSING) {
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(null);
+            }
+            log.info("[CheckIn] Returning cached handshake response for key: {}", 
+                    idempotencyKey != null ? idempotencyKey.substring(0, 8) + "..." : "N/A");
+            return buildCachedStatusResponse(result);
+        }
+        
+        // Mark as processing
+        if (!idempotencyService.markProcessing(idempotencyKey, userId, "HANDSHAKE_CONFIRM", scope)) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).build();
+        }
+        
+        try {
+            // Ensure bookingId matches
+            confirmation.setBookingId(bookingId);
+            
+            CheckInStatusDTO status = checkInService.confirmHandshake(confirmation, userId);
+            
+            // Store successful result
+            idempotencyService.storeSuccess(idempotencyKey, userId, HttpStatus.OK, status, scope);
+            
+            return ResponseEntity.ok(status);
+        } catch (Exception e) {
+            idempotencyService.remove(idempotencyKey, userId, scope);
+            throw e;
+        }
+    }
+
+    // ========== LOCKBOX (Remote Handoff) ==========
+
+    /**
+     * Reveal lockbox code for remote key handoff.
+     * 
+     * <p><b>Security (D4 Fix):</b> Authorization is enforced in the service layer
+     * ({@link CheckInPhotoService#revealLockboxCode}) which validates:
+     * <ul>
+     *   <li>User must be the booking's renter (guest) - throws AccessDeniedException otherwise</li>
+     *   <li>Booking must have a lockbox code configured</li>
+     *   <li>Host must have completed check-in first</li>
+     * </ul>
+     * 
+     * <p><b>P0 SECURITY FIX:</b> GPS coordinates are now REQUIRED for lockbox reveal.
+     * Guest must be within 50m of the car to access the lockbox code.
+     * 
+     * @param bookingId the booking ID
+     * @param latitude GPS latitude (REQUIRED for geofence enforcement)
+     * @param longitude GPS longitude (REQUIRED for geofence enforcement)
+     * @return lockbox code and reveal timestamp
+     * @throws AccessDeniedException if user is not the guest for this booking
+     * @throws IllegalStateException if booking is not in correct state
+     * @throws IllegalArgumentException if GPS coordinates are missing
+     */
+    @GetMapping("/lockbox-code")
+    @PreAuthorize("@checkInAuthorization.canRevealLockbox(#bookingId, authentication)")
+    public ResponseEntity<Map<String, Object>> revealLockboxCode(
+            @PathVariable Long bookingId,
+            @RequestParam(value = "latitude", required = true) Double latitude,
+            @RequestParam(value = "longitude", required = true) Double longitude) {
+        
+        Long userId = currentUser.id();
+        log.debug("[CheckIn] Lockbox code request for booking {} by user {}", 
+            bookingId, userId);
+        
+        String code = photoService.revealLockboxCode(
+            bookingId, 
+            userId,
+            latitude != null ? BigDecimal.valueOf(latitude) : null,
+            longitude != null ? BigDecimal.valueOf(longitude) : null
+        );
+        
+        return ResponseEntity.ok(Map.of(
+            "lockboxCode", code,
+            "revealedAt", Instant.now().toString()
+        ));
+    }
+
+    // ========== EXCEPTION HANDLERS ==========
+
+    @ExceptionHandler(IdempotencyService.InvalidIdempotencyKeyException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidIdempotencyKey(
+            IdempotencyService.InvalidIdempotencyKeyException ex) {
+        
+        log.warn("[CheckIn] Invalid idempotency key: {}", ex.getMessage());
+        
+        return ResponseEntity.badRequest().body(Map.of(
+            "error", "INVALID_IDEMPOTENCY_KEY",
+            "message", ex.getMessage(),
+            "hint", "X-Idempotency-Key must be a valid UUID v4 (e.g., 550e8400-e29b-41d4-a716-446655440000)"
+        ));
+    }
+
+    @ExceptionHandler(CheckInService.GeofenceViolationException.class)
+    public ResponseEntity<Map<String, Object>> handleGeofenceViolation(
+            CheckInService.GeofenceViolationException ex) {
+        
+        log.warn("[CheckIn] Geofence violation: {}", ex.getMessage());
+        
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+            "error", "GEOFENCE_VIOLATION",
+            "message", ex.getMessage(),
+            "messagesr", ex.getMessage() // Serbian message already in exception
+        ));
+    }
+
+        @ExceptionHandler(PhotoRejectionBudgetExceededException.class)
+        public ResponseEntity<Map<String, Object>> handleRejectionBudgetExceeded(PhotoRejectionBudgetExceededException ex) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+            .header("Retry-After", String.valueOf(ex.getRetryAfterSeconds()))
+            .body(Map.of(
+                "error", "PHOTO_REJECTION_COOLDOWN",
+                "message", ex.getMessage(),
+                "retryAfterSeconds", ex.getRetryAfterSeconds(),
+                "cooldownUntil", ex.getCooldownUntil().atZone(ZoneId.of("Europe/Belgrade")).toString()
+            ));
+        }
+
+    // ========== DEV/ADMIN: MANUAL WINDOW OPENING ==========
+
+    /**
+     * Manually open check-in window for a booking.
+     * 
+     * <p>DEV ONLY: Forces CHECK_IN_OPEN transition regardless of timing.
+     * Used for testing when scheduler timing doesn't align with test scenarios.
+     * 
+     * <p>In production, use admin override instead.
+     * 
+     * @param bookingId The booking to open check-in for
+     */
+    @PostMapping("/force-open-window")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Map<String, Object>> forceOpenCheckInWindow(@PathVariable Long bookingId) {
+        Long userId = currentUser.id();
+        log.warn("[CheckIn] MANUAL WINDOW OPEN requested by user {} for booking {}", userId, bookingId);
+        
+        try {
+            checkInService.forceOpenCheckInWindow(bookingId, userId);
+            return ResponseEntity.ok(Map.of(
+                "success", true,
+                "message", "Check-in window manually opened for booking " + bookingId,
+                "bookingId", bookingId
+            ));
+        } catch (Exception e) {
+            log.error("[CheckIn] Failed to force-open window for booking {}: {}", bookingId, e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                "error", "FORCE_OPEN_FAILED",
+                "message", e.getMessage()
+            ));
+        }
+    }
+
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<Map<String, Object>> handleIllegalState(IllegalStateException ex) {
+        
+        log.warn("[CheckIn] Illegal state: {}", ex.getMessage());
+        
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+            "error", "INVALID_STATE",
+            "message", ex.getMessage()
+        ));
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, Object>> handleIllegalArgument(IllegalArgumentException ex) {
+        
+        log.warn("[CheckIn] Illegal argument: {}", ex.getMessage());
+        
+        return ResponseEntity.badRequest().body(Map.of(
+            "error", "INVALID_ARGUMENT",
+                "message", ex.getMessage()
+        ));
+    }
+
+    private ResponseEntity<CheckInStatusDTO> buildCachedStatusResponse(IdempotencyResult result) {
+        HttpStatus status = HttpStatus.resolve(result.getHttpStatus());
+        if (status == null) {
+            status = HttpStatus.OK;
+        }
+
+        CheckInStatusDTO cachedBody = deserializeCachedStatus(result.getResponseBody());
+        if (cachedBody != null) {
+            return ResponseEntity.status(status).body(cachedBody);
+        }
+        return ResponseEntity.status(status).build();
+    }
+
+    private CheckInStatusDTO deserializeCachedStatus(String responseBody) {
+        if (responseBody == null || responseBody.isBlank()) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(responseBody, CheckInStatusDTO.class);
+        } catch (Exception ex) {
+            log.warn("[CheckIn] Failed to deserialize cached idempotency body: {}", ex.getMessage());
+            return null;
+        }
+    }
+
+    private String buildIdempotencyScope(Long bookingId, String operation) {
+        return "booking:" + bookingId + ":" + operation;
+    }
+
+    /**
+     * Get client IP address from request context.
+     * Handles proxies and load balancers via X-Forwarded-For.
+     */
+    private String getClientIp() {
+        try {
+            org.springframework.web.context.request.ServletRequestAttributes attributes =
+                    (org.springframework.web.context.request.ServletRequestAttributes)
+                    org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+            if (attributes == null) {
+                return "UNKNOWN";
+            }
+            jakarta.servlet.http.HttpServletRequest request = attributes.getRequest();
+            String xff = request.getHeader("X-Forwarded-For");
+            if (xff != null && !xff.isEmpty()) {
+                return xff.split(",")[0].trim();
+            }
+            return request.getRemoteAddr() != null ? request.getRemoteAddr() : "UNKNOWN";
+        } catch (Exception e) {
+            return "UNKNOWN";
+        }
+    }
+}

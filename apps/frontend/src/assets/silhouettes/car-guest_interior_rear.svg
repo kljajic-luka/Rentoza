@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" fill="none">
+  <!-- Car Interior Rear Seats View Silhouette for Photo Guidance -->
+  <title>Vehicle Interior Rear - Capture Guide</title>
+  <desc>Semi-transparent silhouette showing optimal rear seat area positioning for interior photo</desc>
+  
+  <!-- Background with transparency indicator -->
+  <rect width="400" height="300" fill="transparent"/>
+  
+  <!-- Interior rear view from front seats looking back -->
+  <g opacity="0.6" stroke="#3B82F6" stroke-width="2" fill="none">
+    <!-- Roof/headliner outline -->
+    <path d="M40 50 Q200 30 360 50 L360 60 Q200 45 40 60 Z" stroke-dasharray="6,3"/>
+    
+    <!-- Rear window (view) -->
+    <path d="M80 65 Q200 55 320 65 L315 120 Q200 115 85 120 Z" stroke-dasharray="8,4"/>
+    
+    <!-- C-pillars -->
+    <path d="M40 60 L65 130 L65 200" stroke-dasharray="6,3"/>
+    <path d="M360 60 L335 130 L335 200" stroke-dasharray="6,3"/>
+    
+    <!-- Rear seat backrest -->
+    <g>
+      <path d="M70 130 L70 200 Q70 210 80 210 L160 210 Q170 210 170 200 L170 135" stroke-dasharray="6,3"/>
+      <path d="M175 130 L175 200 Q175 210 185 210 L215 210 Q225 210 225 200 L225 135" stroke-dasharray="6,3"/>
+      <path d="M230 135 L230 200 Q230 210 240 210 L320 210 Q330 210 330 200 L330 130" stroke-dasharray="6,3"/>
+    </g>
+    
+    <!-- Rear seat headrests -->
+    <rect x="100" y="115" width="40" height="25" rx="5" stroke-dasharray="4,2"/>
+    <rect x="180" y="118" width="40" height="22" rx="5" stroke-dasharray="4,2"/>
+    <rect x="260" y="115" width="40" height="25" rx="5" stroke-dasharray="4,2"/>
+    
+    <!-- Seat cushions (highlighted - check for condition) -->
+    <g>
+      <rect x="70" y="210" width="100" height="40" rx="5" stroke="#22C55E" stroke-width="3" fill="#22C55E" fill-opacity="0.1"/>
+      <rect x="175" y="210" width="50" height="40" rx="5" stroke="#22C55E" stroke-width="3" fill="#22C55E" fill-opacity="0.1"/>
+      <rect x="230" y="210" width="100" height="40" rx="5" stroke="#22C55E" stroke-width="3" fill="#22C55E" fill-opacity="0.1"/>
+    </g>
+    
+    <!-- Floor area (highlighted - check for cleanliness) -->
+    <g>
+      <rect x="75" y="255" width="95" height="25" rx="3" stroke="#F59E0B" stroke-width="2" fill="#F59E0B" fill-opacity="0.1"/>
+      <rect x="230" y="255" width="95" height="25" rx="3" stroke="#F59E0B" stroke-width="2" fill="#F59E0B" fill-opacity="0.1"/>
+      <text x="200" y="272" font-size="8" fill="#F59E0B" text-anchor="middle">Floor mats visible</text>
+    </g>
+    
+    <!-- Center armrest (if present) -->
+    <rect x="165" y="140" width="70" height="65" rx="3" stroke-dasharray="4,2"/>
+    
+    <!-- Door panel outlines -->
+    <path d="M40 130 L65 130 L65 260 L40 280" stroke-dasharray="6,3"/>
+    <path d="M360 130 L335 130 L335 260 L360 280" stroke-dasharray="6,3"/>
+    
+    <!-- Seat belt anchors -->
+    <circle cx="75" cy="145" r="5" stroke-dasharray="3,2"/>
+    <circle cx="325" cy="145" r="5" stroke-dasharray="3,2"/>
+    <circle cx="170" cy="145" r="5" stroke-dasharray="3,2"/>
+    <circle cx="230" cy="145" r="5" stroke-dasharray="3,2"/>
+  </g>
+  
+  <!-- Check indicators -->
+  <g fill="#22C55E" font-size="9">
+    <text x="120" y="235" text-anchor="middle">Seat condition</text>
+    <text x="280" y="235" text-anchor="middle">Seat condition</text>
+  </g>
+  
+  <!-- Alignment guides -->
+  <g stroke="#94A3B8" stroke-width="1" stroke-dasharray="4,4" opacity="0.4">
+    <line x1="200" y1="30" x2="200" y2="290"/>
+  </g>
+  
+  <!-- Corner alignment markers -->
+  <g stroke="#3B82F6" stroke-width="2" opacity="0.5">
+    <path d="M30 40 L30 60 M30 40 L50 40"/>
+    <path d="M370 40 L370 60 M370 40 L350 40"/>
+    <path d="M30 285 L30 265 M30 285 L50 285"/>
+    <path d="M370 285 L370 265 M370 285 L350 285"/>
+  </g>
+  
+  <!-- Instruction text -->
+  <text x="200" y="20" font-size="12" fill="#64748B" text-anchor="middle" font-weight="500">
+    Capture rear seats from front
+  </text>
+  <text x="200" y="295" font-size="10" fill="#64748B" text-anchor="middle">
+    Include all seats, headrests, and floor area
+  </text>
+</svg>

@@ -1,0 +1,114 @@
+<!doctype html>
+<html xmlns:th="http://www.thymeleaf.org">
+	<head>
+		<meta charset="UTF-8" />
+		<title>Vozačka dozvola - potrebna ponovna provera</title>
+		<style>
+			body {
+				font-family: Arial, sans-serif;
+				line-height: 1.6;
+				color: #333;
+			}
+			.container {
+				max-width: 600px;
+				margin: 0 auto;
+				padding: 20px;
+				border: 1px solid #ddd;
+				border-radius: 5px;
+			}
+			.header {
+				background-color: #f44336;
+				color: white;
+				padding: 10px;
+				text-align: center;
+				border-radius: 5px 5px 0 0;
+			}
+			.content {
+				padding: 20px;
+			}
+			.reason-box {
+				background-color: #ffebee;
+				border-left: 4px solid #f44336;
+				padding: 15px;
+				margin: 15px 0;
+				border-radius: 0 5px 5px 0;
+			}
+			.info-box {
+				background-color: #e3f2fd;
+				border-left: 4px solid #2196f3;
+				padding: 15px;
+				margin: 15px 0;
+				border-radius: 0 5px 5px 0;
+			}
+			.button {
+				display: inline-block;
+				padding: 12px 24px;
+				background-color: #2196f3;
+				color: white;
+				text-decoration: none;
+				border-radius: 5px;
+				margin-top: 20px;
+				font-weight: bold;
+			}
+			.button:hover {
+				background-color: #1976d2;
+			}
+			.footer {
+				margin-top: 20px;
+				font-size: 12px;
+				color: #777;
+				text-align: center;
+				border-top: 1px solid #eee;
+				padding-top: 15px;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="container">
+			<div class="header">
+				<h2>❌ Vozačka dozvola nije prihvaćena</h2>
+			</div>
+			<div class="content">
+				<p>Poštovani <span th:text="${firstName}">Ime</span>,</p>
+
+				<p>
+					Nažalost, vaša vozačka dozvola nije prošla verifikaciju. Molimo vas da
+					ponovo pošaljete ispravne dokumente.
+				</p>
+
+				<div class="reason-box">
+					<strong>Razlog:</strong>
+					<p th:text="${rejectionReason}">Razlog odbijanja</p>
+				</div>
+
+				<div class="info-box">
+					<strong>Kako ispraviti?</strong>
+					<ul>
+						<li>Uverite se da je slika jasna i čitljiva</li>
+						<li>Fotografišite obe strane dozvole</li>
+						<li>Proverite da dozvola nije istekla</li>
+						<li>Uverite se da podaci odgovaraju vašem profilu</li>
+					</ul>
+				</div>
+
+				<p style="text-align: center">
+					<a href="https://rentoza.rs/verify-license" class="button">
+						📄 Ponovo pošalji dozvolu
+					</a>
+				</p>
+
+				<p>
+					Ako smatrate da je došlo do greške ili imate pitanja, slobodno nas
+					kontaktirajte.
+				</p>
+			</div>
+			<div class="footer">
+				<p>
+					Kontaktirajte nas na
+					<a href="mailto:rentozzza@gmail.com">rentozzza@gmail.com</a>
+				</p>
+				<p>&copy; 2025 Rentoza. Sva prava zadržana.</p>
+			</div>
+		</div>
+	</body>
+</html>

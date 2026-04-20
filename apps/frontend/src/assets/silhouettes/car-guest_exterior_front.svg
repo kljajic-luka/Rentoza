@@ -1,0 +1,66 @@
+<!-- 
+  Car Front Silhouette for Photo Capture Guidance
+  Used for GUEST_EXTERIOR_FRONT and HOST_EXTERIOR_FRONT photo types.
+  
+  Display at 30% opacity over camera preview to guide positioning.
+-->
+<svg viewBox="0 0 400 300" xmlns="http://www.w3.org/2000/svg">
+  <!-- Car body outline -->
+  <g fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Car roof line -->
+    <path d="M100 130 L150 80 L250 80 L300 130" />
+    
+    <!-- Windshield -->
+    <path d="M150 80 L145 130 L255 130 L250 80" />
+    
+    <!-- Hood -->
+    <path d="M100 130 L100 160 L300 160 L300 130" />
+    
+    <!-- Front bumper -->
+    <path d="M80 160 L80 190 L320 190 L320 160" />
+    
+    <!-- License plate area (dashed to show it must be visible) -->
+    <rect x="160" y="165" width="80" height="20" stroke-dasharray="5,3" />
+    
+    <!-- Headlights -->
+    <ellipse cx="120" cy="145" rx="20" ry="12" />
+    <ellipse cx="280" cy="145" rx="20" ry="12" />
+    
+    <!-- Grille -->
+    <rect x="150" y="140" width="100" height="20" rx="3" />
+    
+    <!-- Wheels (partial view) -->
+    <path d="M90 190 Q90 220, 120 220 Q150 220, 150 190" />
+    <path d="M250 190 Q250 220, 280 220 Q310 220, 310 190" />
+    
+    <!-- Side mirrors -->
+    <path d="M80 120 L60 125 L60 140 L80 145" />
+    <path d="M320 120 L340 125 L340 140 L320 145" />
+  </g>
+  
+  <!-- Frame guide (dashed) -->
+  <rect 
+    x="30" y="40" 
+    width="340" height="220" 
+    fill="none" 
+    stroke="#FFFFFF" 
+    stroke-width="2" 
+    stroke-dasharray="10,5" 
+    opacity="0.5"
+  />
+  
+  <!-- Positioning hint arrows -->
+  <g fill="#FFFFFF" opacity="0.6">
+    <!-- Arrow pointing down (indicating camera height) -->
+    <path d="M200 260 L195 250 L205 250 Z" />
+    <line x1="200" y1="250" x2="200" y2="270" stroke="#FFFFFF" stroke-width="2" />
+    
+    <!-- Distance indicator -->
+    <text x="200" y="285" text-anchor="middle" font-size="12" fill="#FFFFFF">5-8m</text>
+  </g>
+  
+  <!-- "Tablica" (License plate) label -->
+  <text x="200" y="210" text-anchor="middle" font-size="10" fill="#FFFFFF" opacity="0.7">
+    Tablica mora biti vidljiva
+  </text>
+</svg>

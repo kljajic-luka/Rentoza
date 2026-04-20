@@ -1,0 +1,448 @@
+import { TestBed } from '@angular/core/testing';
+import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
+import { JwtHelperService } from '@auth0/angular-jwt';
+import { of } from 'rxjs';
+
+import { AuthService } from './auth.service';
+import { UserProfile } from '@core/models/user.model';
+import { UserRole } from '@core/models/user-role.type';
+import { UserRegisterRequest, OwnerRegisterRequest } from '@core/models/auth.model';
+import { environment } from '@environments/environment';
+
+describe('AuthService (cookie-mode session)', () => {
+  let service: AuthService;
+  let httpMock: HttpTestingController;
+  let jwtHelperMock: JwtHelperService;
+  let originalUseCookies: boolean | undefined;
+
+  beforeEach(() => {
+    // Save original value to restore later
+    originalUseCookies = environment.auth?.useCookies;
+
+    // Enable cookie mode for these tests
+    if (!environment.auth) {
+      (environment as any).auth = {};
+    }
+    environment.auth.useCookies = true;
+
+    jwtHelperMock = {
+      decodeToken: jasmine.createSpy('decodeToken').and.returnValue({
+        roles: ['ROLE_USER'],
+        sub: '1',
+        email: 'cookie@example.com',
+      }),
+      getTokenExpirationDate: jasmine
+        .createSpy('getTokenExpirationDate')
+        .and.returnValue(new Date(Date.now() + 60000)),
+      isTokenExpired: jasmine.createSpy('isTokenExpired').and.returnValue(false),
+    } as unknown as JwtHelperService;
+
+    TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule],
+      providers: [AuthService, { provide: JwtHelperService, useValue: jwtHelperMock }],
+    });
+
+    service = TestBed.inject(AuthService);
+    httpMock = TestBed.inject(HttpTestingController);
+    spyOn<any>(service, 'loadFavoritesForSession').and.stub();
+
+    // Clear localStorage before each test
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    httpMock.verify();
+    localStorage.clear();
+
+    // Restore original value
+    if (environment.auth) {
+      environment.auth.useCookies = originalUseCookies ?? false;
+    }
+  });
+
+  it('bootstraps session via refresh when cookies are enabled', async () => {
+    const refreshSpy = spyOn(service, 'refreshAccessToken').and.returnValue(of('token'));
+
+    await service.initializeSession();
+
+    expect(refreshSpy).toHaveBeenCalled();
+  });
+
+  it('hydrates access token and user after refresh response', () => {
+    let emitted: string | null = null;
+
+    service.refreshAccessToken().subscribe((token) => {
+      emitted = token;
+    });
+
+    const request = httpMock.expectOne((req) => req.url.includes('/auth/supabase/refresh'));
+    expect(request.request.method).toBe('POST');
+    expect(request.request.withCredentials).toBeTrue();
+
+    request.flush({
+      authenticated: true,
+      user: {
+        id: '7',
+        email: 'cookie@example.com',
+        firstName: 'Cookie',
+        lastName: 'User',
+        roles: ['USER'] as UserRole[],
+      } satisfies Partial<UserProfile>,
+    });
+
+    // Token is now in an HttpOnly cookie — not accessible from JS
+    // The observable emits a sentinel string to signal success
+    expect(emitted).not.toBeNull();
+    expect(emitted!).toBe('session-refreshed');
+    expect(service.getCurrentUser()?.email).toBe('cookie@example.com');
+  });
+
+  /**
+   * CRITICAL SECURITY TEST: Verify localStorage is NOT used in cookie mode
+   *
+   * This test ensures that when useCookies=true, sensitive tokens and user data
+   * are never written to localStorage (which is vulnerable to XSS attacks).
+   * Instead, authentication state is managed via:
+   * - HttpOnly cookies (server-managed, inaccessible to JavaScript)
+   * - In-memory BehaviorSubject observables
+   */
+  it('should NOT write to localStorage when in cookie mode', () => {
+    // Spy on localStorage.setItem to verify it's never called with auth data
+    const setItemSpy = spyOn(localStorage, 'setItem').and.callThrough();
+
+    // Trigger a login flow (simulated via refresh with user data)
+    service.refreshAccessToken().subscribe();
+
+    const request = httpMock.expectOne((req) => req.url.includes('/auth/supabase/refresh'));
+    request.flush({
+      authenticated: true,
+      user: {
+        id: '123',
+        email: 'secure@example.com',
+        firstName: 'Secure',
+        lastName: 'User',
+        roles: ['USER'] as UserRole[],
+      },
+    });
+
+    // Verify localStorage.setItem was NOT called with auth-related keys
+    const authRelatedCalls = setItemSpy.calls
+      .all()
+      .filter((call) => call.args[0] === 'access_token' || call.args[0] === 'current_user');
+
+    expect(authRelatedCalls.length).toBe(
+      0,
+      'localStorage.setItem should NOT be called for access_token or current_user in cookie mode',
+    );
+
+    // Also verify the values are not actually in localStorage
+    expect(localStorage.getItem('access_token')).toBeNull(
+      'access_token should not be in localStorage',
+    );
+    expect(localStorage.getItem('current_user')).toBeNull(
+      'current_user should not be in localStorage',
+    );
+
+    // In cookie-only mode the JS-accessible token is null (token lives in HttpOnly cookie)
+    expect(service.getAccessToken()).toBeNull(
+      'JS-accessible token must be null — the real token is in an HttpOnly cookie',
+    );
+    expect(service.getCurrentUser()?.email).toBe(
+      'secure@example.com',
+      'User should still be available in memory',
+    );
+  });
+
+  /**
+   * Verify that clearSession() still clears localStorage (defense in depth)
+   * even if somehow tokens were written there by legacy code.
+   */
+  it('should clear localStorage on logout regardless of cookie mode', () => {
+    // Pre-populate localStorage (simulating legacy data or manual tampering)
+    localStorage.setItem('access_token', 'old.token');
+    localStorage.setItem('current_user', '{"id":"1","email":"old@example.com"}');
+
+    // Clear session
+    service.clearSession();
+
+    // Verify localStorage is cleared
+    expect(localStorage.getItem('access_token')).toBeNull();
+    expect(localStorage.getItem('current_user')).toBeNull();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// REGISTRATION COMPLIANCE TESTS
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('AuthService (registration compliance)', () => {
+  let service: AuthService;
+  let httpMock: HttpTestingController;
+  let originalUseCookies: boolean | undefined;
+
+  beforeEach(() => {
+    originalUseCookies = environment.auth?.useCookies;
+    if (!environment.auth) {
+      (environment as any).auth = {};
+    }
+    environment.auth.useCookies = true;
+
+    const jwtHelperMock = {
+      decodeToken: jasmine.createSpy('decodeToken').and.returnValue({ roles: ['ROLE_USER'] }),
+      getTokenExpirationDate: jasmine
+        .createSpy('getTokenExpirationDate')
+        .and.returnValue(new Date(Date.now() + 60000)),
+      isTokenExpired: jasmine.createSpy('isTokenExpired').and.returnValue(false),
+    } as unknown as JwtHelperService;
+
+    TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule],
+      providers: [AuthService, { provide: JwtHelperService, useValue: jwtHelperMock }],
+    });
+
+    service = TestBed.inject(AuthService);
+    httpMock = TestBed.inject(HttpTestingController);
+    spyOn<any>(service, 'loadFavoritesForSession').and.stub();
+  });
+
+  afterEach(() => {
+    httpMock.verify();
+
+    // Restore original env value to prevent state leaking into other specs
+    if (environment.auth) {
+      environment.auth.useCookies = originalUseCookies ?? false;
+    }
+  });
+
+  // ─── registerUser() ───────────────────────────────────────────────────────
+
+  it('registerUser() should POST to /auth/register/user with full payload', () => {
+    const payload: UserRegisterRequest = {
+      firstName: 'Marko',
+      lastName: 'Petrović',
+      email: 'marko@example.com',
+      phone: '0641234567',
+      password: 'SecurePass1',
+      dateOfBirth: '1990-05-15',
+      confirmsAgeEligibility: true,
+    };
+
+    service.registerUser(payload).subscribe();
+
+    const req = httpMock.expectOne((r) => r.url.includes('/auth/register/user'));
+    expect(req.request.method).toBe('POST');
+    expect(req.request.withCredentials).toBeTrue();
+
+    // Verify all enhanced fields are present in the request body
+    const body = req.request.body as UserRegisterRequest;
+    expect(body.phone).toBe('0641234567');
+    expect(body.dateOfBirth).toBe('1990-05-15');
+    expect(body.confirmsAgeEligibility).toBeTrue();
+    expect(body.firstName).toBe('Marko');
+    expect(body.lastName).toBe('Petrović');
+
+    req.flush({
+      authenticated: true,
+      user: {
+        id: '10',
+        email: 'marko@example.com',
+        firstName: 'Marko',
+        lastName: 'Petrović',
+        roles: ['USER'],
+      },
+    });
+  });
+
+  it('registerUser() should return null when email confirmation is required', () => {
+    const payload: UserRegisterRequest = {
+      firstName: 'Ana',
+      lastName: 'Jovanović',
+      email: 'ana@example.com',
+      phone: '0659876543',
+      password: 'SecurePass1',
+      dateOfBirth: '1995-03-20',
+      confirmsAgeEligibility: true,
+    };
+
+    let result: UserProfile | null | undefined;
+    service.registerUser(payload).subscribe((user) => (result = user));
+
+    const req = httpMock.expectOne((r) => r.url.includes('/auth/register/user'));
+    req.flush({
+      authenticated: false,
+      emailConfirmationRequired: true,
+      user: null,
+    });
+
+    expect(result).toBeNull();
+    // Session should NOT be persisted
+    expect(service.getCurrentUser()).toBeNull();
+  });
+
+  it('registerUser() should persist session when email confirmation is NOT required', () => {
+    const payload: UserRegisterRequest = {
+      firstName: 'Ivan',
+      lastName: 'Nikolić',
+      email: 'ivan@example.com',
+      phone: '0631112233',
+      password: 'SecurePass1',
+      dateOfBirth: '1988-11-10',
+      confirmsAgeEligibility: true,
+    };
+
+    let result: UserProfile | null | undefined;
+    service.registerUser(payload).subscribe((user) => (result = user));
+
+    const req = httpMock.expectOne((r) => r.url.includes('/auth/register/user'));
+    req.flush({
+      authenticated: true,
+      emailConfirmationRequired: false,
+      user: {
+        id: '11',
+        email: 'ivan@example.com',
+        firstName: 'Ivan',
+        lastName: 'Nikolić',
+        roles: ['USER'],
+      },
+    });
+
+    expect(result).toBeTruthy();
+    expect(service.getCurrentUser()?.email).toBe('ivan@example.com');
+  });
+
+  // ─── registerOwner() ─────────────────────────────────────────────────────
+
+  it('registerOwner() should POST to /auth/register/owner with owner-specific fields', () => {
+    const payload: OwnerRegisterRequest = {
+      firstName: 'Petar',
+      lastName: 'Đorđević',
+      email: 'petar@example.com',
+      phone: '0621234567',
+      password: 'SecurePass1',
+      dateOfBirth: '1985-07-22',
+      confirmsAgeEligibility: true,
+      ownerType: 'INDIVIDUAL',
+      jmbg: '2207985710038',
+      agreesToHostAgreement: true,
+      confirmsVehicleInsurance: true,
+      confirmsVehicleRegistration: true,
+    };
+
+    service.registerOwner(payload).subscribe();
+
+    const req = httpMock.expectOne((r) => r.url.includes('/auth/register/owner'));
+    expect(req.request.method).toBe('POST');
+    expect(req.request.withCredentials).toBeTrue();
+
+    // Verify owner-specific fields in request body
+    const body = req.request.body as OwnerRegisterRequest;
+    expect(body.ownerType).toBe('INDIVIDUAL');
+    expect(body.jmbg).toBe('2207985710038');
+    expect(body.agreesToHostAgreement).toBeTrue();
+    expect(body.confirmsVehicleInsurance).toBeTrue();
+    expect(body.confirmsVehicleRegistration).toBeTrue();
+    expect(body.phone).toBe('0621234567');
+    expect(body.dateOfBirth).toBe('1985-07-22');
+
+    req.flush({
+      authenticated: true,
+      user: {
+        id: '12',
+        email: 'petar@example.com',
+        firstName: 'Petar',
+        lastName: 'Đorđević',
+        roles: ['OWNER'],
+        ownerType: 'INDIVIDUAL',
+      },
+    });
+  });
+
+  it('registerOwner() should support LEGAL_ENTITY with PIB and bank account', () => {
+    const payload: OwnerRegisterRequest = {
+      firstName: 'Kompanija',
+      lastName: 'DOO',
+      email: 'firma@example.com',
+      phone: '0111234567',
+      password: 'SecurePass1',
+      dateOfBirth: '1975-01-01',
+      confirmsAgeEligibility: true,
+      ownerType: 'LEGAL_ENTITY',
+      pib: '123456789',
+      bankAccountNumber: 'RS35260005601001611379',
+      agreesToHostAgreement: true,
+      confirmsVehicleInsurance: true,
+      confirmsVehicleRegistration: true,
+    };
+
+    service.registerOwner(payload).subscribe();
+
+    const req = httpMock.expectOne((r) => r.url.includes('/auth/register/owner'));
+    const body = req.request.body as OwnerRegisterRequest;
+    expect(body.ownerType).toBe('LEGAL_ENTITY');
+    expect(body.pib).toBe('123456789');
+    expect(body.bankAccountNumber).toBe('RS35260005601001611379');
+
+    req.flush({
+      authenticated: true,
+      user: {
+        id: '13',
+        email: 'firma@example.com',
+        firstName: 'Kompanija',
+        lastName: 'DOO',
+        roles: ['OWNER'],
+        ownerType: 'LEGAL_ENTITY',
+      },
+    });
+  });
+
+  it('registerOwner() should return null when email confirmation is required', () => {
+    const payload: OwnerRegisterRequest = {
+      firstName: 'Test',
+      lastName: 'Owner',
+      email: 'test-owner@example.com',
+      phone: '0651112233',
+      password: 'SecurePass1',
+      dateOfBirth: '1990-01-01',
+      confirmsAgeEligibility: true,
+      ownerType: 'INDIVIDUAL',
+      jmbg: '0101990710012',
+      agreesToHostAgreement: true,
+      confirmsVehicleInsurance: true,
+      confirmsVehicleRegistration: true,
+    };
+
+    let result: UserProfile | null | undefined;
+    service.registerOwner(payload).subscribe((user) => (result = user));
+
+    const req = httpMock.expectOne((r) => r.url.includes('/auth/register/owner'));
+    req.flush({
+      authenticated: false,
+      emailConfirmationRequired: true,
+      user: null,
+    });
+
+    expect(result).toBeNull();
+    expect(service.getCurrentUser()).toBeNull();
+  });
+
+  // ─── Session refresh uses Supabase path ───────────────────────────────────
+
+  it('refreshAccessToken() should POST to /auth/supabase/refresh', () => {
+    service.refreshAccessToken().subscribe();
+
+    const req = httpMock.expectOne((r) => r.url.includes('/auth/supabase/refresh'));
+    expect(req.request.method).toBe('POST');
+    expect(req.request.withCredentials).toBeTrue();
+
+    req.flush({
+      authenticated: true,
+      user: {
+        id: '1',
+        email: 'test@example.com',
+        firstName: 'Test',
+        lastName: 'User',
+        roles: ['USER'],
+      },
+    });
+  });
+});

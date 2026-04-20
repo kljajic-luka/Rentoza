@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" fill="none">
+  <!-- Car Fuel Gauge Silhouette for Photo Guidance -->
+  <title>Vehicle Fuel Gauge - Capture Guide</title>
+  <desc>Semi-transparent silhouette showing optimal fuel gauge positioning for photo capture</desc>
+  
+  <!-- Background with transparency indicator -->
+  <rect width="400" height="300" fill="transparent"/>
+  
+  <!-- Fuel gauge close-up view -->
+  <g opacity="0.6" stroke="#3B82F6" stroke-width="2" fill="none">
+    <!-- Gauge housing/bezel -->
+    <circle cx="200" cy="150" r="100" stroke-dasharray="8,4"/>
+    <circle cx="200" cy="150" r="90" stroke-dasharray="6,3"/>
+    
+    <!-- Inner gauge area -->
+    <circle cx="200" cy="150" r="75" stroke-dasharray="4,2"/>
+    
+    <!-- Fuel pump icon at top -->
+    <g transform="translate(185, 65)">
+      <rect x="0" y="5" width="20" height="25" rx="2" stroke-dasharray="4,2"/>
+      <rect x="5" y="0" width="10" height="8" rx="1" stroke-dasharray="3,2"/>
+      <path d="M20 10 L28 10 L28 25 L20 20" stroke-dasharray="3,2"/>
+      <line x1="10" y1="15" x2="10" y2="25" stroke-dasharray="2,2"/>
+    </g>
+    
+    <!-- Gauge arc with markings (E to F) -->
+    <path d="M120 200 Q100 150 120 100" stroke-width="3" stroke-dasharray="0"/>
+    <path d="M120 100 Q150 60 200 55" stroke-width="3" stroke-dasharray="0"/>
+    <path d="M200 55 Q250 60 280 100" stroke-width="3" stroke-dasharray="0"/>
+    <path d="M280 100 Q300 150 280 200" stroke-width="3" stroke-dasharray="0"/>
+    
+    <!-- Gauge scale markings -->
+    <g stroke-width="2">
+      <!-- E (Empty) marker - Red zone -->
+      <line x1="115" y1="195" x2="130" y2="185" stroke="#EF4444"/>
+      <text x="105" y="210" font-size="14" fill="#EF4444" font-weight="bold">E</text>
+      
+      <!-- 1/4 marker -->
+      <line x1="110" y1="145" x2="125" y2="145" stroke-dasharray="0"/>
+      <text x="95" y="150" font-size="10" fill="#64748B">1/4</text>
+      
+      <!-- 1/2 marker -->
+      <line x1="130" y1="95" x2="142" y2="105" stroke-dasharray="0"/>
+      <text x="115" y="85" font-size="10" fill="#64748B">1/2</text>
+      
+      <!-- 3/4 marker -->
+      <line x1="200" y1="80" x2="200" y2="95" stroke-dasharray="0"/>
+      <text x="200" y="70" font-size="10" fill="#64748B" text-anchor="middle">3/4</text>
+      
+      <!-- F (Full) marker - Green zone -->
+      <line x1="285" y1="195" x2="270" y2="185" stroke="#22C55E"/>
+      <text x="290" y="210" font-size="14" fill="#22C55E" font-weight="bold">F</text>
+      
+      <!-- Additional scale lines -->
+      <line x1="258" y1="95" x2="245" y2="107" stroke-dasharray="0"/>
+      <line x1="290" y1="145" x2="275" y2="145" stroke-dasharray="0"/>
+    </g>
+    
+    <!-- Color zones indicator -->
+    <path d="M120 200 Q100 150 120 120" stroke="#EF4444" stroke-width="8" opacity="0.3"/>
+    <path d="M120 120 Q140 85 180 70" stroke="#F59E0B" stroke-width="8" opacity="0.3"/>
+    <path d="M180 70 Q230 60 280 100 Q300 150 280 200" stroke="#22C55E" stroke-width="8" opacity="0.3"/>
+    
+    <!-- Needle (example position - shows current level) -->
+    <g stroke="#1F2937" stroke-width="3">
+      <line x1="200" y1="150" x2="150" y2="115"/>
+      <circle cx="200" cy="150" r="8" fill="#1F2937"/>
+    </g>
+    
+    <!-- Current level indicator (highlighted area) -->
+    <g>
+      <rect x="160" y="220" width="80" height="25" rx="4" stroke="#22C55E" stroke-width="3" fill="#22C55E" fill-opacity="0.15"/>
+      <text x="200" y="237" font-size="11" fill="#22C55E" text-anchor="middle" font-weight="bold">FUEL LEVEL</text>
+    </g>
+  </g>
+  
+  <!-- Focus zone - entire gauge should be visible -->
+  <g stroke="#22C55E" stroke-width="2" fill="none" opacity="0.8">
+    <circle cx="200" cy="150" r="110"/>
+  </g>
+  
+  <!-- Key indicators legend -->
+  <g transform="translate(310, 80)">
+    <rect x="0" y="0" width="80" height="70" rx="4" fill="#F8FAFC" stroke="#E2E8F0"/>
+    <text x="40" y="15" font-size="9" fill="#64748B" text-anchor="middle" font-weight="bold">LEGEND</text>
+    
+    <rect x="10" y="25" width="12" height="8" fill="#EF4444" opacity="0.5"/>
+    <text x="30" y="32" font-size="8" fill="#64748B">Empty zone</text>
+    
+    <rect x="10" y="40" width="12" height="8" fill="#F59E0B" opacity="0.5"/>
+    <text x="30" y="47" font-size="8" fill="#64748B">Low zone</text>
+    
+    <rect x="10" y="55" width="12" height="8" fill="#22C55E" opacity="0.5"/>
+    <text x="30" y="62" font-size="8" fill="#64748B">Safe zone</text>
+  </g>
+  
+  <!-- Instruction callout -->
+  <g>
+    <rect x="10" y="80" width="90" height="45" rx="4" fill="#FEF3C7" stroke="#F59E0B" stroke-width="1"/>
+    <text x="55" y="97" font-size="9" fill="#92400E" text-anchor="middle" font-weight="bold">IMPORTANT</text>
+    <text x="55" y="110" font-size="8" fill="#92400E" text-anchor="middle">Needle position</text>
+    <text x="55" y="120" font-size="8" fill="#92400E" text-anchor="middle">must be visible</text>
+  </g>
+  
+  <!-- Alignment guides -->
+  <g stroke="#94A3B8" stroke-width="1" stroke-dasharray="4,4" opacity="0.3">
+    <line x1="200" y1="30" x2="200" y2="270"/>
+    <line x1="70" y1="150" x2="330" y2="150"/>
+  </g>
+  
+  <!-- Corner markers -->
+  <g stroke="#3B82F6" stroke-width="2" opacity="0.5">
+    <path d="M50 35 L50 55 M50 35 L70 35"/>
+    <path d="M350 35 L350 55 M350 35 L330 35"/>
+    <path d="M50 265 L50 245 M50 265 L70 265"/>
+    <path d="M350 265 L350 245 M350 265 L330 265"/>
+  </g>
+  
+  <!-- Instruction text -->
+  <text x="200" y="20" font-size="12" fill="#64748B" text-anchor="middle" font-weight="500">
+    Close-up of fuel gauge
+  </text>
+  <text x="200" y="285" font-size="10" fill="#64748B" text-anchor="middle">
+    Capture the entire gauge with needle position clearly visible
+  </text>
+</svg>

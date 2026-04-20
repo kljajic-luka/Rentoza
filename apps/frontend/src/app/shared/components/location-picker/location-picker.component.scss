@@ -1,0 +1,330 @@
+.location-picker {
+  position: relative;
+  width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  background-color: #f5f5f5;
+
+  .map-container {
+    width: 100%;
+    height: 100%;
+    // Prevent white flash on initial load
+    transition: background-color 0.3s ease;
+  }
+
+  // Loading overlay
+  .loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    background-color: rgba(255, 255, 255, 0.9);
+    z-index: 10;
+
+    span {
+      color: #666;
+      font-size: var(--font-size-sm);
+    }
+  }
+
+  // Error overlay
+  .error-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    background-color: rgba(255, 255, 255, 0.95);
+    z-index: 10;
+
+    mat-icon {
+      font-size: var(--font-size-3xl);
+      width: 48px;
+      height: 48px;
+      color: #f44336;
+    }
+
+    span {
+      color: #666;
+      font-size: var(--font-size-sm);
+    }
+  }
+
+  // Controls overlay
+  .controls-overlay {
+    position: absolute;
+    bottom: 16px;
+    left: 16px;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    .geolocation-btn {
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+
+      mat-spinner {
+        margin: 0;
+      }
+    }
+  }
+
+  // Privacy indicator
+  .privacy-indicator {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background-color: rgba(255, 255, 255, 0.95);
+    border-radius: 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    font-size: var(--font-size-xs);
+    color: #666;
+    z-index: 5;
+
+    mat-icon {
+      font-size: var(--font-size-base);
+      width: 16px;
+      height: 16px;
+      color: var(--brand-primary-dark);
+    }
+  }
+
+  // Edit hint
+  .edit-hint {
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background-color: rgba(25, 118, 210, 0.95);
+    color: white;
+    border-radius: 24px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+    font-size: var(--font-size-sm);
+    z-index: 5;
+    animation: pulse 2s infinite;
+
+    mat-icon {
+      font-size: var(--font-size-lg);
+      width: 18px;
+      height: 18px;
+    }
+  }
+
+  @keyframes pulse {
+    0% {
+      transform: translateX(-50%) scale(1);
+    }
+    50% {
+      transform: translateX(-50%) scale(1.02);
+    }
+    100% {
+      transform: translateX(-50%) scale(1);
+    }
+  }
+
+  // Radius slider container
+  .radius-slider-container {
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 12px 20px;
+    background-color: rgba(255, 255, 255, 0.95);
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+    z-index: 5;
+    min-width: 200px;
+
+    .radius-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: var(--font-size-sm);
+      color: #333;
+      font-weight: 500;
+
+      mat-icon {
+        font-size: var(--font-size-lg);
+        width: 18px;
+        height: 18px;
+        color: var(--brand-primary-dark);
+      }
+    }
+
+    .radius-slider {
+      width: 100%;
+    }
+  }
+
+  // Radius indicator (when slider is hidden)
+  .radius-indicator {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background-color: rgba(255, 255, 255, 0.95);
+    border-radius: 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    font-size: var(--font-size-xs);
+    color: #666;
+    z-index: 5;
+
+    mat-icon {
+      font-size: var(--font-size-base);
+      width: 16px;
+      height: 16px;
+      color: var(--brand-primary-dark);
+    }
+  }
+
+  // Marker count indicator
+  .marker-count {
+    position: absolute;
+    bottom: 16px;
+    right: 16px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    background-color: rgba(25, 118, 210, 0.95);
+    color: white;
+    border-radius: 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    z-index: 5;
+
+    mat-icon {
+      font-size: var(--font-size-lg);
+      width: 18px;
+      height: 18px;
+    }
+  }
+}
+
+// Dark mode support
+:host-context(.theme-dark) {
+  .location-picker {
+    background-color: #1e1e1e;
+
+    .map-container {
+      // Ensure map transitions smoothly to dark theme
+      background-color: #1e1e1e;
+    }
+
+    .loading-overlay {
+      background-color: rgba(30, 30, 30, 0.95);
+
+      span {
+        color: #bbb;
+      }
+    }
+
+    .error-overlay {
+      background-color: rgba(30, 30, 30, 0.95);
+
+      mat-icon {
+        color: #ef5350;
+      }
+
+      span {
+        color: #bbb;
+      }
+    }
+
+    .privacy-indicator,
+    .radius-indicator {
+      background-color: rgba(45, 45, 45, 0.95);
+      color: #bbb;
+
+      mat-icon {
+        color: var(--brand-primary-light);
+      }
+    }
+
+    .edit-hint {
+      background-color: rgba(30, 100, 200, 0.95);
+      color: white;
+    }
+
+    .radius-slider-container {
+      background-color: rgba(45, 45, 45, 0.95);
+
+      .radius-label {
+        color: #ddd;
+
+        mat-icon {
+          color: var(--brand-primary-light);
+        }
+      }
+    }
+
+    .marker-count {
+      background-color: rgba(30, 100, 200, 0.95);
+      color: white;
+    }
+  }
+}
+
+// Responsive adjustments
+@media (max-width: 600px) {
+  .location-picker {
+    .privacy-indicator,
+    .radius-indicator {
+      font-size: 0.75rem; /* min 12px for map overlay indicators */
+      padding: 4px 10px;
+    }
+
+    .edit-hint {
+      font-size: var(--font-size-xs);
+      padding: 8px 12px;
+    }
+
+    .controls-overlay {
+      bottom: 12px;
+      left: 12px;
+    }
+
+    .radius-slider-container {
+      min-width: 160px;
+      padding: 10px 16px;
+
+      .radius-label {
+        font-size: var(--font-size-xs);
+      }
+    }
+
+    .marker-count {
+      bottom: 12px;
+      right: 12px;
+      font-size: var(--font-size-xs);
+      padding: 6px 12px;
+    }
+  }
+}

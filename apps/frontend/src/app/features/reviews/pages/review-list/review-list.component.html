@@ -1,0 +1,76 @@
+<section class="reviews">
+  <header>
+    <div>
+      <p class="eyebrow">Iskustva zajednice</p>
+      <h1>Najnovije recenzije</h1>
+      <p>Pročitajte utiske vozača nakon završenih putovanja i pronađite svoje sledeće vozilo.</p>
+    </div>
+  </header>
+
+  <ng-container *ngIf="reviews$ | async as reviews; else loading">
+    <div class="reviews__list" *ngIf="reviews.length; else emptyState">
+      <mat-card *ngFor="let review of reviews; trackBy: trackByReviewId" class="review-card">
+        <mat-card-header>
+          <div mat-card-avatar class="avatar">
+            {{ review.displayName[0] }}
+          </div>
+          <mat-card-title>{{ review.displayName }}</mat-card-title>
+          <mat-card-subtitle>
+            Objavljeno: {{ review.createdAt | date: 'd. MMMM y.' }}
+          </mat-card-subtitle>
+        </mat-card-header>
+
+        <mat-card-content>
+          <p class="review-card__comment">{{ review.comment }}</p>
+
+          <div class="review-card__meta">
+            <div class="review-card__meta-item">
+              <span class="meta-label">Ocena</span>
+              <div class="stars">
+                <ng-container *ngFor="let star of starRange">
+                  <mat-icon color="accent">{{ review.rating > star ? 'star' : 'star_border' }}</mat-icon>
+                </ng-container>
+                <span class="stars__value">{{ review.rating }}/5</span>
+              </div>
+            </div>
+
+            <div class="review-card__meta-item" *ngIf="review.carBrand || review.carModel">
+              <span class="meta-label">Vozilo</span>
+              <span>{{ review.carBrand }} {{ review.carModel }} {{ review.carYear || '' }}</span>
+            </div>
+
+            <div class="review-card__meta-item" *ngIf="review.carLocation">
+              <span class="meta-label">Lokacija</span>
+              <span class="meta-location">{{ review.carLocation }}</span>
+            </div>
+          </div>
+        </mat-card-content>
+
+        <mat-card-actions align="end">
+          <button
+            mat-stroked-button
+            color="primary"
+            [routerLink]="['/cars', review.carId]"
+            [disabled]="!review.carId"
+          >
+            Pogledaj vozilo
+          </button>
+        </mat-card-actions>
+      </mat-card>
+    </div>
+
+    <ng-template #emptyState>
+      <div class="empty">
+        <mat-icon>chat_bubble_outline</mat-icon>
+        <h3>Još uvek nema recenzija</h3>
+        <p>Još uvek nema recenzija. Budite prvi koji će oceniti iskustvo sa iznajmljivanjem.</p>
+      </div>
+    </ng-template>
+  </ng-container>
+
+  <ng-template #loading>
+    <div class="loading" fxLayout="row" fxLayoutAlign="center center">
+      <mat-progress-spinner mode="indeterminate"></mat-progress-spinner>
+    </div>
+  </ng-template>
+</section>

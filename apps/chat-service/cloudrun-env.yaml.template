@@ -1,0 +1,49 @@
+# Cloud Run Environment Variables TEMPLATE - Chat Service
+# =============================================================================
+# SECURITY: NEVER commit actual secrets to this file or to cloudrun-env.yaml!
+# This template documents required configuration.
+# Secrets are injected at deploy time via --update-secrets from GCP Secret Manager.
+# See: infrastructure/gcp/deploy-backend-secure.sh (canonical deploy logic)
+#      infrastructure/gcp/cloudbuild.yaml      (build + calls secure deploy script)
+#      scripts/setup-secrets.sh            (one-time provisioning + rotation)
+# =============================================================================
+
+SPRING_PROFILES_ACTIVE: "prod"
+
+# Server Configuration
+SERVER_PORT: "8081"
+
+# Database (host/user only — DB_PASSWORD via Secret Manager: rentoza-db-password)
+DB_URL: "${DB_URL}"
+DB_USERNAME: "${DB_USERNAME}"
+
+# Supabase (URL only — keys via Secret Manager)
+#   rentoza-supabase-anon-key            --> SUPABASE_ANON_KEY
+#   rentoza-supabase-service-role-key    --> SUPABASE_SERVICE_ROLE_KEY
+#   rentoza-supabase-jwt-secret          --> SUPABASE_JWT_SECRET
+SUPABASE_URL: "${SUPABASE_URL}"
+
+# JWT (via Secret Manager)
+#   rentoza-jwt-secret                   --> JWT_SECRET
+#   rentoza-internal-service-jwt-secret  --> INTERNAL_SERVICE_JWT_SECRET
+
+# Main Backend URL
+BACKEND_API_BASE_URL: "${BACKEND_API_BASE_URL}"
+
+# CORS Configuration
+CORS_ALLOWED_ORIGINS: "https://rentoza.rs,https://www.rentoza.rs"
+WEBSOCKET_ALLOWED_ORIGINS: "https://rentoza.rs,https://www.rentoza.rs"
+
+# Storage Configuration
+CHAT_STORAGE_PROVIDER: "supabase"
+CHAT_STORAGE_BUCKET: "chat-attachments"
+
+# Redis Configuration (disabled for now)
+REDIS_ENABLED: "false"
+
+# RabbitMQ Configuration (disabled for now)
+RABBITMQ_ENABLED: "false"
+
+# Logging Configuration (Console only for Cloud Run)
+LOG_FILE: ""
+LOGGING_FILE_NAME: ""

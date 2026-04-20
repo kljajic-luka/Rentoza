@@ -1,0 +1,296 @@
+<section class="bookings">
+  <header class="bookings__header">
+    <div>
+      <p class="eyebrow">Vaša vozila</p>
+      <h1>Rezervacije</h1>
+      <p class="subtitle">Upravljajte zahtevima i pregledajte aktivna putovanja</p>
+    </div>
+  </header>
+
+  @if (isLoading()) {
+    <div class="loading">
+      <mat-progress-spinner mode="indeterminate"></mat-progress-spinner>
+    </div>
+  } @else if (!hasAnyBooking()) {
+    <div class="empty-state">
+      <mat-icon>event_busy</mat-icon>
+      <h2>Nema rezervacija</h2>
+      <p>Trenutno nemate aktivnih ili predstojećih rezervacija za vaša vozila.</p>
+    </div>
+  } @else {
+    <!-- Upcoming Bookings -->
+    @if (upcomingBookings().length > 0) {
+      <section class="bookings__section">
+        <h2 class="section-title">
+          <mat-icon>schedule</mat-icon>
+          Predstojeće
+        </h2>
+        <div class="bookings__grid">
+          @for (booking of upcomingBookings(); track booking.id) {
+            <mat-card class="booking-card">
+              <div class="booking-card__media">
+                @if (booking.car.imageUrl) {
+                  <img [src]="booking.car.imageUrl" [alt]="booking.car.brand + ' ' + booking.car.model">
+                } @else {
+                  <div class="placeholder">
+                    <mat-icon>directions_car</mat-icon>
+                  </div>
+                }
+              </div>
+
+              <mat-card-content class="booking-card__content">
+                <div class="booking-card__header">
+                  <div>
+                    <h3>{{ booking.car.brand }} {{ booking.car.model }}</h3>
+                    <p class="year-location">{{ booking.car.year }} • ID: {{ booking.id }}</p>
+                  </div>
+                  <mat-chip [class]="getStatusClass(booking.status)">
+                    {{ getStatusLabel(booking.status) }}
+                  </mat-chip>
+                </div>
+
+                <div class="booking-card__timer upcoming">
+                  <mat-icon>schedule</mat-icon>
+                  <span>{{ getTimeUntil(booking.startTime) }}</span>
+                </div>
+
+                @if (getAgreementSummary(booking)) {
+                  <div class="booking-card__timer upcoming">
+                    <mat-icon>gavel</mat-icon>
+                    <span>{{ getAgreementBannerText(booking) }}</span>
+                  </div>
+                }
+
+                <div class="booking-card__details">
+                  <div class="detail-row">
+                    <span class="label">Zakupac:</span>
+                    <span class="value">{{ booking.renter.firstName }} {{ booking.renter.lastName }}</span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="label">Period:</span>
+                    <span class="value">{{ booking.startTime | date:'dd.MM.' }} - {{ booking.endTime | date:'dd.MM.yyyy' }}</span>
+                  </div>
+                  <div class="detail-row total">
+                    <span class="label">Vaša zarada:</span>
+                    <span class="value">{{ getNetEarnings(booking.totalPrice) | currency:'RSD':'symbol':'1.0-0' }}</span>
+                  </div>
+                </div>
+              </mat-card-content>
+
+              <mat-card-actions>
+                <button mat-stroked-button color="primary" (click)="openBookingDetails(booking)">
+                  <mat-icon>receipt_long</mat-icon>
+                  Detalji
+                </button>
+                @if (booking.status === 'PENDING_APPROVAL') {
+                  <button 
+                    mat-raised-button 
+                    color="primary" 
+                    (click)="approveBooking(booking)"
+                    [disabled]="isProcessing(booking.id)">
+                    @if (isProcessing(booking.id)) {
+                      <mat-spinner diameter="18" class="button-spinner"></mat-spinner>
+                    } @else {
+                      <mat-icon>check</mat-icon>
+                    }
+                    Odobri
+                  </button>
+                  <button 
+                    mat-stroked-button 
+                    color="warn" 
+                    (click)="declineBooking(booking)"
+                    [disabled]="isProcessing(booking.id)">
+                    <mat-icon>close</mat-icon>
+                    Odbij
+                  </button>
+                }
+
+                @if (shouldShowAgreementPrimaryAction(booking)) {
+                  <button mat-raised-button color="warn" (click)="openAgreement(booking)">
+                    <mat-icon>gavel</mat-icon>
+                    {{ getAgreementActionLabel(booking) }}
+                  </button>
+                } @else if (canCheckIn(booking)) {
+                  <button mat-raised-button color="accent" (click)="goToCheckIn(booking)">
+                    <mat-icon>{{ getCheckInIcon(booking) }}</mat-icon>
+                    {{ getCheckInLabel(booking) }}
+                  </button>
+                }
+                @if (canCheckout(booking)) {
+                  <button mat-raised-button color="accent" (click)="goToCheckout(booking)">
+                    <mat-icon>{{ getCheckoutIcon(booking) }}</mat-icon>
+                    {{ getCheckoutLabel(booking) }}
+                  </button>
+                }
+              </mat-card-actions>
+            </mat-card>
+          }
+        </div>
+      </section>
+    }
+
+    <!-- Active Bookings -->
+    @if (activeBookings().length > 0) {
+      <section class="bookings__section">
+        <h2 class="section-title">
+          <mat-icon>directions_car</mat-icon>
+          U toku
+        </h2>
+        <div class="bookings__grid">
+          @for (booking of activeBookings(); track booking.id) {
+            <mat-card class="booking-card ongoing">
+              <div class="booking-card__media">
+                @if (booking.car.imageUrl) {
+                  <img [src]="booking.car.imageUrl" [alt]="booking.car.brand + ' ' + booking.car.model">
+                } @else {
+                  <div class="placeholder">
+                    <mat-icon>directions_car</mat-icon>
+                  </div>
+                }
+              </div>
+
+              <mat-card-content class="booking-card__content">
+                <div class="booking-card__header">
+                  <div>
+                    <h3>{{ booking.car.brand }} {{ booking.car.model }}</h3>
+                    <p class="year-location">{{ booking.car.year }} • ID: {{ booking.id }}</p>
+                  </div>
+                  <mat-chip [class]="getStatusClass(booking.status)">
+                    {{ getStatusLabel(booking.status) }}
+                  </mat-chip>
+                </div>
+
+                <div class="booking-card__timer ongoing">
+                  <mat-icon>timelapse</mat-icon>
+                  <span>U toku</span>
+                </div>
+
+                @if (getAgreementSummary(booking)) {
+                  <div class="booking-card__timer ongoing">
+                    <mat-icon>gavel</mat-icon>
+                    <span>{{ getAgreementBannerText(booking) }}</span>
+                  </div>
+                }
+
+                <div class="booking-card__details">
+                  <div class="detail-row">
+                    <span class="label">Zakupac:</span>
+                    <span class="value">{{ booking.renter.firstName }} {{ booking.renter.lastName }}</span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="label">Povratak:</span>
+                    <span class="value">{{ booking.endTime | date:'dd.MM.yyyy' }}</span>
+                  </div>
+                  <div class="detail-row total">
+                    <span class="label">Vaša zarada:</span>
+                    <span class="value">{{ getNetEarnings(booking.totalPrice) | currency:'RSD':'symbol':'1.0-0' }}</span>
+                  </div>
+                </div>
+              </mat-card-content>
+
+              <mat-card-actions>
+                <button mat-stroked-button color="primary" (click)="openBookingDetails(booking)">
+                  <mat-icon>receipt_long</mat-icon>
+                  Detalji
+                </button>
+                @if (shouldShowAgreementPrimaryAction(booking)) {
+                  <button mat-raised-button color="warn" (click)="openAgreement(booking)">
+                    <mat-icon>gavel</mat-icon>
+                    {{ getAgreementActionLabel(booking) }}
+                  </button>
+                } @else if (canCheckIn(booking)) {
+                  <button mat-raised-button color="accent" (click)="goToCheckIn(booking)">
+                    <mat-icon>{{ getCheckInIcon(booking) }}</mat-icon>
+                    {{ getCheckInLabel(booking) }}
+                  </button>
+                }
+                @if (canCheckout(booking)) {
+                  <button mat-raised-button color="accent" (click)="goToCheckout(booking)">
+                    <mat-icon>{{ getCheckoutIcon(booking) }}</mat-icon>
+                    {{ getCheckoutLabel(booking) }}
+                  </button>
+                }
+              </mat-card-actions>
+            </mat-card>
+          }
+        </div>
+      </section>
+    }
+
+    <!-- Completed Bookings -->
+    @if (completedBookings().length > 0) {
+      <section class="bookings__section">
+        <h2 class="section-title">
+          <mat-icon>history</mat-icon>
+          Završene
+        </h2>
+        <div class="bookings__grid">
+          @for (booking of completedBookings(); track booking.id) {
+            <mat-card class="booking-card past">
+              <div class="booking-card__media">
+                @if (booking.car.imageUrl) {
+                  <img [src]="booking.car.imageUrl" [alt]="booking.car.brand + ' ' + booking.car.model">
+                } @else {
+                  <div class="placeholder">
+                    <mat-icon>directions_car</mat-icon>
+                  </div>
+                }
+              </div>
+
+              <mat-card-content class="booking-card__content">
+                <div class="booking-card__header">
+                  <div>
+                    <h3>{{ booking.car.brand }} {{ booking.car.model }}</h3>
+                    <p class="year-location">{{ booking.car.year }} • ID: {{ booking.id }}</p>
+                  </div>
+                  <mat-chip [class]="getStatusClass(booking.status)">
+                    {{ getStatusLabel(booking.status) }}
+                  </mat-chip>
+                </div>
+
+                <div class="booking-card__timer past">
+                  <mat-icon>check_circle</mat-icon>
+                  <span>Završeno</span>
+                </div>
+
+                <div class="booking-card__details">
+                  <div class="detail-row">
+                    <span class="label">Zakupac:</span>
+                    <span class="value">{{ booking.renter.firstName }} {{ booking.renter.lastName }}</span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="label">Period:</span>
+                    <span class="value">{{ booking.startTime | date:'dd.MM.' }} - {{ booking.endTime | date:'dd.MM.yyyy' }}</span>
+                  </div>
+                  <div class="detail-row total">
+                    <span class="label">Vaša zarada:</span>
+                    <span class="value">{{ getNetEarnings(booking.totalPrice) | currency:'RSD':'symbol':'1.0-0' }}</span>
+                  </div>
+                </div>
+              </mat-card-content>
+
+              <mat-card-actions>
+                <button mat-stroked-button color="primary" (click)="openBookingDetails(booking)">
+                  <mat-icon>receipt_long</mat-icon>
+                  Detalji
+                </button>
+                @if (canCheckout(booking)) {
+                  <button mat-raised-button color="accent" (click)="goToCheckout(booking)">
+                    <mat-icon>{{ getCheckoutIcon(booking) }}</mat-icon>
+                    {{ getCheckoutLabel(booking) }}
+                  </button>
+                }
+                @if (canReviewRenter(booking)) {
+                  <button mat-raised-button color="primary" (click)="reviewRenter(booking)">
+                    <mat-icon>rate_review</mat-icon>
+                    Recenzija
+                  </button>
+                }
+              </mat-card-actions>
+            </mat-card>
+          }
+        </div>
+      </section>
+    }
+  }
+</section>

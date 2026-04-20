@@ -1,0 +1,1085 @@
+/* ✅ Angular Material v17+ (Material Design 3) theming setup */
+@use '@angular/material' as mat;
+
+/* ✅ Brand design tokens — Category 1 foundation */
+@use './styles/design-tokens';
+
+@include mat.core();
+
+$light-theme: mat.define-theme((
+  color: (
+    theme-type: light,
+    primary: mat.$violet-palette,
+    tertiary: mat.$cyan-palette
+  ),
+  density: (scale: 0)
+));
+
+$dark-theme: mat.define-theme((
+  color: (
+    theme-type: dark,
+    primary: mat.$violet-palette,
+    tertiary: mat.$cyan-palette
+  ),
+  density: (scale: 0)
+));
+
+/* ✅ Apply themes */
+@include mat.all-component-themes($light-theme);
+
+/* 🌑 Dark mode override */
+.theme-dark {
+  @include mat.all-component-colors($dark-theme);
+}
+
+/* 🧱 Base styles */
+:root {
+  --cookie-consent-offset: 0px;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-normal);
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+  min-height: 100vh;
+  padding-bottom: var(--cookie-consent-offset);
+  scroll-padding-bottom: var(--cookie-consent-offset);
+  transition: background-color 200ms ease, color 200ms ease;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-family-base);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-tight);
+  color: var(--color-text-primary);
+  margin: 0 0 var(--space-2) 0;
+}
+
+h1 { font-size: var(--font-size-3xl); }
+h2 { font-size: var(--font-size-2xl); }
+h3 { font-size: var(--font-size-xl); }
+h4 { font-size: var(--font-size-lg); }
+h5 { font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); }
+h6 { font-size: var(--font-size-sm); font-weight: var(--font-weight-semibold); }
+
+p {
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-normal);
+  color: var(--color-text-secondary);
+  margin: 0 0 var(--space-2) 0;
+}
+
+small {
+  font-size: var(--font-size-sm);  /* 14px min for accessible UI labels */
+  color: var(--color-text-muted);
+}
+
+/* Container utility */
+.container {
+  width: 100%;
+  max-width: var(--max-content-width);
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: var(--space-container-padding-mobile);
+  padding-right: var(--space-container-padding-mobile);
+
+  @media (min-width: 768px) {
+    padding-left: var(--space-container-padding-tablet);
+    padding-right: var(--space-container-padding-tablet);
+  }
+
+  @media (min-width: 1024px) {
+    padding-left: var(--space-container-padding-desktop);
+    padding-right: var(--space-container-padding-desktop);
+  }
+}
+
+/* ===================================================================
+   📐 BREAKPOINT MIXINS (Category 5 — Responsive System)
+   Standard project breakpoints. Mobile-first approach.
+   Mobile   < 768px
+   Tablet   768px – 1023px
+   Desktop  >= 1024px
+   Wide     >= 1280px
+
+   Usage in any .scss file:
+     @include mobile { ... }
+     @include tablet-up { ... }
+   =================================================================== */
+
+/*
+ * STANDARD BREAKPOINTS (reference — use inline @media queries in components)
+ *   Mobile   : max-width: 767px
+ *   Tablet   : min-width: 768px  and  max-width: 1023px
+ *   Desktop  : min-width: 1024px
+ *   Wide     : min-width: 1280px
+ *   tablet-up: min-width: 768px
+ *   desktop-up: min-width: 1024px
+ */
+
+/* ===================================================================
+   ♿ CATEGORY 6 — ACCESSIBILITY (WCAG 2.1 AA)
+   =================================================================== */
+
+/**
+ * .sr-only — Visually hidden but announced by screen readers.
+ * WCAG: 1.3.1 Info and Relationships
+ * Use for: live region containers, hidden labels, icon descriptions.
+ */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/**
+ * Global :focus-visible — Consistent focus ring on all interactive elements.
+ * WCAG: 2.4.7 Focus Visible (Level AA)
+ * :focus-visible = keyboard focus only (not mouse click).
+ */
+*:focus-visible {
+  outline: 2px solid var(--color-primary, #593CFB);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs, 2px);
+}
+
+*:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/**
+ * Windows High Contrast Mode
+ * WCAG: 1.4.11 Non-text Contrast
+ * Ensures interactive elements remain visible in forced-colors environments.
+ */
+@media (forced-colors: active) {
+  *:focus-visible {
+    outline: 3px solid ButtonText;
+    outline-offset: 2px;
+  }
+
+  .topnav,
+  .mobile-drawer {
+    border: 1px solid ButtonBorder;
+  }
+
+  button,
+  [role="button"],
+  a {
+    forced-color-adjust: auto;
+  }
+}
+
+/**
+ * Placeholder text contrast fix.
+ * WCAG: 1.4.3 Contrast (Minimum) — placeholders at minimum 4.5:1 on white.
+ * #6B7280 = 5.74:1 on white ✓
+ */
+input::placeholder,
+textarea::placeholder {
+  color: #6B7280;
+  opacity: 1; /* Firefox reduces opacity by default */
+}
+
+/* ===================================================================
+   🚫 GLOBAL OVERFLOW GUARD (Category 5 — Critical)
+   Prevents any element from causing horizontal scroll at root level.
+   =================================================================== */
+html, body {
+  overflow-x: hidden;
+  /* Ensure width is truly viewport-constrained */
+  max-width: 100vw;
+}
+
+/* Ensure every direct child of body can't overflow */
+body > * {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+::selection {
+  background: var(--brand-primary-20);
+}
+
+/* ✨ Smooth theme transitions */
+body,
+mat-card,
+.mat-mdc-card,
+mat-toolbar,
+.mat-toolbar,
+mat-sidenav,
+.mat-drawer-inner-container,
+.mat-mdc-button-base,
+.mat-mdc-icon-button,
+.mat-mdc-menu-panel,
+.mat-mdc-form-field,
+.mat-mdc-select-panel,
+.mat-mdc-option,
+.mat-mdc-list-base,
+.mat-mdc-chip-set,
+.mat-mdc-snack-bar-container {
+  transition: background-color 200ms ease, color 200ms ease, border-color 200ms ease,
+    box-shadow 200ms ease;
+}
+
+/* 🃏 Surfaces */
+.mat-mdc-card,
+mat-card {
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  box-shadow: var(--shadow-elevated);
+  border-radius: 24px;
+}
+
+.mat-toolbar,
+mat-toolbar {
+  background: var(--toolbar-bg);
+  color: var(--toolbar-color);
+  box-shadow: var(--shadow-soft);
+}
+
+.mat-drawer-inner-container,
+mat-sidenav {
+  background: var(--sidenav-bg) !important;
+  color: var(--color-text-primary);
+}
+
+.mat-drawer-backdrop {
+  background: var(--color-overlay);
+}
+
+.mat-mdc-menu-panel,
+.mat-mdc-select-panel {
+  background: var(--color-surface) !important;
+  color: var(--color-text-primary);
+  box-shadow: var(--shadow-soft);
+}
+
+.mat-mdc-option {
+  color: var(--color-text-primary);
+}
+
+mat-form-field .mat-mdc-form-field-subscript-wrapper,
+mat-form-field .mat-mdc-floating-label {
+  color: var(--color-text-muted) !important;
+}
+
+.mdc-text-field--filled:not(.mdc-text-field--disabled) {
+  background-color: var(--surface-input) !important;
+}
+
+.mat-mdc-input-element,
+.mat-mdc-select-value-text {
+  color: var(--color-text-primary) !important;
+}
+
+.mat-mdc-form-field.mat-focused .mat-mdc-input-element,
+.mat-mdc-form-field.mat-focused .mat-mdc-floating-label {
+  color: var(--icon-color) !important;
+}
+
+/* 🔘 Buttons */
+.mat-mdc-raised-button,
+.mat-mdc-unelevated-button,
+.mat-mdc-stroked-button,
+.mat-mdc-outlined-button,
+.mat-mdc-button {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.mat-mdc-stroked-button:not(.mat-mdc-button-disabled) {
+  border-color: var(--color-border-subtle) !important;
+}
+
+button.mat-mdc-icon-button,
+.mat-mdc-icon-button {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px !important;
+  background: var(--icon-button-bg);
+  color: var(--icon-color);
+  transition: background-color 200ms ease, color 200ms ease, box-shadow 200ms ease;
+}
+
+button.mat-mdc-icon-button:hover,
+.mat-mdc-icon-button:hover {
+  background: var(--icon-button-hover-bg);
+    box-shadow: var(--shadow-md);
+}
+
+.theme-dark button.mat-mdc-icon-button:hover,
+.theme-dark .mat-mdc-icon-button:hover {
+  box-shadow: 0 18px 32px rgba(2, 6, 23, 0.45);
+}
+
+button.mat-mdc-icon-button mat-icon,
+.mat-mdc-icon-button mat-icon {
+  color: inherit;
+}
+
+/* 🏷️ Chips */
+mat-chip,
+.mat-mdc-chip-set .mdc-evolution-chip__cell--primary {
+  background: var(--chip-bg) !important;
+  color: var(--chip-color) !important;
+}
+
+/* 🧊 Lists */
+.mat-mdc-list-base {
+  background: transparent;
+  color: var(--color-text-primary);
+}
+
+/* 📦 Cards & surfaces inside components */
+.surface,
+.surface-elevated {
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  box-shadow: var(--shadow-elevated);
+}
+
+.surface-muted {
+  background: var(--color-surface-muted);
+  color: var(--color-text-primary);
+}
+
+/* 🪟 Utility */
+.mat-divider,
+hr {
+  border-color: var(--color-border-subtle) !important;
+}
+
+.mat-mdc-progress-spinner {
+  --mdc-circular-progress-active-indicator-color: var(--brand-primary);
+}
+
+/* 🧠 Typography helpers */
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.28em;
+  font-size: var(--font-size-xs); /* 12px — decorative eyebrow label */
+  color: var(--chip-color);
+}
+
+.chip,
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 999px;
+  padding: 0.35rem 0.85rem;
+  background: var(--chip-bg);
+  color: var(--chip-color);
+  font-size: var(--font-size-xs); /* 12px — chip/badge label */
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  transition: background-color 200ms ease, color 200ms ease;
+}
+
+/* 🖼️ Fullscreen dialog styles */
+.fullscreen-dialog {
+  .mat-mdc-dialog-container {
+    padding: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    overflow: hidden !important;
+
+    .mat-mdc-dialog-surface {
+      background: transparent !important;
+      box-shadow: none !important;
+    }
+  }
+}
+
+/* 🖼️ Photo Viewer Dialog (Full-screen with pinch-zoom) */
+.photo-viewer-dialog-panel {
+  .mat-mdc-dialog-container {
+    padding: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    overflow: hidden !important;
+    max-width: 100vw !important;
+    max-height: 100vh !important;
+
+    .mat-mdc-dialog-surface {
+      background: transparent !important;
+      box-shadow: none !important;
+      border-radius: 0 !important;
+    }
+  }
+}
+
+// Override for photo viewer on mobile - no bottom sheet behavior
+@media (max-width: 768px) {
+  .cdk-overlay-pane:has(.photo-viewer-dialog-panel) {
+    position: fixed !important;
+    inset: 0 !important;
+    animation: none !important;
+    
+    .mat-mdc-dialog-container {
+      border-radius: 0 !important;
+      padding-bottom: 0 !important;
+    }
+  }
+}
+
+/* ============================================================================
+   📱 MOBILE UX FOUNDATION LAYER (Phase 1)
+   ============================================================================
+   Transforms "Web Feel" → "Native App Experience" (Turo/Airbnb standard)
+   - Touch Physics: Momentum scrolling, tactile feedback
+   - Safe Areas: iPhone notch/home indicator awareness
+   - Touch Targets: Apple HIG 44px minimum
+   - Input Optimization: Focus states, sticky hover fix
+   ============================================================================ */
+
+/* 🌐 Global Touch Physics */
+html {
+  /* Momentum scrolling for iOS */
+  -webkit-overflow-scrolling: touch;
+  
+  /* Prevent pull-to-refresh on overscroll (optional, keeps it native) */
+  overscroll-behavior-y: contain;
+  
+  /* Smooth scroll for anchor links */
+  scroll-behavior: smooth;
+}
+
+/* 📱 Touch Feedback: Remove default grey highlight, add tactile transform */
+* {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+
+/* 🎯 Touch Targets: Apple HIG 44px minimum on mobile */
+@media (max-width: 768px) and (pointer: coarse) {
+  button,
+  [role="button"],
+  a[mat-button],
+  a[mat-raised-button],
+  a[mat-stroked-button],
+  a[mat-flat-button],
+  a[mat-list-item],
+  .mat-mdc-button-base,
+  .mat-mdc-icon-button,
+  .mat-mdc-list-item,
+  .mat-mdc-option,
+  .mat-mdc-menu-item,
+  .mat-mdc-chip {
+    min-height: 44px !important;
+  }
+
+  /* Input fields need adequate tap targets */
+  input,
+  textarea,
+  select,
+  .mat-mdc-form-field {
+    min-height: 44px;
+  }
+
+  .mat-mdc-text-field-wrapper {
+    min-height: 52px;
+  }
+}
+
+/* 👆 Tactile Press Feedback (replaces grey tap highlight) */
+@media (pointer: coarse) {
+  button:not(:disabled):active,
+  [role="button"]:not(:disabled):active,
+  a[mat-button]:active,
+  a[mat-raised-button]:active,
+  a[mat-stroked-button]:active,
+  a[mat-flat-button]:active,
+  a[mat-list-item]:active,
+  .mat-mdc-button-base:not(:disabled):active,
+  .mat-mdc-list-item:active,
+  .mat-mdc-chip:active {
+    transform: scale(0.97);
+    transition: transform 0.1s ease-out;
+  }
+
+  /* Icon buttons get slightly more compression for feel */
+  .mat-mdc-icon-button:not(:disabled):active {
+    transform: scale(0.92);
+    transition: transform 0.08s ease-out;
+  }
+
+  /* Cards get subtle press effect */
+  mat-card:active,
+  .mat-mdc-card:active {
+    transform: scale(0.985);
+    transition: transform 0.1s ease-out;
+  }
+}
+
+/* 🖱️ Sticky Hover Fix: Disable hover on touch devices */
+@media (hover: none) and (pointer: coarse) {
+  button:hover,
+  a:hover,
+  .mat-mdc-button-base:hover,
+  .mat-mdc-list-item:hover,
+  .mat-mdc-option:hover,
+  .mat-mdc-menu-item:hover {
+    background-color: inherit !important;
+    transform: none !important;
+    box-shadow: inherit !important;
+  }
+
+  /* Preserve focus states for accessibility */
+  button:focus-visible,
+  a:focus-visible,
+  .mat-mdc-button-base:focus-visible {
+    outline: 2px solid var(--icon-color);
+    outline-offset: 2px;
+  }
+}
+
+/* 🎹 Input Focus States: Substantial, not subtle */
+input:focus,
+textarea:focus,
+select:focus,
+.mat-mdc-form-field.mat-focused .mdc-text-field {
+  outline: none;
+  border-color: var(--icon-color) !important;
+}
+
+.mat-mdc-form-field.mat-focused {
+  .mdc-text-field--outlined .mdc-notched-outline__leading,
+  .mdc-text-field--outlined .mdc-notched-outline__notch,
+  .mdc-text-field--outlined .mdc-notched-outline__trailing {
+    border-color: var(--icon-color) !important;
+    border-width: 2px !important;
+  }
+}
+
+/* 📱 Keyboard-aware input styling */
+@media (max-width: 768px) {
+  /* Ensure inputs are large enough to tap and read */
+  input,
+  textarea {
+    font-size: 16px !important; /* Prevents iOS zoom on focus */
+  }
+
+  /* Better visibility when keyboard is open */
+  input:focus,
+  textarea:focus {
+    background-color: var(--color-surface) !important;
+  }
+}
+
+/* 🏠 Safe Area CSS Variables (for layout components) */
+:root {
+  /* Safe area insets with fallbacks */
+  --safe-area-inset-top: env(safe-area-inset-top, 0px);
+  --safe-area-inset-right: env(safe-area-inset-right, 0px);
+  --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-inset-left: env(safe-area-inset-left, 0px);
+  
+  /* Computed safe padding (adds standard padding + safe area) */
+  --safe-padding-top: max(1rem, env(safe-area-inset-top, 0px));
+  --safe-padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+}
+
+/* 📜 Scrollable Containers: Native momentum */
+.scrollable,
+[class*="scroll"],
+mat-sidenav-content,
+mat-dialog-content,
+.mat-mdc-dialog-content,
+.mat-drawer-inner-container,
+.cdk-virtual-scroll-viewport {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* 🚫 Prevent Text Selection on Interactive Elements (native feel) */
+button,
+[role="button"],
+.mat-mdc-button-base,
+.mat-mdc-chip,
+.mat-mdc-list-item,
+mat-toolbar {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* ✅ Allow text selection where needed */
+p, span, h1, h2, h3, h4, h5, h6,
+.selectable,
+input,
+textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* ============================================================================
+   📱 PHASE 2: MOBILE UX COMPONENT OPTIMIZATION
+   ============================================================================
+   Bottom Sheet Dialogs, Enhanced Touch Feedback, Mobile-First Patterns
+   ============================================================================ */
+
+/* 📱 BOTTOM SHEET DIALOGS (Mobile-First Modal Pattern) */
+.booking-dialog-panel .mat-mdc-dialog-surface {
+  background: var(--color-surface);
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+}
+
+@media (max-width: 768px) {
+  .booking-dialog-panel .mat-mdc-dialog-surface {
+    border-radius: 24px 24px 0 0 !important;
+    max-height: min(90vh, calc(100dvh - env(safe-area-inset-top, 0px))) !important;
+  }
+
+  .cdk-overlay-pane.booking-dialog-panel {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    top: auto !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    margin: 0 !important;
+    animation: slideUpSheet 300ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  .booking-dialog-panel .mat-mdc-dialog-container {
+    border-radius: 24px 24px 0 0 !important;
+    overflow: hidden !important;
+    padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+  }
+
+  .booking-dialog-panel .mat-mdc-dialog-content {
+    max-height: min(70vh, calc(100dvh - 220px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))) !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  .booking-dialog-panel .mat-mdc-dialog-actions {
+    padding: 16px 24px !important;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)) !important;
+    border-top: 1px solid var(--color-border-subtle);
+    background: var(--color-surface);
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+  }
+
+  .booking-dialog-panel .mat-mdc-dialog-title::before {
+    content: '';
+    display: block;
+    width: 40px;
+    height: 4px;
+    background: rgba(128, 128, 128, 0.4);
+    border-radius: 2px;
+    margin: 0 auto 16px;
+  }
+}
+
+// Slide-up animation for bottom sheets
+@keyframes slideUpSheet {
+  from {
+    transform: translateY(100%);
+    opacity: 0.8;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+// Slide-down animation for dismissal (optional, for JS-triggered close)
+@keyframes slideDownSheet {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(100%);
+    opacity: 0.8;
+  }
+}
+
+/* 📱 FULLSCREEN SEARCH OVERLAY (Airbnb/Turo Pattern) */
+.fullscreen-search-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: var(--color-bg);
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) 
+           env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+  animation: fadeInScale 250ms cubic-bezier(0.32, 0.72, 0, 1);
+  
+  &__header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+    border-bottom: 1px solid var(--color-border-subtle);
+    
+    .close-btn {
+      min-width: 44px;
+      min-height: 44px;
+    }
+    
+    h2 {
+      flex: 1;
+      margin: 0;
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+  }
+  
+  &__content {
+    padding: 24px 16px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    max-height: calc(100vh - 120px);
+    max-height: calc(100dvh - 120px);
+  }
+}
+
+@keyframes fadeInScale {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* 📱 ENHANCED CARD TOUCH FEEDBACK */
+@media (pointer: coarse) {
+  // Car cards get press effect
+  .car-card:active,
+  .featured__card:active {
+    transform: scale(0.98) !important;
+    transition: transform 0.1s ease-out !important;
+  }
+
+  // Disable hover transforms on touch devices
+  .car-card:hover,
+  .featured__card:hover {
+    transform: none !important;
+  }
+}
+
+/* 📱 MOBILE SEARCH TRIGGER STYLES */
+.mobile-search-trigger {
+  display: none;
+  
+  @media (max-width: 599px) {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 14px 18px;
+    background: var(--color-surface);
+    border-radius: 999px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+    border: 1px solid var(--color-border-subtle);
+    cursor: pointer;
+    transition: all 200ms ease;
+    min-height: 56px;
+    
+    &:active {
+      transform: scale(0.98);
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+    }
+    
+    mat-icon {
+      color: var(--color-primary);
+      font-size: 24px;
+      width: 24px;
+      height: 24px;
+    }
+    
+    .trigger-text {
+      flex: 1;
+      text-align: left;
+      
+      .trigger-title {
+        font-weight: 600;
+        font-size: 0.95rem;
+        color: var(--color-text-primary);
+        display: block;
+      }
+      
+      .trigger-subtitle {
+        font-size: 0.8rem;
+        color: var(--color-text-muted);
+        margin-top: 2px;
+        display: block;
+      }
+    }
+  }
+}
+
+/* 🎯 HIDE DESKTOP SEARCH ON MOBILE (when trigger is active) */
+@media (max-width: 599px) {
+  .search-bar--desktop-only {
+    display: none !important;
+  }
+}
+
+/* 📱 CLS PREVENTION: Aspect ratio for all car images */
+.car-image-container,
+.car-card__media,
+.featured__media {
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  background: var(--color-surface-muted);
+}
+
+/* 📷 EXIF ORIENTATION FIX: Ensure all images respect EXIF metadata orientation
+ * Mobile phones often store photos with EXIF orientation rather than physical rotation.
+ * This CSS property tells browsers to respect that metadata and display correctly. */
+img {
+  image-orientation: from-image !important;
+}
+
+/* ============================================================================
+   🎬 CATEGORY 4 — INTERACTIONS & ANIMATIONS
+   ============================================================================
+   Performance contract:
+     ✅ Only animate: opacity, transform (translate, scale, rotate)
+     ❌ Never animate: width, height, top, left, margin, padding
+   All animations respect: @media (prefers-reduced-motion: reduce)
+   No animation library. Pure CSS + minimal JS class toggles.
+   ============================================================================ */
+
+// ─────────────────────────────────────────────
+// 1. ROUTE PAGE TRANSITIONS
+// ─────────────────────────────────────────────
+// The .layout-router wraps <router-outlet> in layout.component.html.
+// Angular Router emits NavigationStart/End; we toggle a class via CSS.
+// We rely on Angular's own View Transitions (if enabled) or a CSS trick:
+// the outgoing view fades out, incoming fades + lifts in.
+
+.layout-router {
+  animation: page-enter 0.25s cubic-bezier(0.0, 0.0, 0.2, 1);
+}
+
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+// ─────────────────────────────────────────────
+// 2. SHIMMER SKELETON — brand-aware
+// ─────────────────────────────────────────────
+// Overrides the hardcoded #f0f0f0 in LoadingSkeletonComponent
+// so skeletons respect the design-token color scheme.
+
+.skeleton,
+.pulse {
+  background: linear-gradient(
+    90deg,
+    var(--color-surface-muted) 25%,
+    var(--color-surface-elevated) 50%,
+    var(--color-surface-muted) 75%
+  ) !important;
+  background-size: 200% 100% !important;
+  animation: shimmer 1.5s ease-in-out infinite !important;
+}
+
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+// ─────────────────────────────────────────────
+// 3. FORM MICRO-INTERACTIONS
+// ─────────────────────────────────────────────
+
+// 3a. Input focus glow (works on Angular Material outlined fields)
+.mat-mdc-form-field.mat-focused {
+  .mdc-notched-outline__leading,
+  .mdc-notched-outline__notch,
+  .mdc-notched-outline__trailing {
+    box-shadow: 0 0 0 3px var(--brand-primary-15, rgba(89, 60, 251, 0.15));
+    transition: box-shadow 0.2s ease !important;
+  }
+}
+
+// 3b. Shake animation — for invalid inputs on submit attempt
+@keyframes input-shake {
+  0%   { transform: translateX(0); }
+  20%  { transform: translateX(-5px); }
+  40%  { transform: translateX(5px); }
+  60%  { transform: translateX(-4px); }
+  80%  { transform: translateX(4px); }
+  100% { transform: translateX(0); }
+}
+
+.shake {
+  animation: input-shake 0.35s cubic-bezier(0.4, 0.0, 0.2, 1) both;
+}
+
+// 3c. Button success state (briefly green after submit)
+@keyframes btn-success-flash {
+  0%   { background-color: var(--color-success, #00C48C); transform: scale(1); }
+  30%  { transform: scale(1.03); }
+  100% { background-color: var(--brand-primary, #593CFB); transform: scale(1); }
+}
+
+.btn-success-flash {
+  animation: btn-success-flash 0.6s ease both;
+}
+
+// ─────────────────────────────────────────────
+// 4. CARD INTERACTIONS
+// ─────────────────────────────────────────────
+
+// 4a. Desktop card press (mousedown scale)
+.car-card,
+.booking-card,
+mat-card,
+.mat-mdc-card {
+  transition: transform 0.15s cubic-bezier(0.0, 0.0, 0.2, 1),
+              box-shadow 0.15s ease;
+}
+
+// Only apply hover lift to non-touch devices
+@media (hover: hover) and (pointer: fine) {
+  .car-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .car-card:active {
+    transform: scale(0.98) translateY(0);
+    transition-duration: 0.08s;
+  }
+}
+
+// 4b. Staggered card entrance (add .card-entering class in component)
+@keyframes card-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.card-entering {
+  animation: card-fade-up 0.3s cubic-bezier(0.0, 0.0, 0.2, 1) both;
+}
+
+// 4c. Favorite heart bounce
+@keyframes heart-bounce {
+  0%   { transform: scale(1); }
+  20%  { transform: scale(0); }
+  60%  { transform: scale(1.35); }
+  100% { transform: scale(1); }
+}
+
+.heart-bounce {
+  animation: heart-bounce 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+// ─────────────────────────────────────────────
+// 5. MODAL ANIMATIONS (supplement Angular Material)
+// ─────────────────────────────────────────────
+
+// Scale-in for dialogs (augments existing slideUpSheet for mobile)
+@keyframes modal-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+// Applied via Angular Material's panelClass
+.dialog-scale-in .mat-mdc-dialog-container .mat-mdc-dialog-surface {
+  animation: modal-scale-in 0.2s cubic-bezier(0.0, 0.0, 0.2, 1);
+}
+
+// ─────────────────────────────────────────────
+// 6. SCROLL ENTRANCE (IntersectionObserver baseline)
+// ─────────────────────────────────────────────
+// Elements that should animate on intersection need
+// [data-animate] attribute. JS sets inline styles.
+// This ensures they're invisible before JS kicks in.
+
+[data-animate] {
+  opacity: 0;
+  transform: translateY(24px);
+}
+
+// ─────────────────────────────────────────────
+// 7. PREFERS-REDUCED-MOTION: Global override
+// ─────────────────────────────────────────────
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  // Skeleton still shows (just no moving shimmer)
+  .pulse,
+  .skeleton {
+    animation: none !important;
+    background: var(--color-surface-muted) !important;
+  }
+
+  // Entrance elements appear immediately
+  [data-animate] {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  // Page transition — only opacity, no transform
+  .layout-router {
+    animation: page-enter-reduced 0.15s ease;
+  }
+
+  @keyframes page-enter-reduced {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+}
+

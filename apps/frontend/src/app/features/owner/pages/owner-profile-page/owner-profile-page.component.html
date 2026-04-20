@@ -1,0 +1,126 @@
+<div class="owner-profile-container" *ngIf="!loading() && profile() as owner">
+  <!-- Header Section -->
+  <div class="profile-header">
+    <div class="avatar-section">
+      <!-- Show editable uploader for own profile, static avatar for others -->
+      <ng-container *ngIf="isOwnProfile(); else staticAvatar">
+        <app-profile-picture-uploader
+          [currentAvatarUrl]="owner.avatarUrl"
+          [userInitials]="getOwnerInitials()"
+          [avatarSize]="150"
+          (uploaded)="onAvatarUploaded($event)"
+          (error)="onAvatarUploadError($event)"
+          (deleted)="onAvatarDeleted()"
+        ></app-profile-picture-uploader>
+      </ng-container>
+
+      <ng-template #staticAvatar>
+        <img
+          [src]="owner.avatarUrl || 'assets/images/default-avatar.png'"
+          alt="{{ owner.firstName }}"
+          class="avatar"
+        />
+      </ng-template>
+
+      <div class="superhost-badge" *ngIf="owner.isSuperHost">
+        <mat-icon>verified</mat-icon> Super Domaćin
+      </div>
+    </div>
+
+    <div class="info-section">
+      <h1>{{ owner.firstName }} {{ owner.lastName }}</h1>
+      <p class="join-date">{{ owner.joinDate }}</p>
+
+      <div class="stats-bar">
+        <div class="stat">
+          <span class="value"
+            >{{ owner.averageRating | number: '1.1-1' }}
+            <mat-icon class="star">star</mat-icon></span
+          >
+          <span class="label">Ocena</span>
+        </div>
+        <div class="stat">
+          <span class="value">{{ owner.totalTrips }}</span>
+          <span class="label">Vožnji</span>
+        </div>
+        <div class="stat">
+          <span class="value">{{ owner.responseRate }}</span>
+          <span class="label">Stopa odgovora</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- About Section -->
+  <div class="section about-section">
+    <h2>O domaćinu {{ owner.firstName }}</h2>
+    <p>{{ owner.about }}</p>
+    <div class="response-time">
+      <mat-icon>schedule</mat-icon> Odgovara u roku od {{ owner.responseTime }}
+    </div>
+  </div>
+
+  <!-- Cars Section -->
+  <div class="section cars-section">
+    <div class="cars-header">
+      <h2>Automobili vlasnika {{ owner.firstName }}</h2>
+      <button mat-stroked-button color="primary" (click)="openFilterDialog()">
+        <mat-icon>calendar_today</mat-icon> Proveri dostupnost
+      </button>
+    </div>
+
+    <div class="active-filter" *ngIf="filterStart() && filterEnd()">
+      <mat-chip-listbox>
+        <mat-chip-option selected removable (removed)="clearFilter()">
+          Dostupno: {{ filterStart() | date: 'mediumDate' }} -
+          {{ filterEnd() | date: 'mediumDate' }}
+          <mat-icon matChipRemove>cancel</mat-icon>
+        </mat-chip-option>
+      </mat-chip-listbox>
+    </div>
+
+    <div class="cars-grid">
+      <mat-card *ngFor="let car of owner.cars" class="car-card" [routerLink]="['/cars', car.id]">
+        <img mat-card-image [src]="car.imageUrl" alt="{{ car.brand }} {{ car.model }}" />
+        <mat-card-content>
+          <h3>{{ car.brand }} {{ car.model }} {{ car.year }}</h3>
+          <div class="car-stats">
+            <span>{{ car.tripCount }} vožnji</span>
+            <span *ngIf="car.rating > 0"
+              >{{ car.rating | number: '1.1-1' }} <mat-icon class="star-small">star</mat-icon></span
+            >
+          </div>
+          <p class="price">€{{ car.pricePerDay }}/dan</p>
+        </mat-card-content>
+      </mat-card>
+    </div>
+    <p *ngIf="owner.cars.length === 0">Nema aktivnih automobila.</p>
+  </div>
+
+  <!-- Reviews Section -->
+  <div class="section reviews-section">
+    <h2>Nedavne recenzije</h2>
+    <div class="reviews-list">
+      <div class="review-item" *ngFor="let review of owner.recentReviews">
+        <div class="review-header">
+          <div class="stars">
+            <mat-icon *ngFor="let i of [1, 2, 3, 4, 5]" [class.filled]="i <= review.rating"
+              >star</mat-icon
+            >
+          </div>
+        </div>
+        <p class="review-text">{{ review.comment }}</p>
+      </div>
+    </div>
+    <p *ngIf="owner.recentReviews.length === 0">Još uvek nema recenzija.</p>
+  </div>
+</div>
+
+<div class="loading-container" *ngIf="loading()">
+  <mat-spinner></mat-spinner>
+</div>
+
+<div class="error-container" *ngIf="error()">
+  <mat-icon color="warn">error</mat-icon>
+  <p>{{ error() }}</p>
+</div>

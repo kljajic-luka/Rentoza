@@ -1,0 +1,408 @@
+<section class="auth">
+  <!-- Beta Notice Banner -->
+  <div class="beta-notice">
+    <mat-icon>science</mat-icon>
+    <div class="beta-notice__content">
+      <strong>Privatna Beta</strong>
+      <span
+        >Ovo je privatna beta verzija za prijatelje i porodicu. Molimo vas da ne delite ovaj link
+        javno.</span
+      >
+    </div>
+  </div>
+
+  <div class="auth__intro">
+    <h1>Kreirajte svoj Rentoza nalog</h1>
+    <p>Izaberite vrstu naloga koja vam najbolje odgovara</p>
+  </div>
+
+  <!-- Dual Card Layout: Renter vs Owner -->
+  <div class="auth-cards-container">
+    <!-- Renter Card -->
+    <mat-card
+      class="auth-card auth-card--renter"
+      [class.auth-card--active]="!isOwnerRegistration()"
+      role="region"
+      aria-label="Registracija za iznajmljivače vozila"
+    >
+      <div class="auth-card__selector">
+        <button
+          type="button"
+          mat-icon-button
+          (click)="switchToRenter()"
+          [attr.aria-pressed]="!isOwnerRegistration()"
+          class="card-selector-btn"
+          aria-label="Odaberite iznajmljivanje kao vrstu naloga"
+        >
+          <mat-icon>radio_button_checked</mat-icon>
+        </button>
+      </div>
+
+      <mat-card-header>
+        <div mat-card-avatar class="auth-card__avatar auth-card__avatar--renter">
+          <mat-icon>person</mat-icon>
+        </div>
+        <mat-card-title>Iznajmljivač</mat-card-title>
+        <mat-card-subtitle>Pronađi i iznajmi vozilo</mat-card-subtitle>
+      </mat-card-header>
+
+      <div class="card-benefits">
+        <div class="benefit">
+          <mat-icon>search</mat-icon>
+          <span>Pronađite vozilo po vašoj meri</span>
+        </div>
+        <div class="benefit">
+          <mat-icon>verified</mat-icon>
+          <span>Proveren i siguran booking</span>
+        </div>
+        <div class="benefit">
+          <mat-icon>support_agent</mat-icon>
+          <span>24/7 korisničku podršku</span>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        mat-raised-button
+        color="primary"
+        (click)="switchToRenter()"
+        class="select-button"
+        [class.selected]="!isOwnerRegistration()"
+      >
+        {{ !isOwnerRegistration() ? 'Odabrano' : 'Odaberite' }}
+      </button>
+    </mat-card>
+
+    <!-- Owner Card -->
+    <mat-card
+      class="auth-card auth-card--owner"
+      [class.auth-card--active]="isOwnerRegistration()"
+      role="region"
+      aria-label="Registracija za vlasnike vozila"
+    >
+      <div class="auth-card__selector">
+        <button
+          type="button"
+          mat-icon-button
+          (click)="switchToOwner()"
+          [attr.aria-pressed]="isOwnerRegistration()"
+          class="card-selector-btn"
+          aria-label="Odaberite iznajmljivanje vozila kao vrstu naloga"
+        >
+          <mat-icon>radio_button_checked</mat-icon>
+        </button>
+      </div>
+
+      <mat-card-header>
+        <div mat-card-avatar class="auth-card__avatar auth-card__avatar--owner">
+          <mat-icon>directions_car</mat-icon>
+        </div>
+        <mat-card-title>Domaćin</mat-card-title>
+        <mat-card-subtitle>Iznajmite vaše vozilo</mat-card-subtitle>
+      </mat-card-header>
+
+      <div class="card-benefits">
+        <div class="benefit">
+          <mat-icon>trending_up</mat-icon>
+          <span>Zarađujte od vašeg vozila</span>
+        </div>
+        <div class="benefit">
+          <mat-icon>shield</mat-icon>
+          <span>Zaštita i osiguranje vozila</span>
+        </div>
+        <div class="benefit">
+          <mat-icon>calendar_month</mat-icon>
+          <span>Fleksibilan raspored iznajmljivanja</span>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        mat-raised-button
+        color="accent"
+        (click)="switchToOwner()"
+        class="select-button"
+        [class.selected]="isOwnerRegistration()"
+      >
+        {{ isOwnerRegistration() ? 'Odabrano' : 'Odaberite' }}
+      </button>
+    </mat-card>
+  </div>
+
+  <!-- Registration Form Card -->
+  <mat-card class="auth-card auth-card--form">
+    <mat-card-header>
+      <div mat-card-avatar class="auth-card__avatar">
+        <mat-icon>{{ isOwnerRegistration() ? 'business' : 'person_add' }}</mat-icon>
+      </div>
+      <mat-card-title>
+        {{ isOwnerRegistration() ? 'Registrujte se kao domaćin' : 'Kreirajte nalog' }}
+      </mat-card-title>
+      <mat-card-subtitle>
+        {{
+          isOwnerRegistration()
+            ? 'Popunite podatke kako biste objavili vaše vozilo za iznajmljivanje.'
+            : 'Popunite podatke i počnite da rezervišete vozila.'
+        }}
+      </mat-card-subtitle>
+    </mat-card-header>
+
+    <mat-card-content>
+      <form [formGroup]="form" (ngSubmit)="submit()" class="auth-form">
+        <!-- Basic Information -->
+        <div class="grid">
+          <app-rtz-input label="Ime" formControlName="firstName" [required]="true" />
+          <app-rtz-input label="Prezime" formControlName="lastName" [required]="true" />
+        </div>
+
+        <app-rtz-input
+          label="Email adresa"
+          type="email"
+          leftIcon="email"
+          formControlName="email"
+          [required]="true"
+        />
+
+        <app-rtz-input
+          label="Broj telefona"
+          type="tel"
+          leftIcon="phone"
+          placeholder="381612345678"
+          hint="Format: 8-15 cifara (npr. 381612345678)"
+          formControlName="phone"
+          [required]="true"
+          [customErrors]="{ pattern: 'Unesite ispravan broj telefona (8-15 cifara)' }"
+        />
+
+        <div class="grid">
+          <app-rtz-input
+            label="Lozinka"
+            type="password"
+            formControlName="password"
+            [required]="true"
+            [customErrors]="{ pattern: 'Lozinka mora sadržati veliko slovo, malo slovo i broj' }"
+          />
+          <app-rtz-input
+            label="Potvrdite lozinku"
+            type="password"
+            formControlName="confirmPassword"
+            [required]="true"
+          />
+        </div>
+
+        <!-- Phase 2: Date of Birth and Age Confirmation -->
+        @if (isEnhancedRegistration()) {
+          <app-rtz-input
+            label="Datum rođenja"
+            type="date"
+            formControlName="dateOfBirth"
+            hint="Morate imati najmanje 21 godinu"
+            lang="sr"
+            [required]="true"
+            [customErrors]="{
+              futureDate: 'Datum ne može biti u budućnosti',
+              minAge: 'Morate imati najmanje 21 godinu',
+            }"
+          />
+
+          <mat-checkbox formControlName="confirmsAgeEligibility" class="age-checkbox" required>
+            Potvrđujem da imam 21 godinu ili više
+          </mat-checkbox>
+          <mat-error
+            *ngIf="
+              form.controls.confirmsAgeEligibility.touched &&
+              form.controls.confirmsAgeEligibility.invalid
+            "
+            class="checkbox-error"
+          >
+            Morate potvrditi da imate 21 godinu ili više
+          </mat-error>
+        }
+
+        <!-- Phase 2: Owner-Specific Fields -->
+        @if (isOwnerRegistration() && isEnhancedRegistration()) {
+          <div class="owner-section" [formGroup]="ownerForm">
+            <h3 class="section-title">
+              <mat-icon>business</mat-icon>
+              Tip domaćina
+            </h3>
+
+            <mat-radio-group
+              formControlName="ownerType"
+              (change)="onOwnerTypeChange($event.value)"
+              class="owner-type-group"
+            >
+              <mat-radio-button value="INDIVIDUAL">
+                <div class="radio-label">
+                  <strong>Fizičko lice</strong>
+                  <span>Samozaposleni, lični vlasnik vozila</span>
+                </div>
+              </mat-radio-button>
+              <mat-radio-button value="LEGAL_ENTITY">
+                <div class="radio-label">
+                  <strong>Pravno lice</strong>
+                  <span>Kompanija, flota vozila</span>
+                </div>
+              </mat-radio-button>
+            </mat-radio-group>
+
+            <!-- JMBG Field (Individual only) -->
+            @if (ownerType() === 'INDIVIDUAL') {
+              <app-rtz-input
+                label="JMBG (Jedinstveni matični broj građana)"
+                formControlName="jmbg"
+                [maxlength]="13"
+                placeholder="1234567890123"
+                hint="13 cifara - vaš jedinstveni identifikacioni broj"
+                [required]="true"
+                [customErrors]="{
+                  pattern: 'JMBG mora imati tačno 13 cifara',
+                  jmbgInvalid: 'Nevažeći JMBG - proverite kontrolnu cifru',
+                }"
+              />
+
+              <app-rtz-input
+                label="Broj bankovnog računa (IBAN) - opciono"
+                formControlName="bankAccountNumber"
+                [maxlength]="24"
+                placeholder="RS35000000000000000000"
+                hint="Srpski IBAN format: RS + 22 cifre"
+                [customErrors]="{
+                  ibanFormat: 'Neispravan IBAN format (RS + 22 cifre)',
+                  ibanInvalid: 'Nevažeći IBAN - proverite broj',
+                }"
+              />
+            }
+
+            <!-- PIB and Bank Fields (Legal Entity only) -->
+            @if (ownerType() === 'LEGAL_ENTITY') {
+              <app-rtz-input
+                label="PIB (Poreski identifikacioni broj)"
+                formControlName="pib"
+                [maxlength]="9"
+                placeholder="123456789"
+                hint="9 cifara - poreski identifikacioni broj kompanije"
+                [required]="true"
+                [customErrors]="{
+                  pattern: 'PIB mora imati tačno 9 cifara',
+                  pibInvalid: 'Nevažeći PIB - proverite kontrolnu cifru',
+                }"
+              />
+
+              <app-rtz-input
+                label="Broj bankovnog računa (IBAN)"
+                formControlName="bankAccountNumber"
+                [maxlength]="24"
+                placeholder="RS35000000000000000000"
+                hint="Srpski IBAN format: RS + 22 cifre (obavezno za pravna lica)"
+                [required]="true"
+                [customErrors]="{
+                  required: 'Broj računa je obavezan za pravna lica',
+                  ibanFormat: 'Neispravan IBAN format (RS + 22 cifre)',
+                  ibanInvalid: 'Nevažeći IBAN - proverite broj',
+                }"
+              />
+            }
+
+            <!-- Agreement Checkboxes -->
+            <div class="agreements-section">
+              <h4>Uslovi korišćenja</h4>
+
+              <mat-checkbox formControlName="agreesToHostAgreement" required>
+                Slažem se sa
+                <a href="/terms/host-agreement" target="_blank">Domaćinovim sporazumom</a>
+              </mat-checkbox>
+              <mat-error
+                *ngIf="
+                  ownerForm.controls.agreesToHostAgreement.touched &&
+                  ownerForm.controls.agreesToHostAgreement.invalid
+                "
+                class="checkbox-error"
+              >
+                Morate prihvatiti Domaćinov sporazum
+              </mat-error>
+
+              <mat-checkbox formControlName="confirmsVehicleInsurance" required>
+                Potvrđujem da moje vozilo ima važeće osiguranje
+              </mat-checkbox>
+              <mat-error
+                *ngIf="
+                  ownerForm.controls.confirmsVehicleInsurance.touched &&
+                  ownerForm.controls.confirmsVehicleInsurance.invalid
+                "
+                class="checkbox-error"
+              >
+                Morate potvrditi da vozilo ima osiguranje
+              </mat-error>
+
+              <mat-checkbox formControlName="confirmsVehicleRegistration" required>
+                Potvrđujem da je vozilo registrovano na moje ime
+              </mat-checkbox>
+              <mat-error
+                *ngIf="
+                  ownerForm.controls.confirmsVehicleRegistration.touched &&
+                  ownerForm.controls.confirmsVehicleRegistration.invalid
+                "
+                class="checkbox-error"
+              >
+                Morate potvrditi vlasništvo vozila
+              </mat-error>
+            </div>
+          </div>
+        }
+
+        <app-rtz-button type="submit" [loading]="isSubmitting()" [fullWidth]="true" size="lg">
+          {{ isOwnerRegistration() ? 'Postani domaćin' : 'Kreiraj nalog' }}
+        </app-rtz-button>
+      </form>
+
+      <!-- OR divider -->
+      <div class="auth-divider">
+        <span>ILI</span>
+      </div>
+
+      <!-- Google Sign-Up Button -->
+      <button
+        mat-stroked-button
+        type="button"
+        class="google-signin-btn"
+        (click)="registerWithGoogle()"
+        [disabled]="isSubmitting()"
+      >
+        <svg class="google-icon" viewBox="0 0 48 48">
+          <path
+            fill="#EA4335"
+            d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"
+          ></path>
+          <path
+            fill="#4285F4"
+            d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"
+          ></path>
+          <path
+            fill="#FBBC05"
+            d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"
+          ></path>
+          <path
+            fill="#34A853"
+            d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"
+          ></path>
+          <path fill="none" d="M0 0h48v48H0z"></path>
+        </svg>
+        <span>Registruj se sa Google nalogom</span>
+      </button>
+    </mat-card-content>
+
+    <mat-card-actions>
+      <span>Već imate nalog?</span>
+      <a mat-button color="accent" routerLink="/auth/login">Prijavite se</a>
+    </mat-card-actions>
+
+    <!-- Legal Links -->
+    <div class="auth-legal">
+      <span>Registracijom prihvatate naše</span>
+      <a routerLink="/beta-terms">Beta Uslove</a>
+      <span>i</span>
+      <a routerLink="/privacy">Politiku Privatnosti</a>
+    </div>
+  </mat-card>
+</section>

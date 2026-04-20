@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+	<head>
+		<meta charset="UTF-8" />
+		<title>Rezervacija odobrena</title>
+		<style>
+			body {
+				font-family: Arial, sans-serif;
+				line-height: 1.6;
+				color: #333;
+			}
+			.container {
+				max-width: 600px;
+				margin: 0 auto;
+				padding: 20px;
+				border: 1px solid #ddd;
+				border-radius: 5px;
+			}
+			.header {
+				background-color: #4caf50;
+				color: white;
+				padding: 10px;
+				text-align: center;
+				border-radius: 5px 5px 0 0;
+			}
+			.content {
+				padding: 20px;
+			}
+			.button {
+				display: inline-block;
+				padding: 10px 20px;
+				background-color: #4caf50;
+				color: white;
+				text-decoration: none;
+				border-radius: 5px;
+				margin-top: 20px;
+			}
+			.footer {
+				margin-top: 20px;
+				font-size: 12px;
+				color: #777;
+				text-align: center;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="container">
+			<div class="header">
+				<h2>Rezervacija odobrena!</h2>
+			</div>
+			<div class="content">
+				<p>Poštovani,</p>
+				<p th:text="${message}">Vaša rezervacija je odobrena.</p>
+				<p>
+					Vlasnik vozila je prihvatio vaš zahtev. Sada možete komunicirati sa
+					vlasnikom putem naše aplikacije.
+				</p>
+				<a th:href="${bookingUrl}" class="button">Pregled rezervacije</a>
+			</div>
+			<div class="footer">
+				<p>&copy; 2025 Rentoza. Sva prava zadržana.</p>
+			</div>
+		</div>
+	</body>
+</html>

@@ -1,0 +1,154 @@
+# Cloud Run Environment Variables TEMPLATE
+# =============================================
+# SECURITY: NEVER commit actual secrets to this file!
+# Copy to cloudrun-env.yaml and fill in from Google Secret Manager
+# 
+# Use with: --env-vars-file=cloudrun-env.yaml
+
+SPRING_PROFILES_ACTIVE: "prod"
+
+# Server Configuration (Cloud Run provides PORT, Spring Boot reads SERVER_PORT)
+SERVER_PORT: "8080"
+
+# Database - GET FROM GOOGLE SECRET MANAGER
+DB_URL: "${DB_URL}"
+DB_USERNAME: "${DB_USERNAME}"
+DB_PASSWORD: "${DB_PASSWORD}"
+
+# Supabase - GET FROM GOOGLE SECRET MANAGER
+SUPABASE_URL: "${SUPABASE_URL}"
+SUPABASE_ANON_KEY: "${SUPABASE_ANON_KEY}"
+SUPABASE_SERVICE_ROLE_KEY: "${SUPABASE_SERVICE_ROLE_KEY}"
+SUPABASE_JWT_SECRET: "${SUPABASE_JWT_SECRET}"
+
+# JWT & Security - GET FROM GOOGLE SECRET MANAGER
+INTERNAL_SERVICE_JWT_SECRET: "${INTERNAL_SERVICE_JWT_SECRET}"
+JWT_SECRET: "${JWT_SECRET}"
+
+# CORS - Multiple origins work in YAML format
+CORS_ORIGINS: "https://rentoza.rs,https://www.rentoza.rs"
+ALLOWED_ORIGINS: "https://rentoza.rs,https://www.rentoza.rs"
+WEBSOCKET_ALLOWED_ORIGINS: "https://rentoza.rs,https://www.rentoza.rs"
+
+# Storage
+STORAGE_MODE: "supabase"
+
+# Google OAuth - GET FROM GOOGLE SECRET MANAGER
+GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID}"
+GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET}"
+
+# PII Encryption - GET FROM GOOGLE SECRET MANAGER
+PII_ENCRYPTION_KEY: "${PII_ENCRYPTION_KEY}"
+
+# Lockbox Encryption - REQUIRED IN PRODUCTION. AES-256 key, base64-encoded.
+# Generate with: openssl rand -base64 32
+# Store in Google Cloud Secret Manager as LOCKBOX_ENCRYPTION_KEY
+LOCKBOX_ENCRYPTION_KEY: "${LOCKBOX_ENCRYPTION_KEY}"
+
+# Cookie settings for production
+COOKIE_SECURE: "true"
+COOKIE_DOMAIN: "rentoza.rs"
+COOKIE_SAME_SITE: "Strict"
+
+# OAuth2 Redirect
+OAUTH2_REDIRECT_URI: "https://rentoza.rs/auth/callback"
+
+# Chat service URL (required for booking approval conversation creation)
+# Resolve with: gcloud run services describe rentoza-chat --region europe-west1 --format='value(status.url)'
+CHAT_SERVICE_URL: "${CHAT_SERVICE_URL}"
+
+# Redis Configuration (disabled for now - enable when Redis is deployed)
+REDIS_ENABLED: "false"
+MANAGEMENT_HEALTH_REDIS_ENABLED: "false"
+SPRING_DATA_REDIS_ENABLED: "false"
+
+# RabbitMQ Configuration (disabled for now - enable when RabbitMQ is deployed)
+# G4: Set RABBITMQ_ENABLED=true and configure broker credentials to enable
+# async photo processing, checkout saga, and notification queues.
+RABBITMQ_ENABLED: "${RABBITMQ_ENABLED:false}"
+RABBITMQ_HOST: "${RABBITMQ_HOST:}"
+RABBITMQ_PORT: "${RABBITMQ_PORT:5672}"
+RABBITMQ_USERNAME: "${RABBITMQ_USERNAME:}"
+RABBITMQ_PASSWORD: "${RABBITMQ_PASSWORD:}"
+RABBITMQ_VHOST: "${RABBITMQ_VHOST:/}"
+RABBITMQ_SSL_ENABLED: "${RABBITMQ_SSL_ENABLED:true}"
+
+# HikariCP Connection Pool Optimization for Cloud Run
+SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "5"
+SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: "2"
+SPRING_DATASOURCE_HIKARI_MAX_LIFETIME: "600000"
+SPRING_DATASOURCE_HIKARI_LEAK_DETECTION_THRESHOLD: "30000"
+SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT: "20000"
+SPRING_JPA_PROPERTIES_HIBERNATE_CONNECTION_HANDLING_MODE: "DELAYED_ACQUISITION_AND_RELEASE_AFTER_TRANSACTION"
+
+# Payment Provider - MUST be a real provider in production (e.g., MONRI)
+# MOCK is for development/staging only — will cause startup failure in prod profile.
+PAYMENT_PROVIDER: "${PAYMENT_PROVIDER}"
+
+# Payment Webhook HMAC Secret - REQUIRED IN PRODUCTION
+# Obtain from payment provider (Monri/WSPay) dashboard.
+# Store in Google Cloud Secret Manager as PAYMENT_WEBHOOK_SECRET
+PAYMENT_WEBHOOK_SECRET: "${PAYMENT_WEBHOOK_SECRET}"
+
+# ID Verification Provider - CRITICAL: Must match a @ConditionalOnProperty provider
+# Options:
+#   ONFIDO  - Real OCR/biometric provider (requires ONFIDO_API_KEY in Secret Manager)
+#   MOCK    - All documents proceed directly to manual admin review; no third-party
+#             API required. Safe for production when deferring provider integration.
+# WARNING: Value must be set explicitly; no silent fallback exists.
+APP_ID_VERIFICATION_PROVIDER: "${ID_VERIFICATION_PROVIDER}"
+
+# Consent policy metadata (required by SecurityConfigValidator in prod profile)
+CONSENT_POLICY_VERSION: "${CONSENT_POLICY_VERSION}"
+CONSENT_POLICY_HASH: "${CONSENT_POLICY_HASH}"
+
+# Renter Verification
+APP_RENTER_VERIFICATION_FACE_MATCH_THRESHOLD: "0.95"
+APP_RENTER_VERIFICATION_SELFIE_REQUIRED: "true"
+
+# Booking Configuration
+BOOKING_HOST_APPROVAL_ENABLED: "true"
+BOOKING_HOST_APPROVAL_BETA_USERS: ""
+BOOKING_DEFAULT_DROPOFF_TIME: "18:00"
+
+# === Compliance flag-ovi ===
+# Compliance: Ugovor o zakupu mora biti potpisan pre pocetka tripa
+APP_COMPLIANCE_RENTAL_AGREEMENT_CHECKIN_ENFORCED: "true"
+# Compliance: Host mora potvrditi vozacku dozvolu gosta pri licnoj predaji
+APP_CHECKIN_LICENSE_VERIFICATION_REQUIRED: "true"
+BOOKING_TIME_WINDOW_MORNING: "09:00"
+BOOKING_TIME_WINDOW_AFTERNOON: "14:00"
+BOOKING_TIME_WINDOW_EVENING: "18:00"
+
+# Check-in Configuration
+CHECKIN_PHOTO_MAX_SIZE_MB: "10"
+CHECKIN_WINDOW_HOURS_BEFORE_TRIP: "2"
+CHECKIN_REMINDER_HOURS_BEFORE_TRIP: "12"
+CHECKIN_NO_SHOW_MINUTES_AFTER_TRIP_START: "120"
+CHECKIN_MAX_EARLY_HOURS: "2"
+
+# Geofence Configuration (Turo standard: 50m strict)
+CHECKIN_GEOFENCE_THRESHOLD_METERS: "50"
+CHECKIN_GEOFENCE_RADIUS_URBAN_METERS: "75"
+CHECKIN_GEOFENCE_RADIUS_SUBURBAN_METERS: "50"
+CHECKIN_GEOFENCE_RADIUS_RURAL_METERS: "50"
+CHECKIN_GEOFENCE_DYNAMIC_RADIUS_ENABLED: "true"
+CHECKIN_GEOFENCE_STRICT: "true"
+
+# EXIF Validation
+CHECKIN_EXIF_TIMESTAMP_TOLERANCE_MINUTES: "30"
+CHECKIN_EXIF_REQUIRED_FOR_DISPUTES: "true"
+
+# Notifications
+NOTIFICATION_CLEANUP_DAYS: "90"
+
+# Refresh Token
+REFRESH_TOKEN_DAYS: "7"
+REFRESH_TOKEN_FINGERPRINT_ENABLED: "true"
+REFRESH_TOKEN_CLEANUP_CRON: "0 0 2 * * ?"
+REFRESH_TOKEN_CLEANUP_FREQUENT: "true"
+
+# Rate Limiting
+APP_RATE_LIMIT_ENABLED: "true"
+APP_RATE_LIMIT_DEFAULT_LIMIT: "100"
+APP_RATE_LIMIT_DEFAULT_WINDOW_SECONDS: "60"

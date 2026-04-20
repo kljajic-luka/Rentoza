@@ -1,0 +1,108 @@
+# =============================================================================
+# Rentoza Platform - Cloud Build CI/CD Configuration
+# =============================================================================
+# Triggers on push to main branch, builds and deploys both services
+# =============================================================================
+
+substitutions:
+  _REGION: europe-west1
+  _REPO: rentoza
+  _ENVIRONMENT: staging
+  _DEPLOY_PROFILE: default
+  _ALLOW_PROD_MOCK: 'false'
+
+steps:
+  # =============================================================================
+  # Step 1: Build Main Backend Image
+  # =============================================================================
+  - id: 'build-backend'
+    name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/backend:${SHORT_SHA}'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/backend:latest'
+      - '--cache-from'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/backend:latest'
+      - '-f'
+      - 'apps/backend/Dockerfile'
+      - 'apps/backend/'
+
+  # =============================================================================
+  # Step 2: Build Chat Service Image
+  # =============================================================================
+  - id: 'build-chat'
+    name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/chat-service:${SHORT_SHA}'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/chat-service:latest'
+      - '--cache-from'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/chat-service:latest'
+      - '-f'
+      - 'apps/chat-service/Dockerfile'
+      - 'apps/chat-service/'
+    waitFor: ['-']  # Run in parallel with backend build
+
+  # =============================================================================
+  # Step 3: Push Backend Image
+  # =============================================================================
+  - id: 'push-backend'
+    name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - '--all-tags'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/backend'
+    waitFor: ['build-backend']
+
+  # =============================================================================
+  # Step 4: Push Chat Service Image
+  # =============================================================================
+  - id: 'push-chat'
+    name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - '--all-tags'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/chat-service'
+    waitFor: ['build-chat']
+
+  # =============================================================================
+  # Step 5: Deploy Platform (chat + backend) via secure script
+  # =============================================================================
+  - id: 'deploy-platform'
+    name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        EXTRA_FLAGS=()
+        if [[ "${_ALLOW_PROD_MOCK}" == "true" ]]; then
+          EXTRA_FLAGS+=(--allow-prod-mock)
+        fi
+
+        ./infrastructure/gcp/deploy-backend-secure.sh \
+          "${_ENVIRONMENT}" \
+          "${_DEPLOY_PROFILE}" \
+          --image-tag "${SHORT_SHA}" \
+          --skip-build \
+          "${EXTRA_FLAGS[@]}"
+    waitFor: ['push-backend', 'push-chat']
+
+# Build images
+images:
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/backend:${SHORT_SHA}'
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/backend:latest'
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/chat-service:${SHORT_SHA}'
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/chat-service:latest'
+
+# Build options
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'
+
+# Timeout for the entire build (20 minutes)
+timeout: '1200s'

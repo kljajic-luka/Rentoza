@@ -1,0 +1,76 @@
+.back-btn {
+	margin-bottom: 12px;
+}
+
+.loading-block {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	height: 200px;
+}
+
+.detail-grid {
+	display: grid;
+	grid-template-columns: 1fr;
+	gap: 18px;
+}
+
+@media (min-width: 1024px) {
+	.detail-grid {
+		grid-template-columns: 320px 1fr;
+	}
+}
+
+.profile-card {
+	padding: 0;
+	overflow: hidden;
+}
+
+.profile-hero {
+	height: 120px;
+	background: linear-gradient(120deg, rgba(89, 60, 251, 0.85), rgba(89, 60, 251, 0.85));
+}
+
+.profile-body {
+	padding: 20px;
+	display: grid;
+	gap: 14px;
+}
+
+.risk-panel {
+	background: var(--color-surface-muted);
+	border: 1px solid var(--color-border-subtle);
+	border-radius: 12px;
+	padding: 12px;
+}
+
+.risk-bar {
+	height: 10px;
+	border-radius: 12px;
+	background: rgba(148, 163, 184, 0.25);
+	overflow: hidden;
+}
+
+.risk-fill {
+	height: 100%;
+	border-radius: 12px;
+	transition: width 200ms ease;
+}
+
+.risk-score { font-weight: 700; }
+.risk-low { background: var(--color-success); color: #047857; }
+.risk-med { background: var(--color-warning); color: #b45309; }
+.risk-high { background: var(--color-error); color: #991b1b; }
+
+.content-column { display: grid; gap: 18px; }
+
+.empty-tab {
+	display: grid;
+	place-items: center;
+	gap: 8px;
+	color: var(--admin-muted);
+	padding: 40px 0;
+}
+.stack--xs  { gap: var(--space-1); }
+.stack--sm  { gap: var(--space-2); }
+.stack--spaced { margin-top: var(--space-3); }

@@ -1,0 +1,142 @@
+<div class="verification">
+  <header class="verification__header">
+    <div>
+      <p class="eyebrow">VERIFIKACIJA</p>
+      <h1>Verifikacija vlasnika</h1>
+      <p class="subtitle">Verifikujte svoj nalog za iznajmljivanje</p>
+    </div>
+
+    @if (status() !== VerificationStatus.NOT_SUBMITTED) {
+      <mat-chip [class]="getStatusClass()">
+        {{ getStatusLabel() }}
+      </mat-chip>
+    }
+  </header>
+
+  @if (isLoading()) {
+    <div class="loading-container">
+      <mat-spinner diameter="48"></mat-spinner>
+      <p>Učitavanje statusa...</p>
+    </div>
+  } @else {
+    <div class="verification-container">
+      @if (status() === VerificationStatus.APPROVED) {
+        <mat-card class="success-card">
+          <mat-icon>verified</mat-icon>
+          <h3>Vaš nalog je verifikovan!</h3>
+          <p>Možete slobodno iznajmljivati svoja vozila.</p>
+        </mat-card>
+      } @else if (status() === VerificationStatus.PENDING) {
+        <mat-card class="pending-card">
+          <mat-icon>schedule</mat-icon>
+          <h3>Verifikacija u toku</h3>
+          <p>Vaša dokumenta se pregledaju. Dobićete obaveštenje uskoro.</p>
+        </mat-card>
+      } @else if (status() === VerificationStatus.REJECTED) {
+        <mat-card class="rejected-card">
+          <mat-icon>cancel</mat-icon>
+          <h3>Verifikacija odbijena</h3>
+          <p>Vaša dokumenta nisu prihvaćena. Kontaktirajte podršku za više informacija.</p>
+        </mat-card>
+      } @else {
+        <mat-card class="upload-card">
+          <mat-card-header>
+            <mat-card-title>
+              <mat-icon>upload_file</mat-icon>
+              Potrebna dokumenta
+            </mat-card-title>
+          </mat-card-header>
+
+          <mat-card-content>
+            <p class="instructions">Za verifikaciju naloga, potrebno je da otpremite sledeća dokumenta:</p>
+
+            <div class="documents-list">
+              <div class="document-item">
+                <div class="document-info">
+                  <mat-icon>badge</mat-icon>
+                  <div>
+                    <h4>Vozačka dozvola</h4>
+                    <p>Važeća lična karta ili pasoš</p>
+                  </div>
+                </div>
+                <input
+                  #licenseInput
+                  type="file"
+                  accept="image/*,application/pdf"
+                  (change)="handleFileUpload($event, 'license')"
+                  hidden
+                />
+                <button mat-raised-button color="primary" (click)="licenseInput.click()">
+                  <mat-icon>cloud_upload</mat-icon>
+                  Otpremi
+                </button>
+              </div>
+
+              <div class="document-item">
+                <div class="document-info">
+                  <mat-icon>article</mat-icon>
+                  <div>
+                    <h4>Saobraćajna dozvola</h4>
+                    <p>Registracija vozila</p>
+                  </div>
+                </div>
+                <input
+                  #registrationInput
+                  type="file"
+                  accept="image/*,application/pdf"
+                  (change)="handleFileUpload($event, 'registration')"
+                  hidden
+                />
+                <button mat-raised-button color="primary" (click)="registrationInput.click()">
+                  <mat-icon>cloud_upload</mat-icon>
+                  Otpremi
+                </button>
+              </div>
+
+              <div class="document-item">
+                <div class="document-info">
+                  <mat-icon>shield</mat-icon>
+                  <div>
+                    <h4>Dokaz o osiguranju</h4>
+                    <p>Polisa osiguranja vozila</p>
+                  </div>
+                </div>
+                <input
+                  #insuranceInput
+                  type="file"
+                  accept="image/*,application/pdf"
+                  (change)="handleFileUpload($event, 'insurance')"
+                  hidden
+                />
+                <button mat-raised-button color="primary" (click)="insuranceInput.click()">
+                  <mat-icon>cloud_upload</mat-icon>
+                  Otpremi
+                </button>
+              </div>
+            </div>
+
+            <div class="info-box">
+              <mat-icon>info</mat-icon>
+              <div>
+                <p><strong>Napomena:</strong></p>
+                <ul>
+                  <li>Prihvataju se slike i PDF fajlovi</li>
+                  <li>Maksimalna veličina fajla je 5MB</li>
+                  <li>Dokumenta moraju biti jasna i čitljiva</li>
+                  <li>Proces verifikacije traje 1-2 radna dana</li>
+                </ul>
+              </div>
+            </div>
+          </mat-card-content>
+
+          <mat-card-actions>
+            <button mat-raised-button color="primary" disabled>
+              <mat-icon>send</mat-icon>
+              Podnesi za verifikaciju
+            </button>
+          </mat-card-actions>
+        </mat-card>
+      }
+    </div>
+  }
+</div>

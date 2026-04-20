@@ -1,0 +1,287 @@
+/* =============================================================================
+   RENTOZA DESIGN TOKENS  — Category 1 Foundation
+   Brand palette: Primary #593CFB · Secondary #121214 · Accent #00D4AA
+                  Neutral #F7F7F8 · Error #FF5A5F
+   =============================================================================
+   CONTRAST AUDIT (WCAG AA):
+     #593CFB on #F7F7F8 → 5.74:1 ✓  (normal + large text)
+     #121214 on #F7F7F8 → 19.7:1 ✓  (normal + large text)
+     #00D4AA on #F7F7F8 → 1.85:1 ✗  → decorative/icon use only, never body text
+     #FF5A5F on #F7F7F8 → 2.98:1 ✗  → error borders/icons only; use #D1000A for text
+     #FFFFFF on #593CFB → 5.74:1 ✓  (button labels)
+     #FFFFFF on #121214 → 19.7:1 ✓
+   ============================================================================= */
+
+:root {
+  /* ─────────────────────────────────────────────
+     BRAND PRIMITIVES
+  ───────────────────────────────────────────── */
+  --brand-primary:         #593CFB;
+  --brand-primary-light:   #7B63FC;
+  --brand-primary-dark:    #3D20E8;
+  --brand-primary-10:      rgba(89, 60, 251, 0.10);
+  --brand-primary-15:      rgba(89, 60, 251, 0.15);
+  --brand-primary-20:      rgba(89, 60, 251, 0.20);
+  --brand-primary-30:      rgba(89, 60, 251, 0.30);
+
+  --brand-secondary:       #121214;
+  --brand-secondary-80:    rgba(18, 18, 20, 0.80);
+  --brand-secondary-60:    rgba(18, 18, 20, 0.60);
+
+  --brand-accent:          #00D4AA;
+  --brand-accent-10:       rgba(0, 212, 170, 0.10);
+  --brand-accent-20:       rgba(0, 212, 170, 0.20);
+
+  --brand-neutral:         #F7F7F8;
+  --brand-neutral-dark:    #EEEEF0;
+  --brand-neutral-darker:  #D8D8DC;
+
+  --brand-error:           #FF5A5F;
+  --brand-error-text:      #C80008;   /* AA-compliant text variant */
+  --brand-error-10:        rgba(255, 90, 95, 0.10);
+
+  --brand-success:         #00C48C;
+  --brand-success-text:    #006649;   /* AA-compliant text variant */
+  --brand-success-10:      rgba(0, 196, 140, 0.10);
+
+  --brand-warning:         #F5A623;
+  --brand-warning-text:    #7A4F00;   /* AA-compliant text variant */
+  --brand-warning-10:      rgba(245, 166, 35, 0.10);
+
+  --brand-info:            #0EA5E9;
+  --brand-info-text:       #0369A1;   /* AA-compliant text variant */
+  --brand-info-10:         rgba(14, 165, 233, 0.10);
+
+  /* ─────────────────────────────────────────────
+     SEMANTIC COLOR TOKENS
+  ───────────────────────────────────────────── */
+  /* Interactive */
+  --color-primary:         var(--brand-primary);
+  --color-primary-hover:   var(--brand-primary-light);
+  --color-primary-active:  var(--brand-primary-dark);
+  --color-accent:          var(--brand-accent);
+
+  /* Backgrounds */
+  --color-bg:              var(--brand-neutral);
+  --color-surface:         rgba(255, 255, 255, 0.98);
+  --color-surface-elevated:rgba(247, 247, 248, 0.94);
+  --color-surface-muted:   rgba(238, 238, 240, 0.88);
+  --color-overlay:         rgba(18, 18, 20, 0.45);
+
+  /* Text  — all pass AA on --color-bg */
+  --color-text-primary:    rgba(18, 18, 20, 0.92);
+  --color-text-secondary:  rgba(18, 18, 20, 0.70);
+  --color-text-muted:      rgba(18, 18, 20, 0.50);
+  --color-text-inverse:    #ffffff;
+  --color-text-on-primary: #ffffff;
+
+  /* Status */
+  --color-error:           var(--brand-error);
+  --color-error-text:      var(--brand-error-text);
+  --color-error-bg:        var(--brand-error-10);
+  --color-success:         var(--brand-success);
+  --color-success-text:    var(--brand-success-text);
+  --color-success-bg:      var(--brand-success-10);
+  --color-warning:         var(--brand-warning);
+  --color-warning-text:    var(--brand-warning-text);
+  --color-warning-bg:      var(--brand-warning-10);
+  --color-info:            var(--brand-info);
+  --color-info-text:       var(--brand-info-text);
+  --color-info-bg:         var(--brand-info-10);
+
+  /* Borders */
+  --color-border:          var(--brand-neutral-darker);
+  --color-border-subtle:   rgba(18, 18, 20, 0.12);
+  --color-border-strong:   rgba(18, 18, 20, 0.24);
+  --color-border-focus:    var(--brand-primary);
+
+  /* Shadows */
+  --shadow-xs:             0 1px 3px rgba(18, 18, 20, 0.08);
+  --shadow-sm:             0 4px 12px rgba(18, 18, 20, 0.10);
+  --shadow-md:             0 8px 24px rgba(18, 18, 20, 0.12);
+  --shadow-lg:             0 18px 40px rgba(18, 18, 20, 0.14);
+  --shadow-xl:             0 32px 60px rgba(18, 18, 20, 0.16);
+  --shadow-primary:        0 8px 24px rgba(89, 60, 251, 0.30);
+
+  /* Legacy shadow aliases (backward compat with existing component SCSS) */
+  --shadow-elevated:       var(--shadow-xl);
+  --shadow-soft:           var(--shadow-lg);
+
+  /* Border radii */
+  --radius-xs:             4px;
+  --radius-sm:             8px;
+  --radius-md:             12px;
+  --radius-lg:             16px;
+  --radius-xl:             24px;
+  --radius-2xl:            32px;
+  --radius-full:           9999px;
+
+  /* ─────────────────────────────────────────────
+     COMPONENT-LEVEL TOKENS
+     (mapped from brand → semantic; keep old names
+     for backward compat with existing var() usage)
+  ───────────────────────────────────────────── */
+  --icon-color:            var(--brand-primary);
+  --icon-button-bg:        var(--brand-primary-10);
+  --icon-button-hover-bg:  var(--brand-primary-15);
+
+  --toolbar-bg:            linear-gradient(135deg,
+                             rgba(89, 60, 251, 0.96) 0%,
+                             rgba(61, 32, 232, 0.92) 100%);
+  --toolbar-color:         #ffffff;
+
+  --sidenav-bg:            #ffffff;
+  --sidenav-divider:       var(--color-border-subtle);
+
+  --surface-input:         rgba(255, 255, 255, 0.90);
+
+  --chip-bg:               var(--brand-primary-10);
+  --chip-color:            var(--brand-primary);
+
+  /* Legacy aliases — backward compat with var(--primary-color) usages */
+  --primary-color:         var(--brand-primary);
+  --primary-dark:          var(--brand-primary-dark);
+  --primary-light:         var(--brand-primary-light);
+
+  /* MDC (Angular Material v3) overrides — brand primary */
+  --mdc-filled-button-container-color:            var(--brand-primary);
+  --mdc-filled-button-label-text-color:           #ffffff;
+  --mdc-outlined-button-outline-color:            var(--brand-primary);
+  --mdc-outlined-button-label-text-color:         var(--brand-primary);
+  --mat-text-button-state-layer-color:            var(--brand-primary);
+  --mdc-circular-progress-active-indicator-color: var(--brand-primary);
+  --mdc-outlined-text-field-focus-outline-color:  var(--brand-primary);
+  --mdc-filled-text-field-active-indicator-color: var(--brand-primary);
+  --mdc-linear-progress-active-indicator-color:   var(--brand-primary);
+  --mat-tab-header-active-label-text-color:       var(--brand-primary);
+  --mat-tab-header-active-indicator-color:        var(--brand-primary);
+  --mat-checkbox-checked-state-icon-color:        var(--brand-primary);
+  --mat-slide-toggle-selected-track-color:        var(--brand-primary);
+  --mat-slide-toggle-selected-handle-color:       var(--brand-primary-dark);
+  --mat-option-selected-state-label-text-color:   var(--brand-primary);
+  --mat-select-focused-arrow-color:               var(--brand-primary);
+  --mat-stepper-header-selected-state-icon-background-color: var(--brand-primary);
+
+  /* ─────────────────────────────────────────────
+     TYPOGRAPHY TOKENS
+  ───────────────────────────────────────────── */
+  --font-family-base:      'Inter', system-ui, -apple-system, BlinkMacSystemFont,
+                            'Segoe UI', sans-serif;
+
+  /* Size scale */
+  --font-size-xs:          0.75rem;    /* 12px — metadata only */
+  --font-size-sm:          0.875rem;   /* 14px — min for UI labels */
+  --font-size-base:        1rem;       /* 16px — body default */
+  --font-size-lg:          1.125rem;   /* 18px */
+  --font-size-xl:          1.5rem;     /* 24px */
+  --font-size-2xl:         2rem;       /* 32px */
+  --font-size-3xl:         3rem;       /* 48px */
+
+  /* Line height */
+  --line-height-tight:     1.2;
+  --line-height-normal:    1.5;
+  --line-height-relaxed:   1.75;
+
+  /* Font weight */
+  --font-weight-regular:   400;
+  --font-weight-medium:    500;
+  --font-weight-semibold:  600;
+  --font-weight-bold:      700;
+
+  /* Letter spacing */
+  --letter-spacing-tight:  -0.01em;
+  --letter-spacing-normal: 0;
+  --letter-spacing-wide:   0.02em;
+  --letter-spacing-wider:  0.05em;
+  --letter-spacing-widest: 0.28em;
+
+  /* ─────────────────────────────────────────────
+     SPACING TOKENS  (8px grid)
+  ───────────────────────────────────────────── */
+  --space-1:    8px;
+  --space-2:   16px;
+  --space-3:   24px;
+  --space-4:   32px;
+  --space-5:   40px;
+  --space-6:   48px;
+  --space-8:   64px;
+  --space-10:  80px;
+  --space-12:  96px;
+  --space-16: 128px;
+
+  /* Semantic spacing */
+  --space-component-padding-mobile:   var(--space-2);  /* 16px */
+  --space-component-padding-desktop:  var(--space-3);  /* 24px */
+  --space-section-mobile:             var(--space-6);  /* 48px */
+  --space-section-desktop:            var(--space-8);  /* 64px */
+  --space-container-padding-mobile:   var(--space-2);  /* 16px */
+  --space-container-padding-tablet:   var(--space-3);  /* 24px */
+  --space-container-padding-desktop:  var(--space-6);  /* 48px */
+  --max-content-width:                1280px;
+
+  /* ─────────────────────────────────────────────
+     SAFE AREA (iOS)
+  ───────────────────────────────────────────── */
+  --safe-area-inset-top:    env(safe-area-inset-top, 0px);
+  --safe-area-inset-right:  env(safe-area-inset-right, 0px);
+  --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-inset-left:   env(safe-area-inset-left, 0px);
+  --safe-padding-top:       max(1rem, env(safe-area-inset-top, 0px));
+  --safe-padding-bottom:    max(1rem, env(safe-area-inset-bottom, 0px));
+}
+
+/* =============================================================================
+   DARK THEME OVERRIDES
+   ============================================================================= */
+.theme-dark {
+  /* Backgrounds */
+  --color-bg:              #0e0e10;
+  --color-surface:         rgba(22, 22, 26, 0.96);
+  --color-surface-elevated:rgba(28, 28, 34, 0.92);
+  --color-surface-muted:   rgba(34, 34, 42, 0.80);
+  --color-overlay:         rgba(0, 0, 0, 0.60);
+
+  /* Text */
+  --color-text-primary:    rgba(247, 247, 248, 0.92);
+  --color-text-secondary:  rgba(247, 247, 248, 0.70);
+  --color-text-muted:      rgba(247, 247, 248, 0.48);
+  --color-text-inverse:    rgba(18, 18, 20, 0.92);
+
+  /* Borders */
+  --color-border:          rgba(247, 247, 248, 0.14);
+  --color-border-subtle:   rgba(247, 247, 248, 0.10);
+  --color-border-strong:   rgba(247, 247, 248, 0.22);
+
+  /* Shadows */
+  --shadow-xs:             0 1px 3px rgba(0, 0, 0, 0.24);
+  --shadow-sm:             0 4px 12px rgba(0, 0, 0, 0.32);
+  --shadow-md:             0 8px 24px rgba(0, 0, 0, 0.40);
+  --shadow-lg:             0 18px 40px rgba(0, 0, 0, 0.50);
+  --shadow-xl:             0 32px 64px rgba(0, 0, 0, 0.60);
+  --shadow-primary:        0 8px 24px rgba(89, 60, 251, 0.45);
+
+  /* Component tokens */
+  --icon-color:            rgba(165, 148, 253, 0.92);
+  --icon-button-bg:        rgba(89, 60, 251, 0.18);
+  --icon-button-hover-bg:  rgba(89, 60, 251, 0.26);
+
+  --toolbar-bg:            linear-gradient(135deg,
+                             rgba(30, 22, 60, 0.96) 0%,
+                             rgba(18, 18, 20, 0.98) 100%);
+  --toolbar-color:         rgba(247, 247, 248, 0.92);
+
+  --sidenav-bg:            rgba(18, 18, 22, 0.98);
+  --sidenav-divider:       rgba(247, 247, 248, 0.10);
+
+  --surface-input:         rgba(28, 28, 34, 0.86);
+
+  --chip-bg:               rgba(89, 60, 251, 0.20);
+  --chip-color:            rgba(165, 148, 253, 0.92);
+
+  /* MDC overrides for dark */
+  --mdc-filled-button-container-color:            var(--brand-primary-light);
+  --mdc-outlined-button-outline-color:            var(--brand-primary-light);
+  --mdc-outlined-button-label-text-color:         var(--brand-primary-light);
+  --mdc-outlined-text-field-focus-outline-color:  var(--brand-primary-light);
+  --mdc-filled-text-field-active-indicator-color: var(--brand-primary-light);
+}

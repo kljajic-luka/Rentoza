@@ -1,0 +1,608 @@
+.add-car-wizard {
+  min-height: 100vh;
+  background: var(--color-bg);
+
+  &__header {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    padding: var(--space-4) var(--space-3);
+    max-width: 1000px;
+    margin: 0 auto;
+
+    button[mat-icon-button] {
+      margin-top: 0.5rem;
+    }
+
+    h1 {
+      font-size: var(--font-size-2xl);
+      font-weight: 700;
+      margin: var(--space-1) 0;
+      color: var(--color-text-primary);
+    }
+
+    .subtitle {
+      color: var(--color-text-muted);
+      font-size: var(--font-size-base);
+      margin: 0.25rem 0 0 0;
+    }
+  }
+}
+
+// Stepper Styling
+.wizard-stepper {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 var(--space-3) var(--space-6);
+  background: transparent !important;
+
+  ::ng-deep {
+    .mat-step-header {
+      padding: 1rem !important;
+
+      .mat-step-icon {
+        background: var(--color-surface-muted) !important;
+        color: var(--color-text-primary) !important;
+      }
+
+      .mat-step-icon-selected {
+        background: var(--color-primary) !important;
+        color: white !important;
+      }
+
+      .mat-step-label {
+        color: var(--color-text-muted);
+      }
+
+      .mat-step-label-selected {
+        color: var(--color-text-primary);
+        font-weight: 600;
+      }
+    }
+
+    .mat-horizontal-stepper-header-container {
+      margin-bottom: 2rem;
+    }
+
+    .mat-horizontal-content-container {
+      padding: 0 !important;
+    }
+  }
+}
+
+// Step Form
+.step-form {
+  background: var(--color-surface);
+  border-radius: 16px;
+  padding: var(--space-4);
+  box-shadow: var(--shadow-elevated);
+  transition: background 200ms ease, box-shadow 200ms ease;
+}
+
+.step-title {
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0 0 var(--space-1) 0;
+}
+
+.step-description {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-base);
+  margin: 0 0 var(--space-4) 0;
+}
+
+// Form Layout
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: 1.5rem;
+}
+
+.form-field {
+  width: 100%;
+
+  &.full-width {
+    grid-column: 1 / -1;
+  }
+}
+
+// Radio Group
+.radio-group {
+  margin-bottom: 2rem;
+
+  &__label {
+    display: block;
+    font-size: var(--font-size-base);
+    font-weight: 500;
+    color: var(--color-text-primary);
+    margin-bottom: 1rem;
+  }
+
+  &__options {
+    display: flex;
+    gap: var(--space-4);
+
+    ::ng-deep .mat-mdc-radio-button {
+      color: var(--color-text-primary);
+    }
+  }
+}
+
+// Feature Groups
+.feature-group {
+  margin-bottom: 2rem;
+
+  &__title {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: var(--font-size-lg);
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin: 0 0 var(--space-2) 0;
+
+    mat-icon {
+      color: var(--icon-color);
+      font-size: var(--font-size-xl);
+      width: 1.5rem;
+      height: 1.5rem;
+    }
+  }
+}
+
+.feature-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+
+  ::ng-deep {
+    mat-chip-option {
+      border-radius: 12px;
+      font-size: var(--font-size-sm);
+      cursor: pointer;
+      transition: all 200ms ease;
+
+      &.mat-mdc-chip-selected {
+        background: var(--brand-primary-15) !important;
+        color: var(--color-primary) !important;
+      }
+
+      &:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      }
+    }
+  }
+}
+
+.selected-count {
+  margin-top: 1.5rem;
+  padding: 0.75rem var(--space-2);
+  background: var(--color-surface-muted);
+  border-radius: 8px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  text-align: center;
+}
+
+// Add-ons
+.add-ons-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.add-on-chip {
+  ::ng-deep {
+    .mat-mdc-chip-action-label {
+      color: var(--color-text-primary);
+    }
+
+    .mat-mdc-chip-remove {
+      color: var(--color-text-muted);
+      opacity: 0.7;
+
+      &:hover {
+        opacity: 1;
+      }
+    }
+  }
+}
+
+.empty-message {
+  padding: var(--space-4);
+  text-align: center;
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+// Rules Section
+.rules-section {
+  margin-top: 2rem;
+  padding: var(--space-3);
+  background: var(--color-surface-muted);
+  border-radius: 12px;
+
+  h3 {
+    font-size: var(--font-size-base);
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin: 0 0 var(--space-2) 0;
+  }
+}
+
+.rules-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+
+  li {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: var(--space-1) 0;
+    color: var(--color-text-primary);
+    font-size: var(--font-size-base);
+
+    mat-icon {
+      font-size: 1.25rem;
+      width: 1.25rem;
+      height: 1.25rem;
+      color: var(--color-success);
+    }
+  }
+}
+
+// Photo Upload
+.photo-upload {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: 2rem;
+
+  button {
+    mat-icon {
+      margin-right: 0.5rem;
+    }
+  }
+
+  .photo-count {
+    color: var(--color-text-muted);
+    font-size: var(--font-size-sm);
+    margin: 0;
+  }
+}
+
+.photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: 2rem;
+}
+
+.photo-preview {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--color-surface-elevated);
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .delete-photo {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    width: 32px;
+    height: 32px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+
+    mat-icon {
+      font-size: 1.25rem;
+      width: 1.25rem;
+      height: 1.25rem;
+    }
+  }
+
+  .primary-badge {
+    position: absolute;
+    bottom: 0.5rem;
+    left: 0.5rem;
+    padding: 0.25rem 0.75rem;
+    background: rgba(89, 60, 251, 0.9);
+    color: white;
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    border-radius: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+}
+
+.empty-photos {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8) var(--space-4);
+  background: var(--color-surface-muted);
+  border-radius: 12px;
+  margin-bottom: 2rem;
+
+  mat-icon {
+    font-size: 4rem;
+    width: 4rem;
+    height: 4rem;
+    color: var(--color-text-muted);
+    opacity: 0.5;
+    margin-bottom: 1rem;
+  }
+
+  p {
+    color: var(--color-text-muted);
+    font-size: var(--font-size-base);
+    margin: 0;
+  }
+}
+
+// Summary Card
+.summary-card {
+  margin-bottom: 2rem;
+  border-radius: 16px !important;
+
+  ::ng-deep {
+    .mat-mdc-card-header {
+      padding: 1.5rem 1.5rem 0 !important;
+    }
+
+    .mat-mdc-card-title {
+      font-size: var(--font-size-xl);
+      font-weight: 600;
+      color: var(--color-text-primary);
+    }
+
+    .mat-mdc-card-subtitle {
+      color: var(--color-text-muted);
+      margin-top: 0.25rem;
+    }
+
+    .mat-mdc-card-content {
+      padding: 1.5rem !important;
+    }
+  }
+}
+
+.summary-section {
+  margin-bottom: 1.5rem;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+
+  h4 {
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+    margin: 0 0 var(--space-1) 0;
+  }
+
+  p {
+    font-size: var(--font-size-base);
+    color: var(--color-text-primary);
+    margin: 0;
+
+    &.price {
+      font-size: var(--font-size-xl);
+      font-weight: 700;
+      color: var(--color-primary);
+    }
+  }
+}
+
+// Step Actions
+.step-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: 2rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--color-border-subtle);
+
+  button {
+    mat-icon {
+      font-size: 1.25rem;
+      width: 1.25rem;
+      height: 1.25rem;
+    }
+
+    mat-spinner {
+      display: inline-block;
+      margin-right: 0.5rem;
+    }
+  }
+}
+
+// Responsive
+@media (max-width: 768px) {
+  .add-car-wizard {
+    &__header {
+      padding: var(--space-3) var(--space-2);
+
+      h1 {
+        font-size: 1.75rem;
+      }
+    }
+  }
+
+  .wizard-stepper {
+    padding: 0 var(--space-2) var(--space-4);
+  }
+
+  .step-form {
+    padding: var(--space-3);
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-2);
+  }
+
+  .radio-group__options {
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .photo-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-2);
+  }
+
+  .step-actions {
+    flex-direction: column-reverse;
+
+    button {
+      width: 100%;
+    }
+  }
+}
+
+// Platform Cancellation Policy Notice (Turo-style migration)
+.platform-policy-notice {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  margin-bottom: 1.5rem;
+  background: var(--brand-primary-10);
+  border-radius: 8px;
+  border-left: 4px solid var(--color-primary);
+
+  mat-icon {
+    color: var(--color-primary);
+    flex-shrink: 0;
+    margin-top: 0.25rem;
+  }
+
+  strong {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: var(--color-text-primary);
+  }
+
+  p {
+    margin: 0 0 var(--space-1) 0;
+    color: var(--color-text-muted);
+    font-size: var(--font-size-sm);
+  }
+
+  ul {
+    margin: 0;
+    padding-left: 1.25rem;
+    color: var(--color-text-muted);
+    font-size: var(--font-size-sm);
+
+    li {
+      margin-bottom: 0.25rem;
+    }
+  }
+}
+
+// Document Upload Step (Serbian Legal Compliance)
+.document-upload-grid {
+  display: grid;
+  gap: var(--space-3);
+  margin-bottom: 2rem;
+}
+
+.document-upload-item {
+  padding: var(--space-3);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 12px;
+  background: var(--color-surface-muted);
+}
+
+.document-status {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+
+  mat-icon {
+    color: var(--color-text-muted);
+  }
+
+  &.uploaded {
+    mat-icon {
+      color: var(--color-success);
+    }
+  }
+}
+
+.document-placeholder {
+  .placeholder-text {
+    color: var(--color-text-muted);
+    font-size: var(--font-size-sm);
+    margin: 0 0 var(--space-2);
+  }
+
+  button {
+    mat-icon {
+      margin-right: 0.5rem;
+    }
+  }
+}
+
+.document-success {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0.75rem;
+  background: rgba(16, 185, 129, 0.1);
+  border-radius: 8px;
+  color: #065f46;
+  font-size: var(--font-size-sm);
+
+  mat-icon {
+    font-size: 1.25rem;
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+}
+
+.document-info-box {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  background: rgba(251, 191, 36, 0.1);
+  border-radius: 8px;
+  border-left: 4px solid var(--color-warning);
+
+  mat-icon {
+    color: var(--color-warning-text);
+    flex-shrink: 0;
+  }
+
+  strong {
+    display: block;
+    color: var(--color-text-primary);
+    margin-bottom: 0.25rem;
+  }
+
+  p {
+    margin: 0;
+    color: var(--color-text-muted);
+    font-size: var(--font-size-sm);
+    line-height: 1.5;
+  }
+}

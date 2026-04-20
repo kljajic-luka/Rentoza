@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+
+# Source files (not needed in deployment)
+src/
+e2e/
+
+# Version control
+.git/
+.github/
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Build and test artifacts
+coverage/
+test-results/
+playwright-report/
+.angular/
+
+# Config files not needed in hosting
+.gitignore
+.editorconfig
+.prettierrc
+.eslintrc.json
+tsconfig*.json
+angular.json
+package*.json
+proxy.conf.json
+playwright.config.ts
+
+# Documentation
+*.md
+docs/
+
+# SSL certificates (local dev only)
+ssl/
+
+# Other
+*.log
+*.map

@@ -1,0 +1,131 @@
+<!doctype html>
+<html xmlns:th="http://www.thymeleaf.org">
+	<head>
+		<meta charset="UTF-8" />
+		<title>Vozačka dozvola ističe uskoro</title>
+		<style>
+			body {
+				font-family: Arial, sans-serif;
+				line-height: 1.6;
+				color: #333;
+			}
+			.container {
+				max-width: 600px;
+				margin: 0 auto;
+				padding: 20px;
+				border: 1px solid #ddd;
+				border-radius: 5px;
+			}
+			.header {
+				background-color: #ff9800;
+				color: white;
+				padding: 10px;
+				text-align: center;
+				border-radius: 5px 5px 0 0;
+			}
+			.content {
+				padding: 20px;
+			}
+			.warning-box {
+				background-color: #fff3e0;
+				border-left: 4px solid #ff9800;
+				padding: 15px;
+				margin: 15px 0;
+				border-radius: 0 5px 5px 0;
+			}
+			.countdown {
+				font-size: 48px;
+				font-weight: bold;
+				color: #ff9800;
+				text-align: center;
+				margin: 20px 0;
+			}
+			.countdown-label {
+				font-size: 14px;
+				color: #666;
+				text-align: center;
+			}
+			.info-box {
+				background-color: #e3f2fd;
+				border-left: 4px solid #2196f3;
+				padding: 15px;
+				margin: 15px 0;
+				border-radius: 0 5px 5px 0;
+			}
+			.button {
+				display: inline-block;
+				padding: 12px 24px;
+				background-color: #ff9800;
+				color: white;
+				text-decoration: none;
+				border-radius: 5px;
+				margin-top: 20px;
+				font-weight: bold;
+			}
+			.button:hover {
+				background-color: #f57c00;
+			}
+			.footer {
+				margin-top: 20px;
+				font-size: 12px;
+				color: #777;
+				text-align: center;
+				border-top: 1px solid #eee;
+				padding-top: 15px;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="container">
+			<div class="header">
+				<h2>⚠️ Vozačka dozvola ističe uskoro</h2>
+			</div>
+			<div class="content">
+				<p>Poštovani <span th:text="${firstName}">Ime</span>,</p>
+
+				<p>
+					Obaveštavamo vas da vaša vozačka dozvola ističe uskoro. Da biste
+					nastavili sa korišćenjem Rentoza platforme, potrebno je da ažurirate
+					vašu dozvolu.
+				</p>
+
+				<div class="countdown" th:text="${daysUntilExpiry}">30</div>
+				<div class="countdown-label">dana do isteka</div>
+
+				<div class="warning-box">
+					<strong>Datum isteka:</strong>
+					<span th:text="${expiryDate}">01.01.2026</span>
+					<br /><br />
+					<strong>Šta se dešava nakon isteka?</strong>
+					<ul>
+						<li>Nećete moći da rezervišete nova vozila</li>
+						<li>Postojeće rezervacije mogu biti otkazane</li>
+					</ul>
+				</div>
+
+				<div class="info-box">
+					<strong>Kako ažurirati dozvolu?</strong>
+					<ol>
+						<li>Obnovite vozačku dozvolu kod nadležnog organa</li>
+						<li>Prijavite se na Rentoza platformu</li>
+						<li>Idite na "Moj profil" → "Verifikacija"</li>
+						<li>Pošaljite novu vozačku dozvolu</li>
+					</ol>
+				</div>
+
+				<p style="text-align: center">
+					<a href="https://rentoza.rs/verify-license" class="button">
+						🔄 Ažuriraj vozačku dozvolu
+					</a>
+				</p>
+			</div>
+			<div class="footer">
+				<p>
+					Ako imate pitanja, kontaktirajte nas na
+					<a href="mailto:rentozzza@gmail.com">rentozzza@gmail.com</a>
+				</p>
+				<p>&copy; 2025 Rentoza. Sva prava zadržana.</p>
+			</div>
+		</div>
+	</body>
+</html>

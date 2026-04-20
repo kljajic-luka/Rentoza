@@ -1,0 +1,22 @@
+# Keep Cloud Build context minimal for backend/chat builds.
+*
+
+!backend
+!backend/**
+!chat-service
+!chat-service/**
+!shared-security
+!shared-security/**
+
+# Exclude local build artifacts and IDE metadata.
+backend/target/
+chat-service/target/
+shared-security/target/
+backend/.idea/
+chat-service/.idea/
+shared-security/.idea/
+backend/src/test/
+chat-service/src/test/
+backend/docs/
+chat-service/docs/
+.DS_Store

@@ -1,0 +1,537 @@
+.profile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.profile__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 1.8rem var(--space-4);
+  border-radius: 24px;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border-subtle);
+}
+
+.profile__identity {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.profile__avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 1.9rem;
+  font-weight: 700;
+  color: var(--color-text-inverse);
+  background: linear-gradient(135deg, rgba(89, 60, 251, 0.35), rgba(89, 60, 251, 0.25));
+}
+
+.profile__headline h1 {
+  margin: 0;
+  font-size: clamp(1.8rem, 3vw, 2.4rem);
+}
+
+.profile__verification {
+  margin: var(--space-1) 0;
+}
+
+.profile__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.profile__meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--font-size-base);
+  color: var(--color-text-muted);
+}
+
+.profile__edit {
+  border-radius: 999px;
+  font-weight: 600;
+  min-height: 46px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.profile__stats {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.profile__stat-card {
+  border-radius: 20px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-soft, 0 12px 30px -18px rgba(15, 23, 42, 0.2));
+  transition: transform 0.2s ease;
+}
+
+.profile__stat-card:hover {
+  transform: translateY(-4px);
+}
+
+.profile__stat-card--accent {
+  border: 1px solid rgba(89, 60, 251, 0.35);
+  box-shadow: 0 16px 40px -18px rgba(89, 60, 251, 0.35);
+}
+
+.profile__stat-value {
+  display: block;
+  font-size: var(--font-size-2xl);
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.profile__stat-label {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.profile__body {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-4);
+  align-items: start;
+  max-width: calc(100% - 340px);
+}
+
+.profile__card {
+  border-radius: 20px;
+  box-shadow: var(--shadow-medium, 0 16px 32px -22px rgba(15, 23, 42, 0.25));
+}
+
+.profile__role {
+  margin: 0 0 var(--space-2);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.profile__roles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: 1.2rem;
+}
+
+.profile__role-chip {
+  padding: 0.35rem 0.9rem;
+  border-radius: 999px;
+  background: rgba(89, 60, 251, 0.12);
+  color: var(--color-primary, var(--brand-primary-dark));
+  font-weight: 600;
+  font-size: var(--font-size-sm);
+}
+
+.profile__reviews {
+  display: flex;
+  flex-direction: column;
+  gap: 1.3rem;
+}
+
+.profile__reviews-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.profile__reviews-header h2 {
+  margin: 0;
+  font-size: var(--font-size-xl);
+}
+
+.profile__reviews-count {
+  font-size: var(--font-size-base);
+  color: var(--color-text-muted);
+}
+
+.profile__review-card {
+  border-radius: 20px;
+  padding: var(--space-3);
+  box-shadow: var(--shadow-soft, 0 12px 32px -22px rgba(15, 23, 42, 0.2));
+}
+
+.profile__review-header {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.profile__review-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: rgba(148, 163, 184, 0.25);
+  display: grid;
+  place-items: center;
+  font-weight: 600;
+  font-size: var(--font-size-lg);
+}
+
+.profile__review-info h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.profile__review-date {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.profile__review-rating {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-weight: 600;
+}
+
+.profile__review-rating mat-icon {
+  font-size: var(--font-size-lg);
+  height: 1.2rem;
+  width: 1.2rem;
+}
+
+.profile__review-comment {
+  margin: 1.25rem 0 0;
+  line-height: 1.6;
+  color: var(--color-text-primary);
+}
+
+.profile__reviews-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: var(--space-5) var(--space-2);
+  border-radius: 18px;
+  border: 1px dashed rgba(148, 163, 184, 0.35);
+  color: var(--color-text-muted);
+}
+
+.profile__reviews-empty mat-icon {
+  font-size: 2.2rem;
+  width: 2.2rem;
+  height: 2.2rem;
+}
+
+// Edit Profile Panel - Turo-inspired trust-first design
+.profile__edit-panel {
+  margin: var(--space-4) 0;
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.edit-card {
+  border-radius: 24px;
+  box-shadow: var(--shadow-elevated, 0 20px 48px -24px rgba(15, 23, 42, 0.3));
+  background: var(--color-surface);
+
+  mat-card-header {
+    padding: var(--space-4) var(--space-4) var(--space-2);
+
+    mat-card-title {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: var(--font-size-xl);
+      font-weight: 700;
+      color: var(--color-text-primary);
+
+      mat-icon {
+        color: var(--color-primary, var(--brand-primary-dark));
+      }
+    }
+
+    mat-card-subtitle {
+      margin-top: 0.5rem;
+      font-size: var(--font-size-base);
+      color: var(--color-text-muted);
+    }
+  }
+}
+
+.edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+
+  &__section {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  &__section-title {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    margin: 0;
+    font-size: var(--font-size-lg);
+    font-weight: 600;
+    color: var(--color-text-primary);
+
+    mat-icon {
+      font-size: 1.3rem;
+      width: 1.3rem;
+      height: 1.3rem;
+      color: var(--color-text-muted);
+    }
+  }
+
+  &__section-subtitle {
+    margin: 0;
+    font-size: var(--font-size-sm);
+    color: var(--color-text-muted);
+  }
+
+  &__readonly-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: var(--space-2);
+  }
+
+  &__fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: var(--space-3);
+  }
+
+  &__field {
+    width: 100%;
+
+    &--full {
+      grid-column: 1 / -1;
+    }
+  }
+}
+
+// Read-only field styling - visual indication with lock icon
+.readonly-field {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 1.25rem;
+  border-radius: 16px;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border-subtle);
+  cursor: not-allowed;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: rgba(148, 163, 184, 0.1);
+  }
+
+  > mat-icon:first-child {
+    color: var(--color-text-muted);
+    font-size: var(--font-size-xl);
+    width: 24px;
+    height: 24px;
+  }
+
+  &__content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    flex: 1;
+  }
+
+  &__label {
+    font-size: var(--font-size-xs);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+  }
+
+  &__value {
+    font-size: var(--font-size-base);
+    font-weight: 600;
+    color: var(--color-text-primary);
+    opacity: 0.7;
+  }
+
+  &__lock {
+    color: rgba(148, 163, 184, 0.5);
+    font-size: 20px;
+    width: 20px;
+    height: 20px;
+  }
+}
+
+// Edit card actions
+.edit-card__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--color-border-subtle);
+
+  button {
+    min-width: 140px;
+    border-radius: 12px;
+    font-weight: 600;
+    height: 44px;
+
+    &[mat-raised-button] {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-1);
+
+      mat-progress-spinner {
+        display: inline-block;
+      }
+    }
+  }
+}
+
+// Snackbar styling
+::ng-deep {
+  .snackbar-success {
+    background-color: var(--color-success) !important;
+    color: white !important;
+
+    .mat-mdc-snack-bar-label {
+      color: white;
+    }
+  }
+
+  .snackbar-error {
+    background-color: var(--color-error) !important;
+    color: white !important;
+
+    .mat-mdc-snack-bar-label {
+      color: white;
+    }
+  }
+
+  .snackbar-info {
+    background-color: var(--color-primary) !important;
+    color: white !important;
+
+    .mat-mdc-snack-bar-label {
+      color: white;
+    }
+  }
+}
+
+.loading {
+  padding: var(--space-6) 0;
+}
+
+@media (max-width: 1024px) {
+  .profile__body {
+    grid-template-columns: 1fr;
+  }
+}
+
+// ========== Date of Birth & Age Display ==========
+.verified-hint {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--color-success, var(--color-success));
+  
+  .verified-icon {
+    font-size: var(--font-size-base);
+    width: 1rem;
+    height: 1rem;
+  }
+}
+
+.age-display {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0.75rem var(--space-2);
+  background: var(--color-surface-muted);
+  border-radius: 12px;
+  margin-top: 0.5rem;
+  
+  mat-icon {
+    color: var(--color-text-muted);
+    font-size: 1.25rem;
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+  
+  .age-label {
+    color: var(--color-text-muted);
+    font-size: var(--font-size-sm);
+  }
+  
+  .age-value {
+    font-size: var(--font-size-lg);
+    font-weight: 600;
+    color: var(--color-text-primary);
+  }
+  
+  .age-suffix {
+    color: var(--color-text-muted);
+    font-size: var(--font-size-sm);
+  }
+}
+
+@media (max-width: 768px) {
+  .profile__header {
+    justify-content: center;
+    text-align: center;
+  }
+
+  .profile__identity {
+    flex-direction: column;
+  }
+
+  .profile__meta {
+    justify-content: center;
+  }
+
+  .profile__edit {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .profile__stats {
+    grid-template-columns: 1fr;
+  }
+
+  .edit-form__readonly-grid,
+  .edit-form__fields {
+    grid-template-columns: 1fr;
+  }
+
+  .edit-card__actions {
+    flex-direction: column-reverse;
+
+    button {
+      width: 100%;
+    }
+  }
+}

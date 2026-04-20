@@ -1,0 +1,251 @@
+.pending-requests-container {
+  padding: 24px;
+  max-width: 1400px;
+  margin: 0 auto;
+
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+
+    h2 {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 0;
+      font-size: 28px;
+      font-weight: 500;
+
+      mat-icon {
+        font-size: var(--font-size-2xl);
+        width: 32px;
+        height: 32px;
+      }
+    }
+  }
+
+  .loading-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    gap: 20px;
+
+    p {
+      color: inherit;
+      opacity: 0.6;
+      font-size: var(--font-size-base);
+    }
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 60px 20px;
+
+    mat-icon {
+      font-size: 80px;
+      width: 80px;
+      height: 80px;
+      color: inherit;
+      opacity: 0.3;
+      margin-bottom: 16px;
+    }
+
+    h3 {
+      font-size: var(--font-size-xl);
+      font-weight: 500;
+      margin-bottom: 8px;
+      color: inherit;
+      opacity: 0.87;
+    }
+
+    p {
+      font-size: var(--font-size-base);
+      color: inherit;
+      opacity: 0.6;
+    }
+  }
+
+  .requests-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+    gap: 24px;
+
+    @media (max-width: 768px) {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .request-card {
+    display: flex;
+    flex-direction: column;
+    transition: box-shadow 0.3s ease;
+
+    &:hover {
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    }
+
+    mat-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 16px;
+
+      .car-info {
+        display: flex;
+        gap: 16px;
+        align-items: center;
+        flex: 1;
+
+        .car-image {
+          width: 80px;
+          height: 60px;
+          object-fit: cover;
+          border-radius: 8px;
+        }
+
+        div {
+          flex: 1;
+        }
+
+        mat-card-title {
+          font-size: var(--font-size-lg);
+          font-weight: 500;
+          margin-bottom: 4px;
+        }
+
+        mat-card-subtitle {
+          font-size: var(--font-size-sm);
+          color: inherit;
+          opacity: 0.6;
+        }
+      }
+
+      .deadline-container {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        border-radius: 16px;
+        background-color: rgba(0, 0, 0, 0.04);
+        flex-shrink: 0;
+
+        mat-icon {
+          font-size: var(--font-size-lg);
+          width: 18px;
+          height: 18px;
+          opacity: 0.7;
+        }
+
+        // Override countdown-timer styles for chip-like appearance
+        ::ng-deep .countdown-timer {
+          padding: 0;
+          background: none !important;
+          font-size: var(--font-size-sm);
+        }
+      }
+
+      .deadline-chip {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 8px 12px;
+        font-size: var(--font-size-sm);
+        font-weight: 500;
+        border-radius: 16px;
+
+        mat-icon {
+          font-size: var(--font-size-base);
+          width: 16px;
+          height: 16px;
+        }
+
+        &.normal {
+          background-color: rgba(46, 125, 50, 0.1);
+          color: #2e7d32;
+          border: 1px solid rgba(46, 125, 50, 0.2);
+        }
+
+        &.warning {
+          background-color: rgba(239, 108, 0, 0.1);
+          color: #ef6c00;
+          border: 1px solid rgba(239, 108, 0, 0.2);
+        }
+
+        &.urgent {
+          background-color: rgba(198, 40, 40, 0.1);
+          color: #c62828;
+          border: 1px solid rgba(198, 40, 40, 0.2);
+        }
+
+        &.expired {
+          background-color: rgba(117, 117, 117, 0.1);
+          color: #757575;
+          border: 1px solid rgba(117, 117, 117, 0.2);
+        }
+      }
+    }
+
+    mat-card-content {
+      flex: 1;
+
+      .booking-details {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+
+        .detail-item {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+
+          mat-icon {
+            color: inherit;
+            opacity: 0.54;
+            font-size: 20px;
+            width: 20px;
+            height: 20px;
+          }
+
+          div {
+            display: flex;
+            flex-direction: column;
+
+            .label {
+              font-size: var(--font-size-xs);
+              color: inherit;
+              opacity: 0.6;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+            }
+
+            .value {
+              font-size: var(--font-size-sm);
+              font-weight: 500;
+              color: inherit;
+              opacity: 0.87;
+            }
+          }
+        }
+      }
+    }
+
+    mat-card-actions {
+      padding: 16px;
+      gap: 12px;
+
+      button {
+        mat-icon {
+          margin-right: 4px;
+        }
+
+        mat-spinner {
+          margin-right: 8px;
+        }
+      }
+    }
+  }
+}
+.btn--push-right { margin-right: auto; }

@@ -1,0 +1,136 @@
+<div class="geospatial-search-panel">
+  <!-- Collapsed Header -->
+  <div class="panel-header" (click)="toggleExpanded()">
+    <div class="header-content">
+      <mat-icon class="location-icon">location_on</mat-icon>
+      <div class="header-text">
+        @if (selectedLocation()) {
+        <span class="location-address">{{ selectedLocation()!.address }}</span>
+        <span class="location-radius">{{ searchRadius() }} km radius</span>
+        } @else {
+        <span class="location-placeholder">Pretraži po lokaciji</span>
+        }
+      </div>
+    </div>
+    <mat-icon class="expand-icon">{{ isExpanded() ? 'expand_less' : 'expand_more' }}</mat-icon>
+  </div>
+
+  <!-- Expanded Content -->
+  @if (isExpanded()) {
+  <div class="panel-content">
+    <!-- Quick Actions -->
+    <div class="quick-actions">
+      <button
+        mat-stroked-button
+        (click)="useCurrentLocation()"
+        [disabled]="isGeolocating()"
+        class="action-btn"
+      >
+        <ng-container matButtonIcon>
+          @if (isGeolocating()) {
+          <mat-spinner diameter="18"></mat-spinner>
+          } @else {
+          <mat-icon>my_location</mat-icon>
+          }
+        </ng-container>
+        <span>Moja lokacija</span>
+      </button>
+
+      <button mat-stroked-button (click)="toggleMap()" class="action-btn">
+        <mat-icon>{{ showMap() ? 'visibility_off' : 'map' }}</mat-icon>
+        <span>{{ showMap() ? 'Sakrij mapu' : 'Prikaži mapu' }}</span>
+      </button>
+    </div>
+
+    <!-- Address Search -->
+    <mat-form-field appearance="outline" class="address-field">
+      <mat-label>Pretraži lokaciju</mat-label>
+      <input
+        matInput
+        [value]="searchAddress()"
+        (input)="onAddressInput($event)"
+        placeholder="npr. Terazije, Beograd"
+        [matAutocomplete]="addressAuto"
+      />
+      <mat-icon matSuffix>search</mat-icon>
+
+      <mat-autocomplete
+        #addressAuto="matAutocomplete"
+        [displayWith]="displayFn"
+        (optionSelected)="selectSuggestion($event.option.value)"
+      >
+        @for (suggestion of geocodeSuggestions(); track suggestion.id) {
+        <mat-option [value]="suggestion">
+          <div class="suggestion-item">
+            <span class="suggestion-address">{{ suggestion.address }}</span>
+            <span class="suggestion-city">{{ suggestion.city }}</span>
+          </div>
+        </mat-option>
+        }
+      </mat-autocomplete>
+    </mat-form-field>
+
+    <!-- Radius Slider -->
+    @if (hasValidLocation()) {
+    <div class="radius-control">
+      <div class="radius-header">
+        <mat-icon>radar</mat-icon>
+        <span
+          >Radijus pretrage: <strong>{{ searchRadius() }} km</strong></span
+        >
+      </div>
+      <mat-slider [min]="5" [max]="100" [step]="5" class="radius-slider">
+        <input matSliderThumb [value]="searchRadius()" (valueChange)="onRadiusChange($event)" />
+      </mat-slider>
+      <div class="radius-labels">
+        <span>5 km</span>
+        <span>100 km</span>
+      </div>
+    </div>
+    }
+
+    <!-- Map Preview -->
+    @if (showMap() && selectedLocation()) {
+    <div class="map-container">
+      <app-location-picker
+        [latitude]="selectedLocation()!.latitude"
+        [longitude]="selectedLocation()!.longitude"
+        [editable]="true"
+        [showRadiusCircle]="true"
+        [markerRadius]="searchRadius()"
+        [showGeolocationButton]="false"
+        (locationChanged)="onMapLocationChanged($event)"
+        height="250px"
+      ></app-location-picker>
+    </div>
+    }
+
+    <!-- Action Buttons -->
+    <div class="panel-actions">
+      @if (hasValidLocation()) {
+      <button mat-stroked-button (click)="clearSearch()" class="clear-btn">
+        <mat-icon>clear</mat-icon>
+        Obriši
+      </button>
+      }
+
+      <button
+        mat-raised-button
+        color="primary"
+        (click)="performSearch()"
+        [disabled]="!hasValidLocation() || isSearching()"
+        class="search-btn"
+      >
+        <ng-container matButtonIcon>
+          @if (isSearching()) {
+          <mat-spinner diameter="20"></mat-spinner>
+          } @else {
+          <mat-icon>search</mat-icon>
+          }
+        </ng-container>
+        <span>@if (isSearching()) { Pretraga... } @else { Pretraži }</span>
+      </button>
+    </div>
+  </div>
+  }
+</div>

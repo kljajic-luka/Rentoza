@@ -1,0 +1,159 @@
+<div class="admin-page">
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">Hello, Admin 👋</h1>
+      <p class="page-subtitle">Here's what's happening with Rentoza today.</p>
+    </div>
+    <div class="inline-actions">
+      <button mat-stroked-button color="primary" (click)="refresh()">
+        <mat-icon>refresh</mat-icon>
+        Refresh
+      </button>
+      <button mat-flat-button color="primary" (click)="exportSnapshot()">
+        <mat-icon>download</mat-icon>
+        Export Snapshot
+      </button>
+    </div>
+  </div>
+
+  <div *ngIf="loading$ | async" class="surface-card surface-roomy row between">
+    <span class="muted">Loading dashboard data…</span>
+    <mat-progress-spinner mode="indeterminate" diameter="32"></mat-progress-spinner>
+  </div>
+
+  <div *ngIf="error$ | async as err" class="surface-card surface-roomy error-block">
+    <span class="muted">{{ err }}</span>
+    <button mat-icon-button color="primary" (click)="refresh()" aria-label="Retry">
+      <mat-icon>refresh</mat-icon>
+    </button>
+  </div>
+
+  <div *ngIf="kpis$ | async as kpis" class="grid-auto kpi-grid">
+    <app-kpi-card
+      title="Total Revenue"
+      [value]="(kpis.totalRevenueThisMonth | currency: 'RSD' : 'symbol' : '1.0-0') || '0'"
+      icon="payments"
+      iconTint="success"
+      [trend]="kpis.revenueGrowthPercent + '% vs last month'"
+      [trendDirection]="kpis.revenueGrowthPercent >= 0 ? 'up' : 'down'"
+      routerLink="/admin/financial"
+    >
+    </app-kpi-card>
+
+    <app-kpi-card
+      title="Active Trips"
+      [value]="kpis.activeTripsCount"
+      icon="directions_car"
+      iconTint="info"
+      trend="Live rentals"
+      trendDirection="neutral"
+      routerLink="/admin/bookings"
+    >
+    </app-kpi-card>
+
+    <app-kpi-card
+      title="Pending Approvals"
+      [value]="kpis.pendingApprovalsCount"
+      icon="pending_actions"
+      iconTint="warn"
+      trend="Requires attention"
+      trendDirection="neutral"
+      routerLink="/admin/cars"
+    >
+    </app-kpi-card>
+
+    <app-kpi-card
+      title="Platform Health"
+      [value]="kpis.platformHealthScore + '%'"
+      icon="health_and_safety"
+      iconTint="accent"
+      trend="System uptime"
+      trendDirection="neutral"
+    >
+    </app-kpi-card>
+  </div>
+
+  <section class="section-block">
+    <app-dashboard-charts></app-dashboard-charts>
+
+    <div class="surface-card surface-wide">
+      <div class="card-toolbar">
+        <div>
+          <p class="section-heading">Recent Bookings</p>
+          <p class="muted">Fast glance at the latest activity</p>
+        </div>
+        <button mat-button color="primary" routerLink="/admin/bookings">View all</button>
+      </div>
+
+      <!-- Loading State -->
+      <div *ngIf="recentBookingsLoading" class="card-banner">
+        <div class="row loading-state">
+          <mat-progress-spinner mode="indeterminate" diameter="24"></mat-progress-spinner>
+          <span class="muted">Loading recent bookings...</span>
+        </div>
+      </div>
+
+      <!-- Empty State -->
+      <div *ngIf="!recentBookingsLoading && recentBookings.length === 0" class="card-banner">
+        <div class="row between">
+          <span class="muted">No recent bookings to display.</span>
+        </div>
+      </div>
+
+      <!-- Bookings Table -->
+      <table
+        *ngIf="!recentBookingsLoading && recentBookings.length > 0"
+        mat-table
+        [dataSource]="recentBookings"
+        class="recent-bookings-table"
+      >
+        <ng-container matColumnDef="id">
+          <th mat-header-cell *matHeaderCellDef>ID</th>
+          <td mat-cell *matCellDef="let booking">#{{ booking.id }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="car">
+          <th mat-header-cell *matHeaderCellDef>Car</th>
+          <td mat-cell *matCellDef="let booking">{{ booking.carTitle }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="renter">
+          <th mat-header-cell *matHeaderCellDef>Renter</th>
+          <td mat-cell *matCellDef="let booking">{{ booking.renterName }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="dates">
+          <th mat-header-cell *matHeaderCellDef>Dates</th>
+          <td mat-cell *matCellDef="let booking">
+            {{ booking.startDate | date: 'MMM d' }} - {{ booking.endDate | date: 'MMM d' }}
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="status">
+          <th mat-header-cell *matHeaderCellDef>Status</th>
+          <td mat-cell *matCellDef="let booking">
+            <mat-chip [color]="getStatusColor(booking.status)" highlighted>
+              {{ booking.status }}
+            </mat-chip>
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="amount">
+          <th mat-header-cell *matHeaderCellDef>Amount</th>
+          <td mat-cell *matCellDef="let booking">
+            {{ booking.totalPrice | currency: 'RSD' : 'symbol' : '1.0-0' }}
+          </td>
+        </ng-container>
+
+        <tr
+          mat-header-row
+          *matHeaderRowDef="['id', 'car', 'renter', 'dates', 'status', 'amount']"
+        ></tr>
+        <tr
+          mat-row
+          *matRowDef="let row; columns: ['id', 'car', 'renter', 'dates', 'status', 'amount']"
+        ></tr>
+      </table>
+    </div>
+  </section>
+</div>

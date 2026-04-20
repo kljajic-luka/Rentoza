@@ -1,0 +1,103 @@
+// =============================================================================
+// Chat Theme - Material 3 Tokens (Chat-Only)
+// =============================================================================
+// This theme applies ONLY to chat components.
+// App-wide Material 3 migration is Phase 5+.
+// =============================================================================
+
+@use '@angular/material' as mat;
+
+// -----------------------------------------------------------------------------
+// Color Palette
+// -----------------------------------------------------------------------------
+
+$chat-primary: (
+  50: #e3f2fd,
+  100: #bbdefb,
+  200: #90caf9,
+  300: #64b5f6,
+  400: #42a5f5,
+  500: #2196f3,
+  600: #1e88e5,
+  700: #1976d2,
+  800: #1565c0,
+  900: #0d47a1,
+  contrast: (
+    50: rgba(0, 0, 0, 0.87),
+    100: rgba(0, 0, 0, 0.87),
+    200: rgba(0, 0, 0, 0.87),
+    300: rgba(0, 0, 0, 0.87),
+    400: rgba(0, 0, 0, 0.87),
+    500: white,
+    600: white,
+    700: white,
+    800: white,
+    900: white,
+  )
+);
+
+$chat-accent: (
+  50: #ffe5e5,
+  100: #ffcccc,
+  200: #ff9999,
+  300: #ff6b6b,
+  400: #ff5252,
+  500: #ff4444,
+  600: #f44336,
+  700: #e53935,
+  800: #d32f2f,
+  900: #b71c1c,
+  contrast: (
+    50: rgba(0, 0, 0, 0.87),
+    100: rgba(0, 0, 0, 0.87),
+    200: rgba(0, 0, 0, 0.87),
+    300: white,
+    400: white,
+    500: white,
+    600: white,
+    700: white,
+    800: white,
+    900: white,
+  )
+);
+
+// -----------------------------------------------------------------------------
+// Theme Definition
+// -----------------------------------------------------------------------------
+
+$chat-primary-palette: mat.m2-define-palette($chat-primary, 500, 300, 700);
+$chat-accent-palette: mat.m2-define-palette($chat-accent, 300);
+
+$chat-light-theme: mat.m2-define-light-theme((
+  color: (
+    primary: $chat-primary-palette,
+    accent: $chat-accent-palette,
+  ),
+  typography: mat.m2-define-typography-config(),
+  density: 0,
+));
+
+$chat-dark-theme: mat.m2-define-dark-theme((
+  color: (
+    primary: $chat-primary-palette,
+    accent: $chat-accent-palette,
+  ),
+  typography: mat.m2-define-typography-config(),
+  density: 0,
+));
+
+// -----------------------------------------------------------------------------
+// Mixins for Component Usage
+// -----------------------------------------------------------------------------
+
+@mixin chat-theme($theme) {
+  $primary: map-get($theme, primary);
+  $accent: map-get($theme, accent);
+
+  .chat-container {
+    --chat-primary: #{mat.m2-get-color-from-palette($primary, 500)};
+    --chat-primary-light: #{mat.m2-get-color-from-palette($primary, 100)};
+    --chat-primary-dark: #{mat.m2-get-color-from-palette($primary, 700)};
+    --chat-accent: #{mat.m2-get-color-from-palette($accent, 300)};
+  }
+}

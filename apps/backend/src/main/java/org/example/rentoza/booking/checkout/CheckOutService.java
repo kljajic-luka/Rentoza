@@ -1,0 +1,1492 @@
+package org.example.rentoza.booking.checkout;
+
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
+import lombok.extern.slf4j.Slf4j;
+import org.example.rentoza.booking.Booking;
+import org.example.rentoza.booking.BookingRepository;
+import org.example.rentoza.booking.BookingStatus;
+import org.example.rentoza.booking.checkin.*;
+import org.example.rentoza.booking.checkin.dto.CheckInPhotoDTO;
+import org.example.rentoza.booking.checkout.cqrs.CheckoutDomainEvent;
+import org.example.rentoza.booking.checkout.dto.*;
+import org.example.rentoza.booking.checkout.saga.CheckoutSagaOrchestrator;
+import org.example.rentoza.booking.dispute.DamageClaim;
+import org.example.rentoza.booking.dispute.DamageClaimRepository;
+import org.example.rentoza.booking.dispute.DamageClaimStatus;
+import org.example.rentoza.booking.dispute.DisputeStage;
+import org.example.rentoza.booking.photo.PhotoUrlService;
+import org.example.rentoza.exception.ResourceNotFoundException;
+import org.example.rentoza.notification.NotificationService;
+import org.example.rentoza.notification.NotificationType;
+import org.example.rentoza.notification.dto.CreateNotificationRequestDTO;
+import org.example.rentoza.payment.BookingPaymentService;
+import org.example.rentoza.payment.PaymentProvider.PaymentResult;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.time.*;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+/**
+ * Core orchestrator for the checkout workflow.
+ * 
+ * <h2>Responsibilities</h2>
+ * <ul>
+ *   <li>Checkout initiation (scheduler or manual)</li>
+ *   <li>Guest checkout completion (photos, odometer, fuel)</li>
+ *   <li>Host checkout confirmation (damage assessment)</li>
+ *   <li>Late return detection and fee calculation</li>
+ *   <li>Trip completion</li>
+ * </ul>
+ * 
+ * <h2>State Flow</h2>
+ * <pre>
+ * IN_TRIP → CHECKOUT_OPEN → CHECKOUT_GUEST_COMPLETE → CHECKOUT_HOST_COMPLETE
+ *         → CHECKOUT_SETTLEMENT_PENDING → COMPLETED
+ * </pre>
+ *
+ * @see CheckInService for check-in workflow
+ * @see CheckInEventService for audit trail
+ */
+@Service
+@Slf4j
+public class CheckOutService {
+
+    private static final ZoneId SERBIA_ZONE = ZoneId.of("Europe/Belgrade");
+    private static final int REQUIRED_CHECKOUT_PHOTO_TYPES = 8;
+
+    private final BookingRepository bookingRepository;
+    private final CheckInEventService eventService;
+    private final CheckInPhotoRepository photoRepository;
+    private final GuestCheckInPhotoRepository guestPhotoRepository;
+    private final NotificationService notificationService;
+    private final CheckoutSagaOrchestrator checkoutSagaOrchestrator;
+    private final ApplicationEventPublisher eventPublisher;
+    private final DamageClaimRepository damageClaimRepository;
+    private final PhotoUrlService photoUrlService;
+    private final BookingPaymentService bookingPaymentService;
+    
+    // Metrics
+    private final Counter checkoutInitiatedCounter;
+    private final Counter guestCompletedCounter;
+    private final Counter hostConfirmedCounter;
+    private final Counter damageReportedCounter;
+    private final Counter sagaInvokedCounter;
+    private final Counter sagaInvocationExceptionsCounter;
+    private final Counter checkoutDamageDisputeCounter;
+    private final Timer tripDurationTimer;
+
+    @Value("${app.checkout.late.grace-minutes:15}")
+    private int lateGraceMinutes;
+
+    @Value("${app.checkout.late.fee-per-hour-rsd:500}")
+    private int lateFeePerHourRsd;
+
+    @Value("${app.checkout.late.max-hours:24}")
+    private int maxLateHours;
+    
+    // ========== PHASE 4F: IMPROPER RETURN THRESHOLDS ==========
+    
+    @Value("${app.checkout.improper-return.fuel-difference-threshold:25}")
+    private int fuelDifferenceThreshold;
+    
+    @Value("${app.checkout.improper-return.mileage-multiplier-threshold:2}")
+    private double mileageMultiplierThreshold;
+    
+    // ========== VAL-010: DEPOSIT HOLD DURATION ==========
+    
+    @Value("${app.checkout.damage-dispute.hold-days:7}")
+    private int damageDisputeHoldDays;
+
+    // C-6 FIX: Configurable admin review threshold (shared with DamageClaimService)
+    @Value("${app.damage-claim.admin-review-threshold-rsd:50000}")
+    private long adminReviewThresholdRsd;
+
+    public CheckOutService(
+            BookingRepository bookingRepository,
+            CheckInEventService eventService,
+            CheckInPhotoRepository photoRepository,
+            GuestCheckInPhotoRepository guestPhotoRepository,
+            NotificationService notificationService,
+            CheckoutSagaOrchestrator checkoutSagaOrchestrator,
+            DamageClaimRepository damageClaimRepository,
+            MeterRegistry meterRegistry,
+            ApplicationEventPublisher eventPublisher,
+            PhotoUrlService photoUrlService,
+            BookingPaymentService bookingPaymentService) {
+        this.bookingRepository = bookingRepository;
+        this.eventService = eventService;
+        this.photoRepository = photoRepository;
+        this.guestPhotoRepository = guestPhotoRepository;
+        this.notificationService = notificationService;
+        this.checkoutSagaOrchestrator = checkoutSagaOrchestrator;
+        this.damageClaimRepository = damageClaimRepository;
+        this.eventPublisher = eventPublisher;
+        this.photoUrlService = photoUrlService;
+        this.bookingPaymentService = bookingPaymentService;
+        
+        this.checkoutInitiatedCounter = Counter.builder("checkout.initiated")
+                .description("Checkout processes initiated")
+                .register(meterRegistry);
+        
+        this.guestCompletedCounter = Counter.builder("checkout.guest.completed")
+                .description("Guest checkout completions")
+                .register(meterRegistry);
+        
+        this.hostConfirmedCounter = Counter.builder("checkout.host.confirmed")
+                .description("Host checkout confirmations")
+                .register(meterRegistry);
+        
+        this.damageReportedCounter = Counter.builder("checkout.damage.reported")
+                .description("Damage reports at checkout")
+                .register(meterRegistry);
+        
+        this.sagaInvokedCounter = Counter.builder("checkout.saga.invoked")
+                .description("Times checkout saga was invoked from service")
+                .register(meterRegistry);
+        
+        this.sagaInvocationExceptionsCounter = Counter.builder("checkout.saga.invocation.exceptions")
+                .description("Exceptions thrown during saga invocation")
+                .register(meterRegistry);
+        
+        this.checkoutDamageDisputeCounter = Counter.builder("checkout.damage.dispute")
+                .description("Checkout damage disputes initiated (VAL-010)")
+                .register(meterRegistry);
+        
+        this.tripDurationTimer = Timer.builder("trip.duration")
+                .description("Total trip duration")
+                .register(meterRegistry);
+    }
+
+    // ========== STATUS RETRIEVAL ==========
+
+    /**
+     * Get current checkout status for a booking.
+     */
+    @Transactional(readOnly = true)
+    public CheckOutStatusDTO getCheckOutStatus(Long bookingId, Long userId) {
+        Booking booking = bookingRepository.findByIdWithRelations(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Rezervacija nije pronađena"));
+        
+        validateAccess(booking, userId);
+        
+        return mapToStatusDTO(booking, userId);
+    }
+
+    // ========== CHECKOUT INITIATION ==========
+
+    /**
+     * Initiate checkout process.
+     * Can be called by scheduler at trip end, or manually for early return.
+     * 
+     * @param bookingId The booking to checkout
+     * @param userId The user initiating checkout
+     * @param isEarlyReturn True if guest is returning early
+     * @return Updated checkout status
+     */
+    @Transactional
+    public CheckOutStatusDTO initiateCheckout(Long bookingId, Long userId, boolean isEarlyReturn) {
+        // H-1 FIX: Use pessimistic lock to prevent concurrent checkout initiation
+        Booking booking = bookingRepository.findByIdWithLock(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Rezervacija nije pronađena"));
+
+        // Validate access
+        if (!isGuest(booking, userId) && !isHost(booking, userId)) {
+            throw new AccessDeniedException("Nemate pristup ovoj rezervaciji");
+        }
+
+        // Validate status - must be IN_TRIP
+        if (booking.getStatus() != BookingStatus.IN_TRIP) {
+            throw new IllegalStateException("Checkout nije moguć. Trenutni status: " + booking.getStatus());
+        }
+        
+        // Generate checkout session ID
+        booking.setCheckoutSessionId(UUID.randomUUID().toString());
+        booking.setCheckoutOpenedAt(Instant.now());
+        booking.setStatus(BookingStatus.CHECKOUT_OPEN);
+        
+        // Set scheduled return time from exact endTime
+        LocalDateTime scheduledReturn = booking.getEndTime();
+        booking.setScheduledReturnTime(scheduledReturn.atZone(SERBIA_ZONE).toInstant());
+        
+        // Record event
+        eventService.recordEvent(
+            booking,
+            booking.getCheckoutSessionId(),
+            CheckInEventType.CHECKOUT_INITIATED,
+            userId,
+            isHost(booking, userId) ? CheckInActorRole.HOST : CheckInActorRole.GUEST,
+            Map.of(
+                "initiatedBy", isHost(booking, userId) ? "HOST" : "GUEST",
+                "reason", isEarlyReturn ? "EARLY_RETURN" : "TRIP_END",
+                "scheduledReturnTime", scheduledReturn.toString()
+            )
+        );
+        
+        if (isEarlyReturn) {
+            eventService.recordEvent(
+                booking,
+                booking.getCheckoutSessionId(),
+                CheckInEventType.EARLY_RETURN_INITIATED,
+                userId,
+                CheckInActorRole.GUEST,
+                Map.of(
+                    "scheduledEndDate", booking.getEndDate().toString(),
+                    "actualReturnDate", LocalDate.now(SERBIA_ZONE).toString()
+                )
+            );
+        }
+        
+        bookingRepository.save(booking);
+        
+        checkoutInitiatedCounter.increment();
+        log.info("[CheckOut] Checkout initiated for booking {}, earlyReturn={}", bookingId, isEarlyReturn);
+        
+        // Publish CQRS event for read model sync
+        publishEvent(new CheckoutDomainEvent.CheckoutWindowOpened(
+                bookingId,
+                booking.getCar().getId(),
+                booking.getRenter().getId(),
+                booking.getCar().getOwner().getId(),
+                isEarlyReturn,
+                Instant.now()
+        ));
+        
+        // Notify other party
+        if (isGuest(booking, userId)) {
+            notifyHostCheckoutStarted(booking);
+        } else {
+            notifyGuestCheckoutStarted(booking);
+        }
+        
+        return mapToStatusDTO(booking, userId);
+    }
+
+    /**
+     * Initiate checkout by scheduler (automated at trip end).
+     */
+    @Transactional
+    public void initiateCheckoutByScheduler(Booking booking) {
+        if (booking.getStatus() != BookingStatus.IN_TRIP) {
+            log.debug("[CheckOut] Skipping checkout initiation for booking {} - not IN_TRIP", booking.getId());
+            return;
+        }
+        
+        // H-5 FIX: Don't overwrite existing session ID
+        if (booking.getCheckoutSessionId() == null) {
+            booking.setCheckoutSessionId(UUID.randomUUID().toString());
+        }
+        booking.setCheckoutOpenedAt(Instant.now());
+        booking.setStatus(BookingStatus.CHECKOUT_OPEN);
+
+        // Set scheduled return time from exact endTime
+        LocalDateTime scheduledReturn = booking.getEndTime();
+        booking.setScheduledReturnTime(scheduledReturn.atZone(SERBIA_ZONE).toInstant());
+
+        eventService.recordSystemEvent(
+            booking,
+            booking.getCheckoutSessionId(),
+            CheckInEventType.CHECKOUT_INITIATED,
+            Map.of(
+                "initiatedBy", "SCHEDULER",
+                "reason", "TRIP_END",
+                "scheduledReturnTime", scheduledReturn.toString()
+            )
+        );
+        
+        bookingRepository.save(booking);
+        
+        checkoutInitiatedCounter.increment();
+        log.info("[CheckOut] Checkout initiated by scheduler for booking {}", booking.getId());
+        
+        // Notify both parties
+        notifyGuestCheckoutStarted(booking);
+        notifyHostCheckoutStarted(booking);
+    }
+
+    // ========== GUEST WORKFLOW ==========
+
+    /**
+     * Complete guest checkout with end readings.
+     * 
+     * @param dto Submission data with end odometer/fuel
+     * @param userId Current user ID
+     * @return Updated checkout status
+     */
+    @Transactional
+    public CheckOutStatusDTO completeGuestCheckout(GuestCheckOutSubmissionDTO dto, Long userId) {
+        Booking booking = bookingRepository.findByIdWithLock(dto.getBookingId())
+                .orElseThrow(() -> new ResourceNotFoundException("Rezervacija nije pronađena"));
+        
+        // Validate guest access
+        if (!isGuest(booking, userId)) {
+            throw new AccessDeniedException("Samo gost može završiti checkout");
+        }
+        
+        // Validate status
+        if (booking.getStatus() != BookingStatus.CHECKOUT_OPEN) {
+            throw new IllegalStateException("Checkout nije otvoren. Trenutni status: " + booking.getStatus());
+        }
+        
+        // Validate photos
+        long validPhotoTypes = photoRepository.countCheckoutPhotoTypes(booking.getId());
+        if (validPhotoTypes < REQUIRED_CHECKOUT_PHOTO_TYPES) {
+            throw new IllegalStateException(String.format(
+                "Potrebno je minimum %d tipova fotografija. Pronađeno: %d", 
+                REQUIRED_CHECKOUT_PHOTO_TYPES, validPhotoTypes));
+        }
+        
+        // Validate odometer (must be >= start)
+        if (booking.getStartOdometer() != null && dto.getEndOdometerReading() < booking.getStartOdometer()) {
+            throw new IllegalArgumentException(String.format(
+                "Završna kilometraža (%d) ne može biti manja od početne (%d)",
+                dto.getEndOdometerReading(), booking.getStartOdometer()));
+        }
+        
+        // Update booking
+        booking.setEndOdometer(dto.getEndOdometerReading());
+        booking.setEndFuelLevel(dto.getEndFuelLevelPercent());
+        booking.setGuestCheckoutCompletedAt(Instant.now());
+        booking.setActualReturnTime(Instant.now());
+        booking.setStatus(BookingStatus.CHECKOUT_GUEST_COMPLETE);
+        
+        // Set guest location
+        if (dto.getGuestLatitude() != null && dto.getGuestLongitude() != null) {
+            booking.setGuestCheckoutLatitude(BigDecimal.valueOf(dto.getGuestLatitude()));
+            booking.setGuestCheckoutLongitude(BigDecimal.valueOf(dto.getGuestLongitude()));
+        }
+        
+        // Check for late return
+        checkAndRecordLateReturn(booking, userId);
+        
+        // ================================================================
+        // PHASE 4F: IMPROPER RETURN DETECTION
+        // ================================================================
+        // Check for conditions that indicate improper vehicle return:
+        // - Significant fuel difference (>25% by default)
+        // - Excessive mileage (>2x estimated by default)
+        checkAndFlagImproperReturn(booking, dto, userId);
+        
+        // Calculate total mileage
+        Integer totalMileage = null;
+        if (booking.getStartOdometer() != null) {
+            totalMileage = dto.getEndOdometerReading() - booking.getStartOdometer();
+        }
+        
+        // Record events
+        eventService.recordEvent(
+            booking,
+            booking.getCheckoutSessionId(),
+            CheckInEventType.CHECKOUT_GUEST_ODOMETER_SUBMITTED,
+            userId,
+            CheckInActorRole.GUEST,
+            Map.of(
+                "reading", dto.getEndOdometerReading(),
+                "totalMileage", totalMileage != null ? totalMileage : "N/A"
+            )
+        );
+        
+        eventService.recordEvent(
+            booking,
+            booking.getCheckoutSessionId(),
+            CheckInEventType.CHECKOUT_GUEST_FUEL_SUBMITTED,
+            userId,
+            CheckInActorRole.GUEST,
+            Map.of(
+                "levelPercent", dto.getEndFuelLevelPercent(),
+                "startLevel", booking.getStartFuelLevel() != null ? booking.getStartFuelLevel() : "N/A",
+                "difference", booking.getStartFuelLevel() != null 
+                    ? dto.getEndFuelLevelPercent() - booking.getStartFuelLevel() : "N/A"
+            )
+        );
+        
+        eventService.recordEvent(
+            booking,
+            booking.getCheckoutSessionId(),
+            CheckInEventType.CHECKOUT_GUEST_SECTION_COMPLETE,
+            userId,
+            CheckInActorRole.GUEST,
+            Map.of(
+                "photoCount", validPhotoTypes,
+                "odometerSubmitted", true,
+                "fuelSubmitted", true,
+                "comment", dto.getConditionComment() != null ? dto.getConditionComment() : ""
+            )
+        );
+        
+        bookingRepository.save(booking);
+        
+        guestCompletedCounter.increment();
+        log.info("[CheckOut] Guest completed checkout for booking {}", booking.getId());
+        
+        // Publish CQRS event for read model sync
+        publishEvent(new CheckoutDomainEvent.GuestCheckoutCompleted(
+                booking.getId(),
+                booking.getRenter().getId(),
+                dto.getEndOdometerReading(),
+                dto.getEndFuelLevelPercent(),
+                booking.getLateReturnMinutes(),
+                Instant.now()
+        ));
+        
+        // Notify host
+        notifyHostGuestCompleted(booking);
+        
+        return mapToStatusDTO(booking, userId);
+    }
+
+    // ========== HOST WORKFLOW ==========
+
+    /**
+     * Host confirms vehicle return and condition.
+     * 
+     * @param dto Confirmation data with damage assessment
+     * @param userId Current user ID
+     * @return Updated checkout status
+     */
+    @Transactional
+    public CheckOutStatusDTO confirmHostCheckout(HostCheckOutConfirmationDTO dto, Long userId) {
+        Booking booking = bookingRepository.findByIdWithLock(dto.getBookingId())
+                .orElseThrow(() -> new ResourceNotFoundException("Rezervacija nije pronađena"));
+        
+        // Validate host access
+        if (!isHost(booking, userId)) {
+            throw new AccessDeniedException("Samo vlasnik može potvrditi checkout");
+        }
+        
+        // Validate status
+        if (booking.getStatus() != BookingStatus.CHECKOUT_GUEST_COMPLETE) {
+            throw new IllegalStateException("Gost još nije završio checkout. Trenutni status: " + booking.getStatus());
+        }
+        
+        // Update booking
+        booking.setHostCheckoutCompletedAt(Instant.now());
+        booking.setStatus(BookingStatus.CHECKOUT_HOST_COMPLETE);
+        
+        // Set host location
+        if (dto.getHostLatitude() != null && dto.getHostLongitude() != null) {
+            booking.setHostCheckoutLatitude(BigDecimal.valueOf(dto.getHostLatitude()));
+            booking.setHostCheckoutLongitude(BigDecimal.valueOf(dto.getHostLongitude()));
+        }
+        
+        // Handle damage report
+        if (dto.getNewDamageReported() != null && dto.getNewDamageReported()) {
+            // ================================================================
+            // H4 FIX: Enforce 48-hour damage claim filing window
+            // ================================================================
+            Instant tripEndTime = booking.getCheckoutCompletedAt() != null
+                    ? booking.getCheckoutCompletedAt()
+                    : (booking.getEndTime() != null
+                            ? booking.getEndTime().atZone(SERBIA_ZONE).toInstant()
+                            : null);
+            if (tripEndTime != null) {
+                long hoursSinceTripEnd = java.time.temporal.ChronoUnit.HOURS.between(tripEndTime, Instant.now());
+                if (hoursSinceTripEnd > 48) {
+                    throw new IllegalStateException(String.format(
+                            "Rok za prijavu štete je istekao. Prijava mora biti u roku od 48 sati od završetka najma. " +
+                            "Prošlo je %d sati.", hoursSinceTripEnd));
+                }
+            }
+            
+            booking.setNewDamageReported(true);
+            booking.setDamageAssessmentNotes(dto.getDamageDescription());
+            booking.setDamageClaimAmount(dto.getEstimatedDamageCostRsd());
+            booking.setDamageClaimStatus("CHECKOUT_PENDING");
+            
+            // ================================================================
+            // VAL-010: Block deposit release when damage is reported
+            // ================================================================
+            // Set deposit hold until dispute is resolved (7 days default)
+            booking.setSecurityDepositHoldReason("DAMAGE_CLAIM");
+            booking.setSecurityDepositHoldUntil(Instant.now().plus(Duration.ofDays(7)));
+            booking.setSecurityDepositReleased(false);
+            
+            // Create DamageClaim entity for checkout damage dispute
+            DamageClaim checkoutClaim = createCheckoutDamageClaim(booking, dto, userId);
+            booking.setCheckoutDamageClaim(checkoutClaim);
+            
+            eventService.recordEvent(
+                booking,
+                booking.getCheckoutSessionId(),
+                CheckInEventType.CHECKOUT_HOST_DAMAGE_REPORTED,
+                userId,
+                CheckInActorRole.HOST,
+                Map.of(
+                    "damageDescription", dto.getDamageDescription() != null ? dto.getDamageDescription() : "",
+                    "estimatedCostRsd", dto.getEstimatedDamageCostRsd() != null ? dto.getEstimatedDamageCostRsd() : 0,
+                    "photoIds", dto.getDamagePhotoIds() != null ? dto.getDamagePhotoIds() : List.of(),
+                    "depositHoldUntil", booking.getSecurityDepositHoldUntil().toString(),
+                    "claimId", checkoutClaim.getId()
+                )
+            );
+            
+            damageReportedCounter.increment();
+            log.info("[CheckOut] Damage reported for booking {} - deposit HELD until {}", 
+                booking.getId(), booking.getSecurityDepositHoldUntil());
+        }
+        
+        // Record confirmation event
+        eventService.recordEvent(
+            booking,
+            booking.getCheckoutSessionId(),
+            CheckInEventType.CHECKOUT_HOST_CONFIRMED,
+            userId,
+            CheckInActorRole.HOST,
+            Map.of(
+                "conditionAccepted", dto.getConditionAccepted(),
+                "newDamageReported", dto.getNewDamageReported() != null && dto.getNewDamageReported(),
+                "notes", dto.getNotes() != null ? dto.getNotes() : ""
+            )
+        );
+        
+        bookingRepository.save(booking);
+        
+        hostConfirmedCounter.increment();
+        log.info("[CheckOut] Host confirmed checkout for booking {}", booking.getId());
+        
+        // Publish CQRS event for read model sync
+        publishEvent(new CheckoutDomainEvent.HostCheckoutCompleted(
+                booking.getId(),
+                booking.getCar().getOwner().getId(),
+                booking.getNewDamageReported() != null && booking.getNewDamageReported(),
+                dto.getDamageDescription(),
+                dto.getEstimatedDamageCostRsd() != null ? dto.getEstimatedDamageCostRsd().intValue() : null,
+                Instant.now()
+        ));
+        
+        // ================================================================
+        // VAL-010: Damage reported blocks checkout completion
+        // ================================================================
+        // If damage is reported and guest hasn't accepted the claim,
+        // transition to CHECKOUT_DAMAGE_DISPUTE instead of COMPLETED.
+        // This ensures the deposit is held until dispute is resolved.
+        if (booking.getNewDamageReported() != null && booking.getNewDamageReported()) {
+            if (dto.getConditionAccepted()) {
+                // Guest already accepted damage claim (unusual but possible via admin)
+                // Proceed to complete checkout with damage charges
+                log.info("[CheckOut] Damage reported but guest accepted - completing checkout with charges");
+                completeCheckout(booking, userId);
+            } else {
+                // Transition to damage dispute state - deposit held
+                booking.setStatus(BookingStatus.CHECKOUT_DAMAGE_DISPUTE);
+                bookingRepository.save(booking);
+                
+                log.warn("[CheckOut] Damage dispute initiated for booking {} - deposit HELD, status: CHECKOUT_DAMAGE_DISPUTE",
+                    booking.getId());
+                
+                // Notify guest about damage claim and deposit hold
+                notifyGuestDamageReported(booking);
+            }
+        } else {
+            // No damage - complete checkout normally
+            completeCheckout(booking, userId);
+        }
+        
+        return mapToStatusDTO(booking, userId);
+    }
+
+    // ========== CHECKOUT COMPLETION ==========
+
+    /**
+    * Complete the physical checkout flow and hand off financial settlement to the saga.
+     * Delegates charge calculation to CheckoutSagaOrchestrator (single source of truth).
+     * 
+     * <p>Enterprise Pattern: Saga-First Architecture</p>
+     * <ul>
+     *   <li>Service handles state transition only</li>
+     *   <li>Saga calculates all charges (late fees, mileage, fuel)</li>
+     *   <li>Saga manages payment capture/release</li>
+     *   <li>Idempotent saga design handles retry scenarios</li>
+     * </ul>
+     * 
+     * <p><strong>Isolation Level:</strong> READ_COMMITTED</p>
+     * <p>Prevents dirty reads while allowing saga to read committed booking state.
+     * Saga uses optimistic locking (@Version) to detect concurrent modifications.</p>
+     */
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
+    public void completeCheckout(Booking booking, Long userId) {
+        booking.setCheckoutCompletedAt(Instant.now());
+        booking.setTripEndedAt(Instant.now());
+        booking.setStatus(BookingStatus.CHECKOUT_SETTLEMENT_PENDING);
+        
+        // Calculate trip duration for metrics
+        if (booking.getTripStartedAt() != null) {
+            Duration tripDuration = Duration.between(booking.getTripStartedAt(), Instant.now());
+            tripDurationTimer.record(tripDuration);
+        }
+        
+        // Calculate total mileage
+        Integer totalMileage = booking.getTotalMileage();
+        
+        eventService.recordEvent(
+            booking,
+            booking.getCheckoutSessionId(),
+            CheckInEventType.CHECKOUT_COMPLETE,
+            userId,
+            userId != null && isHost(booking, userId) ? CheckInActorRole.HOST : CheckInActorRole.GUEST,
+            Map.of(
+                "endOdometer", booking.getEndOdometer() != null ? booking.getEndOdometer() : "N/A",
+                "endFuelLevel", booking.getEndFuelLevel() != null ? booking.getEndFuelLevel() : "N/A",
+                "totalMileage", totalMileage != null ? totalMileage : "N/A",
+                "newDamageReported", booking.getNewDamageReported() != null && booking.getNewDamageReported(),
+                "chargeCalculationDelegatedToSaga", true
+            )
+        );
+        
+        bookingRepository.save(booking);
+        
+        log.info("[CheckOut] Checkout moved to settlement pending for booking {} - delegating charge calculation to saga", 
+            booking.getId());
+        
+        // Invoke saga for charge calculation and payment processing
+        // Saga is the single source of truth for all checkout charges
+        try {
+            checkoutSagaOrchestrator.startSaga(booking.getId());
+            sagaInvokedCounter.increment();
+            log.info("[CheckOut] Saga invoked successfully for booking {}", booking.getId());
+        } catch (Exception e) {
+            sagaInvocationExceptionsCounter.increment();
+            log.error("[CheckOut] Saga invocation failed for booking {}: {}. Recovery scheduler will retry.", 
+                booking.getId(), e.getMessage(), e);
+            // Don't fail checkout - saga recovery scheduler will retry
+            // This ensures user experience is not blocked by saga failures
+        }
+        
+    }
+
+    // ========== LATE RETURN HANDLING ==========
+
+    /**
+     * Record late/early return timing for audit purposes.
+     * 
+     * <p><strong>IMPORTANT:</strong> This method NO LONGER calculates late fees.</p>
+     * <p>Fee calculation is delegated to CheckoutSagaOrchestrator to maintain
+     * single source of truth and enable saga compensation patterns.</p>
+     * 
+     * @see CheckoutSagaOrchestrator#executeCalculateCharges for fee calculation
+     */
+    private void checkAndRecordLateReturn(Booking booking, Long userId) {
+        if (booking.getScheduledReturnTime() == null) {
+            return;
+        }
+        
+        Instant now = Instant.now();
+        Instant scheduledReturn = booking.getScheduledReturnTime();
+        Instant graceEnd = scheduledReturn.plus(lateGraceMinutes, ChronoUnit.MINUTES);
+        
+        if (now.isAfter(graceEnd)) {
+            long lateMinutes = ChronoUnit.MINUTES.between(scheduledReturn, now);
+            booking.setLateReturnMinutes((int) lateMinutes);
+            
+            // Record event for audit trail (fee calculation happens in saga)
+            eventService.recordEvent(
+                booking,
+                booking.getCheckoutSessionId(),
+                CheckInEventType.LATE_RETURN_DETECTED,
+                userId,
+                CheckInActorRole.GUEST,
+                Map.of(
+                    "scheduledReturnTime", scheduledReturn.toString(),
+                    "actualReturnTime", now.toString(),
+                    "lateMinutes", lateMinutes,
+                    "feeCalculationNote", "Fee will be calculated by saga"
+                )
+            );
+            
+            // Send late return notification to both parties
+            notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                    .recipientId(booking.getRenter().getId())
+                    .type(NotificationType.LATE_RETURN_DETECTED)
+                    .message(String.format("Vraćanje vozila kasni %d minuta. Dodatna naknada može biti obračunata.", lateMinutes))
+                    .relatedEntityId(String.valueOf(booking.getId()))
+                    .build());
+            
+            notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                    .recipientId(booking.getCar().getOwner().getId())
+                    .type(NotificationType.LATE_RETURN_DETECTED)
+                    .message(String.format("Gost vraća vozilo sa zakašnjenjem od %d minuta.", lateMinutes))
+                    .relatedEntityId(String.valueOf(booking.getId()))
+                    .build());
+            
+            log.info("[CheckOut] Late return detected for booking {}: {} minutes late (fee calculation delegated to saga)",
+                booking.getId(), lateMinutes);
+        } else if (now.isBefore(scheduledReturn)) {
+            // Early return
+            long earlyMinutes = ChronoUnit.MINUTES.between(now, scheduledReturn);
+            booking.setLateReturnMinutes((int) -earlyMinutes); // Negative for early
+        }
+    }
+
+    // ========== SCHEDULER SUPPORT ==========
+
+    /**
+     * Find IN_TRIP bookings that should have checkout window opened.
+     *
+     * P0-5 FIX: Uses optimized indexed query instead of loading all bookings.
+     */
+    @Transactional(readOnly = true)
+    public List<Booking> findBookingsForCheckoutOpening(LocalDateTime thresholdTime) {
+        return bookingRepository.findBookingsForCheckoutWindowOpening(thresholdTime);
+    }
+
+    /**
+     * Explicit ghost-trip settlement flow.
+     *
+     * <p>Runs under a pessimistic booking lock so scheduler retries or concurrent admin actions
+     * cannot double-process the same return window.
+     *
+     * @return true when the booking was transitioned into NO_SHOW_GUEST in this call
+     */
+    @Transactional
+    public boolean processGhostTripNoShow(Long bookingId, long hoursOverdueHint) {
+        Booking booking = bookingRepository.findByIdWithLock(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Rezervacija nije pronađena"));
+
+        if (booking.getStatus() != BookingStatus.CHECKOUT_OPEN || booking.getCheckoutOpenedAt() == null) {
+            log.debug("[CheckOut] Skipping ghost-trip processing for booking {} - status is {}", bookingId,
+                    booking.getStatus());
+            return false;
+        }
+
+        long hoursOverdue = Duration.between(booking.getCheckoutOpenedAt(), Instant.now()).toHours();
+        if (hoursOverdue < 48) {
+            log.debug("[CheckOut] Skipping ghost-trip processing for booking {} - only {} hours overdue",
+                    bookingId, hoursOverdue);
+            return false;
+        }
+
+        log.warn("[CheckOut] GHOST TRIP: booking {} open for {} hours (scheduler estimate: {})",
+                bookingId, hoursOverdue, hoursOverdueHint);
+
+        booking.setStatus(BookingStatus.NO_SHOW_GUEST);
+        booking.setTripEndedAt(Instant.now());
+        booking.setCheckoutCompletedAt(Instant.now());
+        booking.setSecurityDepositReleased(false);
+        booking.setSecurityDepositHoldUntil(null);
+
+        String paymentOutcome;
+        String paymentDetail;
+        String depositAuthId = booking.getDepositAuthorizationId();
+
+        if (depositAuthId != null && !depositAuthId.isBlank()) {
+            try {
+                PaymentResult captureResult = bookingPaymentService.captureSecurityDeposit(bookingId);
+                if (captureResult.isSuccess()) {
+                    paymentOutcome = "CAPTURED";
+                    paymentDetail = captureResult.getTransactionId() != null
+                            ? captureResult.getTransactionId()
+                            : "DEPOSIT_CAPTURED";
+                    booking.setSecurityDepositHoldReason(
+                            "Ghost trip: depozit naplaćen nakon " + hoursOverdue + " sati bez checkout-a");
+                } else if (captureResult.isRedirectRequired()) {
+                    paymentOutcome = "REDIRECT_REQUIRED";
+                    paymentDetail = "Deposit capture requires guest action";
+                    booking.setSecurityDepositHoldReason(
+                            "Ghost trip: naplata depozita zahteva dodatnu potvrdu gosta");
+                } else {
+                    paymentOutcome = "CAPTURE_FAILED";
+                    paymentDetail = captureResult.getErrorMessage() != null
+                            ? captureResult.getErrorMessage()
+                            : "Deposit capture failed";
+                    booking.setSecurityDepositHoldReason(
+                            "Ghost trip: naplata depozita neuspešna - potreban admin pregled");
+                }
+            } catch (Exception e) {
+                paymentOutcome = "CAPTURE_EXCEPTION";
+                paymentDetail = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                booking.setSecurityDepositHoldReason(
+                        "Ghost trip: greška pri naplati depozita - potreban admin pregled");
+                log.error("[CheckOut] Ghost-trip deposit capture exception for booking {}: {}",
+                        bookingId, paymentDetail, e);
+            }
+        } else {
+            paymentOutcome = "NO_DEPOSIT_AUTH";
+            paymentDetail = "No deposit authorization present";
+            booking.setSecurityDepositHoldReason(
+                    "Ghost trip: nema autorizacije depozita - potreban admin pregled");
+        }
+
+        eventService.recordSystemEvent(
+                booking,
+                booking.getCheckoutSessionId(),
+                CheckInEventType.GHOST_TRIP_NO_SHOW,
+                Map.of(
+                        "hoursOverdue", String.valueOf(hoursOverdue),
+                        "paymentOutcome", paymentOutcome,
+                        "paymentDetail", paymentDetail,
+                        "triggeredBy", "SCHEDULER"
+                )
+        );
+
+        bookingRepository.save(booking);
+
+        try {
+            notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                    .recipientId(booking.getCar().getOwner().getId())
+                    .type(NotificationType.LATE_RETURN_DETECTED)
+                    .message(String.format("⚠️ Gost nije završio checkout za rezervaciju #%d nakon %d sati. " +
+                            "Rezervacija je označena kao nepojavljanje. Kontaktirajte podršku za rešavanje.",
+                            booking.getId(), hoursOverdue))
+                    .relatedEntityId(String.valueOf(booking.getId()))
+                    .build());
+        } catch (Exception e) {
+            log.error("[CheckOut] Failed to notify host about ghost trip {}: {}", bookingId, e.getMessage());
+        }
+
+        try {
+            notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                    .recipientId(booking.getRenter().getId())
+                    .type(NotificationType.LATE_RETURN_DETECTED)
+                    .message(String.format("⚠️ Niste završili checkout za rezervaciju #%d. " +
+                            "Molimo kontaktirajte podršku hitno radi daljeg rešavanja.", booking.getId()))
+                    .relatedEntityId(String.valueOf(booking.getId()))
+                    .build());
+        } catch (Exception e) {
+            log.error("[CheckOut] Failed to notify guest about ghost trip {}: {}", bookingId, e.getMessage());
+        }
+
+        log.warn("[CheckOut] Ghost trip processed for booking {} with paymentOutcome={}",
+                bookingId, paymentOutcome);
+        return true;
+    }
+
+    // ========== NOTIFICATION METHODS ==========
+
+    private void notifyGuestCheckoutStarted(Booking booking) {
+        notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                .recipientId(booking.getRenter().getId())
+                .type(NotificationType.CHECKOUT_WINDOW_OPENED)
+                .message("Checkout je otvoren. Molimo vratite vozilo i uploadujte fotografije.")
+                .relatedEntityId(String.valueOf(booking.getId()))
+                .build());
+    }
+
+    private void notifyHostCheckoutStarted(Booking booking) {
+        notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                .recipientId(booking.getCar().getOwner().getId())
+                .type(NotificationType.CHECKOUT_WINDOW_OPENED)
+                .message("Checkout je otvoren. Gost vraća vozilo.")
+                .relatedEntityId(String.valueOf(booking.getId()))
+                .build());
+    }
+
+    private void notifyHostGuestCompleted(Booking booking) {
+        notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                .recipientId(booking.getCar().getOwner().getId())
+                .type(NotificationType.CHECKOUT_GUEST_COMPLETE)
+                .message("Gost je završio checkout. Molimo potvrdite stanje vozila.")
+                .relatedEntityId(String.valueOf(booking.getId()))
+                .build());
+    }
+
+    private void notifyGuestDamageReported(Booking booking) {
+        notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                .recipientId(booking.getRenter().getId())
+                .type(NotificationType.CHECKOUT_DAMAGE_REPORTED)
+                .message("Domaćin je prijavio oštećenje na vozilu. Pogledajte detalje.")
+                .relatedEntityId(String.valueOf(booking.getId()))
+                .build());
+    }
+
+    private void notifyCheckoutComplete(Booking booking) {
+        // Notify guest
+        notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                .recipientId(booking.getRenter().getId())
+                .type(NotificationType.CHECKOUT_COMPLETE)
+                .message("Checkout je završen. Hvala na korišćenju Rentoza!")
+                .relatedEntityId(String.valueOf(booking.getId()))
+                .build());
+        
+        // Notify host
+        notificationService.createNotification(CreateNotificationRequestDTO.builder()
+                .recipientId(booking.getCar().getOwner().getId())
+                .type(NotificationType.CHECKOUT_COMPLETE)
+                .message("Checkout je završen. Vozilo je vraćeno.")
+                .relatedEntityId(String.valueOf(booking.getId()))
+                .build());
+    }
+
+    // ========== HELPER METHODS ==========
+
+    private boolean isHost(Booking booking, Long userId) {
+        return booking.getCar().getOwner().getId().equals(userId);
+    }
+
+    private boolean isGuest(Booking booking, Long userId) {
+        return booking.getRenter().getId().equals(userId);
+    }
+
+    private void validateAccess(Booking booking, Long userId) {
+        if (!isHost(booking, userId) && !isGuest(booking, userId)) {
+            throw new AccessDeniedException("Nemate pristup ovoj rezervaciji");
+        }
+    }
+
+    private CheckOutStatusDTO mapToStatusDTO(Booking booking, Long userId) {
+        boolean isHost = isHost(booking, userId);
+        boolean isGuest = isGuest(booking, userId);
+        
+        // ========== CHECK-IN PHOTOS (host + guest) for comparison ==========
+        // Bug fix: Previously only queried CheckInPhoto table (host photos).
+        // Guest check-in photos live in GuestCheckInPhoto table and were missing.
+        
+        // Host check-in photos from CheckInPhoto table
+        List<CheckInPhotoDTO> hostCheckInPhotos = photoRepository.findByBookingId(booking.getId()).stream()
+                .filter(p -> !p.isDeleted())
+                .filter(p -> p.getPhotoType().isHostPhoto() || p.getPhotoType().isGuestPhoto())
+                .map(this::mapToPhotoDTO)
+                .collect(Collectors.toList());
+        
+        // Guest check-in photos from GuestCheckInPhoto table
+        List<CheckInPhotoDTO> guestCheckInPhotos = guestPhotoRepository.findByBookingId(booking.getId()).stream()
+                .filter(p -> !p.isDeleted())
+                .map(this::mapGuestPhotoToDTO)
+                .collect(Collectors.toList());
+        
+        // Merge both photo sources into a single check-in photos list
+        List<CheckInPhotoDTO> checkInPhotos = Stream.concat(
+                hostCheckInPhotos.stream(),
+                guestCheckInPhotos.stream()
+        ).collect(Collectors.toList());
+        
+        log.debug("[Checkout] Check-in photos for booking {}: {} host + {} guest = {} total",
+                booking.getId(), hostCheckInPhotos.size(), guestCheckInPhotos.size(), checkInPhotos.size());
+        
+        // Get checkout photos (guest return photos)
+        List<CheckInPhotoDTO> checkoutPhotos = photoRepository.findByBookingId(booking.getId()).stream()
+                .filter(p -> !p.isDeleted())
+                .filter(p -> p.getPhotoType().isCheckoutPhoto() && !p.getPhotoType().isHostCheckoutPhoto())
+                .map(this::mapToPhotoDTO)
+                .collect(Collectors.toList());
+        
+        // Get host checkout photos
+        List<CheckInPhotoDTO> hostCheckoutPhotos = photoRepository.findByBookingId(booking.getId()).stream()
+                .filter(p -> !p.isDeleted())
+                .filter(p -> p.getPhotoType().isHostCheckoutPhoto())
+                .map(this::mapToPhotoDTO)
+                .collect(Collectors.toList());
+        
+        // Calculate mileage and fuel difference
+        Integer totalMileage = booking.getTotalMileage();
+        Integer fuelDifference = null;
+        if (booking.getStartFuelLevel() != null && booking.getEndFuelLevel() != null) {
+            fuelDifference = booking.getEndFuelLevel() - booking.getStartFuelLevel();
+        }
+        
+        return CheckOutStatusDTO.builder()
+                .bookingId(booking.getId())
+                .checkoutSessionId(booking.getCheckoutSessionId())
+                .status(booking.getStatus())
+                .checkoutWindowOpen(booking.getStatus() == BookingStatus.CHECKOUT_OPEN
+                        || booking.getStatus() == BookingStatus.CHECKOUT_GUEST_COMPLETE
+                        || booking.getStatus() == BookingStatus.CHECKOUT_HOST_COMPLETE)
+                .guestCheckOutComplete(booking.getGuestCheckoutCompletedAt() != null)
+                .hostCheckOutComplete(booking.getHostCheckoutCompletedAt() != null)
+                .checkoutComplete(booking.getStatus() == BookingStatus.CHECKOUT_SETTLEMENT_PENDING
+                    || booking.getStatus() == BookingStatus.COMPLETED)
+                .checkoutOpenedAt(toLocalDateTime(booking.getCheckoutOpenedAt()))
+                .guestCompletedAt(toLocalDateTime(booking.getGuestCheckoutCompletedAt()))
+                .hostCompletedAt(toLocalDateTime(booking.getHostCheckoutCompletedAt()))
+                .checkoutCompletedAt(toLocalDateTime(booking.getCheckoutCompletedAt()))
+                .tripStartedAt(toLocalDateTime(booking.getTripStartedAt()))
+                .scheduledReturnTime(toLocalDateTime(booking.getScheduledReturnTime()))
+                .actualReturnTime(toLocalDateTime(booking.getActualReturnTime()))
+                .lateReturnMinutes(booking.getLateReturnMinutes())
+                .lateFeeAmount(booking.getLateFeeAmount())
+                .startOdometer(booking.getStartOdometer())
+                .endOdometer(booking.getEndOdometer())
+                .totalMileage(totalMileage)
+                .startFuelLevel(booking.getStartFuelLevel())
+                .endFuelLevel(booking.getEndFuelLevel())
+                .fuelDifference(fuelDifference)
+                .checkInPhotos(checkInPhotos)
+                .checkoutPhotos(checkoutPhotos)
+                .hostCheckoutPhotos(hostCheckoutPhotos)
+                .newDamageReported(booking.getNewDamageReported() != null && booking.getNewDamageReported())
+                .damageDescription(booking.getDamageAssessmentNotes())
+                .damageClaimAmount(booking.getDamageClaimAmount())
+                .damageClaimStatus(booking.getDamageClaimStatus())
+                .isHost(isHost)
+                .isGuest(isGuest)
+                .car(CheckOutStatusDTO.CarSummaryDTO.builder()
+                        .id(booking.getCar().getId())
+                        .brand(booking.getCar().getBrand())
+                        .model(booking.getCar().getModel())
+                        .year(booking.getCar().getYear())
+                        .imageUrl(booking.getCar().getImageUrl())
+                        .build())
+                .build();
+    }
+
+    /**
+     * Map a host/checkout CheckInPhoto entity to DTO with a Supabase signed URL.
+     * 
+     * <p>The storage key is the internal Supabase path (e.g. "bookings/42/host/FRONT/abc.jpg").
+     * This must be converted to a time-limited signed URL before being sent to the frontend.
+     * Raw storage keys are NEVER exposed to clients.
+     */
+    private CheckInPhotoDTO mapToPhotoDTO(CheckInPhoto photo) {
+        String bucketName = resolveBucketName(photo.getStorageBucket());
+        String signedUrl = resolveSignedUrl(
+                bucketName,
+                photo.getStorageKey(),
+                photo.getId()
+        );
+        
+        return CheckInPhotoDTO.builder()
+                .photoId(photo.getId())
+                .photoType(photo.getPhotoType())
+                .url(signedUrl)
+                .uploadedAt(toLocalDateTime(photo.getUploadedAt()))
+                .exifValidationStatus(photo.getExifValidationStatus())
+                .exifValidationMessage(photo.getExifValidationMessage())
+                .width(photo.getImageWidth())
+                .height(photo.getImageHeight())
+                .mimeType(photo.getMimeType())
+                .exifTimestamp(toLocalDateTime(photo.getExifTimestamp()))
+                .exifLatitude(photo.getExifLatitude() != null ? photo.getExifLatitude().doubleValue() : null)
+                .exifLongitude(photo.getExifLongitude() != null ? photo.getExifLongitude().doubleValue() : null)
+                .deviceModel(photo.getExifDeviceModel())
+                .build();
+    }
+
+    /**
+     * Map a GuestCheckInPhoto entity to DTO with a Supabase signed URL.
+     */
+    private CheckInPhotoDTO mapGuestPhotoToDTO(GuestCheckInPhoto photo) {
+        String bucketName = resolveGuestBucketName(photo.getStorageBucket());
+        String signedUrl = resolveSignedUrl(
+                bucketName,
+                photo.getStorageKey(),
+                photo.getId()
+        );
+        
+        return CheckInPhotoDTO.builder()
+                .photoId(photo.getId())
+                .photoType(photo.getPhotoType())
+                .url(signedUrl)
+                .uploadedAt(toLocalDateTime(photo.getUploadedAt()))
+                .exifValidationStatus(photo.getExifValidationStatus())
+                .exifValidationMessage(photo.getExifValidationMessage())
+                .width(photo.getImageWidth())
+                .height(photo.getImageHeight())
+                .mimeType(photo.getMimeType())
+                .exifTimestamp(toLocalDateTime(photo.getExifTimestamp()))
+                .exifLatitude(photo.getExifLatitude() != null ? photo.getExifLatitude().doubleValue() : null)
+                .exifLongitude(photo.getExifLongitude() != null ? photo.getExifLongitude().doubleValue() : null)
+                .deviceModel(photo.getExifDeviceModel())
+                .accepted(true)
+                .build();
+    }
+
+    /**
+     * Resolve a Supabase signed URL for a photo storage key.
+     * 
+     * <p>Strategy:
+     * <ol>
+     *   <li>If the storage key is already an absolute URL, return as-is (legacy data)</li>
+     *   <li>Otherwise, generate a time-limited signed URL via PhotoUrlService</li>
+     *   <li>On failure, log the error and return empty string (graceful degradation)</li>
+     * </ol>
+     * 
+     * @param bucketName Supabase bucket name (e.g. "check-in-photos")
+     * @param storageKey Internal storage path (e.g. "bookings/42/host/FRONT/abc.jpg")
+     * @param photoId Database photo ID for audit logging
+     * @return Signed URL suitable for direct browser loading
+     */
+    private String resolveSignedUrl(String bucketName, String storageKey, Long photoId) {
+        if (storageKey == null || storageKey.isEmpty()) {
+            return "";
+        }
+        
+        // If already an absolute URL (legacy data or pre-generated), return as-is
+        if (storageKey.startsWith("http://") || storageKey.startsWith("https://")) {
+            return storageKey;
+        }
+        
+        try {
+            return photoUrlService.generateSignedUrl(bucketName, storageKey, photoId);
+        } catch (Exception e) {
+            log.error("[Checkout] Failed to generate signed URL for photo {}: bucket={}, key={}",
+                    photoId, bucketName, storageKey, e);
+            // Graceful degradation: return empty so frontend shows placeholder with error state
+            return "";
+        }
+    }
+
+    /**
+     * Map CheckInPhoto.StorageBucket enum to actual Supabase bucket name.
+     */
+    private String resolveBucketName(CheckInPhoto.StorageBucket bucket) {
+        if (bucket == null) {
+            return "check-in-photos";
+        }
+        return switch (bucket) {
+            case CHECKIN_PII -> "check-in-pii";
+            case CHECKIN_STANDARD -> "check-in-photos";
+        };
+    }
+
+    /**
+     * Map GuestCheckInPhoto.StorageBucket enum to actual Supabase bucket name.
+     */
+    private String resolveGuestBucketName(GuestCheckInPhoto.StorageBucket bucket) {
+        if (bucket == null) {
+            return "check-in-photos";
+        }
+        return switch (bucket) {
+            case CHECKIN_PII -> "check-in-pii";
+            case CHECKIN_STANDARD -> "check-in-photos";
+        };
+    }
+
+    private LocalDateTime toLocalDateTime(Instant instant) {
+        if (instant == null) return null;
+        return LocalDateTime.ofInstant(instant, SERBIA_ZONE);
+    }
+
+    // ========== PHASE 4F: IMPROPER RETURN DETECTION ==========
+
+    /**
+     * Phase 4F: Check for and flag improper vehicle return conditions.
+     * 
+     * <p>Conditions that trigger improper return flag:
+     * <ul>
+     *   <li><b>LOW_FUEL:</b> Fuel level significantly lower than start (>25% difference)</li>
+     *   <li><b>EXCESSIVE_MILEAGE:</b> Miles exceeded estimated by >2x</li>
+     * </ul>
+     * 
+     * <p>Additional conditions detected by host during confirmation:
+     * <ul>
+     *   <li>CLEANING_REQUIRED: Professional cleaning needed</li>
+     *   <li>SMOKING_DETECTED: Evidence of smoking in vehicle</li>
+     *   <li>WRONG_LOCATION: Returned to different location</li>
+     * </ul>
+     * 
+     * @param booking The booking being checked out
+     * @param dto Guest checkout submission data
+     * @param userId The guest user ID
+     */
+    private void checkAndFlagImproperReturn(Booking booking, GuestCheckOutSubmissionDTO dto, Long userId) {
+        // Check fuel difference
+        if (booking.getStartFuelLevel() != null) {
+            int fuelDiff = booking.getStartFuelLevel() - dto.getEndFuelLevelPercent();
+            if (fuelDiff > fuelDifferenceThreshold) {
+                flagImproperReturn(
+                    booking, 
+                    "LOW_FUEL", 
+                    String.format("Nivo goriva smanjen za %d%% (početni: %d%%, završni: %d%%)",
+                            fuelDiff, booking.getStartFuelLevel(), dto.getEndFuelLevelPercent()),
+                    userId
+                );
+                return; // Only flag one condition at a time
+            }
+        }
+        
+        // Check excessive mileage
+        if (booking.getStartOdometer() != null) {
+            int actualMileage = dto.getEndOdometerReading() - booking.getStartOdometer();
+            
+            // Calculate expected mileage based on trip duration and default daily limit
+            int estimatedMileage = calculateEstimatedMileage(booking);
+            
+            if (estimatedMileage > 0 && actualMileage > (estimatedMileage * mileageMultiplierThreshold)) {
+                flagImproperReturn(
+                    booking,
+                    "EXCESSIVE_MILEAGE",
+                    String.format("Prekoračena kilometraža: %d km (očekivano: ~%d km, faktor: %.1fx)",
+                            actualMileage, estimatedMileage, (double) actualMileage / estimatedMileage),
+                    userId
+                );
+            }
+        }
+    }
+    
+    /**
+     * Flag a booking as having improper return condition.
+     * 
+     * @param booking The booking to flag
+     * @param code Improper return code (LOW_FUEL, EXCESSIVE_MILEAGE, etc.)
+     * @param notes Detailed description
+     * @param userId User who triggered the detection (guest or system)
+     */
+    private void flagImproperReturn(Booking booking, String code, String notes, Long userId) {
+        booking.setImproperReturnFlag(true);
+        booking.setImproperReturnCode(code);
+        booking.setImproperReturnNotes(notes);
+        
+        eventService.recordEvent(
+            booking,
+            booking.getCheckoutSessionId(),
+            CheckInEventType.IMPROPER_RETURN_FLAGGED,
+            userId,
+            userId != null && isGuest(booking, userId) ? CheckInActorRole.GUEST : CheckInActorRole.SYSTEM,
+            Map.of(
+                "code", code,
+                "notes", notes,
+                "detectedAt", Instant.now().toString(),
+                "autoDetected", true
+            )
+        );
+        
+        log.warn("[Phase4F] IMPROPER RETURN DETECTED: booking={}, code={}, notes={}",
+                booking.getId(), code, notes);
+    }
+    
+    /**
+     * Calculate estimated mileage based on trip duration.
+     * Uses default 200km/day limit if not configured on car.
+     */
+    private int calculateEstimatedMileage(Booking booking) {
+        if (booking.getStartTime() == null || booking.getEndTime() == null) {
+            return 0;
+        }
+        
+        long days = ChronoUnit.DAYS.between(
+                booking.getStartTime().toLocalDate(),
+                booking.getEndTime().toLocalDate()) + 1;
+        
+        // Use car-specific daily mileage limit (host-configurable), default 200km/day
+        int dailyLimit = 200;
+        if (booking.getCar() != null && booking.getCar().getDailyMileageLimitKm() != null) {
+            dailyLimit = booking.getCar().getDailyMileageLimitKm();
+        }
+        
+        return (int) (days * dailyLimit);
+    }
+    
+    // ========== CQRS EVENT PUBLISHING ==========
+    
+    /**
+     * Publish a checkout domain event for CQRS read model synchronization.
+     * Non-critical: failures are logged but don't block the checkout workflow.
+     */
+    private void publishEvent(CheckoutDomainEvent event) {
+        try {
+            eventPublisher.publishEvent(event);
+            log.debug("[CheckOut] Published event: {}", event.getClass().getSimpleName());
+        } catch (Exception e) {
+            log.error("[CheckOut] Failed to publish event {}: {}", 
+                    event.getClass().getSimpleName(), e.getMessage());
+        }
+    }
+
+    // ========== VAL-010: CHECKOUT DAMAGE CLAIM CREATION ==========
+
+    /**
+     * Create a DamageClaim entity for checkout damage dispute.
+     * 
+     * <p><b>VAL-010:</b> Damage claim blocks deposit release.</p>
+     * 
+     * @param booking The booking with reported damage
+     * @param dto The host checkout confirmation with damage details
+     * @param userId The host's user ID
+     * @return Created DamageClaim entity (persisted)
+     */
+    private DamageClaim createCheckoutDamageClaim(Booking booking, HostCheckOutConfirmationDTO dto, Long userId) {
+        // Serialize damage photo IDs for persistence on the claim
+        String checkoutPhotoIdsJson = null;
+        if (dto.getDamagePhotoIds() != null && !dto.getDamagePhotoIds().isEmpty()) {
+            try {
+                checkoutPhotoIdsJson = new com.fasterxml.jackson.databind.ObjectMapper()
+                        .writeValueAsString(dto.getDamagePhotoIds());
+            } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+                log.warn("[CheckOut] Failed to serialize damage photo IDs: {}", e.getMessage());
+                checkoutPhotoIdsJson = "[]";
+            }
+        }
+        
+        // C-6 FIX: Flag high-value claims for mandatory admin review (configurable threshold)
+        boolean adminReviewRequired = dto.getEstimatedDamageCostRsd() != null
+                && dto.getEstimatedDamageCostRsd().compareTo(java.math.BigDecimal.valueOf(adminReviewThresholdRsd)) > 0;
+        
+        DamageClaim claim = DamageClaim.builder()
+                .booking(booking)
+                .status(DamageClaimStatus.CHECKOUT_PENDING)
+                .disputeStage(DisputeStage.CHECKOUT)
+                .description(dto.getDamageDescription())
+                .claimedAmount(dto.getEstimatedDamageCostRsd())
+                .checkoutPhotoIds(checkoutPhotoIdsJson)
+                .host(booking.getCar().getOwner())
+                .guest(booking.getRenter())
+                .adminReviewRequired(adminReviewRequired)
+                .repairQuoteDocumentUrl(dto.getRepairQuoteDocumentUrl())
+                .createdAt(Instant.now())
+                .build();
+        
+        claim = damageClaimRepository.save(claim);
+        
+        if (adminReviewRequired) {
+            log.warn("[CheckOut] HIGH-VALUE CLAIM: Booking {} claim {} flagged for mandatory admin review ({}  RSD > 50,000 RSD threshold)",
+                    booking.getId(), claim.getId(), dto.getEstimatedDamageCostRsd());
+        }
+        
+        checkoutDamageDisputeCounter.increment();
+        log.info("[CheckOut] Created checkout damage claim {} for booking {}: {} RSD",
+                claim.getId(), booking.getId(), dto.getEstimatedDamageCostRsd());
+        
+        return claim;
+    }
+
+    /**
+     * Guest accepts the damage claim, allowing deposit capture and checkout completion.
+     * 
+     * @param bookingId Booking ID
+     * @param userId Guest's user ID
+     */
+    @Transactional
+    public void acceptDamageClaim(Long bookingId, Long userId) {
+        Booking booking = bookingRepository.findByIdWithRelations(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking not found: " + bookingId));
+        
+        if (booking.getStatus() != BookingStatus.CHECKOUT_DAMAGE_DISPUTE) {
+            throw new IllegalStateException("Booking is not in damage dispute state");
+        }
+        
+        if (!isGuest(booking, userId)) {
+            throw new AccessDeniedException("Only the guest can accept damage claims");
+        }
+        
+        DamageClaim claim = booking.getCheckoutDamageClaim();
+        if (claim != null) {
+            // Validate claim is still in acceptable state (not already escalated/resolved)
+            if (claim.getStatus() != DamageClaimStatus.CHECKOUT_PENDING) {
+                throw new IllegalStateException(
+                        "Prijava štete nije u stanju za prihvatanje. Trenutni status: " + claim.getStatus());
+            }
+            // [P1] Block guest self-acceptance on high-value claims that require admin review
+            if (Boolean.TRUE.equals(claim.getAdminReviewRequired())) {
+                throw new IllegalStateException(
+                        "Prijava štete preko 50.000 RSD zahteva pregled administratora. " +
+                        "Gost ne može direktno prihvatiti ovu prijavu.");
+            }
+            claim.setStatus(DamageClaimStatus.CHECKOUT_GUEST_ACCEPTED);
+            claim.setApprovedAmount(claim.getClaimedAmount()); // P0 FIX: Set approved amount for saga charge calculation
+            claim.setResolvedAt(Instant.now());
+            damageClaimRepository.save(claim);
+        }
+        
+        booking.setDamageClaimStatus("CHECKOUT_GUEST_ACCEPTED");
+        
+        // P0 FIX: Clear deposit hold state so the saga validation doesn't suspend.
+        // The saga's CAPTURE_DEPOSIT / RELEASE_DEPOSIT steps will handle deposit
+        // resolution properly — do NOT pre-set securityDepositResolvedAt here,
+        // because the saga short-circuits capture/release when it's already set.
+        booking.setSecurityDepositHoldReason(null);
+        booking.setSecurityDepositHoldUntil(null);
+        // Leave securityDepositReleased as-is (false) — saga will manage it.
+        // Do NOT set securityDepositResolvedAt — saga deposit steps need to run.
+        
+        eventService.recordEvent(
+            booking,
+            booking.getCheckoutSessionId(),
+            CheckInEventType.CHECKOUT_DAMAGE_ACCEPTED,
+            userId,
+            CheckInActorRole.GUEST,
+            Map.of(
+                "claimId", claim != null ? claim.getId() : "N/A",
+                "claimAmountRsd", booking.getDamageClaimAmount() != null ? booking.getDamageClaimAmount() : BigDecimal.ZERO
+            )
+        );
+        
+        log.info("[CheckOut] Guest accepted damage claim for booking {} - completing checkout", booking.getId());
+        
+        // Now complete checkout with damage charges captured from deposit
+        completeCheckout(booking, userId);
+    }
+
+    /**
+     * Guest disputes the damage claim (escalates to admin).
+     * 
+     * @param bookingId Booking ID
+     * @param userId Guest's user ID
+     * @param disputeReason Guest's dispute reason
+     * @param evidencePhotoIds Optional list of evidence photo IDs uploaded by guest
+     */
+    @Transactional
+    public void disputeDamageClaim(Long bookingId, Long userId, String disputeReason, List<Long> evidencePhotoIds) {
+        Booking booking = bookingRepository.findByIdWithRelations(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking not found: " + bookingId));
+        
+        if (booking.getStatus() != BookingStatus.CHECKOUT_DAMAGE_DISPUTE) {
+            throw new IllegalStateException("Booking is not in damage dispute state");
+        }
+        
+        if (!isGuest(booking, userId)) {
+            throw new AccessDeniedException("Only the guest can dispute damage claims");
+        }
+        
+        DamageClaim claim = booking.getCheckoutDamageClaim();
+        if (claim != null) {
+            // Validate claim is still in disputable state (not already escalated/resolved)
+            if (claim.getStatus() != DamageClaimStatus.CHECKOUT_PENDING) {
+                throw new IllegalStateException(
+                        "Prijava štete nije u stanju za osporavanje. Trenutni status: " + claim.getStatus());
+            }
+            claim.setStatus(DamageClaimStatus.CHECKOUT_GUEST_DISPUTED);
+            claim.setDisputeReason(disputeReason);
+            claim.setEscalated(true);
+            claim.setEscalatedAt(Instant.now());
+            // S-checkout2 FIX: Validate evidence photo IDs belong to this booking
+            if (evidencePhotoIds != null && !evidencePhotoIds.isEmpty()) {
+                long validCount = photoRepository.countByBookingIdAndIdIn(bookingId, evidencePhotoIds);
+                if (validCount != evidencePhotoIds.size()) {
+                    throw new IllegalArgumentException(
+                            "Neke fotografije dokaza ne pripadaju ovoj rezervaciji");
+                }
+                try {
+                    claim.setEvidencePhotoIds(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(evidencePhotoIds));
+                } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+                    log.warn("[CheckOut] Failed to serialize evidence photo IDs for booking {}", bookingId, e);
+                }
+            }
+            damageClaimRepository.save(claim);
+        }
+        
+        booking.setDamageClaimStatus("CHECKOUT_GUEST_DISPUTED");
+        
+        eventService.recordEvent(
+            booking,
+            booking.getCheckoutSessionId(),
+            CheckInEventType.CHECKOUT_DAMAGE_DISPUTED,
+            userId,
+            CheckInActorRole.GUEST,
+            Map.of(
+                "claimId", claim != null ? claim.getId() : "N/A",
+                "disputeReason", disputeReason != null ? disputeReason : ""
+            )
+        );
+        
+        bookingRepository.save(booking);
+        
+        // Notify admin about escalation
+        notifyAdminDamageDispute(booking);
+        
+        log.warn("[CheckOut] Guest disputed damage claim for booking {} - escalated to admin", booking.getId());
+    }
+
+    /**
+     * Notify admin about damage dispute escalation.
+     */
+    private void notifyAdminDamageDispute(Booking booking) {
+        log.warn("[CheckOut] ADMIN ALERT: Checkout damage dispute escalated for booking {}. " +
+                "Host: {}, Guest: {}, Claim Amount: {} RSD",
+                booking.getId(),
+                booking.getCar().getOwner().getEmail(),
+                booking.getRenter().getEmail(),
+                booking.getDamageClaimAmount());
+        // Admin notification will be handled via NotificationService in admin module
+    }
+}

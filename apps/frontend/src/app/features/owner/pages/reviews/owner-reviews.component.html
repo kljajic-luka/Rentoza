@@ -1,0 +1,146 @@
+<div class="owner-reviews">
+  <header class="owner-reviews__header">
+    <div>
+      <p class="eyebrow">RECENZIJE</p>
+      <h1>Recenzije</h1>
+      <p class="subtitle">Pregledajte primljene i poslate recenzije</p>
+    </div>
+  </header>
+
+  @if (isLoading()) {
+    <div class="loading-container">
+      <mat-spinner diameter="48"></mat-spinner>
+      <p>Učitavanje recenzija...</p>
+    </div>
+  } @else {
+    <mat-tab-group class="reviews-tabs" animationDuration="200ms">
+      <!-- Received Reviews -->
+      <mat-tab>
+        <ng-template mat-tab-label>
+          <mat-icon>thumb_up</mat-icon>
+          Primljene ({{ receivedReviews().length }})
+        </ng-template>
+
+        <div class="tab-content">
+          @if (receivedReviews().length === 0) {
+            <div class="empty-state">
+              <mat-icon>rate_review</mat-icon>
+              <h3>Još nema recenzija</h3>
+              <p>Kada zakupci ocene vaša vozila, videćete recenzije ovde.</p>
+            </div>
+          } @else {
+            <div class="reviews-grid">
+              @for (review of receivedReviews(); track review.id) {
+                <mat-card class="review-card">
+                  <mat-card-header>
+                    <div mat-card-avatar class="avatar">
+                      {{ getDisplayName(review, true)[0] }}
+                    </div>
+                    <mat-card-title>{{ getDisplayName(review, true) }}</mat-card-title>
+                    <mat-card-subtitle>
+                      {{ formatDate(review.createdAt) }}
+                    </mat-card-subtitle>
+                  </mat-card-header>
+
+                  <mat-card-content>
+                    <div class="rating">
+                      @for (star of starRange; track star) {
+                        <mat-icon [class.filled]="review.rating > star">
+                          {{ review.rating > star ? 'star' : 'star_border' }}
+                        </mat-icon>
+                      }
+                      <span class="rating-value">{{ review.rating }}/5</span>
+                    </div>
+
+                    @if (review.comment) {
+                      <p class="comment">{{ review.comment }}</p>
+                    }
+
+                    <div class="review-meta">
+                      @if (review.carBrand || review.carModel) {
+                        <div class="meta-item">
+                          <mat-icon>directions_car</mat-icon>
+                          <span>{{ review.carBrand }} {{ review.carModel }} {{ review.carYear || '' }}</span>
+                        </div>
+                      }
+                      @if (review.carLocation) {
+                        <div class="meta-item">
+                          <mat-icon>location_on</mat-icon>
+                          <span>{{ review.carLocation }}</span>
+                        </div>
+                      }
+                    </div>
+                  </mat-card-content>
+                </mat-card>
+              }
+            </div>
+          }
+        </div>
+      </mat-tab>
+
+      <!-- Given Reviews -->
+      <mat-tab>
+        <ng-template mat-tab-label>
+          <mat-icon>edit</mat-icon>
+          Poslate ({{ givenReviews().length }})
+        </ng-template>
+
+        <div class="tab-content">
+          @if (givenReviews().length === 0) {
+            <div class="empty-state">
+              <mat-icon>comment</mat-icon>
+              <h3>Još niste ocenili nijednog zakupca</h3>
+              <p>Ocenite zakupce nakon završenih rezervacija.</p>
+            </div>
+          } @else {
+            <div class="reviews-grid">
+              @for (review of givenReviews(); track review.id) {
+                <mat-card class="review-card">
+                  <mat-card-header>
+                    <div mat-card-avatar class="avatar">
+                      {{ getDisplayName(review, false)[0] }}
+                    </div>
+                    <mat-card-title>{{ getDisplayName(review, false) }}</mat-card-title>
+                    <mat-card-subtitle>
+                      {{ formatDate(review.createdAt) }}
+                    </mat-card-subtitle>
+                  </mat-card-header>
+
+                  <mat-card-content>
+                    <div class="rating">
+                      @for (star of starRange; track star) {
+                        <mat-icon [class.filled]="review.rating > star">
+                          {{ review.rating > star ? 'star' : 'star_border' }}
+                        </mat-icon>
+                      }
+                      <span class="rating-value">{{ review.rating }}/5</span>
+                    </div>
+
+                    @if (review.comment) {
+                      <p class="comment">{{ review.comment }}</p>
+                    }
+
+                    <div class="review-meta">
+                      @if (review.carBrand || review.carModel) {
+                        <div class="meta-item">
+                          <mat-icon>directions_car</mat-icon>
+                          <span>{{ review.carBrand }} {{ review.carModel }} {{ review.carYear || '' }}</span>
+                        </div>
+                      }
+                      @if (review.carLocation) {
+                        <div class="meta-item">
+                          <mat-icon>location_on</mat-icon>
+                          <span>{{ review.carLocation }}</span>
+                        </div>
+                      }
+                    </div>
+                  </mat-card-content>
+                </mat-card>
+              }
+            </div>
+          }
+        </div>
+      </mat-tab>
+    </mat-tab-group>
+  }
+</div>

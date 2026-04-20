@@ -1,0 +1,605 @@
+.dialog-container {
+  max-width: 520px;
+  width: 100%;
+  
+  .dialog-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 24px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+
+    h2 {
+      margin: 0;
+      font-size: 1.25rem;
+      font-weight: 500;
+    }
+  }
+}
+
+mat-dialog-content {
+  padding: 24px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.loading-state, .error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 0;
+  text-align: center;
+  gap: 16px;
+
+  p {
+    color: rgba(0, 0, 0, 0.6);
+    margin: 0;
+  }
+}
+
+.guest-profile {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.profile-header {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+
+  .avatar-container {
+    flex-shrink: 0;
+    
+    .avatar {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 2px solid rgba(0, 0, 0, 0.08);
+    }
+  }
+
+  .profile-info {
+    flex: 1;
+
+    h3 {
+      margin: 0 0 4px 0;
+      font-size: var(--font-size-xl);
+      font-weight: 500;
+    }
+
+    .join-date {
+      margin: 0 0 12px 0;
+      color: rgba(0, 0, 0, 0.6);
+      font-size: var(--font-size-sm);
+    }
+
+    .trust-signals {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 8px;
+
+      .trust-signal-badge {
+        font-size: var(--font-size-xs);
+        min-height: 24px;
+        
+        mat-icon {
+          font-size: var(--font-size-sm);
+          width: 14px;
+          height: 14px;
+          margin-right: 2px;
+        }
+
+        &.state-verified {
+          background-color: #e8f5e9;
+          color: #2e7d32;
+
+          mat-icon {
+            color: #2e7d32;
+          }
+        }
+
+        &.state-pending {
+          background-color: #fff3e0;
+          color: #e65100;
+
+          mat-icon {
+            color: #e65100;
+          }
+        }
+
+        &.state-warning {
+          background-color: #fff8e1;
+          color: #a15c00;
+
+          mat-icon {
+            color: #a15c00;
+          }
+        }
+
+        &.state-blocked {
+          background-color: #ffebee;
+          color: #c62828;
+
+          mat-icon {
+            color: #c62828;
+          }
+        }
+      }
+    }
+
+    // Achievement badges (Experienced, Top Rated, Reliable)
+    .achievement-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+
+      .achievement-badge {
+        font-size: var(--font-size-xs);
+        height: 22px;
+        background-color: #fff3e0;
+        color: #e65100;
+        
+        mat-icon {
+          font-size: var(--font-size-sm);
+          width: 14px;
+          height: 14px;
+          margin-right: 4px;
+          color: #ff9800;
+        }
+      }
+    }
+  }
+}
+
+// Stats grid - now 4 columns
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  padding: 16px;
+  background-color: rgba(0, 0, 0, 0.04);
+  border-radius: 12px;
+
+  .stat-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+
+    .stat-value {
+      font-size: var(--font-size-lg);
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 2px;
+
+      // Age verification indicator
+      &.verified {
+        .verified-icon {
+          font-size: var(--font-size-sm);
+          width: 14px;
+          height: 14px;
+          color: #2e7d32;
+        }
+      }
+
+      &.na {
+        color: rgba(0, 0, 0, 0.4);
+      }
+
+      // Cancellation rate colors
+      &.good { color: #2e7d32; }
+      &.warning { color: #d32f2f; }
+
+      .star-icon {
+        font-size: var(--font-size-base);
+        width: 16px;
+        height: 16px;
+        color: #fbc02d;
+      }
+    }
+
+    .stat-label {
+      font-size: var(--font-size-xs);
+      color: rgba(0, 0, 0, 0.6);
+      margin-top: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+  }
+}
+
+// Driver license section
+.license-section {
+  background-color: rgba(0, 0, 0, 0.02);
+  border-radius: 8px;
+  padding: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+
+  h4 {
+    margin: 0 0 12px 0;
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    mat-icon {
+      font-size: var(--font-size-lg);
+      width: 18px;
+      height: 18px;
+      color: rgba(0, 0, 0, 0.6);
+    }
+  }
+
+  .license-info {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    .license-main {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      font-size: var(--font-size-sm);
+      color: rgba(0, 0, 0, 0.87);
+
+      .license-category {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-weight: 500;
+
+        mat-icon {
+          font-size: var(--font-size-base);
+          width: 16px;
+          height: 16px;
+          color: var(--brand-primary-dark);
+        }
+      }
+
+      .license-country,
+      .license-tenure {
+        color: rgba(0, 0, 0, 0.6);
+      }
+    }
+
+    .license-status {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+
+      .status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 10px;
+        border-radius: 16px;
+        font-size: var(--font-size-xs);
+        font-weight: 500;
+
+        mat-icon {
+          font-size: var(--font-size-sm);
+          width: 14px;
+          height: 14px;
+        }
+
+        &.status-approved {
+          background-color: #e8f5e9;
+          color: #2e7d32;
+        }
+
+        &.status-pending_review {
+          background-color: #fff3e0;
+          color: #e65100;
+        }
+
+        &.status-rejected {
+          background-color: #ffebee;
+          color: #c62828;
+        }
+      }
+
+      .expiry-date {
+        font-size: var(--font-size-xs);
+        color: rgba(0, 0, 0, 0.6);
+      }
+    }
+  }
+}
+
+.trip-details {
+  h4 {
+    margin: 0 0 16px 0;
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    mat-icon {
+      font-size: var(--font-size-lg);
+      width: 18px;
+      height: 18px;
+      color: rgba(0, 0, 0, 0.6);
+    }
+  }
+
+  .detail-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+    color: rgba(0, 0, 0, 0.87);
+    font-size: var(--font-size-sm);
+
+    mat-icon {
+      color: rgba(0, 0, 0, 0.54);
+      font-size: var(--font-size-lg);
+      width: 18px;
+      height: 18px;
+    }
+
+    strong {
+      font-weight: 600;
+    }
+  }
+
+  .message-box {
+    margin-top: 16px;
+    padding: 12px;
+    background-color: rgba(63, 81, 181, 0.05);
+    border-left: 3px solid #3f51b5;
+    border-radius: 4px;
+
+    .message-label {
+      font-size: var(--font-size-xs);
+      color: rgba(0, 0, 0, 0.6);
+      margin: 0 0 4px 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+
+      mat-icon {
+        font-size: var(--font-size-sm);
+        width: 14px;
+        height: 14px;
+      }
+    }
+
+    .message-text {
+      margin: 0;
+      font-style: italic;
+      color: rgba(0, 0, 0, 0.87);
+    }
+  }
+}
+
+.reviews-section {
+  h4 {
+    margin: 0 0 16px 0;
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    mat-icon {
+      font-size: var(--font-size-lg);
+      width: 18px;
+      height: 18px;
+      color: rgba(0, 0, 0, 0.6);
+    }
+  }
+
+  .reviews-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+
+    .review-item {
+      padding-bottom: 12px;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+
+      &:last-child {
+        border-bottom: none;
+        padding-bottom: 0;
+      }
+
+      .review-header {
+        margin-bottom: 4px;
+        
+        .stars {
+          display: flex;
+          
+          mat-icon {
+            font-size: var(--font-size-sm);
+            width: 14px;
+            height: 14px;
+            color: #e0e0e0;
+
+            &.filled {
+              color: #fbc02d;
+            }
+          }
+        }
+      }
+
+      .review-text {
+        margin: 0;
+        font-size: var(--font-size-sm);
+        color: rgba(0, 0, 0, 0.87);
+        line-height: 1.4;
+      }
+    }
+  }
+}
+
+// New user notice
+.new-user-notice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background-color: #e3f2fd;
+  border-radius: 8px;
+  color: var(--brand-primary-dark);
+  font-size: var(--font-size-sm);
+
+  mat-icon {
+    font-size: 20px;
+    width: 20px;
+    height: 20px;
+  }
+}
+
+// Dark theme support
+:host-context(.theme-dark) {
+  .dialog-header {
+    border-bottom-color: rgba(255, 255, 255, 0.12);
+    h2 { color: #ffffff !important; }
+  }
+
+  .loading-state p, .error-state p {
+    color: rgba(255, 255, 255, 0.7);
+  }
+
+  .profile-info {
+    h3 { color: #ffffff !important; }
+    .join-date { color: rgba(255, 255, 255, 0.7); }
+  }
+
+  .trust-signals .trust-signal-badge {
+    &.state-verified {
+      background-color: rgba(46, 125, 50, 0.2);
+    }
+
+    &.state-pending {
+      background-color: rgba(230, 81, 0, 0.2);
+      color: #ffb74d;
+    }
+
+    &.state-warning {
+      background-color: rgba(161, 92, 0, 0.2);
+      color: #ffd54f;
+    }
+
+    &.state-blocked {
+      background-color: rgba(198, 40, 40, 0.2);
+      color: #ef9a9a;
+    }
+  }
+
+  .achievement-badges .achievement-badge {
+    background-color: rgba(255, 152, 0, 0.15);
+  }
+
+  .stats-grid {
+    background-color: rgba(255, 255, 255, 0.05);
+    
+    .stat-item {
+      .stat-value { color: #ffffff; }
+      .stat-label { color: rgba(255, 255, 255, 0.7); }
+    }
+  }
+
+  .license-section {
+    background-color: rgba(255, 255, 255, 0.03);
+    border-color: rgba(255, 255, 255, 0.1);
+
+    h4 { 
+      color: #ffffff !important; 
+      
+      mat-icon { color: rgba(255, 255, 255, 0.7); }
+    }
+    
+    .license-main { 
+      color: rgba(255, 255, 255, 0.87); 
+      
+      .license-category {
+        mat-icon { color: var(--brand-primary-light); } // Lighter blue for dark mode
+      }
+    }
+    .license-country, .license-tenure { color: rgba(255, 255, 255, 0.7) !important; }
+    .expiry-date { color: rgba(255, 255, 255, 0.7) !important; }
+    
+    // Status badges dark mode
+    .license-status {
+      .status-badge {
+        &.status-approved {
+          background-color: rgba(46, 125, 50, 0.25);
+          color: #81c784;
+        }
+        
+        &.status-pending_review {
+          background-color: rgba(230, 81, 0, 0.2);
+          color: #ffb74d;
+        }
+        
+        &.status-rejected {
+          background-color: rgba(198, 40, 40, 0.2);
+          color: #ef9a9a;
+        }
+
+        &.status-suspended {
+          background-color: rgba(198, 40, 40, 0.2);
+          color: #ef9a9a;
+        }
+
+        &.status-expired {
+          background-color: rgba(161, 92, 0, 0.2);
+          color: #ffd54f;
+        }
+      }
+    }
+  }
+
+  .trip-details {
+    h4 { color: #ffffff !important; }
+    .detail-row {
+      color: rgba(255, 255, 255, 0.87);
+      mat-icon { color: rgba(255, 255, 255, 0.7); }
+    }
+
+    .message-box {
+      background-color: rgba(63, 81, 181, 0.1);
+      border-left-color: #7986cb;
+
+      .message-label { color: rgba(255, 255, 255, 0.7); }
+      .message-text { color: rgba(255, 255, 255, 0.87); }
+    }
+  }
+
+  .reviews-section {
+    h4 { color: #ffffff !important; }
+    .review-item {
+      border-bottom-color: rgba(255, 255, 255, 0.12);
+      .review-text { color: rgba(255, 255, 255, 0.87); }
+    }
+  }
+
+  .new-user-notice {
+    background-color: rgba(30, 136, 229, 0.15);
+    color: var(--brand-primary-light);
+  }
+
+  /* DARK MODE FINAL PATCH — FORCE ALL MDC TEXT TO WHITE */
+  ::ng-deep .mdc-dialog__content,
+  ::ng-deep .mdc-dialog__title,
+  ::ng-deep .mat-dialog-title,
+  ::ng-deep .mat-dialog-content,
+  ::ng-deep .mdc-typography--headline6,
+  ::ng-deep .mdc-typography--body1,
+  ::ng-deep .mdc-typography--body2,
+  ::ng-deep .mdc-typography--subtitle1,
+  ::ng-deep .mdc-typography--subtitle2,
+  ::ng-deep .mat-icon {
+    color: #ffffff !important;
+  }
+}

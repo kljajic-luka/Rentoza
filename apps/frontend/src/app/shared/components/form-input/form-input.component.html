@@ -1,0 +1,140 @@
+<div
+  class="rtz-field"
+  [class.rtz-field--focused]="isFocused()"
+  [class.rtz-field--has-value]="hasValue()"
+  [class.rtz-field--invalid]="isInvalid"
+  [class.rtz-field--valid]="isValid"
+  [class.rtz-field--disabled]="disabled"
+  [class.rtz-field--has-left-icon]="leftIcon"
+  [class.rtz-field--has-right-icon]="rightIcon || clearable || isPasswordType()"
+>
+  <!-- Left icon slot -->
+  <span class="rtz-field__icon rtz-field__icon--left" *ngIf="leftIcon" aria-hidden="true">
+    <span class="material-icons">{{ leftIcon }}</span>
+  </span>
+
+  <!-- Floating label -->
+  <label
+    [for]="inputId"
+    class="rtz-field__label"
+    [class.rtz-field__label--floating]="isLabelFloating()"
+  >
+    {{ label }}<span *ngIf="required" class="rtz-field__required" aria-hidden="true"> *</span>
+  </label>
+
+  <!-- Textarea variant -->
+  <textarea
+    *ngIf="type === 'textarea'; else regularInput"
+    #inputEl
+    [id]="inputId"
+    class="rtz-field__input rtz-field__textarea"
+    [placeholder]="placeholder"
+    [rows]="rows"
+    [attr.maxlength]="maxlength || null"
+    [disabled]="disabled"
+    [required]="required"
+    [attr.aria-invalid]="isInvalid ? 'true' : null"
+    [attr.aria-describedby]="hint ? inputId + '-hint' : null"
+    [value]="innerValue()"
+    (input)="onInput($event)"
+    (focus)="onFocus()"
+    (blur)="onBlur()"
+  ></textarea>
+
+  <!-- Regular input variant -->
+  <ng-template #regularInput>
+    <input
+      #inputEl
+      [id]="inputId"
+      class="rtz-field__input"
+      [type]="effectiveType()"
+      [placeholder]="placeholder"
+      [attr.maxlength]="maxlength || null"
+      [attr.lang]="lang || null"
+      [disabled]="disabled"
+      [required]="required"
+      [attr.aria-invalid]="isInvalid ? 'true' : null"
+      [attr.aria-describedby]="hint ? inputId + '-hint' : null"
+      [value]="innerValue()"
+      (input)="onInput($event)"
+      (focus)="onFocus()"
+      (blur)="onBlur()"
+    />
+  </ng-template>
+
+  <!-- Right-side action area -->
+  <div class="rtz-field__actions" *ngIf="rightIcon || clearable || isPasswordType()">
+    <!-- Status icon (right icon slot) -->
+    <span
+      class="rtz-field__icon rtz-field__icon--right"
+      *ngIf="rightIcon && !clearable && !isPasswordType()"
+      aria-hidden="true"
+    >
+      <span class="material-icons">{{ rightIcon }}</span>
+    </span>
+
+    <!-- Clear button -->
+    <button
+      *ngIf="clearable && hasValue() && !disabled"
+      type="button"
+      class="rtz-field__btn rtz-field__btn--clear"
+      (click)="clearValue()"
+      aria-label="Obriši unos"
+      tabindex="-1"
+    >
+      <span class="material-icons" aria-hidden="true">close</span>
+    </button>
+
+    <!-- Password toggle -->
+    <button
+      *ngIf="isPasswordType()"
+      type="button"
+      class="rtz-field__btn rtz-field__btn--password"
+      (click)="togglePasswordVisibility()"
+      [attr.aria-label]="showPassword() ? 'Sakrij lozinku' : 'Prikaži lozinku'"
+      tabindex="-1"
+    >
+      <span class="material-icons" aria-hidden="true">
+        {{ showPassword() ? 'visibility_off' : 'visibility' }}
+      </span>
+    </button>
+
+    <!-- Valid indicator -->
+    <span
+      *ngIf="isValid && !clearable && !isPasswordType()"
+      class="rtz-field__status rtz-field__status--valid"
+      aria-hidden="true"
+    >
+      <span class="material-icons">check_circle</span>
+    </span>
+  </div>
+</div>
+
+<!-- Meta row: hint / error / character counter -->
+<div class="rtz-field__meta">
+  <div class="rtz-field__messages">
+    <!-- Error message -->
+    <p
+      *ngIf="isInvalid && errorMessage"
+      class="rtz-field__error"
+      [id]="inputId + '-error'"
+      role="alert"
+      aria-live="polite"
+    >
+      <span class="material-icons rtz-field__error-icon" aria-hidden="true">error_outline</span>
+      {{ errorMessage }}
+    </p>
+    <!-- Hint text -->
+    <p *ngIf="hint && !isInvalid" class="rtz-field__hint" [id]="inputId + '-hint'">
+      {{ hint }}
+    </p>
+  </div>
+  <!-- Character counter -->
+  <span
+    *ngIf="maxlength"
+    class="rtz-field__counter"
+    [class.rtz-field__counter--over]="charCount() >= maxlength"
+  >
+    {{ charCount() }}/{{ maxlength }}
+  </span>
+</div>

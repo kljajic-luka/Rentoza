@@ -1,0 +1,111 @@
+<div class="pickup-location-selector">
+  <!-- HEADER -->
+  <h3 class="section-title">
+    <mat-icon>location_on</mat-icon>
+    Lokacija preuzimanja
+  </h3>
+
+  <!-- PICKUP OPTIONS -->
+  <div class="pickup-options">
+    <mat-radio-group [value]="pickupOption()" (change)="onPickupOptionChange($event.value)">
+      <!-- Option 1: Car's location -->
+      <mat-radio-button value="car-location" class="pickup-radio">
+        <div class="option-content">
+          <div class="option-label">
+            <mat-icon>directions_car</mat-icon>
+            <span>Preuzmi na lokaciji vozila</span>
+          </div>
+          @if (carLocation.address) {
+          <span class="option-address">{{ carLocation.address }}</span>
+          }
+          <span class="option-badge free">Besplatno</span>
+        </div>
+      </mat-radio-button>
+
+      <!-- Option 2: Custom location (delivery) -->
+      @if (deliveryAvailable) {
+      <mat-radio-button value="custom-location" class="pickup-radio">
+        <div class="option-content">
+          <div class="option-label">
+            <mat-icon>local_shipping</mat-icon>
+            <span>Dostavi na moju adresu</span>
+          </div>
+          <span class="option-hint"> Dostava do {{ deliveryMaxRadius }} km od vozila </span>
+        </div>
+      </mat-radio-button>
+      }
+    </mat-radio-group>
+  </div>
+
+  <!-- CUSTOM LOCATION MAP -->
+  @if (pickupOption() === 'custom-location' && showMap()) {
+  <div class="custom-location-section">
+    <p class="map-instruction">Kliknite na mapu da izaberete lokaciju preuzimanja</p>
+
+    <app-location-picker
+      [latitude]="customLocation()?.latitude ?? carLocation.latitude"
+      [longitude]="customLocation()?.longitude ?? carLocation.longitude"
+      [zoom]="13"
+      [editable]="true"
+      [showGeolocationButton]="true"
+      [height]="'250px'"
+      (locationChanged)="onMapLocationChanged($event)"
+    />
+
+    <!-- Selected location info -->
+    @if (customLocation()) {
+    <div class="selected-location-info">
+      <mat-icon>place</mat-icon>
+      <div class="location-details">
+        @if (customLocation()?.address) {
+        <span class="address">{{ customLocation()?.address }}</span>
+        } @if (distanceFromCar() !== null) {
+        <span class="distance"> {{ distanceFromCar() | number : '1.1-1' }} km od vozila </span>
+        }
+      </div>
+    </div>
+    }
+
+    <!-- Delivery fee display -->
+    @if (isCalculatingFee()) {
+    <div class="fee-calculating">
+      <mat-spinner diameter="20"></mat-spinner>
+      <span>Izračunavanje naknade za dostavu...</span>
+    </div>
+    } @else if (deliveryFee()) {
+    <div
+      class="delivery-fee-display"
+      [class.available]="deliveryFee()?.available"
+      [class.unavailable]="!deliveryFee()?.available"
+    >
+      @if (deliveryFee()?.available) {
+      <div class="fee-info">
+        <mat-icon class="success-icon">check_circle</mat-icon>
+        <span class="fee-label">Naknada za dostavu:</span>
+        <span class="fee-amount"> {{ deliveryFee()?.fee | number : '1.0-0' }} RSD </span>
+      </div>
+      @if (deliveryFee()?.estimatedMinutes) {
+      <span class="delivery-time">
+        Procenjeno vreme dostave: {{ deliveryFee()?.estimatedMinutes }} min
+      </span>
+      } } @else {
+      <div class="fee-unavailable">
+        <mat-icon class="error-icon">error</mat-icon>
+        <span>{{
+          deliveryFee()?.unavailableReason || 'Dostava nije dostupna na ovoj lokaciji'
+        }}</span>
+      </div>
+      }
+    </div>
+    }
+  </div>
+  }
+
+  <!-- VALIDATION MESSAGE -->
+  @if (pickupOption() === 'custom-location' && !isValidPickup() && !isCalculatingFee()) {
+  <div class="validation-message">
+    <mat-icon>warning</mat-icon>
+    <span>Izaberite lokaciju unutar {{ deliveryMaxRadius }} km od vozila</span>
+  </div>
+  }
+</div>

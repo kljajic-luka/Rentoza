@@ -1,0 +1,91 @@
+HELP.md
+target/
+.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### VS Code ###
+.vscode/
+
+### Sensitive Configuration Files ###
+# NEVER commit actual secrets - use environment variables
+**/application.properties
+**/application-*.properties
+!**/application-template.properties
+!**/application-dev.properties
+!**/application-prod.properties
+
+# Local development overrides
+**/application-dev-local.properties
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Cloud Run environment files with secrets (CRITICAL - NEVER COMMIT)
+**/cloudrun-env.yaml
+!**/cloudrun-env.yaml.template
+**/cloudrun-env-*.yaml
+deploy-backend-secure.sh
+apps/backend/cloudrun-env.yaml
+apps/chat-service/cloudrun-env.yaml
+
+# Certificates and keystores
+*.jks
+*.p12
+*.pem
+*.key
+*.crt
+
+# Uploads (user-generated content)
+Rentoza/uploads/
+Rentoza/user-uploads/
+apps/backend/uploads/
+apps/backend/user-uploads/
+
+# Logs
+*.log
+logs/
+apps/backend/logs/
+
+# Frontend generisani artefakti
+apps/frontend/playwright-report/
+apps/frontend/test-results/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Archive (optional - remove this line if you want archive tracked)
+archive/
+
+# Database backups
+database/backups/

@@ -1,0 +1,391 @@
+<section class="oauth-complete">
+  <div class="oauth-complete__header">
+    <h1>Kompletiranje profila</h1>
+    <p>
+      {{
+        isOwnerRegistration
+          ? 'Popunite preostale podatke kako biste postali Rentoza domaćin.'
+          : 'Popunite preostale podatke kako biste završili registraciju.'
+      }}
+    </p>
+  </div>
+
+  @if (isLoading()) {
+    <mat-card class="loading-card">
+      <mat-spinner diameter="48"></mat-spinner>
+      <p>Učitavanje profila...</p>
+    </mat-card>
+  } @else {
+    <mat-card class="stepper-card">
+      <mat-stepper linear #stepper>
+        <!-- ═══════════════════════════════════════════════════════════════════════════ -->
+        <!-- STEP 1: Basic Information -->
+        <!-- ═══════════════════════════════════════════════════════════════════════════ -->
+        <mat-step [stepControl]="basicForm" label="Osnovni podaci">
+          <form [formGroup]="basicForm" class="step-form">
+            <div class="step-intro">
+              <mat-icon>person</mat-icon>
+              <div>
+                <h3>Osnovni podaci</h3>
+                <p>Unesite broj telefona i datum rođenja.</p>
+              </div>
+            </div>
+
+            <!-- Last Name (if needed) -->
+            @if (needsLastName()) {
+              <mat-form-field appearance="fill">
+                <mat-label>Prezime</mat-label>
+                <input matInput formControlName="lastName" required />
+                <mat-hint>Google nalog nije sadržao prezime</mat-hint>
+                <mat-error *ngIf="basicForm.controls.lastName.hasError('required')">
+                  Prezime je obavezno
+                </mat-error>
+                <mat-error *ngIf="basicForm.controls.lastName.hasError('minlength')">
+                  Prezime mora imati najmanje 3 karaktera
+                </mat-error>
+              </mat-form-field>
+            }
+
+            <mat-form-field appearance="fill">
+              <mat-label>Broj telefona</mat-label>
+              <input matInput formControlName="phone" placeholder="381612345678" required />
+              <mat-hint>Format: 8-15 cifara (npr. 381612345678)</mat-hint>
+              <mat-error *ngIf="basicForm.controls.phone.hasError('required')">
+                Broj telefona je obavezan
+              </mat-error>
+              <mat-error *ngIf="basicForm.controls.phone.hasError('pattern')">
+                Unesite ispravan broj telefona (8-15 cifara)
+              </mat-error>
+            </mat-form-field>
+
+            <mat-form-field appearance="fill">
+              <mat-label>Datum rođenja</mat-label>
+              <input
+                matInput
+                type="date"
+                lang="en-GB"
+                formControlName="dateOfBirth"
+                [max]="maxDateOfBirth() | date: 'yyyy-MM-dd'"
+                required
+              />
+              <mat-hint>Morate imati najmanje 21 godinu</mat-hint>
+              <mat-error *ngIf="basicForm.controls.dateOfBirth.hasError('required')">
+                Datum rođenja je obavezan
+              </mat-error>
+              <mat-error *ngIf="basicForm.controls.dateOfBirth.hasError('futureDate')">
+                Datum ne može biti u budućnosti
+              </mat-error>
+              <mat-error *ngIf="basicForm.controls.dateOfBirth.hasError('minAge')">
+                Morate imati najmanje 21 godinu
+              </mat-error>
+            </mat-form-field>
+
+            <mat-checkbox formControlName="confirmsAgeEligibility" class="age-checkbox" required>
+              Potvrđujem da imam 21 godinu ili više
+            </mat-checkbox>
+            <mat-error
+              *ngIf="
+                basicForm.controls.confirmsAgeEligibility.touched &&
+                basicForm.controls.confirmsAgeEligibility.invalid
+              "
+              class="checkbox-error"
+            >
+              Morate potvrditi da imate 21 godinu ili više
+            </mat-error>
+
+            <div class="step-actions">
+              <button mat-stroked-button routerLink="/auth/login" type="button">Odustani</button>
+              <button mat-raised-button color="primary" matStepperNext type="button">
+                Dalje
+                <mat-icon iconPositionEnd>arrow_forward</mat-icon>
+              </button>
+            </div>
+          </form>
+        </mat-step>
+
+        <!-- ═══════════════════════════════════════════════════════════════════════════ -->
+        <!-- STEP 2: Owner Information (only for owner registration) -->
+        <!-- ═══════════════════════════════════════════════════════════════════════════ -->
+        @if (isOwnerRegistration) {
+          <mat-step [stepControl]="ownerForm" label="Podaci o poslovanju">
+            <form [formGroup]="ownerForm" class="step-form">
+              <div class="step-intro">
+                <mat-icon>business</mat-icon>
+                <div>
+                  <h3>Podaci o poslovanju</h3>
+                  <p>Izaberite tip domaćina i unesite identifikacione podatke.</p>
+                </div>
+              </div>
+
+              <mat-radio-group
+                formControlName="ownerType"
+                (change)="onOwnerTypeChange($event.value)"
+                class="owner-type-group"
+              >
+                <mat-radio-button value="INDIVIDUAL">
+                  <div class="radio-label">
+                    <strong>Fizičko lice</strong>
+                    <span>Samozaposleni, lični vlasnik vozila</span>
+                  </div>
+                </mat-radio-button>
+                <mat-radio-button value="LEGAL_ENTITY">
+                  <div class="radio-label">
+                    <strong>Pravno lice</strong>
+                    <span>Kompanija, flota vozila</span>
+                  </div>
+                </mat-radio-button>
+              </mat-radio-group>
+
+              <!-- JMBG Field (Individual only) -->
+              @if (ownerType() === 'INDIVIDUAL') {
+                <mat-form-field appearance="fill">
+                  <mat-label>JMBG (Jedinstveni matični broj građana)</mat-label>
+                  <input
+                    matInput
+                    formControlName="jmbg"
+                    maxlength="13"
+                    placeholder="1234567890123"
+                    required
+                  />
+                  <mat-hint>13 cifara - vaš jedinstveni identifikacioni broj</mat-hint>
+                  <mat-error *ngIf="ownerForm.controls.jmbg.hasError('required')">
+                    JMBG je obavezan
+                  </mat-error>
+                  <mat-error *ngIf="ownerForm.controls.jmbg.hasError('pattern')">
+                    JMBG mora imati tačno 13 cifara
+                  </mat-error>
+                  <mat-error *ngIf="ownerForm.controls.jmbg.hasError('jmbgInvalid')">
+                    Nevažeći JMBG - proverite kontrolnu cifru
+                  </mat-error>
+                </mat-form-field>
+
+                <mat-form-field appearance="fill">
+                  <mat-label>Broj bankovnog računa (IBAN) - opciono</mat-label>
+                  <input
+                    matInput
+                    formControlName="bankAccountNumber"
+                    maxlength="24"
+                    placeholder="RS35000000000000000000"
+                  />
+                  <mat-hint>Srpski IBAN format: RS + 22 cifre</mat-hint>
+                  <mat-error *ngIf="ownerForm.controls.bankAccountNumber.hasError('ibanFormat')">
+                    Neispravan IBAN format (RS + 22 cifre)
+                  </mat-error>
+                  <mat-error *ngIf="ownerForm.controls.bankAccountNumber.hasError('ibanInvalid')">
+                    Nevažeći IBAN - proverite broj
+                  </mat-error>
+                </mat-form-field>
+              }
+
+              <!-- PIB and Bank Fields (Legal Entity only) -->
+              @if (ownerType() === 'LEGAL_ENTITY') {
+                <mat-form-field appearance="fill">
+                  <mat-label>PIB (Poreski identifikacioni broj)</mat-label>
+                  <input
+                    matInput
+                    formControlName="pib"
+                    maxlength="9"
+                    placeholder="123456789"
+                    required
+                  />
+                  <mat-hint>9 cifara - poreski identifikacioni broj kompanije</mat-hint>
+                  <mat-error *ngIf="ownerForm.controls.pib.hasError('required')">
+                    PIB je obavezan
+                  </mat-error>
+                  <mat-error *ngIf="ownerForm.controls.pib.hasError('pattern')">
+                    PIB mora imati tačno 9 cifara
+                  </mat-error>
+                  <mat-error *ngIf="ownerForm.controls.pib.hasError('pibInvalid')">
+                    Nevažeći PIB - proverite kontrolnu cifru
+                  </mat-error>
+                </mat-form-field>
+
+                <mat-form-field appearance="fill">
+                  <mat-label>Broj bankovnog računa (IBAN)</mat-label>
+                  <input
+                    matInput
+                    formControlName="bankAccountNumber"
+                    maxlength="24"
+                    placeholder="RS35000000000000000000"
+                    required
+                  />
+                  <mat-hint>Srpski IBAN format: RS + 22 cifre (obavezno za pravna lica)</mat-hint>
+                  <mat-error *ngIf="ownerForm.controls.bankAccountNumber.hasError('required')">
+                    Broj računa je obavezan za pravna lica
+                  </mat-error>
+                  <mat-error *ngIf="ownerForm.controls.bankAccountNumber.hasError('ibanFormat')">
+                    Neispravan IBAN format (RS + 22 cifre)
+                  </mat-error>
+                  <mat-error *ngIf="ownerForm.controls.bankAccountNumber.hasError('ibanInvalid')">
+                    Nevažeći IBAN - proverite broj
+                  </mat-error>
+                </mat-form-field>
+              }
+
+              <!-- Agreement Checkboxes -->
+              <div class="agreements-section">
+                <h4>Uslovi korišćenja</h4>
+
+                <mat-checkbox formControlName="agreesToHostAgreement" required>
+                  Slažem se sa
+                  <a href="/terms/host-agreement" target="_blank">Domaćinovim sporazumom</a>
+                </mat-checkbox>
+                <mat-error
+                  *ngIf="
+                    ownerForm.controls.agreesToHostAgreement.touched &&
+                    ownerForm.controls.agreesToHostAgreement.invalid
+                  "
+                  class="checkbox-error"
+                >
+                  Morate prihvatiti Domaćinov sporazum
+                </mat-error>
+
+                <mat-checkbox formControlName="confirmsVehicleInsurance" required>
+                  Potvrđujem da moje vozilo ima važeće osiguranje
+                </mat-checkbox>
+                <mat-error
+                  *ngIf="
+                    ownerForm.controls.confirmsVehicleInsurance.touched &&
+                    ownerForm.controls.confirmsVehicleInsurance.invalid
+                  "
+                  class="checkbox-error"
+                >
+                  Morate potvrditi da vozilo ima osiguranje
+                </mat-error>
+
+                <mat-checkbox formControlName="confirmsVehicleRegistration" required>
+                  Potvrđujem da je vozilo registrovano na moje ime
+                </mat-checkbox>
+                <mat-error
+                  *ngIf="
+                    ownerForm.controls.confirmsVehicleRegistration.touched &&
+                    ownerForm.controls.confirmsVehicleRegistration.invalid
+                  "
+                  class="checkbox-error"
+                >
+                  Morate potvrditi vlasništvo vozila
+                </mat-error>
+              </div>
+
+              <div class="step-actions">
+                <button mat-stroked-button matStepperPrevious type="button">
+                  <mat-icon>arrow_back</mat-icon>
+                  Nazad
+                </button>
+                <button mat-raised-button color="primary" matStepperNext type="button">
+                  Dalje
+                  <mat-icon iconPositionEnd>arrow_forward</mat-icon>
+                </button>
+              </div>
+            </form>
+          </mat-step>
+        }
+
+        <!-- ═══════════════════════════════════════════════════════════════════════════ -->
+        <!-- STEP 3: Review & Confirm -->
+        <!-- ═══════════════════════════════════════════════════════════════════════════ -->
+        <mat-step [stepControl]="confirmForm" label="Potvrda">
+          <form [formGroup]="confirmForm" class="step-form" (ngSubmit)="submit()">
+            <div class="step-intro">
+              <mat-icon>check_circle</mat-icon>
+              <div>
+                <h3>Pregled podataka</h3>
+                <p>Proverite unete podatke pre završetka registracije.</p>
+              </div>
+            </div>
+
+            <div class="summary-card">
+              <h4>Vaši podaci</h4>
+
+              <div class="summary-row">
+                <span class="summary-label">Ime:</span>
+                <span class="summary-value">{{ getSummaryData().firstName }}</span>
+              </div>
+
+              <div class="summary-row">
+                <span class="summary-label">Prezime:</span>
+                <span class="summary-value">{{ getSummaryData().lastName }}</span>
+              </div>
+
+              <div class="summary-row">
+                <span class="summary-label">Email:</span>
+                <span class="summary-value">{{ getSummaryData().email }}</span>
+              </div>
+
+              <div class="summary-row">
+                <span class="summary-label">Telefon:</span>
+                <span class="summary-value">{{ getSummaryData().phone }}</span>
+              </div>
+
+              <div class="summary-row">
+                <span class="summary-label">Datum rođenja:</span>
+                <span class="summary-value">{{
+                  getSummaryData().dateOfBirth | date: 'dd.MM.yyyy.'
+                }}</span>
+              </div>
+
+              @if (isOwnerRegistration) {
+                <div class="summary-divider"></div>
+
+                <div class="summary-row">
+                  <span class="summary-label">Tip domaćina:</span>
+                  <span class="summary-value">
+                    {{
+                      getSummaryData().ownerType === 'INDIVIDUAL' ? 'Fizičko lice' : 'Pravno lice'
+                    }}
+                  </span>
+                </div>
+
+                <div class="summary-row">
+                  <span class="summary-label">Identifikacija:</span>
+                  <span class="summary-value">
+                    @if (getSummaryData().hasJmbg) {
+                      JMBG unesen ✓
+                    } @else if (getSummaryData().hasPib) {
+                      PIB unesen ✓
+                    }
+                  </span>
+                </div>
+
+                @if (getSummaryData().hasBankAccount) {
+                  <div class="summary-row">
+                    <span class="summary-label">Bankovni račun:</span>
+                    <span class="summary-value">IBAN unesen ✓</span>
+                  </div>
+                }
+              }
+            </div>
+
+            <mat-checkbox formControlName="confirmsDataCorrect" class="confirm-checkbox" required>
+              Potvrđujem da su svi uneti podaci tačni i ispravni
+            </mat-checkbox>
+            <mat-error
+              *ngIf="
+                confirmForm.controls.confirmsDataCorrect.touched &&
+                confirmForm.controls.confirmsDataCorrect.invalid
+              "
+              class="checkbox-error"
+            >
+              Morate potvrditi tačnost podataka
+            </mat-error>
+
+            <div class="step-actions">
+              <button mat-stroked-button matStepperPrevious type="button">
+                <mat-icon>arrow_back</mat-icon>
+                Nazad
+              </button>
+              <button mat-raised-button color="primary" type="submit" [disabled]="isSubmitting()">
+                @if (isSubmitting()) {
+                  <mat-spinner diameter="20"></mat-spinner>
+                } @else {
+                  <mat-icon>check</mat-icon>
+                  Završi registraciju
+                }
+              </button>
+            </div>
+          </form>
+        </mat-step>
+      </mat-stepper>
+    </mat-card>
+  }
+</section>

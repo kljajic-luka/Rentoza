@@ -1,0 +1,35 @@
+.kpi-card {
+  height: 100%;
+  border-radius: 18px;
+  box-shadow: var(--shadow-elevated);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+
+  &.clickable {
+    cursor: pointer;
+
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-elevated), 0 4px 12px rgba(0, 0, 0, 0.08);
+    }
+  }
+}
+
+.metric-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  justify-content: center;
+  align-items: center;
+  display: inline-flex;
+}
+
+.icon-info { background: rgba(89, 60, 251, 0.14); color: var(--brand-primary-dark); }
+.icon-success { background: rgba(16, 185, 129, 0.16); color: #047857; }
+.icon-warn { background: rgba(249, 115, 22, 0.16); color: #c2410c; }
+.icon-accent { background: rgba(129, 140, 248, 0.18); color: #4338ca; }
+.icon-neutral { background: rgba(148, 163, 184, 0.16); color: #475569; }
+
+.trend-icon { font-size: var(--font-size-base); vertical-align: middle; }
+.trend-up { color: #047857; display: inline-flex; align-items: center; gap: 4px; }
+.trend-down { color: #b91c1c; display: inline-flex; align-items: center; gap: 4px; }
+.trend-neutral { color: var(--color-text-muted); display: inline-flex; align-items: center; gap: 4px; }

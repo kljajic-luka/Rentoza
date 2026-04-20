@@ -1,0 +1,118 @@
+package org.example.rentoza.config;
+
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.cache.CacheManager;
+import org.springframework.cache.annotation.EnableCaching;
+import org.springframework.cache.concurrent.ConcurrentMapCache;
+import org.springframework.cache.support.SimpleCacheManager;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.CacheControl;
+import org.springframework.web.filter.ShallowEtagHeaderFilter;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+
+import java.util.Arrays;
+import java.util.concurrent.TimeUnit;
+
+/**
+ * Caching configuration for Rentoza application
+ * Enables HTTP caching with ETag support and in-memory application caching
+ */
+@Configuration
+@EnableCaching
+public class CachingConfig implements WebMvcConfigurer {
+
+    /**
+     * ETag filter for automatic HTTP caching
+     * Generates ETags for GET requests to enable conditional requests
+     */
+    @Bean
+    public ShallowEtagHeaderFilter shallowEtagHeaderFilter() {
+        return new ShallowEtagHeaderFilter();
+    }
+
+    /**
+     * Cache manager for application-level caching
+     * Caches frequently accessed data like car features, makes, and search results
+     */
+    @Bean
+    @ConditionalOnProperty(name = "app.redis.enabled", havingValue = "false", matchIfMissing = true)
+    public CacheManager cacheManager() {
+        SimpleCacheManager cacheManager = new SimpleCacheManager();
+        cacheManager.setCaches(Arrays.asList(
+            // Car data caches
+            new ConcurrentMapCache("cars"),           // Individual car details
+            new ConcurrentMapCache("carSearch"),      // Search results (short TTL)
+            new ConcurrentMapCache("carFeatures"),    // Static feature list
+            new ConcurrentMapCache("carMakes"),       // Available car makes
+            
+            // User data caches
+            new ConcurrentMapCache("users"),
+            new ConcurrentMapCache("userProfiles"),
+            
+            // Booking data caches
+            new ConcurrentMapCache("bookings"),
+            new ConcurrentMapCache("bookingAvailability"), // Public calendar slots per car
+
+            // Review data caches
+            new ConcurrentMapCache("reviews"),
+            new ConcurrentMapCache("userRatings"),       // Aggregate rating per user
+
+            // Admin data caches
+            new ConcurrentMapCache("adminMetrics"),   // Dashboard KPIs (5min TTL)
+            new ConcurrentMapCache("adminSettings"),  // Admin settings singleton
+
+            // Photo signed URLs (fallback when Redis is disabled)
+            new ConcurrentMapCache("photoSignedUrls"),
+
+            // Check-in caches (CQRS read model fallback)
+            new ConcurrentMapCache("checkin-status"),
+            new ConcurrentMapCache("checkin-photos"),
+            new ConcurrentMapCache("checkin-status-minimal"),
+            new ConcurrentMapCache("checkin-dashboard"),
+
+            // Rate limiting & idempotency (gracefully degrade to no-op in local dev)
+            new ConcurrentMapCache("rate-limits"),
+            new ConcurrentMapCache("idempotency"),
+
+            // Geocoding caches (Phase 2.4)
+            new ConcurrentMapCache("geocodeCache"),
+            new ConcurrentMapCache("reverseGeocodeCache"),
+            new ConcurrentMapCache("osrmRouting"),
+            new ConcurrentMapCache("osrm-routes")
+        ));
+        return cacheManager;
+    }
+
+
+
+    /**
+     * Default cache control settings for static resources
+     * Can be used in controllers via @ResponseBody annotations
+     */
+    public static CacheControl defaultCacheControl() {
+        return CacheControl.maxAge(1, TimeUnit.HOURS)
+                .mustRevalidate()
+                .cachePublic();
+    }
+
+    /**
+     * Cache control for frequently changing data
+     * Short TTL with revalidation
+     */
+    public static CacheControl shortCacheControl() {
+        return CacheControl.maxAge(5, TimeUnit.MINUTES)
+                .mustRevalidate()
+                .cachePrivate();
+    }
+
+    /**
+     * Cache control for static/immutable data
+     * Long TTL without revalidation
+     */
+    public static CacheControl longCacheControl() {
+        return CacheControl.maxAge(24, TimeUnit.HOURS)
+                .cachePublic()
+                .immutable();
+    }
+}

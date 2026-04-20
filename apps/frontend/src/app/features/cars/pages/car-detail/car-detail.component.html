@@ -1,0 +1,457 @@
+<ng-container *ngIf="vm$ | async as vm; else loading">
+  <section class="car-detail">
+    <div class="car-detail__header">
+      <div class="car-detail__intro">
+        <p class="eyebrow">Ekskluzivna ponuda</p>
+        <div class="car-detail__title-row">
+          <h1 class="car-detail__title">{{ vm.car.make }} {{ vm.car.model }}</h1>
+          <mat-chip *ngIf="!vm.car.available" color="warn" class="unavailable-chip">
+            <mat-icon>block</mat-icon>
+            Nedostupno
+          </mat-chip>
+          <app-favorite-button
+            *ngIf="!(isOwner$ | async)"
+            [carId]="+vm.car.id"
+          ></app-favorite-button>
+        </div>
+        <p class="subtitle">{{ vm.car.year }} • {{ vm.car.location }}</p>
+      </div>
+      <div class="car-detail__price">
+        <span>{{ vm.car.pricePerDay | currency: 'RSD' : 'symbol' : '1.0-0' }}</span>
+        <small>po danu</small>
+      </div>
+    </div>
+
+    <!-- Two-column layout: Gallery + Booking -->
+    <div class="car-detail__gallery-wrapper">
+      <mat-card class="car-detail__gallery">
+        <div
+          class="gallery__media"
+          (click)="openFullscreenViewer(vm.car)"
+          (swipeleft)="nextImage(vm.car)"
+          (swiperight)="previousImage(vm.car)"
+        >
+          @if (getCurrentImage(vm.car); as currentImage) {
+            <img
+              [src]="currentImage"
+              [alt]="vm.car.make + ' ' + vm.car.model"
+              loading="lazy"
+              class="gallery__image"
+              (error)="handleImageError($event)"
+            />
+
+            @if (getCarImages(vm.car).length > 1) {
+              <button
+                mat-icon-button
+                class="gallery__nav-button gallery__nav-button--left"
+                (click)="previousImage(vm.car, $event)"
+                aria-label="Previous image"
+              >
+                <mat-icon>chevron_left</mat-icon>
+              </button>
+
+              <button
+                mat-icon-button
+                class="gallery__nav-button gallery__nav-button--right"
+                (click)="nextImage(vm.car, $event)"
+                aria-label="Next image"
+              >
+                <mat-icon>chevron_right</mat-icon>
+              </button>
+
+              <div class="gallery__image-counter">
+                {{ currentImageIndex() + 1 }} / {{ getCarImages(vm.car).length }}
+              </div>
+            }
+
+            <div class="gallery__click-hint">
+              <mat-icon>fullscreen</mat-icon>
+              <span>Kliknite za prikaz</span>
+            </div>
+          } @else {
+            <div class="gallery__placeholder">
+              <mat-icon>directions_car</mat-icon>
+            </div>
+          }
+        </div>
+        <div class="gallery__details">
+          <p>{{ vm.car.description || 'Bez opisa.' }}</p>
+          <div class="gallery__meta">
+            <div>
+              <span class="meta-label">Ocena</span>
+              <span class="meta-value">{{ vm.car.rating || 'Još nema ocena' }}</span>
+            </div>
+            <div>
+              <span class="meta-label">Lokacija</span>
+              <span class="meta-value">{{ vm.car.location }}</span>
+            </div>
+          </div>
+        </div>
+      </mat-card>
+
+      <!-- Booking Card - Sticky on Desktop (hidden for owners and inactive cars) -->
+      <ng-container *ngIf="vm.car.available && !(isOwner$ | async); else inactiveNotice">
+        <ng-container *ngIf="isAuthenticated$ | async as user; else guestBooking">
+          <mat-card class="car-detail__booking">
+            <mat-card-header>
+              <div class="booking__title">
+                <mat-card-title>Zahtev za rezervaciju</mat-card-title>
+                <mat-card-subtitle>
+                  Izaberite datume putovanja, a domaćin će biti obavešten.
+                </mat-card-subtitle>
+              </div>
+            </mat-card-header>
+
+            <mat-card-content>
+              <div class="booking-action">
+                <button
+                  mat-raised-button
+                  color="primary"
+                  (click)="openBookingDialog(vm.car)"
+                  class="booking-button"
+                >
+                  <mat-icon>event_available</mat-icon>
+                  <span>Rezerviši vozilo</span>
+                </button>
+                <p class="booking-hint">
+                  Kliknite da biste odabrali datume i opcije za rezervaciju
+                </p>
+              </div>
+            </mat-card-content>
+          </mat-card>
+        </ng-container>
+        <ng-template #guestBooking>
+          <mat-card class="car-detail__booking car-detail__booking--guest">
+            <mat-card-header>
+              <div class="booking__title">
+                <mat-card-title>Prijavite se da biste rezervisali</mat-card-title>
+                <mat-card-subtitle>
+                  Kreirajte nalog ili se prijavite da biste poslali zahtev za rezervaciju.
+                </mat-card-subtitle>
+              </div>
+            </mat-card-header>
+            <mat-card-content class="booking-guest__content">
+              <p>Potrebno je da budete prijavljeni kako biste napravili rezervaciju ovog vozila.</p>
+              <a
+                mat-stroked-button
+                color="primary"
+                [routerLink]="['/auth/login']"
+                [queryParams]="loginQueryParams()"
+              >
+                Prijavite se
+              </a>
+            </mat-card-content>
+          </mat-card>
+        </ng-template>
+      </ng-container>
+
+      <ng-template #inactiveNotice>
+        <mat-card
+          *ngIf="!(isOwner$ | async)"
+          class="car-detail__booking car-detail__booking--inactive"
+        >
+          <mat-card-header>
+            <div class="booking__title">
+              <mat-card-title>
+                <mat-icon>block</mat-icon>
+                Ovo vozilo trenutno nije dostupno
+              </mat-card-title>
+              <mat-card-subtitle>
+                Domaćin je privremeno deaktivirao vozilo. Pokušajte kasnije ili izaberite drugo.
+              </mat-card-subtitle>
+            </div>
+          </mat-card-header>
+        </mat-card>
+      </ng-template>
+    </div>
+
+    <!-- Full-width sections below -->
+    <div class="car-detail__grid">
+      <!-- Key Specifications Section -->
+      <mat-card class="car-detail__specs">
+        <mat-card-header>
+          <mat-card-title>Ključne specifikacije</mat-card-title>
+        </mat-card-header>
+        <mat-card-content>
+          <div class="specs-grid">
+            <!-- Basic Specs -->
+            <div class="spec-item" *ngIf="vm.car.seats">
+              <mat-icon>event_seat</mat-icon>
+              <div class="spec-content">
+                <span class="spec-label">Broj sedišta</span>
+                <span class="spec-value">{{ vm.car.seats }}</span>
+              </div>
+            </div>
+            <div class="spec-item" *ngIf="vm.car.transmissionType">
+              <mat-icon>settings</mat-icon>
+              <div class="spec-content">
+                <span class="spec-label">Menjač</span>
+                <span class="spec-value">{{ vm.car.transmissionType | translateEnum }}</span>
+              </div>
+            </div>
+            <div class="spec-item" *ngIf="vm.car.fuelType">
+              <mat-icon>local_gas_station</mat-icon>
+              <div class="spec-content">
+                <span class="spec-label">Gorivo</span>
+                <span class="spec-value">{{ vm.car.fuelType | translateEnum }}</span>
+              </div>
+            </div>
+            <div class="spec-item" *ngIf="vm.car.fuelConsumption">
+              <mat-icon>speed</mat-icon>
+              <div class="spec-content">
+                <span class="spec-label">Potrošnja</span>
+                <span class="spec-value">{{ vm.car.fuelConsumption }} L/100km</span>
+              </div>
+            </div>
+
+            <!-- Additional Specs -->
+            <div class="spec-item" *ngIf="vm.car.year">
+              <mat-icon>calendar_today</mat-icon>
+              <div class="spec-content">
+                <span class="spec-label">Godište</span>
+                <span class="spec-value">{{ vm.car.year }}</span>
+              </div>
+            </div>
+            <div class="spec-item" *ngIf="vm.car.cancellationPolicy">
+              <mat-icon>event_available</mat-icon>
+              <div class="spec-content">
+                <span class="spec-label">Politika otkazivanja</span>
+                <span class="spec-value">{{ vm.car.cancellationPolicy | translateEnum }}</span>
+              </div>
+            </div>
+            <div class="spec-item" *ngIf="vm.car.minRentalDays">
+              <mat-icon>schedule</mat-icon>
+              <div class="spec-content">
+                <span class="spec-label">Minimalno dana</span>
+                <span class="spec-value">{{ vm.car.minRentalDays }}</span>
+              </div>
+            </div>
+            <div class="spec-item" *ngIf="vm.car.maxRentalDays">
+              <mat-icon>date_range</mat-icon>
+              <div class="spec-content">
+                <span class="spec-label">Maksimalno dana</span>
+                <span class="spec-value">{{ vm.car.maxRentalDays }}</span>
+              </div>
+            </div>
+
+            <!-- Add-ons as feature grid (full-width item) -->
+            <div
+              class="spec-item spec-item--full-width"
+              *ngIf="vm.car.addOns && vm.car.addOns.length > 0"
+            >
+              <mat-icon>playlist_add_check</mat-icon>
+              <div class="spec-content">
+                <span class="spec-label">Dodatna oprema</span>
+                <div class="addon-grid">
+                  <span class="addon-item" *ngFor="let addon of vm.car.addOns">
+                    <mat-icon class="addon-check">check</mat-icon>
+                    {{ addon }}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </mat-card-content>
+      </mat-card>
+
+      <!-- Features Section - Modern Minimalist Grid -->
+      <mat-card
+        class="car-detail__features"
+        *ngIf="categorizeFeatures(vm.car.features) as categorized"
+      >
+        <mat-card-header>
+          <mat-card-title>Oprema i karakteristike</mat-card-title>
+        </mat-card-header>
+        <mat-card-content>
+          <!-- Safety Features -->
+          <div class="feature-category" *ngIf="categorized.safety.length">
+            <h3 class="category-title">
+              <mat-icon>security</mat-icon>
+              Sigurnost
+            </h3>
+            <div class="feature-grid">
+              <div class="feature-item" *ngFor="let feature of categorized.safety">
+                <mat-icon class="feature-check">check</mat-icon>
+                <span>{{ feature | translateEnum }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Connectivity Features -->
+          <div class="feature-category" *ngIf="categorized.connectivity.length">
+            <h3 class="category-title">
+              <mat-icon>bluetooth</mat-icon>
+              Povezivost
+            </h3>
+            <div class="feature-grid">
+              <div class="feature-item" *ngFor="let feature of categorized.connectivity">
+                <mat-icon class="feature-check">check</mat-icon>
+                <span>{{ feature | translateEnum }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Comfort Features -->
+          <div class="feature-category" *ngIf="categorized.comfort.length">
+            <h3 class="category-title">
+              <mat-icon>airline_seat_recline_extra</mat-icon>
+              Udobnost
+            </h3>
+            <div class="feature-grid">
+              <div class="feature-item" *ngFor="let feature of categorized.comfort">
+                <mat-icon class="feature-check">check</mat-icon>
+                <span>{{ feature | translateEnum }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Additional Features -->
+          <div class="feature-category" *ngIf="categorized.additional.length">
+            <h3 class="category-title">
+              <mat-icon>add_circle</mat-icon>
+              Dodatno
+            </h3>
+            <div class="feature-grid">
+              <div class="feature-item" *ngFor="let feature of categorized.additional">
+                <mat-icon class="feature-check">check</mat-icon>
+                <span>{{ feature | translateEnum }}</span>
+              </div>
+            </div>
+          </div>
+        </mat-card-content>
+      </mat-card>
+
+      <!-- Rental Information Section -->
+      <mat-card class="car-detail__rental-info">
+        <mat-card-header>
+          <mat-card-title>Informacije o iznajmljivanju</mat-card-title>
+        </mat-card-header>
+        <mat-card-content>
+          <div class="rental-info-grid">
+            <div class="info-item">
+              <mat-icon>event_available</mat-icon>
+              <div class="info-content">
+                <span class="info-label">Politika otkazivanja</span>
+                <span class="info-value">{{ vm.car.cancellationPolicy | translateEnum }}</span>
+              </div>
+            </div>
+            <div class="info-item" *ngIf="vm.car.minRentalDays">
+              <mat-icon>calendar_today</mat-icon>
+              <div class="info-content">
+                <span class="info-label">Minimalno dana</span>
+                <span class="info-value">{{ vm.car.minRentalDays }}</span>
+              </div>
+            </div>
+            <div class="info-item" *ngIf="vm.car.maxRentalDays">
+              <mat-icon>date_range</mat-icon>
+              <div class="info-content">
+                <span class="info-label">Maksimalno dana</span>
+                <span class="info-value">{{ vm.car.maxRentalDays }}</span>
+              </div>
+            </div>
+          </div>
+        </mat-card-content>
+      </mat-card>
+
+      <!-- Rental Rules Section -->
+      <mat-card class="car-detail__rules">
+        <mat-card-header>
+          <mat-card-title>Pravila iznajmljivanja</mat-card-title>
+        </mat-card-header>
+        <mat-card-content>
+          <ul class="rules-list">
+            <li *ngFor="let rule of rentalRules">
+              <mat-icon>check_circle</mat-icon>
+              <span>{{ rule }}</span>
+            </li>
+          </ul>
+        </mat-card-content>
+      </mat-card>
+
+      <!-- Owner Information Section -->
+      <mat-card class="car-detail__owner" *ngIf="vm.car.ownerId">
+        <mat-card-header>
+          <mat-card-title>Informacije o vlasniku</mat-card-title>
+        </mat-card-header>
+        <mat-card-content>
+          <div class="owner-info" (click)="goToOwnerProfile(vm.car.ownerId)">
+            <div class="owner-avatar">
+              <img
+                *ngIf="vm.car.ownerAvatarUrl"
+                [src]="vm.car.ownerAvatarUrl"
+                alt="Owner Avatar"
+                class="owner-avatar__img"
+              />
+              <mat-icon *ngIf="!vm.car.ownerAvatarUrl">person</mat-icon>
+            </div>
+            <div class="owner-details">
+              <p class="owner-name">{{ vm.car.ownerFirstName }} {{ vm.car.ownerLastInitial }}</p>
+              <p class="owner-meta">
+                {{ vm.car.ownerJoinDate }}
+              </p>
+              <div class="owner-stats">
+                <span *ngIf="vm.car.ownerRating">
+                  {{ vm.car.ownerRating | number: '1.1-1' }}
+                  <mat-icon class="star-icon">star</mat-icon>
+                </span>
+                <span *ngIf="vm.car.ownerTripCount !== undefined">
+                  {{ vm.car.ownerTripCount }} putovanja
+                </span>
+              </div>
+            </div>
+            <mat-icon class="chevron-icon">chevron_right</mat-icon>
+          </div>
+        </mat-card-content>
+      </mat-card>
+    </div>
+  </section>
+
+  <section class="reviews">
+    <header>
+      <div>
+        <p class="eyebrow">Utisci vozača</p>
+        <h2>Šta su korisnici najviše voleli kod ovog vozila</h2>
+      </div>
+      <span class="pill">Broj recenzija: {{ vm.reviews.length }} </span>
+    </header>
+
+    <ng-container *ngIf="vm.reviews.length; else noReviews">
+      <mat-card *ngFor="let review of vm.reviews; trackBy: trackReviewById" class="review-card">
+        <mat-card-header>
+          <div mat-card-avatar class="review-avatar">
+            {{
+              review.reviewerFirstName
+                ? review.reviewerFirstName[0]
+                : review.reviewerLastName
+                  ? review.reviewerLastName[0]
+                  : 'R'
+            }}
+          </div>
+          <mat-card-title>
+            {{
+              review.reviewerFirstName || review.reviewerLastName
+                ? (review.reviewerFirstName || '') + ' ' + (review.reviewerLastName || '')
+                : 'Anonimni korisnik'
+            }}
+          </mat-card-title>
+          <mat-card-subtitle>
+            {{ review.createdAt | date: 'mediumDate' }}
+            • Ocena: {{ review.rating }}/5
+          </mat-card-subtitle>
+        </mat-card-header>
+
+        <mat-card-content>
+          <p>{{ review.comment }}</p>
+        </mat-card-content>
+      </mat-card>
+    </ng-container>
+
+    <ng-template #noReviews>
+      <p class="muted">Još nema recenzija. Budite prvi koji će oceniti ovo vozilo.</p>
+    </ng-template>
+  </section>
+</ng-container>
+
+<ng-template #loading>
+  <app-loading-skeleton type="block" />
+</ng-template>

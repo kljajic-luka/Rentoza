@@ -1,0 +1,1178 @@
+import { Injectable, Injector, isDevMode } from '@angular/core';
+import { HttpClient, HttpContext, HttpErrorResponse } from '@angular/common/http';
+import {
+  BehaviorSubject,
+  Observable,
+  Subject,
+  catchError,
+  finalize,
+  filter,
+  firstValueFrom,
+  map,
+  of,
+  switchMap,
+  take,
+  tap,
+  throwError,
+} from 'rxjs';
+
+import { environment } from '@environments/environment';
+import {
+  AuthResponse,
+  LoginRequest,
+  RegisterRequest,
+  UserRegisterRequest,
+  OwnerRegisterRequest,
+  GoogleOAuthCompletionRequest,
+  GoogleAuthInitResponse,
+  SupabaseGoogleCallbackResponse,
+  RegistrationStatus,
+  OwnerType,
+} from '@core/models/auth.model';
+import { UserProfile } from '@core/models/user.model';
+import { LOCALSTORAGE_ACCESS_TOKEN, LOCALSTORAGE_CURRENT_USER } from '@core/auth/cookie.constants';
+import { UserRole } from '@core/models/user-role.type';
+import { SKIP_AUTH } from './auth.tokens';
+
+/**
+ * Raw backend user shape that may include a single `role` string
+ * alongside the standard profile fields. Used to normalize the
+ * auth response into a proper UserProfile in persistSession().
+ */
+interface RawBackendUser {
+  id: string | number;
+  email: string;
+  firstName: string;
+  lastName: string;
+  phone?: string;
+  age?: number;
+  avatarUrl?: string;
+  role?: string;
+  roles?: UserRole[];
+  registrationStatus?: RegistrationStatus;
+  ownerType?: OwnerType;
+}
+
+/**
+ * Shape returned by GET /api/users/me.
+ */
+interface BackendUserMeResponse {
+  authenticated: boolean;
+  id: string | number;
+  email: string;
+  firstName: string;
+  lastName: string;
+  phone?: string;
+  age?: number;
+  avatarUrl?: string;
+  roles: UserRole[] | string;
+  registrationStatus?: string;
+  ownerType?: string;
+}
+
+@Injectable({ providedIn: 'root' })
+export class AuthService {
+  private readonly apiUrl = `${environment.baseApiUrl}/auth`;
+  private readonly accessTokenSubject = new BehaviorSubject<string | null>(null);
+  private readonly currentUserSubject = new BehaviorSubject<UserProfile | null>(null);
+  private readonly refreshSubject = new BehaviorSubject<string | null>(null);
+  private readonly sessionExpiredSubject = new Subject<void>();
+  private isRefreshing = false;
+  private tokenWatcherInterval: ReturnType<typeof setInterval> | null = null;
+  private favoritesLoadedForSession = false;
+
+  /**
+   * SECURITY FIX: Track whether we've had a successful session.
+   * Only emit sessionExpired$ if there was a previous active session.
+   * This prevents showing "session expired" toast when a user visits
+   * the site for the first time without any cookies.
+   */
+  private hasHadActiveSession = false;
+
+  /**
+   * Reason why the session ended. Read by layout component to show
+   * context-specific toast messages (e.g., eviction vs natural expiry).
+   *
+   * Values:
+   * - 'expired': Token expired naturally or was invalidated
+   * - 'evicted': Session ended because user signed in on another device
+   * - 'security': Token revoked due to suspicious activity
+   */
+  private _sessionEndReason: 'expired' | 'evicted' | 'security' = 'expired';
+  get sessionEndReason(): 'expired' | 'evicted' | 'security' {
+    return this._sessionEndReason;
+  }
+
+  readonly currentUser$ = this.currentUserSubject.asObservable();
+  readonly accessToken$ = this.accessTokenSubject.asObservable();
+  readonly sessionExpired$ = this.sessionExpiredSubject.asObservable();
+
+  constructor(
+    private readonly http: HttpClient,
+    private readonly injector: Injector,
+  ) {}
+
+  /**
+   * SECURITY HARDENING: Cookie-only authentication is now mandatory.
+   * localStorage fallback has been completely removed.
+   *
+   * This method is kept for backward compatibility but always returns true.
+   * @deprecated Will be removed in next major version
+   */
+  private shouldUseCookies(): boolean {
+    // KILL SWITCH: Cookies are MANDATORY. No localStorage fallback.
+    return true;
+  }
+
+  /**
+   * Invoked during app bootstrap to silently restore a session using the refresh cookie.
+   *
+   * SECURITY HARDENING: This method now exclusively uses cookie-based authentication.
+   * No localStorage is involved - the browser automatically sends HttpOnly cookies.
+   */
+  async initializeSession(): Promise<void> {
+    if (isDevMode()) console.log('[AUTH] Initializing session via refresh endpoint');
+
+    try {
+      // Attempt to refresh the session using HttpOnly refresh cookie
+      // If successful, user state will be hydrated from /api/users/me
+      await firstValueFrom(this.refreshAccessToken().pipe(catchError(() => of(null))));
+    } catch (error) {
+      if (isDevMode()) console.log('[AUTH] No active session found');
+    }
+  }
+
+  /**
+   * Verifies active session by querying backend /api/users/me endpoint.
+   * This ensures frontend state never diverges from backend authorization reality.
+   *
+   * SECURITY HARDENING:
+   * - Does NOT check local token (tokens are HttpOnly, JS cannot access)
+   * - Relies entirely on backend session state via cookies
+   * - Backend-verified roles (not client-side token claims)
+   *
+   * ✅ Handles 401 (expired token) → triggers refresh or logout
+   * ✅ Handles 403 (insufficient permissions) → clears session
+   * ✅ Syncs currentUser$ with backend state
+   */
+  async verifySession(): Promise<UserProfile | null> {
+    // In cookie-only mode, we don't check local token
+    // The browser will send HttpOnly cookies automatically
+    const hasActiveUser = this.currentUserSubject.value !== null;
+
+    if (!hasActiveUser) {
+      if (isDevMode()) console.log('No current user - attempting session verification');
+    }
+
+    try {
+      const backendUser = await firstValueFrom(
+        this.fetchBackendUserProfile().pipe(
+          tap((verifiedUser) => {
+            this.updateUserState(verifiedUser);
+            if (isDevMode()) console.log('Session verified with backend');
+          }),
+          catchError((error: HttpErrorResponse) => {
+            if (isDevMode()) console.warn('Session verification failed:', error.status);
+
+            if (error.status === 401) {
+              if (isDevMode()) console.log('Token expired - attempting refresh');
+              return this.refreshAccessToken().pipe(
+                switchMap((newToken) => {
+                  if (!newToken) {
+                    return of(null);
+                  }
+                  return this.fetchBackendUserProfile();
+                }),
+                tap((refreshedUser) => {
+                  if (refreshedUser) {
+                    this.updateUserState(refreshedUser);
+                  }
+                }),
+                catchError(() => {
+                  if (isDevMode()) console.log('Session refresh failed - clearing session');
+                  this.clearSession();
+                  this.sessionExpiredSubject.next();
+                  return of(null);
+                }),
+              );
+            }
+
+            if (error.status === 403) {
+              if (isDevMode()) console.log('Insufficient permissions - clearing session');
+              this.clearSession();
+              return of(null);
+            }
+
+            this.clearSession();
+            return of(null);
+          }),
+        ),
+      );
+
+      return backendUser;
+    } catch (error) {
+      if (isDevMode()) console.error('Session verification error');
+      this.clearSession();
+      return null;
+    }
+  }
+
+  login(payload: LoginRequest): Observable<UserProfile> {
+    const context = new HttpContext().set(SKIP_AUTH, true);
+    return this.http
+      .post<AuthResponse>(`${this.apiUrl}/login`, payload, {
+        context,
+        withCredentials: true,
+      })
+      .pipe(
+        tap((response) => this.persistSession(response)),
+        // FIX: Return the normalized user from internal state, not the raw response
+        // This ensures 'roles' array is populated correctly for RedirectService
+        map(() => this.currentUserSubject.value!),
+      );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Registration Methods
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Register a new user with enhanced fields (phone, DOB, age confirmation).
+   * Uses the new POST /api/auth/register/user endpoint.
+   *
+   * @param payload Enhanced user registration data
+   * @returns Observable of the newly created user profile, or null if email confirmation required
+   *
+   * @see REGISTRATION_IMPLEMENTATION_PLAN.md lines 931-940
+   */
+  registerUser(payload: UserRegisterRequest): Observable<UserProfile | null> {
+    const context = new HttpContext().set(SKIP_AUTH, true);
+    return this.http
+      .post<AuthResponse>(`${this.apiUrl}/register/user`, payload, {
+        context,
+        withCredentials: true,
+      })
+      .pipe(
+        tap((response) => {
+          // Only persist session if email confirmation is NOT required
+          if (!response.emailConfirmationRequired && response.authenticated) {
+            this.persistSession(response);
+          }
+        }),
+        map((response) => {
+          // Return null if email confirmation required - don't try to get user
+          if (response.emailConfirmationRequired) {
+            return null;
+          }
+          return this.currentUserSubject.value!;
+        }),
+      );
+  }
+
+  /**
+   * Register a new owner/host with identity verification fields.
+   * Uses the new POST /api/auth/register/owner endpoint.
+   *
+   * Owner registration includes:
+   * - All user fields (phone, DOB, age confirmation)
+   * - Owner type (INDIVIDUAL or LEGAL_ENTITY)
+   * - Identity document (JMBG or PIB)
+   * - Optional bank account (IBAN)
+   * - Agreement checkboxes
+   *
+   * @param payload Owner registration data with identity documents
+   * @returns Observable of the newly created owner profile
+   *
+   * @see REGISTRATION_IMPLEMENTATION_PLAN.md
+   */
+  registerOwner(payload: OwnerRegisterRequest): Observable<UserProfile | null> {
+    const context = new HttpContext().set(SKIP_AUTH, true);
+    return this.http
+      .post<AuthResponse>(`${this.apiUrl}/register/owner`, payload, {
+        context,
+        withCredentials: true,
+      })
+      .pipe(
+        tap((response) => {
+          // Only persist session if email confirmation is NOT required
+          if (!response.emailConfirmationRequired && response.authenticated) {
+            this.persistSession(response);
+          }
+        }),
+        map((response) => {
+          // Return null if email confirmation required - don't try to get user
+          if (response.emailConfirmationRequired) {
+            return null;
+          }
+          return this.currentUserSubject.value!;
+        }),
+      );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE 3: Supabase Auth Integration
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Register a new user via Supabase Auth.
+   * Uses the new POST /api/auth/supabase/register endpoint.
+   *
+   * @param payload Registration data (email, password, firstName, lastName, role)
+   * @returns Observable of the newly created user profile
+   *
+   * SECURITY: Password is validated by Supabase Auth, not backend.
+   * Tokens are delivered via HttpOnly cookies (not in JSON body).
+   */
+  supabaseRegister(payload: RegisterRequest): Observable<UserProfile | null> {
+    const context = new HttpContext().set(SKIP_AUTH, true);
+    return this.http
+      .post<AuthResponse & { emailConfirmationPending?: boolean }>(
+        `${this.apiUrl}/supabase/register`,
+        payload,
+        {
+          context,
+          withCredentials: true,
+        },
+      )
+      .pipe(
+        tap((response) => {
+          // CRITICAL: Only persist session if email confirmation is NOT pending
+          // When emailConfirmationPending is true, tokens are null (empty cookies would cause issues)
+          if (!response.emailConfirmationPending) {
+            this.persistSession(response);
+          } else {
+            if (isDevMode()) console.log('Email confirmation pending - session not persisted');
+          }
+        }),
+        map((response) => {
+          // Return null if email confirmation pending - don't try to access user
+          if (response.emailConfirmationPending) {
+            return null;
+          }
+          return this.currentUserSubject.value!;
+        }),
+        catchError((error: HttpErrorResponse) => {
+          if (isDevMode()) console.error('Supabase registration failed:', error.status);
+
+          if (error.status === 422) {
+            const message = error.error?.message || 'Validation failed';
+            return throwError(() => new Error(message));
+          }
+
+          if (error.status === 400) {
+            return throwError(() => new Error('Invalid registration data'));
+          }
+
+          return throwError(() => new Error('Registration failed'));
+        }),
+      );
+  }
+
+  /**
+   * Login via Supabase Auth.
+   * Uses the new POST /api/auth/supabase/login endpoint.
+   *
+   * @param payload Login credentials (email, password)
+   * @returns Observable of the authenticated user profile
+   *
+   * SECURITY: Email/password validated against Supabase Auth.
+   * Tokens are in HttpOnly cookies (not accessible to JS).
+   */
+  supabaseLogin(payload: LoginRequest): Observable<UserProfile> {
+    const context = new HttpContext().set(SKIP_AUTH, true);
+    return this.http
+      .post<AuthResponse>(`${this.apiUrl}/supabase/login`, payload, {
+        context,
+        withCredentials: true,
+      })
+      .pipe(
+        tap((response) => this.persistSession(response)),
+        map(() => this.currentUserSubject.value!),
+      );
+  }
+
+  /**
+   * Logout via Supabase Auth.
+   * Uses the new POST /api/auth/supabase/logout endpoint.
+   * Revokes all Supabase tokens.
+   *
+   * @returns Observable of logout response
+   *
+   * SECURITY: Backend clears HttpOnly cookies.
+   * Supabase tokens are revoked at Supabase level.
+   */
+  supabaseLogout(): Observable<void> {
+    return this.http
+      .post<void>(
+        `${this.apiUrl}/supabase/logout`,
+        {},
+        {
+          withCredentials: true,
+        },
+      )
+      .pipe(
+        tap(() => {
+          if (isDevMode()) console.log('User logged out via Supabase');
+          this.clearSession();
+          this.stopTokenWatcher();
+        }),
+        map(() => undefined),
+        catchError((error: HttpErrorResponse) => {
+          if (isDevMode())
+            console.warn('Supabase logout error (clearing session anyway):', error.status);
+          this.clearSession();
+          return of(undefined);
+        }),
+      );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PASSWORD RECOVERY (Turo Standard P0)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Request a password reset email.
+   *
+   * SECURITY: Backend always returns 200 OK (email enumeration protection).
+   * Frontend always shows success regardless of response.
+   *
+   * @param email User's email address
+   * @returns Observable of the response
+   */
+  forgotPassword(email: string): Observable<any> {
+    return this.http.post(
+      `${this.apiUrl}/supabase/forgot-password`,
+      { email },
+      { withCredentials: true },
+    );
+  }
+
+  /**
+   * Reset password using a one-time token from the reset email.
+   *
+   * @param token Reset token from the email link
+   * @param newPassword New password that meets strength requirements
+   * @returns Observable of the response
+   */
+  resetPassword(token: string, newPassword: string): Observable<any> {
+    return this.http.post(
+      `${this.apiUrl}/supabase/reset-password`,
+      { token, newPassword },
+      { withCredentials: true },
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // GOOGLE OAUTH VIA SUPABASE
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Initiate Google OAuth2 authentication via Supabase.
+   *
+   * This method:
+   * 1. Calls backend to get the authorization URL and state token
+   * 2. Stores state token in sessionStorage for CSRF validation
+   * 3. Returns the URL for the caller to redirect to
+   *
+   * @param role User role (USER or OWNER). Defaults to USER if not specified.
+   * @returns Observable of GoogleAuthInitResponse containing the authorization URL
+   *
+   * SECURITY: State token is stored in sessionStorage for later validation.
+   * The actual authentication happens via redirect to Google → Supabase → backend.
+   */
+  initiateSupabaseGoogleAuth(role: 'USER' | 'OWNER' = 'USER'): Observable<GoogleAuthInitResponse> {
+    const context = new HttpContext().set(SKIP_AUTH, true);
+
+    // Build callback URL based on current origin for proper redirect handling
+    // This allows the app to work on different hosts (localhost, LAN IP, production)
+    const callbackUrl = `${window.location.origin}/auth/supabase/google/callback`;
+
+    return this.http
+      .get<GoogleAuthInitResponse>(`${this.apiUrl}/supabase/google/authorize`, {
+        params: {
+          role: role,
+          redirectUri: callbackUrl,
+        },
+        context,
+        withCredentials: true,
+      })
+      .pipe(
+        tap(() => {
+          if (isDevMode()) console.log('Google OAuth initiated via Supabase, redirecting...');
+        }),
+        catchError((error: HttpErrorResponse) => {
+          if (isDevMode()) console.error('Failed to initiate Google OAuth:', error.status);
+          if (error.status === 400) {
+            return throwError(() => new Error(error.error?.message || 'Invalid role specified'));
+          }
+          return throwError(() => new Error('Failed to initiate Google authentication'));
+        }),
+      );
+  }
+
+  /**
+   * Redirect user to Google OAuth via Supabase.
+   *
+   * This is a convenience method that combines initiateSupabaseGoogleAuth
+   * with the actual redirect. Use this when you want to trigger the OAuth
+   * flow with a single method call.
+   *
+   * @param role User role (USER or OWNER). Defaults to USER.
+   */
+  loginWithSupabaseGoogle(role: 'USER' | 'OWNER' = 'USER'): void {
+    this.initiateSupabaseGoogleAuth(role)
+      .pipe(take(1))
+      .subscribe({
+        next: (response) => {
+          // Redirect to Google OAuth consent screen
+          window.location.href = response.authorizationUrl;
+        },
+        error: (error) => {
+          if (isDevMode()) console.error('Failed to start Google OAuth:', error);
+          // Let the component handle the error
+        },
+      });
+  }
+
+  /**
+   * Handle Google OAuth callback from Supabase.
+   *
+   * This method:
+   * 1. Validates the state parameter against the stored value (CSRF protection)
+   * 2. Exchanges the authorization code for tokens via backend
+   * 3. Persists the session with the returned user data
+   *
+   * @param code Authorization code from the OAuth callback URL
+   * @param state State parameter from the OAuth callback URL
+   * @returns Observable of the authenticated user profile
+   *
+   * SECURITY: State validation is performed client-side for early failure,
+   * but the actual CSRF protection happens server-side.
+   */
+  handleSupabaseGoogleCallback(code: string, state?: string): Observable<UserProfile | null> {
+    // SECURITY NOTE: CSRF protection is handled server-side via Supabase PKCE code verifier.
+    // Client-side state validation removed — backend never issued a custom state value,
+    // so the old check was null === null (always passed) and provided no real protection.
+
+    const context = new HttpContext().set(SKIP_AUTH, true);
+    const params: Record<string, string> = { code };
+    if (state) {
+      params['state'] = state;
+    }
+    return this.http
+      .get<SupabaseGoogleCallbackResponse>(`${this.apiUrl}/supabase/google/callback`, {
+        params,
+        context,
+        withCredentials: true,
+      })
+      .pipe(
+        tap((response) => {
+          if (response.success && response.user) {
+            // Convert response to AuthResponse format for persistSession
+            const authResponse: AuthResponse = {
+              authenticated: true,
+              user: response.user,
+            };
+            this.persistSession(authResponse);
+            if (isDevMode())
+              console.log('Google OAuth callback successful:', response.registrationStatus);
+          }
+        }),
+        map((response) => {
+          if (!response.success || !response.user) {
+            return null;
+          }
+          return this.currentUserSubject.value;
+        }),
+        catchError((error: HttpErrorResponse) => {
+          if (isDevMode()) console.error('Google OAuth callback failed:', error.status);
+
+          if (error.status === 401) {
+            return throwError(() => new Error('Authentication session expired. Please try again.'));
+          }
+
+          if (error.status === 409) {
+            return throwError(
+              () => new Error(error.error?.message || 'Account conflict detected.'),
+            );
+          }
+
+          const message = error.error?.message || 'Google authentication failed. Please try again.';
+          return throwError(() => new Error(message));
+        }),
+      );
+  }
+
+  /**
+   * Handle Supabase implicit OAuth flow callback.
+   *
+   * This is used when Supabase returns tokens directly in the URL fragment
+   * (implicit flow) instead of an authorization code (PKCE flow).
+   *
+   * @param accessToken The Supabase access token from URL fragment
+   * @param refreshToken The Supabase refresh token (optional)
+   * @param role The user role (USER or OWNER) from URL query params
+   * @returns Observable of the authenticated user profile
+   */
+  handleSupabaseImplicitCallback(
+    accessToken: string,
+    refreshToken?: string,
+    role?: string,
+  ): Observable<UserProfile | null> {
+    const context = new HttpContext().set(SKIP_AUTH, true);
+    return this.http
+      .post<SupabaseGoogleCallbackResponse>(
+        `${this.apiUrl}/supabase/google/token-callback`,
+        {
+          accessToken,
+          refreshToken,
+          role: role || 'USER', // Send role instead of state
+        },
+        {
+          context,
+          withCredentials: true,
+        },
+      )
+      .pipe(
+        tap((response) => {
+          if (response.success && response.user) {
+            const authResponse: AuthResponse = {
+              authenticated: true,
+              user: response.user,
+            };
+            this.persistSession(authResponse);
+            if (isDevMode())
+              console.log('Implicit OAuth callback successful:', response.registrationStatus);
+          }
+        }),
+        map((response) => {
+          if (!response.success || !response.user) {
+            return null;
+          }
+          return this.currentUserSubject.value;
+        }),
+        catchError((error: HttpErrorResponse) => {
+          if (isDevMode()) console.error('Implicit OAuth callback failed:', error.status);
+
+          if (error.status === 401) {
+            return throwError(() => new Error('Invalid or expired token. Please try again.'));
+          }
+
+          if (error.status === 409) {
+            return throwError(
+              () => new Error(error.error?.message || 'Account conflict detected.'),
+            );
+          }
+
+          const message = error.error?.message || 'Google authentication failed. Please try again.';
+          return throwError(() => new Error(message));
+        }),
+      );
+  }
+
+  /**
+   * Handle email confirmation callback.
+   * Called when user clicks email verification link.
+   * Uses the new POST /api/auth/supabase/confirm-email endpoint.
+   *
+   * @param accessToken Supabase access token from email link
+   * @param refreshToken Supabase refresh token (if provided)
+   * @returns Observable of the confirmed user profile
+   */
+  supabaseConfirmEmail(accessToken: string, refreshToken?: string): Observable<UserProfile> {
+    const context = new HttpContext().set(SKIP_AUTH, true);
+    return this.http
+      .post<AuthResponse>(
+        `${this.apiUrl}/supabase/confirm-email`,
+        {
+          accessToken,
+          refreshToken,
+        },
+        {
+          context,
+          withCredentials: true,
+        },
+      )
+      .pipe(
+        tap((response) => this.persistSession(response)),
+        map(() => this.currentUserSubject.value!),
+        catchError((error: HttpErrorResponse) => {
+          if (isDevMode()) console.error('Email confirmation failed:', error.status);
+          return throwError(() => new Error('Email confirmation failed'));
+        }),
+      );
+  }
+
+  /**
+   * Complete OAuth profile for users with INCOMPLETE registration status.
+   * Used when Google OAuth provides limited data (no phone, DOB).
+   * Uses POST /api/auth/oauth-complete endpoint.
+   *
+   * Flow:
+   * 1. User authenticates via Google OAuth
+   * 2. Backend creates user with registrationStatus=INCOMPLETE
+   * 3. auth-callback detects INCOMPLETE → redirects to /auth/complete-profile
+   * 4. User fills in missing data → this method is called
+   * 5. Profile updated → user redirected to dashboard
+   *
+   * @param payload Profile completion data (phone, DOB, optional owner fields)
+   * @returns Observable of the updated user profile
+   *
+   * @see REGISTRATION_IMPLEMENTATION_PLAN.md lines 942-951
+   */
+  completeOAuthProfile(payload: GoogleOAuthCompletionRequest): Observable<UserProfile> {
+    return this.http
+      .post<AuthResponse>(`${this.apiUrl}/oauth-complete`, payload, {
+        withCredentials: true,
+      })
+      .pipe(
+        tap((response) => this.persistSession(response)),
+        map(() => this.currentUserSubject.value!),
+      );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  logout(): void {
+    this.clearSession();
+    // Don't emit sessionExpired$ on manual logout (only on token expiry)
+
+    const context = new HttpContext().set(SKIP_AUTH, true);
+    this.http
+      .post<void>(
+        `${this.apiUrl}/supabase/logout`,
+        {},
+        {
+          context,
+          withCredentials: true,
+        },
+      )
+      .pipe(catchError(() => of(void 0)))
+      .subscribe();
+  }
+
+  hasAnyRole(roles: UserRole | UserRole[]): boolean {
+    const desiredRoles = Array.isArray(roles) ? roles : [roles];
+    const current = this.currentUserSubject.value;
+    return current?.roles?.some((role) => desiredRoles.includes(role)) ?? false;
+  }
+
+  getAccessToken(): string | null {
+    return this.accessTokenSubject.value;
+  }
+
+  /**
+   * Get the current user synchronously
+   */
+  getCurrentUser(): UserProfile | null {
+    return this.currentUserSubject.value;
+  }
+
+  /**
+   * Check if user is authenticated.
+   *
+   * SECURITY HARDENING: In cookie-only mode, we cannot inspect the token
+   * (it's HttpOnly). We rely on currentUser$ being populated.
+   */
+  isAuthenticated(): boolean {
+    // Cookie-only mode: check if we have a current user
+    // The actual token is HttpOnly and cannot be inspected by JS
+    return this.currentUserSubject.value !== null;
+  }
+
+  /**
+   * @deprecated In cookie-only mode, we cannot inspect token expiration.
+   * The interceptor handles 401 responses and triggers refresh automatically.
+   */
+  willExpireSoon(_thresholdSeconds = 60): boolean {
+    // Cookie-only mode: we cannot inspect HttpOnly token expiration
+    // Rely on interceptor's 401 → refresh flow instead
+    return false;
+  }
+
+  /**
+   * Shares a single refresh call across concurrent subscribers to avoid duplicate HTTP traffic.
+   */
+  refreshAccessToken(): Observable<string | null> {
+    if (this.isRefreshing) {
+      return this.refreshSubject.pipe(
+        filter((value): value is string => typeof value === 'string' && value.length > 0),
+        take(1),
+      );
+    }
+
+    this.isRefreshing = true;
+    this.refreshSubject.next(null);
+
+    const context = new HttpContext().set(SKIP_AUTH, true);
+
+    if (isDevMode()) console.log('[AUTH] Starting token refresh...');
+
+    return this.http
+      .post<AuthResponse>(
+        `${this.apiUrl}/supabase/refresh`,
+        {},
+        {
+          context,
+          withCredentials: true,
+        },
+      )
+      .pipe(
+        tap((response) => {
+          if (isDevMode()) {
+            console.log('[AUTH] Refresh response received:', {
+              authenticated: response.authenticated,
+              hasUser: !!response.user,
+            });
+          }
+
+          // SECURITY HARDENING: Response no longer contains accessToken
+          // Token is delivered via HttpOnly cookie by backend
+          if (!response.authenticated) {
+            throw new Error('Refresh failed: not authenticated');
+          }
+
+          // Persist user data (not token - that's in HttpOnly cookie)
+          this.persistSession(response);
+
+          // Mark that we've had an active session (for session expired detection)
+          this.hasHadActiveSession = true;
+
+          // Signal success (we don't have the token value, but session is valid)
+          this.refreshSubject.next('session-refreshed');
+          if (isDevMode()) console.log('[AUTH] Token refresh successful');
+        }),
+        map(() => 'session-refreshed'),
+        catchError((error: HttpErrorResponse) => {
+          this.refreshSubject.next(null);
+          if (isDevMode()) {
+            console.error('Token refresh failed:', {
+              status: error.status,
+              statusText: error.statusText,
+            });
+          }
+
+          if (error.status === 401) {
+            // Classify session end reason from backend error code
+            const errorCode = error.error?.error;
+            if (errorCode === 'SESSION_EVICTED') {
+              this._sessionEndReason = 'evicted';
+            } else if (
+              errorCode === 'TOKEN_THEFT_DETECTED' ||
+              errorCode === 'TOKEN_REUSE_DETECTED'
+            ) {
+              this._sessionEndReason = 'security';
+            } else {
+              this._sessionEndReason = 'expired';
+            }
+
+            if (isDevMode())
+              console.log(
+                `Refresh token expired - session ended (reason: ${this._sessionEndReason})`,
+              );
+            this.clearSession();
+            // SECURITY FIX: Only show session expired if there was a previous session
+            // This prevents false "session expired" toasts for first-time visitors
+            if (this.hasHadActiveSession) {
+              this.sessionExpiredSubject.next(); // Emit session expired event
+            } else {
+              if (isDevMode())
+                console.log('No prior session - skipping session expired notification');
+            }
+            return of(null);
+          }
+
+          // For network errors or other issues, don't immediately clear session
+          // The user might just have temporary connectivity issues
+          if (error.status === 0 || error.status >= 500) {
+            if (isDevMode())
+              console.warn('Refresh failed due to network/server error - preserving session');
+            return of(null); // Don't throw, just return null to indicate failure
+          }
+
+          this.clearSession();
+          // SECURITY FIX: Only show session expired if there was a previous session
+          if (this.hasHadActiveSession) {
+            this.sessionExpiredSubject.next(); // Emit session expired event on other errors
+          }
+          return throwError(() => error);
+        }),
+        finalize(() => {
+          this.isRefreshing = false;
+        }),
+      );
+  }
+
+  refreshUserProfile(): Observable<UserProfile> {
+    return this.http
+      .get<UserProfile>(`${environment.baseApiUrl}/users/profile`, {
+        withCredentials: true,
+      })
+      .pipe(
+        map((profile) => ({
+          ...profile,
+          id: String(profile.id),
+          roles: profile.roles ?? [],
+        })),
+        tap((profile) => this.currentUserSubject.next(profile)),
+      );
+  }
+
+  /**
+   * Start periodic session health watcher.
+   *
+   * SECURITY HARDENING: In cookie-only mode, we cannot inspect tokens.
+   * Instead, we periodically verify the session is still active.
+   */
+  startTokenWatcher(intervalMs = 60000): void {
+    // Clear any existing watcher
+    if (this.tokenWatcherInterval) {
+      clearInterval(this.tokenWatcherInterval);
+    }
+
+    // Cookie-only mode: periodically verify session health
+    this.tokenWatcherInterval = setInterval(() => {
+      const currentUser = this.currentUserSubject.value;
+
+      // If we have a user, periodically verify session is still valid
+      if (currentUser) {
+        // Silent verification - don't clear session on network errors
+        this.fetchBackendUserProfile()
+          .pipe(take(1))
+          .subscribe({
+            next: (profile) => {
+              this.currentUserSubject.next(profile);
+            },
+            error: (error: HttpErrorResponse) => {
+              if (error.status === 401) {
+                if (isDevMode()) console.log('Session expired - clearing');
+                this.clearSession();
+                this.sessionExpiredSubject.next();
+              }
+              // Ignore other errors (network issues, etc.)
+            },
+          });
+      }
+    }, intervalMs);
+
+    if (isDevMode()) console.log(`Session watcher started (checking every ${intervalMs}ms)`);
+  }
+
+  /**
+   * Stop the token expiration watcher.
+   * Called during logout or when no longer needed.
+   */
+  stopTokenWatcher(): void {
+    if (this.tokenWatcherInterval) {
+      clearInterval(this.tokenWatcherInterval);
+      this.tokenWatcherInterval = null;
+      if (isDevMode()) console.log('Token watcher stopped');
+    }
+  }
+
+  /**
+   * Update the current user's avatar URL in memory.
+   * Called after successful profile picture upload/delete.
+   *
+   * @param avatarUrl The new avatar URL (or null to remove)
+   */
+  updateCurrentUserAvatar(avatarUrl: string | null): void {
+    const currentUser = this.currentUserSubject.value;
+
+    if (!currentUser) {
+      if (isDevMode()) console.warn('Cannot update avatar: no current user');
+      return;
+    }
+
+    // Create updated user with new avatar URL
+    const updatedUser: UserProfile = {
+      ...currentUser,
+      avatarUrl: avatarUrl ?? undefined,
+    };
+
+    // Update observable (no localStorage in cookie-only mode)
+    this.currentUserSubject.next(updatedUser);
+  }
+
+  /**
+   * Clear all session state.
+   *
+   * SECURITY HARDENING: No localStorage to clear.
+   * HttpOnly cookies are managed by backend via /api/auth/logout.
+   */
+  clearSession(): void {
+    this.accessTokenSubject.next(null);
+    this.currentUserSubject.next(null);
+
+    this.favoritesLoadedForSession = false;
+
+    // Defense-in-depth: remove any legacy localStorage tokens written by
+    // older versions of the app or tampered by external scripts.
+    localStorage.removeItem(LOCALSTORAGE_ACCESS_TOKEN);
+    localStorage.removeItem(LOCALSTORAGE_CURRENT_USER);
+
+    // Stop token watcher when session is cleared
+    this.stopTokenWatcher();
+
+    // Clear favorited cars on logout
+    import('@core/services/favorite.service').then(({ FavoriteService }) => {
+      try {
+        const favoriteService = this.injector.get(FavoriteService);
+        favoriteService.clearFavorites();
+      } catch {
+        // Injector may already be destroyed during test teardown — safe to ignore
+      }
+    });
+  }
+
+  /**
+   * Persist session from auth response.
+   *
+   * SECURITY HARDENING: Tokens are NOT stored (they're in HttpOnly cookies).
+   * Only user profile data is persisted in memory.
+   */
+  private persistSession(response: AuthResponse): void {
+    const { user } = response;
+
+    if (!user) {
+      if (isDevMode()) console.log('Response missing user payload — hydrating via /api/users/me');
+      this.hydrateUserFromBackend();
+      return;
+    }
+
+    const rawUser = user as RawBackendUser;
+    const singleRole = rawUser.role;
+    const effectiveRoles: UserRole[] = singleRole
+      ? [singleRole as UserRole]
+      : (rawUser.roles ?? []);
+
+    const completeUser: UserProfile = {
+      ...user,
+      id: String(user.id),
+      roles: effectiveRoles,
+      // CRITICAL: Preserve registrationStatus for profile completion flow
+      registrationStatus: rawUser.registrationStatus,
+      ownerType: rawUser.ownerType,
+    };
+
+    this.updateUserState(completeUser);
+
+    // Mark that we've had an active session (for session expired detection)
+    this.hasHadActiveSession = true;
+  }
+
+  private hydrateUserFromBackend(): void {
+    this.fetchBackendUserProfile()
+      .pipe(take(1))
+      .subscribe({
+        next: (profile) => {
+          this.updateUserState(profile);
+          this.hasHadActiveSession = true;
+          if (isDevMode()) console.log('Session hydrated via /api/users/me');
+        },
+        error: (error: HttpErrorResponse) => {
+          if (isDevMode()) console.error('Failed to hydrate user after refresh:', error.status);
+          if (error.status === 401) {
+            this.clearSession();
+            // SECURITY FIX: Only show session expired if there was a previous session
+            if (this.hasHadActiveSession) {
+              this.sessionExpiredSubject.next();
+            }
+          }
+        },
+      });
+  }
+
+  private fetchBackendUserProfile(): Observable<UserProfile> {
+    return this.http
+      .get<BackendUserMeResponse>(`${environment.baseApiUrl}/users/me`, {
+        withCredentials: true,
+      })
+      .pipe(map((response) => this.mapBackendUserResponse(response)));
+  }
+
+  private mapBackendUserResponse(response: BackendUserMeResponse): UserProfile {
+    if (!response?.authenticated) {
+      throw new Error('Backend reports user not authenticated');
+    }
+
+    const normalizedRoles: UserRole[] = Array.isArray(response.roles)
+      ? (response.roles as UserRole[])
+      : typeof response.roles === 'string'
+        ? (response.roles.split(',') as UserRole[])
+        : [];
+
+    // Map to UserProfile with registrationStatus for profile completion flow
+    const profile: UserProfile = {
+      id: String(response.id),
+      email: response.email,
+      firstName: response.firstName,
+      lastName: response.lastName,
+      phone: response.phone || undefined,
+      age: response.age || undefined,
+      avatarUrl: response.avatarUrl || undefined,
+      roles: normalizedRoles,
+      // CRITICAL: Include registrationStatus for profile completion guard
+      registrationStatus: response.registrationStatus as RegistrationStatus | undefined,
+      ownerType: response.ownerType as OwnerType | undefined,
+    };
+
+    return profile;
+  }
+
+  /**
+   * Update user state in memory.
+   *
+   * SECURITY HARDENING: No localStorage storage.
+   */
+  private updateUserState(user: UserProfile): void {
+    const normalizedUser: UserProfile = {
+      ...user,
+      id: String(user.id),
+      roles: Array.isArray(user.roles) ? user.roles : [],
+      // Preserve critical fields for profile completion flow
+      registrationStatus: user.registrationStatus,
+      ownerType: user.ownerType,
+    };
+
+    // Update observable only (no localStorage in cookie-only mode)
+    this.currentUserSubject.next(normalizedUser);
+    this.loadFavoritesForSession();
+  }
+
+  private loadFavoritesForSession(): void {
+    if (this.favoritesLoadedForSession) {
+      return;
+    }
+
+    this.favoritesLoadedForSession = true;
+    import('@core/services/favorite.service').then(({ FavoriteService }) => {
+      try {
+        const favoriteService = this.injector.get(FavoriteService);
+        favoriteService
+          .loadFavoritedCarIds()
+          .pipe(take(1))
+          .subscribe({
+            error: (err) => {
+              if (isDevMode()) console.error('Failed to load favorited cars:', err);
+            },
+          });
+      } catch {
+        // Injector may already be destroyed during test teardown — safe to ignore
+      }
+    });
+  }
+
+  private extractRoles(payload: Record<string, unknown>): UserRole[] {
+    const roles = payload['roles'];
+    if (Array.isArray(roles)) {
+      return roles.filter((role): role is UserRole => typeof role === 'string');
+    }
+
+    if (typeof roles === 'string') {
+      return roles.split(',') as UserRole[];
+    }
+
+    return [];
+  }
+}

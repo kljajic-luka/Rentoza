@@ -1,0 +1,187 @@
+<div class="dialog-container">
+  <div class="dialog-header">
+    <h2 mat-dialog-title>Profil gosta</h2>
+    <button mat-icon-button (click)="close()" aria-label="Close dialog">
+      <mat-icon>close</mat-icon>
+    </button>
+  </div>
+
+  <mat-dialog-content>
+    @if (isLoading()) {
+    <div class="loading-state">
+      <mat-spinner diameter="40"></mat-spinner>
+      <p>Učitavanje podataka...</p>
+    </div>
+    } @else if (error()) {
+    <div class="error-state">
+      <mat-icon color="warn">error_outline</mat-icon>
+      <p>{{ error() }}</p>
+      <button mat-stroked-button (click)="loadPreview()">Pokušaj ponovo</button>
+    </div>
+    } @else if (guestPreview(); as guest) {
+    <div class="guest-profile">
+      <!-- Profile Header -->
+      <div class="profile-header">
+        <div class="avatar-container">
+          <img
+            [src]="guest.profilePhotoUrl || 'assets/images/default-avatar.png'"
+            alt="Guest Avatar"
+            class="avatar"
+          />
+        </div>
+        <div class="profile-info">
+          <h3>{{ guest.firstName }} {{ guest.lastInitial }}</h3>
+          <p class="join-date">Član od {{ guest.joinDate }}</p>
+          
+          <!-- Provenance-backed trust signals only -->
+          @if (guest.trustSignals && guest.trustSignals.length > 0) {
+          <div class="trust-signals">
+            @for (signal of guest.trustSignals; track signal.code) {
+            <mat-chip class="trust-signal-badge" [class]="'trust-signal-badge state-' + signal.state" [matTooltip]="trustSignalTooltip(signal)">
+              <mat-icon>{{ trustSignalIcon(signal) }}</mat-icon>
+              {{ signal.label }}
+            </mat-chip>
+            }
+          </div>
+          }
+          
+          <!-- Achievement Badges -->
+          @if (guest.badges && guest.badges.length > 0) {
+          <div class="achievement-badges">
+            @for (badge of guest.badges; track badge) {
+            <mat-chip class="achievement-badge" highlighted>
+              <mat-icon>military_tech</mat-icon> {{ badge }}
+            </mat-chip>
+            }
+          </div>
+          }
+        </div>
+      </div>
+
+      <!-- Stats Grid -->
+      <div class="stats-grid">
+        <div class="stat-item">
+          <span class="stat-value">
+            {{ guest.starRating | number : '1.1-1' }}
+            <mat-icon class="star-icon">star</mat-icon>
+          </span>
+          <span class="stat-label">Ocena</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-value">{{ guest.tripCount }}</span>
+          <span class="stat-label">Putovanja</span>
+        </div>
+        <div class="stat-item">
+          @if (guest.age) {
+          <span class="stat-value" [class.verified]="guest.ageVerified">
+            {{ guest.age }}
+            @if (guest.ageVerified) {
+            <mat-icon class="verified-icon" matTooltip="Potvrdeno iz verifikovanog dokumenta">check_circle</mat-icon>
+            }
+          </span>
+          } @else {
+          <span class="stat-value na">—</span>
+          }
+          <span class="stat-label">Starost</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-value" [class.good]="guest.cancellationRate === 0" [class.warning]="guest.cancellationRate && guest.cancellationRate > 20">
+            {{ guest.cancellationRate | number : '1.0-0' }}%
+          </span>
+          <span class="stat-label">Otkazivanje</span>
+        </div>
+      </div>
+
+      <!-- Driver License Section -->
+      @if (guest.drivingEligibilityStatus !== 'NOT_STARTED') {
+      <div class="license-section">
+        <h4><mat-icon>badge</mat-icon> Vozačka dozvola</h4>
+        <div class="license-info">
+          <div class="license-main">
+            @if (guest.licenseCategories) {
+            <span class="license-category">
+              <mat-icon>directions_car</mat-icon>
+              Kategorija {{ guest.licenseCategories }}
+            </span>
+            }
+            @if (guest.licenseCountry) {
+            <span class="license-country">• {{ guest.licenseCountry }}</span>
+            }
+            @if (guest.licenseTenureMonths) {
+            <span class="license-tenure">• {{ formatTenure(guest.licenseTenureMonths) }} iskustva</span>
+            }
+          </div>
+          <div class="license-status">
+            <span class="status-badge status-{{ guest.drivingEligibilityStatus | lowercase }}">
+              @switch (guest.drivingEligibilityStatus) {
+                @case ('APPROVED') { <mat-icon>check_circle</mat-icon> Odobren }
+                @case ('PENDING_REVIEW') { <mat-icon>schedule</mat-icon> Na čekanju }
+                @case ('REJECTED') { <mat-icon>cancel</mat-icon> Odbijen }
+                @case ('SUSPENDED') { <mat-icon>gpp_bad</mat-icon> Suspendovan }
+                @case ('EXPIRED') { <mat-icon>warning</mat-icon> Istekao }
+                @default { <mat-icon>help</mat-icon> {{ guest.drivingEligibilityStatus }} }
+              }
+            </span>
+            @if (guest.licenseExpiryDate) {
+            <span class="expiry-date">Ističe: {{ formatLicenseExpiry(guest.licenseExpiryDate) }}</span>
+            }
+          </div>
+        </div>
+      </div>
+      }
+
+      <mat-divider></mat-divider>
+
+      <!-- Trip Details -->
+      <div class="trip-details">
+        <h4><mat-icon>event</mat-icon> Detalji putovanja</h4>
+        <div class="detail-row">
+          <mat-icon>calendar_today</mat-icon>
+          <span>{{ formatDate(guest.requestedStartDateTime) }} - {{ formatDate(guest.requestedEndDateTime) }}</span>
+        </div>
+        <div class="detail-row">
+          <mat-icon>security</mat-icon>
+          <span>Zaštita: <strong>{{ guest.protectionPlan }}</strong></span>
+        </div>
+        @if (guest.message) {
+        <div class="message-box">
+          <p class="message-label"><mat-icon>chat</mat-icon> Poruka od gosta:</p>
+          <p class="message-text">"{{ guest.message }}"</p>
+        </div>
+        }
+      </div>
+
+      <!-- Host Reviews -->
+      @if (guest.hostReviews && guest.hostReviews.length > 0) {
+      <mat-divider></mat-divider>
+      <div class="reviews-section">
+        <h4><mat-icon>rate_review</mat-icon> Recenzije domaćina ({{ guest.hostReviews.length }})</h4>
+        <div class="reviews-list">
+          @for (review of guest.hostReviews; track $index) {
+          <div class="review-item">
+            <div class="review-header">
+              <div class="stars">
+                @for (star of [1,2,3,4,5]; track star) {
+                <mat-icon [class.filled]="star <= review.rating">star</mat-icon>
+                }
+              </div>
+            </div>
+            <p class="review-text">{{ review.comment }}</p>
+          </div>
+          }
+        </div>
+      </div>
+      }
+      
+      <!-- New User Indicator -->
+      @if (guest.tripCount === 0) {
+      <div class="new-user-notice">
+        <mat-icon>person_add</mat-icon>
+        <span>Novi korisnik - ovo je njihova prva rezervacija</span>
+      </div>
+      }
+    </div>
+    }
+  </mat-dialog-content>
+</div>
+

@@ -1,0 +1,55 @@
+{
+  "name": "Rentoza Dev Environment",
+  "image": "mcr.microsoft.com/devcontainers/java:21-bookworm",
+  
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "20"
+    },
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "GitHub.copilot",
+        "GitHub.copilot-chat",
+        "vscjava.vscode-java-pack",
+        "vmware.vscode-spring-boot",
+        "Angular.ng-template",
+        "esbenp.prettier-vscode",
+        "dbaeumer.vscode-eslint",
+        "rangav.vscode-thunder-client",
+        "eamodio.gitlens",
+        "ms-azuretools.vscode-docker"
+      ],
+      "settings": {
+        "java.jdt.ls.java.home": "/usr/lib/jvm/msopenjdk-21",
+        "java.configuration.updateBuildConfiguration": "automatic",
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "[java]": {
+          "editor.defaultFormatter": "redhat.java"
+        }
+      }
+    }
+  },
+
+  "forwardPorts": [8080, 4200, 8081],
+  "portsAttributes": {
+    "8080": { "label": "Backend API", "onAutoForward": "notify" },
+    "4200": { "label": "Angular Frontend", "onAutoForward": "openPreview" },
+    "8081": { "label": "Chat Service", "onAutoForward": "silent" }
+  },
+
+  "postCreateCommand": "cd apps/frontend && npm install",
+  
+  "remoteUser": "vscode",
+
+  "hostRequirements": {
+    "cpus": 4,
+    "memory": "8gb",
+    "storage": "32gb"
+  }
+}

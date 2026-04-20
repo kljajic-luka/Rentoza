@@ -1,0 +1,484 @@
+import { Injectable, inject } from '@angular/core';
+import { HttpClient, HttpParams } from '@angular/common/http';
+import { Observable, of } from 'rxjs';
+import { catchError, map, switchMap, tap } from 'rxjs/operators';
+
+import { environment } from '@environments/environment';
+import {
+  AgreementSummary,
+  Booking,
+  BookingCreateResponse,
+  BookingRequest,
+  UserBooking,
+  BookingSlotDto,
+} from '@core/models/booking.model';
+import {
+  canProceedToCheckInFromAgreement,
+  canProceedToCheckInFromSummary,
+  isAgreementEnforcementEnabled,
+} from '@core/utils/agreement-summary.utils';
+import { GuestBookingPreview } from '@core/models/guest-preview.model';
+import { AnalyticsService } from './analytics.service';
+import {
+  BookingReauthorizeRequest,
+  BookingReauthorizeResponse,
+  TripExtension,
+  TripExtensionHostResponse,
+  TripExtensionRequest,
+} from '@core/models/trip-extension.model';
+
+@Injectable({ providedIn: 'root' })
+export class BookingService {
+  private readonly baseUrl = `${environment.baseApiUrl}/bookings`;
+  private readonly analytics = inject(AnalyticsService);
+
+  constructor(private readonly http: HttpClient) {}
+
+  getMyBookings(): Observable<UserBooking[]> {
+    return this.http.get<UserBooking[]>(`${this.baseUrl}/me`, {
+      withCredentials: true,
+    });
+  }
+
+  getBookingHistory(): Observable<Booking[]> {
+    return this.http.get<Booking[]>(`${this.baseUrl}/me`, {
+      withCredentials: true,
+    });
+  }
+
+  /**
+   * Get booking by ID (accessible to Renter and Owner).
+   *
+   * Security:
+   * - @PreAuthorize("@bookingSecurity.canAccessBooking(#id, authentication.principal.id) or hasRole('ADMIN')")
+   * - Returns full booking details
+   */
+  getBookingById(id: string | number): Observable<Booking> {
+    return this.http.get<Booking>(`${this.baseUrl}/${id}`, {
+      withCredentials: true,
+    });
+  }
+
+  /**
+   * Get full booking details for a car (OWNER/ADMIN only).
+   *
+   * Security:
+   * - @PreAuthorize("hasAnyRole('OWNER', 'ADMIN')") on backend
+   * - Returns full booking DTOs with renter details, pricing, status
+   * - Regular users (ROLE_USER) will receive 403 Forbidden
+   *
+   * Use Case:
+   * - Owner dashboard: View all bookings for their cars with full details
+   * - Admin dashboard: View all bookings with full details
+   *
+   * @param carId Car ID
+   * @returns Observable<Booking[]> with full booking information
+   */
+  getBookingsForCar(carId: string): Observable<Booking[]> {
+    return this.http.get<Booking[]>(`${this.baseUrl}/car/${carId}`, {
+      withCredentials: true,
+    });
+  }
+
+  /**
+   * Get public-safe booking slots for a car (accessible to all users).
+   *
+   * Purpose:
+   * - Calendar UI: Show which dates are booked/unavailable
+   * - Minimal data exposure: only carId, startDate, endDate
+   * - No PII: no renter, owner, or pricing information
+   *
+   * Security:
+   * - @PreAuthorize("permitAll()") on backend
+   * - Returns minimal BookingSlotDto (safe for public consumption)
+   * - Rate-limited to 60 requests/minute
+   *
+   * Use Case:
+   * - Car detail page: Show unavailable dates in booking calendar
+   * - Renters (ROLE_USER): See which dates are taken
+   * - Guests (unauthenticated): See which dates are taken
+   *
+   * @param carId Car ID
+   * @returns Observable<BookingSlotDto[]> with only date ranges
+   */
+  getPublicBookingsForCar(carId: string | number): Observable<BookingSlotDto[]> {
+    return this.http.get<BookingSlotDto[]>(`${this.baseUrl}/car/${carId}/public`, {
+      withCredentials: true,
+    });
+  }
+
+  createBooking(payload: BookingRequest): Observable<BookingCreateResponse> {
+    return this.http
+      .post<BookingCreateResponse>(this.baseUrl, payload, {
+        withCredentials: true,
+      })
+      .pipe(
+        tap((response) =>
+          this.analytics.track('booking.created', {
+            bookingId: 'id' in response ? response.id : undefined,
+            carId: payload.carId,
+          }),
+        ),
+      );
+  }
+
+  /**
+   * Phase 2.3: Validate booking availability before creating
+   * Checks if the selected dates are available without persisting the booking
+   *
+   * @param payload Booking request with car ID and date range
+   * @returns Observable with { available: boolean } or error response (409 on conflict)
+   */
+  validateBooking(payload: BookingRequest): Observable<{ available: boolean }> {
+    return this.http.post<{ available: boolean }>(`${this.baseUrl}/validate`, payload, {
+      withCredentials: true,
+    });
+  }
+
+  /**
+   * Get all bookings for owner's cars
+   */
+  getOwnerBookings(ownerEmail: string): Observable<Booking[]> {
+    return this.http.get<Booking[]>(`${environment.baseApiUrl}/owner/bookings/${ownerEmail}`, {
+      withCredentials: true,
+    });
+  }
+
+  // ========== HOST APPROVAL WORKFLOW (PHASE 3) ==========
+
+  /**
+   * Approve a pending booking request (OWNER/ADMIN only).
+   *
+   * Security:
+   * - @PreAuthorize("hasAnyRole('OWNER', 'ADMIN') and @bookingSecurity.canDecide(...)") on backend
+   * - Only car owner or admin can approve
+   * - RLS enforced at service layer
+   *
+   * State Transition:
+   * - PENDING_APPROVAL → ACTIVE
+   * - Creates chat conversation
+   * - Sends approval notification to guest
+   * - Authorizes payment hold (simulated)
+   *
+   * Error Responses:
+   * - 403 Forbidden: Not the car owner
+   * - 404 Not Found: Booking doesn't exist
+   * - 409 Conflict: Invalid state or date conflict
+   *
+   * @param id Booking ID
+   * @returns Observable<Booking> with updated status ACTIVE
+   */
+  approveBooking(id: number): Observable<Booking> {
+    return this.http
+      .put<Booking>(
+        `${this.baseUrl}/${id}/approve`,
+        {},
+        {
+          withCredentials: true,
+        },
+      )
+      .pipe(tap(() => this.analytics.track('booking.approved', { bookingId: id })));
+  }
+
+  /**
+   * Decline a pending booking request (OWNER/ADMIN only).
+   *
+   * Security:
+   * - @PreAuthorize("hasAnyRole('OWNER', 'ADMIN') and @bookingSecurity.canDecide(...)") on backend
+   * - Only car owner or admin can decline
+   * - RLS enforced at service layer
+   *
+   * State Transition:
+   * - PENDING_APPROVAL → DECLINED
+   * - Sends decline notification to guest with reason
+   * - Releases payment hold (simulated)
+   * - No chat conversation created
+   *
+   * Error Responses:
+   * - 403 Forbidden: Not the car owner
+   * - 404 Not Found: Booking doesn't exist
+   * - 409 Conflict: Invalid state (already approved/declined/expired)
+   *
+   * @param id Booking ID
+   * @param reason Optional decline reason (shown to guest)
+   * @returns Observable<Booking> with updated status DECLINED
+   */
+  declineBooking(id: number, reason?: string): Observable<Booking> {
+    let params = new HttpParams();
+    if (reason) {
+      params = params.set('reason', reason);
+    }
+
+    return this.http
+      .put<Booking>(
+        `${this.baseUrl}/${id}/decline`,
+        {},
+        {
+          params,
+          withCredentials: true,
+        },
+      )
+      .pipe(tap(() => this.analytics.track('booking.declined', { bookingId: id })));
+  }
+
+  /**
+   * Get all pending booking approval requests for the authenticated owner's cars.
+   *
+   * Security:
+   * - @PreAuthorize("hasAnyRole('OWNER', 'ADMIN')") on backend
+   * - Returns only bookings for cars owned by the authenticated user
+   * - RLS enforced: Repository filters by car.owner.id
+   *
+   * Use Case:
+   * - Owner dashboard: Display pending requests queue
+   * - Shows only PENDING_APPROVAL status bookings
+   * - Sorted by decision deadline (oldest first)
+   *
+   * @returns Observable<Booking[]> with pending requests for owner's cars
+   */
+  getPendingOwnerBookings(): Observable<Booking[]> {
+    return this.http.get<Booking[]>(`${this.baseUrl}/pending`, {
+      withCredentials: true,
+    });
+  }
+
+  /**
+   * Get detailed booking information for the renter (or owner/admin).
+   * Includes rich data about the trip, car, and host.
+   */
+  getBookingDetails(
+    id: number | string,
+  ): Observable<import('../models/booking-details.model').BookingDetails> {
+    return this.http.get<import('../models/booking-details.model').BookingDetails>(
+      `${this.baseUrl}/${id}/details`,
+      {
+        withCredentials: true,
+      },
+    );
+  }
+
+  /**
+   * Get guest preview for a booking (OWNER only).
+   *
+   * Security:
+   * - @PreAuthorize("@bookingSecurity.isOwner(#id, authentication.principal.id)") on backend
+   * - Returns restricted DTO with no contact info
+   * - No-store cache headers
+   *
+   * @param id Booking ID
+   * @returns Observable<GuestBookingPreview>
+   */
+  getGuestPreview(id: number | string): Observable<GuestBookingPreview> {
+    return this.http.get<GuestBookingPreview>(`${this.baseUrl}/${id}/guest-preview`, {
+      withCredentials: true,
+    });
+  }
+
+  // ========== RENTAL AGREEMENT ==========
+
+  /**
+   * Get the rental agreement for a booking.
+   * Accessible by booking renter, owner, or admin.
+   */
+  getAgreement(bookingId: number | string): Observable<RentalAgreementDTO> {
+    return this.http.get<RentalAgreementDTO>(`${this.baseUrl}/${bookingId}/agreement`, {
+      withCredentials: true,
+    });
+  }
+
+  /**
+   * Accept the rental agreement for a booking.
+   * Auto-determines role (owner/renter) based on authenticated user.
+   */
+  acceptAgreement(bookingId: number | string): Observable<RentalAgreementDTO> {
+    return this.http
+      .post<RentalAgreementDTO>(
+        `${this.baseUrl}/${bookingId}/agreement/accept`,
+        {},
+        { withCredentials: true },
+      )
+      .pipe(tap(() => this.analytics.track('agreement.accepted', { bookingId })));
+  }
+
+  resolveCheckInAgreementGate(
+    bookingId: number | string,
+  ): Observable<CheckInAgreementGateResult> {
+    return this.getBookingById(bookingId).pipe(
+      switchMap((booking) => {
+        const summary = booking.agreementSummary;
+        if (!summary) {
+          return this.resolveCheckInAgreementGateFromAgreement(bookingId);
+        }
+
+        return of<CheckInAgreementGateResult>({
+          state: canProceedToCheckInFromSummary(summary)
+            ? 'allowed'
+            : 'blocked',
+          summary,
+          agreement: null,
+          legacyBooking: summary.legacyBooking,
+          enforcementEnabled: !summary.legacyBooking,
+          source: 'summary' as const,
+        });
+      }),
+      catchError(() => this.resolveCheckInAgreementGateFromAgreement(bookingId)),
+    );
+  }
+
+  private resolveCheckInAgreementGateFromAgreement(
+    bookingId: number | string,
+  ): Observable<CheckInAgreementGateResult> {
+    return this.getAgreement(bookingId).pipe(
+      map((agreement): CheckInAgreementGateResult => ({
+        state: canProceedToCheckInFromAgreement(agreement)
+          ? 'allowed'
+          : 'blocked',
+        summary: null,
+        agreement,
+        legacyBooking: false,
+        enforcementEnabled: isAgreementEnforcementEnabled(agreement.enforcementEnabled),
+        source: 'agreement' as const,
+      })),
+      catchError((error) => {
+        if (error?.status === 404) {
+          return of<CheckInAgreementGateResult>({
+            state: 'allowed' as const,
+            summary: null,
+            agreement: null,
+            legacyBooking: true,
+            enforcementEnabled: false,
+            source: 'legacy' as const,
+          });
+        }
+
+        return of<CheckInAgreementGateResult>({
+          state: 'retry' as const,
+          summary: null,
+          agreement: null,
+          legacyBooking: false,
+          enforcementEnabled: true,
+          source: 'unavailable' as const,
+        });
+      }),
+    );
+  }
+
+  getBookingExtensions(bookingId: number | string): Observable<TripExtension[]> {
+    return this.http.get<TripExtension[]>(`${this.baseUrl}/${bookingId}/extensions`, {
+      withCredentials: true,
+    });
+  }
+
+  getPendingBookingExtension(bookingId: number | string): Observable<TripExtension | null> {
+    return this.http.get<TripExtension>(`${this.baseUrl}/${bookingId}/extensions/pending`, {
+      withCredentials: true,
+    });
+  }
+
+  requestBookingExtension(
+    bookingId: number | string,
+    payload: TripExtensionRequest,
+  ): Observable<TripExtension> {
+    return this.http.post<TripExtension>(`${this.baseUrl}/${bookingId}/extensions`, payload, {
+      withCredentials: true,
+    });
+  }
+
+  cancelBookingExtension(
+    bookingId: number | string,
+    extensionId: number,
+  ): Observable<TripExtension> {
+    return this.http.post<TripExtension>(
+      `${this.baseUrl}/${bookingId}/extensions/${extensionId}/cancel`,
+      {},
+      {
+        withCredentials: true,
+      },
+    );
+  }
+
+  approveBookingExtension(
+    bookingId: number | string,
+    extensionId: number,
+    payload?: TripExtensionHostResponse,
+  ): Observable<TripExtension> {
+    return this.http.post<TripExtension>(
+      `${this.baseUrl}/${bookingId}/extensions/${extensionId}/approve`,
+      payload ?? {},
+      {
+        withCredentials: true,
+      },
+    );
+  }
+
+  declineBookingExtension(
+    bookingId: number | string,
+    extensionId: number,
+    payload?: TripExtensionHostResponse,
+  ): Observable<TripExtension> {
+    return this.http.post<TripExtension>(
+      `${this.baseUrl}/${bookingId}/extensions/${extensionId}/decline`,
+      payload ?? {},
+      {
+        withCredentials: true,
+      },
+    );
+  }
+
+  reauthorizeBookingPayment(
+    bookingId: number | string,
+    payload: BookingReauthorizeRequest,
+  ): Observable<BookingReauthorizeResponse> {
+    return this.http.post<BookingReauthorizeResponse>(
+      `${environment.baseApiUrl}/payments/bookings/${bookingId}/reauthorize`,
+      payload,
+      {
+        withCredentials: true,
+      },
+    );
+  }
+}
+
+export interface RentalAgreementDTO {
+  id: number;
+  bookingId: number;
+  agreementVersion: string;
+  agreementType: string;
+  contentHash: string;
+  generatedAt: string;
+  status:
+    | 'PENDING'
+    | 'OWNER_ACCEPTED'
+    | 'RENTER_ACCEPTED'
+    | 'FULLY_ACCEPTED'
+    | 'EXPIRED'
+    | 'VOIDED';
+  ownerAccepted: boolean;
+  ownerAcceptedAt: string | null;
+  renterAccepted: boolean;
+  renterAcceptedAt: string | null;
+  acceptanceDeadlineAt: string | null;
+  requiredNextActor: 'OWNER' | 'RENTER' | 'BOTH' | 'NONE' | null;
+  expiredDueToActor: 'OWNER' | 'RENTER' | 'BOTH' | 'NONE' | null;
+  expiredReason: string | null;
+  settlementPolicyApplied: string | null;
+  settlementRecordId: number | null;
+  termsTemplateId: string | null;
+  termsTemplateHash: string | null;
+  enforcementEnabled: boolean;
+  ownerUserId: number;
+  renterUserId: number;
+  vehicleSnapshot: Record<string, unknown>;
+  termsSnapshot: Record<string, unknown>;
+}
+
+export interface CheckInAgreementGateResult {
+  state: 'allowed' | 'blocked' | 'retry';
+  summary: AgreementSummary | null;
+  agreement: RentalAgreementDTO | null;
+  legacyBooking: boolean;
+  enforcementEnabled: boolean;
+  source: 'summary' | 'agreement' | 'legacy' | 'unavailable';
+}
+
+export type { AgreementSummary };

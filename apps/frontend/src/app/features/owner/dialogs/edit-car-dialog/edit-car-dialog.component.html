@@ -1,0 +1,197 @@
+<div class="edit-car-dialog">
+  <h2 mat-dialog-title>Uredi vozilo</h2>
+
+  <mat-dialog-content>
+    <form [formGroup]="editForm" class="edit-form">
+      <!-- Basic Information -->
+      <section class="form-section">
+        <h3>Osnovne informacije</h3>
+
+        <div class="form-row">
+          <mat-form-field appearance="fill">
+            <mat-label>Marka</mat-label>
+            <input matInput formControlName="brand" />
+            <mat-error *ngIf="editForm.controls.brand.invalid">
+              Marka je obavezna (min. 2 karaktera)
+            </mat-error>
+          </mat-form-field>
+
+          <mat-form-field appearance="fill">
+            <mat-label>Model</mat-label>
+            <input matInput formControlName="model" />
+            <mat-error *ngIf="editForm.controls.model.invalid">
+              Model je obavezan (min. 2 karaktera)
+            </mat-error>
+          </mat-form-field>
+        </div>
+
+        <div class="form-row">
+          <mat-form-field appearance="fill">
+            <mat-label>Godina proizvodnje</mat-label>
+            <input matInput type="number" formControlName="year" />
+            <mat-error *ngIf="editForm.controls.year.invalid">
+              Unesite validnu godinu (1950-2050)
+            </mat-error>
+          </mat-form-field>
+
+          <mat-form-field appearance="fill">
+            <mat-label>Lokacija</mat-label>
+            <input matInput formControlName="location" />
+            <mat-error *ngIf="editForm.controls.location.invalid"> Lokacija je obavezna </mat-error>
+          </mat-form-field>
+        </div>
+
+        <mat-form-field appearance="fill" class="full-width">
+          <mat-label>Cena po danu (RSD)</mat-label>
+          <input matInput type="number" formControlName="pricePerDay" />
+          <mat-error *ngIf="editForm.controls.pricePerDay.invalid">
+            Minimalna cena je 10 RSD
+          </mat-error>
+        </mat-form-field>
+
+        <mat-form-field appearance="fill" class="full-width">
+          <mat-label>Opis</mat-label>
+          <textarea matInput formControlName="description" rows="4" maxlength="1000"></textarea>
+          <mat-hint align="end">{{ editForm.value.description?.length || 0 }}/1000</mat-hint>
+        </mat-form-field>
+      </section>
+
+      <!-- Specifications -->
+      <section class="form-section">
+        <h3>Specifikacije</h3>
+
+        <div class="form-row">
+          <mat-form-field appearance="fill">
+            <mat-label>Broj sedišta</mat-label>
+            <input matInput type="number" formControlName="seats" />
+            <mat-error *ngIf="editForm.controls.seats.invalid"> Broj sedišta (2-9) </mat-error>
+          </mat-form-field>
+
+          <mat-form-field appearance="fill">
+            <mat-label>Tip goriva</mat-label>
+            <mat-select formControlName="fuelType">
+              <mat-option *ngFor="let type of fuelTypes" [value]="type">
+                {{ translateFuelType(type) }}
+              </mat-option>
+            </mat-select>
+          </mat-form-field>
+        </div>
+
+        <div class="form-row">
+          <mat-form-field appearance="fill">
+            <mat-label>Menjač</mat-label>
+            <mat-select formControlName="transmissionType">
+              <mat-option [value]="TransmissionType.MANUAL">Manuelni</mat-option>
+              <mat-option [value]="TransmissionType.AUTOMATIC">Automatik</mat-option>
+            </mat-select>
+          </mat-form-field>
+
+          <mat-form-field appearance="fill">
+            <mat-label>Potrošnja (L/100km)</mat-label>
+            <input matInput type="number" formControlName="fuelConsumption" step="0.1" />
+          </mat-form-field>
+        </div>
+      </section>
+
+      <!-- Features -->
+      <section class="form-section">
+        <h3>Oprema i karakteristike</h3>
+
+        <div class="feature-group" *ngIf="featureGroups.safety.length">
+          <h4>Sigurnost</h4>
+          <mat-chip-set>
+            <mat-chip-option
+              *ngFor="let feature of featureGroups.safety"
+              [selected]="isFeatureSelected(feature)"
+              (click)="toggleFeature(feature)"
+            >
+              {{ translateFeature(feature) }}
+            </mat-chip-option>
+          </mat-chip-set>
+        </div>
+
+        <div class="feature-group" *ngIf="featureGroups.connectivity.length">
+          <h4>Povezivost</h4>
+          <mat-chip-set>
+            <mat-chip-option
+              *ngFor="let feature of featureGroups.connectivity"
+              [selected]="isFeatureSelected(feature)"
+              (click)="toggleFeature(feature)"
+            >
+              {{ translateFeature(feature) }}
+            </mat-chip-option>
+          </mat-chip-set>
+        </div>
+
+        <div class="feature-group" *ngIf="featureGroups.comfort.length">
+          <h4>Udobnost</h4>
+          <mat-chip-set>
+            <mat-chip-option
+              *ngFor="let feature of featureGroups.comfort"
+              [selected]="isFeatureSelected(feature)"
+              (click)="toggleFeature(feature)"
+            >
+              {{ translateFeature(feature) }}
+            </mat-chip-option>
+          </mat-chip-set>
+        </div>
+
+        <div class="feature-group" *ngIf="featureGroups.additional.length">
+          <h4>Dodatno</h4>
+          <mat-chip-set>
+            <mat-chip-option
+              *ngFor="let feature of featureGroups.additional"
+              [selected]="isFeatureSelected(feature)"
+              (click)="toggleFeature(feature)"
+            >
+              {{ translateFeature(feature) }}
+            </mat-chip-option>
+          </mat-chip-set>
+        </div>
+      </section>
+
+      <!-- Policies -->
+      <section class="form-section">
+        <h3>Politike iznajmljivanja</h3>
+
+        <mat-form-field appearance="fill" class="full-width">
+          <mat-label>Politika otkazivanja</mat-label>
+          <mat-select formControlName="cancellationPolicy">
+            <mat-option *ngFor="let policy of cancellationPolicies" [value]="policy">
+              {{ translateCancellationPolicy(policy) }}
+            </mat-option>
+          </mat-select>
+        </mat-form-field>
+
+        <div class="form-row">
+          <mat-form-field appearance="fill">
+            <mat-label>Minimalno dana iznajmljivanja</mat-label>
+            <input matInput type="number" formControlName="minRentalDays" />
+          </mat-form-field>
+
+          <mat-form-field appearance="fill">
+            <mat-label>Maksimalno dana iznajmljivanja</mat-label>
+            <input matInput type="number" formControlName="maxRentalDays" />
+          </mat-form-field>
+        </div>
+      </section>
+    </form>
+  </mat-dialog-content>
+
+  <mat-dialog-actions align="end">
+    <button mat-button (click)="cancel()" [disabled]="isSubmitting()">Otkaži</button>
+    <button
+      mat-raised-button
+      color="primary"
+      (click)="submitForm()"
+      [disabled]="isSubmitting() || editForm.invalid"
+    >
+      <mat-progress-spinner
+        *ngIf="isSubmitting()"
+        mode="indeterminate"
+        diameter="20"
+      ></mat-progress-spinner>
+      <span *ngIf="!isSubmitting()">Sačuvaj promene</span>
+    </button>
+  </mat-dialog-actions>
+</div>

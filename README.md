@@ -94,13 +94,13 @@ cd apps/frontend && firebase deploy --only hosting
 
 ```text
 rentoza/
-├── apps/                  # aplikacije koje se deploy-uju
-│   ├── backend/           # Spring Boot API
-│   ├── frontend/          # Angular PWA
-│   └── chat-service/      # real-time chat servis
-├── docs/                  # arhitektura, deployment, runbook
-├── infrastructure/        # cloud i ops skripte
-└── scripts/               # pomocne lokalne skripte
+|-- apps/                  # aplikacije koje se deploy-uju
+|   |-- backend/           # Spring Boot API
+|   |-- frontend/          # Angular PWA
+|   `-- chat-service/      # real-time chat servis
+|-- docs/                  # arhitektura, deployment, runbook
+|-- infrastructure/        # cloud i ops skripte
+`-- scripts/               # pomocne lokalne skripte
 ```
 
 ## Dokumentacija

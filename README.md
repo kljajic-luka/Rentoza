@@ -1,79 +1,119 @@
 # Rentoza
 
-**P2P Car Rental Platform for the Serbian Market**
+Platforma za P2P rentiranje automobila za trziste Srbije.
 
 [![Backend](https://img.shields.io/badge/backend-Spring%20Boot%203.5-green)](apps/backend)
 [![Frontend](https://img.shields.io/badge/frontend-Angular%2020-red)](apps/frontend)
 [![Chat](https://img.shields.io/badge/chat-WebSocket-blue)](apps/chat-service)
 
-## 🏗️ Project Structure
+## Za poslodavce: kratak pregled
 
-```
-rentoza/
-├── apps/                    # Deployable applications
-│   ├── backend/             # Spring Boot API (Java 21)
-│   ├── frontend/            # Angular 20 PWA
-│   └── chat-service/        # WebSocket chat service
-├── infrastructure/          # DevOps & deployment
-│   ├── gcp/                 # Google Cloud Run configs
-│   ├── firebase/            # Firebase Hosting
-│   └── scripts/             # Utility scripts
-├── database/                # Database files
-│   ├── migrations/          # SQL migrations
-│   └── seeds/               # Test data
-├── docs/                    # Documentation
-│   ├── architecture/        # System design
-│   ├── deployment/          # Deploy guides
-│   ├── features/            # Feature docs
-│   └── runbooks/            # On-call guides
-└── archive/                 # Historical docs
-```
+Rentoza je full-stack proizvod sa fokusom na realne produkcione zahteve:
 
-## 🚀 Quick Start
+- arhitektura podeljena na frontend, backend API i poseban chat servis
+- cloud deployment i operativne skripte za stabilan rad
+- bezbednosna disciplina (tajne van repozitorijuma, CI secret scan)
+- poslovna logika za rezervacije, placanja, verifikaciju korisnika i messaging
+
+## Arhitektura sistema
+
+### 1. Frontend aplikacija
+
+- Angular 20 PWA u [apps/frontend](apps/frontend)
+- fokus na UX tokove za gosta, hosta i admin uloge
+- integracija sa backend API i chat servisom
+
+### 2. Backend API
+
+- Spring Boot 3.5 (Java 21) u [apps/backend](apps/backend)
+- centralna poslovna logika: auth, rezervacije, placanja, compliance
+- migracije, testovi i operativne kontrole
+
+### 3. Chat servis
+
+- zaseban Spring Boot servis u [apps/chat-service](apps/chat-service)
+- real-time komunikacija i podrska za booking tokove
+- odvojena odgovornost radi skaliranja i izolacije rizika
+
+### 4. Infrastruktura i deploy
+
+- skripte i konfiguracija u [infrastructure](infrastructure)
+- ciljano za Cloud Run/Firebase tokove
+- separacija runtime konfiguracije i tajni
+
+## Uticaj i vrednost proizvoda
+
+Rentoza je gradjena kao startup-ready osnova:
+
+- digitalizovan P2P rental flow od pretrage do zavrsetka voznje
+- jasna separacija domena i servisa za brzi razvoj novih funkcija
+- priprema za rast kroz operativne i bezbednosne prakse
+
+## Produkcione prakse
+
+- Tajne se ne drze u kodu, vec kroz env/secret manager pristup
+- Automatski secret scan na svaki push i PR: [secret-scan.yml](.github/workflows/secret-scan.yml)
+- Preporuke za zastitu glavne grane: [GITHUB_BRANCH_PROTECTION.md](docs/deployment/GITHUB_BRANCH_PROTECTION.md)
+- Dokumentacija i deploy tokovi su verzionisani uz kod
+
+## Lokalni start
 
 ### Backend
+
 ```bash
 cd apps/backend
 ./mvnw spring-boot:run
 ```
 
 ### Frontend
+
 ```bash
 cd apps/frontend
 npm install
 npm start
 ```
 
-### Chat Service
+### Chat servis
+
 ```bash
 cd apps/chat-service
 ./mvnw spring-boot:run
 ```
 
-## 📦 Deployment
+## Deploy primeri
 
 ```bash
-# Deploy backend to Cloud Run
+# Backend deploy
 ./infrastructure/gcp/deploy-backend-secure.sh
 
-# Deploy frontend to Firebase
+# Frontend deploy
 cd apps/frontend && firebase deploy --only hosting
-
-# Deploy STAGING frontend preview (credentialless mock payments)
-cd apps/frontend && npm run deploy:staging
 ```
 
-## 📚 Documentation
+## Struktura repozitorijuma
 
-- [Architecture Overview](docs/architecture/)
-- [Deployment Guide](docs/deployment/)
-- [On-Call Runbook](docs/runbooks/)
+```text
+rentoza/
+├── apps/                  # aplikacije koje se deploy-uju
+│   ├── backend/           # Spring Boot API
+│   ├── frontend/          # Angular PWA
+│   └── chat-service/      # real-time chat servis
+├── docs/                  # arhitektura, deployment, runbook
+├── infrastructure/        # cloud i ops skripte
+└── scripts/               # pomocne lokalne skripte
+```
 
-## 🔗 Live Platform
+## Dokumentacija
 
-- **Production:** https://rentoza.rs
-- **API:** https://api.rentoza.rs
+- [Arhitektura](docs/architecture)
+- [Deployment](docs/deployment)
+- [Runbook](docs/runbooks)
+
+## Live okruzenje
+
+- Produkcija: https://rentoza.rs
+- API: https://api.rentoza.rs
 
 ---
 
-Built with ❤️ for the Serbian car rental market
+Rentoza je aktivan projekat sa jasnim fokusom na produkcionu spremnost, kvalitet koda i poslovni uticaj.

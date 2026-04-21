@@ -6,7 +6,7 @@ P2P car rental platform built for the Serbian market.
 [![Frontend](https://img.shields.io/badge/frontend-Angular%2020-red)](apps/frontend)
 [![Chat](https://img.shields.io/badge/chat-WebSocket-blue)](apps/chat-service)
 
-## For Employers: Quick Overview
+## Quick Overview
 
 Rentoza is a full-stack product focused on real production needs:
 

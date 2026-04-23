@@ -1,0 +1,21 @@
+# Copy this file outside git and fill values from your secrets manager.
+# Do not commit a rendered Cloud Run environment file.
+env_variables:
+  SPRING_PROFILES_ACTIVE: prod
+  SERVER_PORT: "8080"
+  CORS_ORIGINS: ""
+  COOKIE_DOMAIN: ""
+  COOKIE_SECURE: "true"
+  DATABASE_URL: ""
+  DATABASE_USERNAME: ""
+  DATABASE_PASSWORD: ""
+  JWT_SECRET: ""
+  SUPABASE_URL: ""
+  SUPABASE_ANON_KEY: ""
+  SUPABASE_SERVICE_ROLE_KEY: ""
+  MONRI_AUTHENTICITY_TOKEN: ""
+  MONRI_KEY: ""
+  MONRI_SECRET: ""
+  MAPBOX_ACCESS_TOKEN: ""
+  MAIL_USERNAME: ""
+  MAIL_PASSWORD: ""

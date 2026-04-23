@@ -33,26 +33,27 @@ build/
 .vscode/
 
 ### Sensitive Configuration Files ###
-# NEVER commit actual secrets - use environment variables
-**/application.properties
+# NEVER commit actual secrets - use environment variables or a secrets manager.
 **/application-*.properties
 !**/application-template.properties
-!**/application-dev.properties
-!**/application-prod.properties
+!**/application-example.properties
 
 # Local development overrides
 **/application-dev-local.properties
 
 # Environment files
 .env
+.env.*
 .env.local
 .env.*.local
+*.env
+!*.env.example
+!.env.example
 
 # Cloud Run environment files with secrets (CRITICAL - NEVER COMMIT)
 **/cloudrun-env.yaml
 !**/cloudrun-env.yaml.template
 **/cloudrun-env-*.yaml
-deploy-backend-secure.sh
 
 # Certificates and keystores
 *.jks
@@ -64,6 +65,18 @@ deploy-backend-secure.sh
 # Uploads (user-generated content)
 Rentoza/uploads/
 Rentoza/user-uploads/
+**/uploads/
+**/user-uploads/
+
+# Generated browser/test artifacts
+**/test-results/
+**/playwright-report/
+**/.firebase/
+
+# Internal planning and archive exports
+archive/
+.planning/
+.gsd/
 
 # Logs
 *.log

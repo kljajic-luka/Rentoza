@@ -1,0 +1,13 @@
+# Copy this file outside git and fill values from your secrets manager.
+# Do not commit a rendered Cloud Run environment file.
+env_variables:
+  SPRING_PROFILES_ACTIVE: prod
+  SERVER_PORT: "8081"
+  CORS_ORIGINS: ""
+  COOKIE_DOMAIN: ""
+  DATABASE_URL: ""
+  DATABASE_USERNAME: ""
+  DATABASE_PASSWORD: ""
+  SUPABASE_URL: ""
+  SUPABASE_JWT_SECRET: ""
+  CHAT_INTERNAL_TOKEN: ""
